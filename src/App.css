@@ -1,0 +1,260 @@
+:root {
+  --bg: #1a1a1a;
+  --pane-bg: #1e1e1e;
+  --pane-head-bg: #252526;
+  --border: #2d2d2d;
+  --text: #d4d4d4;
+  --text-dim: #808080;
+  --accent: #4a9eff;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+body.dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-bg);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pane.terminal {
+  flex: 1 1 auto;
+}
+
+.pane.sidebar,
+.pane.editor {
+  flex: 0 0 auto;
+}
+
+.pane-head {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.pane-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  font-size: 13px;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  text-align: center;
+  white-space: pre-wrap;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+}
+
+/* Sidebar tree */
+.tree-body {
+  padding: 4px 0;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  user-select: none;
+}
+
+.tree-error {
+  margin: 4px 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #f08080;
+  background: #2a1a1a;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.row:hover {
+  background: #2a2d2e;
+}
+
+.row.sel {
+  background: #094771;
+}
+
+.row.group .label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.row.project .label {
+  color: var(--text);
+}
+
+.row.branch .label {
+  color: var(--text-dim);
+}
+
+.row.branch.sel .label {
+  color: #fff;
+}
+
+.row.sub1 {
+  padding-left: 22px;
+}
+
+.row.sub2 {
+  padding-left: 40px;
+}
+
+.row.dim {
+  color: var(--text-dim);
+  font-style: italic;
+  cursor: default;
+}
+
+.row.dim:hover {
+  background: transparent;
+}
+
+.caret {
+  width: 12px;
+  font-size: 9px;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.row .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  color: #4ec9b0;
+  font-size: 8px;
+  margin-left: auto;
+}
+
+.tree-foot {
+  margin-top: auto;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.splitter {
+  flex: 0 0 4px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.12s ease;
+}
+
+.splitter:hover {
+  background: var(--accent);
+}
+
+/* Terminal pane */
+.term-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.term-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.term-input {
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-family: Menlo, Monaco, monospace;
+}
+
+.term-input.cwd {
+  flex: 1;
+}
+
+.term-input.sid {
+  width: 180px;
+}
+
+.term-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 4px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.term-btn.stop {
+  background: #d04444;
+}
+
+.term-host {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+.term-host .xterm {
+  height: 100%;
+}
