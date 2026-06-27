@@ -90,7 +90,10 @@ function App() {
         <header class="pane-head">Editor</header>
         <div class="pane-body placeholder">
           {selected()
-            ? `${selected()!.projectName} @ ${selected()!.branch}\n${selected()!.projectPath}`
+            ? `${selected()!.projectName} @ ${selected()!.branch}\n${selected()!.projectPath}` +
+              (selected()!.sessionId
+                ? `\n\nsession: ${selected()!.sessionId}\n${selected()!.sessionTitle ?? ""}`
+                : "")
             : "Monaco + file tree"}
         </div>
       </section>

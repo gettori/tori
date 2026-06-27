@@ -150,6 +150,27 @@ body.dragging {
   padding-left: 40px;
 }
 
+.row.sub3 {
+  padding-left: 58px;
+}
+
+.row.session .label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.row.session.sel .label {
+  color: #fff;
+}
+
+.row.session .when {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 10px;
+  color: #5a5a5a;
+  flex: 0 0 auto;
+}
+
 .row.dim {
   color: var(--text-dim);
   font-style: italic;
