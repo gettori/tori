@@ -1,5 +1,5 @@
 import { createSignal, onCleanup } from "solid-js";
-import TerminalPane from "./components/Terminal";
+import TerminalArea from "./components/TerminalArea";
 import Sidebar, { type Selection } from "./components/Sidebar";
 import "./App.css";
 
@@ -78,7 +78,7 @@ function App() {
 
       <main class="pane terminal">
         <header class="pane-head">Terminal</header>
-        <TerminalPane />
+        <TerminalArea selected={selected()} />
       </main>
 
       <div
