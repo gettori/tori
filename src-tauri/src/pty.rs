@@ -1,16 +1,20 @@
-// PTY host. Phase 0 spike: a single global session that proves the Claude TUI
-// runs cleanly over portable-pty and renders in xterm.js. Generalized to
-// multiple sessions in Phase 3.
+// PTY host. Multiple concurrent sessions keyed by a string id (the Claude
+// session id, or a generated id for a fresh session). Each session streams
+// raw bytes to the frontend tagged with its id, so one xterm instance per
+// session receives only its own output.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::thread;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-pub struct PtyState(pub Mutex<Option<Session>>);
+#[derive(Default)]
+pub struct PtyState(pub Mutex<HashMap<String, Session>>);
 
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
@@ -18,10 +22,10 @@ pub struct Session {
     child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-impl Default for PtyState {
-    fn default() -> Self {
-        PtyState(Mutex::new(None))
-    }
+#[derive(Clone, Serialize)]
+struct Output {
+    id: String,
+    data: String,
 }
 
 /// Build a PATH that includes the user's common bin dirs, since a GUI-launched
@@ -46,12 +50,21 @@ fn augmented_path() -> String {
 pub fn pty_spawn(
     app: AppHandle,
     state: State<PtyState>,
+    id: String,
     program: String,
     args: Vec<String>,
     cwd: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    // If a session with this id already exists, leave it running (idempotent).
+    {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        if guard.contains_key(&id) {
+            return Ok(());
+        }
+    }
+
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -71,42 +84,49 @@ pub fn pty_spawn(
     cmd.env("PATH", augmented_path());
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-    // Slave is held by the child; drop our handle so EOF propagates on exit.
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
-    // Reader thread: stream raw bytes to the frontend as base64.
     let app_handle = app.clone();
+    let emit_id = id.clone();
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let payload = STANDARD.encode(&buf[..n]);
-                    let _ = app_handle.emit("pty://output", payload);
+                    let _ = app_handle.emit(
+                        "pty://output",
+                        Output {
+                            id: emit_id.clone(),
+                            data: STANDARD.encode(&buf[..n]),
+                        },
+                    );
                 }
                 Err(_) => break,
             }
         }
-        let _ = app_handle.emit("pty://exit", ());
+        let _ = app_handle.emit("pty://exit", emit_id.clone());
     });
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    *guard = Some(Session {
-        master: pair.master,
-        writer,
-        child,
-    });
+    guard.insert(
+        id,
+        Session {
+            master: pair.master,
+            writer,
+            child,
+        },
+    );
     Ok(())
 }
 
 #[tauri::command]
-pub fn pty_write(state: State<PtyState>, data: String) -> Result<(), String> {
+pub fn pty_write(state: State<PtyState>, id: String, data: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.as_mut() {
+    if let Some(session) = guard.get_mut(&id) {
         session
             .writer
             .write_all(data.as_bytes())
@@ -117,9 +137,14 @@ pub fn pty_write(state: State<PtyState>, data: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn pty_resize(state: State<PtyState>, cols: u16, rows: u16) -> Result<(), String> {
+pub fn pty_resize(
+    state: State<PtyState>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.as_ref() {
+    if let Some(session) = guard.get(&id) {
         session
             .master
             .resize(PtySize {
@@ -134,11 +159,10 @@ pub fn pty_resize(state: State<PtyState>, cols: u16, rows: u16) -> Result<(), St
 }
 
 #[tauri::command]
-pub fn pty_kill(state: State<PtyState>) -> Result<(), String> {
+pub fn pty_kill(state: State<PtyState>, id: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.as_mut() {
+    if let Some(mut session) = guard.remove(&id) {
         let _ = session.child.kill();
     }
-    *guard = None;
     Ok(())
 }

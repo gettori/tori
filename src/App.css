@@ -222,60 +222,113 @@ body.dragging {
 }
 
 /* Terminal pane */
-.term-wrap {
+.term-area {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.term-bar {
+.term-tabs {
   display: flex;
-  gap: 6px;
-  padding: 6px 8px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0;
   background: var(--pane-head-bg);
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 
-.term-input {
-  background: #1a1a1a;
+.term-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: #232323;
   border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.term-tab.active {
   color: var(--text);
-  border-radius: 4px;
-  padding: 3px 7px;
-  font-size: 12px;
-  font-family: Menlo, Monaco, monospace;
+  background: #1e1e1e;
 }
 
-.term-input.cwd {
-  flex: 1;
+.tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.term-input.sid {
-  width: 180px;
+.tab-close {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+  border-radius: 3px;
+  padding: 0 2px;
 }
 
-.term-btn {
-  background: var(--accent);
-  border: none;
+.tab-close:hover {
+  background: #444;
   color: #fff;
+}
+
+.term-new {
+  margin-left: 4px;
+  align-self: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
   border-radius: 4px;
-  padding: 3px 12px;
+  padding: 3px 10px;
   font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
 }
 
-.term-btn.stop {
-  background: #d04444;
+.term-new:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.term-new:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.term-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
 }
 
 .term-host {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   padding: 4px 6px;
+}
+
+.term-host.hidden {
+  display: none;
 }
 
 .term-host .xterm {
   height: 100%;
+}
+
+.term-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
 }
