@@ -2,6 +2,7 @@ import { onMount, onCleanup, createEffect, on, createSignal, Show } from "solid-
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import monaco, { languageForPath } from "../monaco";
+import { on as onEvent, FOCUS_EDITOR } from "../events";
 
 type LineMark = { line: number; kind: string };
 
@@ -91,11 +92,14 @@ export default function MonacoEditor(props: { path: string | null }) {
 
   // External edits / git changes: only the gutter refreshes (don't clobber edits).
   let unlisten: UnlistenFn | undefined;
+  let offFocus: (() => void) | undefined;
   onMount(async () => {
     unlisten = await listen("files://changed", () => void refreshGitMarks());
+    offFocus = onEvent(FOCUS_EDITOR, () => editor?.focus());
   });
   onCleanup(() => {
     unlisten?.();
+    offFocus?.();
     editor?.dispose();
   });
 

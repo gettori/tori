@@ -1,7 +1,8 @@
-import { createSignal, createEffect, on, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import TerminalView from "./TerminalView";
 import type { Selection } from "./Sidebar";
+import { on as onEvent, CLOSE_TAB } from "../events";
 
 type OpenTerm = {
   id: string;
@@ -11,9 +12,21 @@ type OpenTerm = {
   args: string[];
 };
 
-export default function TerminalArea(props: { selected: Selection | null }) {
+export default function TerminalArea(props: {
+  selected: Selection | null;
+  onOpenChange?: (ids: Set<string>) => void;
+}) {
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
   const [active, setActive] = createSignal<string | null>(null);
+
+  // Report the set of live session ids so the sidebar can show running dots.
+  createEffect(() => props.onOpenChange?.(new Set(open().map((o) => o.id))));
+
+  const offClose = onEvent(CLOSE_TAB, () => {
+    const id = active();
+    if (id) closeId(id);
+  });
+  onCleanup(offClose);
 
   function openOrActivate(t: OpenTerm) {
     if (!open().some((o) => o.id === t.id)) {
@@ -53,14 +66,18 @@ export default function TerminalArea(props: { selected: Selection | null }) {
     });
   }
 
-  function close(id: string, e: MouseEvent) {
-    e.stopPropagation();
+  function closeId(id: string) {
     invoke("pty_kill", { id }).catch(() => {});
     const remaining = open().filter((o) => o.id !== id);
     setOpen(remaining);
     if (active() === id) {
       setActive(remaining.length ? remaining[remaining.length - 1].id : null);
     }
+  }
+
+  function close(id: string, e: MouseEvent) {
+    e.stopPropagation();
+    closeId(id);
   }
 
   return (
