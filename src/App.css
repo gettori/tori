@@ -332,3 +332,145 @@ body.dragging {
   text-align: center;
   padding: 20px;
 }
+
+/* Editor pane: file tree + Monaco */
+.editor-pane {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.file-tree {
+  width: 190px;
+  flex: 0 0 auto;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  padding: 4px 0;
+  font-size: 13px;
+  user-select: none;
+}
+
+.ft-empty {
+  padding: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.frow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.frow:hover {
+  background: #2a2d2e;
+}
+
+.frow.file.active {
+  background: #094771;
+}
+
+.frow .caret {
+  width: 12px;
+  font-size: 9px;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.frow.dir .fname {
+  color: var(--text);
+}
+
+.frow.file .fname {
+  color: var(--text-dim);
+}
+
+.frow.file.active .fname {
+  color: #fff;
+}
+
+.fname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.eh-name {
+  color: var(--text);
+}
+
+.eh-empty {
+  color: var(--text-dim);
+}
+
+.eh-dirty {
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.eh-save {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.eh-save:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.eh-save:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.eh-error {
+  margin-left: auto;
+  color: #f08080;
+  font-size: 11px;
+}
+
+.editor-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Git gutter marks (Monaco line-decoration margin) */
+.git-added {
+  border-left: 3px solid #4ec9b0;
+}
+
+.git-modified {
+  border-left: 3px solid var(--accent);
+}
+
+.git-removed {
+  border-left: 3px solid #f04848;
+}

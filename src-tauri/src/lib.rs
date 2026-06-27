@@ -1,8 +1,10 @@
 mod config;
+mod files;
 mod pty;
 mod sessions;
 
 use config::ConfigWatch;
+use files::FilesWatch;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch};
 
@@ -14,6 +16,7 @@ pub fn run() {
         .manage(ConfigWatch::default())
         .manage(SessionIndex::default())
         .manage(SessionWatch::default())
+        .manage(FilesWatch::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -24,6 +27,11 @@ pub fn run() {
             config::config_watch_start,
             sessions::list_sessions,
             sessions::sessions_watch_start,
+            files::list_dir,
+            files::read_file,
+            files::write_file,
+            files::git_diff_lines,
+            files::files_watch_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

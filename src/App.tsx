@@ -1,5 +1,6 @@
 import { createSignal, onCleanup } from "solid-js";
 import TerminalArea from "./components/TerminalArea";
+import EditorPane from "./components/EditorPane";
 import Sidebar, { type Selection } from "./components/Sidebar";
 import "./App.css";
 
@@ -88,14 +89,7 @@ function App() {
 
       <section class="pane editor" style={{ width: `${editor()}px` }}>
         <header class="pane-head">Editor</header>
-        <div class="pane-body placeholder">
-          {selected()
-            ? `${selected()!.projectName} @ ${selected()!.branch}\n${selected()!.projectPath}` +
-              (selected()!.sessionId
-                ? `\n\nsession: ${selected()!.sessionId}\n${selected()!.sessionTitle ?? ""}`
-                : "")
-            : "Monaco + file tree"}
-        </div>
+        <EditorPane selected={selected()} />
       </section>
     </div>
   );
