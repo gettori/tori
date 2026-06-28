@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, FOCUS_TERMINAL } from "../events";
+import { on as onEvent, FOCUS_TERMINAL, THEME_APPLIED } from "../events";
 import "@xterm/xterm/css/xterm.css";
 
 function decodeBase64(b64: string): Uint8Array {
@@ -11,6 +11,12 @@ function decodeBase64(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+function termColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb;
+  return { background: v("--bg", "#1e1e1e"), foreground: v("--text", "#d4d4d4") };
 }
 
 /**
@@ -31,6 +37,7 @@ export default function TerminalView(props: {
   let unlistenExit: UnlistenFn | undefined;
   let ro: ResizeObserver | undefined;
   let offFocus: (() => void) | undefined;
+  let offTheme: (() => void) | undefined;
 
   function fitNow() {
     if (!term || !fit || !props.active || host.offsetParent === null) return;
@@ -44,7 +51,7 @@ export default function TerminalView(props: {
     term = new Terminal({
       fontFamily: 'Menlo, Monaco, "SF Mono", monospace',
       fontSize: 13,
-      theme: { background: "#1e1e1e", foreground: "#d4d4d4" },
+      theme: termColors(),
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -82,6 +89,9 @@ export default function TerminalView(props: {
     offFocus = onEvent(FOCUS_TERMINAL, () => {
       if (props.active) term?.focus();
     });
+    offTheme = onEvent(THEME_APPLIED, () => {
+      if (term) term.options.theme = termColors();
+    });
   });
 
   // Fit + focus whenever this view becomes the active tab.
@@ -99,6 +109,7 @@ export default function TerminalView(props: {
     unlistenExit?.();
     ro?.disconnect();
     offFocus?.();
+    offTheme?.();
     invoke("pty_kill", { id: props.id }).catch(() => {});
     term?.dispose();
   });

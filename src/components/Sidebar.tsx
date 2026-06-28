@@ -1,7 +1,7 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, FOCUS_SEARCH, FOCUS_SIDEBAR } from "../events";
+import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH } from "../events";
 
 type Project = { name: string; path: string };
 type Group = { name: string; projects: Project[] };
@@ -9,10 +9,13 @@ type ResolvedConfig = { path: string; groups: Group[] };
 type Branch = { name: string; current: boolean };
 type SessionMeta = {
   id: string;
+  path: string;
   cwd: string;
   branch: string;
   title: string;
   last_active: number;
+  name: string | null;
+  archived: boolean;
 };
 
 export type Selection = {
@@ -20,7 +23,10 @@ export type Selection = {
   projectPath: string;
   branch: string;
   sessionId?: string;
+  sessionPath?: string;
   sessionTitle?: string;
+  sessionName?: string | null;
+  sessionArchived?: boolean;
 };
 
 const LS_EXPANDED = "sway.expanded.v1";
@@ -51,7 +57,6 @@ function loadExpanded(): Set<string> {
 export default function Sidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection) => void;
-  openIds: Set<string>;
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
   const [error, setError] = createSignal("");
@@ -151,7 +156,10 @@ export default function Sidebar(props: {
       projectPath: p.path,
       branch,
       sessionId: s.id,
+      sessionPath: s.path,
       sessionTitle: s.title,
+      sessionName: s.name,
+      sessionArchived: s.archived,
     });
   }
 
@@ -162,11 +170,13 @@ export default function Sidebar(props: {
 
   // --- filtering ---
   const q = () => query().trim().toLowerCase();
+  function sessionText(s: SessionMeta) {
+    return (s.name || s.title).toLowerCase();
+  }
   function sessionsMatch(p: Project) {
     if (!q()) return false;
     return Object.entries(sessions()).some(
-      ([k, list]) =>
-        k.startsWith(`${p.path}::`) && list.some((s) => s.title.toLowerCase().includes(q())),
+      ([k, list]) => k.startsWith(`${p.path}::`) && list.some((s) => sessionText(s).includes(q())),
     );
   }
   function projectVisible(p: Project) {
@@ -178,13 +188,13 @@ export default function Sidebar(props: {
     return g.name.toLowerCase().includes(q()) || g.projects.some(projectVisible);
   }
   function sessionVisible(s: SessionMeta) {
-    return !q() || s.title.toLowerCase().includes(q());
+    return !q() || sessionText(s).includes(q());
   }
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   let offSearch: (() => void) | undefined;
-  let offSidebar: (() => void) | undefined;
+  let offRefresh: (() => void) | undefined;
   onMount(async () => {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
@@ -194,13 +204,13 @@ export default function Sidebar(props: {
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => refreshSessions());
     offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
-    offSidebar = onEvent(FOCUS_SIDEBAR, () => searchEl?.focus());
+    offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
   });
   onCleanup(() => {
     unlistenConfig?.();
     unlistenSessions?.();
     offSearch?.();
-    offSidebar?.();
+    offRefresh?.();
   });
 
   return (
@@ -274,19 +284,18 @@ export default function Sidebar(props: {
                                     </div>
                                     <Show when={bopen()}>
                                       <For
-                                        each={(sessions()[skey(p.path, b.name)] ?? []).filter(sessionVisible)}
+                                        each={(sessions()[skey(p.path, b.name)] ?? [])
+                                          .filter((s) => !s.archived)
+                                          .filter(sessionVisible)}
                                         fallback={<div class="row dim sub3">no sessions</div>}
                                       >
                                         {(s) => (
                                           <div
                                             class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
                                             onClick={() => selectSession(p, b.name, s)}
-                                            title={s.title}
+                                            title={s.name || s.title}
                                           >
-                                            <Show when={props.openIds.has(s.id)}>
-                                              <span class="run-dot" title="running">●</span>
-                                            </Show>
-                                            <span class="label">{s.title}</span>
+                                            <span class="label">{s.name || s.title}</span>
                                             <span class="when">{ago(s.last_active)}</span>
                                           </div>
                                         )}
