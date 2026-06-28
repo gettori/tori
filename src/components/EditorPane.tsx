@@ -1,62 +1,28 @@
-import { createSignal, createEffect, on, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import CodeEditor from "./CodeEditor";
+import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../events";
 import type { Selection } from "./Sidebar";
 
-// Real VS Code via code-server, embedded in an iframe. A single code-server
-// instance is started on demand by the Rust side; we switch projects by
-// pointing the iframe at ?folder=<path>.
-export default function EditorPane(props: { selected: Selection | null }) {
-  const [baseUrl, setBaseUrl] = createSignal<string | null>(null);
-  const [starting, setStarting] = createSignal(false);
-  const [error, setError] = createSignal("");
+// Same-origin CM6 editor. Opens whatever file the rest of the app requests via
+// the OPEN_IN_EDITOR event (terminal path clicks, and the file tree in Phase 3).
+export default function EditorPane(_props: { selected: Selection | null }) {
+  const [path, setPath] = createSignal<string | null>(null);
+  let off: (() => void) | undefined;
 
-  async function ensureServer() {
-    if (baseUrl()) return baseUrl();
-    setStarting(true);
-    try {
-      const url = await invoke<string>("code_server_url");
-      setBaseUrl(url);
-      return url;
-    } catch (e) {
-      setError(String(e));
-      return null;
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  const src = () => {
-    const url = baseUrl();
-    const p = props.selected?.projectPath;
-    if (!url || !p) return "";
-    return `${url}/?folder=${encodeURIComponent(p)}`;
-  };
-
-  // Start the server the first time a project is selected.
-  createEffect(
-    on(
-      () => props.selected?.projectPath,
-      (p) => {
-        if (p) ensureServer();
-      },
-    ),
-  );
+  onMount(() => {
+    off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
+      if (d?.path) setPath(d.path);
+    });
+  });
+  onCleanup(() => off?.());
 
   return (
     <div class="editor-pane">
       <Show
-        when={props.selected?.projectPath}
-        fallback={<div class="editor-empty">Select a branch to open its project in VS Code.</div>}
+        when={path()}
+        fallback={<div class="editor-empty">Open a file to start editing.</div>}
       >
-        <Show when={error()}>
-          <div class="editor-err">{error()}</div>
-        </Show>
-        <Show when={starting() && !baseUrl()}>
-          <div class="editor-empty">Starting VS Code…</div>
-        </Show>
-        <Show when={src()}>
-          <iframe class="cs-frame" src={src()} title="VS Code" />
-        </Show>
+        <CodeEditor path={path()} />
       </Show>
     </div>
   );

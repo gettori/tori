@@ -31,9 +31,9 @@ body.dragging {
   user-select: none;
 }
 
-/* While dragging a splitter, stop the editor iframe (and terminal) from
-   swallowing pointer events so window-level pointermove keeps firing. */
-body.dragging .cs-frame,
+/* While dragging a splitter, stop the editor and terminal from swallowing
+   pointer events so window-level pointermove keeps firing. */
+body.dragging .code-editor,
 body.dragging .term-host {
   pointer-events: none;
 }
@@ -723,12 +723,19 @@ body.dragging .term-host {
   background: var(--bg);
 }
 
-.cs-frame {
+.code-editor {
   flex: 1;
-  width: 100%;
+  min-width: 0;
   height: 100%;
-  border: 0;
-  background: var(--bg);
+  overflow: hidden;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+}
+
+.code-editor .cm-scroller {
+  overflow: auto;
 }
 
 .editor-empty {

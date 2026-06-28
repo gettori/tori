@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, THEME_APPLIED } from "./events";
 
-type ThemeColors = { kind: string | null; colors: Record<string, string> };
+type ThemeColors = {
+  kind: string | null;
+  colors: Record<string, string>;
+  syntax?: Record<string, string>;
+};
 
 const LS_THEME = "sway.theme.v1";
 
@@ -19,6 +23,19 @@ const MAP: [string, string[], string][] = [
   ["--input-bg", ["input.background"], "#1a1a1a"],
 ];
 
+// [cssVar, syntax category (from get_theme_colors.syntax), fallback].
+// Fallbacks are the VS Code Dark+ defaults, the built-in palette used when a
+// theme exposes no tokenColors. CM6's HighlightStyle reads these via var().
+const SYN_MAP: [string, string, string][] = [
+  ["--syn-keyword", "keyword", "#569cd6"],
+  ["--syn-string", "string", "#ce9178"],
+  ["--syn-comment", "comment", "#6a9955"],
+  ["--syn-number", "number", "#b5cea8"],
+  ["--syn-function", "function", "#dcdcaa"],
+  ["--syn-type", "type", "#4ec9b0"],
+  ["--syn-variable", "variable", "#9cdcfe"],
+];
+
 /** Synchronous: paint with the last-known theme (or fallbacks) before render,
  *  so the UI never flashes the default palette on startup. */
 export function applyCachedTheme() {
@@ -32,6 +49,9 @@ export function applyCachedTheme() {
   for (const [cssVar, , fallback] of MAP) {
     root.setProperty(cssVar, cached[cssVar] ?? fallback);
   }
+  for (const [cssVar, , fallback] of SYN_MAP) {
+    root.setProperty(cssVar, cached[cssVar] ?? fallback);
+  }
 }
 
 /** Async: fetch the live VS Code theme, apply it, cache it, notify listeners. */
@@ -43,11 +63,17 @@ export async function applyTheme() {
     return;
   }
   const c = t.colors || {};
+  const syn = t.syntax || {};
   const root = document.documentElement.style;
   const resolved: Record<string, string> = {};
   for (const [cssVar, keys, fallback] of MAP) {
     const hit = keys.map((k) => c[k]).find((v) => !!v);
     const val = hit ?? fallback;
+    root.setProperty(cssVar, val);
+    resolved[cssVar] = val;
+  }
+  for (const [cssVar, key, fallback] of SYN_MAP) {
+    const val = syn[key] || fallback;
     root.setProperty(cssVar, val);
     resolved[cssVar] = val;
   }
