@@ -7,16 +7,17 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, FOCUS_TERMINAL, THEME_APPLIED } from "../events";
 import "@xterm/xterm/css/xterm.css";
 
-function decodeBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+// PTY output arrives over a Tauri Channel as raw bytes (an ArrayBuffer), or as a
+// Uint8Array/number[] depending on transport; normalize to what xterm.write takes.
+function toBytes(msg: ArrayBuffer | Uint8Array | number[]): Uint8Array {
+  if (msg instanceof Uint8Array) return msg;
+  if (msg instanceof ArrayBuffer) return new Uint8Array(msg);
+  return new Uint8Array(msg);
 }
 
 function termColors() {
@@ -41,7 +42,6 @@ export default function TerminalView(props: {
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
   let search: SearchAddon | undefined;
-  let unlistenOut: UnlistenFn | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let ro: ResizeObserver | undefined;
   let offFocus: (() => void) | undefined;
@@ -121,14 +121,16 @@ export default function TerminalView(props: {
       invoke("pty_write", { id: props.id, data }).catch(() => {});
     });
 
-    unlistenOut = await listen<{ id: string; data: string }>("pty://output", (e) => {
-      if (e.payload.id === props.id) term?.write(decodeBase64(e.payload.data));
-    });
     unlistenExit = await listen<string>("pty://exit", (e) => {
       if (e.payload === props.id) {
         term?.writeln("\r\n\x1b[90m[process exited]\x1b[0m");
       }
     });
+
+    // Per-session output channel (replaces the global base64 pty://output event).
+    // A fresh channel each mount; the Rust side rewires it to the live session.
+    const output = new Channel<ArrayBuffer | Uint8Array | number[]>();
+    output.onmessage = (msg) => term?.write(toBytes(msg));
 
     await invoke("pty_spawn", {
       id: props.id,
@@ -137,6 +139,7 @@ export default function TerminalView(props: {
       cwd: props.cwd,
       cols: term.cols,
       rows: term.rows,
+      onOutput: output,
     }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
 
     ro = new ResizeObserver(() => fitNow());
@@ -162,7 +165,6 @@ export default function TerminalView(props: {
   });
 
   onCleanup(() => {
-    unlistenOut?.();
     unlistenExit?.();
     ro?.disconnect();
     offFocus?.();
