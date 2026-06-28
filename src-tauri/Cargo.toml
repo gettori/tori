@@ -26,7 +26,6 @@ toml = "0.8"
 notify = "6"
 dirs = "5"
 portable-pty = "0.8"
-base64 = "0.22"
 json5 = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -5,27 +5,26 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
-use serde::Serialize;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
 
+/// Where a session's raw PTY output is streamed. Swappable so a remount/
+/// re-subscribe (an idempotent pty_spawn) can rewire output to a fresh channel
+/// without restarting the process.
+type Sink = Arc<Mutex<Option<Channel<InvokeResponseBody>>>>;
+
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
-}
-
-#[derive(Clone, Serialize)]
-struct Output {
-    id: String,
-    data: String,
+    sink: Sink,
 }
 
 /// Build a PATH that includes the user's common bin dirs, since a GUI-launched
@@ -56,11 +55,14 @@ pub fn pty_spawn(
     cwd: String,
     cols: u16,
     rows: u16,
+    on_output: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
-    // If a session with this id already exists, leave it running (idempotent).
+    // If a session with this id already exists, rewire its output to the new
+    // channel (a remount/re-subscribe) and leave the process running.
     {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
-        if guard.contains_key(&id) {
+        if let Some(session) = guard.get(&id) {
+            *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
             return Ok(());
         }
     }
@@ -89,6 +91,8 @@ pub fn pty_spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    let sink: Sink = Arc::new(Mutex::new(Some(on_output)));
+    let reader_sink = sink.clone();
     let app_handle = app.clone();
     let emit_id = id.clone();
     thread::spawn(move || {
@@ -97,13 +101,14 @@ pub fn pty_spawn(
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let _ = app_handle.emit(
-                        "pty://output",
-                        Output {
-                            id: emit_id.clone(),
-                            data: STANDARD.encode(&buf[..n]),
-                        },
-                    );
+                    // Stream raw bytes over the current channel (no base64, no
+                    // global broadcast). A swapped-out channel just drops output
+                    // until the next subscriber arrives.
+                    if let Ok(guard) = reader_sink.lock() {
+                        if let Some(ch) = guard.as_ref() {
+                            let _ = ch.send(InvokeResponseBody::Raw(buf[..n].to_vec()));
+                        }
+                    }
                 }
                 Err(_) => break,
             }
@@ -118,6 +123,7 @@ pub fn pty_spawn(
             master: pair.master,
             writer,
             child,
+            sink,
         },
     );
     Ok(())
