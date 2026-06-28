@@ -673,6 +673,19 @@ body.dragging .term-host {
   background: var(--bg);
 }
 
+.term-host-wrap {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.term-host-wrap.hidden {
+  display: none;
+}
+
 .term-host {
   flex: 1;
   min-height: 0;
@@ -680,8 +693,42 @@ body.dragging .term-host {
   background: var(--bg);
 }
 
-.term-host.hidden {
-  display: none;
+.term-search {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--pane-head-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.term-search-input {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  outline: none;
+}
+
+.term-search button {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 3px;
+}
+
+.term-search button:hover {
+  color: var(--text);
 }
 
 .term-host .xterm {
