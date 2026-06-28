@@ -1,9 +1,10 @@
-import { createSignal, createEffect, onMount, onCleanup } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import Sidebar, { type Selection } from "./components/Sidebar";
 import TerminalArea from "./components/TerminalArea";
 import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls";
+import QuickOpen from "./components/QuickOpen";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { applyTheme } from "./theme";
 import "./App.css";
@@ -41,6 +42,7 @@ function App() {
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [editor, setEditor] = createSignal(initial.editor);
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
+  const [quickOpen, setQuickOpen] = createSignal(false);
 
   createEffect(() => {
     const s = selected();
@@ -87,7 +89,10 @@ function App() {
 
   function onKeyDown(e: KeyboardEvent) {
     if (!e.metaKey) return;
-    if (e.key === "p" || e.key === "1") {
+    if (e.key === "p") {
+      e.preventDefault();
+      setQuickOpen(true);
+    } else if (e.key === "1") {
       e.preventDefault();
       emit(FOCUS_SEARCH);
     } else if (e.key === "2") {
@@ -135,6 +140,10 @@ function App() {
           </div>
         </div>
       </div>
+
+      <Show when={quickOpen()}>
+        <QuickOpen root={selected()?.projectPath ?? null} onClose={() => setQuickOpen(false)} />
+      </Show>
     </div>
   );
 }
