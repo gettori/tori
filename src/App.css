@@ -723,6 +723,13 @@ body.dragging .term-host {
   background: var(--bg);
 }
 
+.editor-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .code-editor {
   flex: 1;
   min-width: 0;
@@ -753,4 +760,101 @@ body.dragging .term-host {
   padding: 10px;
   color: #f08080;
   font-size: 12px;
+}
+
+/* Editor tab bar */
+.editor-tabs {
+  display: flex;
+  flex: none;
+  min-height: 32px;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.editor-tabs .tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--pane-head-bg);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-tabs .tab.active {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.editor-tabs .tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.editor-tabs .tab-dirty {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.editor-tabs .tab-close {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.editor-tabs .tab-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* File tree (right of the editor) */
+.file-tree {
+  width: 240px;
+  flex: none;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--pane-bg);
+  padding: 4px 0;
+  font-size: 13px;
+  user-select: none;
+}
+
+.file-tree .tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.file-tree .tree-row:hover {
+  background: var(--hover);
+}
+
+.file-tree .tree-twisty {
+  display: inline-block;
+  width: 12px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.file-tree .tree-name.is-dir {
+  color: var(--text);
+}
+
+.file-tree .tree-empty {
+  padding: 8px 12px;
+  color: var(--text-dim);
 }
