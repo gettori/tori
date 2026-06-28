@@ -1,10 +1,12 @@
 import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../events";
+import { isSelfWrite } from "../selfWrites";
 import type { Selection } from "./Sidebar";
 
 type OpenFile = { path: string; name: string };
@@ -21,6 +23,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
   const [rightMode, setRightMode] = createSignal<"files" | "changes">("files");
+  const [follow, setFollow] = createSignal(false);
 
   const openPaths = () => openFiles().map((f) => f.path);
   const root = () => props.selected?.projectPath ?? null;
@@ -63,10 +66,19 @@ export default function EditorPane(props: { selected: Selection | null }) {
 
   let offOpen: (() => void) | undefined;
   let offClose: (() => void) | undefined;
+  let offFollow: UnlistenFn | undefined;
 
   onMount(async () => {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (d?.path) openFile(d.path);
+    });
+    // Follow mode: auto-open the most-recently-changed project file. The watcher
+    // already filters .git/node_modules/dist/target, and self-writes are skipped,
+    // so follow never jumps to git internals, build output, or our own saves.
+    offFollow = await listen<{ paths: string[] }>("fs://changed", (e) => {
+      if (!follow()) return;
+      const external = e.payload.paths.filter((p) => !isSelfWrite(p));
+      if (external.length) openFile(external[external.length - 1]);
     });
     // Unsaved-buffer guard on app close.
     offClose = await getCurrentWindow().onCloseRequested((event) => {
@@ -79,41 +91,50 @@ export default function EditorPane(props: { selected: Selection | null }) {
   onCleanup(() => {
     offOpen?.();
     offClose?.();
+    offFollow?.();
   });
 
   return (
     <div class="editor-pane">
       <div class="editor-main">
+        <div class="editor-tabs">
+          <For each={openFiles()}>
+            {(f) => (
+              <div
+                class="tab"
+                classList={{ active: f.path === activePath() }}
+                onClick={() => setActivePath(f.path)}
+                title={f.path}
+              >
+                <span class="tab-name">{f.name}</span>
+                <Show when={dirty()[f.path]}>
+                  <span class="tab-dirty">●</span>
+                </Show>
+                <button
+                  class="tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(f.path);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </For>
+          <button
+            class="follow-toggle"
+            classList={{ active: follow() }}
+            onClick={() => setFollow(!follow())}
+            title="Follow: auto-open the most-recently-changed file"
+          >
+            Follow
+          </button>
+        </div>
         <Show
           when={openFiles().length}
           fallback={<div class="editor-empty">Open a file from the tree to start editing.</div>}
         >
-          <div class="editor-tabs">
-            <For each={openFiles()}>
-              {(f) => (
-                <div
-                  class="tab"
-                  classList={{ active: f.path === activePath() }}
-                  onClick={() => setActivePath(f.path)}
-                  title={f.path}
-                >
-                  <span class="tab-name">{f.name}</span>
-                  <Show when={dirty()[f.path]}>
-                    <span class="tab-dirty">●</span>
-                  </Show>
-                  <button
-                    class="tab-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(f.path);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
           <CodeEditor
             activePath={activePath()}
             openPaths={openPaths()}
