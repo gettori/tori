@@ -31,6 +31,13 @@ body.dragging {
   user-select: none;
 }
 
+/* While dragging a splitter, stop the editor iframe (and terminal) from
+   swallowing pointer events so window-level pointermove keeps firing. */
+body.dragging .cs-frame,
+body.dragging .term-host {
+  pointer-events: none;
+}
+
 .app {
   display: flex;
   flex-direction: column;
