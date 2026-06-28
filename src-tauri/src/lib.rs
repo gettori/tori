@@ -1,5 +1,7 @@
 mod codeserver;
 mod config;
+mod fs;
+mod git;
 mod launch;
 mod pty;
 mod sessions;
@@ -8,6 +10,7 @@ mod worktree;
 
 use codeserver::CodeServer;
 use config::ConfigWatch;
+use fs::FsWatch;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch};
 use tauri::Manager;
@@ -48,6 +51,7 @@ pub fn run() {
         })
         .manage(PtyState::default())
         .manage(ConfigWatch::default())
+        .manage(FsWatch::default())
         .manage(SessionIndex::default())
         .manage(SessionWatch::default())
         .manage(CodeServer::default())
@@ -59,6 +63,13 @@ pub fn run() {
             config::get_config,
             config::list_branches,
             config::config_watch_start,
+            fs::fs_read_dir,
+            fs::fs_read_file,
+            fs::fs_write_file,
+            fs::file_exists,
+            fs::fs_watch_start,
+            git::git_status,
+            git::git_diff_file,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,

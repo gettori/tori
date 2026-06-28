@@ -6,12 +6,29 @@ export const CLOSE_TAB = "sway:close-tab";
 export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";
 
+// Payload-carrying event: open a file in the editor at an optional position.
+// (File-change fan-out is not here — that rides the backend `fs://changed`
+// Tauri event, consumed directly by the editor panes.)
+export const OPEN_IN_EDITOR = "sway:open-in-editor";
+export type OpenInEditor = { path: string; line?: number; col?: number };
+
 export function emit(name: string) {
   window.dispatchEvent(new CustomEvent(name));
 }
 
 export function on(name: string, fn: () => void): () => void {
   const handler = () => fn();
+  window.addEventListener(name, handler);
+  return () => window.removeEventListener(name, handler);
+}
+
+// Payload variants — data travels via CustomEvent.detail.
+export function emitWith<T>(name: string, detail: T) {
+  window.dispatchEvent(new CustomEvent<T>(name, { detail }));
+}
+
+export function onWith<T>(name: string, fn: (detail: T) => void): () => void {
+  const handler = (e: Event) => fn((e as CustomEvent<T>).detail);
   window.addEventListener(name, handler);
   return () => window.removeEventListener(name, handler);
 }
