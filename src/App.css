@@ -817,12 +817,43 @@ body.dragging .term-host {
   color: var(--text);
 }
 
-/* File tree (right of the editor) */
-.file-tree {
+/* Right panel: Files / Changes toggle + the active panel */
+.right-panel {
   width: 240px;
   flex: none;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+.right-tabs {
+  display: flex;
+  flex: none;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.right-tab {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.right-tab.active {
+  color: var(--text);
+  background: var(--pane-bg);
+}
+
+/* File tree (right of the editor) */
+.file-tree,
+.review-panel {
+  flex: 1;
+  overflow: auto;
   background: var(--pane-bg);
   padding: 4px 0;
   font-size: 13px;
@@ -854,7 +885,94 @@ body.dragging .term-host {
   color: var(--text);
 }
 
-.file-tree .tree-empty {
+.file-tree .tree-empty,
+.review-panel .tree-empty {
   padding: 8px 12px;
+  color: var(--text-dim);
+}
+
+/* Git diff gutter */
+.cm-diff-gutter {
+  width: 3px;
+  padding: 0;
+}
+
+.cm-diff-gutter .cm-gutterElement.cm-diff-added {
+  background: #2ea043;
+}
+
+.cm-diff-gutter .cm-gutterElement.cm-diff-modified {
+  background: #d29922;
+}
+
+.cm-diff-gutter .cm-gutterElement.cm-diff-deleted {
+  background: #f85149;
+}
+
+/* Review panel */
+.review-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.review-row:hover {
+  background: var(--hover);
+}
+
+.review-status {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: 11px;
+}
+
+.review-status.added {
+  color: #2ea043;
+}
+.review-status.modified {
+  color: #d29922;
+}
+.review-status.deleted {
+  color: #f85149;
+}
+.review-status.untracked {
+  color: var(--text-dim);
+}
+
+.review-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.review-diff {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: 4px 0 6px;
+  background: var(--bg);
+}
+
+.review-diff .diff-line {
+  white-space: pre;
+  padding: 0 8px;
+}
+
+.review-diff .diff-line.add {
+  color: #2ea043;
+}
+.review-diff .diff-line.del {
+  color: #f85149;
+}
+.review-diff .diff-line.hunk {
+  color: var(--accent);
+}
+.review-diff .diff-line.meta {
   color: var(--text-dim);
 }

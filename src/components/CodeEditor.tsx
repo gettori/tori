@@ -1,5 +1,6 @@
 import { onCleanup, onMount, createEffect, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -8,7 +9,12 @@ import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, fol
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
-import { markSelfWrite } from "../selfWrites";
+import { markSelfWrite, isSelfWrite } from "../selfWrites";
+import { diffGutterExtension, setDiffMarkers, type Hunk } from "../diffGutter";
+
+function relTo(root: string, abs: string): string {
+  return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
+}
 
 // Syntax colors read live from the --syn-* CSS vars set by theme.ts (which
 // distills them from the active VS Code theme's tokenColors). Because the values
@@ -63,13 +69,31 @@ type Buffer = { state: EditorState; savedText: string };
 export default function CodeEditor(props: {
   activePath: string | null;
   openPaths: string[];
+  projectRoot: string | null;
   onDirty: (path: string, dirty: boolean) => void;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
+  let unlistenFs: UnlistenFn | undefined;
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
   let swapToken = 0;
+
+  // Re-diff the active file and repaint the gutter. Called directly on save and
+  // on a genuine external fs://changed (a save's own echo is skipped via
+  // isSelfWrite, so a save produces exactly one re-diff).
+  async function refreshDiff() {
+    const path = shown;
+    const root = props.projectRoot;
+    if (!path || !root || !view) return;
+    let hunks: Hunk[] = [];
+    try {
+      hunks = await invoke<Hunk[]>("git_diff_file", { projectPath: root, file: relTo(root, path) });
+    } catch {
+      hunks = [];
+    }
+    if (view && shown === path) setDiffMarkers(view, hunks);
+  }
 
   async function saveActive() {
     const path = shown;
@@ -81,6 +105,7 @@ export default function CodeEditor(props: {
       const buf = buffers.get(path);
       if (buf) buf.savedText = text;
       props.onDirty(path, false);
+      refreshDiff();
     } catch (e) {
       console.error("save failed", path, e);
     }
@@ -97,6 +122,7 @@ export default function CodeEditor(props: {
     bracketMatching(),
     foldGutter(),
     highlightSelectionMatches(),
+    diffGutterExtension(),
     syntaxHighlighting(swayHighlight),
     swayTheme,
     keymap.of([
@@ -161,6 +187,7 @@ export default function CodeEditor(props: {
     view.focus();
     shown = path;
     props.onDirty(path, buf.state.doc.toString() !== buf.savedText);
+    refreshDiff();
   }
 
   function evictClosed(openPaths: string[]) {
@@ -170,18 +197,25 @@ export default function CodeEditor(props: {
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     view = new EditorView({
       parent: host,
       state: EditorState.create({ doc: "", extensions: commonExtensions }),
     });
     if (props.activePath) swapTo(props.activePath);
+    // Refresh the gutter on a genuine external change to the open file.
+    unlistenFs = await listen<{ paths: string[] }>("fs://changed", (e) => {
+      if (shown && !isSelfWrite(shown) && e.payload.paths.includes(shown)) refreshDiff();
+    });
   });
 
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
 
-  onCleanup(() => view?.destroy());
+  onCleanup(() => {
+    unlistenFs?.();
+    view?.destroy();
+  });
 
   return <div class="code-editor" ref={host} />;
 }

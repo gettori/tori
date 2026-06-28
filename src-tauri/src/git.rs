@@ -83,6 +83,33 @@ pub fn git_diff_file(project_path: String, file: String) -> Result<Vec<DiffHunk>
     Ok(parse_hunks(&String::from_utf8_lossy(&output.stdout)))
 }
 
+/// Raw unified diff text vs HEAD for a single file, for the inline review view.
+/// Untracked files have no diff vs HEAD, so fall back to showing the whole file
+/// as additions (`git diff --no-index /dev/null <file>`).
+#[tauri::command]
+pub fn git_diff_text(project_path: String, file: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["diff", "HEAD", "--no-color", "--", &file])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if output.status.success() && !text.trim().is_empty() {
+        return Ok(text);
+    }
+
+    // Untracked (or no HEAD): diff against an empty tree so new files still show.
+    let untracked = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["diff", "--no-color", "--no-index", "--", "/dev/null", &file])
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&untracked.stdout).into_owned())
+}
+
 fn parse_hunks(text: &str) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
     for line in text.lines() {

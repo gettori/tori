@@ -67,6 +67,7 @@ pub fn run() {
             fs::fs_watch_start,
             git::git_status,
             git::git_diff_file,
+            git::git_diff_text,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,
