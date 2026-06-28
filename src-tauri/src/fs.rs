@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
@@ -55,6 +56,50 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
 #[tauri::command]
 pub fn file_exists(path: String) -> bool {
     Path::new(&path).exists()
+}
+
+/// All project files (paths relative to `project_path`) for the quick-open
+/// finder. Prefers `git ls-files` (respects .gitignore, lists tracked +
+/// untracked-not-ignored); falls back to a recursive walk skipping the churn
+/// dirs for a non-git project.
+#[tauri::command]
+pub fn list_project_files(project_path: String) -> Result<Vec<String>, String> {
+    if let Ok(out) = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["ls-files", "--cached", "--others", "--exclude-standard"])
+        .output()
+    {
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            return Ok(text.lines().filter(|l| !l.is_empty()).map(String::from).collect());
+        }
+    }
+    let root = PathBuf::from(&project_path);
+    let mut files = Vec::new();
+    walk_files(&root, &root, &mut files);
+    Ok(files)
+}
+
+fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if IGNORED_DIRS.contains(&name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        let Ok(ft) = entry.file_type() else { continue };
+        let path = entry.path();
+        if ft.is_dir() {
+            walk_files(root, &path, out);
+        } else if ft.is_file() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().into_owned());
+            }
+        }
+    }
 }
 
 pub struct FsWatch(pub Mutex<Option<RecommendedWatcher>>);

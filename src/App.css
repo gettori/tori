@@ -945,6 +945,66 @@ body.dragging .term-host {
   color: var(--text-dim);
 }
 
+/* Quick-open (⌘P) overlay */
+.qo-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 80px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.qo-panel {
+  width: 560px;
+  max-width: 90vw;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.qo-input {
+  flex: none;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+}
+
+.qo-list {
+  overflow-y: auto;
+}
+
+.qo-item {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qo-item.active {
+  background: var(--sel);
+}
+
+.qo-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* Git diff gutter */
 .cm-diff-gutter {
   width: 3px;

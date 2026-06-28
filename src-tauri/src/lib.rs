@@ -64,6 +64,7 @@ pub fn run() {
             fs::fs_read_file,
             fs::fs_write_file,
             fs::file_exists,
+            fs::list_project_files,
             fs::fs_watch_start,
             git::git_status,
             git::git_diff_file,
