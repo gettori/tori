@@ -9,11 +9,12 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 const HEAD_LINES: usize = 60;
@@ -21,10 +22,13 @@ const HEAD_LINES: usize = 60;
 #[derive(Serialize, Clone)]
 pub struct SessionMeta {
     pub id: String,
+    pub path: String,
     pub cwd: String,
     pub branch: String,
     pub title: String,
     pub last_active: u64,
+    pub name: Option<String>,
+    pub archived: bool,
 }
 
 struct CacheEntry {
@@ -129,10 +133,13 @@ fn parse_session(path: &PathBuf, mtime: SystemTime) -> Option<SessionMeta> {
     let cwd = cwd?;
     Some(SessionMeta {
         id,
+        path: path.to_string_lossy().into_owned(),
         cwd,
         branch: branch.unwrap_or_default(),
         title: title.unwrap_or_else(|| "(untitled session)".into()),
         last_active: epoch_secs(mtime),
+        name: None,
+        archived: false,
     })
 }
 
@@ -187,12 +194,139 @@ pub fn list_sessions(
     branch: String,
 ) -> Result<Vec<SessionMeta>, String> {
     let target_cwd = norm(&project_path);
+    let overlay = load_overlay();
     let mut sessions: Vec<SessionMeta> = ensure_index(&index)
         .into_iter()
         .filter(|s| norm(&s.cwd) == target_cwd && s.branch == branch)
+        .map(|mut s| {
+            if let Some(o) = overlay.get(&s.id) {
+                s.name = o.name.clone();
+                s.archived = o.archived;
+            }
+            s
+        })
         .collect();
     sessions.sort_by(|a, b| b.last_active.cmp(&a.last_active));
     Ok(sessions)
+}
+
+// --- rename/archive overlay (Claude has no native rename) ---
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct Overlay {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    archived: bool,
+}
+
+fn overlay_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/sessions.json")
+}
+
+fn load_overlay() -> HashMap<String, Overlay> {
+    std::fs::read_to_string(overlay_path())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn save_overlay(map: &HashMap<String, Overlay>) -> Result<(), String> {
+    let path = overlay_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_session_name(id: String, name: Option<String>) -> Result<(), String> {
+    let mut map = load_overlay();
+    map.entry(id).or_default().name = name.filter(|n| !n.trim().is_empty());
+    save_overlay(&map)
+}
+
+#[tauri::command]
+pub fn set_session_archived(id: String, archived: bool) -> Result<(), String> {
+    let mut map = load_overlay();
+    map.entry(id).or_default().archived = archived;
+    save_overlay(&map)
+}
+
+/// Delete a session's transcript. Destructive (removes Claude history); the
+/// frontend confirms first.
+#[tauri::command]
+pub fn delete_session(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
+/// Is a `claude --resume <id>` process currently running?
+#[tauri::command]
+pub fn session_running(id: String) -> Result<bool, String> {
+    let out = Command::new("pgrep")
+        .args(["-f", &format!("--resume {id}")])
+        .output();
+    Ok(out
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false))
+}
+
+#[derive(Serialize)]
+pub struct SessionDetail {
+    pub message_count: u32,
+    pub output_tokens: u64,
+    pub context_tokens: u64,
+    pub model: Option<String>,
+}
+
+/// Read the full transcript once (only on selection) for counts and tokens.
+#[tauri::command]
+pub fn session_detail(path: String) -> Result<SessionDetail, String> {
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+
+    let mut message_count = 0u32;
+    let mut output_tokens = 0u64;
+    let mut context_tokens = 0u64;
+    let mut model: Option<String> = None;
+
+    for line in reader.lines().map_while(Result::ok) {
+        let v: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let kind = v.get("type").and_then(|t| t.as_str());
+        if kind == Some("user") || kind == Some("assistant") {
+            if v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) {
+                message_count += 1;
+            }
+        }
+        if kind == Some("assistant") {
+            if let Some(msg) = v.get("message") {
+                if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
+                    model = Some(m.to_string());
+                }
+                if let Some(u) = msg.get("usage") {
+                    let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
+                    output_tokens += get("output_tokens");
+                    // Last assistant turn's input reflects current context size.
+                    context_tokens = get("input_tokens")
+                        + get("cache_read_input_tokens")
+                        + get("cache_creation_input_tokens");
+                }
+            }
+        }
+    }
+
+    Ok(SessionDetail {
+        message_count,
+        output_tokens,
+        context_tokens,
+        model,
+    })
 }
 
 #[tauri::command]

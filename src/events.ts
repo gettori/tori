@@ -1,11 +1,10 @@
-// Lightweight window-event bus for cross-pane keyboard actions, so panes can
-// react without prop-drilling refs through the tree.
+// Lightweight window-event bus for cross-component actions.
 
-export const FOCUS_SIDEBAR = "sway:focus-sidebar";
-export const FOCUS_TERMINAL = "sway:focus-terminal";
-export const FOCUS_EDITOR = "sway:focus-editor";
 export const FOCUS_SEARCH = "sway:focus-search";
+export const FOCUS_TERMINAL = "sway:focus-terminal";
 export const CLOSE_TAB = "sway:close-tab";
+export const SESSIONS_REFRESH = "sway:sessions-refresh";
+export const THEME_APPLIED = "sway:theme-applied";
 
 export function emit(name: string) {
   window.dispatchEvent(new CustomEvent(name));
