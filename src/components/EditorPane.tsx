@@ -1,7 +1,9 @@
-import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
+import ReviewPanel from "./ReviewPanel";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../events";
 import type { Selection } from "./Sidebar";
 
@@ -18,8 +20,18 @@ export default function EditorPane(props: { selected: Selection | null }) {
   const [openFiles, setOpenFiles] = createSignal<OpenFile[]>([]);
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
+  const [rightMode, setRightMode] = createSignal<"files" | "changes">("files");
 
   const openPaths = () => openFiles().map((f) => f.path);
+  const root = () => props.selected?.projectPath ?? null;
+
+  // Start (and on project switch, replace) the fs watcher so the gutter and the
+  // review surface refresh on external changes.
+  createEffect(
+    on(root, (r) => {
+      if (r) invoke("fs_watch_start", { projectPath: r }).catch(() => {});
+    }),
+  );
 
   function openFile(path: string) {
     if (!openFiles().some((f) => f.path === path)) {
@@ -102,10 +114,35 @@ export default function EditorPane(props: { selected: Selection | null }) {
               )}
             </For>
           </div>
-          <CodeEditor activePath={activePath()} openPaths={openPaths()} onDirty={handleDirty} />
+          <CodeEditor
+            activePath={activePath()}
+            openPaths={openPaths()}
+            projectRoot={root()}
+            onDirty={handleDirty}
+          />
         </Show>
       </div>
-      <FileTree root={props.selected?.projectPath ?? null} />
+      <div class="right-panel">
+        <div class="right-tabs">
+          <button
+            class="right-tab"
+            classList={{ active: rightMode() === "files" }}
+            onClick={() => setRightMode("files")}
+          >
+            Files
+          </button>
+          <button
+            class="right-tab"
+            classList={{ active: rightMode() === "changes" }}
+            onClick={() => setRightMode("changes")}
+          >
+            Changes
+          </button>
+        </div>
+        <Show when={rightMode() === "files"} fallback={<ReviewPanel root={root()} />}>
+          <FileTree root={root()} />
+        </Show>
+      </div>
     </div>
   );
 }
