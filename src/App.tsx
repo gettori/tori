@@ -1,5 +1,4 @@
 import { createSignal, createEffect, onMount, onCleanup } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import Sidebar, { type Selection } from "./components/Sidebar";
 import TerminalArea from "./components/TerminalArea";
 import EditorPane from "./components/EditorPane";
@@ -101,9 +100,6 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("focus", applyTheme);
     applyTheme();
-    // Pre-warm code-server so the editor pane is ready by the time a project is
-    // selected (its boot is the slow part).
-    invoke("code_server_url").catch(() => {});
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);

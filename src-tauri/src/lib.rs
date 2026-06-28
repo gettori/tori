@@ -1,4 +1,3 @@
-mod codeserver;
 mod config;
 mod fs;
 mod git;
@@ -8,7 +7,6 @@ mod sessions;
 mod theme;
 mod worktree;
 
-use codeserver::CodeServer;
 use config::ConfigWatch;
 use fs::FsWatch;
 use pty::PtyState;
@@ -17,7 +15,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Hide the native macOS traffic-light buttons so we can draw our own
@@ -54,7 +52,6 @@ pub fn run() {
         .manage(FsWatch::default())
         .manage(SessionIndex::default())
         .manage(SessionWatch::default())
-        .manage(CodeServer::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -82,15 +79,8 @@ pub fn run() {
             worktree::list_worktrees,
             worktree::add_worktree,
             worktree::remove_worktree,
-            codeserver::code_server_url,
             theme::get_theme_colors,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
-
-    app.run(|app_handle, event| {
-        if let tauri::RunEvent::Exit = event {
-            app_handle.state::<CodeServer>().shutdown();
-        }
-    });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
