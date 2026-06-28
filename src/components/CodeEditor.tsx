@@ -1,4 +1,4 @@
-import { onCleanup, onMount, createEffect, on } from "solid-js";
+import { onCleanup, onMount, createEffect, on, createSignal, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor } from "@codemirror/view";
@@ -60,7 +60,8 @@ function langForPath(path: string): Extension {
   return [];
 }
 
-type Buffer = { state: EditorState; savedText: string };
+type Buffer = { state: EditorState; savedText: string; pendingExternal?: string };
+type Conflict = { path: string; external: string };
 
 /** Multi-buffer CM6 editor: one EditorView, one EditorState per open file (so
  *  cursor, selection and undo history are preserved per tab). The active file is
@@ -78,6 +79,78 @@ export default function CodeEditor(props: {
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
   let swapToken = 0;
+  // The active buffer has an external on-disk change conflicting with unsaved
+  // edits (drives the reload banner).
+  const [conflict, setConflict] = createSignal<Conflict | null>(null);
+
+  function docOf(path: string): string | null {
+    if (path === shown && view) return view.state.doc.toString();
+    return buffers.get(path)?.state.doc.toString() ?? null;
+  }
+
+  // Replace a buffer's whole document with `text`, in the live view if it's the
+  // active buffer, otherwise in its stored state.
+  function setBufferText(path: string, text: string) {
+    const buf = buffers.get(path);
+    if (!buf) return;
+    if (path === shown && view) {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    } else {
+      buf.state = buf.state.update({
+        changes: { from: 0, to: buf.state.doc.length, insert: text },
+      }).state;
+    }
+  }
+
+  // An open file changed on disk (already filtered to genuine external edits).
+  // Clean buffer: reload in place. Dirty buffer: stash the disk version and
+  // raise a conflict banner (now if active, on activation otherwise).
+  async function handleExternalChange(path: string) {
+    if (!buffers.has(path)) return;
+    let text: string;
+    try {
+      text = await invoke<string>("fs_read_file", { path });
+    } catch {
+      return;
+    }
+    const buf = buffers.get(path);
+    if (!buf) return; // closed while reading
+    const current = docOf(path);
+    if (current === null || text === current) {
+      buf.savedText = text;
+      if (path === shown) refreshDiff();
+      return;
+    }
+    const dirty = current !== buf.savedText;
+    if (!dirty) {
+      buf.savedText = text; // set baseline first so the dirty listener stays clean
+      setBufferText(path, text);
+      props.onDirty(path, false);
+      if (path === shown) refreshDiff();
+    } else {
+      buf.pendingExternal = text;
+      if (path === shown) setConflict({ path, external: text });
+    }
+  }
+
+  function reloadConflict() {
+    const c = conflict();
+    const buf = c && buffers.get(c.path);
+    if (!c || !buf) return setConflict(null);
+    buf.savedText = c.external;
+    setBufferText(c.path, c.external);
+    delete buf.pendingExternal;
+    props.onDirty(c.path, false);
+    if (c.path === shown) refreshDiff();
+    setConflict(null);
+  }
+
+  function keepMine() {
+    const c = conflict();
+    const buf = c && buffers.get(c.path);
+    if (buf) delete buf.pendingExternal;
+    setConflict(null);
+  }
 
   // Re-diff the active file and repaint the gutter. Called directly on save and
   // on a genuine external fs://changed (a save's own echo is skipped via
@@ -187,6 +260,9 @@ export default function CodeEditor(props: {
     view.focus();
     shown = path;
     props.onDirty(path, buf.state.doc.toString() !== buf.savedText);
+    // Surface a deferred conflict banner if this buffer changed on disk while
+    // it was in the background.
+    setConflict(buf.pendingExternal ? { path, external: buf.pendingExternal } : null);
     refreshDiff();
   }
 
@@ -203,9 +279,13 @@ export default function CodeEditor(props: {
       state: EditorState.create({ doc: "", extensions: commonExtensions }),
     });
     if (props.activePath) swapTo(props.activePath);
-    // Refresh the gutter on a genuine external change to the open file.
+    // Genuine external changes to any open buffer: reload (clean) or banner
+    // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
+    // also resyncs the gutter for the active file.
     unlistenFs = await listen<{ paths: string[] }>("fs://changed", (e) => {
-      if (shown && !isSelfWrite(shown) && e.payload.paths.includes(shown)) refreshDiff();
+      for (const p of e.payload.paths) {
+        if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
+      }
     });
   });
 
@@ -217,5 +297,16 @@ export default function CodeEditor(props: {
     view?.destroy();
   });
 
-  return <div class="code-editor" ref={host} />;
+  return (
+    <div class="code-editor-wrap">
+      <Show when={conflict()}>
+        <div class="reload-banner">
+          <span>This file changed on disk while you had unsaved edits.</span>
+          <button onClick={reloadConflict}>Reload</button>
+          <button onClick={keepMine}>Keep mine</button>
+        </div>
+      </Show>
+      <div class="code-editor" ref={host} />
+    </div>
+  );
 }
