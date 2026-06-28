@@ -730,10 +730,18 @@ body.dragging .term-host {
   min-width: 0;
 }
 
+.code-editor-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .code-editor {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -743,6 +751,52 @@ body.dragging .term-host {
 
 .code-editor .cm-scroller {
   overflow: auto;
+}
+
+/* External-change conflict banner */
+.reload-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--accent);
+}
+
+.reload-banner button {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.reload-banner button:hover {
+  border-color: var(--accent);
+}
+
+.follow-toggle {
+  margin-left: auto;
+  flex: none;
+  align-self: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  margin-right: 6px;
+  cursor: pointer;
+}
+
+.follow-toggle.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .editor-empty {
