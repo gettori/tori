@@ -1,15 +1,12 @@
 import { createSignal, createEffect, onMount, onCleanup } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
+import Sidebar, { type Selection } from "./components/Sidebar";
 import TerminalArea from "./components/TerminalArea";
 import EditorPane from "./components/EditorPane";
-import Sidebar, { type Selection } from "./components/Sidebar";
-import {
-  emit,
-  FOCUS_SIDEBAR,
-  FOCUS_TERMINAL,
-  FOCUS_EDITOR,
-  FOCUS_SEARCH,
-  CLOSE_TAB,
-} from "./events";
+import Toolbar from "./components/Toolbar";
+import WindowControls from "./components/WindowControls";
+import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
+import { applyTheme } from "./theme";
 import "./App.css";
 
 const LS_LAYOUT = "sway.layout.v1";
@@ -20,11 +17,14 @@ type Layout = { sidebar: number; editor: number };
 function loadLayout(): Layout {
   try {
     const raw = localStorage.getItem(LS_LAYOUT);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const v = JSON.parse(raw);
+      return { sidebar: v.sidebar ?? 280, editor: v.editor ?? 640 };
+    }
   } catch {
-    // ignore corrupt layout
+    // ignore
   }
-  return { sidebar: 280, editor: 520 };
+  return { sidebar: 280, editor: 640 };
 }
 
 function loadSelection(): Selection | null {
@@ -42,28 +42,22 @@ function App() {
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [editor, setEditor] = createSignal(initial.editor);
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
-  const [openIds, setOpenIds] = createSignal<Set<string>>(new Set());
 
-  // Persist the last selection (branch only, no session restore-spawn) so the
-  // tree reopens where you left it.
   createEffect(() => {
     const s = selected();
     try {
       if (s) localStorage.setItem(LS_SELECTION, JSON.stringify(s));
       else localStorage.removeItem(LS_SELECTION);
     } catch {
-      // ignore quota
+      // ignore
     }
   });
 
   function persistLayout() {
     try {
-      localStorage.setItem(
-        LS_LAYOUT,
-        JSON.stringify({ sidebar: sidebar(), editor: editor() }),
-      );
+      localStorage.setItem(LS_LAYOUT, JSON.stringify({ sidebar: sidebar(), editor: editor() }));
     } catch {
-      // ignore quota errors
+      // ignore
     }
   }
 
@@ -76,13 +70,10 @@ function App() {
     e.preventDefault();
     const startX = e.clientX;
     const startVal = get();
-    const min = 160;
-    const max = 900;
-
     function onMove(ev: PointerEvent) {
       const dx = ev.clientX - startX;
       const next = edge === "left" ? startVal + dx : startVal - dx;
-      set(Math.max(min, Math.min(max, next)));
+      set(Math.max(180, Math.min(1000, next)));
     }
     function onUp() {
       window.removeEventListener("pointermove", onMove);
@@ -97,64 +88,57 @@ function App() {
 
   function onKeyDown(e: KeyboardEvent) {
     if (!e.metaKey) return;
-    switch (e.key) {
-      case "1":
-        e.preventDefault();
-        emit(FOCUS_SIDEBAR);
-        break;
-      case "2":
-        e.preventDefault();
-        emit(FOCUS_TERMINAL);
-        break;
-      case "3":
-        e.preventDefault();
-        emit(FOCUS_EDITOR);
-        break;
-      case "p":
-        e.preventDefault();
-        emit(FOCUS_SEARCH);
-        break;
-      case "w":
-        e.preventDefault();
-        emit(CLOSE_TAB);
-        break;
+    if (e.key === "p" || e.key === "1") {
+      e.preventDefault();
+      emit(FOCUS_SEARCH);
+    } else if (e.key === "2") {
+      e.preventDefault();
+      emit(FOCUS_TERMINAL);
     }
   }
 
-  onMount(() => window.addEventListener("keydown", onKeyDown));
+  onMount(() => {
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("focus", applyTheme);
+    applyTheme();
+    // Pre-warm code-server so the editor pane is ready by the time a project is
+    // selected (its boot is the slow part).
+    invoke("code_server_url").catch(() => {});
+  });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("focus", applyTheme);
     document.body.classList.remove("dragging");
   });
 
   return (
     <div class="app">
-      <aside class="pane sidebar" style={{ width: `${sidebar()}px` }}>
-        <header class="pane-head">Sessions</header>
-        <div class="pane-body tree-body">
-          <Sidebar selected={selected()} onSelect={setSelected} openIds={openIds()} />
+      <header class="topbar" data-tauri-drag-region>
+        <WindowControls />
+        <Toolbar selected={selected()} />
+      </header>
+
+      <div class="body">
+        <aside class="pane sidebar" style={{ width: `${sidebar()}px` }}>
+          <div class="pane-body tree-body">
+            <Sidebar selected={selected()} onSelect={setSelected} />
+          </div>
+        </aside>
+
+        <div class="splitter" onPointerDown={(e) => startDrag(e, sidebar, setSidebar, "left")} />
+
+        <div class="workspace">
+          <div class="work-split">
+            <main class="pane terminal">
+              <TerminalArea selected={selected()} />
+            </main>
+            <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
+            <section class="pane editor" style={{ width: `${editor()}px` }}>
+              <EditorPane selected={selected()} />
+            </section>
+          </div>
         </div>
-      </aside>
-
-      <div
-        class="splitter"
-        onPointerDown={(e) => startDrag(e, sidebar, setSidebar, "left")}
-      />
-
-      <main class="pane terminal">
-        <header class="pane-head">Terminal</header>
-        <TerminalArea selected={selected()} onOpenChange={setOpenIds} />
-      </main>
-
-      <div
-        class="splitter"
-        onPointerDown={(e) => startDrag(e, editor, setEditor, "right")}
-      />
-
-      <section class="pane editor" style={{ width: `${editor()}px` }}>
-        <header class="pane-head">Editor</header>
-        <EditorPane selected={selected()} />
-      </section>
+      </div>
     </div>
   );
 }
