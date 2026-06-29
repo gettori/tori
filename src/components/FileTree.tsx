@@ -45,7 +45,9 @@ function TreeNode(props: { entry: Entry; depth: number }) {
         }}
       >
         {props.entry.is_dir ? (
-          <span class="tree-twisty">{open() ? "▾" : "▸"}</span>
+          <span class="tree-twisty" classList={{ open: open() }}>
+            ›
+          </span>
         ) : (
           <FileIcon name={props.entry.name} />
         )}

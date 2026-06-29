@@ -1,8 +1,8 @@
-import { fileNames, extensions, defaultGlyph } from "./mapping";
+import { fileNames, extensions, defaultIcon, type SetiIcon } from "./mapping";
 
-/** Resolve a Seti glyph for a bare file name (not a path).
+/** Resolve a Seti icon (glyph + color) for a bare file name (not a path).
  *  Order: exact file name -> longest compound extension -> last extension -> default. */
-export function glyphFor(name: string): string {
+export function iconFor(name: string): SetiIcon {
   const lower = name.toLowerCase();
   const exact = fileNames[lower];
   if (exact) return exact;
@@ -12,17 +12,18 @@ export function glyphFor(name: string): string {
   const parts = lower.split(".");
   for (let i = 1; i < parts.length; i++) {
     const candidate = parts.slice(i).join(".");
-    const g = extensions[candidate];
-    if (g) return g;
+    const ic = extensions[candidate];
+    if (ic) return ic;
   }
-  return defaultGlyph;
+  return defaultIcon;
 }
 
-/** Monochrome Seti file-type icon; tint comes from the inherited CSS `color`. */
+/** Seti file-type icon, tinted with seti's per-type color (VS Code look). */
 export default function FileIcon(props: { name: string }) {
+  const icon = () => iconFor(props.name);
   return (
-    <span class="seti-icon" aria-hidden="true">
-      {glyphFor(props.name)}
+    <span class="seti-icon" aria-hidden="true" style={{ color: icon().color }}>
+      {icon().glyph}
     </span>
   );
 }
