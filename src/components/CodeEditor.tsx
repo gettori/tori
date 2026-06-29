@@ -71,6 +71,7 @@ export default function CodeEditor(props: {
   activePath: string | null;
   openPaths: string[];
   projectRoot: string | null;
+  goto: { path: string; line: number; col?: number; nonce: number } | null;
   onDirty: (path: string, dirty: boolean) => void;
 }) {
   let host!: HTMLDivElement;
@@ -82,6 +83,21 @@ export default function CodeEditor(props: {
   // The active buffer has an external on-disk change conflicting with unsaved
   // edits (drives the reload banner).
   const [conflict, setConflict] = createSignal<Conflict | null>(null);
+
+  // A pending "jump to line/col", applied once that file is the shown buffer
+  // (the open may still be reading the file when the request arrives).
+  let gotoReq: { path: string; line: number; col: number } | null = null;
+
+  function applyGoto() {
+    if (!view || !gotoReq || gotoReq.path !== shown) return;
+    const doc = view.state.doc;
+    const lineNo = Math.min(Math.max(gotoReq.line, 1), doc.lines);
+    const line = doc.line(lineNo);
+    const pos = line.from + Math.min(Math.max(gotoReq.col - 1, 0), line.length);
+    view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+    view.focus();
+    gotoReq = null;
+  }
 
   function docOf(path: string): string | null {
     if (path === shown && view) return view.state.doc.toString();
@@ -264,6 +280,7 @@ export default function CodeEditor(props: {
     // it was in the background.
     setConflict(buf.pendingExternal ? { path, external: buf.pendingExternal } : null);
     refreshDiff();
+    applyGoto();
   }
 
   function evictClosed(openPaths: string[]) {
@@ -291,6 +308,18 @@ export default function CodeEditor(props: {
 
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
+  // Jump to line/col (nonce makes a repeated click on the same target retrigger).
+  createEffect(
+    on(
+      () => props.goto,
+      (g) => {
+        if (!g) return;
+        gotoReq = { path: g.path, line: g.line, col: g.col ?? 1 };
+        applyGoto(); // applies now if shown; otherwise swapTo() applies it
+      },
+      { defer: true },
+    ),
+  );
 
   onCleanup(() => {
     unlistenFs?.();
