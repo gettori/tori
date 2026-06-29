@@ -1,6 +1,7 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
+import FileIcon from "../seti/FileIcon";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
@@ -43,7 +44,11 @@ function TreeNode(props: { entry: Entry; depth: number }) {
           if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
         }}
       >
-        <span class="tree-twisty">{props.entry.is_dir ? (open() ? "▾" : "▸") : ""}</span>
+        {props.entry.is_dir ? (
+          <span class="tree-twisty">{open() ? "▾" : "▸"}</span>
+        ) : (
+          <FileIcon name={props.entry.name} />
+        )}
         <span class="tree-name" classList={{ "is-dir": props.entry.is_dir }}>
           {props.entry.name}
         </span>
