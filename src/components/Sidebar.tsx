@@ -1,7 +1,17 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH } from "../events";
+import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH, DRAG_ABS_PATH_MIME } from "../events";
+
+// Mark a drag from a sidebar row as carrying one or more absolute paths, which
+// the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).
+function startAbsDrag(e: DragEvent, paths: string | string[]) {
+  const value = (Array.isArray(paths) ? paths : [paths]).filter(Boolean).join("\n");
+  if (!value) return;
+  e.dataTransfer?.setData(DRAG_ABS_PATH_MIME, value);
+  e.dataTransfer?.setData("text/plain", value);
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+}
 
 type Project = { name: string; path: string };
 type Group = { name: string; projects: Project[] };
@@ -237,7 +247,12 @@ export default function Sidebar(props: {
             const open = () => expanded().has(gkey) || !!q();
             return (
               <div class="node">
-                <div class="row group" onClick={() => toggle(gkey)}>
+                <div
+                  class="row group"
+                  onClick={() => toggle(gkey)}
+                  draggable={true}
+                  onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
+                >
                   <span class="caret">{open() ? "▾" : "▸"}</span>
                   <span class="label">{g.name}</span>
                 </div>
@@ -254,6 +269,8 @@ export default function Sidebar(props: {
                               toggle(pkey);
                               fetchBranches(p);
                             }}
+                            draggable={true}
+                            onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
                             <span class="caret">{popen() ? "▾" : "▸"}</span>
                             <span class="label">{p.name}</span>
@@ -275,6 +292,8 @@ export default function Sidebar(props: {
                                         fetchSessions(p.path, b.name);
                                         selectBranch(p, b.name);
                                       }}
+                                      draggable={true}
+                                      onDragStart={(e) => startAbsDrag(e, p.path)}
                                     >
                                       <span class="caret">{bopen() ? "▾" : "▸"}</span>
                                       <span class="label">{b.name}</span>
@@ -294,6 +313,8 @@ export default function Sidebar(props: {
                                             class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
                                             onClick={() => selectSession(p, b.name, s)}
                                             title={s.name || s.title}
+                                            draggable={true}
+                                            onDragStart={(e) => startAbsDrag(e, s.path)}
                                           >
                                             <span class="label">{s.name || s.title}</span>
                                             <span class="when">{ago(s.last_active)}</span>

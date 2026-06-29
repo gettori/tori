@@ -9,7 +9,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
+import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../events";
 import "@xterm/xterm/css/xterm.css";
 
 // File paths in terminal output, with optional :line:col. Requires an extension
@@ -68,10 +68,23 @@ export default function TerminalView(props: {
     else search?.findPrevious(q);
   }
 
-  // Dropping a tree row / editor tab inserts the file as a cwd-relative @path at
-  // the prompt (writing to the PTY as if typed).
+  // Dropping onto the terminal inserts the dragged path(s) as `@path ` at the
+  // prompt (written to the PTY as if typed). Left-sidebar rows carry one or more
+  // newline-separated ABSOLUTE paths (inserted verbatim); file-tree rows / editor
+  // tabs carry a single path that is relativized to the session cwd.
   function handleDrop(e: DragEvent) {
     e.preventDefault();
+    const abs = e.dataTransfer?.getData(DRAG_ABS_PATH_MIME) || "";
+    if (abs) {
+      const mention = abs
+        .split("\n")
+        .filter(Boolean)
+        .map((p) => `@${p}`)
+        .join(" ");
+      if (mention) invoke("pty_write", { id: props.id, data: `${mention} ` }).catch(() => {});
+      term?.focus();
+      return;
+    }
     const path =
       e.dataTransfer?.getData(DRAG_PATH_MIME) || e.dataTransfer?.getData("text/plain") || "";
     if (!path) return;
