@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
-import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../events";
+import { onWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, type OpenInEditor } from "../events";
 import { isSelfWrite } from "../selfWrites";
 import type { Selection } from "./Sidebar";
 
@@ -111,6 +111,12 @@ export default function EditorPane(props: { selected: Selection | null }) {
                 classList={{ active: f.path === activePath() }}
                 onClick={() => setActivePath(f.path)}
                 title={f.path}
+                draggable={true}
+                onDragStart={(e) => {
+                  e.dataTransfer?.setData(DRAG_PATH_MIME, f.path);
+                  e.dataTransfer?.setData("text/plain", f.path);
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+                }}
               >
                 <span class="tab-name">{f.name}</span>
                 <Show when={dirty()[f.path]}>
