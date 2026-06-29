@@ -4,22 +4,7 @@
 use std::path::Path;
 use std::process::Command;
 
-/// PATH that includes the user's common bin dirs; a GUI-launched process gets a
-/// minimal PATH that often lacks `code`, Homebrew, volta, and ~/.local/bin.
-fn augmented_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut parts: Vec<String> = vec![
-        format!("{home}/.local/bin"),
-        format!("{home}/.cargo/bin"),
-        format!("{home}/.volta/bin"),
-        "/opt/homebrew/bin".into(),
-        "/usr/local/bin".into(),
-    ];
-    if let Ok(existing) = std::env::var("PATH") {
-        parts.push(existing);
-    }
-    parts.join(":")
-}
+use crate::env::augmented_path;
 
 /// Open a project folder in VSCode, or jump to a specific file/line.
 #[tauri::command]

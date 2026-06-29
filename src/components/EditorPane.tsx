@@ -7,6 +7,7 @@ import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
 import { onWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, type OpenInEditor } from "../events";
 import { isSelfWrite } from "../selfWrites";
+import { ensureLsp } from "../lspClient";
 import type { Selection } from "./Sidebar";
 
 type OpenFile = { path: string; name: string };
@@ -36,7 +37,9 @@ export default function EditorPane(props: { selected: Selection | null }) {
   // review surface refresh on external changes.
   createEffect(
     on(root, (r) => {
-      if (r) invoke("fs_watch_start", { projectPath: r }).catch(() => {});
+      if (!r) return;
+      invoke("fs_watch_start", { projectPath: r }).catch(() => {});
+      ensureLsp(r); // start the TS/JS language server for this project
     }),
   );
 

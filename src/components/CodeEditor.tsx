@@ -11,6 +11,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markSelfWrite, isSelfWrite } from "../selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "../diffGutter";
+import { lspPluginFor } from "../lspClient";
 
 function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
@@ -237,6 +238,7 @@ export default function CodeEditor(props: {
       extensions: [
         ...commonExtensions,
         langForPath(path),
+        lspPluginFor(path),
         EditorView.updateListener.of((u) => {
           if (!u.docChanged) return;
           const buf = buffers.get(path);

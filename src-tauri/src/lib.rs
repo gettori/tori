@@ -1,7 +1,9 @@
 mod config;
+mod env;
 mod fs;
 mod git;
 mod launch;
+mod lsp;
 mod pty;
 mod sessions;
 mod theme;
@@ -9,6 +11,7 @@ mod worktree;
 
 use config::ConfigWatch;
 use fs::FsWatch;
+use lsp::LspState;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch};
 use tauri::Manager;
@@ -50,6 +53,7 @@ pub fn run() {
         .manage(PtyState::default())
         .manage(ConfigWatch::default())
         .manage(FsWatch::default())
+        .manage(LspState::default())
         .manage(SessionIndex::default())
         .manage(SessionWatch::default())
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +73,9 @@ pub fn run() {
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,
+            lsp::lsp_start,
+            lsp::lsp_send,
+            lsp::lsp_stop,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,

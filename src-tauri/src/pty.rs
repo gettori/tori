@@ -12,6 +12,8 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::env::augmented_path;
+
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
 
@@ -25,24 +27,6 @@ pub struct Session {
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     sink: Sink,
-}
-
-/// Build a PATH that includes the user's common bin dirs, since a GUI-launched
-/// process inherits a minimal PATH that often lacks ~/.local/bin (where claude
-/// lives), Homebrew, and volta.
-fn augmented_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut parts: Vec<String> = vec![
-        format!("{home}/.local/bin"),
-        format!("{home}/.cargo/bin"),
-        format!("{home}/.volta/bin"),
-        "/opt/homebrew/bin".into(),
-        "/usr/local/bin".into(),
-    ];
-    if let Ok(existing) = std::env::var("PATH") {
-        parts.push(existing);
-    }
-    parts.join(":")
 }
 
 #[tauri::command]
