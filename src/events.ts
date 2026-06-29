@@ -12,6 +12,10 @@ export const THEME_APPLIED = "sway:theme-applied";
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
 export type OpenInEditor = { path: string; line?: number; col?: number };
 
+// DataTransfer MIME carrying an absolute file path when dragging a tree row or
+// editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
+export const DRAG_PATH_MIME = "application/x-sway-path";
+
 export function emit(name: string) {
   window.dispatchEvent(new CustomEvent(name));
 }
