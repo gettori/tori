@@ -1,6 +1,6 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR } from "../events";
+import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
@@ -36,6 +36,12 @@ function TreeNode(props: { entry: Entry; depth: number }) {
         class="tree-row"
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
+        draggable={true}
+        onDragStart={(e) => {
+          e.dataTransfer?.setData(DRAG_PATH_MIME, props.entry.path);
+          e.dataTransfer?.setData("text/plain", props.entry.path);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+        }}
       >
         <span class="tree-twisty">{props.entry.is_dir ? (open() ? "▾" : "▸") : ""}</span>
         <span class="tree-name" classList={{ "is-dir": props.entry.is_dir }}>

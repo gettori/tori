@@ -9,7 +9,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR } from "../events";
+import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
 import "@xterm/xterm/css/xterm.css";
 
 // File paths in terminal output, with optional :line:col. Requires an extension
@@ -66,6 +66,18 @@ export default function TerminalView(props: {
     if (!q) return;
     if (next) search?.findNext(q);
     else search?.findPrevious(q);
+  }
+
+  // Dropping a tree row / editor tab inserts the file as a cwd-relative @path at
+  // the prompt (writing to the PTY as if typed).
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    const path =
+      e.dataTransfer?.getData(DRAG_PATH_MIME) || e.dataTransfer?.getData("text/plain") || "";
+    if (!path) return;
+    const rel = path.startsWith(props.cwd + "/") ? path.slice(props.cwd.length + 1) : path;
+    invoke("pty_write", { id: props.id, data: `@${rel} ` }).catch(() => {});
+    term?.focus();
   }
 
   // Focus the search box when it appears.
@@ -213,7 +225,15 @@ export default function TerminalView(props: {
   });
 
   return (
-    <div class="term-host-wrap" classList={{ hidden: !props.active }}>
+    <div
+      class="term-host-wrap"
+      classList={{ hidden: !props.active }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={handleDrop}
+    >
       <Show when={showSearch()}>
         <div class="term-search">
           <input
