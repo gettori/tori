@@ -16,6 +16,12 @@ export type OpenInEditor = { path: string; line?: number; col?: number };
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";
 
+// DataTransfer MIME carrying one or more newline-separated ABSOLUTE paths when
+// dragging a left-sidebar row (group / project / branch / session) onto the
+// terminal. Unlike DRAG_PATH_MIME these are inserted verbatim as `@<abspath>`
+// (not relativized to the cwd), so the agent gets the full path to read from.
+export const DRAG_ABS_PATH_MIME = "application/x-sway-abspath";
+
 export function emit(name: string) {
   window.dispatchEvent(new CustomEvent(name));
 }
