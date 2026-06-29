@@ -1,10 +1,11 @@
-import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
+import OverflowTabBar from "./OverflowTabBar";
 import { onWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, type OpenInEditor } from "../events";
 import { isSelfWrite } from "../selfWrites";
 import { ensureLsp } from "../lspClient";
@@ -106,46 +107,69 @@ export default function EditorPane(props: { selected: Selection | null }) {
   return (
     <div class="editor-pane">
       <div class="editor-main">
-        <div class="editor-tabs">
-          <For each={openFiles()}>
-            {(f) => (
-              <div
-                class="tab"
-                classList={{ active: f.path === activePath() }}
-                onClick={() => setActivePath(f.path)}
-                title={f.path}
-                draggable={true}
-                onDragStart={(e) => {
-                  e.dataTransfer?.setData(DRAG_PATH_MIME, f.path);
-                  e.dataTransfer?.setData("text/plain", f.path);
-                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+        <OverflowTabBar
+          class="editor-tabs"
+          items={openFiles()}
+          activeId={activePath()}
+          idOf={(f) => f.path}
+          onActivate={setActivePath}
+          onReorder={setOpenFiles}
+          renderTab={(f) => (
+            <div
+              class="tab"
+              classList={{ active: f.path === activePath() }}
+              onClick={() => setActivePath(f.path)}
+              title={f.path}
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer?.setData(DRAG_PATH_MIME, f.path);
+                e.dataTransfer?.setData("text/plain", f.path);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+              }}
+            >
+              <span class="tab-name">{f.name}</span>
+              <Show when={dirty()[f.path]}>
+                <span class="tab-dirty">●</span>
+              </Show>
+              <button
+                class="tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(f.path);
                 }}
               >
-                <span class="tab-name">{f.name}</span>
-                <Show when={dirty()[f.path]}>
-                  <span class="tab-dirty">●</span>
-                </Show>
-                <button
-                  class="tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(f.path);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </For>
-          <button
-            class="follow-toggle"
-            classList={{ active: follow() }}
-            onClick={() => setFollow(!follow())}
-            title="Follow: auto-open the most-recently-changed file"
-          >
-            Follow
-          </button>
-        </div>
+                ×
+              </button>
+            </div>
+          )}
+          renderMenuItem={(f) => (
+            <>
+              <span class="tab-name">{f.name}</span>
+              <Show when={dirty()[f.path]}>
+                <span class="tab-dirty">●</span>
+              </Show>
+              <button
+                class="tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(f.path);
+                }}
+              >
+                ×
+              </button>
+            </>
+          )}
+          trailing={
+            <button
+              class="follow-toggle"
+              classList={{ active: follow() }}
+              onClick={() => setFollow(!follow())}
+              title="Follow: auto-open the most-recently-changed file"
+            >
+              Follow
+            </button>
+          }
+        />
         <Show
           when={openFiles().length}
           fallback={<div class="editor-empty">Open a file from the tree to start editing.</div>}

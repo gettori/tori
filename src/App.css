@@ -164,7 +164,7 @@ body.dragging .term-host {
 }
 
 .tree-search {
-  padding: 4.5px;
+  padding: 4px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -597,11 +597,11 @@ body.dragging .term-host {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  min-height: 35px;
+  min-height: 34px;
   padding: 0 4px;
   background: var(--pane-head-bg);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .term-tab {
@@ -867,10 +867,90 @@ body.dragging .term-host {
 .editor-tabs {
   display: flex;
   flex: none;
-  min-height: 32px;
+  min-height: 34px;
   background: var(--pane-head-bg);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
+  overflow: hidden;
+}
+
+/* Overflow tab bar (shared by .term-tabs and .editor-tabs via OverflowTabBar) */
+
+/* Inert measuring row: a hidden clone of every tab, used only to read true
+   widths (gaps/padding/borders intact). Absolute + visibility:hidden keeps it
+   measurable while out of flow; padding:0 so extents start at content-left. */
+.otab-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* The pinned trailing action (+ New / Follow) sits at the far right. */
+.otab-trailing {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+/* The +N overflow count button. */
+.tab-overflow-count {
+  align-self: center;
+  flex: none;
+  margin: 0 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab-overflow-count:hover,
+.tab-overflow-count.active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* The dropdown listing the overflow tabs (portaled to <body>, so the bar's
+   overflow:hidden cannot clip it). Positioned via inline left/top. */
+.tab-overflow-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.tab-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab-overflow-item:hover {
+  background: var(--hover);
+}
+.tab-overflow-item .tab-label,
+.tab-overflow-item .tab-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .editor-tabs .tab {
@@ -929,6 +1009,7 @@ body.dragging .term-host {
 }
 
 .right-tabs {
+  height: 34px;
   display: flex;
   flex: none;
   background: var(--pane-head-bg);
