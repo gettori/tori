@@ -1,5 +1,5 @@
 import { onCleanup, onMount, createEffect, createSignal, Show } from "solid-js";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ILink, type IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -9,8 +9,12 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, FOCUS_TERMINAL, THEME_APPLIED } from "../events";
+import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR } from "../events";
 import "@xterm/xterm/css/xterm.css";
+
+// File paths in terminal output, with optional :line:col. Requires an extension
+// so it doesn't match arbitrary words; existence is validated before linking.
+const PATH_RE = /[\w.\-~/]+\.\w+(?::\d+(?::\d+)?)?/g;
 
 // PTY output arrives over a Tauri Channel as raw bytes (an ArrayBuffer), or as a
 // Uint8Array/number[] depending on transport; normalize to what xterm.write takes.
@@ -42,6 +46,7 @@ export default function TerminalView(props: {
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
   let search: SearchAddon | undefined;
+  let linkProvider: IDisposable | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let ro: ResizeObserver | undefined;
   let offFocus: (() => void) | undefined;
@@ -105,6 +110,39 @@ export default function TerminalView(props: {
       // WebGL unavailable: xterm keeps the DOM renderer.
     }
 
+    // Clickable file paths: match path-like tokens on a line, validate each via
+    // file_exists (so non-existent paths aren't linked), and on click open the
+    // file in CM6 at the optional :line:col, resolved against the session cwd.
+    linkProvider = term.registerLinkProvider({
+      provideLinks: (y, callback) => {
+        const text = term?.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
+        const matches: { token: string; index: number }[] = [];
+        for (let m = PATH_RE.exec(text); m; m = PATH_RE.exec(text)) {
+          matches.push({ token: m[0], index: m.index });
+        }
+        PATH_RE.lastIndex = 0;
+        if (!matches.length) return callback(undefined);
+        Promise.all(
+          matches.map(async ({ token, index }): Promise<ILink | null> => {
+            const [filePart, lineStr, colStr] = token.split(":");
+            const abs = filePart.startsWith("/") ? filePart : `${props.cwd}/${filePart}`;
+            const ok = await invoke<boolean>("file_exists", { path: abs }).catch(() => false);
+            if (!ok) return null;
+            return {
+              range: { start: { x: index + 1, y }, end: { x: index + token.length, y } },
+              text: token,
+              activate: () =>
+                emitWith(OPEN_IN_EDITOR, {
+                  path: abs,
+                  line: lineStr ? Number(lineStr) : undefined,
+                  col: colStr ? Number(colStr) : undefined,
+                }),
+            };
+          }),
+        ).then((links) => callback(links.filter((l): l is ILink => l !== null)));
+      },
+    });
+
     // ⌘F opens the in-terminal search (return false so xterm/browser ignore it).
     term.attachCustomKeyEventHandler((e) => {
       if (e.metaKey && e.key === "f" && e.type === "keydown") {
@@ -165,6 +203,7 @@ export default function TerminalView(props: {
   });
 
   onCleanup(() => {
+    linkProvider?.dispose();
     unlistenExit?.();
     ro?.disconnect();
     offFocus?.();

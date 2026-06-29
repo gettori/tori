@@ -24,6 +24,10 @@ export default function EditorPane(props: { selected: Selection | null }) {
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
   const [rightMode, setRightMode] = createSignal<"files" | "changes">("files");
   const [follow, setFollow] = createSignal(false);
+  const [gotoTarget, setGotoTarget] = createSignal<
+    { path: string; line: number; col?: number; nonce: number } | null
+  >(null);
+  let gotoNonce = 0;
 
   const openPaths = () => openFiles().map((f) => f.path);
   const root = () => props.selected?.projectPath ?? null;
@@ -70,7 +74,9 @@ export default function EditorPane(props: { selected: Selection | null }) {
 
   onMount(async () => {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
-      if (d?.path) openFile(d.path);
+      if (!d?.path) return;
+      openFile(d.path);
+      if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
     });
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
@@ -139,6 +145,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
             activePath={activePath()}
             openPaths={openPaths()}
             projectRoot={root()}
+            goto={gotoTarget()}
             onDirty={handleDirty}
           />
         </Show>
