@@ -1078,8 +1078,8 @@ body.dragging .term-host {
   background: var(--hover);
 }
 
-/* Folder chevron: a system glyph sized and boxed to match `.seti-icon` so it
-   sits in the same leading column as file icons, aligned and the same size. */
+/* Folder chevron: a single `›` glyph that rotates 90° when expanded (the VS
+   Code disclosure style), boxed to match `.seti-icon`'s leading column. */
 .file-tree .tree-twisty {
   flex: none;
   display: inline-flex;
@@ -1087,7 +1087,11 @@ body.dragging .term-host {
   justify-content: center;
   width: 16px;
   color: var(--text-dim);
-  font-size: 15px;
+  font-size: 18px;
+  transition: transform 0.1s ease;
+}
+.file-tree .tree-twisty.open {
+  transform: rotate(90deg);
 }
 
 .file-tree .tree-name.is-dir {
