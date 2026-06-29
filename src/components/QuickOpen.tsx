@@ -1,6 +1,7 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR } from "../events";
+import FileIcon from "../seti/FileIcon";
 
 const MAX_RESULTS = 200;
 
@@ -110,7 +111,8 @@ export default function QuickOpen(props: { root: string | null; onClose: () => v
                   onClick={() => open(rel)}
                   onMouseEnter={() => setIndex(i())}
                 >
-                  {rel}
+                  <FileIcon name={rel.split("/").pop()!} />
+                  <span class="qo-name">{rel}</span>
                 </div>
               )}
             </For>
