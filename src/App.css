@@ -14,10 +14,16 @@
   align-items: center;
   justify-content: center;
   width: 16px;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1;
   font-family: "seti";
   color: inherit;
+}
+
+/* Claude session mark (sidebar): brand orange, regardless of row text/selection
+   color. The inline SVG fills with currentColor. */
+.claude-icon {
+  color: #d97757;
 }
 
 :root {
@@ -263,13 +269,13 @@ body.dragging .term-host {
 }
 
 .row.sub1 {
-  padding-left: 22px;
+  padding-left: 20px;
 }
 .row.sub2 {
-  padding-left: 40px;
+  padding-left: 32px;
 }
 .row.sub3 {
-  padding-left: 58px;
+  padding-left: 44px;
 }
 
 .row.dim {
@@ -279,13 +285,6 @@ body.dragging .term-host {
 }
 .row.dim:hover {
   background: transparent;
-}
-
-.caret {
-  width: 12px;
-  font-size: 9px;
-  color: var(--text-dim);
-  flex: 0 0 auto;
 }
 
 .row .label {
@@ -1078,19 +1077,31 @@ body.dragging .term-host {
   background: var(--hover);
 }
 
-/* Folder chevron: a single `›` glyph that rotates 90° when expanded (the VS
-   Code disclosure style), boxed to match `.seti-icon`'s leading column. */
-.file-tree .tree-twisty {
+/* Disclosure chevron (shared `<Chevron>`): a single `›` glyph that rotates 90°
+   when expanded (the VS Code disclosure style), boxed to match `.seti-icon`'s
+   leading column so it aligns in both the file tree and the sidebar. */
+.chevron {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
+  height: 16px;
   color: var(--text-dim);
-  font-size: 18px;
+  /* `›` is a thin glyph, so it runs a touch larger than the filled seti icons
+     to optically match their weight at the same 16px slot. */
+  font-size: 20px;
+  line-height: 1;
+}
+/* Inner span wraps just the glyph so the rotation pivots on the chevron itself
+   (stays in place on expand). The fixed 16px height keeps the glyph from
+   making rows taller. */
+.chevron .chev {
+  display: inline-flex;
+  line-height: 1;
   transition: transform 0.1s ease;
 }
-.file-tree .tree-twisty.open {
+.chevron .chev.open {
   transform: rotate(90deg);
 }
 
