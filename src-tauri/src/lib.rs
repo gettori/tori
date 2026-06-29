@@ -9,7 +9,7 @@ mod sessions;
 mod theme;
 mod worktree;
 
-use config::ConfigWatch;
+use config::{ConfigWatch, ProjectIndex};
 use fs::FsWatch;
 use lsp::LspState;
 use pty::PtyState;
@@ -52,6 +52,7 @@ pub fn run() {
         })
         .manage(PtyState::default())
         .manage(ConfigWatch::default())
+        .manage(ProjectIndex::default())
         .manage(FsWatch::default())
         .manage(LspState::default())
         .manage(SessionIndex::default())
