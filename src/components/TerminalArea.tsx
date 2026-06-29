@@ -1,6 +1,7 @@
 import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import TerminalView from "./TerminalView";
+import OverflowTabBar from "./OverflowTabBar";
 import type { Selection } from "./Sidebar";
 import { on as onEvent, CLOSE_TAB } from "../events";
 
@@ -82,34 +83,48 @@ export default function TerminalArea(props: {
 
   return (
     <div class="term-area">
-      <div class="term-tabs">
-        <For each={open()}>
-          {(t) => (
-            <div
-              class={`term-tab ${active() === t.id ? "active" : ""}`}
-              onClick={() => setActive(t.id)}
-              title={t.cwd}
-            >
-              <span class="tab-label">{t.title}</span>
-              <span class="tab-close" onClick={(e) => close(t.id, e)}>
-                ×
-              </span>
-            </div>
-          )}
-        </For>
-        <button
-          class="term-new"
-          disabled={!props.selected}
-          title={
-            props.selected
-              ? `New Claude session in ${props.selected.projectName}`
-              : "Select a branch first"
-          }
-          onClick={newSession}
-        >
-          + New
-        </button>
-      </div>
+      <OverflowTabBar
+        class="term-tabs"
+        items={open()}
+        activeId={active()}
+        idOf={(t) => t.id}
+        onActivate={setActive}
+        onReorder={setOpen}
+        renderTab={(t) => (
+          <div
+            class={`term-tab ${active() === t.id ? "active" : ""}`}
+            onClick={() => setActive(t.id)}
+            title={t.cwd}
+          >
+            <span class="tab-label">{t.title}</span>
+            <span class="tab-close" onClick={(e) => close(t.id, e)}>
+              ×
+            </span>
+          </div>
+        )}
+        renderMenuItem={(t) => (
+          <>
+            <span class="tab-label">{t.title}</span>
+            <span class="tab-close" onClick={(e) => close(t.id, e)}>
+              ×
+            </span>
+          </>
+        )}
+        trailing={
+          <button
+            class="term-new"
+            disabled={!props.selected}
+            title={
+              props.selected
+                ? `New Claude session in ${props.selected.projectName}`
+                : "Select a branch first"
+            }
+            onClick={newSession}
+          >
+            + New
+          </button>
+        }
+      />
 
       <div class="term-stage">
         <Show
