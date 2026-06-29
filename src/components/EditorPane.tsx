@@ -6,6 +6,7 @@ import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
 import OverflowTabBar from "./OverflowTabBar";
+import FileIcon from "../seti/FileIcon";
 import { onWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, type OpenInEditor } from "../events";
 import { isSelfWrite } from "../selfWrites";
 import { ensureLsp } from "../lspClient";
@@ -127,6 +128,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
               }}
             >
+              <FileIcon name={f.name} />
               <span class="tab-name">{f.name}</span>
               <Show when={dirty()[f.path]}>
                 <span class="tab-dirty">●</span>
@@ -144,6 +146,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
           )}
           renderMenuItem={(f) => (
             <>
+              <FileIcon name={f.name} />
               <span class="tab-name">{f.name}</span>
               <Show when={dirty()[f.path]}>
                 <span class="tab-dirty">●</span>
