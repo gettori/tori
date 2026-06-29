@@ -2,6 +2,7 @@ import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
 import FileIcon from "../seti/FileIcon";
+import Chevron from "./Chevron";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
@@ -45,9 +46,7 @@ function TreeNode(props: { entry: Entry; depth: number }) {
         }}
       >
         {props.entry.is_dir ? (
-          <span class="tree-twisty" classList={{ open: open() }}>
-            ›
-          </span>
+          <Chevron open={open()} />
         ) : (
           <FileIcon name={props.entry.name} />
         )}

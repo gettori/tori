@@ -2,6 +2,8 @@ import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH, DRAG_ABS_PATH_MIME } from "../events";
+import ClaudeIcon from "../seti/ClaudeIcon";
+import Chevron from "./Chevron";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
 // the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).
@@ -253,7 +255,7 @@ export default function Sidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
                 >
-                  <span class="caret">{open() ? "▾" : "▸"}</span>
+                  <Chevron open={open()} />
                   <span class="label">{g.name}</span>
                 </div>
                 <Show when={open()}>
@@ -272,7 +274,7 @@ export default function Sidebar(props: {
                             draggable={true}
                             onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
-                            <span class="caret">{popen() ? "▾" : "▸"}</span>
+                            <Chevron open={popen()} />
                             <span class="label">{p.name}</span>
                           </div>
                           <Show when={popen()}>
@@ -295,7 +297,7 @@ export default function Sidebar(props: {
                                       draggable={true}
                                       onDragStart={(e) => startAbsDrag(e, p.path)}
                                     >
-                                      <span class="caret">{bopen() ? "▾" : "▸"}</span>
+                                      <Chevron open={bopen()} />
                                       <span class="label">{b.name}</span>
                                       <Show when={b.current}>
                                         <span class="dot" title="current branch">●</span>
@@ -316,6 +318,7 @@ export default function Sidebar(props: {
                                             draggable={true}
                                             onDragStart={(e) => startAbsDrag(e, s.path)}
                                           >
+                                            <ClaudeIcon />
                                             <span class="label">{s.name || s.title}</span>
                                             <span class="when">{ago(s.last_active)}</span>
                                           </div>
