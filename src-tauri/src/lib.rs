@@ -102,7 +102,8 @@ pub fn run() {
             launch::open_in_vscode,
             launch::open_in_ghostty,
             worktree::list_worktrees,
-            worktree::add_worktree,
+            worktree::create_worktree,
+            worktree::worktree_dirty,
             worktree::remove_worktree,
             theme::get_theme_colors,
         ])
