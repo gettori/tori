@@ -319,6 +319,49 @@ export default function Sidebar(props: {
     }
   }
 
+  // --- worktree lifecycle ---
+
+  // Create a worktree under a bare container. The backend names the folder
+  // (branch's last segment, slug fallback, clean error on double collision),
+  // fetches + bases new branches on origin's default, and links shared .link/ files.
+  async function createWorktree(p: Project) {
+    const branch = prompt(`New worktree in "${p.name}" (branch name):`);
+    if (!branch?.trim()) return;
+    try {
+      await invoke("create_worktree", { repoPath: p.path, branch: branch.trim() });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Remove a worktree, guarded against live use: refuse if it is open in the
+  // editor, has a dirty tree, or hosts a running agent (in it or any subdir).
+  // Nothing is deleted when refused. The branch is kept; only the folder goes.
+  async function removeWorktree(p: Project, u: BranchUnit) {
+    const sel = props.selected;
+    if (sel && (sel.folderPath === u.folderPath || sel.folderPath.startsWith(`${u.folderPath}/`))) {
+      return setError("This worktree is open in the editor; switch away before removing it.");
+    }
+    try {
+      if (await invoke<boolean>("worktree_dirty", { path: u.folderPath })) {
+        return setError("This worktree has uncommitted changes; commit or discard them first.");
+      }
+      // Prefix-matched nested sessions: refuse if any is a live agent.
+      const nested = await invoke<SessionMeta[]>("list_sessions", { folder: u.folderPath });
+      for (const s of nested) {
+        if (await invoke<boolean>("session_running", { id: s.id })) {
+          return setError("An agent is running in this worktree (or a subdir); stop it first.");
+        }
+      }
+      if (!confirm(`Remove the worktree "${u.label}"? Its folder is deleted; the branch is kept.`)) return;
+      await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // --- session overlay actions (rename/archive/delete) ---
 
   async function renameSession(s: SessionMeta) {
@@ -366,19 +409,29 @@ export default function Sidebar(props: {
           { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
         ];
 
-  // External (pinned) projects can be unpinned. Root projects have no actions
-  // yet: this is the wired entry point Phase 4 (worktree create) and Phase 5
-  // (git init / remote add) will populate.
-  const projectMenu = (p: Project): MenuItem[] =>
-    p.external ? [{ label: "Unpin", onClick: () => unpinPath(p) }] : [];
+  // A bare-container ("worktree") project: its branch-units are worktree folders.
+  const isWorktreeProject = (p: Project) => p.branchUnits.some((u) => u.kind === "worktree");
+
+  // External (pinned) projects can be unpinned. A worktree container can spawn a
+  // new worktree. Plain/plain-dir get their git lifecycle in Phase 5.
+  const projectMenu = (p: Project): MenuItem[] => {
+    if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
+    if (isWorktreeProject(p)) return [{ label: "New worktree…", onClick: () => createWorktree(p) }];
+    return [];
+  };
 
   const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
     // An incomplete stub (a .bare with no worktree) has nothing to run; its only
-    // action is removal. Phase 4 adds worktree actions to the real kinds here.
+    // action is removal.
     if (u.kind === "incomplete") {
       return [{ label: "Remove stub", danger: true, onClick: () => cleanupStub(u) }];
     }
-    return [{ label: "New session", onClick: () => selectUnit(g, p, u) }];
+    const items: MenuItem[] = [{ label: "New session", onClick: () => selectUnit(g, p, u) }];
+    if (u.kind === "worktree") {
+      items.push({ separator: true });
+      items.push({ label: "Remove worktree", danger: true, onClick: () => removeWorktree(p, u) });
+    }
+    return items;
   };
 
   const sessionMenu = (g: Group, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
