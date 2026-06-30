@@ -67,6 +67,7 @@ type SessionMeta = {
 };
 
 export type Selection = {
+  groupName: string;
   projectName: string;
   projectPath: string;
   // The branch-unit's working folder: the anchor every path consumer uses.
@@ -310,9 +311,10 @@ export default function Sidebar(props: {
     return true;
   }
 
-  async function selectUnit(p: Project, u: BranchUnit) {
+  async function selectUnit(g: Group, p: Project, u: BranchUnit) {
     if (!(await ensureBranch(p, u, u.branch))) return;
     props.onSelect({
+      groupName: g.name,
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
@@ -321,11 +323,12 @@ export default function Sidebar(props: {
     });
   }
 
-  async function selectSession(p: Project, u: BranchUnit, s: SessionMeta) {
+  async function selectSession(g: Group, p: Project, u: BranchUnit, s: SessionMeta) {
     // A Claude session wants its recorded branch checked out; pi has no branch.
     const target = s.agent === "pi" ? null : s.branch || u.branch;
     if (!(await ensureBranch(p, u, target))) return;
     props.onSelect({
+      groupName: g.name,
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
@@ -522,7 +525,7 @@ export default function Sidebar(props: {
                                       onClick={() => {
                                         toggle(ukey(g, p, u));
                                         fetchSessions(u.folderPath);
-                                        selectUnit(p, u);
+                                        selectUnit(g, p, u);
                                       }}
                                       draggable={true}
                                       onDragStart={(e) => startAbsDrag(e, u.folderPath)}
@@ -559,7 +562,7 @@ export default function Sidebar(props: {
                                           return (
                                             <div
                                               class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
-                                              onClick={() => selectSession(p, u, s)}
+                                              onClick={() => selectSession(g, p, u, s)}
                                               title={s.name || s.title}
                                               draggable={true}
                                               onDragStart={(e) => startAbsDrag(e, s.path)}

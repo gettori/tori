@@ -4,6 +4,7 @@ mod fs;
 mod git;
 mod launch;
 mod lsp;
+mod model;
 mod pty;
 mod sessions;
 mod theme;
@@ -94,6 +95,7 @@ pub fn run() {
             sessions::delete_session,
             sessions::session_running,
             sessions::session_detail,
+            model::model_context_caps,
             launch::open_in_vscode,
             launch::open_in_ghostty,
             worktree::list_worktrees,
