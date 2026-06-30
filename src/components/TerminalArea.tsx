@@ -36,33 +36,38 @@ export default function TerminalArea(props: {
     setActive(t.id);
   }
 
-  // Selecting a session opens (or re-focuses) its resumed terminal.
+  // Selecting a session opens (or re-focuses) its resumed terminal. Resume spawns
+  // per agent at the session's OWN recorded cwd (sessionCwd), so a nested session
+  // resumes where it ran, not at the branch-unit root. The checkout guard already
+  // ran at selection time, so the tree is on the right branch before we spawn.
   createEffect(
     on(
       () => props.selected,
       (sel) => {
         if (sel?.sessionId) {
+          const isPi = sel.agent === "pi";
           openOrActivate({
             id: sel.sessionId,
             title: sel.sessionTitle?.slice(0, 28) || sel.sessionId.slice(0, 8),
-            cwd: sel.projectPath,
-            program: "claude",
-            args: ["--resume", sel.sessionId],
+            cwd: sel.sessionCwd || sel.folderPath,
+            program: isPi ? "pi" : "claude",
+            args: isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sel.sessionId],
           });
         }
       },
     ),
   );
 
-  function newSession() {
+  // A new session starts in the branch-unit folder (already the right checkout).
+  function newSession(agent: "claude" | "pi") {
     const sel = props.selected;
     if (!sel) return;
-    const id = `new:${sel.projectPath}:${Date.now()}`;
+    const id = `new:${agent}:${sel.folderPath}:${Date.now()}`;
     openOrActivate({
       id,
-      title: `${sel.projectName} new`,
-      cwd: sel.projectPath,
-      program: "claude",
+      title: `${sel.projectName} ${agent}`,
+      cwd: sel.folderPath,
+      program: agent,
       args: [],
     });
   }
@@ -111,18 +116,32 @@ export default function TerminalArea(props: {
           </>
         )}
         trailing={
-          <button
-            class="term-new"
-            disabled={!props.selected}
-            title={
-              props.selected
-                ? `New Claude session in ${props.selected.projectName}`
-                : "Select a branch first"
-            }
-            onClick={newSession}
-          >
-            + New
-          </button>
+          <>
+            <button
+              class="term-new"
+              disabled={!props.selected}
+              title={
+                props.selected
+                  ? `New Claude session in ${props.selected.projectName}`
+                  : "Select a branch first"
+              }
+              onClick={() => newSession("claude")}
+            >
+              + Claude
+            </button>
+            <button
+              class="term-new"
+              disabled={!props.selected}
+              title={
+                props.selected
+                  ? `New pi session in ${props.selected.projectName}`
+                  : "Select a branch first"
+              }
+              onClick={() => newSession("pi")}
+            >
+              + pi
+            </button>
+          </>
         }
       />
 
@@ -131,7 +150,7 @@ export default function TerminalArea(props: {
           when={open().length}
           fallback={
             <div class="term-empty">
-              Select a session to resume it, or pick a branch and click + New.
+              Select a session to resume it, or pick a branch and start a new Claude or pi session.
             </div>
           }
         >

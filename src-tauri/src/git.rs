@@ -142,6 +142,23 @@ fn parse_hunks(text: &str) -> Vec<DiffHunk> {
     hunks
 }
 
+/// Switch the shared working tree to `branch` (plain repos only; the frontend
+/// gates this). git checkout is atomic: on a dirty/conflicting tree it fails and
+/// leaves the tree untouched, so surfacing stderr is enough to never half-switch.
+#[tauri::command]
+pub fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&repo_path)
+        .args(["checkout", &branch])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +198,65 @@ diff --git a/f b/f
     fn range_defaults_count_to_one() {
         assert_eq!(parse_range("42"), (42, 1));
         assert_eq!(parse_range("42,3"), (42, 3));
+    }
+
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t.test")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {:?}", args);
+    }
+
+    fn repo_with_two_branches() -> PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_checkout_test_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]);
+        git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        std::fs::write(dir.join("f.txt"), "v1").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        git(&dir, &["branch", "feature"]);
+        dir
+    }
+
+    fn current_branch(dir: &Path) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn checkout_switches_branch_on_clean_tree() {
+        let dir = repo_with_two_branches();
+        assert_eq!(current_branch(&dir), "main");
+        git_checkout(dir.to_string_lossy().into_owned(), "feature".into()).unwrap();
+        assert_eq!(current_branch(&dir), "feature");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn checkout_surfaces_error_and_does_not_switch() {
+        let dir = repo_with_two_branches();
+        let err = git_checkout(dir.to_string_lossy().into_owned(), "nope".into())
+            .expect_err("checkout of a missing branch must fail");
+        assert!(!err.is_empty(), "stderr should be surfaced");
+        // Never half-switch: the tree stays on the original branch.
+        assert_eq!(current_branch(&dir), "main");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

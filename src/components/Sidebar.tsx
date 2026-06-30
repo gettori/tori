@@ -162,7 +162,31 @@ export default function Sidebar(props: {
   const currentBranch = (p: Project) =>
     p.branchUnits.find((u) => u.isCurrent)?.branch ?? null;
 
-  function selectUnit(p: Project, u: BranchUnit) {
+  // Safe checkout guard (plain repos only). Opening/resuming a branch whose name
+  // is not the current checkout would otherwise show the wrong files, so confirm,
+  // `git checkout`, and re-discover. Worktrees own their dir and never checkout.
+  // Returns false to abort (cancel or a failed/dirty checkout) so the caller
+  // leaves the selection and tree untouched.
+  async function ensureBranch(p: Project, u: BranchUnit, target: string | null): Promise<boolean> {
+    if (u.kind !== "plain" || !target) return true;
+    const cur = currentBranch(p);
+    if (cur === null || cur === target) return true;
+    if (!confirm(`Switch ${p.name} from "${cur}" to "${target}"?\nThis changes the shared working tree.`)) {
+      return false;
+    }
+    try {
+      await invoke("git_checkout", { repoPath: p.path, branch: target });
+    } catch (e) {
+      setError(`Checkout failed: ${String(e)}`);
+      return false;
+    }
+    setError("");
+    await loadConfig(); // re-discover: isCurrent + mismatch badges refresh now
+    return true;
+  }
+
+  async function selectUnit(p: Project, u: BranchUnit) {
+    if (!(await ensureBranch(p, u, u.branch))) return;
     props.onSelect({
       projectName: p.name,
       projectPath: p.path,
@@ -172,7 +196,10 @@ export default function Sidebar(props: {
     });
   }
 
-  function selectSession(p: Project, u: BranchUnit, s: SessionMeta) {
+  async function selectSession(p: Project, u: BranchUnit, s: SessionMeta) {
+    // A Claude session wants its recorded branch checked out; pi has no branch.
+    const target = s.agent === "pi" ? null : s.branch || u.branch;
+    if (!(await ensureBranch(p, u, target))) return;
     props.onSelect({
       projectName: p.name,
       projectPath: p.path,

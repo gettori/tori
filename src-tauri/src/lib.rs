@@ -75,6 +75,7 @@ pub fn run() {
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,
+            git::git_checkout,
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
