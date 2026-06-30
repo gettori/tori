@@ -14,8 +14,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
-use std::time::SystemTime;
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -86,12 +86,16 @@ pub struct Project {
 #[derive(Serialize, Clone)]
 pub struct Group {
     pub name: String,
+    // The group's directory, so the UI can mkdir a new project folder under it.
+    pub path: String,
     pub projects: Vec<Project>,
 }
 
 #[derive(Serialize, Clone)]
 pub struct ResolvedConfig {
     pub path: String,
+    // The configured base folders (expanded). Empty + no groups => first run.
+    pub roots: Vec<String>,
     pub groups: Vec<Group>,
 }
 
@@ -140,18 +144,16 @@ fn basename(p: &Path) -> String {
         .unwrap_or_default()
 }
 
+// No project is seeded: a fresh config has no roots, which the UI detects as a
+// first run and offers a folder picker (see add_root). Projects are discovered
+// from the roots the user adds; legacy `[[project]]` tables are still honored.
 const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base folders.
-# By default everything under ~/Projects/<group>/<project> is found.
+# Add a base folder from the app, or declare roots here:
 #
 # [discovery]
 # roots  = ["~/Projects"]   # base folders scanned as <root>/<group>/<project>
 # ignore = ["node_modules"] # folder names to skip (dotfiles are always skipped)
 # paths  = []               # explicit out-of-root project folders
-
-[[project]]
-name = "sway"
-group = "personal"
-path = "~/Projects/personal/sway"
 "#;
 
 fn ensure_config() -> Result<String, String> {
@@ -371,62 +373,68 @@ fn extra_group_and_path(raw_path: &str) -> (String, PathBuf) {
     (group, p)
 }
 
-/// Walk roots (`<root>/<group>/<project>`) plus explicit paths, skipping dotfiles
-/// and ignored names. Returns `(group, project_dir)`, deduped by canonical path.
-fn collect_candidates(
-    roots: &[String],
-    ignore: &[String],
-    extra: Vec<(String, PathBuf)>,
-) -> Vec<(String, PathBuf)> {
-    let skip = |name: &str| name.starts_with('.') || ignore.iter().any(|i| i == name);
-
-    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
-    for root in roots {
-        let root = PathBuf::from(expand_tilde(root));
-        let Ok(groups) = std::fs::read_dir(&root) else {
-            continue;
-        };
-        for g in groups.flatten() {
-            let gpath = g.path();
-            if !gpath.is_dir() {
-                continue;
-            }
-            let gname = basename(&gpath);
-            if skip(&gname) {
-                continue;
-            }
-            let Ok(projects) = std::fs::read_dir(&gpath) else {
-                continue;
-            };
-            for p in projects.flatten() {
-                let ppath = p.path();
-                if !ppath.is_dir() {
-                    continue;
-                }
-                if skip(&basename(&ppath)) {
-                    continue;
-                }
-                candidates.push((gname.clone(), ppath));
-            }
-        }
+/// Index of the group named `name` in `groups`, creating an (initially empty)
+/// entry anchored at `path` when absent. Empty group dirs are surfaced too, so a
+/// freshly created group is selectable before it holds any project.
+fn ensure_group_idx(groups: &mut Vec<Group>, name: &str, path: &Path) -> usize {
+    if let Some(i) = groups.iter().position(|g| g.name == name) {
+        return i;
     }
-    candidates.extend(extra);
-
-    // Dedup: a project reachable via several roots/paths appears once.
-    let mut seen: HashSet<PathBuf> = HashSet::new();
-    let mut deduped: Vec<(String, PathBuf)> = Vec::new();
-    for (group, path) in candidates {
-        let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
-        if seen.insert(canon) {
-            deduped.push((group, path));
-        }
-    }
-    deduped
+    groups.push(Group {
+        name: name.to_string(),
+        path: path.to_string_lossy().into_owned(),
+        projects: Vec::new(),
+    });
+    groups.len() - 1
 }
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
-    // Explicit extra paths: discovery.paths (group from parent) + legacy
-    // [[project]] entries (keeping their declared group), folded in together.
+    let skip = |name: &str| name.starts_with('.') || raw.discovery.ignore.iter().any(|i| i == name);
+    let roots: Vec<String> = raw.discovery.roots.iter().map(|r| expand_tilde(r)).collect();
+
+    let mut groups: Vec<Group> = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
+    let mut seen_paths: HashSet<PathBuf> = HashSet::new(); // cache eviction (raw)
+
+    let mut add_project = |groups: &mut Vec<Group>, gi: usize, ppath: PathBuf| {
+        let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
+        if !seen.insert(canon) {
+            return; // reachable via several roots/paths: keep the first
+        }
+        seen_paths.insert(ppath.clone());
+        let project = Project {
+            name: basename(&ppath),
+            path: ppath.to_string_lossy().into_owned(),
+            branch_units: cached_probe(index, &ppath),
+        };
+        groups[gi].projects.push(project);
+    };
+
+    // 1. Roots scanned as <root>/<group>/<project>; empty group dirs registered.
+    for root in &roots {
+        let root = PathBuf::from(root);
+        let Ok(group_dirs) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for g in group_dirs.flatten() {
+            let gpath = g.path();
+            if !gpath.is_dir() || skip(&basename(&gpath)) {
+                continue;
+            }
+            let gi = ensure_group_idx(&mut groups, &basename(&gpath), &gpath);
+            if let Ok(projects) = std::fs::read_dir(&gpath) {
+                for p in projects.flatten() {
+                    let ppath = p.path();
+                    if ppath.is_dir() && !skip(&basename(&ppath)) {
+                        add_project(&mut groups, gi, ppath);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Explicit extra paths: discovery.paths (group from parent dir) + legacy
+    // [[project]] entries (keeping their declared group).
     let mut extra: Vec<(String, PathBuf)> = Vec::new();
     for p in &raw.discovery.paths {
         extra.push(extra_group_and_path(p));
@@ -434,32 +442,10 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     for p in &raw.project {
         extra.push((p.group.clone(), PathBuf::from(expand_tilde(&p.path))));
     }
-
-    // Default to ~/Projects only when nothing at all is configured.
-    let mut roots = raw.discovery.roots.clone();
-    if roots.is_empty() && extra.is_empty() {
-        roots = vec!["~/Projects".to_string()];
-    }
-
-    let candidates = collect_candidates(&roots, &raw.discovery.ignore, extra);
-
-    // Probe each project and group, preserving first-seen group order.
-    let mut groups: Vec<Group> = Vec::new();
-    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
-    for (gname, path) in candidates {
-        seen_paths.insert(path.clone());
-        let project = Project {
-            name: basename(&path),
-            path: path.to_string_lossy().into_owned(),
-            branch_units: cached_probe(index, &path),
-        };
-        match groups.iter_mut().find(|g| g.name == gname) {
-            Some(g) => g.projects.push(project),
-            None => groups.push(Group {
-                name: gname,
-                projects: vec![project],
-            }),
-        }
+    for (gname, ppath) in extra {
+        let group_path = ppath.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| ppath.clone());
+        let gi = ensure_group_idx(&mut groups, &gname, &group_path);
+        add_project(&mut groups, gi, ppath);
     }
 
     // Evict cache entries for projects that no longer exist.
@@ -469,6 +455,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 
     ResolvedConfig {
         path: config_path().to_string_lossy().into_owned(),
+        roots,
         groups,
     }
 }
@@ -532,6 +519,160 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     *guard = Some(watcher);
+    Ok(())
+}
+
+// --- first-run onboarding + create group/folder ---
+
+/// Native macOS folder picker (dependency-free, via osascript). Returns the
+/// chosen folder, or None when the user cancels (so the UI can stay put).
+#[tauri::command]
+pub fn pick_folder() -> Result<Option<String>, String> {
+    let out = Command::new("osascript")
+        .args([
+            "-e",
+            "POSIX path of (choose folder with prompt \"Choose a base folder for your projects\")",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Ok(None); // cancelled
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if path.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(path.trim_end_matches('/').to_string()))
+}
+
+/// Add `path` to `[discovery].roots` in the given toml text, preserving other
+/// keys (including legacy `[[project]]`). Idempotent: no duplicate root.
+fn insert_root(text: &str, path: &str) -> Result<String, String> {
+    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+    let discovery = doc
+        .entry("discovery")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let dt = discovery
+        .as_table_mut()
+        .ok_or("`discovery` is not a table")?;
+    let roots = dt
+        .entry("roots")
+        .or_insert_with(|| toml::Value::Array(Vec::new()));
+    let arr = roots.as_array_mut().ok_or("`roots` is not an array")?;
+    if !arr.iter().any(|v| v.as_str() == Some(path)) {
+        arr.push(toml::Value::String(path.to_string()));
+    }
+    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
+}
+
+/// Append a base folder to `[discovery].roots`, preserving other config keys.
+#[tauri::command]
+pub fn add_root(app: AppHandle, path: String) -> Result<(), String> {
+    let p = path.trim().trim_end_matches('/').to_string();
+    if p.is_empty() {
+        return Err("Empty path".into());
+    }
+    let serialized = insert_root(&ensure_config()?, &p)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Reject names that would escape or hide the target dir.
+fn valid_name(name: &str) -> Result<String, String> {
+    let n = name.trim();
+    if n.is_empty() {
+        return Err("Name is empty".into());
+    }
+    if n.contains('/') || n.contains('\\') {
+        return Err("Name cannot contain a slash".into());
+    }
+    if n.starts_with('.') {
+        return Err("Name cannot start with a dot".into());
+    }
+    Ok(n.to_string())
+}
+
+/// mkdir a new group under a root. Returns the created dir.
+#[tauri::command]
+pub fn add_group(app: AppHandle, root: String, name: String) -> Result<String, String> {
+    let n = valid_name(&name)?;
+    let dir = PathBuf::from(expand_tilde(&root)).join(&n);
+    if dir.exists() {
+        return Err(format!("\"{n}\" already exists"));
+    }
+    std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ()); // explicit re-discovery
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// mkdir a new project folder under a group. Returns the created dir.
+#[tauri::command]
+pub fn add_folder(app: AppHandle, group_path: String, name: String) -> Result<String, String> {
+    let n = valid_name(&name)?;
+    let dir = PathBuf::from(&group_path).join(&n);
+    if dir.exists() {
+        return Err(format!("\"{n}\" already exists"));
+    }
+    std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ()); // explicit re-discovery
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Explicitly ask the UI to re-discover (emits the same event the watchers do).
+#[tauri::command]
+pub fn rediscover(app: AppHandle) -> Result<(), String> {
+    app.emit("config://changed", ()).map_err(|e| e.to_string())
+}
+
+#[derive(Default)]
+pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
+
+/// Shallow watch of the configured roots (and their immediate group dirs) so
+/// folders created outside the app surface without a restart. The config-file
+/// watcher only sees the toml itself, never filesystem creates under the roots.
+/// Deliberately non-recursive (one extra level) to avoid watching deep trees.
+#[tauri::command]
+pub fn roots_watch_start(
+    app: AppHandle,
+    state: State<RootWatch>,
+    roots: Vec<String>,
+) -> Result<(), String> {
+    let app_handle = app.clone();
+    let last = Arc::new(Mutex::new(Instant::now()));
+    let debounce = last.clone();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_err() {
+            return;
+        }
+        // Coalesce bursts (a create often fires several events).
+        if let Ok(mut l) = debounce.lock() {
+            if l.elapsed().as_millis() < 600 {
+                return;
+            }
+            *l = Instant::now();
+        }
+        let _ = app_handle.emit("config://changed", ());
+    })
+    .map_err(|e| e.to_string())?;
+
+    for root in &roots {
+        let rp = PathBuf::from(expand_tilde(root));
+        if !rp.is_dir() {
+            continue;
+        }
+        let _ = watcher.watch(&rp, RecursiveMode::NonRecursive); // new groups
+        if let Ok(entries) = std::fs::read_dir(&rp) {
+            for e in entries.flatten() {
+                let gp = e.path();
+                if gp.is_dir() && !basename(&gp).starts_with('.') {
+                    let _ = watcher.watch(&gp, RecursiveMode::NonRecursive); // new projects
+                }
+            }
+        }
+    }
+
+    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
 }
 
@@ -805,5 +946,46 @@ mod tests {
         assert_eq!(cur2.as_deref(), Some("main"));
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn empty_group_dir_is_surfaced() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        // A group folder with no project subdirs (just created from the UI).
+        std::fs::create_dir_all(root.join("newgroup")).unwrap();
+        let index = ProjectIndex::default();
+        let cfg = resolve(raw(&[root.to_str().unwrap()], &[], &[], &[]), &index);
+        let g = group(&cfg, "newgroup").expect("empty group should appear");
+        assert!(g.projects.is_empty());
+        assert!(g.path.ends_with("newgroup")); // path lets the UI add a folder under it
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn valid_name_rejects_traversal_and_hidden() {
+        assert!(valid_name("feature").is_ok());
+        assert!(valid_name("  spaced  ").is_ok()); // trimmed
+        assert!(valid_name("").is_err());
+        assert!(valid_name("a/b").is_err());
+        assert!(valid_name("a\\b").is_err());
+        assert!(valid_name("..").is_err()); // leading dot
+        assert!(valid_name(".hidden").is_err());
+    }
+
+    #[test]
+    fn insert_root_adds_once_and_preserves_legacy() {
+        // Empty config: creates [discovery].roots with the path.
+        let out = insert_root("", "/Users/x/Projects").unwrap();
+        assert!(out.contains("/Users/x/Projects"));
+        // Idempotent: re-inserting the same root does not duplicate it.
+        let again = insert_root(&out, "/Users/x/Projects").unwrap();
+        assert_eq!(again.matches("/Users/x/Projects").count(), 1);
+        // A legacy [[project]] table survives the rewrite.
+        let legacy = "[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n";
+        let merged = insert_root(legacy, "/r").unwrap();
+        assert!(merged.contains("[[project]]"));
+        assert!(merged.contains("/p/a"));
+        assert!(merged.contains("/r"));
     }
 }

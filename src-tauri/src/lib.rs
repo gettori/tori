@@ -9,7 +9,7 @@ mod sessions;
 mod theme;
 mod worktree;
 
-use config::{ConfigWatch, ProjectIndex};
+use config::{ConfigWatch, ProjectIndex, RootWatch};
 use fs::FsWatch;
 use lsp::LspState;
 use pty::PtyState;
@@ -53,6 +53,7 @@ pub fn run() {
         .manage(PtyState::default())
         .manage(ConfigWatch::default())
         .manage(ProjectIndex::default())
+        .manage(RootWatch::default())
         .manage(FsWatch::default())
         .manage(LspState::default())
         .manage(SessionIndex::default())
@@ -66,6 +67,12 @@ pub fn run() {
             config::get_config,
             config::list_branches,
             config::config_watch_start,
+            config::pick_folder,
+            config::add_root,
+            config::add_group,
+            config::add_folder,
+            config::rediscover,
+            config::roots_watch_start,
             fs::fs_read_dir,
             fs::fs_read_file,
             fs::fs_write_file,
