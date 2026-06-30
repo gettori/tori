@@ -441,10 +441,6 @@ body.dragging .term-host {
   font-size: 11px;
 }
 
-.run-pill {
-  color: #3fb950;
-  font-size: 11px;
-}
 
 .arch-pill {
   color: #b08000;
@@ -663,10 +659,89 @@ body.dragging .term-host {
   max-width: 280px;
 }
 
-.tb-sub,
 .tb-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   white-space: nowrap;
+  color: var(--text-dim);
+}
+
+/* Vertical rule between the session title and the counts. As its own flex
+   child, the container's gap spaces it equally on both sides. */
+.tb-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  background: var(--border);
+}
+
+.tb-stats .stat-model {
+  letter-spacing: 0.02em;
+}
+
+/* Each metric: icon + value, all the same muted tone as the model. */
+.tb-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* All four metric icons are SVGs; one fixed box keeps them uniform. */
+.tb-stats .stat-ico {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  opacity: 0.9;
+}
+
+.tb-stats .stat-sep {
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tb-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-crumb .crumb {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  color: var(--text-dim);
+}
+
+.tb-crumb .crumb.leaf {
+  flex: 0 1 auto;
+  /* Match the sidebar session row (`.tree` is 13px). */
+  font-size: 13px;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The agent mark in the menubar inherits the leaf text color (no brand tint,
+   unlike the sidebar where .claude-icon/.pi-icon set their own color). */
+.tb-crumb .claude-icon,
+.tb-crumb .pi-icon {
+  color: inherit;
+}
+
+.tb-crumb .crumb-sep {
+  font-size: 12px;
+  flex: 0 0 auto;
+  color: var(--text-dim);
 }
 
 .tb-actions {
