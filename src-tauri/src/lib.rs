@@ -13,7 +13,7 @@ use config::{ConfigWatch, ProjectIndex};
 use fs::FsWatch;
 use lsp::LspState;
 use pty::PtyState;
-use sessions::{SessionIndex, SessionWatch};
+use sessions::{PiIndex, SessionIndex, SessionWatch};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -56,6 +56,7 @@ pub fn run() {
         .manage(FsWatch::default())
         .manage(LspState::default())
         .manage(SessionIndex::default())
+        .manage(PiIndex::default())
         .manage(SessionWatch::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,

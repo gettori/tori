@@ -1,10 +1,13 @@
-// Claude session discovery. Sessions live at
-// ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl. The encoded dir name is
-// lossy (both '/' and '.' collapse to '-'), so we read `cwd` and `gitBranch`
-// from inside each file rather than decoding the folder name.
+// Session discovery for two agents, merged by folder.
+//
+// Claude sessions live at ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl;
+// pi sessions live at ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<id>.jsonl. Both
+// encoded dir names are lossy, so we read `cwd` (and Claude's `gitBranch`) from
+// inside each file rather than decoding the folder name. Pi has no branch.
 //
 // Scanning reads only the head of each file (cwd/branch/first prompt appear
-// early) and caches by mtime, so repeat scans are cheap.
+// early) and caches by mtime, so repeat scans are cheap. `list_sessions(folder)`
+// returns both agents whose recorded cwd is the folder or nested under it.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -29,6 +32,8 @@ pub struct SessionMeta {
     pub last_active: u64,
     pub name: Option<String>,
     pub archived: bool,
+    /// Which agent produced the session: "claude" or "pi".
+    pub agent: String,
 }
 
 struct CacheEntry {
@@ -40,12 +45,21 @@ struct CacheEntry {
 pub struct SessionIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
 
 #[derive(Default)]
+pub struct PiIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
+
+#[derive(Default)]
 pub struct SessionWatch(pub Mutex<Option<RecommendedWatcher>>);
 
 fn projects_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
         .join(".claude/projects")
+}
+
+fn pi_sessions_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".pi/agent/sessions")
 }
 
 fn norm(path: &str) -> String {
@@ -140,6 +154,7 @@ fn parse_session(path: &PathBuf, mtime: SystemTime) -> Option<SessionMeta> {
         last_active: epoch_secs(mtime),
         name: None,
         archived: false,
+        agent: "claude".into(),
     })
 }
 
@@ -187,17 +202,151 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     cache.values().filter_map(|e| e.meta.clone()).collect()
 }
 
+/// Parse a pi session: head line carries `id`/`cwd`/`timestamp`; the title comes
+/// from the first real user message in a bounded window, falling back to an
+/// id-slice for an empty session. last_active uses the file mtime (a better
+/// "last activity" signal than the head timestamp, and no ISO parse needed).
+fn parse_pi_session(path: &PathBuf, mtime: SystemTime) -> Option<SessionMeta> {
+    let file = std::fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+
+    let mut cwd: Option<String> = None;
+    let mut id: Option<String> = None;
+    let mut title: Option<String> = None;
+
+    for line in reader.lines().take(HEAD_LINES).map_while(Result::ok) {
+        let v: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("session") => {
+                if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+                    cwd = Some(c.to_string());
+                }
+                if let Some(i) = v.get("id").and_then(|i| i.as_str()) {
+                    id = Some(i.to_string());
+                }
+            }
+            Some("message") if title.is_none() => {
+                let msg = v.get("message");
+                if msg.and_then(|m| m.get("role")).and_then(|r| r.as_str()) == Some("user") {
+                    if let Some(content) = msg.and_then(|m| m.get("content")) {
+                        if let Some(text) = extract_text(content) {
+                            let trimmed = text.trim();
+                            // Skip skill/tool envelopes and pi's [Context] blocks.
+                            if !trimmed.is_empty()
+                                && !trimmed.starts_with('<')
+                                && !trimmed.starts_with("[Context]")
+                            {
+                                title = Some(clean_title(trimmed));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        if cwd.is_some() && id.is_some() && title.is_some() {
+            break;
+        }
+    }
+
+    let cwd = cwd?;
+    // Prefer the head id; fall back to the `<ts>_<id>` filename stem.
+    let id = id.or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))?;
+    let title = title.unwrap_or_else(|| {
+        let slice: String = id.chars().take(8).collect();
+        format!("pi session {slice}")
+    });
+
+    Some(SessionMeta {
+        id,
+        path: path.to_string_lossy().into_owned(),
+        cwd,
+        branch: String::new(),
+        title,
+        last_active: epoch_secs(mtime),
+        name: None,
+        archived: false,
+        agent: "pi".into(),
+    })
+}
+
+/// Walk all pi session dirs, refreshing the cache for changed/new files.
+fn ensure_pi_index(index: &PiIndex) -> Vec<SessionMeta> {
+    let mut cache = match index.0.lock() {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let root = pi_sessions_dir();
+
+    if let Ok(dirs) = std::fs::read_dir(&root) {
+        for dir in dirs.flatten() {
+            let p = dir.path();
+            if !p.is_dir() {
+                continue;
+            }
+            if let Ok(files) = std::fs::read_dir(&p) {
+                for f in files.flatten() {
+                    let fp = f.path();
+                    if fp.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                        continue;
+                    }
+                    let mtime = f
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(SystemTime::UNIX_EPOCH);
+                    seen.push(fp.clone());
+
+                    let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
+                    if !fresh {
+                        let meta = parse_pi_session(&fp, mtime);
+                        cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                    }
+                }
+            }
+        }
+    }
+
+    cache.retain(|k, _| seen.contains(k));
+    cache.values().filter_map(|e| e.meta.clone()).collect()
+}
+
+/// Does a session's recorded `cwd` belong to `folder` (the folder itself or a
+/// nested subdir)? This is the cwd-anchored, prefix-matching rule.
+fn cwd_matches(cwd: &str, folder: &str) -> bool {
+    let c = norm(cwd);
+    let f = norm(folder);
+    c == f || c.starts_with(&format!("{f}/"))
+}
+
+/// Filter to sessions under `folder` and sort most-recently-active first.
+fn filter_sort(all: Vec<SessionMeta>, folder: &str) -> Vec<SessionMeta> {
+    let mut v: Vec<SessionMeta> = all
+        .into_iter()
+        .filter(|s| cwd_matches(&s.cwd, folder))
+        .collect();
+    v.sort_by(|a, b| b.last_active.cmp(&a.last_active));
+    v
+}
+
+/// Sessions (both agents) anchored at `folder` or nested under it, newest first.
 #[tauri::command]
 pub fn list_sessions(
     index: State<SessionIndex>,
-    project_path: String,
-    branch: String,
+    pi_index: State<PiIndex>,
+    folder: String,
 ) -> Result<Vec<SessionMeta>, String> {
-    let target_cwd = norm(&project_path);
     let overlay = load_overlay();
-    let mut sessions: Vec<SessionMeta> = ensure_index(&index)
+    let merged: Vec<SessionMeta> = ensure_index(&index)
         .into_iter()
-        .filter(|s| norm(&s.cwd) == target_cwd && s.branch == branch)
+        .chain(ensure_pi_index(&pi_index))
+        .collect();
+    let sessions = filter_sort(merged, &folder)
+        .into_iter()
         .map(|mut s| {
             if let Some(o) = overlay.get(&s.id) {
                 s.name = o.name.clone();
@@ -206,7 +355,6 @@ pub fn list_sessions(
             s
         })
         .collect();
-    sessions.sort_by(|a, b| b.last_active.cmp(&a.last_active));
     Ok(sessions)
 }
 
@@ -362,4 +510,93 @@ pub fn sessions_watch_start(
 
     *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::UNIX_EPOCH;
+
+    fn tmp_file(name: &str, contents: &str) -> PathBuf {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_pi_test_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, contents).unwrap();
+        p
+    }
+
+    fn meta(id: &str, cwd: &str, agent: &str, last_active: u64) -> SessionMeta {
+        SessionMeta {
+            id: id.into(),
+            path: format!("/sessions/{id}.jsonl"),
+            cwd: cwd.into(),
+            branch: String::new(),
+            title: "t".into(),
+            last_active,
+            name: None,
+            archived: false,
+            agent: agent.into(),
+        }
+    }
+
+    #[test]
+    fn pi_session_parses_head_skips_envelopes_and_titles() {
+        let body = r#"{"type":"session","version":3,"id":"abc123def456","timestamp":"2026-05-07T14:50:04.610Z","cwd":"/Users/x/proj/wt"}
+{"type":"model_change","modelId":"m"}
+{"type":"message","message":{"role":"user","content":[{"type":"text","text":"<skill name=\"foo\">noise</skill>"}]}}
+{"type":"message","message":{"role":"user","content":[{"type":"text","text":"[Context] file:///x/proj/wt/a.ts"}]}}
+{"type":"message","message":{"role":"user","content":[{"type":"text","text":"  Fix the parser bug  "}]}}
+"#;
+        let p = tmp_file("2026-05-07T14-50-04_abc123def456.jsonl", body);
+        let s = parse_pi_session(&p, SystemTime::now()).expect("parsed");
+        assert_eq!(s.agent, "pi");
+        assert_eq!(s.id, "abc123def456");
+        assert_eq!(s.cwd, "/Users/x/proj/wt");
+        // Envelope + [Context] skipped; first real user message wins, trimmed.
+        assert_eq!(s.title, "Fix the parser bug");
+        // sessionFile path is carried.
+        assert!(s.path.ends_with("abc123def456.jsonl"));
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn pi_empty_session_falls_back_to_id_slice() {
+        let body =
+            "{\"type\":\"session\",\"id\":\"0123456789abcdef\",\"cwd\":\"/Users/x/proj\"}\n";
+        let p = tmp_file("ts_0123456789abcdef.jsonl", body);
+        let s = parse_pi_session(&p, SystemTime::now()).expect("parsed");
+        assert_eq!(s.cwd, "/Users/x/proj");
+        assert_eq!(s.title, "pi session 01234567"); // first 8 chars of the id
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn cwd_matches_exact_and_nested_only() {
+        assert!(cwd_matches("/a/b", "/a/b")); // exact
+        assert!(cwd_matches("/a/b/", "/a/b")); // trailing slash normalized
+        assert!(cwd_matches("/a/b/c/d", "/a/b")); // nested
+        assert!(!cwd_matches("/a/bc", "/a/b")); // sibling sharing a prefix
+        assert!(!cwd_matches("/a", "/a/b")); // parent is not under child
+    }
+
+    #[test]
+    fn filter_sort_merges_agents_under_folder_newest_first() {
+        let all = vec![
+            meta("claude-root", "/p/wt", "claude", 100),
+            meta("pi-nested", "/p/wt/src", "pi", 300),
+            meta("claude-old", "/p/wt", "claude", 50),
+            meta("other", "/p/elsewhere", "claude", 999), // excluded
+        ];
+        let got = filter_sort(all, "/p/wt");
+        let ids: Vec<&str> = got.iter().map(|s| s.id.as_str()).collect();
+        // Excludes the non-matching folder; sorted newest-first.
+        assert_eq!(ids, vec!["pi-nested", "claude-root", "claude-old"]);
+        // Both agents are merged under the one folder.
+        assert!(got.iter().any(|s| s.agent == "pi"));
+        assert!(got.iter().any(|s| s.agent == "claude"));
+    }
 }
