@@ -121,7 +121,28 @@ export default function Sidebar(props: {
   // Sessions keyed by branch-unit folderPath (the cwd anchor).
   const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
   const [query, setQuery] = createSignal("");
+  const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
+  let gearEl: HTMLDivElement | undefined;
+
+  // Close the gear dropdown on any outside click. Bound only while it is open.
+  function onDocClick(e: MouseEvent) {
+    if (gearEl && !gearEl.contains(e.target as Node)) setGearOpen(false);
+  }
+  createEffect(() => {
+    if (gearOpen()) document.addEventListener("mousedown", onDocClick);
+    else document.removeEventListener("mousedown", onDocClick);
+  });
+  onCleanup(() => document.removeEventListener("mousedown", onDocClick));
+
+  // Run a gear-menu action then close the dropdown.
+  function gearAction(fn: () => void) {
+    setGearOpen(false);
+    fn();
+  }
+
+  // Single-root model: a root is present when roots[0] exists.
+  const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
   // Persist expansion state so the tree reopens where you left it.
   createEffect(() => {
@@ -144,13 +165,29 @@ export default function Sidebar(props: {
     }
   }
 
-  // First run: a native folder picker, persisted as a discovery root. Cancel is
-  // a no-op (the empty state with this action stays put), never a loop.
+  // Pick a base folder and set it as THE single root (replacing any existing).
+  // Cancel is a no-op (the empty state with this action stays put), never a loop.
+  // loadConfig() re-runs roots_watch_start, tearing down the old watch and
+  // reinstalling it for the new root.
   async function addBaseFolder() {
     try {
       const path = await invoke<string | null>("pick_folder");
       if (!path) return;
-      await invoke("add_root", { path });
+      await invoke("set_root", { path });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Forget the root with zero on-disk deletion: returns to the first-run state.
+  // loadConfig() reinstalls the (now empty) root watch.
+  async function resetRoot() {
+    if (!confirm("Forget the base folder? Nothing on disk is deleted; the tree returns to its first-run state.")) {
+      return;
+    }
+    try {
+      await invoke("remove_root");
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -443,6 +480,27 @@ export default function Sidebar(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Escape" && setQuery("")}
         />
+        <div class="gear-wrap" ref={gearEl}>
+          <button
+            class="gear-btn"
+            classList={{ active: gearOpen() }}
+            title="Sidebar actions"
+            onClick={() => setGearOpen(!gearOpen())}
+          >
+            ⚙
+          </button>
+          <Show when={gearOpen()}>
+            <div class="gear-menu">
+              <Show when={hasRoot()}>
+                <div class="gear-item" onClick={() => gearAction(addGroup)}>New group</div>
+              </Show>
+              <div class="gear-item" onClick={() => gearAction(addBaseFolder)}>Add base folder</div>
+              <Show when={hasRoot()}>
+                <div class="gear-item danger" onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
+              </Show>
+            </div>
+          </Show>
+        </div>
       </div>
 
       <Show when={error()}>
@@ -624,16 +682,6 @@ export default function Sidebar(props: {
       </div>
 
       <Show when={config()}>
-        <div class="tree-actions">
-          <Show when={(config()!.roots?.length ?? 0) > 0}>
-            <button class="btn xs" onClick={addGroup} title="Create a group under your base folder">
-              + Group
-            </button>
-          </Show>
-          <button class="btn xs ghost" onClick={addBaseFolder} title="Add a base folder to discover">
-            + Base folder
-          </button>
-        </div>
         <div class="tree-foot" title={config()!.path}>
           {config()!.path.replace(/^.*\/\.config\//, "~/.config/")}
         </div>

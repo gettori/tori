@@ -198,12 +198,16 @@ body.dragging .term-host {
 }
 
 .tree-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px;
   border-bottom: 1px solid var(--border);
 }
 
 .search-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -215,6 +219,59 @@ body.dragging .term-host {
 
 .search-input:focus {
   border-color: var(--accent);
+}
+
+/* ---- Gear dropdown (sidebar actions) ---- */
+.gear-wrap {
+  position: relative;
+  flex: none;
+}
+
+.gear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.gear-btn:hover,
+.gear-btn.active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.gear-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.gear-item {
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gear-item:hover {
+  background: var(--hover);
+}
+.gear-item.danger {
+  color: var(--danger, #e06c75);
 }
 
 .tree-scroll {
@@ -395,13 +452,6 @@ body.dragging .term-host {
 }
 
 /* Create-group / add-base-folder actions above the config-path footer. */
-.tree-actions {
-  display: flex;
-  gap: 6px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--border);
-}
-
 /* ---- Detail panel ---- */
 .detail {
   flex: 1;
