@@ -1,6 +1,7 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import {
   on as onEvent,
   emitWith,
@@ -144,6 +145,15 @@ export default function Sidebar(props: {
   // Single-root model: a root is present when roots[0] exists.
   const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
+  // Per-node right-click menu. Set on `contextmenu`, cleared on close.
+  const [menu, setMenu] = createSignal<MenuState | null>(null);
+  function openMenu(e: MouseEvent, items: MenuItem[]) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!items.length) return; // a node with no actions yet opens nothing
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
   // Persist expansion state so the tree reopens where you left it.
   createEffect(() => {
     try {
@@ -277,6 +287,69 @@ export default function Sidebar(props: {
       setError(String(e));
     }
   }
+
+  // --- session overlay actions (rename/archive/delete) ---
+
+  async function renameSession(s: SessionMeta) {
+    const name = prompt("Rename session:", s.name ?? s.title);
+    if (name === null) return; // cancelled
+    try {
+      // Empty clears the name (Rust folds "" → None, reverting to the title).
+      await invoke("set_session_name", { id: s.id, name: name.trim() || null });
+      await refreshSessions();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function archiveSession(s: SessionMeta) {
+    try {
+      await invoke("set_session_archived", { id: s.id, archived: !s.archived });
+      await refreshSessions();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function deleteSession(s: SessionMeta) {
+    if (!confirm("Delete this session's transcript? Its history is removed and cannot be undone.")) return;
+    try {
+      await invoke("delete_session", { path: s.path });
+      await refreshSessions();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // --- per-node context menus ---
+
+  const groupMenu = (g: Group): MenuItem[] => [
+    { label: "New folder", onClick: () => addFolder(g) },
+    { label: "Clone repo…", onClick: () => cloneRepo(g) },
+    { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
+  ];
+
+  // Entry point for Phase 4 (worktree create) and Phase 5 (git init / remote add):
+  // those commands are not built yet, so the project menu is empty for now and
+  // openMenu opens nothing until they land.
+  const projectMenu = (_p: Project): MenuItem[] => [];
+
+  const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
+    // An incomplete stub (a .bare with no worktree) has nothing to run; its only
+    // action is removal. Phase 4 adds worktree actions to the real kinds here.
+    if (u.kind === "incomplete") {
+      return [{ label: "Remove stub", danger: true, onClick: () => cleanupStub(u) }];
+    }
+    return [{ label: "New session", onClick: () => selectUnit(g, p, u) }];
+  };
+
+  const sessionMenu = (g: Group, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
+    { label: "New session", onClick: () => selectUnit(g, p, u) },
+    { separator: true },
+    { label: "Rename…", onClick: () => renameSession(s) },
+    { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
+    { label: "Delete", danger: true, onClick: () => deleteSession(s) },
+  ];
 
   function toggle(key: string) {
     const next = new Set(expanded());
@@ -516,43 +589,12 @@ export default function Sidebar(props: {
                 <div
                   class="row group"
                   onClick={() => toggle(gkey(g))}
+                  onContextMenu={(e) => openMenu(e, groupMenu(g))}
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
                 >
                   <Chevron open={open()} />
                   <span class="label">{g.name}</span>
-                  <span class="row-actions">
-                    <button
-                      class="row-add"
-                      title="New empty folder"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addFolder(g);
-                      }}
-                    >
-                      +
-                    </button>
-                    <button
-                      class="row-add"
-                      title="Clone a repo into this group"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        cloneRepo(g);
-                      }}
-                    >
-                      ⇣
-                    </button>
-                    <button
-                      class="row-add"
-                      title="Bootstrap a bare + worktree project"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        bootstrapRepo(g);
-                      }}
-                    >
-                      ⑂
-                    </button>
-                  </span>
                 </div>
                 <Show when={open()}>
                   <For each={g.projects.filter(projectVisible)}>
@@ -563,6 +605,7 @@ export default function Sidebar(props: {
                           <div
                             class="row project sub1"
                             onClick={() => toggle(pkey(g, p))}
+                            onContextMenu={(e) => openMenu(e, projectMenu(p))}
                             draggable={true}
                             onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
@@ -585,23 +628,14 @@ export default function Sidebar(props: {
                                         fetchSessions(u.folderPath);
                                         selectUnit(g, p, u);
                                       }}
+                                      onContextMenu={(e) => openMenu(e, unitMenu(g, p, u))}
                                       draggable={true}
                                       onDragStart={(e) => startAbsDrag(e, u.folderPath)}
                                     >
                                       <Chevron open={uopen()} />
                                       <span class="label">{unitLabel(u)}</span>
                                       <Show when={u.kind === "incomplete"}>
-                                        <span class="badge hint" title="A .bare with no worktrees (cleanable stub)">stub</span>
-                                        <button
-                                          class="row-add"
-                                          title="Remove this incomplete stub"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            cleanupStub(u);
-                                          }}
-                                        >
-                                          ✕
-                                        </button>
+                                        <span class="badge hint" title="A .bare with no worktrees (right-click to remove)">stub</span>
                                       </Show>
                                       <Show when={unitMismatch(u)}>
                                         <span class="badge" title="Not the current checkout">≠ checkout</span>
@@ -621,6 +655,7 @@ export default function Sidebar(props: {
                                             <div
                                               class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
                                               onClick={() => selectSession(g, p, u, s)}
+                                              onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
                                               title={s.name || s.title}
                                               draggable={true}
                                               onDragStart={(e) => startAbsDrag(e, s.path)}
@@ -685,6 +720,10 @@ export default function Sidebar(props: {
         <div class="tree-foot" title={config()!.path}>
           {config()!.path.replace(/^.*\/\.config\//, "~/.config/")}
         </div>
+      </Show>
+
+      <Show when={menu()}>
+        <ContextMenu menu={menu()!} onClose={() => setMenu(null)} />
       </Show>
     </div>
   );
