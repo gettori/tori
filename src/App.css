@@ -26,6 +26,12 @@
   color: #d97757;
 }
 
+/* Pi session mark (sidebar): a distinct tint so the two agents read apart at a
+   glance. The inline SVG fills with currentColor. */
+.pi-icon {
+  color: #6cb6ff;
+}
+
 :root {
   --bg: #1a1a1a;
   --pane-bg: #1e1e1e;
@@ -304,6 +310,28 @@ body.dragging .term-host {
   font-size: 10px;
   color: #5a5a5a;
   flex: 0 0 auto;
+}
+
+/* Mismatch flag: a session/branch whose recorded branch is not the working
+   tree's current checkout (plain repos only). Pushed to the right, before the
+   timestamp. The generic `.hint` variant marks branchless (pi) sessions. */
+.row .badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: #e0a458;
+  background: rgba(224, 164, 88, 0.13);
+}
+
+.row .badge + .when {
+  margin-left: 6px;
+}
+
+.row .badge.hint {
+  color: var(--text-dim);
+  background: rgba(128, 128, 128, 0.12);
 }
 
 .tree-foot {

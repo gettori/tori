@@ -33,9 +33,11 @@ export default function EditorPane(props: { selected: Selection | null }) {
   let gotoNonce = 0;
 
   const openPaths = () => openFiles().map((f) => f.path);
-  const root = () => props.selected?.projectPath ?? null;
+  // The session/branch-unit working folder is the anchor for the editor, file
+  // tree, gutter, review surface, fs watcher, and LSP, not the project container.
+  const root = () => props.selected?.folderPath ?? null;
 
-  // Start (and on project switch, replace) the fs watcher so the gutter and the
+  // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
   createEffect(
     on(root, (r) => {

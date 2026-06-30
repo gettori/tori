@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH, DRAG_ABS_PATH_MIME } from "../events";
 import ClaudeIcon from "../seti/ClaudeIcon";
+import PiIcon from "../seti/PiIcon";
 import Chevron from "./Chevron";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
@@ -15,10 +16,19 @@ function startAbsDrag(e: DragEvent, paths: string | string[]) {
   if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
 }
 
-type Project = { name: string; path: string };
+// A branch-unit: a worktree folder, a branch of a plain repo, a non-git folder
+// (plain-dir), or a cleanable stub (incomplete). All four share `folderPath`,
+// the working dir the session/editor anchors on.
+type BranchUnit = {
+  label: string;
+  folderPath: string;
+  branch: string | null;
+  kind: string; // "worktree" | "plain" | "plain-dir" | "incomplete"
+  isCurrent: boolean;
+};
+type Project = { name: string; path: string; branchUnits: BranchUnit[] };
 type Group = { name: string; projects: Project[] };
 type ResolvedConfig = { path: string; groups: Group[] };
-type Branch = { name: string; current: boolean };
 type SessionMeta = {
   id: string;
   path: string;
@@ -34,9 +44,19 @@ type SessionMeta = {
 export type Selection = {
   projectName: string;
   projectPath: string;
+  // The branch-unit's working folder: the anchor every path consumer uses.
+  folderPath: string;
   branch: string;
+  projectKind: string;
+  // The session's own recorded branch (Claude) for the mismatch badge.
+  recordedBranch?: string;
+  agent?: string;
   sessionId?: string;
   sessionPath?: string;
+  // What pi resumes with (`pi --session <file>`); equals sessionPath.
+  sessionFile?: string;
+  // The session's recorded cwd: where a resume should spawn (Phase 4).
+  sessionCwd?: string;
   sessionTitle?: string;
   sessionName?: string | null;
   sessionArchived?: boolean;
@@ -55,8 +75,6 @@ function ago(epochSecs: number): string {
   return `${d}d`;
 }
 
-const skey = (path: string, branch: string) => `${path}::${branch}`;
-
 function loadExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(LS_EXPANDED);
@@ -74,7 +92,7 @@ export default function Sidebar(props: {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
   const [error, setError] = createSignal("");
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
-  const [branches, setBranches] = createSignal<Record<string, Branch[]>>({});
+  // Sessions keyed by branch-unit folderPath (the cwd anchor).
   const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
   const [query, setQuery] = createSignal("");
   let searchEl: HTMLInputElement | undefined;
@@ -104,33 +122,20 @@ export default function Sidebar(props: {
     setExpanded(next);
   }
 
-  async function fetchBranches(p: Project) {
-    if (branches()[p.path]) return;
+  async function fetchSessions(folderPath: string) {
     try {
-      setBranches({ ...branches(), [p.path]: await invoke("list_branches", { path: p.path }) });
+      const s = await invoke<SessionMeta[]>("list_sessions", { folder: folderPath });
+      setSessions({ ...sessions(), [folderPath]: s });
     } catch {
-      setBranches({ ...branches(), [p.path]: [] });
-    }
-  }
-
-  async function fetchSessions(path: string, branch: string) {
-    const key = skey(path, branch);
-    try {
-      const s = await invoke<SessionMeta[]>("list_sessions", { folder: path });
-      setSessions({ ...sessions(), [key]: s });
-    } catch {
-      setSessions({ ...sessions(), [key]: [] });
+      setSessions({ ...sessions(), [folderPath]: [] });
     }
   }
 
   async function refreshSessions() {
     const updated: Record<string, SessionMeta[]> = { ...sessions() };
-    for (const k of Object.keys(updated)) {
-      const idx = k.indexOf("::");
+    for (const folder of Object.keys(updated)) {
       try {
-        updated[k] = await invoke<SessionMeta[]>("list_sessions", {
-          folder: k.slice(0, idx),
-        });
+        updated[folder] = await invoke<SessionMeta[]>("list_sessions", { folder });
       } catch {
         /* keep stale */
       }
@@ -138,46 +143,93 @@ export default function Sidebar(props: {
     setSessions(updated);
   }
 
-  // After config loads, re-hydrate branches/sessions for restored-open nodes.
+  // After config loads, re-hydrate sessions for restored-open branch-units.
   async function restoreOpen(cfg: ResolvedConfig) {
     for (const g of cfg.groups) {
       for (const p of g.projects) {
-        if (expanded().has(`p:${g.name}/${p.name}`)) {
-          await fetchBranches(p);
-        }
-      }
-    }
-    for (const g of cfg.groups) {
-      for (const p of g.projects) {
-        for (const b of branches()[p.path] ?? []) {
-          if (expanded().has(`b:${g.name}/${p.name}/${b.name}`)) {
-            await fetchSessions(p.path, b.name);
-          }
+        for (const u of p.branchUnits) {
+          if (expanded().has(ukey(g, p, u))) await fetchSessions(u.folderPath);
         }
       }
     }
   }
 
-  function selectBranch(p: Project, branch: string) {
-    props.onSelect({ projectName: p.name, projectPath: p.path, branch });
-  }
+  const gkey = (g: Group) => `g:${g.name}`;
+  const pkey = (g: Group, p: Project) => `p:${g.name}/${p.name}`;
+  const ukey = (g: Group, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
 
-  function selectSession(p: Project, branch: string, s: SessionMeta) {
+  const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
+  const currentBranch = (p: Project) =>
+    p.branchUnits.find((u) => u.isCurrent)?.branch ?? null;
+
+  function selectUnit(p: Project, u: BranchUnit) {
     props.onSelect({
       projectName: p.name,
       projectPath: p.path,
-      branch,
+      folderPath: u.folderPath,
+      branch: unitLabel(u),
+      projectKind: u.kind,
+    });
+  }
+
+  function selectSession(p: Project, u: BranchUnit, s: SessionMeta) {
+    props.onSelect({
+      projectName: p.name,
+      projectPath: p.path,
+      folderPath: u.folderPath,
+      branch: unitLabel(u),
+      projectKind: u.kind,
+      recordedBranch: s.branch || undefined,
+      agent: s.agent,
       sessionId: s.id,
       sessionPath: s.path,
+      sessionFile: s.path,
+      sessionCwd: s.cwd,
       sessionTitle: s.title,
       sessionName: s.name,
       sessionArchived: s.archived,
     });
   }
 
-  function branchSelected(p: Project, branch: string) {
+  function unitSelected(u: BranchUnit) {
     const s = props.selected;
-    return s != null && s.projectPath === p.path && s.branch === branch && s.sessionId == null;
+    return (
+      s != null &&
+      s.folderPath === u.folderPath &&
+      s.branch === unitLabel(u) &&
+      s.sessionId == null
+    );
+  }
+
+  // Attach a folder's sessions to the most-specific branch-unit. Worktree /
+  // plain-dir / incomplete units own a distinct folder, so all of it is theirs.
+  // Plain units share one repo folder, so split Claude sessions by recorded
+  // branch and park branchless (pi) sessions on the current checkout.
+  function unitSessions(u: BranchUnit): SessionMeta[] {
+    const all = (sessions()[u.folderPath] ?? [])
+      .filter((s) => !s.archived)
+      .filter(sessionVisible);
+    if (u.kind !== "plain") return all;
+    return all.filter((s) => {
+      if (s.agent === "pi") return u.isCurrent;
+      return (s.branch || "") === (u.branch || "");
+    });
+  }
+
+  // A plain branch-unit that is not the current checkout: opening anything under
+  // it shows the current tree, not this branch.
+  function unitMismatch(u: BranchUnit) {
+    return u.kind === "plain" && !u.isCurrent;
+  }
+
+  // Per-session flag: a Claude session recorded on a branch other than the
+  // current checkout, or a branchless (pi) session whose files are the checkout.
+  function sessionBadge(p: Project, u: BranchUnit, s: SessionMeta): { text: string; hint: boolean } | null {
+    if (u.kind !== "plain") return null;
+    if (s.agent === "pi") return { text: "≈ checkout", hint: true };
+    const cur = currentBranch(p);
+    if (s.branch && cur && s.branch !== cur) return { text: `≠ ${s.branch}`, hint: false };
+    return null;
   }
 
   // --- filtering ---
@@ -187,8 +239,8 @@ export default function Sidebar(props: {
   }
   function sessionsMatch(p: Project) {
     if (!q()) return false;
-    return Object.entries(sessions()).some(
-      ([k, list]) => k.startsWith(`${p.path}::`) && list.some((s) => sessionText(s).includes(q())),
+    return p.branchUnits.some((u) =>
+      (sessions()[u.folderPath] ?? []).some((s) => sessionText(s).includes(q())),
     );
   }
   function projectVisible(p: Project) {
@@ -245,13 +297,12 @@ export default function Sidebar(props: {
       <div class="tree-scroll">
         <For each={(config()?.groups ?? []).filter(groupVisible)}>
           {(g) => {
-            const gkey = `g:${g.name}`;
-            const open = () => expanded().has(gkey) || !!q();
+            const open = () => expanded().has(gkey(g)) || !!q();
             return (
               <div class="node">
                 <div
                   class="row group"
-                  onClick={() => toggle(gkey)}
+                  onClick={() => toggle(gkey(g))}
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
                 >
@@ -261,16 +312,12 @@ export default function Sidebar(props: {
                 <Show when={open()}>
                   <For each={g.projects.filter(projectVisible)}>
                     {(p) => {
-                      const pkey = `p:${g.name}/${p.name}`;
-                      const popen = () => expanded().has(pkey);
+                      const popen = () => expanded().has(pkey(g, p));
                       return (
                         <div class="node">
                           <div
                             class="row project sub1"
-                            onClick={() => {
-                              toggle(pkey);
-                              fetchBranches(p);
-                            }}
+                            onClick={() => toggle(pkey(g, p))}
                             draggable={true}
                             onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
@@ -279,50 +326,70 @@ export default function Sidebar(props: {
                           </div>
                           <Show when={popen()}>
                             <For
-                              each={branches()[p.path] ?? []}
-                              fallback={<div class="row dim sub2">no git branches</div>}
+                              each={p.branchUnits}
+                              fallback={<div class="row dim sub2">no branches</div>}
                             >
-                              {(b) => {
-                                const bkey = `b:${g.name}/${p.name}/${b.name}`;
-                                const bopen = () => expanded().has(bkey);
+                              {(u) => {
+                                const uopen = () => expanded().has(ukey(g, p, u));
                                 return (
                                   <div class="node">
                                     <div
-                                      class={`row branch sub2 ${branchSelected(p, b.name) ? "sel" : ""}`}
+                                      class={`row branch sub2 ${unitSelected(u) ? "sel" : ""}`}
                                       onClick={() => {
-                                        toggle(bkey);
-                                        fetchSessions(p.path, b.name);
-                                        selectBranch(p, b.name);
+                                        toggle(ukey(g, p, u));
+                                        fetchSessions(u.folderPath);
+                                        selectUnit(p, u);
                                       }}
                                       draggable={true}
-                                      onDragStart={(e) => startAbsDrag(e, p.path)}
+                                      onDragStart={(e) => startAbsDrag(e, u.folderPath)}
                                     >
-                                      <Chevron open={bopen()} />
-                                      <span class="label">{b.name}</span>
-                                      <Show when={b.current}>
-                                        <span class="dot" title="current branch">●</span>
+                                      <Chevron open={uopen()} />
+                                      <span class="label">{unitLabel(u)}</span>
+                                      <Show when={u.kind === "incomplete"}>
+                                        <span class="badge hint" title="A .bare with no worktrees (cleanable stub)">stub</span>
+                                      </Show>
+                                      <Show when={unitMismatch(u)}>
+                                        <span class="badge" title="Not the current checkout">≠ checkout</span>
+                                      </Show>
+                                      <Show when={u.isCurrent}>
+                                        <span class="dot" title="current checkout">●</span>
                                       </Show>
                                     </div>
-                                    <Show when={bopen()}>
+                                    <Show when={uopen()}>
                                       <For
-                                        each={(sessions()[skey(p.path, b.name)] ?? [])
-                                          .filter((s) => !s.archived)
-                                          .filter(sessionVisible)}
+                                        each={unitSessions(u)}
                                         fallback={<div class="row dim sub3">no sessions</div>}
                                       >
-                                        {(s) => (
-                                          <div
-                                            class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
-                                            onClick={() => selectSession(p, b.name, s)}
-                                            title={s.name || s.title}
-                                            draggable={true}
-                                            onDragStart={(e) => startAbsDrag(e, s.path)}
-                                          >
-                                            <ClaudeIcon />
-                                            <span class="label">{s.name || s.title}</span>
-                                            <span class="when">{ago(s.last_active)}</span>
-                                          </div>
-                                        )}
+                                        {(s) => {
+                                          const badge = sessionBadge(p, u, s);
+                                          return (
+                                            <div
+                                              class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
+                                              onClick={() => selectSession(p, u, s)}
+                                              title={s.name || s.title}
+                                              draggable={true}
+                                              onDragStart={(e) => startAbsDrag(e, s.path)}
+                                            >
+                                              <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
+                                                <PiIcon />
+                                              </Show>
+                                              <span class="label">{s.name || s.title}</span>
+                                              <Show when={badge}>
+                                                <span
+                                                  class={`badge ${badge!.hint ? "hint" : ""}`}
+                                                  title={
+                                                    badge!.hint
+                                                      ? "Branchless session: files reflect the current checkout"
+                                                      : "Recorded on a branch other than the current checkout"
+                                                  }
+                                                >
+                                                  {badge!.text}
+                                                </span>
+                                              </Show>
+                                              <span class="when">{ago(s.last_active)}</span>
+                                            </div>
+                                          );
+                                        }}
                                       </For>
                                     </Show>
                                   </div>
