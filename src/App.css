@@ -442,6 +442,18 @@ body.dragging .term-host {
   text-overflow: ellipsis;
 }
 
+/* "Other" section header: a divider above pinned external folders. */
+.tree-divider {
+  margin: 6px 8px 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
 /* First-run / no-projects empty state inside the tree. */
 .tree-empty {
   padding: 18px 14px;
