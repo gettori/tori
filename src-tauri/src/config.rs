@@ -145,7 +145,7 @@ fn basename(p: &Path) -> String {
 }
 
 // No project is seeded: a fresh config has no roots, which the UI detects as a
-// first run and offers a folder picker (see add_root). Projects are discovered
+// first run and offers a folder picker (see set_root). Projects are discovered
 // from the roots the user adds; legacy `[[project]]` tables are still honored.
 const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base folders.
 # Add a base folder from the app, or declare roots here:
@@ -390,7 +390,9 @@ fn ensure_group_idx(groups: &mut Vec<Group>, name: &str, path: &Path) -> usize {
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     let skip = |name: &str| name.starts_with('.') || raw.discovery.ignore.iter().any(|i| i == name);
-    let roots: Vec<String> = raw.discovery.roots.iter().map(|r| expand_tilde(r)).collect();
+    // Single canonical root: a legacy multi-root config collapses to the first on
+    // load (not only on explicit reset), so discovery yields one tree, never two.
+    let roots: Vec<String> = raw.discovery.roots.iter().take(1).map(|r| expand_tilde(r)).collect();
 
     let mut groups: Vec<Group> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
@@ -545,9 +547,9 @@ pub fn pick_folder() -> Result<Option<String>, String> {
     Ok(Some(path.trim_end_matches('/').to_string()))
 }
 
-/// Add `path` to `[discovery].roots` in the given toml text, preserving other
-/// keys (including legacy `[[project]]`). Idempotent: no duplicate root.
-fn insert_root(text: &str, path: &str) -> Result<String, String> {
+/// Replace `[discovery].roots` with exactly `[path]` (the single-root model),
+/// preserving other keys (including `paths` and legacy `[[project]]`).
+fn replace_root(text: &str, path: &str) -> Result<String, String> {
     let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
     let discovery = doc
         .entry("discovery")
@@ -555,24 +557,41 @@ fn insert_root(text: &str, path: &str) -> Result<String, String> {
     let dt = discovery
         .as_table_mut()
         .ok_or("`discovery` is not a table")?;
-    let roots = dt
-        .entry("roots")
-        .or_insert_with(|| toml::Value::Array(Vec::new()));
-    let arr = roots.as_array_mut().ok_or("`roots` is not an array")?;
-    if !arr.iter().any(|v| v.as_str() == Some(path)) {
-        arr.push(toml::Value::String(path.to_string()));
+    dt.insert(
+        "roots".into(),
+        toml::Value::Array(vec![toml::Value::String(path.to_string())]),
+    );
+    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
+}
+
+/// Clear `[discovery].roots` to an empty array (forget the root), preserving
+/// other keys (`paths`, legacy `[[project]]`). A no-op when there is no root.
+fn clear_root(text: &str) -> Result<String, String> {
+    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+    if let Some(dt) = doc.get_mut("discovery").and_then(|d| d.as_table_mut()) {
+        dt.insert("roots".into(), toml::Value::Array(Vec::new()));
     }
     toml::to_string_pretty(&doc).map_err(|e| e.to_string())
 }
 
-/// Append a base folder to `[discovery].roots`, preserving other config keys.
+/// Set the single base folder, replacing any existing root(s).
 #[tauri::command]
-pub fn add_root(app: AppHandle, path: String) -> Result<(), String> {
+pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
     let p = path.trim().trim_end_matches('/').to_string();
     if p.is_empty() {
         return Err("Empty path".into());
     }
-    let serialized = insert_root(&ensure_config()?, &p)?;
+    let serialized = replace_root(&ensure_config()?, &p)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Forget the configured root (no on-disk deletion). Returns to the first-run
+/// state; `paths` pins and legacy `[[project]]` entries are kept.
+#[tauri::command]
+pub fn remove_root(app: AppHandle) -> Result<(), String> {
+    let serialized = clear_root(&ensure_config()?)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -990,18 +1009,60 @@ mod tests {
     }
 
     #[test]
-    fn insert_root_adds_once_and_preserves_legacy() {
-        // Empty config: creates [discovery].roots with the path.
-        let out = insert_root("", "/Users/x/Projects").unwrap();
+    fn replace_root_reduces_to_one_and_preserves_other_keys() {
+        // Empty config: creates [discovery].roots with the single path.
+        let out = replace_root("", "/Users/x/Projects").unwrap();
         assert!(out.contains("/Users/x/Projects"));
-        // Idempotent: re-inserting the same root does not duplicate it.
-        let again = insert_root(&out, "/Users/x/Projects").unwrap();
-        assert_eq!(again.matches("/Users/x/Projects").count(), 1);
-        // A legacy [[project]] table survives the rewrite.
-        let legacy = "[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n";
-        let merged = insert_root(legacy, "/r").unwrap();
+        // A two-root config collapses to exactly the new single root.
+        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n";
+        let one = replace_root(two, "/c").unwrap();
+        let cfg: RawConfig = toml::from_str(&one).unwrap();
+        assert_eq!(cfg.discovery.roots, vec!["/c".to_string()]);
+        // `paths` and legacy [[project]] survive the rewrite.
+        assert_eq!(cfg.discovery.paths, vec!["/p/ext".to_string()]);
+        let legacy = "[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n[discovery]\nroots = [\"/a\", \"/b\"]\n";
+        let merged = replace_root(legacy, "/r").unwrap();
         assert!(merged.contains("[[project]]"));
         assert!(merged.contains("/p/a"));
-        assert!(merged.contains("/r"));
+        let mcfg: RawConfig = toml::from_str(&merged).unwrap();
+        assert_eq!(mcfg.discovery.roots, vec!["/r".to_string()]);
+    }
+
+    #[test]
+    fn clear_root_empties_roots_and_preserves_other_keys() {
+        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n\n[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n";
+        let cleared = clear_root(two).unwrap();
+        let cfg: RawConfig = toml::from_str(&cleared).unwrap();
+        assert!(cfg.discovery.roots.is_empty());
+        assert_eq!(cfg.discovery.paths, vec!["/p/ext".to_string()]);
+        assert_eq!(cfg.project.len(), 1);
+        assert_eq!(cfg.project[0].path, "/p/a");
+        // No discovery section at all is a clean no-op (still parses, no roots).
+        let none = clear_root("").unwrap();
+        let ncfg: RawConfig = toml::from_str(&none).unwrap();
+        assert!(ncfg.discovery.roots.is_empty());
+    }
+
+    #[test]
+    fn multi_root_config_yields_one_discovered_tree() {
+        let tmp = unique_tmp();
+        // Two distinct roots, each with its own group/project.
+        let root_a = tmp.join("A");
+        let root_b = tmp.join("B");
+        init_repo(&root_a.join("ga/pa"), "main");
+        init_repo(&root_b.join("gb/pb"), "main");
+
+        let index = ProjectIndex::default();
+        let cfg = resolve(
+            raw(&[root_a.to_str().unwrap(), root_b.to_str().unwrap()], &[], &[], &[]),
+            &index,
+        );
+
+        // Only the first root is scanned: its group present, the second's absent.
+        assert_eq!(cfg.roots.len(), 1);
+        assert!(group(&cfg, "ga").is_some());
+        assert!(group(&cfg, "gb").is_none());
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
