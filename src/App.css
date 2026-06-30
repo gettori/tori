@@ -344,6 +344,55 @@ body.dragging .term-host {
   text-overflow: ellipsis;
 }
 
+/* "+" on a group row to add a project folder; shown on row hover. */
+.row-add {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.row.group:hover .row-add {
+  visibility: visible;
+}
+
+.row-add:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* First-run / no-projects empty state inside the tree. */
+.tree-empty {
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.tree-empty p {
+  margin: 0 0 2px;
+  line-height: 1.4;
+}
+
+/* Create-group / add-base-folder actions above the config-path footer. */
+.tree-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
 /* ---- Detail panel ---- */
 .detail {
   flex: 1;
