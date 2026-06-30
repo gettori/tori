@@ -4,9 +4,11 @@
 // the gutter reflects all uncommitted work (staged + unstaged), matching the
 // "uncommitted changes" review surface, not just unstaged edits.
 
+use std::path::Path;
 use std::process::Command;
 
 use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Serialize)]
 pub struct GitFileStatus {
@@ -159,6 +161,114 @@ pub fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
     Ok(())
 }
 
+// --- plain-dir git lifecycle (init / remote / origin) ---
+
+fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// A default .gitignore scaffolded on `git init`, excluding the common junk that
+/// must never enter the first commit.
+const DEFAULT_GITIGNORE: &str = "\
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+target/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+";
+
+/// Core of `git_init` without the app event, so it is unit-testable: `git init`
+/// (optional initial branch via symbolic-ref, portable across git versions) and
+/// a scaffolded .gitignore when none exists. Refuses an existing repo.
+fn do_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
+    if dir.join(".git").exists() {
+        return Err("This folder is already a git repository.".into());
+    }
+    let path = dir.to_string_lossy();
+    git_run(&path, &["init", "-q"])?;
+    if let Some(b) = branch.map(str::trim).filter(|b| !b.is_empty()) {
+        if b.contains('/') || b.contains(char::is_whitespace) || b.starts_with('-') {
+            return Err("Invalid branch name".into());
+        }
+        git_run(&path, &["symbolic-ref", "HEAD", &format!("refs/heads/{b}")])?;
+    }
+    let gitignore = dir.join(".gitignore");
+    if !gitignore.exists() {
+        std::fs::write(&gitignore, DEFAULT_GITIGNORE).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Initialize a git repo in a plain-dir project (optional initial branch),
+/// scaffolding a default .gitignore. Re-discovers (plain-dir becomes plain).
+#[tauri::command]
+pub fn git_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
+    do_init(Path::new(&project_path), branch.as_deref())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Add the `origin` remote, or update its URL if it already exists.
+#[tauri::command]
+pub fn git_remote_add(app: AppHandle, project_path: String, url: String) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("Remote URL is empty".into());
+    }
+    let exists = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if exists {
+        git_run(&project_path, &["remote", "set-url", "origin", url])?;
+    } else {
+        git_run(&project_path, &["remote", "add", "origin", url])?;
+    }
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Origin's URL if configured, else None. Lets the UI gate push on a remote.
+#[tauri::command]
+pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((!url.is_empty()).then_some(url))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +367,86 @@ diff --git a/f b/f
         assert!(!err.is_empty(), "stderr should be surfaced");
         // Never half-switch: the tree stays on the original branch.
         assert_eq!(current_branch(&dir), "main");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn empty_tmp() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("sway_init_test_{n}_{seq}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn init_makes_repo_sets_branch_and_scaffolds_gitignore() {
+        let dir = empty_tmp();
+        do_init(&dir, Some("main")).unwrap();
+
+        // It is now a repo whose unborn HEAD points at the requested branch
+        // (rev-parse --abbrev-ref reports "HEAD" before the first commit, so read
+        // the symbolic ref directly).
+        assert!(dir.join(".git").exists());
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["symbolic-ref", "--short", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+
+        // The scaffolded .gitignore excludes common junk.
+        let ignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
+        assert!(ignore.contains("node_modules"));
+
+        // Re-initializing is refused (already a repo).
+        assert!(do_init(&dir, None).is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn init_preserves_an_existing_gitignore() {
+        let dir = empty_tmp();
+        std::fs::write(dir.join(".gitignore"), "custom-only\n").unwrap();
+        do_init(&dir, None).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(".gitignore")).unwrap(), "custom-only\n");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn scaffolded_gitignore_keeps_junk_out_of_the_commit() {
+        let dir = empty_tmp();
+        do_init(&dir, Some("main")).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules")).unwrap();
+        std::fs::write(dir.join("node_modules/pkg.js"), "x").unwrap();
+        std::fs::write(dir.join("real.txt"), "code").unwrap();
+        git(&dir, &["add", "-A"]);
+
+        // Only the real file is staged; node_modules is ignored.
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["diff", "--cached", "--name-only"])
+            .output()
+            .unwrap();
+        let staged = String::from_utf8_lossy(&out.stdout);
+        assert!(staged.contains("real.txt"));
+        assert!(!staged.contains("node_modules"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn origin_reports_url_only_when_set() {
+        let dir = empty_tmp();
+        do_init(&dir, Some("main")).unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        assert_eq!(git_origin(p.clone()).unwrap(), None);
+        git(&dir, &["remote", "add", "origin", "https://example.com/x.git"]);
+        assert_eq!(git_origin(p).unwrap().as_deref(), Some("https://example.com/x.git"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

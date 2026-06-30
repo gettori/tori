@@ -362,6 +362,76 @@ export default function Sidebar(props: {
     }
   }
 
+  // --- plain-dir git lifecycle ---
+
+  // Open a terminal tab for an in-place op (no folder creation), re-discovering
+  // on exit. Used for first-commit and push (native progress + ambient auth).
+  function runOpInTab(cwd: string, kind: string, title: string, program: string, args: string[]) {
+    setError("");
+    emitWith<OpenTerminal>(OPEN_TERMINAL, {
+      id: `${kind}:${cwd}:${Date.now()}`,
+      title,
+      cwd,
+      program,
+      args,
+      rediscoverOnExit: true,
+    });
+  }
+
+  // Initialize git in a plain-dir (optional initial branch); re-discovers as plain.
+  async function initRepo(p: Project) {
+    const branch = prompt(`Initialize git in "${p.name}". Initial branch (blank = git default):`);
+    if (branch === null) return; // cancelled
+    try {
+      await invoke("git_init", { projectPath: p.path, branch: branch.trim() || null });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function addRemote(p: Project) {
+    const url = prompt(`Remote URL (origin) for "${p.name}":`);
+    if (!url?.trim()) return;
+    try {
+      await invoke("git_remote_add", { projectPath: p.path, url: url.trim() });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // First commit: stage everything (the scaffolded .gitignore keeps junk out) and
+  // commit with the prompted message, in a terminal tab. Message passes as $1.
+  async function commitAll(p: Project) {
+    const msg = prompt(`Commit message for "${p.name}":`);
+    if (!msg?.trim()) return;
+    runOpInTab(p.path, "commit", `commit ${p.name}`, "sh", [
+      "-c",
+      'git add -A && git commit -m "$1"',
+      "sway",
+      msg.trim(),
+    ]);
+  }
+
+  // Push the current branch with upstream tracking, in a terminal tab. Refused
+  // (with a clear message) when no origin remote is configured.
+  async function pushRepo(p: Project) {
+    let origin: string | null = null;
+    try {
+      origin = await invoke<string | null>("git_origin", { projectPath: p.path });
+    } catch (e) {
+      return setError(String(e));
+    }
+    if (!origin) {
+      return setError('No "origin" remote. Add a remote first, then push.');
+    }
+    runOpInTab(p.path, "push", `push ${p.name}`, "sh", [
+      "-c",
+      'git push -u origin "$(git rev-parse --abbrev-ref HEAD)"',
+      "sway",
+    ]);
+  }
+
   // --- session overlay actions (rename/archive/delete) ---
 
   async function renameSession(s: SessionMeta) {
@@ -409,15 +479,28 @@ export default function Sidebar(props: {
           { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
         ];
 
-  // A bare-container ("worktree") project: its branch-units are worktree folders.
-  const isWorktreeProject = (p: Project) => p.branchUnits.some((u) => u.kind === "worktree");
+  // A project's git kind comes from its branch-units (all share one kind).
+  const projectKind = (p: Project) => p.branchUnits[0]?.kind;
 
-  // External (pinned) projects can be unpinned. A worktree container can spawn a
-  // new worktree. Plain/plain-dir get their git lifecycle in Phase 5.
+  // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
+  // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
+  // a plain repo commits / sets a remote / pushes.
   const projectMenu = (p: Project): MenuItem[] => {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
-    if (isWorktreeProject(p)) return [{ label: "New worktree…", onClick: () => createWorktree(p) }];
-    return [];
+    switch (projectKind(p)) {
+      case "worktree":
+        return [{ label: "New worktree…", onClick: () => createWorktree(p) }];
+      case "plain-dir":
+        return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
+      case "plain":
+        return [
+          { label: "Commit all…", onClick: () => commitAll(p) },
+          { label: "Add / set remote…", onClick: () => addRemote(p) },
+          { label: "Push", onClick: () => pushRepo(p) },
+        ];
+      default:
+        return [];
+    }
   };
 
   const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
