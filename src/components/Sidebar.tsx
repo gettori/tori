@@ -27,8 +27,8 @@ type BranchUnit = {
   isCurrent: boolean;
 };
 type Project = { name: string; path: string; branchUnits: BranchUnit[] };
-type Group = { name: string; projects: Project[] };
-type ResolvedConfig = { path: string; groups: Group[] };
+type Group = { name: string; path: string; projects: Project[] };
+type ResolvedConfig = { path: string; roots: string[]; groups: Group[] };
 type SessionMeta = {
   id: string;
   path: string;
@@ -108,8 +108,48 @@ export default function Sidebar(props: {
 
   async function loadConfig() {
     try {
-      setConfig(await invoke<ResolvedConfig>("get_config"));
+      const cfg = await invoke<ResolvedConfig>("get_config");
+      setConfig(cfg);
       setError("");
+      // (Re)install the shallow root watch so external folder creates surface.
+      invoke("roots_watch_start", { roots: cfg.roots }).catch(() => {});
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // First run: a native folder picker, persisted as a discovery root. Cancel is
+  // a no-op (the empty state with this action stays put), never a loop.
+  async function addBaseFolder() {
+    try {
+      const path = await invoke<string | null>("pick_folder");
+      if (!path) return;
+      await invoke("add_root", { path });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function addGroup() {
+    const roots = config()?.roots ?? [];
+    if (!roots.length) return;
+    const name = prompt("New group name:");
+    if (!name) return;
+    try {
+      await invoke("add_group", { root: roots[0], name });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function addFolder(g: Group) {
+    const name = prompt(`New folder in "${g.name}":`);
+    if (!name) return;
+    try {
+      await invoke("add_folder", { groupPath: g.path, name });
+      await loadConfig();
     } catch (e) {
       setError(String(e));
     }
@@ -335,6 +375,16 @@ export default function Sidebar(props: {
                 >
                   <Chevron open={open()} />
                   <span class="label">{g.name}</span>
+                  <button
+                    class="row-add"
+                    title="New folder in this group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addFolder(g);
+                    }}
+                  >
+                    +
+                  </button>
                 </div>
                 <Show when={open()}>
                   <For each={g.projects.filter(projectVisible)}>
@@ -433,9 +483,37 @@ export default function Sidebar(props: {
             );
           }}
         </For>
+
+        <Show when={(config()?.groups ?? []).length === 0}>
+          <div class="tree-empty">
+            <Show
+              when={(config()?.roots?.length ?? 0) === 0}
+              fallback={
+                <>
+                  <p>No projects found under your base folders.</p>
+                  <button class="btn" onClick={addGroup}>+ Create group</button>
+                  <button class="btn ghost" onClick={addBaseFolder}>Add another base folder</button>
+                </>
+              }
+            >
+              <p>Welcome to Sway. Add a base folder to discover your projects.</p>
+              <button class="btn" onClick={addBaseFolder}>Add base folder</button>
+            </Show>
+          </div>
+        </Show>
       </div>
 
       <Show when={config()}>
+        <div class="tree-actions">
+          <Show when={(config()!.roots?.length ?? 0) > 0}>
+            <button class="btn xs" onClick={addGroup} title="Create a group under your base folder">
+              + Group
+            </button>
+          </Show>
+          <button class="btn xs ghost" onClick={addBaseFolder} title="Add a base folder to discover">
+            + Base folder
+          </button>
+        </div>
         <div class="tree-foot" title={config()!.path}>
           {config()!.path.replace(/^.*\/\.config\//, "~/.config/")}
         </div>
