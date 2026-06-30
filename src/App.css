@@ -750,16 +750,48 @@ body.dragging .term-host {
   color: #fff;
 }
 
-.term-new {
+/* Split button: "+ Claude" main action + caret that opens a launch menu.
+   align-items: stretch makes the caret match the taller main half's height. */
+.term-new-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
   margin-left: 2px;
-  align-self: center;
+}
+
+.term-new {
+  align-self: stretch;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 4px;
-  padding: 4px 8px;
   font-size: 13px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.term-new-main {
+  padding: 4px 8px;
+  border-radius: 4px 0 0 4px;
+  border-right: none;
+}
+
+.term-new-caret {
+  padding: 4px 6px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* The caret glyph is a › rotated to point down; it flips when the menu is open. */
+.term-new-chevron {
+  display: inline-block;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.term-new-caret[aria-expanded="true"] .term-new-chevron {
+  transform: rotate(-90deg);
 }
 
 .term-new:hover:not(:disabled) {
@@ -767,9 +799,44 @@ body.dragging .term-host {
   border-color: var(--accent);
 }
 
+/* Keep the shared divider crisp when only one half is hovered. */
+.term-new-main:hover:not(:disabled) + .term-new-caret:not(:hover) {
+  border-left-color: var(--accent);
+}
+
 .term-new:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.term-new-menu {
+  position: fixed;
+  transform: translateX(-100%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.term-new-menu-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.term-new-menu-item:hover {
+  color: #fff;
+  background: var(--accent);
 }
 
 .term-stage {
@@ -998,6 +1065,7 @@ body.dragging .term-host {
 /* The pinned trailing action (+ New / Follow) sits at the far right. */
 .otab-trailing {
   margin-left: auto;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   flex: none;
