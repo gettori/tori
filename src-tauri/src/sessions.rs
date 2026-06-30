@@ -87,6 +87,20 @@ fn extract_text(content: &serde_json::Value) -> Option<String> {
     None
 }
 
+/// True only for a message a human actually typed: it has visible text (so
+/// tool-result and tool-use-only turns, whose content carries no text block,
+/// are excluded) and isn't a slash-command/tag envelope (`<...>`) or pi's
+/// `[Context]` block. Used to count prompts, not raw transcript turns.
+fn is_human_prompt(content: &serde_json::Value) -> bool {
+    match extract_text(content) {
+        Some(t) => {
+            let t = t.trim();
+            !t.is_empty() && !t.starts_with('<') && !t.starts_with("[Context]")
+        }
+        None => false,
+    }
+}
+
 fn clean_title(raw: &str) -> String {
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
@@ -414,9 +428,10 @@ pub fn delete_session(path: String) -> Result<(), String> {
 /// Is a `claude --resume <id>` process currently running?
 #[tauri::command]
 pub fn session_running(id: String) -> Result<bool, String> {
-    let out = Command::new("pgrep")
-        .args(["-f", &format!("--resume {id}")])
-        .output();
+    // The session id appears in both agents' live command lines: Claude as
+    // `claude --resume <id>`, pi as `pi --session <…/<ts>_<id>.jsonl>`. Matching
+    // the bare id (a uuid, so no realistic collision) detects either.
+    let out = Command::new("pgrep").args(["-f", &id]).output();
     Ok(out
         .map(|o| o.status.success() && !o.stdout.is_empty())
         .unwrap_or(false))
@@ -424,19 +439,30 @@ pub fn session_running(id: String) -> Result<bool, String> {
 
 #[derive(Serialize)]
 pub struct SessionDetail {
-    pub message_count: u32,
+    /// Messages the human actually typed (see `is_human_prompt`).
+    pub prompt_count: u32,
+    /// Agent replies (assistant messages).
+    pub turn_count: u32,
+    /// Tool invocations across the session.
+    pub tool_count: u32,
     pub output_tokens: u64,
     pub context_tokens: u64,
     pub model: Option<String>,
 }
 
 /// Read the full transcript once (only on selection) for counts and tokens.
+/// Handles both transcript shapes: Claude tags user/assistant at the top level
+/// with a `{output,input,cache_*}_tokens` usage; pi wraps each turn in a
+/// `type:"message"` envelope with `message.role` and a `{input,output,cacheRead,
+/// cacheWrite}` usage. Each line is dispatched by shape so one pass covers both.
 #[tauri::command]
 pub fn session_detail(path: String) -> Result<SessionDetail, String> {
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
 
-    let mut message_count = 0u32;
+    let mut prompt_count = 0u32;
+    let mut turn_count = 0u32;
+    let mut tool_count = 0u32;
     let mut output_tokens = 0u64;
     let mut context_tokens = 0u64;
     let mut model: Option<String> = None;
@@ -446,31 +472,87 @@ pub fn session_detail(path: String) -> Result<SessionDetail, String> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        let kind = v.get("type").and_then(|t| t.as_str());
-        if kind == Some("user") || kind == Some("assistant") {
-            if v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) {
-                message_count += 1;
+        match v.get("type").and_then(|t| t.as_str()) {
+            // Claude: the turn is the top-level record.
+            Some(kind @ ("user" | "assistant")) => {
+                if kind == "user" && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) {
+                    if let Some(c) = v.get("message").and_then(|m| m.get("content")) {
+                        if is_human_prompt(c) {
+                            prompt_count += 1;
+                        }
+                    }
+                }
+                if kind == "assistant" {
+                    turn_count += 1;
+                    if let Some(msg) = v.get("message") {
+                        // Each tool_use block in the reply is one tool call.
+                        if let Some(arr) = msg.get("content").and_then(|c| c.as_array()) {
+                            tool_count += arr
+                                .iter()
+                                .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
+                                .count() as u32;
+                        }
+                        if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
+                            model = Some(m.to_string());
+                        }
+                        if let Some(u) = msg.get("usage") {
+                            let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
+                            output_tokens += get("output_tokens");
+                            // Last assistant turn's input reflects current context size.
+                            context_tokens = get("input_tokens")
+                                + get("cache_read_input_tokens")
+                                + get("cache_creation_input_tokens");
+                        }
+                    }
+                }
             }
-        }
-        if kind == Some("assistant") {
-            if let Some(msg) = v.get("message") {
-                if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
+            // pi: the turn lives under a `message` envelope.
+            Some("message") => {
+                let msg = match v.get("message") {
+                    Some(m) => m,
+                    None => continue,
+                };
+                let role = msg.get("role").and_then(|r| r.as_str());
+                if role == Some("user") {
+                    if let Some(c) = msg.get("content") {
+                        if is_human_prompt(c) {
+                            prompt_count += 1;
+                        }
+                    }
+                }
+                // pi logs one toolResult per tool call (mirrors the assistant's
+                // toolCall blocks); counting these is the tool-call total.
+                if role == Some("toolResult") {
+                    tool_count += 1;
+                }
+                if role == Some("assistant") {
+                    turn_count += 1;
+                    if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
+                        model = Some(m.to_string());
+                    }
+                    if let Some(u) = msg.get("usage") {
+                        let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
+                        output_tokens += get("output");
+                        // Last assistant turn's input reflects current context size.
+                        context_tokens = get("input") + get("cacheRead") + get("cacheWrite");
+                    }
+                }
+            }
+            // pi: an explicit mid-session model switch. It can land after the
+            // last assistant turn, so this (in file order) is the current model.
+            Some("model_change") => {
+                if let Some(m) = v.get("modelId").and_then(|m| m.as_str()) {
                     model = Some(m.to_string());
                 }
-                if let Some(u) = msg.get("usage") {
-                    let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
-                    output_tokens += get("output_tokens");
-                    // Last assistant turn's input reflects current context size.
-                    context_tokens = get("input_tokens")
-                        + get("cache_read_input_tokens")
-                        + get("cache_creation_input_tokens");
-                }
             }
+            _ => {}
         }
     }
 
     Ok(SessionDetail {
-        message_count,
+        prompt_count,
+        turn_count,
+        tool_count,
         output_tokens,
         context_tokens,
         model,
