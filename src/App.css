@@ -344,14 +344,23 @@ body.dragging .term-host {
   text-overflow: ellipsis;
 }
 
-/* "+" on a group row to add a project folder; shown on row hover. */
-.row-add {
+/* Row action buttons (group: new/clone/bootstrap; incomplete stub: remove).
+   Hidden until the row is hovered. */
+.row-actions {
   margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.row-add {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
   line-height: 14px;
   text-align: center;
+  font-size: 11px;
   border: none;
   border-radius: 3px;
   background: transparent;
@@ -360,7 +369,7 @@ body.dragging .term-host {
   visibility: hidden;
 }
 
-.row.group:hover .row-add {
+.row:hover .row-add {
   visibility: visible;
 }
 

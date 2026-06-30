@@ -1,9 +1,10 @@
-import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import OverflowTabBar from "./OverflowTabBar";
 import type { Selection } from "./Sidebar";
-import { on as onEvent, CLOSE_TAB } from "../events";
+import { on as onEvent, onWith, CLOSE_TAB, OPEN_TERMINAL, type OpenTerminal } from "../events";
 
 type OpenTerm = {
   id: string;
@@ -28,6 +29,25 @@ export default function TerminalArea(props: {
     if (id) closeId(id);
   });
   onCleanup(offClose);
+
+  // Tabs (clone / bootstrap) that should re-discover projects when they exit.
+  const rediscoverOnExit = new Set<string>();
+  let offOpenTerminal: (() => void) | undefined;
+  let unlistenExit: UnlistenFn | undefined;
+  onMount(async () => {
+    offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
+      if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
+      openOrActivate({ id: t.id, title: t.title, cwd: t.cwd, program: t.program, args: t.args });
+    });
+    unlistenExit = await listen<string>("pty://exit", (e) => {
+      const id = e.payload;
+      if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
+    });
+  });
+  onCleanup(() => {
+    offOpenTerminal?.();
+    unlistenExit?.();
+  });
 
   function openOrActivate(t: OpenTerm) {
     if (!open().some((o) => o.id === t.id)) {

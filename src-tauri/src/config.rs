@@ -625,6 +625,22 @@ pub fn rediscover(app: AppHandle) -> Result<(), String> {
     app.emit("config://changed", ()).map_err(|e| e.to_string())
 }
 
+/// Remove an `incomplete` stub: a `.bare` left by a killed bootstrap, with no
+/// worktrees. Refuses anything that does not probe as `incomplete`, so a real
+/// project can never be deleted through this path (the only UI removal in scope).
+#[tauri::command]
+pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    let units = probe_project(&p);
+    let is_stub = units.len() == 1 && units[0].kind == ProjectKind::Incomplete;
+    if !is_stub {
+        return Err("Refusing: not an incomplete stub".into());
+    }
+    std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 #[derive(Default)]
 pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
 
