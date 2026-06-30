@@ -28,6 +28,7 @@ type SessionMeta = {
   last_active: number;
   name: string | null;
   archived: boolean;
+  agent?: string;
 };
 
 export type Selection = {
@@ -115,7 +116,7 @@ export default function Sidebar(props: {
   async function fetchSessions(path: string, branch: string) {
     const key = skey(path, branch);
     try {
-      const s = await invoke<SessionMeta[]>("list_sessions", { projectPath: path, branch });
+      const s = await invoke<SessionMeta[]>("list_sessions", { folder: path });
       setSessions({ ...sessions(), [key]: s });
     } catch {
       setSessions({ ...sessions(), [key]: [] });
@@ -128,8 +129,7 @@ export default function Sidebar(props: {
       const idx = k.indexOf("::");
       try {
         updated[k] = await invoke<SessionMeta[]>("list_sessions", {
-          projectPath: k.slice(0, idx),
-          branch: k.slice(idx + 2),
+          folder: k.slice(0, idx),
         });
       } catch {
         /* keep stale */
