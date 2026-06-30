@@ -71,6 +71,8 @@ pub fn run() {
             config::pick_folder,
             config::set_root,
             config::remove_root,
+            config::pin_path,
+            config::unpin_path,
             config::add_group,
             config::add_folder,
             config::rediscover,
