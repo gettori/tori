@@ -52,8 +52,8 @@ type BranchUnit = {
   kind: string; // "worktree" | "plain" | "plain-dir" | "incomplete"
   isCurrent: boolean;
 };
-type Project = { name: string; path: string; branchUnits: BranchUnit[] };
-type Group = { name: string; path: string; projects: Project[] };
+type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
+type Group = { name: string; path: string; projects: Project[]; external: boolean };
 type ResolvedConfig = { path: string; roots: string[]; groups: Group[] };
 type SessionMeta = {
   id: string;
@@ -145,6 +145,14 @@ export default function Sidebar(props: {
   // Single-root model: a root is present when roots[0] exists.
   const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
+  // Render order: root-discovered groups first, pinned externals after (under the
+  // "Other" divider). The divider is drawn before the first external group.
+  const visibleGroups = () => {
+    const gs = (config()?.groups ?? []).filter(groupVisible);
+    return [...gs.filter((g) => !g.external), ...gs.filter((g) => g.external)];
+  };
+  const firstExternalIdx = () => visibleGroups().findIndex((g) => g.external);
+
   // Per-node right-click menu. Set on `contextmenu`, cleared on close.
   const [menu, setMenu] = createSignal<MenuState | null>(null);
   function openMenu(e: MouseEvent, items: MenuItem[]) {
@@ -198,6 +206,29 @@ export default function Sidebar(props: {
     }
     try {
       await invoke("remove_root");
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Pin an out-of-root folder into the "Other" section. The backend refuses a
+  // path inside the root (it already appears in the tree); the error surfaces.
+  async function pinFolder() {
+    try {
+      const path = await invoke<string | null>("pick_folder");
+      if (!path) return;
+      await invoke("pin_path", { path });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Unpin an external project: removes it from discovery.paths, no disk deletion.
+  async function unpinPath(p: Project) {
+    try {
+      await invoke("unpin_path", { path: p.path });
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -323,16 +354,23 @@ export default function Sidebar(props: {
 
   // --- per-node context menus ---
 
-  const groupMenu = (g: Group): MenuItem[] => [
-    { label: "New folder", onClick: () => addFolder(g) },
-    { label: "Clone repo…", onClick: () => cloneRepo(g) },
-    { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
-  ];
+  // Create/clone/bootstrap target the root tree; an external ("Other") group is
+  // just a pin's parent dir, so it gets no group-level actions (unpin is per
+  // project, in projectMenu).
+  const groupMenu = (g: Group): MenuItem[] =>
+    g.external
+      ? []
+      : [
+          { label: "New folder", onClick: () => addFolder(g) },
+          { label: "Clone repo…", onClick: () => cloneRepo(g) },
+          { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
+        ];
 
-  // Entry point for Phase 4 (worktree create) and Phase 5 (git init / remote add):
-  // those commands are not built yet, so the project menu is empty for now and
-  // openMenu opens nothing until they land.
-  const projectMenu = (_p: Project): MenuItem[] => [];
+  // External (pinned) projects can be unpinned. Root projects have no actions
+  // yet: this is the wired entry point Phase 4 (worktree create) and Phase 5
+  // (git init / remote add) will populate.
+  const projectMenu = (p: Project): MenuItem[] =>
+    p.external ? [{ label: "Unpin", onClick: () => unpinPath(p) }] : [];
 
   const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
     // An incomplete stub (a .bare with no worktree) has nothing to run; its only
@@ -568,6 +606,7 @@ export default function Sidebar(props: {
                 <div class="gear-item" onClick={() => gearAction(addGroup)}>New group</div>
               </Show>
               <div class="gear-item" onClick={() => gearAction(addBaseFolder)}>Add base folder</div>
+              <div class="gear-item" onClick={() => gearAction(pinFolder)}>Pin folder to "Other"</div>
               <Show when={hasRoot()}>
                 <div class="gear-item danger" onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
               </Show>
@@ -581,10 +620,14 @@ export default function Sidebar(props: {
       </Show>
 
       <div class="tree-scroll">
-        <For each={(config()?.groups ?? []).filter(groupVisible)}>
-          {(g) => {
+        <For each={visibleGroups()}>
+          {(g, i) => {
             const open = () => expanded().has(gkey(g)) || !!q();
             return (
+              <>
+              <Show when={g.external && i() === firstExternalIdx()}>
+                <div class="tree-divider" title="Pinned folders outside your base folder">Other</div>
+              </Show>
               <div class="node">
                 <div
                   class="row group"
@@ -693,6 +736,7 @@ export default function Sidebar(props: {
                   </For>
                 </Show>
               </div>
+              </>
             );
           }}
         </For>

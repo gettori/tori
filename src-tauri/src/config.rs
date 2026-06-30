@@ -81,6 +81,8 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub branch_units: Vec<BranchUnit>,
+    // True when reached via `[discovery].paths` (a pinned external), not the root.
+    pub external: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -89,6 +91,10 @@ pub struct Group {
     // The group's directory, so the UI can mkdir a new project folder under it.
     pub path: String,
     pub projects: Vec<Project>,
+    // True for a group assembled from external pins (rendered under "Other"),
+    // false for one discovered under the root. Root and external groups of the
+    // same name stay distinct, so "Other" never absorbs a root group.
+    pub external: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -376,14 +382,17 @@ fn extra_group_and_path(raw_path: &str) -> (String, PathBuf) {
 /// Index of the group named `name` in `groups`, creating an (initially empty)
 /// entry anchored at `path` when absent. Empty group dirs are surfaced too, so a
 /// freshly created group is selectable before it holds any project.
-fn ensure_group_idx(groups: &mut Vec<Group>, name: &str, path: &Path) -> usize {
-    if let Some(i) = groups.iter().position(|g| g.name == name) {
+fn ensure_group_idx(groups: &mut Vec<Group>, name: &str, path: &Path, external: bool) -> usize {
+    // Match on name AND origin so a root group and an external pin sharing a name
+    // remain two distinct groups (root in the main tree, the pin under "Other").
+    if let Some(i) = groups.iter().position(|g| g.name == name && g.external == external) {
         return i;
     }
     groups.push(Group {
         name: name.to_string(),
         path: path.to_string_lossy().into_owned(),
         projects: Vec::new(),
+        external,
     });
     groups.len() - 1
 }
@@ -398,7 +407,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
     let mut seen_paths: HashSet<PathBuf> = HashSet::new(); // cache eviction (raw)
 
-    let mut add_project = |groups: &mut Vec<Group>, gi: usize, ppath: PathBuf| {
+    let mut add_project = |groups: &mut Vec<Group>, gi: usize, ppath: PathBuf, external: bool| {
         let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
             return; // reachable via several roots/paths: keep the first
@@ -408,6 +417,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             name: basename(&ppath),
             path: ppath.to_string_lossy().into_owned(),
             branch_units: cached_probe(index, &ppath),
+            external,
         };
         groups[gi].projects.push(project);
     };
@@ -423,12 +433,12 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             if !gpath.is_dir() || skip(&basename(&gpath)) {
                 continue;
             }
-            let gi = ensure_group_idx(&mut groups, &basename(&gpath), &gpath);
+            let gi = ensure_group_idx(&mut groups, &basename(&gpath), &gpath, false);
             if let Ok(projects) = std::fs::read_dir(&gpath) {
                 for p in projects.flatten() {
                     let ppath = p.path();
                     if ppath.is_dir() && !skip(&basename(&ppath)) {
-                        add_project(&mut groups, gi, ppath);
+                        add_project(&mut groups, gi, ppath, false);
                     }
                 }
             }
@@ -446,8 +456,8 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     }
     for (gname, ppath) in extra {
         let group_path = ppath.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| ppath.clone());
-        let gi = ensure_group_idx(&mut groups, &gname, &group_path);
-        add_project(&mut groups, gi, ppath);
+        let gi = ensure_group_idx(&mut groups, &gname, &group_path, true);
+        add_project(&mut groups, gi, ppath, true);
     }
 
     // Evict cache entries for projects that no longer exist.
@@ -592,6 +602,75 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn remove_root(app: AppHandle) -> Result<(), String> {
     let serialized = clear_root(&ensure_config()?)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Append `path` to `[discovery].paths`, preserving other keys. Idempotent.
+fn add_path(text: &str, path: &str) -> Result<String, String> {
+    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+    let discovery = doc
+        .entry("discovery")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let dt = discovery.as_table_mut().ok_or("`discovery` is not a table")?;
+    let paths = dt
+        .entry("paths")
+        .or_insert_with(|| toml::Value::Array(Vec::new()));
+    let arr = paths.as_array_mut().ok_or("`paths` is not an array")?;
+    if !arr.iter().any(|v| v.as_str() == Some(path)) {
+        arr.push(toml::Value::String(path.to_string()));
+    }
+    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
+}
+
+/// Remove `path` from `[discovery].paths`, preserving other keys. No-op if absent.
+fn remove_path(text: &str, path: &str) -> Result<String, String> {
+    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+    if let Some(dt) = doc.get_mut("discovery").and_then(|d| d.as_table_mut()) {
+        if let Some(arr) = dt.get_mut("paths").and_then(|p| p.as_array_mut()) {
+            arr.retain(|v| v.as_str() != Some(path));
+        }
+    }
+    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
+}
+
+/// Is `child` the same as, or nested under, `parent`? Canonical when both exist,
+/// else a lexical prefix check on a normalized (trailing-slash-stripped) form.
+fn is_inside(child: &str, parent: &str) -> bool {
+    let c = std::fs::canonicalize(child).unwrap_or_else(|_| PathBuf::from(child));
+    let p = std::fs::canonicalize(parent).unwrap_or_else(|_| PathBuf::from(parent));
+    c == p || c.starts_with(&p)
+}
+
+/// Pin an out-of-root folder into `[discovery].paths` (the "Other" section).
+/// Refuses a path that is the root or nested under it (those belong to the tree),
+/// so the pin is always a genuine external, never a duplicate of a root project.
+#[tauri::command]
+pub fn pin_path(app: AppHandle, path: String) -> Result<(), String> {
+    let p = path.trim().trim_end_matches('/').to_string();
+    if p.is_empty() {
+        return Err("Empty path".into());
+    }
+    let text = ensure_config()?;
+    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
+    if let Some(root) = raw.discovery.roots.first() {
+        if is_inside(&p, &expand_tilde(root)) {
+            return Err("That folder is inside your base folder; it already appears in the tree.".into());
+        }
+    }
+    let serialized = add_path(&text, &p)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Unpin an external folder: remove it from `[discovery].paths` (no on-disk
+/// deletion). Other pins and the root are untouched.
+#[tauri::command]
+pub fn unpin_path(app: AppHandle, path: String) -> Result<(), String> {
+    let p = path.trim().trim_end_matches('/').to_string();
+    let serialized = remove_path(&ensure_config()?, &p)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -1041,6 +1120,71 @@ mod tests {
         let none = clear_root("").unwrap();
         let ncfg: RawConfig = toml::from_str(&none).unwrap();
         assert!(ncfg.discovery.roots.is_empty());
+    }
+
+    #[test]
+    fn resolve_tags_root_vs_external_origin() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        init_repo(&root.join("personal/inroot"), "main");
+        // An out-of-root pinned project (group = its parent dir name).
+        let ext = tmp.join("Outside/work/pinned");
+        init_repo(&ext, "main");
+
+        let index = ProjectIndex::default();
+        let cfg = resolve(
+            raw(&[root.to_str().unwrap()], &[], &[ext.to_str().unwrap()], &[]),
+            &index,
+        );
+
+        let root_grp = group(&cfg, "personal").expect("root group");
+        assert!(!root_grp.external);
+        assert!(!root_grp.projects[0].external);
+
+        let other = group(&cfg, "work").expect("external group");
+        assert!(other.external);
+        assert_eq!(other.projects.len(), 1);
+        assert!(other.projects[0].external);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn add_and_remove_path_are_idempotent_and_scoped() {
+        // Empty config: creates [discovery].paths with the entry.
+        let out = add_path("", "/x/ext").unwrap();
+        assert!(out.contains("/x/ext"));
+        // Idempotent append.
+        let again = add_path(&out, "/x/ext").unwrap();
+        assert_eq!(again.matches("/x/ext").count(), 1);
+        // A second distinct pin coexists; removing one keeps the other + roots.
+        let two = add_path(&add_path("[discovery]\nroots = [\"/r\"]\n", "/x/a").unwrap(), "/x/b").unwrap();
+        let cfg2: RawConfig = toml::from_str(&two).unwrap();
+        assert_eq!(cfg2.discovery.paths, vec!["/x/a".to_string(), "/x/b".to_string()]);
+        let removed = remove_path(&two, "/x/a").unwrap();
+        let cfg3: RawConfig = toml::from_str(&removed).unwrap();
+        assert_eq!(cfg3.discovery.paths, vec!["/x/b".to_string()]);
+        assert_eq!(cfg3.discovery.roots, vec!["/r".to_string()]);
+        // Removing an absent path is a clean no-op.
+        let noop = remove_path("[discovery]\npaths = [\"/x/b\"]\n", "/nope").unwrap();
+        let cfg4: RawConfig = toml::from_str(&noop).unwrap();
+        assert_eq!(cfg4.discovery.paths, vec!["/x/b".to_string()]);
+    }
+
+    #[test]
+    fn is_inside_detects_nesting() {
+        let tmp = unique_tmp();
+        let root = tmp.join("root");
+        let inside = root.join("group/proj");
+        let outside = tmp.join("elsewhere/proj");
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        assert!(is_inside(inside.to_str().unwrap(), root.to_str().unwrap()));
+        assert!(is_inside(root.to_str().unwrap(), root.to_str().unwrap())); // same dir
+        assert!(!is_inside(outside.to_str().unwrap(), root.to_str().unwrap()));
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
