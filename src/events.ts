@@ -12,6 +12,19 @@ export const THEME_APPLIED = "sway:theme-applied";
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
 export type OpenInEditor = { path: string; line?: number; col?: number };
 
+// Payload-carrying event: open a terminal tab running a specific command (used
+// by clone / bare-worktree bootstrap, which need native git progress + auth).
+// When rediscoverOnExit is set, the terminal area re-discovers on process exit.
+export const OPEN_TERMINAL = "sway:open-terminal";
+export type OpenTerminal = {
+  id: string;
+  title: string;
+  cwd: string;
+  program: string;
+  args: string[];
+  rediscoverOnExit?: boolean;
+};
+
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";

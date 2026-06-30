@@ -1,7 +1,15 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, FOCUS_SEARCH, SESSIONS_REFRESH, DRAG_ABS_PATH_MIME } from "../events";
+import {
+  on as onEvent,
+  emitWith,
+  FOCUS_SEARCH,
+  SESSIONS_REFRESH,
+  DRAG_ABS_PATH_MIME,
+  OPEN_TERMINAL,
+  type OpenTerminal,
+} from "../events";
 import ClaudeIcon from "../seti/ClaudeIcon";
 import PiIcon from "../seti/PiIcon";
 import Chevron from "./Chevron";
@@ -15,6 +23,23 @@ function startAbsDrag(e: DragEvent, paths: string | string[]) {
   e.dataTransfer?.setData("text/plain", value);
   if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
 }
+
+// Bare + worktree bootstrap, run as one `set -e` pipeline in a terminal tab.
+// $1 = repo URL, $2 = project folder (passed as args, never interpolated). The
+// trailing `|| rm -rf` cleans up a half-built project on any failure; a killed
+// run leaves a `.bare`-only stub, which discovery flags as `incomplete`.
+const BOOTSTRAP_SCRIPT = `set -e
+url="$1"; proj="$2"
+(
+  set -e
+  git clone --bare "$url" "$proj/.bare"
+  printf 'gitdir: ./.bare\\n' > "$proj/.git"
+  git -C "$proj/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+  git -C "$proj" fetch origin
+  def="$(git -C "$proj/.bare" symbolic-ref --short HEAD)"
+  git -C "$proj" worktree add "$def" "$def"
+  echo; echo "Done: '$proj' ready on branch '$def'."
+) || { echo; echo "Bootstrap failed; cleaning up $proj"; rm -rf "$proj"; exit 1; }`;
 
 // A branch-unit: a worktree folder, a branch of a plain repo, a non-git folder
 // (plain-dir), or a cleanable stub (incomplete). All four share `folderPath`,
@@ -150,6 +175,66 @@ export default function Sidebar(props: {
     try {
       await invoke("add_folder", { groupPath: g.path, name });
       await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function badName(name: string): string | null {
+    const n = name.trim();
+    if (!n) return "Name is empty";
+    if (n.includes("/") || n.includes("\\")) return "Name cannot contain a slash";
+    if (n.startsWith(".")) return "Name cannot start with a dot";
+    return null;
+  }
+
+  function nameFromUrl(url: string): string {
+    const last = url.replace(/\/+$/, "").split("/").pop() ?? "";
+    return last.replace(/\.git$/, "");
+  }
+
+  // Pre-check the target dir is free, then run the command in a terminal tab
+  // (native git progress + ambient auth, no in-app credentials). The terminal
+  // area re-discovers when the tab exits.
+  async function runInTab(g: Group, name: string, kind: string, program: string, args: string[]) {
+    const bad = badName(name);
+    if (bad) return setError(bad);
+    const target = `${g.path}/${name.trim()}`;
+    if (await invoke<boolean>("file_exists", { path: target })) {
+      return setError(`"${name.trim()}" already exists`);
+    }
+    setError("");
+    emitWith<OpenTerminal>(OPEN_TERMINAL, {
+      id: `${kind}:${target}:${Date.now()}`,
+      title: `${kind} ${name.trim()}`,
+      cwd: g.path,
+      program,
+      args,
+      rediscoverOnExit: true,
+    });
+  }
+
+  async function cloneRepo(g: Group) {
+    const url = prompt("Repository URL to clone:");
+    if (!url?.trim()) return;
+    const name = prompt("Folder name:", nameFromUrl(url)) ?? "";
+    if (!name) return;
+    await runInTab(g, name, "clone", "git", ["clone", url.trim(), name.trim()]);
+  }
+
+  async function bootstrapRepo(g: Group) {
+    const url = prompt("Repository URL for a bare + worktree project:");
+    if (!url?.trim()) return;
+    const name = prompt("Project folder name:", nameFromUrl(url)) ?? "";
+    if (!name) return;
+    // url/name pass as $1/$2 (never interpolated), so there is no shell injection.
+    await runInTab(g, name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "sway", url.trim(), name.trim()]);
+  }
+
+  async function cleanupStub(u: BranchUnit) {
+    if (!confirm("Remove this incomplete stub (a .bare with no worktrees)?")) return;
+    try {
+      await invoke("cleanup_incomplete", { path: u.folderPath });
     } catch (e) {
       setError(String(e));
     }
@@ -375,16 +460,38 @@ export default function Sidebar(props: {
                 >
                   <Chevron open={open()} />
                   <span class="label">{g.name}</span>
-                  <button
-                    class="row-add"
-                    title="New folder in this group"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addFolder(g);
-                    }}
-                  >
-                    +
-                  </button>
+                  <span class="row-actions">
+                    <button
+                      class="row-add"
+                      title="New empty folder"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addFolder(g);
+                      }}
+                    >
+                      +
+                    </button>
+                    <button
+                      class="row-add"
+                      title="Clone a repo into this group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cloneRepo(g);
+                      }}
+                    >
+                      ⇣
+                    </button>
+                    <button
+                      class="row-add"
+                      title="Bootstrap a bare + worktree project"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        bootstrapRepo(g);
+                      }}
+                    >
+                      ⑂
+                    </button>
+                  </span>
                 </div>
                 <Show when={open()}>
                   <For each={g.projects.filter(projectVisible)}>
@@ -424,6 +531,16 @@ export default function Sidebar(props: {
                                       <span class="label">{unitLabel(u)}</span>
                                       <Show when={u.kind === "incomplete"}>
                                         <span class="badge hint" title="A .bare with no worktrees (cleanable stub)">stub</span>
+                                        <button
+                                          class="row-add"
+                                          title="Remove this incomplete stub"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            cleanupStub(u);
+                                          }}
+                                        >
+                                          ✕
+                                        </button>
                                       </Show>
                                       <Show when={unitMismatch(u)}>
                                         <span class="badge" title="Not the current checkout">≠ checkout</span>

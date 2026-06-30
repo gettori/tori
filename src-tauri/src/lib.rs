@@ -73,6 +73,7 @@ pub fn run() {
             config::add_folder,
             config::rediscover,
             config::roots_watch_start,
+            config::cleanup_incomplete,
             fs::fs_read_dir,
             fs::fs_read_file,
             fs::fs_write_file,
