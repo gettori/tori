@@ -30,7 +30,12 @@ function loadLayout(): Layout {
 function loadSelection(): Selection | null {
   try {
     const raw = localStorage.getItem(LS_SELECTION);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const s = JSON.parse(raw) as Selection;
+      // Backfill the folder anchor for selections persisted before Phase 3.
+      if (s && !s.folderPath) s.folderPath = s.projectPath;
+      return s;
+    }
   } catch {
     // ignore
   }
@@ -142,7 +147,7 @@ function App() {
       </div>
 
       <Show when={quickOpen()}>
-        <QuickOpen root={selected()?.projectPath ?? null} onClose={() => setQuickOpen(false)} />
+        <QuickOpen root={selected()?.folderPath ?? null} onClose={() => setQuickOpen(false)} />
       </Show>
     </div>
   );

@@ -77,11 +77,12 @@ export default function Toolbar(props: { selected: Selection | null }) {
     const s = sel();
     if (!s) return;
     const args = resume && s.sessionId ? ["--resume", s.sessionId] : [];
-    await invoke("open_in_ghostty", { cwd: s.projectPath, program: "claude", args }).catch((e) => setErr(String(e)));
+    // Anchor on the working folder (the worktree/session dir), not the container.
+    await invoke("open_in_ghostty", { cwd: s.folderPath, program: "claude", args }).catch((e) => setErr(String(e)));
   }
   async function openVSCode() {
     const s = sel();
-    if (s) await invoke("open_in_vscode", { path: s.projectPath }).catch((e) => setErr(String(e)));
+    if (s) await invoke("open_in_vscode", { path: s.folderPath }).catch((e) => setErr(String(e)));
   }
   async function saveName() {
     const s = sel();
