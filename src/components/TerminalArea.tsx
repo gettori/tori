@@ -1,4 +1,5 @@
 import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
@@ -20,6 +21,33 @@ export default function TerminalArea(props: {
 }) {
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
   const [active, setActive] = createSignal<string | null>(null);
+  // The "+ Claude ›" split button's dropdown of yolo-mode launchers. The menu is
+  // portalled to <body> and anchored to the caret because the tab bar clips
+  // overflow, which would otherwise hide a menu rendered inside it.
+  const [menuOpen, setMenuOpen] = createSignal(false);
+  const [menuPos, setMenuPos] = createSignal({ left: 0, top: 0 });
+  let splitEl: HTMLDivElement | undefined;
+  let caretEl: HTMLButtonElement | undefined;
+  let menuEl: HTMLDivElement | undefined;
+
+  // The agent of the focused tab drives the split button: the main action mirrors
+  // the session you're in, defaulting to claude when nothing is open.
+  const activeAgent = (): "claude" | "pi" => {
+    const t = open().find((o) => o.id === active());
+    return t?.program === "pi" ? "pi" : "claude";
+  };
+
+  function toggleMenu() {
+    if (menuOpen()) {
+      setMenuOpen(false);
+      return;
+    }
+    if (caretEl) {
+      const r = caretEl.getBoundingClientRect();
+      setMenuPos({ left: r.right, top: r.bottom + 4 });
+    }
+    setMenuOpen(true);
+  }
 
   // Report the set of live session ids so the sidebar can show running dots.
   createEffect(() => props.onOpenChange?.(new Set(open().map((o) => o.id))));
@@ -44,6 +72,18 @@ export default function TerminalArea(props: {
       if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
     });
   });
+
+  // Close the launch dropdown on any click outside the split button or its
+  // portalled menu.
+  const onDocPointerDown = (e: PointerEvent) => {
+    if (!menuOpen()) return;
+    const t = e.target as Node;
+    if (splitEl?.contains(t) || menuEl?.contains(t)) return;
+    setMenuOpen(false);
+  };
+  document.addEventListener("pointerdown", onDocPointerDown);
+  onCleanup(() => document.removeEventListener("pointerdown", onDocPointerDown));
+
   onCleanup(() => {
     offOpenTerminal?.();
     unlistenExit?.();
@@ -79,7 +119,9 @@ export default function TerminalArea(props: {
   );
 
   // A new session starts in the branch-unit folder (already the right checkout).
-  function newSession(agent: "claude" | "pi") {
+  // claude in yolo mode skips permission prompts; pi is always yolo so it just
+  // launches normally.
+  function newSession(agent: "claude" | "pi", yolo = false) {
     const sel = props.selected;
     if (!sel) return;
     const id = `new:${agent}:${sel.folderPath}:${Date.now()}`;
@@ -88,7 +130,7 @@ export default function TerminalArea(props: {
       title: `${sel.projectName} ${agent}`,
       cwd: sel.folderPath,
       program: agent,
-      args: [],
+      args: agent === "claude" && yolo ? ["--dangerously-skip-permissions"] : [],
     });
   }
 
@@ -136,32 +178,90 @@ export default function TerminalArea(props: {
           </>
         )}
         trailing={
-          <>
+          <div class="term-new-split" ref={splitEl}>
             <button
-              class="term-new"
+              class="term-new term-new-main"
               disabled={!props.selected}
               title={
                 props.selected
-                  ? `New Claude session in ${props.selected.projectName}`
+                  ? `New ${activeAgent() === "pi" ? "Pi" : "Claude"} session in ${props.selected.projectName}`
                   : "Select a branch first"
               }
-              onClick={() => newSession("claude")}
+              onClick={() => newSession(activeAgent(), activeAgent() === "pi")}
             >
-              + Claude
+              {activeAgent() === "pi" ? "+ Pi" : "+ Claude"}
             </button>
             <button
-              class="term-new"
+              ref={caretEl}
+              class="term-new term-new-caret"
               disabled={!props.selected}
-              title={
-                props.selected
-                  ? `New pi session in ${props.selected.projectName}`
-                  : "Select a branch first"
-              }
-              onClick={() => newSession("pi")}
+              title="More launch options"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen()}
+              onClick={toggleMenu}
             >
-              + pi
+              <span class="term-new-chevron">›</span>
             </button>
-          </>
+            <Show when={menuOpen()}>
+              <Portal>
+                <div
+                  ref={menuEl}
+                  class="term-new-menu"
+                  role="menu"
+                  style={{ left: `${menuPos().left}px`, top: `${menuPos().top}px` }}
+                >
+                  <Show
+                    when={activeAgent() === "pi"}
+                    fallback={
+                      <>
+                        <button
+                          class="term-new-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            newSession("claude", true);
+                          }}
+                        >
+                          Claude (yolo)
+                        </button>
+                        <button
+                          class="term-new-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            newSession("pi", true);
+                          }}
+                        >
+                          Pi (yolo)
+                        </button>
+                      </>
+                    }
+                  >
+                    <button
+                      class="term-new-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        newSession("claude");
+                      }}
+                    >
+                      Claude
+                    </button>
+                    <button
+                      class="term-new-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        newSession("claude", true);
+                      }}
+                    >
+                      Claude (yolo)
+                    </button>
+                  </Show>
+                </div>
+              </Portal>
+            </Show>
+          </div>
         }
       />
 
