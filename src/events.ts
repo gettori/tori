@@ -25,6 +25,12 @@ export type OpenTerminal = {
   rediscoverOnExit?: boolean;
 };
 
+// Payload-carrying event: start a fresh agent session in a branch-unit folder.
+// Emitted by the sidebar's "New session" menu item; the terminal area owns the
+// spawn (id/title/yolo conventions), so the sidebar only names the target.
+export const NEW_SESSION = "sway:new-session";
+export type NewSession = { folderPath: string; projectName: string; agent?: "claude" | "pi" };
+
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";

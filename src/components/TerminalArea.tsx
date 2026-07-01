@@ -5,7 +5,15 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import OverflowTabBar from "./OverflowTabBar";
 import type { Selection } from "./Sidebar";
-import { on as onEvent, onWith, CLOSE_TAB, OPEN_TERMINAL, type OpenTerminal } from "../events";
+import {
+  on as onEvent,
+  onWith,
+  CLOSE_TAB,
+  OPEN_TERMINAL,
+  NEW_SESSION,
+  type OpenTerminal,
+  type NewSession,
+} from "../events";
 
 type OpenTerm = {
   id: string;
@@ -61,11 +69,17 @@ export default function TerminalArea(props: {
   // Tabs (clone / bootstrap) that should re-discover projects when they exit.
   const rediscoverOnExit = new Set<string>();
   let offOpenTerminal: (() => void) | undefined;
+  let offNewSession: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
       if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
       openOrActivate({ id: t.id, title: t.title, cwd: t.cwd, program: t.program, args: t.args });
+    });
+    // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
+    // Spawns at the named folder, with no props.selected timing dependency.
+    offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
+      spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
     unlistenExit = await listen<string>("pty://exit", (e) => {
       const id = e.payload;
@@ -86,6 +100,7 @@ export default function TerminalArea(props: {
 
   onCleanup(() => {
     offOpenTerminal?.();
+    offNewSession?.();
     unlistenExit?.();
   });
 
@@ -121,17 +136,21 @@ export default function TerminalArea(props: {
   // A new session starts in the branch-unit folder (already the right checkout).
   // claude in yolo mode skips permission prompts; pi is always yolo so it just
   // launches normally.
-  function newSession(agent: "claude" | "pi", yolo = false) {
-    const sel = props.selected;
-    if (!sel) return;
-    const id = `new:${agent}:${sel.folderPath}:${Date.now()}`;
+  function spawnSession(agent: "claude" | "pi", folderPath: string, projectName: string, yolo = false) {
+    const id = `new:${agent}:${folderPath}:${Date.now()}`;
     openOrActivate({
       id,
-      title: `${sel.projectName} ${agent}`,
-      cwd: sel.folderPath,
+      title: `${projectName} ${agent}`,
+      cwd: folderPath,
       program: agent,
       args: agent === "claude" && yolo ? ["--dangerously-skip-permissions"] : [],
     });
+  }
+
+  function newSession(agent: "claude" | "pi", yolo = false) {
+    const sel = props.selected;
+    if (!sel) return;
+    spawnSession(agent, sel.folderPath, sel.projectName, yolo);
   }
 
   function closeId(id: string) {

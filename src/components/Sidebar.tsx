@@ -2,6 +2,8 @@ import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
+import PromptModal from "./PromptModal";
+import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
   emitWith,
@@ -9,7 +11,9 @@ import {
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_TERMINAL,
+  NEW_SESSION,
   type OpenTerminal,
+  type NewSession,
 } from "../events";
 import ClaudeIcon from "../seti/ClaudeIcon";
 import PiIcon from "../seti/PiIcon";
@@ -117,7 +121,20 @@ export default function Sidebar(props: {
   onSelect: (s: Selection) => void;
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
-  const [error, setError] = createSignal("");
+
+  // Errors surface as auto-dismissing toasts (bottom-right) rather than a banner
+  // pinned above the tree. setError keeps its old signature so all call sites are
+  // unchanged; an empty string (the old "clear the banner" idiom) is a no-op.
+  const [toasts, setToasts] = createSignal<Toast[]>([]);
+  let toastSeq = 0;
+  function dismissToast(id: number) {
+    setToasts((ts) => ts.filter((t) => t.id !== id));
+  }
+  function setError(msg: string, kind: "error" | "info" = "error") {
+    const message = String(msg ?? "").trim();
+    if (!message) return;
+    setToasts((ts) => [...ts, { id: ++toastSeq, message, kind }]);
+  }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
   // Sessions keyed by branch-unit folderPath (the cwd anchor).
   const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
@@ -158,6 +175,24 @@ export default function Sidebar(props: {
 
   // Per-node right-click menu. Set on `contextmenu`, cleared on close.
   const [menu, setMenu] = createSignal<MenuState | null>(null);
+
+  // In-app replacement for window.prompt (unimplemented in WKWebView). Holds the
+  // pending request plus its resolver; askText opens the modal and awaits an
+  // answer, resolving with the entered string or null on cancel.
+  const [promptReq, setPromptReq] = createSignal<{
+    title: string;
+    initial: string;
+    resolve: (v: string | null) => void;
+  } | null>(null);
+  function askText(title: string, initial = ""): Promise<string | null> {
+    return new Promise((resolve) => setPromptReq({ title, initial, resolve }));
+  }
+  function resolvePrompt(v: string | null) {
+    const req = promptReq();
+    setPromptReq(null);
+    req?.resolve(v);
+  }
+
   function openMenu(e: MouseEvent, items: MenuItem[]) {
     e.preventDefault();
     e.stopPropagation();
@@ -247,7 +282,7 @@ export default function Sidebar(props: {
   async function addGroup() {
     const roots = config()?.roots ?? [];
     if (!roots.length) return;
-    const name = prompt("New group name:");
+    const name = await askText("New group name:");
     if (!name) return;
     try {
       await invoke("add_group", { root: roots[0], name });
@@ -258,7 +293,7 @@ export default function Sidebar(props: {
   }
 
   async function addFolder(g: Group) {
-    const name = prompt(`New folder in "${g.name}":`);
+    const name = await askText(`New folder in "${g.name}":`);
     if (!name) return;
     try {
       await invoke("add_folder", { groupPath: g.path, name });
@@ -306,17 +341,17 @@ export default function Sidebar(props: {
   }
 
   async function cloneRepo(g: Group) {
-    const url = prompt("Repository URL to clone:");
+    const url = await askText("Repository URL to clone:");
     if (!url?.trim()) return;
-    const name = prompt("Folder name:", nameFromUrl(url)) ?? "";
+    const name = (await askText("Folder name:", nameFromUrl(url))) ?? "";
     if (!name) return;
     await runInTab(g, name, "clone", "git", ["clone", url.trim(), name.trim()]);
   }
 
   async function bootstrapRepo(g: Group) {
-    const url = prompt("Repository URL for a bare + worktree project:");
+    const url = await askText("Repository URL for a bare + worktree project:");
     if (!url?.trim()) return;
-    const name = prompt("Project folder name:", nameFromUrl(url)) ?? "";
+    const name = (await askText("Project folder name:", nameFromUrl(url))) ?? "";
     if (!name) return;
     // url/name pass as $1/$2 (never interpolated), so there is no shell injection.
     await runInTab(g, name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "sway", url.trim(), name.trim()]);
@@ -337,7 +372,7 @@ export default function Sidebar(props: {
   // (branch's last segment, slug fallback, clean error on double collision),
   // fetches + bases new branches on origin's default, and links shared .link/ files.
   async function createWorktree(p: Project) {
-    const branch = prompt(`New worktree in "${p.name}" (branch name):`);
+    const branch = await askText(`New worktree in "${p.name}" (branch name):`);
     if (!branch?.trim()) return;
     try {
       await invoke("create_worktree", { repoPath: p.path, branch: branch.trim() });
@@ -392,7 +427,7 @@ export default function Sidebar(props: {
 
   // Initialize git in a plain-dir (optional initial branch); re-discovers as plain.
   async function initRepo(p: Project) {
-    const branch = prompt(`Initialize git in "${p.name}". Initial branch (blank = git default):`);
+    const branch = await askText(`Initialize git in "${p.name}". Initial branch (blank = git default):`);
     if (branch === null) return; // cancelled
     try {
       await invoke("git_init", { projectPath: p.path, branch: branch.trim() || null });
@@ -403,7 +438,7 @@ export default function Sidebar(props: {
   }
 
   async function addRemote(p: Project) {
-    const url = prompt(`Remote URL (origin) for "${p.name}":`);
+    const url = await askText(`Remote URL (origin) for "${p.name}":`);
     if (!url?.trim()) return;
     try {
       await invoke("git_remote_add", { projectPath: p.path, url: url.trim() });
@@ -415,7 +450,7 @@ export default function Sidebar(props: {
   // First commit: stage everything (the scaffolded .gitignore keeps junk out) and
   // commit with the prompted message, in a terminal tab. Message passes as $1.
   async function commitAll(p: Project) {
-    const msg = prompt(`Commit message for "${p.name}":`);
+    const msg = await askText(`Commit message for "${p.name}":`);
     if (!msg?.trim()) return;
     runOpInTab(p.path, "commit", `commit ${p.name}`, "sh", [
       "-c",
@@ -447,7 +482,7 @@ export default function Sidebar(props: {
   // --- session overlay actions (rename/archive/delete) ---
 
   async function renameSession(s: SessionMeta) {
-    const name = prompt("Rename session:", s.name ?? s.title);
+    const name = await askText("Rename session:", s.name ?? s.title);
     if (name === null) return; // cancelled
     try {
       // Empty clears the name (Rust folds "" → None, reverting to the title).
@@ -521,7 +556,7 @@ export default function Sidebar(props: {
     if (u.kind === "incomplete") {
       return [{ label: "Remove stub", danger: true, onClick: () => cleanupStub(u) }];
     }
-    const items: MenuItem[] = [{ label: "New session", onClick: () => selectUnit(g, p, u) }];
+    const items: MenuItem[] = [{ label: "New session", onClick: () => startSession(g, p, u) }];
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", danger: true, onClick: () => removeWorktree(p, u) });
@@ -530,7 +565,7 @@ export default function Sidebar(props: {
   };
 
   const sessionMenu = (g: Group, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
-    { label: "New session", onClick: () => selectUnit(g, p, u) },
+    { label: "New session", onClick: () => startSession(g, p, u) },
     { separator: true },
     { label: "Rename…", onClick: () => renameSession(s) },
     { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
@@ -623,8 +658,8 @@ export default function Sidebar(props: {
     return true;
   }
 
-  async function selectUnit(g: Group, p: Project, u: BranchUnit) {
-    if (!(await ensureBranch(p, u, u.branch))) return;
+  async function selectUnit(g: Group, p: Project, u: BranchUnit): Promise<boolean> {
+    if (!(await ensureBranch(p, u, u.branch))) return false;
     props.onSelect({
       groupName: g.name,
       projectName: p.name,
@@ -633,6 +668,17 @@ export default function Sidebar(props: {
       branch: unitLabel(u),
       projectKind: u.kind,
     });
+    return true;
+  }
+
+  // "New session" menu action: select the unit (running the checkout guard), then
+  // ask the terminal area to launch a fresh agent session in its folder. Merely
+  // selecting the unit only enables the "+ Claude" button, which the label's
+  // "New session" promise would not fulfil on its own.
+  async function startSession(g: Group, p: Project, u: BranchUnit) {
+    if (await selectUnit(g, p, u)) {
+      emitWith<NewSession>(NEW_SESSION, { folderPath: u.folderPath, projectName: p.name });
+    }
   }
 
   async function selectSession(g: Group, p: Project, u: BranchUnit, s: SessionMeta) {
@@ -778,10 +824,6 @@ export default function Sidebar(props: {
           </Show>
         </div>
       </div>
-
-      <Show when={error()}>
-        <div class="tree-error">{error()}</div>
-      </Show>
 
       <div class="tree-scroll">
         <For each={visibleGroups()}>
@@ -955,6 +997,17 @@ export default function Sidebar(props: {
       <Show when={menu()}>
         <ContextMenu menu={menu()!} onClose={() => setMenu(null)} />
       </Show>
+
+      <Show when={promptReq()}>
+        <PromptModal
+          title={promptReq()!.title}
+          initial={promptReq()!.initial}
+          onSubmit={(v) => resolvePrompt(v)}
+          onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
+
+      <Toasts toasts={toasts()} onDismiss={dismissToast} />
     </div>
   );
 }
