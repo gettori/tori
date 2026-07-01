@@ -442,6 +442,27 @@ body.dragging .term-host {
   text-overflow: ellipsis;
 }
 
+/* "Historical" sub-group: sessions predating a recreated folder, with an inline
+   Adopt affordance. */
+.row.historical .label {
+  font-style: italic;
+}
+.adopt-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.adopt-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* "Other" section header: a divider above pinned external folders. */
 .tree-divider {
   margin: 6px 8px 2px;

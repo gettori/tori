@@ -121,6 +121,9 @@ export default function Sidebar(props: {
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
   // Sessions keyed by branch-unit folderPath (the cwd anchor).
   const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
+  // Per-folder "historical" flag: sessions predating a recreated folder, hidden
+  // under a collapsed "Historical" group until adopted.
+  const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
   const [query, setQuery] = createSignal("");
   const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
@@ -178,6 +181,12 @@ export default function Sidebar(props: {
       setError("");
       // (Re)install the shallow root watch so external folder creates surface.
       invoke("roots_watch_start", { roots: cfg.roots }).catch(() => {});
+      // Seed the adopted set from the first real discovery (idempotent, and a
+      // no-op on empty), so existing folders are never flagged historical.
+      const folders = cfg.groups.flatMap((g) =>
+        g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
+      );
+      invoke("seed_adopted", { folders }).catch(() => {});
     } catch (e) {
       setError(String(e));
     }
@@ -283,6 +292,9 @@ export default function Sidebar(props: {
       return setError(`"${name.trim()}" already exists`);
     }
     setError("");
+    // Sway is creating this folder: adopt the target path so a clone/bootstrap
+    // onto a path that once held sessions is not flagged historical.
+    invoke("adopt_path", { path: target }).catch(() => {});
     emitWith<OpenTerminal>(OPEN_TERMINAL, {
       id: `${kind}:${target}:${Date.now()}`,
       title: `${kind} ${name.trim()}`,
@@ -536,8 +548,22 @@ export default function Sidebar(props: {
     try {
       const s = await invoke<SessionMeta[]>("list_sessions", { folder: folderPath });
       setSessions({ ...sessions(), [folderPath]: s });
+      // Flag a recreated folder whose sessions predate it (auto-adopts otherwise).
+      const hist = await invoke<boolean>("folder_historical", { folder: folderPath });
+      setHistorical({ ...historical(), [folderPath]: hist });
     } catch {
       setSessions({ ...sessions(), [folderPath]: [] });
+    }
+  }
+
+  // Adopt a historical folder's sessions: they move to the normal listing and the
+  // choice persists across restarts.
+  async function adoptFolder(u: BranchUnit) {
+    try {
+      await invoke("adopt_path", { path: u.folderPath });
+      setHistorical({ ...historical(), [u.folderPath]: false });
+    } catch (e) {
+      setError(String(e));
     }
   }
 
@@ -567,6 +593,8 @@ export default function Sidebar(props: {
   const gkey = (g: Group) => `g:${g.name}`;
   const pkey = (g: Group, p: Project) => `p:${g.name}/${p.name}`;
   const ukey = (g: Group, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
+  const hkey = (u: BranchUnit) => `h:${u.folderPath}`; // "Historical" sub-group
+  const isHistorical = (u: BranchUnit) => historical()[u.folderPath] === true;
 
   const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
   const currentBranch = (p: Project) =>
@@ -824,6 +852,27 @@ export default function Sidebar(props: {
                                       </Show>
                                     </div>
                                     <Show when={uopen()}>
+                                      <Show when={isHistorical(u)}>
+                                        <div
+                                          class="row dim sub3 historical"
+                                          onClick={() => toggle(hkey(u))}
+                                          title="Sessions predating this recreated folder"
+                                        >
+                                          <Chevron open={expanded().has(hkey(u))} />
+                                          <span class="label">Historical ({unitSessions(u).length})</span>
+                                          <button
+                                            class="adopt-btn"
+                                            title="Adopt these sessions into the normal listing"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              adoptFolder(u);
+                                            }}
+                                          >
+                                            Adopt
+                                          </button>
+                                        </div>
+                                      </Show>
+                                      <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
                                       <For
                                         each={unitSessions(u)}
                                         fallback={<div class="row dim sub3">no sessions</div>}
@@ -860,6 +909,7 @@ export default function Sidebar(props: {
                                           );
                                         }}
                                       </For>
+                                      </Show>
                                     </Show>
                                   </div>
                                 );

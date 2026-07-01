@@ -9,9 +9,9 @@
 // early) and caches by mtime, so repeat scans are cheap. `list_sessions(folder)`
 // returns both agents whose recorded cwd is the folder or nested under it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -372,6 +372,150 @@ pub fn list_sessions(
     Ok(sessions)
 }
 
+// --- adopted-paths state (recreated-folder / "Historical" sessions) ---
+//
+// A folder recreated at a path where old sessions still live would otherwise
+// surface those ghosts as if they belonged to it. `adopted_paths` is the set of
+// folders whose sessions are "ours". It is stored SEPARATELY from the watched
+// sway.toml (writing the toml would loop the config watcher). A folder not in the
+// set whose sessions predate its own creation is "historical" until adopted.
+
+#[derive(Serialize, Deserialize, Default)]
+struct AdoptedState {
+    /// Seeded once, on the first discovery that yields >=1 folder, so a fresh
+    /// install does not flag the user's pre-existing folders as historical.
+    seeded: bool,
+    /// Normalized folder paths whose sessions are adopted (shown normally).
+    paths: HashSet<String>,
+}
+
+fn adopted_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/adopted.json")
+}
+
+fn load_adopted() -> AdoptedState {
+    std::fs::read_to_string(adopted_path())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn save_adopted(state: &AdoptedState) -> Result<(), String> {
+    let path = adopted_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// Pure seed step: adopt all `folders` exactly once, and never against an empty
+/// discovery. Returns whether the state changed (so the caller persists).
+fn do_seed(state: &mut AdoptedState, folders: &[String]) -> bool {
+    if state.seeded || folders.is_empty() {
+        return false;
+    }
+    for f in folders {
+        state.paths.insert(norm(f));
+    }
+    state.seeded = true;
+    true
+}
+
+enum FolderVerdict {
+    /// Already adopted, or nothing to hide: show normally.
+    Adopted,
+    /// Sessions all postdate the folder: they are ours, adopt and show normally.
+    AutoAdopt,
+    /// Not adopted, with sessions predating the folder: hide under "Historical".
+    Historical,
+}
+
+/// Decide a folder's status from the adopted set, its sessions' activity times,
+/// and the folder's own creation time. Pure, so it is unit-tested directly.
+fn folder_verdict(
+    adopted: &HashSet<String>,
+    folder: &str,
+    session_times: &[u64],
+    folder_created: u64,
+) -> FolderVerdict {
+    if adopted.contains(&norm(folder)) {
+        return FolderVerdict::Adopted;
+    }
+    if session_times.is_empty() {
+        return FolderVerdict::Adopted; // no ghosts to hide
+    }
+    if session_times.iter().all(|&t| t >= folder_created) {
+        return FolderVerdict::AutoAdopt;
+    }
+    FolderVerdict::Historical
+}
+
+/// Folder creation time (btime, falling back to mtime), in epoch seconds.
+fn folder_created(p: &Path) -> u64 {
+    std::fs::metadata(p)
+        .ok()
+        .and_then(|m| m.created().ok().or_else(|| m.modified().ok()))
+        .map(epoch_secs)
+        .unwrap_or(0)
+}
+
+/// Adopt a folder's sessions (idempotent). Called by the UI "Adopt" action and
+/// whenever Sway itself creates a folder (new folder / worktree / clone / bootstrap).
+pub fn adopt(path: &str) -> Result<(), String> {
+    let mut state = load_adopted();
+    if state.paths.insert(norm(path)) {
+        save_adopted(&state)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn adopt_path(path: String) -> Result<(), String> {
+    adopt(&path)
+}
+
+/// Seed the adopted set from the current discovery (idempotent; no-op once seeded
+/// or when discovery is empty). The UI calls this after each `get_config`.
+#[tauri::command]
+pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
+    let mut state = load_adopted();
+    if do_seed(&mut state, &folders) {
+        save_adopted(&state)?;
+    }
+    Ok(())
+}
+
+/// Is `folder` historical (a recreated folder whose sessions predate it)? Adopts
+/// it in passing when its sessions clearly belong to it (all postdate creation).
+#[tauri::command]
+pub fn folder_historical(
+    index: State<SessionIndex>,
+    pi_index: State<PiIndex>,
+    folder: String,
+) -> Result<bool, String> {
+    let state = load_adopted();
+    let merged: Vec<SessionMeta> = ensure_index(&index)
+        .into_iter()
+        .chain(ensure_pi_index(&pi_index))
+        .collect();
+    let times: Vec<u64> = filter_sort(merged, &folder)
+        .iter()
+        .map(|s| s.last_active)
+        .collect();
+    let created = folder_created(Path::new(&folder));
+    match folder_verdict(&state.paths, &folder, &times, created) {
+        FolderVerdict::Historical => Ok(true),
+        FolderVerdict::AutoAdopt => {
+            adopt(&folder)?;
+            Ok(false)
+        }
+        FolderVerdict::Adopted => Ok(false),
+    }
+}
+
 // --- rename/archive overlay (Claude has no native rename) ---
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -680,5 +824,41 @@ mod tests {
         // Both agents are merged under the one folder.
         assert!(got.iter().any(|s| s.agent == "pi"));
         assert!(got.iter().any(|s| s.agent == "claude"));
+    }
+
+    #[test]
+    fn seed_is_once_and_skips_empty() {
+        let mut st = AdoptedState::default();
+        // Empty discovery never seeds (so a forced empty resolve cannot lock in).
+        assert!(!do_seed(&mut st, &[]));
+        assert!(!st.seeded);
+        // First real discovery seeds every folder.
+        let folders = vec!["/p/a".to_string(), "/p/b/".to_string()];
+        assert!(do_seed(&mut st, &folders));
+        assert!(st.seeded);
+        assert!(st.paths.contains("/p/a"));
+        assert!(st.paths.contains("/p/b")); // trailing slash normalized
+        // Idempotent: a later discovery does not re-seed (a new folder added then
+        // is judged on its own, not blanket-adopted).
+        assert!(!do_seed(&mut st, &["/p/c".to_string()]));
+        assert!(!st.paths.contains("/p/c"));
+    }
+
+    #[test]
+    fn verdict_adopted_when_in_set_or_no_sessions() {
+        let mut set = HashSet::new();
+        set.insert("/p/a".to_string());
+        assert!(matches!(folder_verdict(&set, "/p/a", &[50], 100), FolderVerdict::Adopted));
+        // Not in the set but no sessions: nothing to hide.
+        assert!(matches!(folder_verdict(&set, "/p/b", &[], 100), FolderVerdict::Adopted));
+    }
+
+    #[test]
+    fn verdict_autoadopt_when_all_postdate_else_historical() {
+        let set = HashSet::new();
+        // All sessions postdate the folder's creation: they are ours.
+        assert!(matches!(folder_verdict(&set, "/p/a", &[150, 200], 100), FolderVerdict::AutoAdopt));
+        // A session predating creation: a recreated folder with ghosts.
+        assert!(matches!(folder_verdict(&set, "/p/a", &[50, 200], 100), FolderVerdict::Historical));
     }
 }
