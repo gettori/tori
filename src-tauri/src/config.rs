@@ -713,6 +713,8 @@ pub fn add_folder(app: AppHandle, group_path: String, name: String) -> Result<St
         return Err(format!("\"{n}\" already exists"));
     }
     std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
+    // Sway created it: adopt so a path reused over old sessions is not historical.
+    let _ = crate::sessions::adopt(&dir.to_string_lossy());
     let _ = app.emit("config://changed", ()); // explicit re-discovery
     Ok(dir.to_string_lossy().into_owned())
 }
