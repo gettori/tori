@@ -315,6 +315,70 @@ body.dragging .term-host {
   background: var(--border);
 }
 
+/* Text-input modal (in-app window.prompt replacement; see PromptModal.tsx). */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.modal {
+  width: min(420px, calc(100vw - 48px));
+  padding: 16px;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+}
+.modal-title {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+.modal-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  outline: none;
+}
+.modal-input:focus {
+  border-color: var(--accent);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.modal-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+.modal-btn:hover {
+  background: var(--hover);
+}
+.modal-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.modal-btn.primary:hover {
+  filter: brightness(1.08);
+}
+
 .tree-scroll {
   flex: 1;
   overflow: auto;
@@ -322,7 +386,6 @@ body.dragging .term-host {
   min-height: 0;
 }
 
-.tree-error,
 .detail-err {
   margin: 6px 8px;
   padding: 6px 8px;
@@ -331,6 +394,72 @@ body.dragging .term-host {
   background: #2a1a1a;
   border-radius: 4px;
   white-space: pre-wrap;
+}
+
+/* Toast notifications (bottom-right stack; see Toasts.tsx). */
+.toast-stack {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 28px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px 9px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--pane-head-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  animation: toast-in 140ms ease-out;
+}
+.toast.error {
+  border-left-color: #e06c75;
+}
+.toast.info {
+  border-left-color: var(--accent);
+}
+.toast-msg {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.toast-close {
+  flex: none;
+  margin-top: -1px;
+  padding: 0 2px;
+  font-size: 15px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.toast-close:hover {
+  color: var(--text);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .row {
