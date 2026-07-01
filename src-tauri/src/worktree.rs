@@ -207,6 +207,9 @@ pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Res
     }
 
     link_shared(&container, &target);
+    // Sway created this folder: adopt it so reusing a path that held old sessions
+    // does not surface them as historical.
+    let _ = crate::sessions::adopt(&target_str);
     let _ = app.emit("config://changed", ());
     Ok(())
 }
