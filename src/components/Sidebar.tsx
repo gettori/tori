@@ -390,27 +390,66 @@ export default function Sidebar(props: {
     }
   }
 
-  // Remove a worktree, guarded against live use: refuse if it is open in the
-  // editor, has a dirty tree, or hosts a running agent (in it or any subdir).
-  // Nothing is deleted when refused. The branch is kept; only the folder goes.
-  async function removeWorktree(p: Project, u: BranchUnit) {
+  // Shared pre-removal guards for a worktree: open in the editor, a dirty tree, or
+  // a live agent nested inside (in it or any subdir). Returns an error message to
+  // show, or null when removal is clear. Nothing is deleted here.
+  async function worktreeRemovalBlock(u: BranchUnit): Promise<string | null> {
     const sel = props.selected;
     if (sel && (sel.folderPath === u.folderPath || sel.folderPath.startsWith(`${u.folderPath}/`))) {
-      return setError("This worktree is open in the editor; switch away before removing it.");
+      return "This worktree is open in the editor; switch away before removing it.";
     }
+    if (await invoke<boolean>("worktree_dirty", { path: u.folderPath })) {
+      return "This worktree has uncommitted changes; commit or discard them first.";
+    }
+    // Prefix-matched nested sessions: refuse if any is a live agent.
+    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: u.folderPath });
+    for (const s of nested) {
+      if (await invoke<boolean>("session_running", { id: s.id })) {
+        return "An agent is running in this worktree (or a subdir); stop it first.";
+      }
+    }
+    return null;
+  }
+
+  // Remove a worktree folder, keeping its branch. Guarded against live use.
+  async function removeWorktree(p: Project, u: BranchUnit) {
     try {
-      if (await invoke<boolean>("worktree_dirty", { path: u.folderPath })) {
-        return setError("This worktree has uncommitted changes; commit or discard them first.");
-      }
-      // Prefix-matched nested sessions: refuse if any is a live agent.
-      const nested = await invoke<SessionMeta[]>("list_sessions", { folder: u.folderPath });
-      for (const s of nested) {
-        if (await invoke<boolean>("session_running", { id: s.id })) {
-          return setError("An agent is running in this worktree (or a subdir); stop it first.");
-        }
-      }
+      const block = await worktreeRemovalBlock(u);
+      if (block) return setError(block);
       if (!confirm(`Remove the worktree "${u.label}"? Its folder is deleted; the branch is kept.`)) return;
       await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Remove a worktree AND delete its branch. Same guards; on a `-D` failure the
+  // backend has already removed the folder and re-emitted, so its explicit
+  // "folder removed, branch not deleted" message surfaces here (no swallowed partial).
+  async function deleteWorktreeAndBranch(p: Project, u: BranchUnit) {
+    if (!u.branch) return;
+    try {
+      const block = await worktreeRemovalBlock(u);
+      if (block) return setError(block);
+      if (!confirm(`Delete the worktree "${u.label}" AND its branch "${u.branch}"? Both the folder and the branch are removed.`)) {
+        return;
+      }
+      await invoke("remove_worktree_and_branch", {
+        repoPath: p.path,
+        worktreePath: u.folderPath,
+        branch: u.branch,
+      });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // "Update .links/": restore any shared `.link/` file deleted from a worktree.
+  async function relinkWorktrees(p: Project) {
+    try {
+      await invoke("relink_worktrees", { repoPath: p.path });
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -577,7 +616,11 @@ export default function Sidebar(props: {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
     switch (projectKind(p)) {
       case "worktree":
-        return [{ label: "New worktree…", onClick: () => createWorktree(p) }];
+        return [
+          { label: "Add Origin", onClick: () => addRemote(p) },
+          { label: "New worktree…", onClick: () => createWorktree(p) },
+          { label: "Update .links/", onClick: () => relinkWorktrees(p) },
+        ];
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
       case "plain":
@@ -602,6 +645,7 @@ export default function Sidebar(props: {
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", danger: true, onClick: () => removeWorktree(p, u) });
+      items.push({ label: "Delete worktree + branch", danger: true, onClick: () => deleteWorktreeAndBranch(p, u) });
     }
     // Plain branch-unit: checkout always; detach/delete only off the current
     // checkout and only when the unit actually has a branch (never the folder fallback).
