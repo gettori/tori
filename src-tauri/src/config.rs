@@ -762,6 +762,61 @@ pub fn delete_branch(
     Ok(())
 }
 
+/// Ensure a local branch `name` exists, creating it as a tracking branch off the
+/// already-fetched `origin/<name>` when absent. An existing local branch is left
+/// as-is (surfaced, never clobbered); a name with no local branch and no fetched
+/// remote ref is rejected. Pure (no store/emit), so it is unit-tested directly.
+fn ensure_local_tracking(path: &Path, name: &str) -> Result<(), String> {
+    if local_branches(path).contains(name) {
+        return Ok(()); // already local: attach it, never clobber
+    }
+    let remote_ref = format!("refs/remotes/origin/{name}");
+    let exists = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--verify", "--quiet", &remote_ref])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !exists {
+        return Err(format!("No remote branch \"origin/{name}\". Fetch first."));
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["branch", "--track", name, &format!("origin/{name}")])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// Attach a remote branch: create a local tracking branch from the already-fetched
+/// `origin/<branch>` (a separate op from the auth'd fetch, which runs in a tab),
+/// then attach it. Order: create/verify → write store → evict cache → emit.
+#[tauri::command]
+pub fn attach_remote_branch(
+    app: AppHandle,
+    index: State<ProjectIndex>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    let name = branch.trim().trim_start_matches("origin/").to_string();
+    if name.is_empty() {
+        return Err("Branch name is empty".into());
+    }
+    ensure_local_tracking(&path, &name)?;
+    let mut state = load_attached();
+    state.0.entry(norm(&repo)).or_default().branches.insert(name);
+    save_attached(&state)?;
+    index.evict(&path);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 /// Install a watcher on the config file's directory. Emits `config://changed`
 /// whenever sway.toml is written. Idempotent: re-installing replaces the old one.
 #[tauri::command]
@@ -1353,6 +1408,35 @@ mod tests {
         let mut s3 = AttachedState::default();
         assert!(!do_seed_attached(&mut s3, "/r", &HashSet::new(), Some("main")));
         assert!(!s3.0.get("/r").map(|r| r.seeded).unwrap_or(false));
+    }
+
+    #[test]
+    fn ensure_local_tracking_creates_verifies_and_preserves() {
+        let tmp = unique_tmp();
+        // A "remote" repo with main + feature.
+        let remote = tmp.join("remote");
+        init_repo(&remote, "main");
+        git(&remote, &["branch", "feature"]);
+
+        // Clone it so origin/* tracking refs exist (simulates a prior fetch).
+        let clone = tmp.join("clone");
+        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), clone.to_str().unwrap()]);
+
+        // A fetched remote branch is created as a local tracking branch.
+        assert!(ensure_local_tracking(&clone, "feature").is_ok());
+        assert!(local_branches(&clone).contains("feature"));
+
+        // A non-existent remote branch is rejected.
+        assert!(ensure_local_tracking(&clone, "ghost").is_err());
+        assert!(!local_branches(&clone).contains("ghost"));
+
+        // An already-local branch is surfaced, not clobbered (no error, still there).
+        let before = run_git(&clone, &["rev-parse", "feature"]).unwrap();
+        assert!(ensure_local_tracking(&clone, "feature").is_ok());
+        let after = run_git(&clone, &["rev-parse", "feature"]).unwrap();
+        assert_eq!(before, after, "existing local branch must be left untouched");
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
