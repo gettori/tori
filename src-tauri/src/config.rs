@@ -129,6 +129,17 @@ struct ProbeEntry {
 #[derive(Default)]
 pub struct ProjectIndex(Mutex<HashMap<PathBuf, ProbeEntry>>);
 
+impl ProjectIndex {
+    /// Drop the cached probe for `path`, forcing a fresh probe on next discovery.
+    /// Attach/detach/delete/new-branch call this after writing the store, so a
+    /// re-probe can never re-cache the pre-write branch set.
+    fn evict(&self, path: &Path) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.remove(path);
+        }
+    }
+}
+
 fn config_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
@@ -235,8 +246,95 @@ fn parse_worktrees(text: &str) -> Vec<WtEntry> {
     out
 }
 
-/// Branch-units for a plain repo: one per local branch, all sharing the repo dir.
-fn plain_branch_units(path: &Path) -> Vec<BranchUnit> {
+// --- attached-branch state (the visible branches of a plain repo) ---
+//
+// A plain repo would otherwise surface EVERY local branch as a unit. Instead the
+// user attaches the branches they care about; the visible set is the attached
+// branches PLUS whatever is currently checked out. Stored SEPARATELY from the
+// watched sway.toml (writing the toml loops the config watcher), mirroring
+// adopted.json (sessions.rs). Keyed by normalized repo path.
+
+fn norm(path: &str) -> String {
+    path.trim_end_matches('/').to_string()
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct AttachedRepo {
+    /// Branch names the user has attached (made visible).
+    branches: HashSet<String>,
+    /// Seeded once per repo (origin default, else current). Survives detach-to-empty
+    /// so a hand-emptied set is never silently re-seeded.
+    seeded: bool,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct AttachedState(HashMap<String, AttachedRepo>);
+
+fn attached_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/attached.json")
+}
+
+fn load_attached() -> AttachedState {
+    std::fs::read_to_string(attached_path())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn save_attached(state: &AttachedState) -> Result<(), String> {
+    let path = attached_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// The branches attached for `repo` (empty when the repo has no store entry).
+fn attached_branches(state: &AttachedState, repo: &Path) -> HashSet<String> {
+    state
+        .0
+        .get(&norm(&repo.to_string_lossy()))
+        .map(|r| r.branches.clone())
+        .unwrap_or_default()
+}
+
+/// The repo's local branch names (empty on a non-repo or an unborn HEAD).
+fn local_branches(path: &Path) -> HashSet<String> {
+    let mut out = HashSet::new();
+    if let Some(text) = run_git(path, &["branch", "--format=%(refname:short)"]) {
+        for line in text.lines() {
+            let n = line.trim();
+            if !n.is_empty() {
+                out.insert(n.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// The currently checked-out branch, or None when detached or unborn.
+fn current_branch(path: &Path) -> Option<String> {
+    run_git(path, &["symbolic-ref", "--short", "HEAD"])
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Refuse an op targeting the current checkout (detach/delete would orphan it).
+fn refuse_if_current(path: &Path, branch: &str) -> Result<(), String> {
+    if current_branch(path).as_deref() == Some(branch) {
+        return Err(format!(
+            "\"{branch}\" is the current checkout; switch away first."
+        ));
+    }
+    Ok(())
+}
+
+/// Branch-units for a plain repo: the local branches that are attached or
+/// currently checked out, all sharing the repo dir (`list_branches ∩ (attached ∪ {current})`).
+fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit> {
     let mut units = Vec::new();
     if let Some(text) = run_git(path, &["branch", "--format=%(refname:short)\t%(HEAD)"]) {
         for line in text.lines() {
@@ -244,6 +342,10 @@ fn plain_branch_units(path: &Path) -> Vec<BranchUnit> {
             let name = parts.next().unwrap_or("").trim().to_string();
             let current = parts.next().map(|h| h.trim() == "*").unwrap_or(false);
             if name.is_empty() {
+                continue;
+            }
+            // Only the current checkout and attached branches are visible.
+            if !current && !attached.contains(&name) {
                 continue;
             }
             units.push(BranchUnit {
@@ -286,8 +388,9 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     let real: Vec<WtEntry> = entries.into_iter().filter(|e| !e.bare).collect();
 
     if !has_bare {
-        // A normal repo: branch-units are its local branches.
-        return plain_branch_units(path);
+        // A normal repo: branch-units are its attached + current branches.
+        let attached = attached_branches(&load_attached(), path);
+        return plain_branch_units(path, &attached);
     }
 
     // A bare container. With no worktrees it is a cleanable stub.
@@ -504,6 +607,159 @@ pub fn list_branches(path: String) -> Result<Vec<Branch>, String> {
         }
     }
     Ok(branches)
+}
+
+/// Pure seed step: attach `seed` (only when it is a local branch) exactly once per
+/// repo, and never against an empty repo (the flag stays unset so a later probe
+/// still seeds). Returns whether the state changed (so the caller persists). Pure,
+/// so it is unit-tested directly. Mirrors `do_seed` (sessions.rs).
+fn do_seed_attached(
+    state: &mut AttachedState,
+    key: &str,
+    locals: &HashSet<String>,
+    seed: Option<&str>,
+) -> bool {
+    if state.0.get(key).map(|r| r.seeded).unwrap_or(false) || locals.is_empty() {
+        return false;
+    }
+    let entry = state.0.entry(key.to_string()).or_default();
+    if let Some(b) = seed {
+        if locals.contains(b) {
+            entry.branches.insert(b.to_string());
+        }
+    }
+    entry.seeded = true;
+    true
+}
+
+/// Seed `repo`'s attached set once: attach origin's default branch (else the
+/// current checkout), so a freshly discovered repo shows a sensible branch instead
+/// of only its checkout. No-op once seeded, or while the repo has no branches yet.
+/// Called from `loadConfig`.
+#[tauri::command]
+pub fn seed_attached(repo: String) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    let locals = local_branches(&path);
+    let seed = default_branch(&path).or_else(|| current_branch(&path));
+    let mut state = load_attached();
+    if do_seed_attached(&mut state, &norm(&repo), &locals, seed.as_deref()) {
+        save_attached(&state)?;
+    }
+    Ok(())
+}
+
+/// Attach an existing local `branch` to `repo`'s visible set.
+/// Order: write store → evict cache → emit `config://changed`.
+#[tauri::command]
+pub fn attach_branch(
+    app: AppHandle,
+    index: State<ProjectIndex>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    if !local_branches(&path).contains(&branch) {
+        return Err(format!("No local branch \"{branch}\"."));
+    }
+    let mut state = load_attached();
+    state.0.entry(norm(&repo)).or_default().branches.insert(branch);
+    save_attached(&state)?;
+    index.evict(&path);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Create `branch` at HEAD and attach it (the frontend then switches to it, a
+/// same-commit checkout that needs no working-tree confirm). Creation is
+/// independent of that switch, so the branch appears even if the switch is skipped.
+/// Order: create → write store → evict cache → emit.
+#[tauri::command]
+pub fn new_branch(
+    app: AppHandle,
+    index: State<ProjectIndex>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    let name = branch.trim();
+    if name.is_empty() {
+        return Err("Branch name is empty".into());
+    }
+    if local_branches(&path).contains(name) {
+        return Err(format!("Branch \"{name}\" already exists."));
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&path)
+        .args(["branch", name])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let mut state = load_attached();
+    state
+        .0
+        .entry(norm(&repo))
+        .or_default()
+        .branches
+        .insert(name.to_string());
+    save_attached(&state)?;
+    index.evict(&path);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Detach `branch` from `repo`'s visible set (the git branch is untouched).
+/// Refuses the current checkout (it must stay reachable).
+/// Order: write store → evict cache → emit.
+#[tauri::command]
+pub fn detach_branch(
+    app: AppHandle,
+    index: State<ProjectIndex>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    refuse_if_current(&path, &branch)?;
+    let mut state = load_attached();
+    if let Some(entry) = state.0.get_mut(&norm(&repo)) {
+        entry.branches.remove(&branch);
+    }
+    save_attached(&state)?;
+    index.evict(&path);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Delete `branch` from `repo` (`git branch -D`) and prune the store entry.
+/// Refuses the current checkout. Order: delete → write store → evict cache → emit.
+#[tauri::command]
+pub fn delete_branch(
+    app: AppHandle,
+    index: State<ProjectIndex>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&repo);
+    refuse_if_current(&path, &branch)?;
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&path)
+        .args(["branch", "-D", &branch])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let mut state = load_attached();
+    if let Some(entry) = state.0.get_mut(&norm(&repo)) {
+        entry.branches.remove(&branch);
+    }
+    save_attached(&state)?;
+    index.evict(&path);
+    let _ = app.emit("config://changed", ());
+    Ok(())
 }
 
 /// Install a watcher on the config file's directory. Emits `config://changed`
@@ -968,7 +1224,8 @@ mod tests {
         // out-of-root explicit path appears once, under its parent-named group.
         assert_eq!(group(&cfg, "extra").unwrap().projects.len(), 1);
 
-        // plain kind: a unit per branch, feature current.
+        // plain kind: only the current checkout is visible when nothing is attached
+        // (feature is checked out; unattached main is absent).
         let pr = project(&cfg, "personal", "plainrepo");
         assert!(pr.branch_units.iter().all(|u| u.kind == ProjectKind::Plain));
         let feat = pr
@@ -977,12 +1234,12 @@ mod tests {
             .find(|u| u.branch.as_deref() == Some("feature"))
             .unwrap();
         assert!(feat.is_current);
-        let main = pr
-            .branch_units
-            .iter()
-            .find(|u| u.branch.as_deref() == Some("main"))
-            .unwrap();
-        assert!(!main.is_current);
+        assert!(
+            pr.branch_units
+                .iter()
+                .all(|u| u.branch.as_deref() != Some("main")),
+            "unattached main must not surface as a unit"
+        );
 
         // plain-dir kind: a single unit.
         let pd = project(&cfg, "personal", "plaindir");
@@ -1000,6 +1257,113 @@ mod tests {
         let st = project(&cfg, "personal", "stub");
         assert_eq!(st.branch_units.len(), 1);
         assert_eq!(st.branch_units[0].kind, ProjectKind::Incomplete);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn plain_units_show_attached_and_current_only() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        init_repo(&repo, "main"); // on main
+        git(&repo, &["branch", "feature"]);
+        git(&repo, &["branch", "spare"]);
+
+        // Attach feature only: current (main) + attached (feature) show; spare hidden.
+        let attached = HashSet::from(["feature".to_string()]);
+        let units = plain_branch_units(&repo, &attached);
+        let names: HashSet<&str> = units.iter().filter_map(|u| u.branch.as_deref()).collect();
+        assert_eq!(names, HashSet::from(["main", "feature"]));
+        assert!(
+            units
+                .iter()
+                .find(|u| u.branch.as_deref() == Some("main"))
+                .unwrap()
+                .is_current
+        );
+
+        // A store entry for a nonexistent branch yields no unit (only current shows).
+        let ghost = HashSet::from(["nope".to_string()]);
+        let ghost_units = plain_branch_units(&repo, &ghost);
+        let names2: HashSet<&str> = ghost_units
+            .iter()
+            .filter_map(|u| u.branch.as_deref())
+            .collect();
+        assert_eq!(names2, HashSet::from(["main"]));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn plain_units_unborn_head_yields_one_folder_unit() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]); // no commits: unborn HEAD, no branches
+
+        let units = plain_branch_units(&repo, &HashSet::new());
+        assert_eq!(units.len(), 1);
+        assert!(units[0].branch.is_none());
+        assert_eq!(units[0].kind, ProjectKind::Plain);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn attached_seed_survives_detach_to_empty() {
+        let mut state = AttachedState::default();
+        let key = "/repo";
+        let locals = HashSet::from(["main".to_string(), "feature".to_string()]);
+
+        // Seed once → attaches the default (main), marks seeded.
+        assert!(do_seed_attached(&mut state, key, &locals, Some("main")));
+        assert!(state.0[key].branches.contains("main"));
+        assert!(state.0[key].seeded);
+
+        // Attach feature by hand, then detach everything.
+        let e = state.0.get_mut(key).unwrap();
+        e.branches.insert("feature".to_string());
+        e.branches.remove("main");
+        e.branches.remove("feature");
+        assert!(state.0[key].branches.is_empty());
+        assert!(state.0[key].seeded, "seeded flag must survive detach-to-empty");
+
+        // A second seed is a no-op: the hand-emptied set is never re-seeded.
+        assert!(!do_seed_attached(&mut state, key, &locals, Some("main")));
+        assert!(state.0[key].branches.is_empty());
+    }
+
+    #[test]
+    fn seed_attaches_default_and_skips_empty() {
+        // A local default branch is attached.
+        let mut state = AttachedState::default();
+        let locals = HashSet::from(["main".to_string(), "dev".to_string()]);
+        assert!(do_seed_attached(&mut state, "/r", &locals, Some("dev")));
+        assert!(state.0["/r"].branches.contains("dev"));
+        assert_eq!(state.0["/r"].branches.len(), 1);
+
+        // A seed that is not a local branch is ignored, but the repo is still marked
+        // seeded (so we do not retry every discovery).
+        let mut s2 = AttachedState::default();
+        assert!(do_seed_attached(&mut s2, "/r", &locals, Some("origin-only")));
+        assert!(s2.0["/r"].branches.is_empty());
+        assert!(s2.0["/r"].seeded);
+
+        // An unborn repo (no branches) is not seeded: the flag stays unset.
+        let mut s3 = AttachedState::default();
+        assert!(!do_seed_attached(&mut s3, "/r", &HashSet::new(), Some("main")));
+        assert!(!s3.0.get("/r").map(|r| r.seeded).unwrap_or(false));
+    }
+
+    #[test]
+    fn refuse_if_current_blocks_checked_out_branch() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        init_repo(&repo, "main"); // on main
+        git(&repo, &["branch", "feature"]);
+
+        assert!(refuse_if_current(&repo, "main").is_err()); // current: blocked
+        assert!(refuse_if_current(&repo, "feature").is_ok()); // not current: allowed
 
         std::fs::remove_dir_all(&tmp).ok();
     }
