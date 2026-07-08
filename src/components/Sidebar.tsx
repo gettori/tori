@@ -411,20 +411,6 @@ export default function Sidebar(props: {
 
   // --- plain-dir git lifecycle ---
 
-  // Open a terminal tab for an in-place op (no folder creation), re-discovering
-  // on exit. Used for first-commit and push (native progress + ambient auth).
-  function runOpInTab(cwd: string, kind: string, title: string, program: string, args: string[]) {
-    setError("");
-    emitWith<OpenTerminal>(OPEN_TERMINAL, {
-      id: `${kind}:${cwd}:${Date.now()}`,
-      title,
-      cwd,
-      program,
-      args,
-      rediscoverOnExit: true,
-    });
-  }
-
   // Initialize git in a plain-dir (optional initial branch); re-discovers as plain.
   async function initRepo(p: Project) {
     const branch = await askText(`Initialize git in "${p.name}". Initial branch (blank = git default):`);
@@ -445,38 +431,6 @@ export default function Sidebar(props: {
     } catch (e) {
       setError(String(e));
     }
-  }
-
-  // First commit: stage everything (the scaffolded .gitignore keeps junk out) and
-  // commit with the prompted message, in a terminal tab. Message passes as $1.
-  async function commitAll(p: Project) {
-    const msg = await askText(`Commit message for "${p.name}":`);
-    if (!msg?.trim()) return;
-    runOpInTab(p.path, "commit", `commit ${p.name}`, "sh", [
-      "-c",
-      'git add -A && git commit -m "$1"',
-      "sway",
-      msg.trim(),
-    ]);
-  }
-
-  // Push the current branch with upstream tracking, in a terminal tab. Refused
-  // (with a clear message) when no origin remote is configured.
-  async function pushRepo(p: Project) {
-    let origin: string | null = null;
-    try {
-      origin = await invoke<string | null>("git_origin", { projectPath: p.path });
-    } catch (e) {
-      return setError(String(e));
-    }
-    if (!origin) {
-      return setError('No "origin" remote. Add a remote first, then push.');
-    }
-    runOpInTab(p.path, "push", `push ${p.name}`, "sh", [
-      "-c",
-      'git push -u origin "$(git rev-parse --abbrev-ref HEAD)"',
-      "sway",
-    ]);
   }
 
   // --- session overlay actions (rename/archive/delete) ---
@@ -522,8 +476,9 @@ export default function Sidebar(props: {
       ? []
       : [
           { label: "New folder", onClick: () => addFolder(g) },
+          { separator: true },
           { label: "Clone repo…", onClick: () => cloneRepo(g) },
-          { label: "Bootstrap bare + worktree…", onClick: () => bootstrapRepo(g) },
+          { label: "Bare + worktree…", onClick: () => bootstrapRepo(g) },
         ];
 
   // A project's git kind comes from its branch-units (all share one kind).
@@ -540,11 +495,7 @@ export default function Sidebar(props: {
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
       case "plain":
-        return [
-          { label: "Commit all…", onClick: () => commitAll(p) },
-          { label: "Add / set remote…", onClick: () => addRemote(p) },
-          { label: "Push", onClick: () => pushRepo(p) },
-        ];
+        return [{ label: "Add / set remote…", onClick: () => addRemote(p) }];
       default:
         return [];
     }
@@ -815,8 +766,9 @@ export default function Sidebar(props: {
               <Show when={hasRoot()}>
                 <div class="gear-item" onClick={() => gearAction(addGroup)}>New group</div>
               </Show>
-              <div class="gear-item" onClick={() => gearAction(addBaseFolder)}>Add base folder</div>
               <div class="gear-item" onClick={() => gearAction(pinFolder)}>Pin folder to "Other"</div>
+              <div class="gear-divider" />
+              <div class="gear-item" onClick={() => gearAction(addBaseFolder)}>Add/Update root</div>
               <Show when={hasRoot()}>
                 <div class="gear-item danger" onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
               </Show>

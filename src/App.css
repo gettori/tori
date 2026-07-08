@@ -273,6 +273,11 @@ body.dragging .term-host {
 .gear-item.danger {
   color: var(--danger, #e06c75);
 }
+.gear-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
 
 /* ---- Generic right-click context menu (portaled) ---- */
 .ctx-menu {
