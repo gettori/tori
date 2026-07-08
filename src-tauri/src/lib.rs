@@ -116,6 +116,8 @@ pub fn run() {
             worktree::create_worktree,
             worktree::worktree_dirty,
             worktree::remove_worktree,
+            worktree::remove_worktree_and_branch,
+            worktree::relink_worktrees,
             theme::get_theme_colors,
         ])
         .run(tauri::generate_context!())

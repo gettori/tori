@@ -268,22 +268,91 @@ pub fn worktree_dirty(path: String) -> Result<bool, String> {
     tree_dirty(Path::new(&path))
 }
 
-/// Remove a worktree and prune its stale admin entry. Refuses a dirty tree (real
-/// work) via `tree_dirty`, so nothing is deleted then. `--force` is used only
+/// Remove a worktree folder and prune its stale admin entry. Refuses a dirty tree
+/// (real work) via `tree_dirty`, so nothing is deleted then. `--force` is used only
 /// once that check passes, to drop the regenerable `.link/` symlinks git would
-/// otherwise treat as untracked. The live-use guard (running agents, open editor)
-/// runs in the UI before this is called.
-#[tauri::command]
-pub fn remove_worktree(app: AppHandle, repo_path: String, worktree_path: String) -> Result<(), String> {
-    if tree_dirty(Path::new(&worktree_path))? {
+/// otherwise treat as untracked. Shared by `remove_worktree` and the delete-plus-
+/// branch variant; it does not emit (the caller does).
+fn do_remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
+    if tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
-    git_ok(&repo_path, &["worktree", "remove", "--force", &worktree_path])?;
+    git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
     let _ = Command::new("git")
         .arg("-C")
-        .arg(&repo_path)
+        .arg(repo_path)
         .args(["worktree", "prune"])
         .output();
+    Ok(())
+}
+
+/// Remove a worktree, keeping its branch. The live-use guard (running agents, open
+/// editor) runs in the UI before this is called.
+#[tauri::command]
+pub fn remove_worktree(app: AppHandle, repo_path: String, worktree_path: String) -> Result<(), String> {
+    do_remove_worktree(&repo_path, &worktree_path)?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Remove a worktree AND delete its branch (`git branch -D`). The folder is removed
+/// first (dirty guard inside); if the branch delete then fails, the folder is
+/// already gone, so we emit and surface an explicit partial-outcome message rather
+/// than swallow it. The dirty + live-use guards match `remove_worktree`.
+#[tauri::command]
+pub fn remove_worktree_and_branch(
+    app: AppHandle,
+    repo_path: String,
+    worktree_path: String,
+    branch: String,
+) -> Result<(), String> {
+    do_remove_worktree(&repo_path, &worktree_path)?;
+    let del = Command::new("git")
+        .arg("-C")
+        .arg(&repo_path)
+        .args(["branch", "-D", &branch])
+        .output()
+        .map_err(|e| e.to_string())?;
+    // The folder is gone regardless of the branch outcome: refresh the tree now.
+    let _ = app.emit("config://changed", ());
+    if !del.status.success() {
+        let stderr = String::from_utf8_lossy(&del.stderr).trim().to_string();
+        return Err(format!(
+            "Worktree folder removed, but branch \"{branch}\" was not deleted: {stderr}"
+        ));
+    }
+    Ok(())
+}
+
+/// Re-run the `.link/` symlinking across every worktree of a container. A no-op
+/// when there is no `.link/`. Reuses `link_shared`, which never clobbers an
+/// existing file (a branch that tracks the name keeps its own copy). Pure (no
+/// emit), so it is unit-tested directly.
+fn relink_worktrees_pure(container: &Path) -> Result<(), String> {
+    if !container.join(".link").is_dir() {
+        return Ok(()); // no .link/ convention here: nothing to relink
+    }
+    // git reports canonical worktree paths (on macOS /tmp resolves to /private/tmp),
+    // so compare against a canonicalized container to keep the "inside" guard honest.
+    let cont_canon = std::fs::canonicalize(container).unwrap_or_else(|_| container.to_path_buf());
+    for wt in list_worktrees(container.to_string_lossy().into_owned())? {
+        // Skip the bare entry (no branch) and anything outside the container.
+        if wt.branch.is_empty() {
+            continue;
+        }
+        let wt_path = PathBuf::from(&wt.path);
+        let wt_canon = std::fs::canonicalize(&wt_path).unwrap_or_else(|_| wt_path.clone());
+        if wt_canon.starts_with(&cont_canon) && wt_canon != cont_canon {
+            link_shared(container, &wt_path);
+        }
+    }
+    Ok(())
+}
+
+/// "Update .links/": restore any shared `.link/` file deleted from a worktree.
+#[tauri::command]
+pub fn relink_worktrees(app: AppHandle, repo_path: String) -> Result<(), String> {
+    relink_worktrees_pure(Path::new(&repo_path))?;
     let _ = app.emit("config://changed", ());
     Ok(())
 }
@@ -405,6 +474,50 @@ mod tests {
         std::fs::remove_file(wt.join("scratch.txt")).unwrap();
         std::fs::write(wt.join("a.txt"), "changed").unwrap();
         assert!(tree_dirty(&wt).unwrap(), "a tracked edit is dirty");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn relink_restores_deleted_symlink() {
+        let tmp = unique_tmp();
+        // A source repo on `main` to seed a bare clone from.
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+
+        // A bare container with one worktree.
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(&cont, &["worktree", "add", "-q", "main", "main"]);
+
+        // No .link/ yet: relink is a clean no-op.
+        assert!(relink_worktrees_pure(&cont).is_ok());
+
+        // Add a shared file and link it in, then delete the symlink from the worktree.
+        std::fs::create_dir_all(cont.join(".link")).unwrap();
+        std::fs::write(cont.join(".link/.env"), "SECRET=1").unwrap();
+        let linked = cont.join("main/.env");
+        std::os::unix::fs::symlink(cont.join(".link/.env"), &linked).unwrap();
+        std::fs::remove_file(&linked).unwrap();
+        assert!(linked.symlink_metadata().is_err(), "precondition: link is gone");
+
+        // Relink restores it as a symlink into .link/.
+        relink_worktrees_pure(&cont).unwrap();
+        let meta = std::fs::symlink_metadata(&linked).unwrap();
+        assert!(meta.file_type().is_symlink(), "deleted link is restored");
+        assert_eq!(std::fs::read_link(&linked).unwrap(), cont.join(".link/.env"));
 
         std::fs::remove_dir_all(&tmp).ok();
     }
