@@ -56,6 +56,7 @@ type BranchUnit = {
   kind: string; // "worktree" | "plain" | "plain-dir" | "incomplete"
   isCurrent: boolean;
 };
+type Branch = { name: string; current: boolean };
 type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
 type Group = { name: string; path: string; projects: Project[]; external: boolean };
 type ResolvedConfig = { path: string; roots: string[]; groups: Group[] };
@@ -222,6 +223,13 @@ export default function Sidebar(props: {
         g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
       );
       invoke("seed_adopted", { folders }).catch(() => {});
+      // Seed each plain repo's attached-branch set once (origin default, else the
+      // checkout), so it shows a sensible branch instead of every local branch.
+      const plainRepos = cfg.groups
+        .flatMap((g) => g.projects)
+        .filter((p) => p.branchUnits.some((u) => u.kind === "plain"))
+        .map((p) => p.path);
+      for (const repo of plainRepos) invoke("seed_attached", { repo }).catch(() => {});
     } catch (e) {
       setError(String(e));
     }
@@ -433,6 +441,84 @@ export default function Sidebar(props: {
     }
   }
 
+  // --- plain-repo branch actions (attach/detach model) ---
+
+  // Create a branch at HEAD (attached + shown immediately by new_branch), then
+  // switch to it. The switch is a same-commit checkout, so it changes no files and
+  // needs no working-tree confirm; the branch persists even if the switch fails.
+  async function newBranch(p: Project) {
+    const name = await askText(`New branch in "${p.name}" (from HEAD):`);
+    if (!name?.trim()) return;
+    const branch = name.trim();
+    try {
+      await invoke("new_branch", { repo: p.path, branch });
+    } catch (e) {
+      return setError(String(e));
+    }
+    try {
+      await invoke("git_checkout", { repoPath: p.path, branch });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Attach an already-existing local branch, chosen from those not yet visible.
+  async function attachExisting(p: Project) {
+    let branches: Branch[];
+    try {
+      branches = await invoke<Branch[]>("list_branches", { path: p.path });
+    } catch (e) {
+      return setError(String(e));
+    }
+    const visible = new Set(
+      p.branchUnits.filter((u) => u.kind === "plain" && u.branch).map((u) => u.branch),
+    );
+    const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
+    if (candidates.length === 0) {
+      return setError("Every local branch is already attached.");
+    }
+    const name = await askText(`Attach which branch?  (${candidates.join(", ")})`);
+    if (!name?.trim()) return;
+    if (!candidates.includes(name.trim())) {
+      return setError(`"${name.trim()}" is not an attachable local branch.`);
+    }
+    try {
+      await invoke("attach_branch", { repo: p.path, branch: name.trim() });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Switch the shared working tree to this branch (runs the checkout guard).
+  async function checkoutUnit(g: Group, p: Project, u: BranchUnit) {
+    await selectUnit(g, p, u);
+  }
+
+  // Remove a branch from the visible list (git branch untouched). Its sessions
+  // re-home onto the current checkout, so nothing is lost.
+  async function detachBranch(p: Project, u: BranchUnit) {
+    if (!u.branch) return;
+    try {
+      await invoke("detach_branch", { repo: p.path, branch: u.branch });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Delete the branch for real (`git branch -D`) and prune the store entry.
+  async function deleteBranch(p: Project, u: BranchUnit) {
+    if (!u.branch) return;
+    if (!confirm(`Delete branch "${u.branch}"? This runs git branch -D and cannot be undone.`)) {
+      return;
+    }
+    try {
+      await invoke("delete_branch", { repo: p.path, branch: u.branch });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // --- session overlay actions (rename/archive/delete) ---
 
   async function renameSession(s: SessionMeta) {
@@ -495,7 +581,12 @@ export default function Sidebar(props: {
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
       case "plain":
-        return [{ label: "Add / set remote…", onClick: () => addRemote(p) }];
+        return [
+          { label: "New Branch", onClick: () => newBranch(p) },
+          { label: "Attach Existing Branch", onClick: () => attachExisting(p) },
+          { separator: true },
+          { label: "Add / set remote…", onClick: () => addRemote(p) },
+        ];
       default:
         return [];
     }
@@ -511,6 +602,16 @@ export default function Sidebar(props: {
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", danger: true, onClick: () => removeWorktree(p, u) });
+    }
+    // Plain branch-unit: checkout always; detach/delete only off the current
+    // checkout and only when the unit actually has a branch (never the folder fallback).
+    if (u.kind === "plain" && u.branch != null) {
+      items.push({ separator: true });
+      items.push({ label: "Checkout", onClick: () => checkoutUnit(g, p, u) });
+      if (!u.isCurrent) {
+        items.push({ label: "Detach Branch", onClick: () => detachBranch(p, u) });
+        items.push({ label: "Delete Branch", danger: true, onClick: () => deleteBranch(p, u) });
+      }
     }
     return items;
   };
@@ -665,18 +766,42 @@ export default function Sidebar(props: {
     );
   }
 
+  // The plain unit that owns re-homed sessions: the current checkout, else the
+  // branchless folder fallback (detached/unborn HEAD), else the first plain unit.
+  // A key (branch, or a sentinel for the branchless unit) identifies it uniquely,
+  // since a plain project's units share one folder and differ only by branch.
+  const plainUnitKey = (u: BranchUnit) => u.branch ?? "\0folder";
+  function fallbackHome(p: Project): BranchUnit | null {
+    const plain = p.branchUnits.filter((u) => u.kind === "plain");
+    return (
+      plain.find((u) => u.isCurrent) ??
+      plain.find((u) => u.branch == null) ??
+      plain[0] ??
+      null
+    );
+  }
+
   // Attach a folder's sessions to the most-specific branch-unit. Worktree /
   // plain-dir / incomplete units own a distinct folder, so all of it is theirs.
   // Plain units share one repo folder, so split Claude sessions by recorded
-  // branch and park branchless (pi) sessions on the current checkout.
-  function unitSessions(u: BranchUnit): SessionMeta[] {
+  // branch. A session whose recorded branch has no visible unit (detached or
+  // deleted) is an orphan: it re-homes onto the fallback unit so history is never
+  // lost. Branchless (pi) sessions likewise park on the fallback (the checkout).
+  function unitSessions(p: Project, u: BranchUnit): SessionMeta[] {
     const all = (sessions()[u.folderPath] ?? [])
       .filter((s) => !s.archived)
       .filter(sessionVisible);
     if (u.kind !== "plain") return all;
+    const visible = new Set(
+      p.branchUnits.filter((x) => x.kind === "plain" && x.branch).map((x) => x.branch),
+    );
+    const home = fallbackHome(p);
+    const isHome = home != null && plainUnitKey(u) === plainUnitKey(home);
     return all.filter((s) => {
-      if (s.agent === "pi") return u.isCurrent;
-      return (s.branch || "") === (u.branch || "");
+      if (s.agent === "pi") return isHome;
+      const b = s.branch || "";
+      if (b && visible.has(b)) return (u.branch || "") === b;
+      return isHome; // orphaned recorded branch (or branchless claude): re-home
     });
   }
 
@@ -853,7 +978,7 @@ export default function Sidebar(props: {
                                           title="Sessions predating this recreated folder"
                                         >
                                           <Chevron open={expanded().has(hkey(u))} />
-                                          <span class="label">Historical ({unitSessions(u).length})</span>
+                                          <span class="label">Historical ({unitSessions(p, u).length})</span>
                                           <button
                                             class="adopt-btn"
                                             title="Adopt these sessions into the normal listing"
@@ -868,7 +993,7 @@ export default function Sidebar(props: {
                                       </Show>
                                       <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
                                       <For
-                                        each={unitSessions(u)}
+                                        each={unitSessions(p, u)}
                                         fallback={<div class="row dim sub3">no sessions</div>}
                                       >
                                         {(s) => {
