@@ -83,6 +83,7 @@ pub fn run() {
             config::new_branch,
             config::detach_branch,
             config::delete_branch,
+            config::attach_remote_branch,
             fs::fs_read_dir,
             fs::fs_read_file,
             fs::fs_write_file,

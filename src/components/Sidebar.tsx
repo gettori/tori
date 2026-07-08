@@ -142,6 +142,9 @@ export default function Sidebar(props: {
   // Per-folder "historical" flag: sessions predating a recreated folder, hidden
   // under a collapsed "Historical" group until adopted.
   const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
+  // Per-project "has an origin remote" flag, gating the remote menu items
+  // (Fetch All / Attach remote branch vs Add remote). Keyed by project path.
+  const [origins, setOrigins] = createSignal<Record<string, boolean>>({});
   const [query, setQuery] = createSignal("");
   const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
@@ -230,6 +233,27 @@ export default function Sidebar(props: {
         .filter((p) => p.branchUnits.some((u) => u.kind === "plain"))
         .map((p) => p.path);
       for (const repo of plainRepos) invoke("seed_attached", { repo }).catch(() => {});
+      // Populate the per-project origin flag (fire-and-forget) so the remote menu
+      // items resolve to the right variant by the time a menu is opened.
+      void (async () => {
+        const map: Record<string, boolean> = {};
+        await Promise.all(
+          cfg.groups
+            .flatMap((g) => g.projects)
+            .filter((p) => {
+              const k = p.branchUnits[0]?.kind;
+              return k === "plain" || k === "worktree";
+            })
+            .map(async (p) => {
+              try {
+                map[p.path] = (await invoke<string | null>("git_origin", { projectPath: p.path })) != null;
+              } catch {
+                map[p.path] = false;
+              }
+            }),
+        );
+        setOrigins(map);
+      })();
     } catch (e) {
       setError(String(e));
     }
@@ -529,6 +553,36 @@ export default function Sidebar(props: {
     }
   }
 
+  // --- remote / network (auth'd fetch in a tab; attach is a separate native op) ---
+
+  const hasOrigin = (p: Project) => origins()[p.path] === true;
+
+  // Run `git fetch --all` in a terminal tab (native progress + ambient auth), so
+  // origin/* refs update; the terminal area re-discovers when the tab exits.
+  function fetchAll(p: Project) {
+    setError("");
+    emitWith<OpenTerminal>(OPEN_TERMINAL, {
+      id: `fetch:${p.path}:${Date.now()}`,
+      title: `fetch ${p.name}`,
+      cwd: p.path,
+      program: "git",
+      args: ["fetch", "--all"],
+      rediscoverOnExit: true,
+    });
+  }
+
+  // Attach a remote branch: create a local tracking branch from an already-fetched
+  // origin/<name> (decoupled from the auth'd fetch above). Native, no tab.
+  async function attachRemoteBranch(p: Project) {
+    const name = await askText(`Attach remote branch origin/<name> in "${p.name}":`);
+    if (!name?.trim()) return;
+    try {
+      await invoke("attach_remote_branch", { repo: p.path, branch: name.trim() });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // Switch the shared working tree to this branch (runs the checkout guard).
   async function checkoutUnit(g: Group, p: Project, u: BranchUnit) {
     await selectUnit(g, p, u);
@@ -617,19 +671,28 @@ export default function Sidebar(props: {
     switch (projectKind(p)) {
       case "worktree":
         return [
-          { label: "Add Origin", onClick: () => addRemote(p) },
+          hasOrigin(p)
+            ? { label: "Fetch All", onClick: () => fetchAll(p) }
+            : { label: "Add Origin", onClick: () => addRemote(p) },
           { label: "New worktree…", onClick: () => createWorktree(p) },
           { label: "Update .links/", onClick: () => relinkWorktrees(p) },
         ];
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
-      case "plain":
-        return [
+      case "plain": {
+        const items: MenuItem[] = [
           { label: "New Branch", onClick: () => newBranch(p) },
           { label: "Attach Existing Branch", onClick: () => attachExisting(p) },
           { separator: true },
-          { label: "Add / set remote…", onClick: () => addRemote(p) },
         ];
+        if (hasOrigin(p)) {
+          items.push({ label: "Fetch All", onClick: () => fetchAll(p) });
+          items.push({ label: "Attach remote branch…", onClick: () => attachRemoteBranch(p) });
+        } else {
+          items.push({ label: "Add / set remote…", onClick: () => addRemote(p) });
+        }
+        return items;
+      }
       default:
         return [];
     }
