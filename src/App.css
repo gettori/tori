@@ -397,6 +397,71 @@ body.dragging .term-host {
   filter: none;
 }
 
+/* Filterable single-select picker (PickerModal). Layout cribbed from .qo-*, but
+   it reuses .modal-backdrop (z-index 1100) and .modal chrome, so it sits on the
+   modal layer, not qo's z-index 100. Adds a scrollable result list and an
+   in-input clear button. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 520px);
+  padding: 12px;
+}
+.picker-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.picker-input {
+  padding-right: 26px; /* room for the clear button */
+}
+.picker-clear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.picker-clear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.picker-item {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-item.active {
+  background: var(--sel);
+}
+.picker-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* Delete-group confirmation extras (reuses the .modal chrome above). */
 .modal-danger {
   width: min(480px, calc(100vw - 48px));
