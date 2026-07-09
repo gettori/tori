@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import PromptModal from "./PromptModal";
+import PickerModal from "./PickerModal";
 import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
 import Toasts, { type Toast } from "./Toasts";
 import {
@@ -198,6 +199,23 @@ export default function Sidebar(props: {
   function resolvePrompt(v: string | null) {
     const req = promptReq();
     setPromptReq(null);
+    req?.resolve(v);
+  }
+
+  // In-app single-select picker (see PickerModal). Mirrors askText: askPick
+  // opens the picker over `items` and awaits a choice, resolving with the
+  // selected string or null on cancel.
+  const [pickReq, setPickReq] = createSignal<{
+    title: string;
+    items: string[];
+    resolve: (v: string | null) => void;
+  } | null>(null);
+  function askPick(title: string, items: string[]): Promise<string | null> {
+    return new Promise((resolve) => setPickReq({ title, items, resolve }));
+  }
+  function resolvePick(v: string | null) {
+    const req = pickReq();
+    setPickReq(null);
     req?.resolve(v);
   }
 
@@ -615,7 +633,7 @@ export default function Sidebar(props: {
     if (candidates.length === 0) {
       return setError("Every local branch is already attached.");
     }
-    const name = await askText(`Attach which branch?  (${candidates.join(", ")})`);
+    const name = await askPick("Attach which branch?", candidates);
     if (!name?.trim()) return;
     if (!candidates.includes(name.trim())) {
       return setError(`"${name.trim()}" is not an attachable local branch.`);
@@ -1264,6 +1282,16 @@ export default function Sidebar(props: {
           initial={promptReq()!.initial}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
+
+      <Show when={pickReq()}>
+        <PickerModal
+          title={pickReq()!.title}
+          items={pickReq()!.items}
+          placeholder="Type to filter…"
+          onSubmit={(v) => resolvePick(v)}
+          onCancel={() => resolvePick(null)}
         />
       </Show>
 
