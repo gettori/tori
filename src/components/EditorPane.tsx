@@ -7,7 +7,15 @@ import FileTree from "./FileTree";
 import ReviewPanel from "./ReviewPanel";
 import OverflowTabBar from "./OverflowTabBar";
 import FileIcon from "../seti/FileIcon";
-import { onWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, type OpenInEditor } from "../events";
+import {
+  onWith,
+  OPEN_IN_EDITOR,
+  PURGE_UNDER_PATH,
+  DRAG_PATH_MIME,
+  type OpenInEditor,
+  type PurgeUnderPath,
+} from "../events";
+import { isUnderPath } from "../pathScope";
 import { isSelfWrite } from "../selfWrites";
 import { ensureLsp } from "../lspClient";
 import type { Selection } from "./Sidebar";
@@ -75,7 +83,25 @@ export default function EditorPane(props: { selected: Selection | null }) {
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
   }
 
+  // A group is being deleted: force-close every open tab rooted under it, without
+  // the per-file dirty prompt (the folder is going away regardless).
+  function purgeUnder(path: string) {
+    const gone = new Set(openPaths().filter((p) => isUnderPath(p, path)));
+    if (!gone.size) return;
+    setOpenFiles((fs) => fs.filter((f) => !gone.has(f.path)));
+    setDirty((d) => {
+      const next = { ...d };
+      for (const p of gone) delete next[p];
+      return next;
+    });
+    if (activePath() && gone.has(activePath()!)) {
+      const remaining = openFiles();
+      setActivePath(remaining.length ? remaining[remaining.length - 1].path : null);
+    }
+  }
+
   let offOpen: (() => void) | undefined;
+  let offPurge: (() => void) | undefined;
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
 
@@ -85,6 +111,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
       openFile(d.path);
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
     });
+    offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
@@ -103,6 +130,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
   });
   onCleanup(() => {
     offOpen?.();
+    offPurge?.();
     offClose?.();
     offFollow?.();
   });

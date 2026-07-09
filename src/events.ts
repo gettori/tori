@@ -31,6 +31,13 @@ export type OpenTerminal = {
 export const NEW_SESSION = "sway:new-session";
 export type NewSession = { folderPath: string; projectName: string; agent?: "claude" | "pi" };
 
+// Payload-carrying event: tear down everything rooted under a path (used when a
+// group is deleted). The terminal area kills + closes PTY tabs whose cwd is under
+// it; the editor pane closes buffers under it. Emitted before the native delete so
+// no agent keeps writing into a vanishing cwd.
+export const PURGE_UNDER_PATH = "sway:purge-under-path";
+export type PurgeUnderPath = { path: string };
+
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import PromptModal from "./PromptModal";
+import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
@@ -12,9 +13,12 @@ import {
   DRAG_ABS_PATH_MIME,
   OPEN_TERMINAL,
   NEW_SESSION,
+  PURGE_UNDER_PATH,
   type OpenTerminal,
   type NewSession,
+  type PurgeUnderPath,
 } from "../events";
+import { isUnderPath, countRunningUnder } from "../pathScope";
 import ClaudeIcon from "../seti/ClaudeIcon";
 import PiIcon from "../seti/PiIcon";
 import Chevron from "./Chevron";
@@ -119,7 +123,7 @@ function loadExpanded(): Set<string> {
 
 export default function Sidebar(props: {
   selected: Selection | null;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection | null) => void;
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
 
@@ -195,6 +199,76 @@ export default function Sidebar(props: {
     const req = promptReq();
     setPromptReq(null);
     req?.resolve(v);
+  }
+
+  // The delete-group confirmation. Opened with provisional entry names from the
+  // tree; the async preview (flags + size) and the running-agent count fill in.
+  type GroupPreview = { sizeBytes: number; entries: DeleteEntry[] };
+  const [deleteReq, setDeleteReq] = createSignal<{
+    name: string;
+    path: string;
+    entries: DeleteEntry[];
+    loading: boolean;
+    runningCount: number;
+    sizeBytes: number | null;
+  } | null>(null);
+
+  // Count agents running anywhere under the group (prefix match on session cwd, so
+  // an agent in a project subfolder counts too), reusing the same list_sessions +
+  // session_running primitives as the worktree-removal guard.
+  async function countRunningAgents(groupPath: string): Promise<number> {
+    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: groupPath }).catch(
+      () => [] as SessionMeta[],
+    );
+    const running = new Set<string>();
+    await Promise.all(
+      nested.map(async (s) => {
+        if (await invoke<boolean>("session_running", { id: s.id }).catch(() => false)) {
+          running.add(s.id);
+        }
+      }),
+    );
+    return countRunningUnder(
+      nested.map((s) => ({ id: s.id, folderPath: s.cwd })),
+      running,
+      groupPath,
+    );
+  }
+
+  function openDeleteGroup(g: Group) {
+    setDeleteReq({
+      name: g.name,
+      path: g.path,
+      entries: g.projects.map((p) => ({ name: p.name, kind: "repo", dirty: false, unpushed: false })),
+      loading: true,
+      runningCount: 0,
+      sizeBytes: null,
+    });
+    // Only patch the request if it still targets this group (guards a fast re-open).
+    const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
+      setDeleteReq((r) => (r && r.path === g.path ? fn(r) : r));
+    invoke<GroupPreview>("group_delete_preview", { path: g.path })
+      .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
+      .catch(() => forThis((r) => ({ ...r, loading: false })));
+    countRunningAgents(g.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
+  }
+
+  // Confirmed: tear down PTYs + editor tabs under the group BEFORE the native
+  // delete (so no agent writes into a vanishing cwd), then remove the folder and
+  // clear the selection if it pointed inside.
+  async function confirmDeleteGroup() {
+    const req = deleteReq();
+    if (!req) return;
+    setDeleteReq(null);
+    emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
+    try {
+      await invoke("delete_group", { path: req.path });
+      const sel = props.selected;
+      if (sel && isUnderPath(sel.folderPath, req.path)) props.onSelect(null);
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
   }
 
   function openMenu(e: MouseEvent, items: MenuItem[]) {
@@ -658,6 +732,8 @@ export default function Sidebar(props: {
           { separator: true },
           { label: "Clone repo…", onClick: () => cloneRepo(g) },
           { label: "Bare + worktree…", onClick: () => bootstrapRepo(g) },
+          { separator: true },
+          { label: "Delete group", danger: true, onClick: () => openDeleteGroup(g) },
         ];
 
   // A project's git kind comes from its branch-units (all share one kind).
@@ -1188,6 +1264,18 @@ export default function Sidebar(props: {
           initial={promptReq()!.initial}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
+
+      <Show when={deleteReq()}>
+        <ConfirmDeleteGroup
+          groupName={deleteReq()!.name}
+          entries={deleteReq()!.entries}
+          loading={deleteReq()!.loading}
+          runningCount={deleteReq()!.runningCount}
+          sizeBytes={deleteReq()!.sizeBytes}
+          onConfirm={() => confirmDeleteGroup()}
+          onCancel={() => setDeleteReq(null)}
         />
       </Show>
 
