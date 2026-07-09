@@ -1052,6 +1052,133 @@ pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Pure guard: given the single collapsed root and a candidate group path, return
+/// the group dir to delete or an error. A group is a *direct child* of the root,
+/// so we refuse the root itself, `$HOME`, and anything not directly under the root
+/// (a project, a nested path, or an outside path). Both sides are canonicalized so
+/// a symlinked group resolving outside the root is refused, never followed.
+fn do_delete_group(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
+    let root = root.ok_or("No base folder configured")?;
+    let root_c = std::fs::canonicalize(expand_tilde(root))
+        .map_err(|_| "Base folder does not exist".to_string())?;
+    let dir_c =
+        std::fs::canonicalize(path).map_err(|_| "Group folder does not exist".to_string())?;
+    if dir_c == root_c {
+        return Err("Refusing to delete the base folder itself".into());
+    }
+    if let Some(home) = dirs::home_dir() {
+        if dir_c == home {
+            return Err("Refusing to delete the home folder".into());
+        }
+    }
+    match dir_c.parent() {
+        Some(p) if p == root_c => Ok(dir_c),
+        _ => Err("Refusing: not a group directly under the base folder".into()),
+    }
+}
+
+/// Permanently `rm -rf` a root group and everything inside it. Guarded by
+/// `do_delete_group` against escaping the base folder; the destructive typed-name
+/// confirmation lives in the UI. Non-atomic: a mid-delete failure can leave a
+/// partial folder, surfaced as an error. Emits `config://changed` to re-discover.
+#[tauri::command]
+pub fn delete_group(app: AppHandle, path: String) -> Result<(), String> {
+    let text = ensure_config()?;
+    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
+    let dir = do_delete_group(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
+    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// One direct child of a group folder in the delete preview: a git repo (with its
+/// at-risk flags), a plain folder, or a loose file. Non-repo entries carry no flags.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewEntry {
+    pub name: String,
+    pub kind: String, // "repo" | "folder" | "file"
+    pub dirty: bool,
+    pub unpushed: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupPreview {
+    pub size_bytes: u64,
+    pub entries: Vec<PreviewEntry>,
+}
+
+/// Recursive on-disk byte size, not following symlinks (a symlink is neither
+/// is_dir nor is_file here, so it is skipped, avoiding cycles).
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(rd) = std::fs::read_dir(path) {
+        for ent in rd.flatten() {
+            match ent.file_type() {
+                Ok(ft) if ft.is_dir() => total += dir_size(&ent.path()),
+                Ok(ft) if ft.is_file() => total += ent.metadata().map(|m| m.len()).unwrap_or(0),
+                _ => {}
+            }
+        }
+    }
+    total
+}
+
+/// Best-effort at-risk status for a repo folder (plain repo OR worktree container).
+/// `None` when it is not a git repo at all. `dirty` = any worktree has porcelain
+/// output; `unpushed` = any local branch is ahead of, or has no, upstream (so
+/// unpublished work and commits on worktree-less branches both surface).
+fn repo_status(path: &Path) -> Option<(bool, bool)> {
+    let text = run_git(path, &["worktree", "list", "--porcelain"])?;
+    let dirty = parse_worktrees(&text)
+        .into_iter()
+        .filter(|e| !e.bare)
+        .any(|e| {
+            run_git(Path::new(&e.path), &["status", "--porcelain"])
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false)
+        });
+    let unpushed = match run_git(
+        path,
+        &["for-each-ref", "--format=%(upstream)\t%(upstream:track)", "refs/heads"],
+    ) {
+        Some(refs) => refs.lines().any(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let upstream = parts.next().unwrap_or("").trim();
+            let track = parts.next().unwrap_or("").trim();
+            upstream.is_empty() || track.contains("ahead")
+        }),
+        None => false,
+    };
+    Some((dirty, unpushed))
+}
+
+/// Enumerate *every* direct child of a group folder (not only discovered projects)
+/// so the delete confirmation shows the full blast radius: loose files and non-git
+/// folders that discovery skips are still surfaced. Per-repo at-risk flags + total
+/// on-disk size drive the dialog.
+#[tauri::command]
+pub fn group_delete_preview(path: String) -> Result<GroupPreview, String> {
+    let dir = PathBuf::from(&path);
+    let mut entries: Vec<PreviewEntry> = Vec::new();
+    for ent in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = ent.path();
+        let name = basename(&p);
+        let entry = if p.is_dir() {
+            match repo_status(&p) {
+                Some((dirty, unpushed)) => PreviewEntry { name, kind: "repo".into(), dirty, unpushed },
+                None => PreviewEntry { name, kind: "folder".into(), dirty: false, unpushed: false },
+            }
+        } else {
+            PreviewEntry { name, kind: "file".into(), dirty: false, unpushed: false }
+        };
+        entries.push(entry);
+    }
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(GroupPreview { size_bytes: dir_size(&dir), entries })
+}
+
 #[derive(Default)]
 pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
 
@@ -1161,6 +1288,7 @@ mod tests {
                     path: p.to_string(),
                 })
                 .collect(),
+            docs: RawDocs::default(),
         }
     }
 
@@ -1656,6 +1784,78 @@ mod tests {
         assert_eq!(cfg.roots.len(), 1);
         assert!(group(&cfg, "ga").is_some());
         assert!(group(&cfg, "gb").is_none());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn delete_group_guard_refuses_and_accepts() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let group_dir = root.join("personal");
+        let nested = group_dir.join("proj");
+        let outside = tmp.join("Outside");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        let rs = root.to_str().unwrap();
+        // A direct child of the root is a group: accepted, returns the canonical dir.
+        let ok = do_delete_group(Some(rs), group_dir.to_str().unwrap()).unwrap();
+        assert_eq!(ok, std::fs::canonicalize(&group_dir).unwrap());
+        // The root itself, a grandchild (a project), and an outside path are refused.
+        assert!(do_delete_group(Some(rs), rs).is_err());
+        assert!(do_delete_group(Some(rs), nested.to_str().unwrap()).is_err());
+        assert!(do_delete_group(Some(rs), outside.to_str().unwrap()).is_err());
+        // No configured root, and a non-existent (e.g. tilde-expanded) root, both err.
+        assert!(do_delete_group(None, group_dir.to_str().unwrap()).is_err());
+        assert!(do_delete_group(Some("~/sway_nonexistent_base_xyz"), group_dir.to_str().unwrap()).is_err());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn group_delete_preview_classifies_and_flags() {
+        let tmp = unique_tmp();
+        let grp = tmp.join("personal");
+        std::fs::create_dir_all(&grp).unwrap();
+
+        // A bare remote seeded from a source repo, so clones get an up-to-date upstream.
+        let src = tmp.join("src");
+        init_repo(&src, "main");
+        let remote = tmp.join("remote.git");
+        git(&tmp, &["init", "-q", "--bare", remote.to_str().unwrap()]);
+        git(&src, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(&src, &["push", "-q", "origin", "main"]);
+
+        // pushed: clean clone, main tracks origin/main up to date.
+        let pushed = grp.join("pushed");
+        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), pushed.to_str().unwrap()]);
+        // dirty: clone with an uncommitted change to a tracked file.
+        let dirty = grp.join("dirty");
+        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), dirty.to_str().unwrap()]);
+        std::fs::write(dirty.join("README.md"), "changed").unwrap();
+        // unpushed: a fresh local repo whose branch has no upstream.
+        let unpushed = grp.join("unpushed");
+        init_repo(&unpushed, "main");
+        // non-git folder and a loose file.
+        std::fs::create_dir_all(grp.join("notes")).unwrap();
+        std::fs::write(grp.join("todo.txt"), "x").unwrap();
+
+        let preview = group_delete_preview(grp.to_string_lossy().into_owned()).unwrap();
+        let find = |name: &str| preview.entries.iter().find(|e| e.name == name).unwrap();
+
+        let p = find("pushed");
+        assert_eq!(p.kind, "repo");
+        assert!(!p.dirty && !p.unpushed);
+        let d = find("dirty");
+        assert_eq!(d.kind, "repo");
+        assert!(d.dirty && !d.unpushed);
+        let u = find("unpushed");
+        assert_eq!(u.kind, "repo");
+        assert!(u.unpushed);
+        assert_eq!(find("notes").kind, "folder");
+        assert_eq!(find("todo.txt").kind, "file");
+        assert!(preview.size_bytes > 0);
 
         std::fs::remove_dir_all(&tmp).ok();
     }

@@ -75,6 +75,8 @@ pub fn run() {
             config::unpin_path,
             config::add_group,
             config::add_folder,
+            config::delete_group,
+            config::group_delete_preview,
             config::rediscover,
             config::roots_watch_start,
             config::cleanup_incomplete,
