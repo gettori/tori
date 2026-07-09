@@ -11,9 +11,12 @@ import {
   CLOSE_TAB,
   OPEN_TERMINAL,
   NEW_SESSION,
+  PURGE_UNDER_PATH,
   type OpenTerminal,
   type NewSession,
+  type PurgeUnderPath,
 } from "../events";
+import { isUnderPath } from "../pathScope";
 
 type OpenTerm = {
   id: string;
@@ -65,6 +68,15 @@ export default function TerminalArea(props: {
     if (id) closeId(id);
   });
   onCleanup(offClose);
+
+  // A group is being deleted: kill + close every terminal tab whose cwd is rooted
+  // under it, so no agent keeps running in a folder that is about to vanish.
+  const offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => {
+    for (const t of open()) {
+      if (isUnderPath(t.cwd, path)) closeId(t.id);
+    }
+  });
+  onCleanup(offPurge);
 
   // Tabs (clone / bootstrap) that should re-discover projects when they exit.
   const rediscoverOnExit = new Set<string>();
