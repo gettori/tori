@@ -649,18 +649,31 @@ export default function Sidebar(props: {
 
   const hasOrigin = (p: Project) => origins()[p.path] === true;
 
-  // Run `git fetch --all` in a terminal tab (native progress + ambient auth), so
-  // origin/* refs update; the terminal area re-discovers when the tab exits.
-  function fetchAll(p: Project) {
+  // Repos we have already warned about a missing credential helper, so the
+  // notice fires once per session, not on every fetch.
+  const helperWarned = new Set<string>();
+
+  // Native background `git fetch --all` through the askpass bridge: credential
+  // prompts pop the in-app dialog (no terminal tab), and the fetch-result
+  // listeners below surface completion/errors and re-discover origin/* refs.
+  async function fetchAll(p: Project) {
     setError("");
-    emitWith<OpenTerminal>(OPEN_TERMINAL, {
-      id: `fetch:${p.path}:${Date.now()}`,
-      title: `fetch ${p.name}`,
-      cwd: p.path,
-      program: "git",
-      args: ["fetch", "--all"],
-      rediscoverOnExit: true,
-    });
+    // One-time non-blocking warning if nothing will cache the credential.
+    if (!helperWarned.has(p.path)) {
+      helperWarned.add(p.path);
+      invoke<boolean>("git_has_credential_helper", { repo: p.path })
+        .then((has) => {
+          if (!has) {
+            setError(
+              "No git credential helper configured - you'll be prompted every fetch. Configure one (e.g. osxkeychain) to cache credentials.",
+              "info",
+            );
+          }
+        })
+        .catch(() => {});
+    }
+    setError(`Fetching ${p.name}…`, "info");
+    await invoke("git_fetch", { repo: p.path }).catch((e) => setError(String(e)));
   }
 
   // Attach a remote branch: create a local tracking branch from an already-fetched
@@ -1047,6 +1060,8 @@ export default function Sidebar(props: {
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
+  let unlistenFetchDone: UnlistenFn | undefined;
+  let unlistenFetchError: UnlistenFn | undefined;
   let offSearch: (() => void) | undefined;
   let offRefresh: (() => void) | undefined;
   onMount(async () => {
@@ -1057,12 +1072,23 @@ export default function Sidebar(props: {
     if (cfg) await restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => refreshSessions());
+    // Native background fetch results: refresh so new origin/* refs appear.
+    unlistenFetchDone = await listen<{ repo: string }>("git://fetch-done", () => {
+      setError("Fetch complete", "info");
+      loadConfig();
+    });
+    unlistenFetchError = await listen<{ repo: string; error: string }>(
+      "git://fetch-error",
+      (e) => setError(e.payload.error || "Fetch failed"),
+    );
     offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
     offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
   });
   onCleanup(() => {
     unlistenConfig?.();
     unlistenSessions?.();
+    unlistenFetchDone?.();
+    unlistenFetchError?.();
     offSearch?.();
     offRefresh?.();
   });

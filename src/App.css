@@ -357,6 +357,12 @@ body.dragging .term-host {
 .modal-input:focus {
   border-color: var(--accent);
 }
+.modal-hint {
+  font-size: 11px;
+  color: var(--text-dim, #8a8a8a);
+  margin-top: 8px;
+  line-height: 1.4;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
