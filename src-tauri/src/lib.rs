@@ -114,6 +114,9 @@ pub fn run() {
             fs::fs_read_file,
             fs::fs_write_file,
             fs::file_exists,
+            fs::fs_mkdir,
+            fs::fs_delete,
+            fs::fs_rename,
             fs::list_project_files,
             fs::fs_watch_start,
             git::git_status,
@@ -147,7 +150,6 @@ pub fn run() {
             worktree::worktree_dirty,
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
-            worktree::relink_worktrees,
             theme::get_theme_colors,
         ])
         .run(tauri::generate_context!())

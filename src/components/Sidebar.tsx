@@ -498,7 +498,7 @@ export default function Sidebar(props: {
 
   // Create a worktree under a bare container. The backend names the folder
   // (branch's last segment, slug fallback, clean error on double collision),
-  // fetches + bases new branches on origin's default, and links shared .link/ files.
+  // fetches + bases new branches on origin's default, and links shared .shared/ files.
   async function createWorktree(p: Project) {
     const branch = await askText(`New worktree in "${p.name}" (branch name):`);
     if (!branch?.trim()) return;
@@ -560,16 +560,6 @@ export default function Sidebar(props: {
         worktreePath: u.folderPath,
         branch: u.branch,
       });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // "Update .links/": restore any shared `.link/` file deleted from a worktree.
-  async function relinkWorktrees(p: Project) {
-    try {
-      await invoke("relink_worktrees", { repoPath: p.path });
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -796,7 +786,6 @@ export default function Sidebar(props: {
         return [
           ...(hasOrigin(p) ? [] : [{ label: "Add Origin", onClick: () => addRemote(p) }]),
           { label: "New worktree…", onClick: () => createWorktree(p) },
-          { label: "Update .links/", onClick: () => relinkWorktrees(p) },
         ];
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];

@@ -1,9 +1,10 @@
-import { createSignal, createEffect, on, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
+import PromptModal from "./PromptModal";
 import ReviewPanel from "./ReviewPanel";
 import OverflowTabBar from "./OverflowTabBar";
 import FileIcon from "../seti/FileIcon";
@@ -33,7 +34,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
   const [openFiles, setOpenFiles] = createSignal<OpenFile[]>([]);
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
-  const [rightMode, setRightMode] = createSignal<"files" | "changes">("files");
+  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared">("files");
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
@@ -44,6 +45,33 @@ export default function EditorPane(props: { selected: Selection | null }) {
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
+
+  // The editable `.shared/` folder lives on the worktree container (projectPath);
+  // only worktree units have one. Null for plain / plain-dir units gates the tab.
+  const sharedPath = () =>
+    props.selected?.projectKind === "worktree" ? `${props.selected.projectPath}/.shared` : null;
+
+  // In-app replacement for window.prompt (unimplemented in WKWebView); mirrors the
+  // sidebar's askText. Threaded into the editable Shared tree for name entry.
+  const [promptReq, setPromptReq] = createSignal<{
+    title: string;
+    initial: string;
+    resolve: (v: string | null) => void;
+  } | null>(null);
+  function askText(title: string, initial = ""): Promise<string | null> {
+    return new Promise((resolve) => setPromptReq({ title, initial, resolve }));
+  }
+  function resolvePrompt(v: string | null) {
+    const req = promptReq();
+    setPromptReq(null);
+    req?.resolve(v);
+  }
+
+  // A non-worktree selection has no Shared tab: fall back to Files so the pane is
+  // never stuck on an unavailable mode.
+  createEffect(() => {
+    if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
+  });
 
   // A parallel docs/notes tree mirroring <docsRoot>/<group>/<project>, keyed on
   // the canonical group/project (not the branch-unit folder), shown below the
@@ -253,19 +281,44 @@ export default function EditorPane(props: { selected: Selection | null }) {
           >
             Changes
           </button>
+          <Show when={sharedPath()}>
+            <button
+              class="right-tab"
+              classList={{ active: rightMode() === "shared" }}
+              onClick={() => setRightMode("shared")}
+            >
+              Shared
+            </button>
+          </Show>
         </div>
-        <Show when={rightMode() === "files"} fallback={<ReviewPanel root={root()} />}>
-          <div class="file-trees">
-            <FileTree root={root()} />
-            <Show when={docsPath()}>
-              <div class="file-tree-section">
-                <div class="file-tree-heading">Docs</div>
-                <FileTree root={docsPath()} />
-              </div>
-            </Show>
-          </div>
-        </Show>
+        <Switch>
+          <Match when={rightMode() === "files"}>
+            <div class="file-trees">
+              <FileTree root={root()} />
+              <Show when={docsPath()}>
+                <div class="file-tree-section">
+                  <div class="file-tree-heading">Docs</div>
+                  <FileTree root={docsPath()} />
+                </div>
+              </Show>
+            </div>
+          </Match>
+          <Match when={rightMode() === "changes"}>
+            <ReviewPanel root={root()} />
+          </Match>
+          <Match when={rightMode() === "shared"}>
+            <FileTree root={sharedPath()} editable askText={askText} />
+          </Match>
+        </Switch>
       </div>
+      <Show when={promptReq()}>
+        <PromptModal
+          title={promptReq()!.title}
+          initial={promptReq()!.initial}
+          onSubmit={(v) => resolvePrompt(v)}
+          onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
     </div>
   );
 }
