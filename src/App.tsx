@@ -5,6 +5,7 @@ import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls";
 import QuickOpen from "./components/QuickOpen";
+import AskpassDialog from "./components/AskpassDialog";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { applyTheme } from "./theme";
 import "./App.css";
@@ -149,6 +150,8 @@ function App() {
       <Show when={quickOpen()}>
         <QuickOpen root={selected()?.folderPath ?? null} onClose={() => setQuickOpen(false)} />
       </Show>
+
+      <AskpassDialog />
     </div>
   );
 }

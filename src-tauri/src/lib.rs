@@ -1,3 +1,4 @@
+mod askpass;
 mod config;
 mod env;
 mod fs;
@@ -15,10 +16,18 @@ use fs::FsWatch;
 use lsp::LspState;
 use pty::PtyState;
 use sessions::{PiIndex, SessionIndex, SessionWatch};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Same-binary re-exec as the askpass helper: git/ssh invoke this exe with the
+    // socket marker env set. Detect it and run the stdout-answer-only helper path
+    // *before* any Tauri/AppKit init, then exit. The app's own process never has
+    // the marker (it is set only on the git child command).
+    if askpass::is_helper() {
+        std::process::exit(askpass::run_helper());
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -48,6 +57,19 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            // Start the askpass credential bridge: a private Unix socket whose
+            // prompts fan out to the frontend as `askpass://prompt`. If it fails
+            // to bind, the app still runs (network git ops just can't prompt).
+            let emit_handle = app.handle().clone();
+            match askpass::start(Box::new(move |ev| {
+                let _ = emit_handle.emit("askpass://prompt", ev);
+            })) {
+                Ok(inner) => {
+                    app.manage(askpass::AskpassState(inner));
+                }
+                Err(e) => eprintln!("sway: askpass bridge failed to start: {e}"),
             }
             Ok(())
         })
@@ -99,6 +121,9 @@ pub fn run() {
             git::git_init,
             git::git_remote_add,
             git::git_origin,
+            git::git_fetch,
+            git::git_has_credential_helper,
+            askpass::askpass_respond,
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,

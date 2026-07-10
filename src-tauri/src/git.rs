@@ -4,11 +4,16 @@
 // the gutter reflects all uncommitted work (staged + unstaged), matching the
 // "uncommitted changes" review surface, not just unstaged edits.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
+
+use crate::askpass::{AskpassState, ENV_OP, ENV_SOCK, ENV_TOKEN};
+use crate::env::augmented_path;
 
 #[derive(Serialize)]
 pub struct GitFileStatus {
@@ -269,6 +274,99 @@ pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
     Ok((!url.is_empty()).then_some(url))
 }
 
+// --- auth'd / network git via the askpass bridge ---
+
+/// A fresh per-op id. Each network op gets one so its sibling username/password
+/// prompts (separate git askpass processes) share a single cancel latch.
+fn next_op_id() -> String {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("op-{}-{}", std::process::id(), n)
+}
+
+/// Build a `git -C <repo>` command wired to the askpass credential bridge:
+/// `GIT_ASKPASS`/`SSH_ASKPASS` point at Sway's own binary (re-exec'd as the
+/// helper), `SSH_ASKPASS_REQUIRE=force` makes ssh use it without a TTY (OpenSSH
+/// >= 8.4), `GIT_TERMINAL_PROMPT=0` forbids any terminal fallback (fail closed),
+/// `LC_ALL=C` keeps prompt wording stable for `kind` parsing, and
+/// `StrictHostKeyChecking=accept-new` handles first-contact SSH host keys (TOFU:
+/// auto-add an unknown host, still reject a *changed* key). The op id and socket
+/// coordinates ride through the env into the helper.
+fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("git"));
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    cmd.env("GIT_ASKPASS", &exe);
+    cmd.env("SSH_ASKPASS", &exe);
+    cmd.env("SSH_ASKPASS_REQUIRE", "force");
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("LC_ALL", "C");
+    cmd.env("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=accept-new");
+    cmd.env(ENV_SOCK, sock);
+    cmd.env(ENV_TOKEN, token);
+    cmd.env(ENV_OP, op_id);
+    cmd.env("PATH", augmented_path());
+    cmd
+}
+
+/// Payload for the background-fetch result events.
+#[derive(Clone, Serialize)]
+pub struct FetchResult {
+    repo: String,
+    ok: bool,
+    error: String,
+}
+
+/// Background `git fetch` through the askpass bridge: runs on its own thread with
+/// a fresh op id, so credential prompts pop the in-app dialog (no terminal tab)
+/// and a cancel aborts the whole op. Emits `git://fetch-done` on success and
+/// `git://fetch-error` on failure; both carry the repo path so the UI can
+/// correlate. `remote` defaults to `--all`.
+#[tauri::command]
+pub fn git_fetch(
+    app: AppHandle,
+    state: State<AskpassState>,
+    repo: String,
+    remote: Option<String>,
+) -> Result<(), String> {
+    let inner = state.0.clone();
+    let op_id = next_op_id();
+    thread::spawn(move || {
+        let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+        cmd.arg("fetch");
+        match remote.as_deref() {
+            Some(r) if !r.trim().is_empty() => {
+                cmd.arg(r);
+            }
+            _ => {
+                cmd.arg("--all");
+            }
+        }
+        let (ok, error) = match cmd.output() {
+            Ok(o) if o.status.success() => (true, String::new()),
+            Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => (false, e.to_string()),
+        };
+        let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
+        let _ = app.emit(event, FetchResult { repo, ok, error });
+    });
+    Ok(())
+}
+
+/// Whether a `credential.helper` is configured for this repo (any scope). With
+/// none, git re-prompts every op (nothing is cached), so the UI warns once.
+#[tauri::command]
+pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["config", "--get", "credential.helper"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let value = String::from_utf8_lossy(&out.stdout);
+    Ok(out.status.success() && !value.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,6 +535,41 @@ diff --git a/f b/f
         assert!(!staged.contains("node_modules"));
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn git_command_sets_askpass_bridge_env() {
+        use std::ffi::OsStr;
+        let sock = Path::new("/tmp/sway-akp-x/s");
+        let cmd = git_command("/repo", "op-1", sock, "tok");
+        let envs: std::collections::HashMap<String, Option<String>> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|s| s.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        // Fail-closed + locale-stable + bridge coordinates all present.
+        assert_eq!(envs.get("GIT_TERMINAL_PROMPT").unwrap().as_deref(), Some("0"));
+        assert_eq!(envs.get("LC_ALL").unwrap().as_deref(), Some("C"));
+        assert_eq!(envs.get("SSH_ASKPASS_REQUIRE").unwrap().as_deref(), Some("force"));
+        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/sway-akp-x/s"));
+        assert_eq!(envs.get(ENV_TOKEN).unwrap().as_deref(), Some("tok"));
+        assert_eq!(envs.get(ENV_OP).unwrap().as_deref(), Some("op-1"));
+        assert!(envs.contains_key("GIT_ASKPASS"));
+        assert!(envs.contains_key("SSH_ASKPASS"));
+        assert!(envs
+            .get("GIT_SSH_COMMAND")
+            .unwrap()
+            .as_deref()
+            .unwrap()
+            .contains("accept-new"));
+        // current_exe resolved to something non-empty for GIT_ASKPASS.
+        let exe = envs.get("GIT_ASKPASS").unwrap().as_deref().unwrap();
+        assert!(!exe.is_empty());
+        let _ = OsStr::new(exe);
     }
 
     #[test]
