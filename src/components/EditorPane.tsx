@@ -34,7 +34,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
   const [openFiles, setOpenFiles] = createSignal<OpenFile[]>([]);
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
-  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared">("files");
+  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs">("files");
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
@@ -67,15 +67,9 @@ export default function EditorPane(props: { selected: Selection | null }) {
     req?.resolve(v);
   }
 
-  // A non-worktree selection has no Shared tab: fall back to Files so the pane is
-  // never stuck on an unavailable mode.
-  createEffect(() => {
-    if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
-  });
-
   // A parallel docs/notes tree mirroring <docsRoot>/<group>/<project>, keyed on
-  // the canonical group/project (not the branch-unit folder), shown below the
-  // file tree only when that folder actually exists.
+  // the canonical group/project (not the branch-unit folder), surfaced as its own
+  // Docs tab only when that folder actually exists.
   const [docsRoot, setDocsRoot] = createSignal<string | null>(null);
   const [docsPath, setDocsPath] = createSignal<string | null>(null);
   onMount(async () => {
@@ -93,6 +87,13 @@ export default function EditorPane(props: { selected: Selection | null }) {
       setDocsPath(exists ? candidate : null);
     }),
   );
+
+  // A selection without an available Shared/Docs tab falls back to Files, so the
+  // pane is never stuck on a mode the current selection cannot show.
+  createEffect(() => {
+    if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
+    if (rightMode() === "docs" && !docsPath()) setRightMode("files");
+  });
 
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
@@ -290,24 +291,28 @@ export default function EditorPane(props: { selected: Selection | null }) {
               Shared
             </button>
           </Show>
+          <Show when={docsPath()}>
+            <button
+              class="right-tab"
+              classList={{ active: rightMode() === "docs" }}
+              onClick={() => setRightMode("docs")}
+            >
+              Docs
+            </button>
+          </Show>
         </div>
         <Switch>
           <Match when={rightMode() === "files"}>
-            <div class="file-trees">
-              <FileTree root={root()} />
-              <Show when={docsPath()}>
-                <div class="file-tree-section">
-                  <div class="file-tree-heading">Docs</div>
-                  <FileTree root={docsPath()} />
-                </div>
-              </Show>
-            </div>
+            <FileTree root={root()} />
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} />
           </Match>
           <Match when={rightMode() === "shared"}>
             <FileTree root={sharedPath()} editable askText={askText} />
+          </Match>
+          <Match when={rightMode() === "docs"}>
+            <FileTree root={docsPath()} />
           </Match>
         </Switch>
       </div>
