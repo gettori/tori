@@ -609,6 +609,39 @@ pub fn list_branches(path: String) -> Result<Vec<Branch>, String> {
     Ok(branches)
 }
 
+/// Remote branches under `origin`, as short names **without** the `origin/`
+/// prefix (e.g. `main`, `feature/x`). Excludes the `origin/HEAD` symref. Feeds
+/// the Attach Existing Branch picker's live remote-branch fold after a fetch.
+#[tauri::command]
+pub fn list_remote_branches(repo: String) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        // Not a repo, or no remotes fetched yet: nothing to attach, not an error.
+        return Ok(vec![]);
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut names = Vec::new();
+    for line in text.lines() {
+        let short = line.trim();
+        // `%(refname:short)` yields `origin/<name>` (and `origin/HEAD` for the symref).
+        let Some(name) = short.strip_prefix("origin/") else {
+            continue;
+        };
+        if name.is_empty() || name == "HEAD" {
+            continue;
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
+}
+
 /// Pure seed step: attach `seed` (only when it is a local branch) exactly once per
 /// repo, and never against an empty repo (the flag stays unset so a later probe
 /// still seeds). Returns whether the state changed (so the caller persists). Pure,
@@ -1272,6 +1305,43 @@ mod tests {
         std::fs::write(dir.join("README.md"), "hi").unwrap();
         git(dir, &["add", "."]);
         git(dir, &["commit", "-q", "-m", "init"]);
+    }
+
+    #[test]
+    fn list_remote_branches_strips_prefix_and_drops_head() {
+        let dir = unique_tmp();
+        init_repo(&dir, "main");
+        let head = {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        // Fabricate remote-tracking refs (no real remote needed) + the origin/HEAD symref.
+        git(&dir, &["update-ref", "refs/remotes/origin/foo", &head]);
+        git(&dir, &["update-ref", "refs/remotes/origin/feature/x", &head]);
+        git(&dir, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/foo"]);
+
+        let mut got = list_remote_branches(dir.to_string_lossy().into_owned()).unwrap();
+        got.sort();
+        assert_eq!(got, vec!["feature/x".to_string(), "foo".to_string()]);
+        // origin/HEAD is excluded, and names carry no `origin/` prefix.
+        assert!(!got.iter().any(|n| n == "HEAD" || n.starts_with("origin/")));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn list_remote_branches_empty_when_no_remotes() {
+        let dir = unique_tmp();
+        init_repo(&dir, "main");
+        assert!(list_remote_branches(dir.to_string_lossy().into_owned())
+            .unwrap()
+            .is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     fn raw(roots: &[&str], ignore: &[&str], paths: &[&str], legacy: &[(&str, &str)]) -> RawConfig {

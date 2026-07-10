@@ -89,6 +89,7 @@ pub fn run() {
             pty::pty_kill,
             config::get_config,
             config::list_branches,
+            config::list_remote_branches,
             config::config_watch_start,
             config::pick_folder,
             config::set_root,

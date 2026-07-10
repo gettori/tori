@@ -147,8 +147,9 @@ export default function Sidebar(props: {
   // Per-folder "historical" flag: sessions predating a recreated folder, hidden
   // under a collapsed "Historical" group until adopted.
   const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
-  // Per-project "has an origin remote" flag, gating the remote menu items
-  // (Fetch All / Attach remote branch vs Add remote). Keyed by project path.
+  // Per-project "has an origin remote" flag: gates whether Attach Existing
+  // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
+  // Keyed by project path.
   const [origins, setOrigins] = createSignal<Record<string, boolean>>({});
   const [query, setQuery] = createSignal("");
   const [gearOpen, setGearOpen] = createSignal(false);
@@ -216,6 +217,9 @@ export default function Sidebar(props: {
   function resolvePick(v: string | null) {
     const req = pickReq();
     setPickReq(null);
+    // The attach flow's picker closed (submit or cancel): stop any pending
+    // background-fetch fold from touching a closed/next picker.
+    attachCtx = null;
     req?.resolve(v);
   }
 
@@ -618,7 +622,30 @@ export default function Sidebar(props: {
     }
   }
 
-  // Attach an already-existing local branch, chosen from those not yet visible.
+  const hasOrigin = (p: Project) => origins()[p.path] === true;
+
+  // Repos already warned about a missing credential helper, so the notice fires
+  // once per session, not on every fetch.
+  const helperWarned = new Set<string>();
+
+  // Routing context for the in-progress Attach Existing Branch flow. The
+  // label→{kind,branch} map is the single source of truth: kind is carried
+  // out-of-band, never parsed from the display string, so a local branch named
+  // `origin/x` still routes as local. `allLocals` (every local branch name) lets
+  // the fetch-done fold compute remote-only branches; `baseTitle` is the
+  // hint-free picker title restored once the background fetch resolves.
+  type AttachEntry = { kind: "local" | "remote"; branch: string };
+  let attachCtx: {
+    repo: string;
+    map: Map<string, AttachEntry>;
+    allLocals: Set<string>;
+    baseTitle: string;
+  } | null = null;
+
+  // Attach an existing branch: show local branches immediately, and when the repo
+  // has an origin, fetch in the background and fold remote-only branches into the
+  // same picker live (see the git://fetch-done handler). One picker, two sinks: a
+  // local pick attaches directly, a remote pick creates a tracking branch first.
   async function attachExisting(p: Project) {
     let branches: Branch[];
     try {
@@ -626,63 +653,52 @@ export default function Sidebar(props: {
     } catch (e) {
       return setError(String(e));
     }
+    const allLocals = new Set(branches.map((b) => b.name));
     const visible = new Set(
       p.branchUnits.filter((u) => u.kind === "plain" && u.branch).map((u) => u.branch),
     );
     const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
-    if (candidates.length === 0) {
+    if (!hasOrigin(p) && candidates.length === 0) {
       return setError("Every local branch is already attached.");
     }
-    const name = await askPick("Attach which branch?", candidates);
-    if (!name?.trim()) return;
-    if (!candidates.includes(name.trim())) {
-      return setError(`"${name.trim()}" is not an attachable local branch.`);
+
+    // Build the routing map from local candidates (label === branch name).
+    const map = new Map<string, AttachEntry>();
+    for (const n of candidates) map.set(n, { kind: "local", branch: n });
+    const baseTitle = "Attach which branch?";
+    attachCtx = { repo: p.path, map, allLocals, baseTitle };
+
+    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates);
+
+    if (hasOrigin(p)) {
+      // One-time non-blocking warning if nothing will cache the credential.
+      if (!helperWarned.has(p.path)) {
+        helperWarned.add(p.path);
+        invoke<boolean>("git_has_credential_helper", { repo: p.path })
+          .then((has) => {
+            if (!has) {
+              setError(
+                "No git credential helper configured - you'll be prompted every fetch. Configure one (e.g. osxkeychain) to cache credentials.",
+                "info",
+              );
+            }
+          })
+          .catch(() => {});
+      }
+      // Background fetch; the git://fetch-done handler folds in remote branches.
+      invoke("git_fetch", { repo: p.path }).catch((e) => setError(String(e)));
     }
+
+    const label = await pick;
+    if (!label) return; // cancelled
+    const entry = map.get(label);
+    if (!entry) return; // select-only picker: a listed label always maps
     try {
-      await invoke("attach_branch", { repo: p.path, branch: name.trim() });
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // --- remote / network (auth'd fetch in a tab; attach is a separate native op) ---
-
-  const hasOrigin = (p: Project) => origins()[p.path] === true;
-
-  // Repos we have already warned about a missing credential helper, so the
-  // notice fires once per session, not on every fetch.
-  const helperWarned = new Set<string>();
-
-  // Native background `git fetch --all` through the askpass bridge: credential
-  // prompts pop the in-app dialog (no terminal tab), and the fetch-result
-  // listeners below surface completion/errors and re-discover origin/* refs.
-  async function fetchAll(p: Project) {
-    setError("");
-    // One-time non-blocking warning if nothing will cache the credential.
-    if (!helperWarned.has(p.path)) {
-      helperWarned.add(p.path);
-      invoke<boolean>("git_has_credential_helper", { repo: p.path })
-        .then((has) => {
-          if (!has) {
-            setError(
-              "No git credential helper configured - you'll be prompted every fetch. Configure one (e.g. osxkeychain) to cache credentials.",
-              "info",
-            );
-          }
-        })
-        .catch(() => {});
-    }
-    setError(`Fetching ${p.name}…`, "info");
-    await invoke("git_fetch", { repo: p.path }).catch((e) => setError(String(e)));
-  }
-
-  // Attach a remote branch: create a local tracking branch from an already-fetched
-  // origin/<name> (decoupled from the auth'd fetch above). Native, no tab.
-  async function attachRemoteBranch(p: Project) {
-    const name = await askText(`Attach remote branch origin/<name> in "${p.name}":`);
-    if (!name?.trim()) return;
-    try {
-      await invoke("attach_remote_branch", { repo: p.path, branch: name.trim() });
+      if (entry.kind === "remote") {
+        await invoke("attach_remote_branch", { repo: p.path, branch: entry.branch });
+      } else {
+        await invoke("attach_branch", { repo: p.path, branch: entry.branch });
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -778,9 +794,7 @@ export default function Sidebar(props: {
     switch (projectKind(p)) {
       case "worktree":
         return [
-          hasOrigin(p)
-            ? { label: "Fetch All", onClick: () => fetchAll(p) }
-            : { label: "Add Origin", onClick: () => addRemote(p) },
+          ...(hasOrigin(p) ? [] : [{ label: "Add Origin", onClick: () => addRemote(p) }]),
           { label: "New worktree…", onClick: () => createWorktree(p) },
           { label: "Update .links/", onClick: () => relinkWorktrees(p) },
         ];
@@ -790,12 +804,9 @@ export default function Sidebar(props: {
         const items: MenuItem[] = [
           { label: "New Branch", onClick: () => newBranch(p) },
           { label: "Attach Existing Branch", onClick: () => attachExisting(p) },
-          { separator: true },
         ];
-        if (hasOrigin(p)) {
-          items.push({ label: "Fetch All", onClick: () => fetchAll(p) });
-          items.push({ label: "Attach remote branch…", onClick: () => attachRemoteBranch(p) });
-        } else {
+        if (!hasOrigin(p)) {
+          items.push({ separator: true });
           items.push({ label: "Add / set remote…", onClick: () => addRemote(p) });
         }
         return items;
@@ -1072,14 +1083,43 @@ export default function Sidebar(props: {
     if (cfg) await restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => refreshSessions());
-    // Native background fetch results: refresh so new origin/* refs appear.
-    unlistenFetchDone = await listen<{ repo: string }>("git://fetch-done", () => {
-      setError("Fetch complete", "info");
+    // Attach-flow background fetch: fold remote-only branches into the open
+    // picker live. Guarded by attachCtx (right repo) AND an open picker, so a
+    // late/duplicate fetch-done after cancel or reopen can't resurrect or double.
+    unlistenFetchDone = await listen<{ repo: string }>("git://fetch-done", async (e) => {
+      const ctx = attachCtx;
+      if (ctx && ctx.repo === e.payload.repo && pickReq()) {
+        try {
+          const remotes = await invoke<string[]>("list_remote_branches", { repo: ctx.repo });
+          const extra: string[] = [];
+          for (const name of remotes) {
+            if (ctx.allLocals.has(name)) continue; // a local branch already covers it
+            const label = `origin/${name}`;
+            if (ctx.map.has(label)) continue; // dedupe (local wins)
+            ctx.map.set(label, { kind: "remote", branch: name });
+            extra.push(label);
+          }
+          // Drop the "fetching…" hint and append any new remote-only entries.
+          setPickReq((prev) =>
+            prev ? { ...prev, title: ctx.baseTitle, items: [...prev.items, ...extra] } : prev,
+          );
+        } catch {
+          // Leave the local-only picker usable; just clear the hint.
+          setPickReq((prev) => (prev ? { ...prev, title: ctx.baseTitle } : prev));
+        }
+      }
       loadConfig();
     });
     unlistenFetchError = await listen<{ repo: string; error: string }>(
       "git://fetch-error",
-      (e) => setError(e.payload.error || "Fetch failed"),
+      (e) => {
+        setError(e.payload.error || "Fetch failed");
+        const ctx = attachCtx;
+        if (ctx && ctx.repo === e.payload.repo) {
+          setPickReq((prev) => (prev ? { ...prev, title: ctx.baseTitle } : prev));
+          attachCtx = null;
+        }
+      },
     );
     offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
     offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
