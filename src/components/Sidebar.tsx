@@ -618,6 +618,26 @@ export default function Sidebar(props: {
   // once per session, not on every fetch.
   const helperWarned = new Set<string>();
 
+  // Kick a background fetch for an attach flow: a one-time (per session) warning
+  // when no credential helper will cache the login, then the fetch itself. The
+  // git://fetch-done handler folds any remote-only branches into the open picker.
+  function beginBackgroundFetch(repo: string) {
+    if (!helperWarned.has(repo)) {
+      helperWarned.add(repo);
+      invoke<boolean>("git_has_credential_helper", { repo })
+        .then((has) => {
+          if (!has) {
+            setError(
+              "No git credential helper configured - you'll be prompted every fetch. Configure one (e.g. osxkeychain) to cache credentials.",
+              "info",
+            );
+          }
+        })
+        .catch(() => {});
+    }
+    invoke("git_fetch", { repo }).catch((e) => setError(String(e)));
+  }
+
   // Routing context for the in-progress Attach Existing Branch flow. The
   // label→{kind,branch} map is the single source of truth: kind is carried
   // out-of-band, never parsed from the display string, so a local branch named
@@ -660,24 +680,7 @@ export default function Sidebar(props: {
 
     const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates);
 
-    if (hasOrigin(p)) {
-      // One-time non-blocking warning if nothing will cache the credential.
-      if (!helperWarned.has(p.path)) {
-        helperWarned.add(p.path);
-        invoke<boolean>("git_has_credential_helper", { repo: p.path })
-          .then((has) => {
-            if (!has) {
-              setError(
-                "No git credential helper configured - you'll be prompted every fetch. Configure one (e.g. osxkeychain) to cache credentials.",
-                "info",
-              );
-            }
-          })
-          .catch(() => {});
-      }
-      // Background fetch; the git://fetch-done handler folds in remote branches.
-      invoke("git_fetch", { repo: p.path }).catch((e) => setError(String(e)));
-    }
+    if (hasOrigin(p)) beginBackgroundFetch(p.path);
 
     const label = await pick;
     if (!label) return; // cancelled
@@ -689,6 +692,51 @@ export default function Sidebar(props: {
       } else {
         await invoke("attach_branch", { repo: p.path, branch: entry.branch });
       }
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Attach a worktree for an existing branch (the worktree-container analog of
+  // attachExisting): list local branches that have no worktree yet immediately,
+  // fold in remote branches after a background fetch (shared attachCtx +
+  // git://fetch-done), then create a worktree for the pick. Both a local and a
+  // remote pick route to create_worktree, which bases a remote-only name on
+  // origin/<name> so the new worktree tracks it.
+  async function attachWorktree(p: Project) {
+    let branches: Branch[];
+    try {
+      branches = await invoke<Branch[]>("list_branches", { path: p.path });
+    } catch (e) {
+      return setError(String(e));
+    }
+    const allLocals = new Set(branches.map((b) => b.name));
+    // A worktree container's branch-units are its worktrees: hide any branch that
+    // already has one.
+    const visible = new Set(
+      p.branchUnits.filter((u) => u.kind === "worktree" && u.branch).map((u) => u.branch),
+    );
+    const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
+    if (!hasOrigin(p) && candidates.length === 0) {
+      return setError("Every branch already has a worktree.");
+    }
+
+    const map = new Map<string, AttachEntry>();
+    for (const n of candidates) map.set(n, { kind: "local", branch: n });
+    const baseTitle = "Attach which branch as a worktree?";
+    attachCtx = { repo: p.path, map, allLocals, baseTitle };
+
+    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates);
+
+    if (hasOrigin(p)) beginBackgroundFetch(p.path);
+
+    const label = await pick;
+    if (!label) return; // cancelled
+    const entry = map.get(label);
+    if (!entry) return; // select-only picker: a listed label always maps
+    try {
+      await invoke("create_worktree", { repoPath: p.path, branch: entry.branch });
+      await loadConfig();
     } catch (e) {
       setError(String(e));
     }
@@ -786,6 +834,7 @@ export default function Sidebar(props: {
         return [
           ...(hasOrigin(p) ? [] : [{ label: "Add Origin", onClick: () => addRemote(p) }]),
           { label: "New worktree…", onClick: () => createWorktree(p) },
+          { label: "Attach worktree…", onClick: () => attachWorktree(p) },
         ];
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];

@@ -107,6 +107,29 @@ fn origin_default(repo: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Does `origin/<name>` exist as a remote-tracking ref? Lets a new worktree base
+/// (and track) a remote-only branch instead of origin's default.
+fn remote_branch_exists(repo: &str, name: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{name}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Start point for a brand-new branch's worktree: the matching remote branch
+/// (so `-b <name> origin/<name>` tracks it) when present, else origin's default
+/// (`origin/<default>`), else None so `worktree add -b` bases on HEAD.
+fn new_branch_start_point(repo: &str, branch: &str) -> Option<String> {
+    if remote_branch_exists(repo, branch) {
+        Some(format!("origin/{branch}"))
+    } else {
+        origin_default(repo).map(|def| format!("origin/{def}"))
+    }
+}
+
 /// Does `branch` already have a worktree checked out? If so, creation reuses it.
 fn branch_has_worktree(repo: &str, branch: &str) -> bool {
     list_worktrees(repo.to_string())
@@ -168,7 +191,9 @@ fn link_shared(container: &Path, worktree: &Path) {
 
 /// Create a worktree for `branch` under the bare container `repo_path`. Reuses an
 /// existing branch (and its worktree if any); for a new branch, fetches first and
-/// bases it on origin's default. Folder name is collision-safe (see
+/// bases it on `origin/<branch>` when that remote branch exists (tracking it, so
+/// attaching a remote branch works), else origin's default. Folder name is
+/// collision-safe (see
 /// `pick_worktree_folder`); shared `.shared/` files are linked in afterward.
 #[tauri::command]
 pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
@@ -190,8 +215,10 @@ pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Res
     if branch_exists(&repo_path, &branch) {
         git_ok(&repo_path, &["worktree", "add", &target_str, &branch])?;
     } else {
-        // New branch: refresh origin so its default is current (best-effort: a
-        // repo without a remote simply has no fetch to do), then base off it.
+        // New branch: refresh origin so remote refs are current (best-effort: a
+        // repo without a remote simply has no fetch to do), then base off the
+        // matching remote branch when one exists (so attaching origin/<name>
+        // tracks it), else origin's default, else HEAD.
         let _ = Command::new("git")
             .arg("-C")
             .arg(&repo_path)
@@ -204,8 +231,8 @@ pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Res
             branch.clone(),
             target_str.clone(),
         ];
-        if let Some(def) = origin_default(&repo_path) {
-            args.push(format!("origin/{def}"));
+        if let Some(start) = new_branch_start_point(&repo_path, &branch) {
+            args.push(start);
         }
         let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         git_ok(&repo_path, &argrefs)?;
@@ -446,6 +473,40 @@ mod tests {
         std::fs::remove_file(wt.join("scratch.txt")).unwrap();
         std::fs::write(wt.join("a.txt"), "changed").unwrap();
         assert!(tree_dirty(&wt).unwrap(), "a tracked edit is dirty");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn new_branch_start_point_prefers_matching_remote_then_default() {
+        let tmp = unique_tmp();
+        // A source repo with `main` plus a `feature` branch to fetch.
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        git(&src, &["branch", "feature"]);
+
+        // A container with origin populated into refs/remotes/origin/* (what the
+        // real fetch does), plus origin/HEAD so origin_default resolves.
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        git(&cont, &["init", "-q"]);
+        git(&cont, &["remote", "add", "origin", src.to_str().unwrap()]);
+        git(&cont, &["fetch", "-q", "origin"]);
+        git(&cont, &["remote", "set-head", "origin", "main"]);
+        let cont_s = cont.to_string_lossy().into_owned();
+
+        // A branch matching a remote tracks it; anything else falls to the default.
+        assert_eq!(new_branch_start_point(&cont_s, "feature").as_deref(), Some("origin/feature"));
+        assert_eq!(new_branch_start_point(&cont_s, "brand-new").as_deref(), Some("origin/main"));
+        assert!(remote_branch_exists(&cont_s, "feature"));
+        assert!(!remote_branch_exists(&cont_s, "brand-new"));
 
         std::fs::remove_dir_all(&tmp).ok();
     }
