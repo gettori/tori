@@ -45,6 +45,27 @@ export default function EditorPane(props: { selected: Selection | null }) {
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
 
+  // A parallel docs/notes tree mirroring <docsRoot>/<group>/<project>, keyed on
+  // the canonical group/project (not the branch-unit folder), shown below the
+  // file tree only when that folder actually exists.
+  const [docsRoot, setDocsRoot] = createSignal<string | null>(null);
+  const [docsPath, setDocsPath] = createSignal<string | null>(null);
+  onMount(async () => {
+    try {
+      setDocsRoot(await invoke<string>("get_docs_root"));
+    } catch {
+      // no docs root configured: the docs section stays hidden
+    }
+  });
+  createEffect(
+    on([() => props.selected, docsRoot], async ([sel, dr]) => {
+      if (!sel || !dr) return setDocsPath(null);
+      const candidate = `${dr}/${sel.groupName}/${sel.projectName}`;
+      const exists = await invoke<boolean>("file_exists", { path: candidate }).catch(() => false);
+      setDocsPath(exists ? candidate : null);
+    }),
+  );
+
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
   createEffect(
@@ -234,7 +255,15 @@ export default function EditorPane(props: { selected: Selection | null }) {
           </button>
         </div>
         <Show when={rightMode() === "files"} fallback={<ReviewPanel root={root()} />}>
-          <FileTree root={root()} />
+          <div class="file-trees">
+            <FileTree root={root()} />
+            <Show when={docsPath()}>
+              <div class="file-tree-section">
+                <div class="file-tree-heading">Docs</div>
+                <FileTree root={docsPath()} />
+              </div>
+            </Show>
+          </div>
         </Show>
       </div>
     </div>
