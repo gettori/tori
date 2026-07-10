@@ -29,6 +29,26 @@ struct RawConfig {
     // into explicit extra paths so old configs are never silently dropped.
     #[serde(default)]
     project: Vec<RawProject>,
+    #[serde(default)]
+    docs: RawDocs,
+}
+
+// A parallel notes/docs tree that mirrors `<root>/<group>/<project>` under a
+// single base folder, so a project's docs live at `<docs.root>/<group>/<project>`.
+#[derive(Deserialize, Default)]
+struct RawDocs {
+    /// Base folder for the mirrored docs tree. Defaults to the grimoire vault.
+    #[serde(default)]
+    root: Option<String>,
+}
+
+/// The docs base folder, expanded, falling back to the grimoire vault default.
+fn docs_root(raw: &RawConfig) -> String {
+    raw.docs
+        .root
+        .as_deref()
+        .map(expand_tilde)
+        .unwrap_or_else(|| expand_tilde("~/.dotfiles/grimoire/docs"))
 }
 
 #[derive(Deserialize, Default)]
@@ -171,6 +191,9 @@ const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base fo
 # roots  = ["~/Projects"]   # base folders scanned as <root>/<group>/<project>
 # ignore = ["node_modules"] # folder names to skip (dotfiles are always skipped)
 # paths  = []               # explicit out-of-root project folders
+#
+# [docs]
+# root = "~/.dotfiles/grimoire/docs"  # mirrored notes tree: <root>/<group>/<project>
 "#;
 
 fn ensure_config() -> Result<String, String> {
@@ -580,6 +603,15 @@ pub fn get_config(index: State<ProjectIndex>) -> Result<ResolvedConfig, String> 
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     Ok(resolve(raw, &index))
+}
+
+/// The base folder of the mirrored docs tree (`<docs.root>/<group>/<project>`),
+/// so the editor can show a project's notes alongside its files.
+#[tauri::command]
+pub fn get_docs_root() -> Result<String, String> {
+    let text = ensure_config()?;
+    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(docs_root(&raw))
 }
 
 #[tauri::command]

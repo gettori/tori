@@ -1670,6 +1670,36 @@ body.dragging .term-host {
   user-select: none;
 }
 
+/* Stacks the project file tree (grows) above the optional docs tree, each
+   scrolling on its own so a deep docs tree never crowds out the files. */
+.file-trees {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.file-tree-section {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 45%;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+
+.file-tree-heading {
+  flex: none;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--pane-head-bg);
+  user-select: none;
+}
+
 .file-tree .tree-row {
   display: flex;
   align-items: center;
