@@ -8,6 +8,11 @@ use std::process::Command;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+/// Directory under a bare container holding files shared into every worktree
+/// (symlinked at creation, editable via the Shared tab). A bare-container
+/// convention; absent until the first shared file is added.
+const SHARED_DIR: &str = ".shared";
+
 #[derive(Serialize)]
 pub struct Worktree {
     pub path: String,
@@ -143,13 +148,13 @@ fn pick_worktree_folder(container: &Path, branch: &str) -> Result<String, String
     ))
 }
 
-/// Symlink each top-level entry of `<container>/.link/` into a freshly created
+/// Symlink each top-level entry of `<container>/.shared/` into a freshly created
 /// worktree, skipping names the worktree already has (a branch tracking the file
-/// is never clobbered). Bare-container convention; a no-op when `.link/` is absent.
+/// is never clobbered). Bare-container convention; a no-op when `.shared/` is absent.
 fn link_shared(container: &Path, worktree: &Path) {
-    let link_dir = container.join(".link");
-    let Ok(entries) = std::fs::read_dir(&link_dir) else {
-        return; // no .link/ convention here
+    let shared_dir = container.join(SHARED_DIR);
+    let Ok(entries) = std::fs::read_dir(&shared_dir) else {
+        return; // no .shared/ convention here
     };
     for e in entries.flatten() {
         let dest = worktree.join(e.file_name());
@@ -164,7 +169,7 @@ fn link_shared(container: &Path, worktree: &Path) {
 /// Create a worktree for `branch` under the bare container `repo_path`. Reuses an
 /// existing branch (and its worktree if any); for a new branch, fetches first and
 /// bases it on origin's default. Folder name is collision-safe (see
-/// `pick_worktree_folder`); shared `.link/` files are linked in afterward.
+/// `pick_worktree_folder`); shared `.shared/` files are linked in afterward.
 #[tauri::command]
 pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
     let branch = branch.trim().to_string();
@@ -216,10 +221,10 @@ pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Res
 
 /// Is the worktree dirty in a way that should block removal? Tracked
 /// modifications and genuine untracked files count; an untracked symlink that
-/// points into the sibling `.link/` does NOT (we created it and it is a
+/// points into the sibling `.shared/` does NOT (we created it and it is a
 /// regenerable pointer to a shared file, not user work). Without this exception a
-/// freshly created worktree that linked any `.link/` file would read as dirty and
-/// could never be removed. See [[gotchas#link-symlinks-read-as-untracked]].
+/// freshly created worktree that linked any `.shared/` file would read as dirty and
+/// could never be removed. See [[gotchas#shared-symlinks-read-as-untracked-and-block-worktree-removal]].
 fn tree_dirty(worktree: &Path) -> Result<bool, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -231,9 +236,9 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    let link_canon = worktree
+    let shared_canon = worktree
         .parent()
-        .map(|c| c.join(".link"))
+        .map(|c| c.join(SHARED_DIR))
         .and_then(|d| std::fs::canonicalize(d).ok());
 
     for line in text.lines() {
@@ -241,8 +246,8 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
             continue;
         }
         if let Some(name) = line.strip_prefix("?? ") {
-            // An untracked entry: a .link symlink is not dirt, anything else is.
-            if let Some(ref lc) = link_canon {
+            // An untracked entry: a .shared symlink is not dirt, anything else is.
+            if let Some(ref lc) = shared_canon {
                 let p = worktree.join(name);
                 let is_link = p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false);
                 if is_link {
@@ -262,7 +267,7 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
 }
 
 /// Friendly pre-check before removal (the UI surfaces a clear message). Same
-/// `.link`-aware rule the removal itself enforces.
+/// `.shared`-aware rule the removal itself enforces.
 #[tauri::command]
 pub fn worktree_dirty(path: String) -> Result<bool, String> {
     tree_dirty(Path::new(&path))
@@ -270,7 +275,7 @@ pub fn worktree_dirty(path: String) -> Result<bool, String> {
 
 /// Remove a worktree folder and prune its stale admin entry. Refuses a dirty tree
 /// (real work) via `tree_dirty`, so nothing is deleted then. `--force` is used only
-/// once that check passes, to drop the regenerable `.link/` symlinks git would
+/// once that check passes, to drop the regenerable `.shared/` symlinks git would
 /// otherwise treat as untracked. Shared by `remove_worktree` and the delete-plus-
 /// branch variant; it does not emit (the caller does).
 fn do_remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
@@ -324,39 +329,6 @@ pub fn remove_worktree_and_branch(
     Ok(())
 }
 
-/// Re-run the `.link/` symlinking across every worktree of a container. A no-op
-/// when there is no `.link/`. Reuses `link_shared`, which never clobbers an
-/// existing file (a branch that tracks the name keeps its own copy). Pure (no
-/// emit), so it is unit-tested directly.
-fn relink_worktrees_pure(container: &Path) -> Result<(), String> {
-    if !container.join(".link").is_dir() {
-        return Ok(()); // no .link/ convention here: nothing to relink
-    }
-    // git reports canonical worktree paths (on macOS /tmp resolves to /private/tmp),
-    // so compare against a canonicalized container to keep the "inside" guard honest.
-    let cont_canon = std::fs::canonicalize(container).unwrap_or_else(|_| container.to_path_buf());
-    for wt in list_worktrees(container.to_string_lossy().into_owned())? {
-        // Skip the bare entry (no branch) and anything outside the container.
-        if wt.branch.is_empty() {
-            continue;
-        }
-        let wt_path = PathBuf::from(&wt.path);
-        let wt_canon = std::fs::canonicalize(&wt_path).unwrap_or_else(|_| wt_path.clone());
-        if wt_canon.starts_with(&cont_canon) && wt_canon != cont_canon {
-            link_shared(container, &wt_path);
-        }
-    }
-    Ok(())
-}
-
-/// "Update .links/": restore any shared `.link/` file deleted from a worktree.
-#[tauri::command]
-pub fn relink_worktrees(app: AppHandle, repo_path: String) -> Result<(), String> {
-    relink_worktrees_pure(Path::new(&repo_path))?;
-    let _ = app.emit("config://changed", ());
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,10 +378,10 @@ mod tests {
     fn link_shared_symlinks_and_skips_existing() {
         let tmp = unique_tmp();
         let container = tmp.join("proj");
-        let link = container.join(".link");
-        std::fs::create_dir_all(&link).unwrap();
-        std::fs::write(link.join(".env"), "SECRET=1").unwrap();
-        std::fs::write(link.join("config.toml"), "x=1").unwrap();
+        let shared = container.join(".shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join(".env"), "SECRET=1").unwrap();
+        std::fs::write(shared.join("config.toml"), "x=1").unwrap();
 
         let wt = container.join("main");
         std::fs::create_dir_all(&wt).unwrap();
@@ -426,7 +398,7 @@ mod tests {
         // config.toml is freshly symlinked into the worktree.
         let cfg_meta = std::fs::symlink_metadata(wt.join("config.toml")).unwrap();
         assert!(cfg_meta.file_type().is_symlink());
-        assert_eq!(std::fs::read_link(wt.join("config.toml")).unwrap(), link.join("config.toml"));
+        assert_eq!(std::fs::read_link(wt.join("config.toml")).unwrap(), shared.join("config.toml"));
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -460,11 +432,11 @@ mod tests {
         git(&cont, &["worktree", "add", "-q", "main", "main"]);
 
         let wt = cont.join("main");
-        // A linked .link/ file shows as untracked but must NOT count as dirty.
-        std::fs::create_dir_all(cont.join(".link")).unwrap();
-        std::fs::write(cont.join(".link/.env"), "x").unwrap();
-        std::os::unix::fs::symlink(cont.join(".link/.env"), wt.join(".env")).unwrap();
-        assert!(!tree_dirty(&wt).unwrap(), "a .link symlink alone is not dirty");
+        // A linked .shared/ file shows as untracked but must NOT count as dirty.
+        std::fs::create_dir_all(cont.join(".shared")).unwrap();
+        std::fs::write(cont.join(".shared/.env"), "x").unwrap();
+        std::os::unix::fs::symlink(cont.join(".shared/.env"), wt.join(".env")).unwrap();
+        assert!(!tree_dirty(&wt).unwrap(), "a .shared symlink alone is not dirty");
 
         // A genuine untracked file makes it dirty.
         std::fs::write(wt.join("scratch.txt"), "work").unwrap();
@@ -479,51 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn relink_restores_deleted_symlink() {
-        let tmp = unique_tmp();
-        // A source repo on `main` to seed a bare clone from.
-        let src = tmp.join("src");
-        std::fs::create_dir_all(&src).unwrap();
-        git(&src, &["init", "-q"]);
-        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-        git(&src, &["config", "user.email", "t@t.t"]);
-        git(&src, &["config", "user.name", "t"]);
-        std::fs::write(src.join("a.txt"), "hi").unwrap();
-        git(&src, &["add", "."]);
-        git(&src, &["commit", "-qm", "init"]);
-
-        // A bare container with one worktree.
-        let cont = tmp.join("cont");
-        std::fs::create_dir_all(&cont).unwrap();
-        Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
-            .output()
-            .unwrap();
-        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
-        git(&cont, &["worktree", "add", "-q", "main", "main"]);
-
-        // No .link/ yet: relink is a clean no-op.
-        assert!(relink_worktrees_pure(&cont).is_ok());
-
-        // Add a shared file and link it in, then delete the symlink from the worktree.
-        std::fs::create_dir_all(cont.join(".link")).unwrap();
-        std::fs::write(cont.join(".link/.env"), "SECRET=1").unwrap();
-        let linked = cont.join("main/.env");
-        std::os::unix::fs::symlink(cont.join(".link/.env"), &linked).unwrap();
-        std::fs::remove_file(&linked).unwrap();
-        assert!(linked.symlink_metadata().is_err(), "precondition: link is gone");
-
-        // Relink restores it as a symlink into .link/.
-        relink_worktrees_pure(&cont).unwrap();
-        let meta = std::fs::symlink_metadata(&linked).unwrap();
-        assert!(meta.file_type().is_symlink(), "deleted link is restored");
-        assert_eq!(std::fs::read_link(&linked).unwrap(), cont.join(".link/.env"));
-
-        std::fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn link_shared_noop_without_link_dir() {
+    fn link_shared_noop_without_shared_dir() {
         let tmp = unique_tmp();
         let container = tmp.join("proj");
         let wt = container.join("main");

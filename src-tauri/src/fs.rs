@@ -4,7 +4,7 @@
 // Sway's own write echo are filtered out elsewhere).
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -56,6 +56,93 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
 #[tauri::command]
 pub fn file_exists(path: String) -> bool {
     Path::new(&path).exists()
+}
+
+// --- containment-scoped mutation commands ---
+//
+// The Shared tab lets the editor create/rename/delete files under a single
+// `.shared` root. These commands are the only write surface for that, and each
+// one is fail-closed: it resolves the target and refuses anything that is not
+// inside the passed `root`, so a recursive delete can never escape the folder.
+
+/// Canonicalize the deepest existing ancestor of `p`, then re-append the trailing
+/// components that do not exist yet. This yields a symlink-resolved absolute path
+/// even for a target that has not been created (plain `canonicalize` fails on a
+/// missing path, which is exactly the mkdir / rename-destination case).
+fn resolve_existing_prefix(p: &Path) -> PathBuf {
+    let mut cur = p;
+    let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
+    loop {
+        if let Ok(c) = std::fs::canonicalize(cur) {
+            let mut out = c;
+            for seg in tail.iter().rev() {
+                out.push(seg);
+            }
+            return out;
+        }
+        match (cur.parent(), cur.file_name()) {
+            (Some(parent), Some(name)) => {
+                tail.push(name);
+                cur = parent;
+            }
+            // Nothing along the path canonicalizes: fall back to the lexical
+            // form so the caller's containment check still decides (and, with the
+            // `..`-rejection below, stays fail-closed).
+            _ => return p.to_path_buf(),
+        }
+    }
+}
+
+/// Resolve `path` and confirm it stays within `root` (same-or-nested), returning
+/// the resolved target. Fail-closed: rejects any `..` component up front (a
+/// not-yet-created target cannot be canonicalized, so a parent-dir escape must be
+/// caught lexically) and then compares symlink-resolved absolute forms so a
+/// symlink cannot redirect out of `root`. Mirrors `config::is_inside`.
+fn ensure_inside(root: &str, path: &str) -> Result<PathBuf, String> {
+    let target = PathBuf::from(path);
+    if target.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err("Refusing a path that escapes the shared folder.".into());
+    }
+    let root_real = resolve_existing_prefix(Path::new(root));
+    let target_real = resolve_existing_prefix(&target);
+    if target_real == root_real || target_real.starts_with(&root_real) {
+        Ok(target)
+    } else {
+        Err("Refusing a path outside the shared folder.".into())
+    }
+}
+
+/// `mkdir -p` a directory inside `root` (used to create `.shared` on first add).
+#[tauri::command]
+pub fn fs_mkdir(root: String, path: String) -> Result<(), String> {
+    let p = ensure_inside(&root, &path)?;
+    std::fs::create_dir_all(&p).map_err(|e| e.to_string())
+}
+
+/// Delete a file or directory (recursive) inside `root`. `symlink_metadata` does
+/// not follow, so a symlink is removed as a link, never followed into.
+#[tauri::command]
+pub fn fs_delete(root: String, path: String) -> Result<(), String> {
+    let p = ensure_inside(&root, &path)?;
+    let meta = std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(&p).map_err(|e| e.to_string())
+    } else {
+        std::fs::remove_file(&p).map_err(|e| e.to_string())
+    }
+}
+
+/// Rename `from` to `to`, both required to stay inside `root`. Refuses to
+/// overwrite: `std::fs::rename` would silently replace an existing destination
+/// file, so an existing `to` is rejected up front (no clobber, no data loss).
+#[tauri::command]
+pub fn fs_rename(root: String, from: String, to: String) -> Result<(), String> {
+    let f = ensure_inside(&root, &from)?;
+    let t = ensure_inside(&root, &to)?;
+    if t.symlink_metadata().is_ok() {
+        return Err("A file or folder with that name already exists.".into());
+    }
+    std::fs::rename(&f, &t).map_err(|e| e.to_string())
 }
 
 /// All project files (paths relative to `project_path`) for the quick-open
@@ -222,5 +309,78 @@ mod tests {
         assert!(entries.iter().any(|e| e.name == "hello.txt" && !e.is_dir));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn scoped_mutations_stay_inside_root() {
+        let base = std::env::temp_dir().join(format!("sway-fs-scope-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let root = base.join(".shared");
+        let root_s = root.to_string_lossy().into_owned();
+
+        // mkdir auto-creates the root and a nested dir.
+        let nested = root.join("cfg");
+        fs_mkdir(root_s.clone(), nested.to_string_lossy().into_owned()).unwrap();
+        assert!(nested.is_dir());
+
+        // A file created and then renamed inside the root.
+        let f = root.join("a.txt");
+        fs_write_file(f.to_string_lossy().into_owned(), "hi".into()).unwrap();
+        let f2 = root.join("b.txt");
+        fs_rename(
+            root_s.clone(),
+            f.to_string_lossy().into_owned(),
+            f2.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+        assert!(!f.exists() && f2.exists());
+
+        // Rename never clobbers: an existing destination is refused.
+        let occupied = root.join("occupied.txt");
+        std::fs::write(&occupied, "keep").unwrap();
+        assert!(fs_rename(
+            root_s.clone(),
+            f2.to_string_lossy().into_owned(),
+            occupied.to_string_lossy().into_owned(),
+        )
+        .is_err());
+        assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "keep");
+
+        // Recursive delete of a directory inside the root.
+        fs_delete(root_s.clone(), nested.to_string_lossy().into_owned()).unwrap();
+        assert!(!nested.exists());
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn scoped_mutations_refuse_outside_root() {
+        let base = std::env::temp_dir().join(format!("sway-fs-escape-{}", std::process::id()));
+        let root = base.join(".shared");
+        std::fs::create_dir_all(&root).unwrap();
+        let root_s = root.to_string_lossy().into_owned();
+
+        // A `..` escape is rejected up front.
+        let via_parent = root.join("../secret.txt");
+        assert!(fs_delete(root_s.clone(), via_parent.to_string_lossy().into_owned()).is_err());
+        assert!(fs_mkdir(root_s.clone(), via_parent.to_string_lossy().into_owned()).is_err());
+
+        // A sibling absolute path outside the root is rejected too.
+        let sibling = base.join("outside.txt");
+        std::fs::write(&sibling, "x").unwrap();
+        assert!(fs_delete(root_s.clone(), sibling.to_string_lossy().into_owned()).is_err());
+        assert!(sibling.exists(), "the outside file must be untouched");
+
+        // A rename whose destination escapes the root is refused.
+        let inside = root.join("keep.txt");
+        std::fs::write(&inside, "y").unwrap();
+        assert!(fs_rename(
+            root_s.clone(),
+            inside.to_string_lossy().into_owned(),
+            sibling.to_string_lossy().into_owned(),
+        )
+        .is_err());
+
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }
