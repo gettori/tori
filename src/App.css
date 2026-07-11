@@ -353,6 +353,12 @@ body.dragging .term-host {
   margin-bottom: 8px;
   word-break: break-all;
 }
+.modal-msg {
+  font-size: 12px;
+  color: var(--text-dim, #9aa0aa);
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
 .modal-note strong {
   color: var(--text);
   font-weight: 500;

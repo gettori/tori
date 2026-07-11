@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree";
 import PromptModal from "./PromptModal";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
 import OverflowTabBar from "./OverflowTabBar";
 import FileIcon from "../seti/FileIcon";
@@ -67,6 +68,18 @@ export default function EditorPane(props: { selected: Selection | null }) {
     req?.resolve(v);
   }
 
+  // In-app replacement for window.confirm (also unimplemented in WKWebView); mirrors
+  // askText. Threaded into the editable Shared tree for delete confirmation.
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  function askConfirm(opts: ConfirmOpts): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+  function resolveConfirm(v: boolean) {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(v);
+  }
+
   // A parallel docs/notes tree mirroring <docsRoot>/<group>/<project>, keyed on
   // the canonical group/project (not the branch-unit folder), surfaced as its own
   // Docs tab only when that folder actually exists.
@@ -112,10 +125,16 @@ export default function EditorPane(props: { selected: Selection | null }) {
     setActivePath(path);
   }
 
-  function closeTab(path: string) {
+  async function closeTab(path: string) {
     if (dirty()[path]) {
       const name = openFiles().find((f) => f.path === path)?.name ?? path;
-      if (!confirm(`Discard unsaved changes to ${name}?`)) return;
+      const ok = await askConfirm({
+        title: `Discard unsaved changes to ${name}?`,
+        message: "The edits in this tab will be lost.",
+        confirmLabel: "Discard",
+        danger: true,
+      });
+      if (!ok) return;
     }
     const remaining = openFiles().filter((f) => f.path !== path);
     setOpenFiles(remaining);
@@ -170,12 +189,20 @@ export default function EditorPane(props: { selected: Selection | null }) {
       const external = e.payload.paths.filter((p) => !isSelfWrite(p));
       if (external.length) openFile(external[external.length - 1]);
     });
-    // Unsaved-buffer guard on app close.
-    offClose = await getCurrentWindow().onCloseRequested((event) => {
+    // Unsaved-buffer guard on app close. window.confirm can't run here, so always
+    // block the close first, then destroy the window ourselves if the user confirms
+    // (destroy bypasses this handler, so there is no re-prompt loop).
+    offClose = await getCurrentWindow().onCloseRequested(async (event) => {
       const anyDirty = Object.values(dirty()).some(Boolean);
-      if (anyDirty && !confirm("You have unsaved changes. Close anyway?")) {
-        event.preventDefault();
-      }
+      if (!anyDirty) return;
+      event.preventDefault();
+      const ok = await askConfirm({
+        title: "You have unsaved changes.",
+        message: "Close anyway? Unsaved edits will be lost.",
+        confirmLabel: "Close without saving",
+        danger: true,
+      });
+      if (ok) await getCurrentWindow().destroy();
     });
   });
   onCleanup(() => {
@@ -309,7 +336,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
             <ReviewPanel root={root()} />
           </Match>
           <Match when={rightMode() === "shared"}>
-            <FileTree root={sharedPath()} editable askText={askText} />
+            <FileTree root={sharedPath()} editable askText={askText} askConfirm={askConfirm} />
           </Match>
           <Match when={rightMode() === "docs"}>
             <FileTree root={docsPath()} />
@@ -322,6 +349,16 @@ export default function EditorPane(props: { selected: Selection | null }) {
           initial={promptReq()!.initial}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => resolveConfirm(true)}
+          onCancel={() => resolveConfirm(false)}
         />
       </Show>
     </div>
