@@ -209,10 +209,13 @@ export default function Sidebar(props: {
   const [pickReq, setPickReq] = createSignal<{
     title: string;
     items: string[];
+    creatable: boolean;
     resolve: (v: string | null) => void;
   } | null>(null);
-  function askPick(title: string, items: string[]): Promise<string | null> {
-    return new Promise((resolve) => setPickReq({ title, items, resolve }));
+  // `creatable`: let Ok/Enter commit a typed name that matches no listed item, so
+  // the same dialog attaches a listed branch or creates a new one.
+  function askPick(title: string, items: string[], creatable = false): Promise<string | null> {
+    return new Promise((resolve) => setPickReq({ title, items, creatable, resolve }));
   }
   function resolvePick(v: string | null) {
     const req = pickReq();
@@ -496,20 +499,6 @@ export default function Sidebar(props: {
 
   // --- worktree lifecycle ---
 
-  // Create a worktree under a bare container. The backend names the folder
-  // (branch's last segment, slug fallback, clean error on double collision),
-  // fetches + bases new branches on origin's default, and links shared .shared/ files.
-  async function createWorktree(p: Project) {
-    const branch = await askText(`New worktree in "${p.name}" (branch name):`);
-    if (!branch?.trim()) return;
-    try {
-      await invoke("create_worktree", { repoPath: p.path, branch: branch.trim() });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   // Shared pre-removal guards for a worktree: open in the editor, a dirty tree, or
   // a live agent nested inside (in it or any subdir). Returns an error message to
   // show, or null when removal is clear. Nothing is deleted here.
@@ -592,26 +581,6 @@ export default function Sidebar(props: {
 
   // --- plain-repo branch actions (attach/detach model) ---
 
-  // Create a branch at HEAD (attached + shown immediately by new_branch), then
-  // switch to it. The switch is a same-commit checkout, so it changes no files and
-  // needs no working-tree confirm; the branch persists even if the switch fails.
-  async function newBranch(p: Project) {
-    const name = await askText(`New branch in "${p.name}" (from HEAD):`);
-    if (!name?.trim()) return;
-    const branch = name.trim();
-    try {
-      await invoke("new_branch", { repo: p.path, branch });
-    } catch (e) {
-      return setError(String(e));
-    }
-    try {
-      await invoke("git_checkout", { repoPath: p.path, branch });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   const hasOrigin = (p: Project) => origins()[p.path] === true;
 
   // Repos already warned about a missing credential helper, so the notice fires
@@ -652,11 +621,13 @@ export default function Sidebar(props: {
     baseTitle: string;
   } | null = null;
 
-  // Attach an existing branch: show local branches immediately, and when the repo
-  // has an origin, fetch in the background and fold remote-only branches into the
-  // same picker live (see the git://fetch-done handler). One picker, two sinks: a
-  // local pick attaches directly, a remote pick creates a tracking branch first.
-  async function attachExisting(p: Project) {
+  // Add a branch to a plain repo (one dialog replacing New Branch + Attach
+  // Existing Branch): list attachable local branches immediately, fold in remote
+  // branches after a background fetch (shared attachCtx + git://fetch-done). A
+  // listed pick attaches (local → attach_branch, remote → tracking
+  // attach_remote_branch); a typed name that matches nothing is created at HEAD
+  // and checked out. An already-local name (listed or typed) just attaches.
+  async function addBranch(p: Project) {
     let branches: Branch[];
     try {
       branches = await invoke<Branch[]>("list_branches", { path: p.path });
@@ -668,42 +639,43 @@ export default function Sidebar(props: {
       p.branchUnits.filter((u) => u.kind === "plain" && u.branch).map((u) => u.branch),
     );
     const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
-    if (!hasOrigin(p) && candidates.length === 0) {
-      return setError("Every local branch is already attached.");
-    }
 
-    // Build the routing map from local candidates (label === branch name).
+    // The routing map (label → {kind,branch}) is the source of truth; a returned
+    // value absent from it is a new branch name to create.
     const map = new Map<string, AttachEntry>();
     for (const n of candidates) map.set(n, { kind: "local", branch: n });
-    const baseTitle = "Attach which branch?";
+    const baseTitle = "Branch Name";
     attachCtx = { repo: p.path, map, allLocals, baseTitle };
 
-    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates);
-
+    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates, true);
     if (hasOrigin(p)) beginBackgroundFetch(p.path);
 
-    const label = await pick;
-    if (!label) return; // cancelled
-    const entry = map.get(label);
-    if (!entry) return; // select-only picker: a listed label always maps
+    const value = await pick;
+    if (!value) return; // cancelled
+    const entry = map.get(value);
     try {
-      if (entry.kind === "remote") {
+      if (entry?.kind === "remote") {
         await invoke("attach_remote_branch", { repo: p.path, branch: entry.branch });
+      } else if (entry?.kind === "local" || allLocals.has(value)) {
+        await invoke("attach_branch", { repo: p.path, branch: entry?.branch ?? value });
       } else {
-        await invoke("attach_branch", { repo: p.path, branch: entry.branch });
+        // Matches nothing: create the branch at HEAD and switch to it.
+        await invoke("new_branch", { repo: p.path, branch: value });
+        await invoke("git_checkout", { repoPath: p.path, branch: value });
       }
+      await loadConfig();
     } catch (e) {
       setError(String(e));
     }
   }
 
-  // Attach a worktree for an existing branch (the worktree-container analog of
-  // attachExisting): list local branches that have no worktree yet immediately,
-  // fold in remote branches after a background fetch (shared attachCtx +
-  // git://fetch-done), then create a worktree for the pick. Both a local and a
-  // remote pick route to create_worktree, which bases a remote-only name on
-  // origin/<name> so the new worktree tracks it.
-  async function attachWorktree(p: Project) {
+  // Add a worktree to a bare container (one dialog replacing New worktree… +
+  // Attach worktree…): list branches without a worktree (local, plus remotes
+  // folded in after a background fetch), then create a worktree for the pick or
+  // the typed name. create_worktree DWIMs the target: an existing local checks
+  // out, a remote-only name (origin/<name>) is tracked, a brand-new name starts a
+  // branch off origin's default.
+  async function addWorktree(p: Project) {
     let branches: Branch[];
     try {
       branches = await invoke<Branch[]>("list_branches", { path: p.path });
@@ -717,25 +689,21 @@ export default function Sidebar(props: {
       p.branchUnits.filter((u) => u.kind === "worktree" && u.branch).map((u) => u.branch),
     );
     const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
-    if (!hasOrigin(p) && candidates.length === 0) {
-      return setError("Every branch already has a worktree.");
-    }
 
     const map = new Map<string, AttachEntry>();
     for (const n of candidates) map.set(n, { kind: "local", branch: n });
-    const baseTitle = "Attach which branch as a worktree?";
+    const baseTitle = "Branch Name";
     attachCtx = { repo: p.path, map, allLocals, baseTitle };
 
-    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates);
-
+    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates, true);
     if (hasOrigin(p)) beginBackgroundFetch(p.path);
 
-    const label = await pick;
-    if (!label) return; // cancelled
-    const entry = map.get(label);
-    if (!entry) return; // select-only picker: a listed label always maps
+    const value = await pick;
+    if (!value) return; // cancelled
+    // A remote row's label is `origin/<name>`; the map carries the bare branch.
+    const branch = map.get(value)?.branch ?? value;
     try {
-      await invoke("create_worktree", { repoPath: p.path, branch: entry.branch });
+      await invoke("create_worktree", { repoPath: p.path, branch });
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -833,15 +801,13 @@ export default function Sidebar(props: {
       case "worktree":
         return [
           ...(hasOrigin(p) ? [] : [{ label: "Add Origin", onClick: () => addRemote(p) }]),
-          { label: "New worktree…", onClick: () => createWorktree(p) },
-          { label: "Attach worktree…", onClick: () => attachWorktree(p) },
+          { label: "Add Worktree", onClick: () => addWorktree(p) },
         ];
       case "plain-dir":
         return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
       case "plain": {
         const items: MenuItem[] = [
-          { label: "New Branch", onClick: () => newBranch(p) },
-          { label: "Attach Existing Branch", onClick: () => attachExisting(p) },
+          { label: "Add Branch", onClick: () => addBranch(p) },
         ];
         if (!hasOrigin(p)) {
           items.push({ separator: true });
@@ -1393,7 +1359,8 @@ export default function Sidebar(props: {
         <PickerModal
           title={pickReq()!.title}
           items={pickReq()!.items}
-          placeholder="Type to filter…"
+          creatable={pickReq()!.creatable}
+          placeholder="Type to filter or name a new branch…"
           onSubmit={(v) => resolvePick(v)}
           onCancel={() => resolvePick(null)}
         />
