@@ -192,10 +192,11 @@ export default function Sidebar(props: {
   const [promptReq, setPromptReq] = createSignal<{
     title: string;
     initial: string;
+    note?: string;
     resolve: (v: string | null) => void;
   } | null>(null);
-  function askText(title: string, initial = ""): Promise<string | null> {
-    return new Promise((resolve) => setPromptReq({ title, initial, resolve }));
+  function askText(title: string, initial = "", note?: string): Promise<string | null> {
+    return new Promise((resolve) => setPromptReq({ title, initial, note, resolve }));
   }
   function resolvePrompt(v: string | null) {
     const req = promptReq();
@@ -230,6 +231,7 @@ export default function Sidebar(props: {
   // tree; the async preview (flags + size) and the running-agent count fill in.
   type GroupPreview = { sizeBytes: number; entries: DeleteEntry[] };
   const [deleteReq, setDeleteReq] = createSignal<{
+    mode: "group" | "folder" | "project";
     name: string;
     path: string;
     entries: DeleteEntry[];
@@ -262,6 +264,7 @@ export default function Sidebar(props: {
 
   function openDeleteGroup(g: Group) {
     setDeleteReq({
+      mode: "group",
       name: g.name,
       path: g.path,
       entries: g.projects.map((p) => ({ name: p.name, kind: "repo", dirty: false, unpushed: false })),
@@ -278,16 +281,62 @@ export default function Sidebar(props: {
     countRunningAgents(g.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
   }
 
-  // Confirmed: tear down PTYs + editor tabs under the group BEFORE the native
+  // Open the typed-name confirmation for removing a non-git project folder. Reuses
+  // the group delete dialog (same blast-radius preview) with folder wording; the
+  // `folder` mode routes confirm to `remove_folder`.
+  function openRemoveFolder(p: Project) {
+    setDeleteReq({
+      mode: "folder",
+      name: p.name,
+      path: p.path,
+      entries: [],
+      loading: true,
+      runningCount: 0,
+      sizeBytes: null,
+    });
+    const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
+      setDeleteReq((r) => (r && r.path === p.path ? fn(r) : r));
+    invoke<GroupPreview>("group_delete_preview", { path: p.path })
+      .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
+      .catch(() => forThis((r) => ({ ...r, loading: false })));
+    countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
+  }
+
+  // Open the typed-name confirmation for removing a git project (plain repo or
+  // worktree container). Uses `project_delete_preview`, whose first entry is the
+  // repo root's own uncommitted/unpushed state (a plain repo's key signal); the
+  // `project` mode routes confirm to `remove_project`.
+  function openRemoveProject(p: Project) {
+    setDeleteReq({
+      mode: "project",
+      name: p.name,
+      path: p.path,
+      entries: [],
+      loading: true,
+      runningCount: 0,
+      sizeBytes: null,
+    });
+    const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
+      setDeleteReq((r) => (r && r.path === p.path ? fn(r) : r));
+    invoke<GroupPreview>("project_delete_preview", { path: p.path })
+      .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
+      .catch(() => forThis((r) => ({ ...r, loading: false })));
+    countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
+  }
+
+  // Confirmed: tear down PTYs + editor tabs under the target BEFORE the native
   // delete (so no agent writes into a vanishing cwd), then remove the folder and
-  // clear the selection if it pointed inside.
+  // clear the selection if it pointed inside. Routes by mode: a group calls
+  // `delete_group`, a plain folder `remove_folder`, a git project `remove_project`.
   async function confirmDeleteGroup() {
     const req = deleteReq();
     if (!req) return;
     setDeleteReq(null);
     emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
+    const cmd =
+      req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_group";
     try {
-      await invoke("delete_group", { path: req.path });
+      await invoke(cmd, { path: req.path });
       const sel = props.selected;
       if (sel && isUnderPath(sel.folderPath, req.path)) props.onSelect(null);
       await loadConfig();
@@ -569,11 +618,53 @@ export default function Sidebar(props: {
     }
   }
 
+  // Bootstrap a bare+worktree layout in an existing plain-dir folder, in place (no
+  // clone): a `.bare` repo, a `.git` pointer, and one initial unborn worktree. The
+  // folder becomes a worktree container; add a remote and fetch later (Add Origin).
+  async function bareInit(p: Project) {
+    const branch = await askText(`Bare + worktree in "${p.name}". Initial branch (blank = git default):`);
+    if (branch === null) return; // cancelled
+    try {
+      await invoke("bare_init", { projectPath: p.path, branch: branch.trim() || null });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function addRemote(p: Project) {
     const url = await askText(`Remote URL (origin) for "${p.name}":`);
     if (!url?.trim()) return;
     try {
       await invoke("git_remote_add", { projectPath: p.path, url: url.trim() });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Change an existing origin's URL. Shows the current URL and seeds the input with
+  // it (easy to edit, e.g. ssh↔https or a moved repo). git_remote_add does a
+  // set-url when origin already exists, so the same backend handles it. A no-op or
+  // empty entry cancels. Note: remote-tracking refs (refs/remotes/origin/*) keep
+  // their old state until the next fetch; pointing at a *different* repo leaves
+  // stale tracking branches (and any worktree upstreams) until you fetch.
+  async function changeRemote(p: Project) {
+    let current: string | null = null;
+    try {
+      current = await invoke<string | null>("git_origin", { projectPath: p.path });
+    } catch {
+      /* fall through with no current */
+    }
+    const url = await askText(
+      `Change origin for "${p.name}":`,
+      current ?? "",
+      current ? `Current: ${current}` : undefined,
+    );
+    if (url === null) return; // cancelled
+    const next = url.trim();
+    if (!next || next === current) return; // empty or unchanged: no-op
+    try {
+      await invoke("git_remote_add", { projectPath: p.path, url: next });
     } catch (e) {
       setError(String(e));
     }
@@ -795,24 +886,43 @@ export default function Sidebar(props: {
   // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
   // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
   // a plain repo commits / sets a remote / pushes.
-  const projectMenu = (p: Project): MenuItem[] => {
+  const projectMenu = (g: Group, p: Project): MenuItem[] => {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
     switch (projectKind(p)) {
       case "worktree":
         return [
-          ...(hasOrigin(p) ? [] : [{ label: "Add Origin", onClick: () => addRemote(p) }]),
           { label: "Add Worktree", onClick: () => addWorktree(p) },
+          ...(hasOrigin(p)
+            ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
+            : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
+          { separator: true },
+          { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         ];
-      case "plain-dir":
-        return [{ label: "Initialize git repo…", onClick: () => initRepo(p) }];
+      case "plain-dir": {
+        // A non-git folder: it anchors sessions directly (no branch node), so its
+        // menu carries the folder-level actions.
+        const u = p.branchUnits[0];
+        return [
+          { label: "New session", onClick: () => startSession(g, p, u) },
+          { separator: true },
+          { label: "Initialize git repo…", onClick: () => initRepo(p) },
+          { label: "Bare + worktree…", onClick: () => bareInit(p) },
+          { separator: true },
+          { label: "Remove folder", danger: true, onClick: () => openRemoveFolder(p) },
+        ];
+      }
       case "plain": {
         const items: MenuItem[] = [
           { label: "Add Branch", onClick: () => addBranch(p) },
         ];
-        if (!hasOrigin(p)) {
-          items.push({ separator: true });
+        items.push({ separator: true });
+        if (hasOrigin(p)) {
+          items.push({ label: "Change origin…", warn: true, onClick: () => changeRemote(p) });
+        } else {
           items.push({ label: "Add / set remote…", onClick: () => addRemote(p) });
         }
+        items.push({ separator: true });
+        items.push({ label: "Remove project", danger: true, onClick: () => openRemoveProject(p) });
         return items;
       }
       default:
@@ -899,6 +1009,14 @@ export default function Sidebar(props: {
   async function restoreOpen(cfg: ResolvedConfig) {
     for (const g of cfg.groups) {
       for (const p of g.projects) {
+        // A non-git folder anchors sessions on the project row (pkey), not a branch
+        // node (ukey), so re-hydrate it when the project itself is open.
+        if (projectKind(p) === "plain-dir") {
+          if (expanded().has(pkey(g, p)) && p.branchUnits[0]) {
+            await fetchSessions(p.branchUnits[0].folderPath);
+          }
+          continue;
+        }
         for (const u of p.branchUnits) {
           if (expanded().has(ukey(g, p, u))) await fetchSessions(u.folderPath);
         }
@@ -992,6 +1110,73 @@ export default function Sidebar(props: {
       s.folderPath === u.folderPath &&
       s.branch === unitLabel(u) &&
       s.sessionId == null
+    );
+  }
+
+  // The session listing for one branch-unit (an optional "Historical" sub-group +
+  // the session rows). Extracted so it renders both under a branch node (sub3) and
+  // directly under a non-git folder that has no branch node (sub2). `sub` is the
+  // session rows' indent class; the historical header sits one level above.
+  function sessionRows(g: Group, p: Project, u: BranchUnit, sub: "sub2" | "sub3") {
+    const histSub = sub === "sub3" ? "sub3" : "sub2";
+    return (
+      <>
+        <Show when={isHistorical(u)}>
+          <div
+            class={`row dim ${histSub} historical`}
+            onClick={() => toggle(hkey(u))}
+            title="Sessions predating this recreated folder"
+          >
+            <Chevron open={expanded().has(hkey(u))} />
+            <span class="label">Historical ({unitSessions(p, u).length})</span>
+            <button
+              class="adopt-btn"
+              title="Adopt these sessions into the normal listing"
+              onClick={(e) => {
+                e.stopPropagation();
+                adoptFolder(u);
+              }}
+            >
+              Adopt
+            </button>
+          </div>
+        </Show>
+        <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
+          <For each={unitSessions(p, u)} fallback={<div class={`row dim ${sub}`}>no sessions</div>}>
+            {(s) => {
+              const badge = sessionBadge(p, u, s);
+              return (
+                <div
+                  class={`row session ${sub} ${props.selected?.sessionId === s.id ? "sel" : ""}`}
+                  onClick={() => selectSession(g, p, u, s)}
+                  onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
+                  title={s.name || s.title}
+                  draggable={true}
+                  onDragStart={(e) => startAbsDrag(e, s.path)}
+                >
+                  <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
+                    <PiIcon />
+                  </Show>
+                  <span class="label">{s.name || s.title}</span>
+                  <Show when={badge}>
+                    <span
+                      class={`badge ${badge!.hint ? "hint" : ""}`}
+                      title={
+                        badge!.hint
+                          ? "Branchless session: files reflect the current checkout"
+                          : "Recorded on a branch other than the current checkout"
+                      }
+                    >
+                      {badge!.text}
+                    </span>
+                  </Show>
+                  <span class="when">{ago(s.last_active)}</span>
+                </div>
+              );
+            }}
+          </For>
+        </Show>
+      </>
     );
   }
 
@@ -1197,12 +1382,24 @@ export default function Sidebar(props: {
                   <For each={g.projects.filter(projectVisible)}>
                     {(p) => {
                       const popen = () => expanded().has(pkey(g, p));
+                      // A non-git folder has no branch node: the project row is the
+                      // session anchor, so clicking it selects the single unit and
+                      // its sessions render directly beneath (nothing but its own
+                      // sessions, never a same-named branch stub).
+                      const plainDir = () => projectKind(p) === "plain-dir";
+                      const folderUnit = () => p.branchUnits[0];
                       return (
                         <div class="node">
                           <div
                             class="row project sub1"
-                            onClick={() => toggle(pkey(g, p))}
-                            onContextMenu={(e) => openMenu(e, projectMenu(p))}
+                            onClick={() => {
+                              toggle(pkey(g, p));
+                              if (plainDir() && folderUnit()) {
+                                fetchSessions(folderUnit().folderPath);
+                                selectUnit(g, p, folderUnit());
+                              }
+                            }}
+                            onContextMenu={(e) => openMenu(e, projectMenu(g, p))}
                             draggable={true}
                             onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
@@ -1210,6 +1407,14 @@ export default function Sidebar(props: {
                             <span class="label">{p.name}</span>
                           </div>
                           <Show when={popen()}>
+                            <Show
+                              when={!plainDir()}
+                              fallback={
+                                <Show when={folderUnit()}>
+                                  {sessionRows(g, p, folderUnit(), "sub2")}
+                                </Show>
+                              }
+                            >
                             <For
                               each={p.branchUnits}
                               fallback={<div class="row dim sub2">no branches</div>}
@@ -1242,69 +1447,13 @@ export default function Sidebar(props: {
                                       </Show>
                                     </div>
                                     <Show when={uopen()}>
-                                      <Show when={isHistorical(u)}>
-                                        <div
-                                          class="row dim sub3 historical"
-                                          onClick={() => toggle(hkey(u))}
-                                          title="Sessions predating this recreated folder"
-                                        >
-                                          <Chevron open={expanded().has(hkey(u))} />
-                                          <span class="label">Historical ({unitSessions(p, u).length})</span>
-                                          <button
-                                            class="adopt-btn"
-                                            title="Adopt these sessions into the normal listing"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              adoptFolder(u);
-                                            }}
-                                          >
-                                            Adopt
-                                          </button>
-                                        </div>
-                                      </Show>
-                                      <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
-                                      <For
-                                        each={unitSessions(p, u)}
-                                        fallback={<div class="row dim sub3">no sessions</div>}
-                                      >
-                                        {(s) => {
-                                          const badge = sessionBadge(p, u, s);
-                                          return (
-                                            <div
-                                              class={`row session sub3 ${props.selected?.sessionId === s.id ? "sel" : ""}`}
-                                              onClick={() => selectSession(g, p, u, s)}
-                                              onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
-                                              title={s.name || s.title}
-                                              draggable={true}
-                                              onDragStart={(e) => startAbsDrag(e, s.path)}
-                                            >
-                                              <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
-                                                <PiIcon />
-                                              </Show>
-                                              <span class="label">{s.name || s.title}</span>
-                                              <Show when={badge}>
-                                                <span
-                                                  class={`badge ${badge!.hint ? "hint" : ""}`}
-                                                  title={
-                                                    badge!.hint
-                                                      ? "Branchless session: files reflect the current checkout"
-                                                      : "Recorded on a branch other than the current checkout"
-                                                  }
-                                                >
-                                                  {badge!.text}
-                                                </span>
-                                              </Show>
-                                              <span class="when">{ago(s.last_active)}</span>
-                                            </div>
-                                          );
-                                        }}
-                                      </For>
-                                      </Show>
+                                      {sessionRows(g, p, u, "sub3")}
                                     </Show>
                                   </div>
                                 );
                               }}
                             </For>
+                            </Show>
                           </Show>
                         </div>
                       );
@@ -1350,6 +1499,7 @@ export default function Sidebar(props: {
         <PromptModal
           title={promptReq()!.title}
           initial={promptReq()!.initial}
+          note={promptReq()!.note}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
         />
@@ -1373,6 +1523,20 @@ export default function Sidebar(props: {
           loading={deleteReq()!.loading}
           runningCount={deleteReq()!.runningCount}
           sizeBytes={deleteReq()!.sizeBytes}
+          title={
+            deleteReq()!.mode === "folder"
+              ? `Remove folder “${deleteReq()!.name}”?`
+              : deleteReq()!.mode === "project"
+                ? `Remove project “${deleteReq()!.name}”?`
+                : undefined
+          }
+          confirmLabel={
+            deleteReq()!.mode === "folder"
+              ? "Remove folder"
+              : deleteReq()!.mode === "project"
+                ? "Remove project"
+                : undefined
+          }
           onConfirm={() => confirmDeleteGroup()}
           onCancel={() => setDeleteReq(null)}
         />

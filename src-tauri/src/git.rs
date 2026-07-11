@@ -235,6 +235,65 @@ pub fn git_init(app: AppHandle, project_path: String, branch: Option<String>) ->
     Ok(())
 }
 
+/// Capture the trimmed stdout of `git -C <repo> <args>`, or an error with stderr.
+fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Core of `bare_init` without the app event, so it is unit-testable. Turns an
+/// existing plain-dir folder into a bare+worktree layout *in place* (no clone): a
+/// `.bare` bare repo, a `.git` pointer file, and one initial worktree on an unborn
+/// `<branch>` (blank = git's default). The result is a usable worktree container
+/// with no commits yet, so a remote can be added and fetched later (like `git init`
+/// then "Add Origin"). Existing files in the folder are untouched. Refuses a folder
+/// that is already a git repo.
+fn do_bare_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
+    if dir.join(".git").exists() || dir.join(".bare").exists() {
+        return Err("This folder is already a git repository.".into());
+    }
+    let path = dir.to_string_lossy().into_owned();
+    let branch = branch.map(str::trim).filter(|b| !b.is_empty());
+    if let Some(b) = branch {
+        if b.contains('/') || b.contains(char::is_whitespace) || b.starts_with('-') {
+            return Err("Invalid branch name".into());
+        }
+    }
+
+    // 1. A bare repo under `.bare` (relative to the folder, created by init).
+    match branch {
+        Some(b) => git_run(&path, &["init", "--bare", "-q", "-b", b, ".bare"])?,
+        None => git_run(&path, &["init", "--bare", "-q", ".bare"])?,
+    }
+    // 2. The `.git` pointer so the folder resolves to `.bare` as its git dir.
+    std::fs::write(dir.join(".git"), "gitdir: ./.bare\n").map_err(|e| e.to_string())?;
+    // 3. The initial worktree on the default branch, unborn (--orphan needs no
+    //    commit), named after the branch. Read the default when none was given.
+    let def = match branch {
+        Some(b) => b.to_string(),
+        None => git_capture(&path, &["symbolic-ref", "--short", "HEAD"])?,
+    };
+    git_run(&path, &["worktree", "add", "--orphan", "-b", &def, &def])?;
+    Ok(())
+}
+
+/// Bootstrap a bare+worktree layout in an existing plain-dir folder (optional
+/// initial branch). Re-discovers (plain-dir becomes a worktree container).
+#[tauri::command]
+pub fn bare_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
+    do_bare_init(Path::new(&project_path), branch.as_deref())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 /// Add the `origin` remote, or update its URL if it already exists.
 #[tauri::command]
 pub fn git_remote_add(app: AppHandle, project_path: String, url: String) -> Result<(), String> {
@@ -534,6 +593,63 @@ diff --git a/f b/f
         assert!(staged.contains("real.txt"));
         assert!(!staged.contains("node_modules"));
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bare_init_makes_worktree_container_in_place() {
+        let dir = empty_tmp();
+        // A pre-existing file must survive the in-place bootstrap.
+        std::fs::write(dir.join("README.txt"), "hi").unwrap();
+        do_bare_init(&dir, Some("main")).unwrap();
+
+        // The layout: a `.bare` repo, a `.git` pointer, and a `main` worktree.
+        assert!(dir.join(".bare").is_dir());
+        assert_eq!(std::fs::read_to_string(dir.join(".git")).unwrap(), "gitdir: ./.bare\n");
+        assert!(dir.join("main").is_dir());
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), "hi");
+
+        // Discovery sees a bare container with exactly one (non-bare) worktree on an
+        // unborn `main`, and no remote yet (add origin later).
+        let list = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["worktree", "list", "--porcelain"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&list.stdout);
+        assert!(text.contains("bare"));
+        assert!(text.contains("branch refs/heads/main"));
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(dir.join("main"))
+            .args(["symbolic-ref", "--short", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+
+        // Re-running is refused (already a git repo).
+        assert!(do_bare_init(&dir, None).is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bare_init_defaults_branch_when_blank() {
+        let dir = empty_tmp();
+        do_bare_init(&dir, None).unwrap();
+        // Whatever git's default is, the worktree folder is named after it and the
+        // pointer + bare repo exist.
+        assert!(dir.join(".bare").is_dir());
+        let def = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["symbolic-ref", "--short", "HEAD"])
+            .output()
+            .unwrap();
+        let def = String::from_utf8_lossy(&def.stdout).trim().to_string();
+        assert!(!def.is_empty());
+        assert!(dir.join(&def).is_dir());
         std::fs::remove_dir_all(&dir).ok();
     }
 
