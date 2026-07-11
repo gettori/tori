@@ -5,6 +5,7 @@ import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import PromptModal from "./PromptModal";
 import PickerModal from "./PickerModal";
 import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
@@ -202,6 +203,18 @@ export default function Sidebar(props: {
   function resolvePrompt(v: string | null) {
     const req = promptReq();
     setPromptReq(null);
+    req?.resolve(v);
+  }
+
+  // Async yes/no confirmation (see ConfirmDialog): the in-app replacement for
+  // window.confirm, resolving true on confirm and false on cancel.
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  function askConfirm(opts: ConfirmOpts): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+  function resolveConfirm(v: boolean) {
+    const req = confirmReq();
+    setConfirmReq(null);
     req?.resolve(v);
   }
 
@@ -436,9 +449,12 @@ export default function Sidebar(props: {
   // Forget the root with zero on-disk deletion: returns to the first-run state.
   // loadConfig() reinstalls the (now empty) root watch.
   async function resetRoot() {
-    if (!confirm("Forget the base folder? Nothing on disk is deleted; the tree returns to its first-run state.")) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Forget the base folder?",
+      message: "Nothing on disk is deleted; the tree returns to its first-run state.",
+      confirmLabel: "Forget",
+    });
+    if (!ok) return;
     try {
       await invoke("remove_root");
       await loadConfig();
@@ -549,7 +565,13 @@ export default function Sidebar(props: {
   }
 
   async function cleanupStub(u: BranchUnit) {
-    if (!confirm("Remove this incomplete stub (a .bare with no worktrees)?")) return;
+    const ok = await askConfirm({
+      title: "Remove this incomplete stub?",
+      message: "A .bare with no worktrees, left by an interrupted bootstrap.",
+      confirmLabel: "Remove stub",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await invoke("cleanup_incomplete", { path: u.folderPath });
     } catch (e) {
@@ -825,9 +847,13 @@ export default function Sidebar(props: {
   // Delete the branch for real (`git branch -D`) and prune the store entry.
   async function deleteBranch(p: Project, u: BranchUnit) {
     if (!u.branch) return;
-    if (!confirm(`Delete branch "${u.branch}"? This runs git branch -D and cannot be undone.`)) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: `Delete branch “${u.branch}”?`,
+      message: "This runs git branch -D and cannot be undone.",
+      confirmLabel: "Delete branch",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await invoke("delete_branch", { repo: p.path, branch: u.branch });
     } catch (e) {
@@ -859,7 +885,13 @@ export default function Sidebar(props: {
   }
 
   async function deleteSession(s: SessionMeta) {
-    if (!confirm("Delete this session's transcript? Its history is removed and cannot be undone.")) return;
+    const ok = await askConfirm({
+      title: "Delete this session’s transcript?",
+      message: "Its history is removed and cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await invoke("delete_session", { path: s.path });
       await refreshSessions();
@@ -1047,9 +1079,12 @@ export default function Sidebar(props: {
     if (u.kind !== "plain" || !target) return true;
     const cur = currentBranch(p);
     if (cur === null || cur === target) return true;
-    if (!confirm(`Switch ${p.name} from "${cur}" to "${target}"?\nThis changes the shared working tree.`)) {
-      return false;
-    }
+    const ok = await askConfirm({
+      title: `Switch ${p.name} to “${target}”?`,
+      message: `This checks out "${target}" (currently "${cur}") and changes the shared working tree.`,
+      confirmLabel: "Switch",
+    });
+    if (!ok) return false;
     try {
       await invoke("git_checkout", { repoPath: p.path, branch: target });
     } catch (e) {
@@ -1543,6 +1578,17 @@ export default function Sidebar(props: {
           }
           onConfirm={() => confirmDeleteGroup()}
           onCancel={() => setDeleteReq(null)}
+        />
+      </Show>
+
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => resolveConfirm(true)}
+          onCancel={() => resolveConfirm(false)}
         />
       </Show>
 
