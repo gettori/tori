@@ -4,6 +4,7 @@ import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
 import FileIcon from "../seti/FileIcon";
 import Chevron from "./Chevron";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
+import { type ConfirmOpts } from "./ConfirmDialog";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
@@ -17,6 +18,7 @@ const HIDDEN = new Set([".git", "node_modules"]);
 type EditCtx = {
   root: string;
   askText: (title: string, initial?: string) => Promise<string | null>;
+  askConfirm: (opts: ConfirmOpts) => Promise<boolean>;
   openMenu: (e: MouseEvent, items: MenuItem[]) => void;
 };
 
@@ -90,7 +92,13 @@ async function renameEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
 
 async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promise<void>) {
   const what = entry.is_dir ? "folder" : "file";
-  if (!confirm(`Delete the ${what} "${entry.name}"? This cannot be undone.`)) return;
+  const ok = await ctx.askConfirm({
+    title: `Delete the ${what} “${entry.name}”?`,
+    message: "This cannot be undone.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await invoke("fs_delete", { root: ctx.root, path: entry.path });
     await reloadParent();
@@ -184,6 +192,7 @@ export default function FileTree(props: {
   root: string | null;
   editable?: boolean;
   askText?: (title: string, initial?: string) => Promise<string | null>;
+  askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
 }) {
   const [roots, setRoots] = createSignal<Entry[]>([]);
   const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -195,10 +204,11 @@ export default function FileTree(props: {
   createEffect(on(() => props.root, () => reloadRoots()));
 
   const ctx = (): EditCtx | undefined => {
-    if (!props.editable || !props.root || !props.askText) return undefined;
+    if (!props.editable || !props.root || !props.askText || !props.askConfirm) return undefined;
     return {
       root: props.root,
       askText: props.askText,
+      askConfirm: props.askConfirm,
       openMenu: (e, items) => setMenu({ x: e.clientX, y: e.clientY, items }),
     };
   };
