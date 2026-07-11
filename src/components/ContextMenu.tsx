@@ -4,7 +4,7 @@ import { Portal } from "solid-js/web";
 // A right-click menu entry: an action row, or a visual separator.
 export type MenuItem =
   | { separator: true }
-  | { label: string; onClick: () => void; danger?: boolean; disabled?: boolean };
+  | { label: string; onClick: () => void; danger?: boolean; warn?: boolean; disabled?: boolean };
 
 // Where the menu opens and what it shows. Held by the caller as a signal that is
 // set on `contextmenu` and cleared on close.
@@ -62,7 +62,7 @@ export default function ContextMenu(props: { menu: MenuState; onClose: () => voi
             ) : (
               <div
                 class="ctx-item"
-                classList={{ danger: !!it.danger, disabled: !!it.disabled }}
+                classList={{ danger: !!it.danger, warn: !!it.warn, disabled: !!it.disabled }}
                 onClick={() => {
                   if (it.disabled) return;
                   props.onClose();

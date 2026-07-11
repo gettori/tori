@@ -1156,6 +1156,75 @@ pub fn delete_group(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Pure guard: given the single collapsed root and a candidate plain-folder path,
+/// return the folder dir to delete or an error. A plain folder is a *project* (a
+/// child of a group), so it must be a strict descendant of the root but never the
+/// root, a group directly under it, or `$HOME`. Both sides are canonicalized so a
+/// symlink resolving outside the root is refused, never followed. Git-ness is
+/// checked by the caller (probe), not here.
+fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
+    let root = root.ok_or("No base folder configured")?;
+    let root_c = std::fs::canonicalize(expand_tilde(root))
+        .map_err(|_| "Base folder does not exist".to_string())?;
+    let dir_c = std::fs::canonicalize(path).map_err(|_| "Folder does not exist".to_string())?;
+    if dir_c == root_c {
+        return Err("Refusing to delete the base folder itself".into());
+    }
+    if let Some(home) = dirs::home_dir() {
+        if dir_c == home {
+            return Err("Refusing to delete the home folder".into());
+        }
+    }
+    if dir_c.parent() == Some(root_c.as_path()) {
+        return Err("Refusing: this is a group, not a folder (use Delete group)".into());
+    }
+    if !dir_c.starts_with(&root_c) {
+        return Err("Refusing: not a folder under the base folder".into());
+    }
+    Ok(dir_c)
+}
+
+/// Permanently `rm -rf` a non-git project folder (a plain-dir). Guarded by
+/// `do_remove_folder` against escaping the base folder / hitting a group, and by a
+/// `probe_project` re-check that refuses anything git (a repo or worktree
+/// container), so tracked work can never be deleted through this path. The
+/// typed-name confirmation lives in the UI. Emits `config://changed`.
+#[tauri::command]
+pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let text = ensure_config()?;
+    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
+    let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
+    let units = probe_project(&dir);
+    let is_plain_dir = units.len() == 1 && units[0].kind == ProjectKind::PlainDir;
+    if !is_plain_dir {
+        return Err("Refusing: this folder is a git repository".into());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Permanently `rm -rf` a git *project* folder: a plain repo or a worktree
+/// container (with its `.bare` and every worktree). Shares `do_remove_folder`'s
+/// location guard (a project is a grandchild of the root, never the root, a group,
+/// or `$HOME`), then a `probe_project` re-check that *requires* a git project, so
+/// a plain-dir (which has `remove_folder`) or an incomplete stub (which has "Remove
+/// stub") never routes here. The typed-name confirmation lives in the UI. Emits
+/// `config://changed`.
+#[tauri::command]
+pub fn remove_project(app: AppHandle, path: String) -> Result<(), String> {
+    let text = ensure_config()?;
+    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
+    let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
+    let kind = probe_project(&dir).first().map(|u| u.kind);
+    if !matches!(kind, Some(ProjectKind::Plain | ProjectKind::Worktree)) {
+        return Err("Refusing: not a git project (a plain repo or worktree container)".into());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 /// One direct child of a group folder in the delete preview: a git repo (with its
 /// at-risk flags), a plain folder, or a loose file. Non-repo entries carry no flags.
 #[derive(Serialize)]
@@ -1241,6 +1310,55 @@ pub fn group_delete_preview(path: String) -> Result<GroupPreview, String> {
         entries.push(entry);
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(GroupPreview { size_bytes: dir_size(&dir), entries })
+}
+
+/// Delete preview for a git *project* folder (plain repo or worktree container).
+/// Like `group_delete_preview` for the blast radius, but prepends the project's own
+/// repo status as the first entry, so deleting a repo root surfaces *its own*
+/// uncommitted / unpushed work (a plain repo's own state, or a worktree container's
+/// aggregate), which the children-only group view would miss. Children follow
+/// (a worktree container's worktrees + `.bare`, or a plain repo's working tree).
+#[tauri::command]
+pub fn project_delete_preview(path: String) -> Result<GroupPreview, String> {
+    let dir = PathBuf::from(&path);
+    let mut entries: Vec<PreviewEntry> = Vec::new();
+    // The project itself first: its own at-risk flags, labelled so it reads as the
+    // repo root rather than a child.
+    if let Some((dirty, unpushed)) = repo_status(&dir) {
+        entries.push(PreviewEntry {
+            name: format!("{} (repository root)", basename(&dir)),
+            kind: "repo".into(),
+            dirty,
+            unpushed,
+        });
+    }
+    // Then each direct child, sorted. Unlike the group preview, a child is only a
+    // "repo" when it is its *own* checkout, i.e. it has a `.git` (a worktree folder
+    // has a `.git` file, a nested clone a `.git` dir). Without that gate every plain
+    // subdir would `git -C` up into the enclosing repo and be mislabelled a repo. A
+    // worktree child reports its *own* dirty (via its status); repo-wide unpushed is
+    // already shown once on the root entry, so children leave it false.
+    let mut children: Vec<PreviewEntry> = Vec::new();
+    for ent in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = ent.path();
+        let name = basename(&p);
+        let entry = if p.is_dir() {
+            if p.join(".git").exists() {
+                let dirty = run_git(&p, &["status", "--porcelain"])
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false);
+                PreviewEntry { name, kind: "repo".into(), dirty, unpushed: false }
+            } else {
+                PreviewEntry { name, kind: "folder".into(), dirty: false, unpushed: false }
+            }
+        } else {
+            PreviewEntry { name, kind: "file".into(), dirty: false, unpushed: false }
+        };
+        children.push(entry);
+    }
+    children.sort_by(|a, b| a.name.cmp(&b.name));
+    entries.extend(children);
     Ok(GroupPreview { size_bytes: dir_size(&dir), entries })
 }
 
@@ -1916,6 +2034,32 @@ mod tests {
     }
 
     #[test]
+    fn remove_folder_guard_refuses_and_accepts() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let group_dir = root.join("personal");
+        let folder = group_dir.join("notes"); // a project (grandchild of root)
+        let outside = tmp.join("Outside");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        let rs = root.to_str().unwrap();
+        // A folder under a group (grandchild of the root) is accepted.
+        let ok = do_remove_folder(Some(rs), folder.to_str().unwrap()).unwrap();
+        assert_eq!(ok, std::fs::canonicalize(&folder).unwrap());
+        // The root itself, a group (direct child of the root), and an outside path
+        // are all refused.
+        assert!(do_remove_folder(Some(rs), rs).is_err());
+        assert!(do_remove_folder(Some(rs), group_dir.to_str().unwrap()).is_err());
+        assert!(do_remove_folder(Some(rs), outside.to_str().unwrap()).is_err());
+        // No configured root, and a non-existent root, both err.
+        assert!(do_remove_folder(None, folder.to_str().unwrap()).is_err());
+        assert!(do_remove_folder(Some("~/sway_nonexistent_base_xyz"), folder.to_str().unwrap()).is_err());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn group_delete_preview_classifies_and_flags() {
         let tmp = unique_tmp();
         let grp = tmp.join("personal");
@@ -1958,6 +2102,50 @@ mod tests {
         assert_eq!(find("notes").kind, "folder");
         assert_eq!(find("todo.txt").kind, "file");
         assert!(preview.size_bytes > 0);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn project_delete_preview_leads_with_repo_root_status() {
+        let tmp = unique_tmp();
+        // A plain repo (one commit, no upstream = unpushed) with an uncommitted edit
+        // (= dirty).
+        let proj = tmp.join("app");
+        init_repo(&proj, "main");
+        std::fs::write(proj.join("README.md"), "changed").unwrap(); // now dirty
+        std::fs::create_dir_all(proj.join("src")).unwrap();
+
+        let preview = project_delete_preview(proj.to_string_lossy().into_owned()).unwrap();
+        // The first entry is the repo root itself, flagged with its own state.
+        let root = &preview.entries[0];
+        assert_eq!(root.kind, "repo");
+        assert!(root.name.contains("repository root"));
+        assert!(root.dirty && root.unpushed);
+        // Children follow (the working tree's own contents).
+        assert!(preview.entries.iter().any(|e| e.name == "src" && e.kind == "folder"));
+        assert!(preview.size_bytes > 0);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn project_delete_preview_flags_worktrees_not_bare() {
+        let tmp = unique_tmp();
+        // A bare+worktree container with one worktree, in place.
+        let proj = tmp.join("wt");
+        std::fs::create_dir_all(&proj).unwrap();
+        git(&proj, &["init", "--bare", "-q", ".bare"]);
+        std::fs::write(proj.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(&proj, &["worktree", "add", "--orphan", "-b", "main", "main"]);
+
+        let preview = project_delete_preview(proj.to_string_lossy().into_owned()).unwrap();
+        // The worktree folder (its own `.git` file) is a repo; `.bare` (git plumbing,
+        // no inner `.git`) is a plain folder, not mislabelled a repo.
+        let main = preview.entries.iter().find(|e| e.name == "main").unwrap();
+        assert_eq!(main.kind, "repo");
+        let bare = preview.entries.iter().find(|e| e.name == ".bare").unwrap();
+        assert_eq!(bare.kind, "folder");
 
         std::fs::remove_dir_all(&tmp).ok();
     }
