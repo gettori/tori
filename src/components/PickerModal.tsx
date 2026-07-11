@@ -5,14 +5,20 @@ import { fuzzyScore } from "../fuzzy";
 // A portaled, filterable single-select picker modal. Replaces a comma-joined
 // prompt title when the caller must pick one item from a potentially large list
 // (e.g. attach one of 100s of local branches). Typing fuzzy-filters + ranks via
-// the shared fuzzyScore; up/down wrap over the results, Enter selects the
-// highlighted item, Esc or a backdrop click cancels. Select-only: Enter/click
-// commit only a listed item, never the raw filter text. Cancel passes null via
-// the caller's resolver, mirroring the PromptModal contract.
+// the shared fuzzyScore; up/down wrap over the results, Enter/Ok commit, Esc or a
+// backdrop click cancels. Row click commits that row.
+//
+// `creatable`: when set, Ok/Enter commit the **raw typed text** if it matches no
+// listed item exactly, so the same dialog both attaches a listed branch and
+// creates a new one (the create-new affordance is the Ok button, since a name
+// with no row cannot be clicked). Select-only (the default) commits only a listed
+// item. Cancel passes null via the caller's resolver, mirroring PromptModal.
 export default function PickerModal(props: {
   title: string;
   items: string[];
   placeholder?: string;
+  creatable?: boolean;
+  okLabel?: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -58,6 +64,28 @@ export default function PickerModal(props: {
     input?.focus();
   }
 
+  // Ok button: commit exactly what's in the input. An exact match to a listed
+  // item selects it; else, when creatable, a non-empty query is a new value; else
+  // the highlighted row. This is the deliberate create-new path.
+  function commitTyped() {
+    const q = query().trim();
+    if (q && props.items.includes(q)) return props.onSubmit(q);
+    if (q && props.creatable) return props.onSubmit(q);
+    const hit = results()[index()];
+    if (hit) props.onSubmit(hit);
+  }
+
+  // Enter: accept the highlighted suggestion whenever the list has any match, so
+  // filtering-then-Enter (e.g. typing "mai" to reach "main") never accidentally
+  // creates a branch. Only an empty result set falls through to create the typed
+  // name (creatable), matching "if nothing in the list matches, create it".
+  function commitEnter() {
+    const hit = results()[index()];
+    if (hit) return props.onSubmit(hit);
+    const q = query().trim();
+    if (q && props.creatable) props.onSubmit(q);
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     const n = results().length;
     if (e.key === "Escape") {
@@ -71,8 +99,7 @@ export default function PickerModal(props: {
       setIndex((i) => (n ? (i - 1 + n) % n : 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const hit = results()[index()];
-      if (hit) props.onSubmit(hit); // no-op when there are zero matches
+      commitEnter();
     }
   }
 
@@ -115,6 +142,14 @@ export default function PickerModal(props: {
                 )}
               </For>
             </Show>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="modal-btn" onClick={() => props.onCancel()}>
+              Cancel
+            </button>
+            <button type="button" class="modal-btn primary" onClick={() => commitTyped()}>
+              {props.okLabel ?? "OK"}
+            </button>
           </div>
         </div>
       </div>
