@@ -1,6 +1,6 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME } from "../events";
+import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../events";
 import FileIcon from "../seti/FileIcon";
 import Chevron from "./Chevron";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
@@ -56,7 +56,7 @@ async function newFileIn(ctx: EditCtx, dir: string, reload: () => Promise<void>)
     // fs_write_file truncates, so never let "New File" empty an existing file:
     // open the existing one instead of clobbering it.
     if (await invoke<boolean>("file_exists", { path })) {
-      alert("A file with that name already exists.");
+      emitWith<ToastEvent>(TOAST, { message: "A file with that name already exists.", kind: "info" });
       emitWith(OPEN_IN_EDITOR, { path });
       return;
     }
@@ -64,7 +64,7 @@ async function newFileIn(ctx: EditCtx, dir: string, reload: () => Promise<void>)
     await reload();
     emitWith(OPEN_IN_EDITOR, { path }); // open the new file for editing
   } catch (e) {
-    alert(String(e));
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
 }
 
@@ -75,7 +75,7 @@ async function newFolderIn(ctx: EditCtx, dir: string, reload: () => Promise<void
     await invoke("fs_mkdir", { root: ctx.root, path: `${dir}/${name}` });
     await reload();
   } catch (e) {
-    alert(String(e));
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
 }
 
@@ -86,7 +86,7 @@ async function renameEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
     await invoke("fs_rename", { root: ctx.root, from: entry.path, to: `${parentOf(entry.path)}/${name}` });
     await reloadParent();
   } catch (e) {
-    alert(String(e));
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
 }
 
@@ -103,7 +103,7 @@ async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
     await invoke("fs_delete", { root: ctx.root, path: entry.path });
     await reloadParent();
   } catch (e) {
-    alert(String(e));
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
 }
 

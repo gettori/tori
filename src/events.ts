@@ -38,6 +38,12 @@ export type NewSession = { folderPath: string; projectName: string; agent?: "cla
 export const PURGE_UNDER_PATH = "sway:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
+// Payload-carrying event: surface a toast from anywhere. The sidebar owns the
+// toast stack (setError), so components outside it (e.g. the editor's file tree)
+// emit this instead of holding their own notifier.
+export const TOAST = "sway:toast";
+export type ToastEvent = { message: string; kind?: "error" | "info" };
+
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";

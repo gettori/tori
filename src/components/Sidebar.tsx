@@ -10,6 +10,7 @@ import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
+  onWith,
   emitWith,
   FOCUS_SEARCH,
   SESSIONS_REFRESH,
@@ -17,9 +18,11 @@ import {
   OPEN_TERMINAL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
+  TOAST,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
+  type ToastEvent,
 } from "../events";
 import { isUnderPath, countRunningUnder } from "../pathScope";
 import ClaudeIcon from "../seti/ClaudeIcon";
@@ -1303,6 +1306,7 @@ export default function Sidebar(props: {
   let unlistenFetchError: UnlistenFn | undefined;
   let offSearch: (() => void) | undefined;
   let offRefresh: (() => void) | undefined;
+  let offToast: (() => void) | undefined;
   onMount(async () => {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
@@ -1351,6 +1355,7 @@ export default function Sidebar(props: {
     );
     offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
     offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
+    offToast = onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error"));
   });
   onCleanup(() => {
     unlistenConfig?.();
@@ -1359,6 +1364,7 @@ export default function Sidebar(props: {
     unlistenFetchError?.();
     offSearch?.();
     offRefresh?.();
+    offToast?.();
   });
 
   return (
