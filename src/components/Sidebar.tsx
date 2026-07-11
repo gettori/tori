@@ -5,6 +5,7 @@ import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import PromptModal from "./PromptModal";
 import PickerModal from "./PickerModal";
 import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
+import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
@@ -230,6 +231,16 @@ export default function Sidebar(props: {
   // The delete-group confirmation. Opened with provisional entry names from the
   // tree; the async preview (flags + size) and the running-agent count fill in.
   type GroupPreview = { sizeBytes: number; entries: DeleteEntry[] };
+  // The worktree removal confirmation. Opened with the unit + repo; dirty/unpushed
+  // fill in async from `worktree_status`, `busy` gates the buttons during removal.
+  const [wtReq, setWtReq] = createSignal<{
+    p: Project;
+    u: BranchUnit;
+    dirty: boolean | null;
+    unpushed: boolean | null;
+    busy: boolean;
+  } | null>(null);
+
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "group" | "folder" | "project";
     name: string;
@@ -548,58 +559,52 @@ export default function Sidebar(props: {
 
   // --- worktree lifecycle ---
 
-  // Shared pre-removal guards for a worktree: open in the editor, a dirty tree, or
-  // a live agent nested inside (in it or any subdir). Returns an error message to
-  // show, or null when removal is clear. Nothing is deleted here.
-  async function worktreeRemovalBlock(u: BranchUnit): Promise<string | null> {
-    const sel = props.selected;
-    if (sel && (sel.folderPath === u.folderPath || sel.folderPath.startsWith(`${u.folderPath}/`))) {
-      return "This worktree is open in the editor; switch away before removing it.";
-    }
-    if (await invoke<boolean>("worktree_dirty", { path: u.folderPath })) {
-      return "This worktree has uncommitted changes; commit or discard them first.";
-    }
-    // Prefix-matched nested sessions: refuse if any is a live agent.
-    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: u.folderPath });
-    for (const s of nested) {
-      if (await invoke<boolean>("session_running", { id: s.id })) {
-        return "An agent is running in this worktree (or a subdir); stop it first.";
-      }
-    }
-    return null;
+  // Open the removal confirmation for a worktree, then fetch its dirty/unpushed
+  // status so the dialog can warn about work about to be lost. The teardown of any
+  // live PTYs/editor tabs and the actual delete happen on confirm.
+  function openRemoveWorktree(p: Project, u: BranchUnit) {
+    setWtReq({ p, u, dirty: null, unpushed: null, busy: false });
+    invoke<{ dirty: boolean; unpushed: boolean }>("worktree_status", { path: u.folderPath })
+      .then((s) =>
+        setWtReq((r) =>
+          r && r.u.folderPath === u.folderPath ? { ...r, dirty: s.dirty, unpushed: s.unpushed } : r,
+        ),
+      )
+      .catch(() =>
+        setWtReq((r) =>
+          r && r.u.folderPath === u.folderPath ? { ...r, dirty: false, unpushed: false } : r,
+        ),
+      );
   }
 
-  // Remove a worktree folder, keeping its branch. Guarded against live use.
-  async function removeWorktree(p: Project, u: BranchUnit) {
+  // Confirmed: tear down any PTYs + editor tabs under the worktree first (so no
+  // agent writes into a vanishing cwd), then force-remove it, deleting the branch
+  // too when asked. `force` is passed since the dialog has already shown any
+  // uncommitted/unpushed warning. A branch `-D` that fails after the folder is gone
+  // surfaces the backend's explicit partial-outcome message.
+  async function confirmRemoveWorktree(deleteBranch: boolean) {
+    const req = wtReq();
+    if (!req) return;
+    const { p, u } = req;
+    setWtReq({ ...req, busy: true });
+    emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: u.folderPath });
     try {
-      const block = await worktreeRemovalBlock(u);
-      if (block) return setError(block);
-      if (!confirm(`Remove the worktree "${u.label}"? Its folder is deleted; the branch is kept.`)) return;
-      await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // Remove a worktree AND delete its branch. Same guards; on a `-D` failure the
-  // backend has already removed the folder and re-emitted, so its explicit
-  // "folder removed, branch not deleted" message surfaces here (no swallowed partial).
-  async function deleteWorktreeAndBranch(p: Project, u: BranchUnit) {
-    if (!u.branch) return;
-    try {
-      const block = await worktreeRemovalBlock(u);
-      if (block) return setError(block);
-      if (!confirm(`Delete the worktree "${u.label}" AND its branch "${u.branch}"? Both the folder and the branch are removed.`)) {
-        return;
+      if (deleteBranch && u.branch) {
+        await invoke("remove_worktree_and_branch", {
+          repoPath: p.path,
+          worktreePath: u.folderPath,
+          branch: u.branch,
+          force: true,
+        });
+      } else {
+        await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath, force: true });
       }
-      await invoke("remove_worktree_and_branch", {
-        repoPath: p.path,
-        worktreePath: u.folderPath,
-        branch: u.branch,
-      });
+      const sel = props.selected;
+      if (sel && isUnderPath(sel.folderPath, u.folderPath)) props.onSelect(null);
+      setWtReq(null);
       await loadConfig();
     } catch (e) {
+      setWtReq(null);
       setError(String(e));
     }
   }
@@ -939,8 +944,7 @@ export default function Sidebar(props: {
     const items: MenuItem[] = [{ label: "New session", onClick: () => startSession(g, p, u) }];
     if (u.kind === "worktree") {
       items.push({ separator: true });
-      items.push({ label: "Remove worktree", danger: true, onClick: () => removeWorktree(p, u) });
-      items.push({ label: "Delete worktree + branch", danger: true, onClick: () => deleteWorktreeAndBranch(p, u) });
+      items.push({ label: "Remove worktree", danger: true, onClick: () => openRemoveWorktree(p, u) });
     }
     // Plain branch-unit: checkout always; detach/delete only off the current
     // checkout and only when the unit actually has a branch (never the folder fallback).
@@ -1539,6 +1543,19 @@ export default function Sidebar(props: {
           }
           onConfirm={() => confirmDeleteGroup()}
           onCancel={() => setDeleteReq(null)}
+        />
+      </Show>
+
+      <Show when={wtReq()}>
+        <WorktreeRemoveDialog
+          label={wtReq()!.u.label}
+          path={wtReq()!.u.folderPath}
+          branch={wtReq()!.u.branch}
+          dirty={wtReq()!.dirty}
+          unpushed={wtReq()!.unpushed}
+          busy={wtReq()!.busy}
+          onConfirm={(deleteBranch) => confirmRemoveWorktree(deleteBranch)}
+          onCancel={() => setWtReq(null)}
         />
       </Show>
 
