@@ -300,13 +300,58 @@ pub fn worktree_dirty(path: String) -> Result<bool, String> {
     tree_dirty(Path::new(&path))
 }
 
-/// Remove a worktree folder and prune its stale admin entry. Refuses a dirty tree
-/// (real work) via `tree_dirty`, so nothing is deleted then. `--force` is used only
-/// once that check passes, to drop the regenerable `.shared/` symlinks git would
-/// otherwise treat as untracked. Shared by `remove_worktree` and the delete-plus-
-/// branch variant; it does not emit (the caller does).
-fn do_remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
-    if tree_dirty(Path::new(worktree_path))? {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeStatus {
+    pub dirty: bool,
+    pub unpushed: bool,
+}
+
+/// True when this worktree's checked-out branch has commits not on its remote: it
+/// is ahead of its upstream, or has no upstream at all (a local-only branch) while
+/// carrying at least one commit. A detached / unborn HEAD has nothing to push.
+fn branch_unpushed(worktree: &Path) -> bool {
+    let cap = |args: &[&str]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(worktree)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    // Detached or unborn HEAD: nothing meaningful to push.
+    if cap(&["symbolic-ref", "--quiet", "--short", "HEAD"]).is_none() {
+        return false;
+    }
+    match cap(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) {
+        // Has an upstream: unpushed when at least one commit is ahead of it.
+        Some(_) => cap(&["rev-list", "--count", "@{upstream}..HEAD"])
+            .and_then(|s| s.parse::<u64>().ok())
+            .map(|n| n > 0)
+            .unwrap_or(false),
+        // No upstream: unpushed if the branch has any commit at all.
+        None => cap(&["rev-parse", "--verify", "--quiet", "HEAD"]).is_some(),
+    }
+}
+
+/// Removal-preview status for a worktree: uncommitted changes (`.shared`-aware) and
+/// unpushed commits, so the confirm dialog can warn about work about to be lost.
+#[tauri::command]
+pub fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
+    let p = Path::new(&path);
+    Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p) })
+}
+
+/// Remove a worktree folder and prune its stale admin entry. Unless `force`, refuses
+/// a dirty tree (real work) via `tree_dirty`, so nothing is deleted then; the UI's
+/// confirm dialog passes `force` once it has shown the uncommitted/unpushed warning.
+/// `git worktree remove --force` is always used, to drop the regenerable `.shared/`
+/// symlinks git would otherwise treat as untracked. Shared by `remove_worktree` and
+/// the delete-plus-branch variant; it does not emit (the caller does).
+fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+    if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
     git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
@@ -318,27 +363,34 @@ fn do_remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String
     Ok(())
 }
 
-/// Remove a worktree, keeping its branch. The live-use guard (running agents, open
-/// editor) runs in the UI before this is called.
+/// Remove a worktree, keeping its branch. The live-use teardown (PTYs, editor tabs)
+/// runs in the UI before this is called; `force` skips the dirty guard once the
+/// confirm dialog has warned about it.
 #[tauri::command]
-pub fn remove_worktree(app: AppHandle, repo_path: String, worktree_path: String) -> Result<(), String> {
-    do_remove_worktree(&repo_path, &worktree_path)?;
+pub fn remove_worktree(
+    app: AppHandle,
+    repo_path: String,
+    worktree_path: String,
+    force: bool,
+) -> Result<(), String> {
+    do_remove_worktree(&repo_path, &worktree_path, force)?;
     let _ = app.emit("config://changed", ());
     Ok(())
 }
 
 /// Remove a worktree AND delete its branch (`git branch -D`). The folder is removed
-/// first (dirty guard inside); if the branch delete then fails, the folder is
-/// already gone, so we emit and surface an explicit partial-outcome message rather
-/// than swallow it. The dirty + live-use guards match `remove_worktree`.
+/// first; if the branch delete then fails, the folder is already gone, so we emit
+/// and surface an explicit partial-outcome message rather than swallow it. `force`
+/// matches `remove_worktree`.
 #[tauri::command]
 pub fn remove_worktree_and_branch(
     app: AppHandle,
     repo_path: String,
     worktree_path: String,
     branch: String,
+    force: bool,
 ) -> Result<(), String> {
-    do_remove_worktree(&repo_path, &worktree_path)?;
+    do_remove_worktree(&repo_path, &worktree_path, force)?;
     let del = Command::new("git")
         .arg("-C")
         .arg(&repo_path)
@@ -473,6 +525,55 @@ mod tests {
         std::fs::remove_file(wt.join("scratch.txt")).unwrap();
         std::fs::write(wt.join("a.txt"), "changed").unwrap();
         assert!(tree_dirty(&wt).unwrap(), "a tracked edit is dirty");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn branch_unpushed_tracks_ahead_and_no_upstream() {
+        let tmp = unique_tmp();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+
+        // A bare container with a `main` worktree tracking origin/main.
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(&cont, &["config", "user.email", "t@t.t"]);
+        git(&cont, &["config", "user.name", "t"]);
+        // A bare clone has no remote-tracking refs; set the standard refspec and
+        // fetch so origin/main exists (what the bootstrap does).
+        git(&cont, &["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+        git(&cont, &["fetch", "-q", "origin"]);
+        git(&cont, &["worktree", "add", "-q", "main", "main"]);
+        let wt = cont.join("main");
+        // set-upstream so main tracks origin/main.
+        git(&wt, &["branch", "--set-upstream-to=origin/main", "main"]);
+        assert!(!branch_unpushed(&wt), "up to date with upstream is not unpushed");
+
+        // A local commit puts it ahead of origin/main.
+        std::fs::write(wt.join("a.txt"), "changed").unwrap();
+        git(&wt, &["commit", "-qam", "local work"]);
+        assert!(branch_unpushed(&wt), "ahead of upstream is unpushed");
+
+        // A brand-new local branch with a commit and no upstream is unpushed.
+        git(&wt, &["worktree", "add", "-q", "-b", "feature", "../feature"]);
+        let feat = cont.join("feature");
+        std::fs::write(feat.join("b.txt"), "new").unwrap();
+        git(&feat, &["add", "."]);
+        git(&feat, &["commit", "-qm", "feature work"]);
+        assert!(branch_unpushed(&feat), "a local-only branch is unpushed");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

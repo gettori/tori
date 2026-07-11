@@ -152,6 +152,7 @@ pub fn run() {
             worktree::list_worktrees,
             worktree::create_worktree,
             worktree::worktree_dirty,
+            worktree::worktree_status,
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
             theme::get_theme_colors,
