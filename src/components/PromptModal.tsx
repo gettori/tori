@@ -1,4 +1,4 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
 // A portaled text-input modal that replaces window.prompt, which macOS WKWebView
@@ -11,6 +11,9 @@ export default function PromptModal(props: {
   title: string;
   initial?: string;
   okLabel?: string;
+  // An optional muted line shown above the input (e.g. the current value being
+  // replaced), so a "change X" dialog can display the old value.
+  note?: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -40,6 +43,9 @@ export default function PromptModal(props: {
       <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
         <div class="modal" onMouseDown={(e) => e.stopPropagation()}>
           <div class="modal-title">{props.title}</div>
+          <Show when={props.note}>
+            <div class="modal-note">{props.note}</div>
+          </Show>
           <input
             ref={input}
             class="modal-input"

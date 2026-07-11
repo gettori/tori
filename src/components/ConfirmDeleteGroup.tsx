@@ -31,6 +31,10 @@ export default function ConfirmDeleteGroup(props: {
   loading: boolean;
   runningCount: number;
   sizeBytes: number | null;
+  // Optional copy overrides so the same dialog serves a plain folder, not only a
+  // group (defaults keep the group wording).
+  title?: string;
+  confirmLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -54,7 +58,7 @@ export default function ConfirmDeleteGroup(props: {
     <Portal>
       <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
         <div class="modal modal-danger" onMouseDown={(e) => e.stopPropagation()}>
-          <div class="modal-title">Delete group “{props.groupName}”?</div>
+          <div class="modal-title">{props.title ?? `Delete group “${props.groupName}”?`}</div>
           <div class="modal-warn">
             This permanently deletes the folder and everything below. It cannot be undone.
           </div>
@@ -112,7 +116,7 @@ export default function ConfirmDeleteGroup(props: {
               Cancel
             </button>
             <button class="modal-btn danger" disabled={!matches()} onClick={() => props.onConfirm()}>
-              Delete group
+              {props.confirmLabel ?? "Delete group"}
             </button>
           </div>
         </div>
