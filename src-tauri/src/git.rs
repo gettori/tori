@@ -223,6 +223,11 @@ fn do_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
     if !gitignore.exists() {
         std::fs::write(&gitignore, DEFAULT_GITIGNORE).map_err(|e| e.to_string())?;
     }
+    // Born the branch with an empty root commit so the repo is immediately usable:
+    // the branch shows by name (not a nameless folder unit) and new branches can be
+    // created off it. Best-effort, skipped silently when git has no author identity,
+    // so init never hard-fails; discovery still shows the unborn branch by name.
+    let _ = git_run(&path, &["commit", "--allow-empty", "-q", "-m", "Initial commit"]);
     Ok(())
 }
 
