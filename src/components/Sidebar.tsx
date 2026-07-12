@@ -8,6 +8,7 @@ import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import BranchRemoveDialog from "./BranchRemoveDialog";
+import InitGitDialog from "./InitGitDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
@@ -268,6 +269,10 @@ export default function Sidebar(props: {
     hasRemote: boolean | null;
     busy: boolean;
   } | null>(null);
+
+  // The "Initialize git…" dialog for a non-git folder (branch + optional origin +
+  // layout). `busy` gates the buttons while init runs.
+  const [initReq, setInitReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
 
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "group" | "folder" | "project";
@@ -662,28 +667,31 @@ export default function Sidebar(props: {
 
   // --- plain-dir git lifecycle ---
 
-  // Initialize git in a plain-dir (optional initial branch); re-discovers as plain.
-  async function initRepo(p: Project) {
-    const branch = await askText(`Initialize git in "${p.name}". Initial branch (blank = git default):`);
-    if (branch === null) return; // cancelled
-    try {
-      await invoke("git_init", { projectPath: p.path, branch: branch.trim() || null });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
+  // Open the "Initialize git…" dialog for a non-git folder.
+  function openInitGit(p: Project) {
+    setInitReq({ p, busy: false });
   }
 
-  // Bootstrap a bare+worktree layout in an existing plain-dir folder, in place (no
-  // clone): a `.bare` repo, a `.git` pointer, and one initial unborn worktree. The
-  // folder becomes a worktree container; add a remote and fetch later (Add Origin).
-  async function bareInit(p: Project) {
-    const branch = await askText(`Bare + worktree in "${p.name}". Initial branch (blank = git default):`);
-    if (branch === null) return; // cancelled
+  // Confirmed: initialize git in the folder, in place. `bare` picks the layout (a
+  // normal `git init` vs a `.bare` + worktree container); a given URL is set as
+  // origin afterward (both layouts support it). Re-discovers on success.
+  async function confirmInitGit(opts: { branch: string; url: string; bare: boolean }) {
+    const req = initReq();
+    if (!req) return;
+    const { p } = req;
+    setInitReq({ ...req, busy: true });
     try {
-      await invoke("bare_init", { projectPath: p.path, branch: branch.trim() || null });
+      await invoke(opts.bare ? "bare_init" : "git_init", {
+        projectPath: p.path,
+        branch: opts.branch || null,
+      });
+      if (opts.url) {
+        await invoke("git_remote_add", { projectPath: p.path, url: opts.url });
+      }
+      setInitReq(null);
       await loadConfig();
     } catch (e) {
+      setInitReq(null);
       setError(String(e));
     }
   }
@@ -989,8 +997,7 @@ export default function Sidebar(props: {
         return [
           { label: "New session", onClick: () => startSession(g, p, u) },
           { separator: true },
-          { label: "Initialize git repo…", onClick: () => initRepo(p) },
-          { label: "Bare + worktree…", onClick: () => bareInit(p) },
+          { label: "Initialize git…", onClick: () => openInitGit(p) },
           { separator: true },
           { label: "Remove folder", danger: true, onClick: () => openRemoveFolder(p) },
         ];
@@ -1663,6 +1670,15 @@ export default function Sidebar(props: {
           busy={brReq()!.busy}
           onConfirm={(opts) => confirmRemoveBranch(opts)}
           onCancel={() => setBrReq(null)}
+        />
+      </Show>
+
+      <Show when={initReq()}>
+        <InitGitDialog
+          folderName={initReq()!.p.name}
+          busy={initReq()!.busy}
+          onConfirm={(opts) => confirmInitGit(opts)}
+          onCancel={() => setInitReq(null)}
         />
       </Show>
 
