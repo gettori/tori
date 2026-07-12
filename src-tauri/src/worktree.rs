@@ -381,6 +381,47 @@ pub fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
     Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p), has_remote })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchStatus {
+    pub unpushed: bool,
+    pub has_remote: bool,
+}
+
+/// True when a *named* branch (not necessarily checked out) has commits not on its
+/// remote: ahead of its upstream, or no upstream at all (local-only). When it tracks
+/// a remote but that ref is not fetched locally (so the count can't be computed), we
+/// assume unpushed, warning rather than missing unsaved commits.
+fn named_branch_unpushed(repo: &Path, branch: &str) -> bool {
+    if branch_push_target(repo, branch).is_none() {
+        return true; // local-only branch
+    }
+    let count = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-list", "--count", &format!("{branch}@{{upstream}}..{branch}")])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    match count {
+        Some(s) => s.parse::<u64>().map(|n| n > 0).unwrap_or(true),
+        None => true, // upstream configured but not fetched: can't verify, so warn
+    }
+}
+
+/// Removal-preview status for a plain-repo branch (not a worktree): whether it has
+/// unpushed commits and whether it tracks a remote branch (so the confirm dialog can
+/// warn, and offer to delete the remote branch too).
+#[tauri::command]
+pub fn branch_status(repo: String, branch: String) -> Result<BranchStatus, String> {
+    let p = Path::new(&repo);
+    Ok(BranchStatus {
+        unpushed: named_branch_unpushed(p, &branch),
+        has_remote: branch_push_target(p, &branch).is_some(),
+    })
+}
+
 /// Remove a worktree folder and prune its stale admin entry. Unless `force`, refuses
 /// a dirty tree (real work) via `tree_dirty`, so nothing is deleted then; the UI's
 /// confirm dialog passes `force` once it has shown the uncommitted/unpushed warning.

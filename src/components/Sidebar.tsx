@@ -7,6 +7,7 @@ import PickerModal from "./PickerModal";
 import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
+import BranchRemoveDialog from "./BranchRemoveDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
@@ -253,6 +254,16 @@ export default function Sidebar(props: {
     p: Project;
     u: BranchUnit;
     dirty: boolean | null;
+    unpushed: boolean | null;
+    hasRemote: boolean | null;
+    busy: boolean;
+  } | null>(null);
+
+  // The branch removal confirmation (plain-repo branch units). Mirrors wtReq:
+  // unpushed/hasRemote fill in async from `branch_status`, `busy` gates the buttons.
+  const [brReq, setBrReq] = createSignal<{
+    p: Project;
+    u: BranchUnit;
     unpushed: boolean | null;
     hasRemote: boolean | null;
     busy: boolean;
@@ -851,30 +862,48 @@ export default function Sidebar(props: {
     await selectUnit(g, p, u);
   }
 
-  // Remove a branch from the visible list (git branch untouched). Its sessions
-  // re-home onto the current checkout, so nothing is lost.
-  async function detachBranch(p: Project, u: BranchUnit) {
+  // Open the removal confirmation for a plain-repo branch, then fetch its
+  // unpushed / has-remote status so the dialog can warn and offer remote deletion.
+  function openRemoveBranch(p: Project, u: BranchUnit) {
     if (!u.branch) return;
-    try {
-      await invoke("detach_branch", { repo: p.path, branch: u.branch });
-    } catch (e) {
-      setError(String(e));
-    }
+    const branch = u.branch;
+    setBrReq({ p, u, unpushed: null, hasRemote: null, busy: false });
+    invoke<{ unpushed: boolean; hasRemote: boolean }>("branch_status", { repo: p.path, branch })
+      .then((s) =>
+        setBrReq((r) =>
+          r && r.u.branch === branch ? { ...r, unpushed: s.unpushed, hasRemote: s.hasRemote } : r,
+        ),
+      )
+      .catch(() =>
+        setBrReq((r) =>
+          r && r.u.branch === branch ? { ...r, unpushed: false, hasRemote: false } : r,
+        ),
+      );
   }
 
-  // Delete the branch for real (`git branch -D`) and prune the store entry.
-  async function deleteBranch(p: Project, u: BranchUnit) {
-    if (!u.branch) return;
-    const ok = await askConfirm({
-      title: `Delete branch “${u.branch}”?`,
-      message: "This runs git branch -D and cannot be undone.",
-      confirmLabel: "Delete branch",
-      danger: true,
-    });
-    if (!ok) return;
+  // Confirmed branch removal. Delete the remote branch first (while the local
+  // branch's tracking config still resolves it; a failure there is reported but
+  // does not abort). Then either delete the local branch (git branch -D + prune the
+  // store) or, when local is unchecked, just detach it (drop it from Sway's list,
+  // git branch kept). Its sessions re-home onto the current checkout either way.
+  async function confirmRemoveBranch(opts: { deleteLocal: boolean; deleteRemote: boolean }) {
+    const req = brReq();
+    if (!req || !req.u.branch) return;
+    const { p, u } = req;
+    const branch = u.branch!;
+    setBrReq({ ...req, busy: true });
     try {
-      await invoke("delete_branch", { repo: p.path, branch: u.branch });
+      if (opts.deleteRemote) {
+        try {
+          await invoke("delete_remote_branch", { repo: p.path, branch });
+        } catch (e) {
+          setError(`Remote branch not deleted: ${String(e)}`);
+        }
+      }
+      await invoke(opts.deleteLocal ? "delete_branch" : "detach_branch", { repo: p.path, branch });
+      setBrReq(null);
     } catch (e) {
+      setBrReq(null);
       setError(String(e));
     }
   }
@@ -1002,8 +1031,7 @@ export default function Sidebar(props: {
       items.push({ separator: true });
       items.push({ label: "Checkout", onClick: () => checkoutUnit(g, p, u) });
       if (!u.isCurrent) {
-        items.push({ label: "Detach Branch", onClick: () => detachBranch(p, u) });
-        items.push({ label: "Delete Branch", danger: true, onClick: () => deleteBranch(p, u) });
+        items.push({ label: "Remove branch", warn: true, onClick: () => openRemoveBranch(p, u) });
       }
     }
     return items;
@@ -1624,6 +1652,17 @@ export default function Sidebar(props: {
           busy={wtReq()!.busy}
           onConfirm={(opts) => confirmRemoveWorktree(opts)}
           onCancel={() => setWtReq(null)}
+        />
+      </Show>
+
+      <Show when={brReq()}>
+        <BranchRemoveDialog
+          branch={brReq()!.u.branch!}
+          unpushed={brReq()!.unpushed}
+          hasRemote={brReq()!.hasRemote}
+          busy={brReq()!.busy}
+          onConfirm={(opts) => confirmRemoveBranch(opts)}
+          onCancel={() => setBrReq(null)}
         />
       </Show>
 
