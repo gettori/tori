@@ -615,6 +615,42 @@ body.dragging .term-host {
   margin-top: 14px;
 }
 
+/* Segmented mode picker (NewProjectDialog). One row of buttons that share a
+   border; the active segment fills with the accent. */
+.seg {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.seg-btn {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:first-child {
+  border-left: none;
+}
+.seg-btn:hover {
+  background: var(--hover);
+}
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.seg-btn.active:hover {
+  filter: brightness(1.08);
+  background: var(--accent);
+}
+
 .tree-scroll {
   flex: 1;
   overflow: auto;

@@ -9,6 +9,7 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialo
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import BranchRemoveDialog from "./BranchRemoveDialog";
 import InitGitDialog from "./InitGitDialog";
+import NewProjectDialog, { type NewProjectMode } from "./NewProjectDialog";
 import Toasts, { type Toast } from "./Toasts";
 import {
   on as onEvent,
@@ -274,6 +275,10 @@ export default function Sidebar(props: {
   // layout). `busy` gates the buttons while init runs.
   const [initReq, setInitReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
 
+  // The group-level "New…" dialog: create an empty folder, clone a repo, or
+  // bootstrap a bare + worktree project, chosen by a segmented control.
+  const [newReq, setNewReq] = createSignal<{ g: Group; busy: boolean } | null>(null);
+
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "group" | "folder" | "project";
     name: string;
@@ -519,28 +524,12 @@ export default function Sidebar(props: {
     }
   }
 
-  async function addFolder(g: Group) {
-    const name = await askText(`New folder in "${g.name}":`);
-    if (!name) return;
-    try {
-      await invoke("add_folder", { groupPath: g.path, name });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   function badName(name: string): string | null {
     const n = name.trim();
     if (!n) return "Name is empty";
     if (n.includes("/") || n.includes("\\")) return "Name cannot contain a slash";
     if (n.startsWith(".")) return "Name cannot start with a dot";
     return null;
-  }
-
-  function nameFromUrl(url: string): string {
-    const last = url.replace(/\/+$/, "").split("/").pop() ?? "";
-    return last.replace(/\.git$/, "");
   }
 
   // Pre-check the target dir is free, then run the command in a terminal tab
@@ -567,21 +556,39 @@ export default function Sidebar(props: {
     });
   }
 
-  async function cloneRepo(g: Group) {
-    const url = await askText("Repository URL to clone:");
-    if (!url?.trim()) return;
-    const name = (await askText("Folder name:", nameFromUrl(url))) ?? "";
-    if (!name) return;
-    await runInTab(g, name, "clone", "git", ["clone", url.trim(), name.trim()]);
+  // Open the group-level "New…" dialog.
+  function openNewProject(g: Group) {
+    setNewReq({ g, busy: false });
   }
 
-  async function bootstrapRepo(g: Group) {
-    const url = await askText("Repository URL for a bare + worktree project:");
-    if (!url?.trim()) return;
-    const name = (await askText("Project folder name:", nameFromUrl(url))) ?? "";
-    if (!name) return;
-    // url/name pass as $1/$2 (never interpolated), so there is no shell injection.
-    await runInTab(g, name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "sway", url.trim(), name.trim()]);
+  // Confirmed: route by mode. An empty folder is a direct `add_folder` invoke; a
+  // clone or bare + worktree runs in a terminal tab (native git progress +
+  // ambient auth). url/name pass as positional args (never interpolated), so
+  // there is no shell injection.
+  async function confirmNewProject(opts: { mode: NewProjectMode; name: string; url: string }) {
+    const req = newReq();
+    if (!req) return;
+    const { g } = req;
+    if (opts.mode === "folder") {
+      setNewReq({ ...req, busy: true });
+      try {
+        await invoke("add_folder", { groupPath: g.path, name: opts.name });
+        await loadConfig();
+        setNewReq(null);
+      } catch (e) {
+        setError(String(e));
+        setNewReq({ ...req, busy: false });
+      }
+      return;
+    }
+    // clone / bare open a terminal tab; runInTab validates the name and surfaces
+    // its own errors, so close the dialog and hand off.
+    setNewReq(null);
+    if (opts.mode === "clone") {
+      await runInTab(g, opts.name, "clone", "git", ["clone", opts.url, opts.name]);
+    } else {
+      await runInTab(g, opts.name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "sway", opts.url, opts.name]);
+    }
   }
 
   async function cleanupStub(u: BranchUnit) {
@@ -976,10 +983,7 @@ export default function Sidebar(props: {
     g.external
       ? []
       : [
-          { label: "New folder", onClick: () => addFolder(g) },
-          { separator: true },
-          { label: "Clone repo…", onClick: () => cloneRepo(g) },
-          { label: "Bare + worktree…", onClick: () => bootstrapRepo(g) },
+          { label: "New…", onClick: () => openNewProject(g) },
           { separator: true },
           { label: "Delete group", danger: true, onClick: () => openDeleteGroup(g) },
         ];
@@ -1707,6 +1711,15 @@ export default function Sidebar(props: {
           busy={initReq()!.busy}
           onConfirm={(opts) => confirmInitGit(opts)}
           onCancel={() => setInitReq(null)}
+        />
+      </Show>
+
+      <Show when={newReq()}>
+        <NewProjectDialog
+          groupName={newReq()!.g.name}
+          busy={newReq()!.busy}
+          onConfirm={(opts) => confirmNewProject(opts)}
+          onCancel={() => setNewReq(null)}
         />
       </Show>
 
