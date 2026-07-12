@@ -187,6 +187,27 @@ fn apply_customizations(colors: &mut HashMap<String, String>, settings: &Value, 
     }
 }
 
+/// Native macOS file picker for a theme file (dependency-free, via osascript).
+/// Returns the chosen path, or None when the user cancels.
+#[tauri::command]
+pub fn pick_theme_file() -> Result<Option<String>, String> {
+    let out = std::process::Command::new("osascript")
+        .args([
+            "-e",
+            "POSIX path of (choose file with prompt \"Choose a VS Code theme (.json)\")",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Ok(None); // cancelled
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if path.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(path))
+}
+
 /// Read a single theme file (any VS Code theme JSON/JSONC) into ThemeColors,
 /// following `include`. Used by the in-app theme import, which lets Sway load a
 /// theme without VS Code being installed.

@@ -6,6 +6,7 @@ import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, SETTINGS_CHANGED } from "./events";
+import { setTheme, importThemeFromPath } from "./theme";
 
 export type Appearance = { theme: string; importPath: string | null };
 export type Typography = {
@@ -33,7 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
 const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
 export { settings };
 
-/** Map settings onto the CSS tokens that the chrome and editor read. */
+/** Map typography/layout onto the CSS tokens that the chrome and editor read. */
 export function applySettings(s: Settings) {
   const st = document.documentElement.style;
   st.setProperty("--sway-font-ui", s.typography.uiFontFamily);
@@ -45,12 +46,33 @@ export function applySettings(s: Settings) {
   st.setProperty("--ui-density", s.layout.density === "compact" ? "0.85" : "1");
 }
 
+/** Drive the theme module from settings.appearance (the source of truth). */
+async function applyAppearanceTheme(a: Appearance) {
+  if (a.theme === "import" && a.importPath) {
+    try {
+      await importThemeFromPath(a.importPath);
+      return;
+    } catch {
+      // imported file gone/unreadable: fall back to the default theme
+    }
+    setTheme("dark-plus");
+    return;
+  }
+  setTheme(a.theme);
+}
+
+/** Apply tokens synchronously, then the theme. */
+async function applyAll(s: Settings) {
+  applySettings(s);
+  await applyAppearanceTheme(s.appearance);
+}
+
 /** Read settings from disk into the store and apply them. */
 export async function loadSettings() {
   try {
     const s = await invoke<Settings>("get_settings");
     setSettings(s);
-    applySettings(s);
+    await applyAll(s);
   } catch {
     // keep current store / defaults
   }
@@ -60,7 +82,7 @@ export async function loadSettings() {
 export async function saveSettings(next: Settings): Promise<void> {
   const saved = await invoke<Settings>("set_settings", { settings: next });
   setSettings(saved);
-  applySettings(saved);
+  await applyAll(saved);
   emit(SETTINGS_CHANGED);
 }
 
