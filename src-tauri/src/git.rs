@@ -412,6 +412,33 @@ pub fn git_fetch(
     Ok(())
 }
 
+/// Delete a branch on its remote (`git push <remote> --delete <ref>`) through the
+/// askpass bridge, so credential prompts pop the in-app dialog. The remote and the
+/// remote-side ref are resolved from the *local* branch's tracking config, so a
+/// branch pushed under a different name still deletes the right ref; a branch that
+/// tracks nothing errors. Synchronous: the caller (the worktree-remove dialog)
+/// awaits the result to report success or failure. Emits `config://changed`.
+#[tauri::command]
+pub fn delete_remote_branch(
+    app: AppHandle,
+    state: State<AskpassState>,
+    repo: String,
+    branch: String,
+) -> Result<(), String> {
+    let (remote, refname) = crate::worktree::branch_push_target(Path::new(&repo), &branch)
+        .ok_or("This branch has no remote branch to delete.")?;
+    let inner = state.0.clone();
+    let op_id = next_op_id();
+    let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+    cmd.args(["push", &remote, "--delete", &refname]);
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 /// Whether a `credential.helper` is configured for this repo (any scope). With
 /// none, git re-prompts every op (nothing is cached), so the UI warns once.
 #[tauri::command]

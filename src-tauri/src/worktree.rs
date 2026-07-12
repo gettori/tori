@@ -305,6 +305,42 @@ pub fn worktree_dirty(path: String) -> Result<bool, String> {
 pub struct WorktreeStatus {
     pub dirty: bool,
     pub unpushed: bool,
+    pub has_remote: bool,
+}
+
+/// The `(remote, ref)` a branch pushes to, from its tracking config
+/// (`branch.<b>.remote` + `branch.<b>.merge`), or None when it tracks nothing. The
+/// ref is the branch name on the remote (which can differ from the local name). Run
+/// against any path in the repo (a worktree resolves to the shared config).
+pub(crate) fn branch_push_target(repo: &Path, branch: &str) -> Option<(String, String)> {
+    let cfg = |key: String| {
+        Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["config", "--get", &key])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let remote = cfg(format!("branch.{branch}.remote"))?;
+    let merge = cfg(format!("branch.{branch}.merge"))?;
+    let refname = merge.strip_prefix("refs/heads/").unwrap_or(&merge).to_string();
+    Some((remote, refname))
+}
+
+/// The worktree's currently checked-out branch, or None for a detached/unborn HEAD.
+fn branch_at(path: &Path) -> Option<String> {
+    Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// True when this worktree's checked-out branch has commits not on its remote: it
@@ -341,7 +377,8 @@ fn branch_unpushed(worktree: &Path) -> bool {
 #[tauri::command]
 pub fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
     let p = Path::new(&path);
-    Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p) })
+    let has_remote = branch_at(p).and_then(|b| branch_push_target(p, &b)).is_some();
+    Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p), has_remote })
 }
 
 /// Remove a worktree folder and prune its stale admin entry. Unless `force`, refuses
