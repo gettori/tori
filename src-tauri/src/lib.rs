@@ -162,6 +162,7 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             theme::get_theme_colors,
             theme::get_theme_colors_from_path,
+            theme::pick_theme_file,
             settings::get_settings,
             settings::set_settings,
             settings::settings_watch_start,

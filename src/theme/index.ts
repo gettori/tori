@@ -60,20 +60,6 @@ export function applyCachedTheme() {
   }
 }
 
-/** Apply the persisted selection (bundled or imported), else the default. */
-export async function initTheme() {
-  const sel = readSelected();
-  if (sel?.importPath) {
-    try {
-      await importThemeFromPath(sel.importPath);
-      return;
-    } catch {
-      // imported file gone/unreadable: fall back to default below
-    }
-  }
-  setTheme(sel?.bundledId ?? DEFAULT_THEME_ID);
-}
-
 /** Select a bundled theme by id. */
 export function setTheme(id: string) {
   const theme = getBundledTheme(id) ?? getBundledTheme(DEFAULT_THEME_ID);
