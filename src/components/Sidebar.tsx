@@ -254,6 +254,7 @@ export default function Sidebar(props: {
     u: BranchUnit;
     dirty: boolean | null;
     unpushed: boolean | null;
+    hasRemote: boolean | null;
     busy: boolean;
   } | null>(null);
 
@@ -588,33 +589,47 @@ export default function Sidebar(props: {
   // status so the dialog can warn about work about to be lost. The teardown of any
   // live PTYs/editor tabs and the actual delete happen on confirm.
   function openRemoveWorktree(p: Project, u: BranchUnit) {
-    setWtReq({ p, u, dirty: null, unpushed: null, busy: false });
-    invoke<{ dirty: boolean; unpushed: boolean }>("worktree_status", { path: u.folderPath })
+    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, busy: false });
+    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean }>("worktree_status", {
+      path: u.folderPath,
+    })
       .then((s) =>
         setWtReq((r) =>
-          r && r.u.folderPath === u.folderPath ? { ...r, dirty: s.dirty, unpushed: s.unpushed } : r,
+          r && r.u.folderPath === u.folderPath
+            ? { ...r, dirty: s.dirty, unpushed: s.unpushed, hasRemote: s.hasRemote }
+            : r,
         ),
       )
       .catch(() =>
         setWtReq((r) =>
-          r && r.u.folderPath === u.folderPath ? { ...r, dirty: false, unpushed: false } : r,
+          r && r.u.folderPath === u.folderPath
+            ? { ...r, dirty: false, unpushed: false, hasRemote: false }
+            : r,
         ),
       );
   }
 
   // Confirmed: tear down any PTYs + editor tabs under the worktree first (so no
-  // agent writes into a vanishing cwd), then force-remove it, deleting the branch
-  // too when asked. `force` is passed since the dialog has already shown any
-  // uncommitted/unpushed warning. A branch `-D` that fails after the folder is gone
-  // surfaces the backend's explicit partial-outcome message.
-  async function confirmRemoveWorktree(deleteBranch: boolean) {
+  // agent writes into a vanishing cwd). Delete the remote branch first while the
+  // local branch's tracking config still exists to resolve it (a failure there is
+  // reported but does not abort the removal), then force-remove the worktree,
+  // deleting the local branch too when asked. `force` is passed since the dialog has
+  // already shown any uncommitted/unpushed warning.
+  async function confirmRemoveWorktree(opts: { deleteLocal: boolean; deleteRemote: boolean }) {
     const req = wtReq();
     if (!req) return;
     const { p, u } = req;
     setWtReq({ ...req, busy: true });
     emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: u.folderPath });
     try {
-      if (deleteBranch && u.branch) {
+      if (opts.deleteRemote && u.branch) {
+        try {
+          await invoke("delete_remote_branch", { repo: p.path, branch: u.branch });
+        } catch (e) {
+          setError(`Remote branch not deleted: ${String(e)}`);
+        }
+      }
+      if (opts.deleteLocal && u.branch) {
         await invoke("remove_worktree_and_branch", {
           repoPath: p.path,
           worktreePath: u.folderPath,
@@ -979,7 +994,7 @@ export default function Sidebar(props: {
     const items: MenuItem[] = [{ label: "New session", onClick: () => startSession(g, p, u) }];
     if (u.kind === "worktree") {
       items.push({ separator: true });
-      items.push({ label: "Remove worktree", danger: true, onClick: () => openRemoveWorktree(p, u) });
+      items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });
     }
     // Plain branch-unit: checkout always; detach/delete only off the current
     // checkout and only when the unit actually has a branch (never the folder fallback).
@@ -1605,8 +1620,9 @@ export default function Sidebar(props: {
           branch={wtReq()!.u.branch}
           dirty={wtReq()!.dirty}
           unpushed={wtReq()!.unpushed}
+          hasRemote={wtReq()!.hasRemote}
           busy={wtReq()!.busy}
-          onConfirm={(deleteBranch) => confirmRemoveWorktree(deleteBranch)}
+          onConfirm={(opts) => confirmRemoveWorktree(opts)}
           onCancel={() => setWtReq(null)}
         />
       </Show>
