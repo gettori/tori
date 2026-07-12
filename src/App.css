@@ -32,23 +32,8 @@
   color: #6cb6ff;
 }
 
-:root {
-  --bg: #1a1a1a;
-  --pane-bg: #1e1e1e;
-  --pane-head-bg: #252526;
-  --border: #2d2d2d;
-  --text: #d4d4d4;
-  --text-dim: #808080;
-  --accent: #4a9eff;
-  --sel: #094771;
-  --hover: #2a2d2e;
-  --input-bg: #1a1a1a;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
+/* Design tokens (the 10 chrome vars + font-family) moved to src/styles/tokens.css
+   and src/styles/base.css; the box-sizing reset moved to src/styles/reset.css. */
 
 html,
 body,

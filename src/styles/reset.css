@@ -1,0 +1,11 @@
+/* Cascade layer order for the whole app, declared once here because reset.css
+   is imported first. Later phases migrate component styles into `components`;
+   App.css is still unlayered during the migration, so it keeps winning over
+   these layers until each component is moved. */
+@layer reset, tokens, base, components;
+
+@layer reset {
+  * {
+    box-sizing: border-box;
+  }
+}

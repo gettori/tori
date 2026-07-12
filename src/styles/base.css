@@ -1,0 +1,7 @@
+/* Base element defaults that read from the token layer. The UI font-family used
+   to live on App.css :root; it moves here so tokens.css owns the value. */
+@layer base {
+  :root {
+    font-family: var(--sway-font-ui);
+  }
+}

@@ -36,8 +36,11 @@ const SYN_MAP: [string, string, string][] = [
   ["--syn-variable", "variable", "#9cdcfe"],
 ];
 
-/** Synchronous: paint with the last-known theme (or fallbacks) before render,
- *  so the UI never flashes the default palette on startup. */
+/** Synchronous: paint with the last-known theme before render, so the UI never
+ *  flashes the default palette on startup. Only cached (last-known VS Code)
+ *  values are applied as inline overrides; the fallbacks now live in the token
+ *  layer (styles/tokens.css, keyed on [data-theme]), so an unthemed boot paints
+ *  from CSS and the data-theme toggle is not shadowed by inline props. */
 export function applyCachedTheme() {
   let cached: Record<string, string> = {};
   try {
@@ -46,11 +49,9 @@ export function applyCachedTheme() {
     // ignore
   }
   const root = document.documentElement.style;
-  for (const [cssVar, , fallback] of MAP) {
-    root.setProperty(cssVar, cached[cssVar] ?? fallback);
-  }
-  for (const [cssVar, , fallback] of SYN_MAP) {
-    root.setProperty(cssVar, cached[cssVar] ?? fallback);
+  for (const [cssVar] of [...MAP, ...SYN_MAP]) {
+    const val = cached[cssVar];
+    if (val) root.setProperty(cssVar, val);
   }
 }
 

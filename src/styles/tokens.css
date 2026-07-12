@@ -1,0 +1,114 @@
+/* Design tokens, two tiers.
+
+   Primitives (--sway-*) are raw, theme-independent values: the palette ramp,
+   spacing, radii, type, motion. Semantic tokens are the roles the UI actually
+   consumes (--bg, --text, ...); they select primitives per theme, keyed on
+   :root[data-theme]. The dark set maps 1:1 to the values that used to live in
+   App.css :root, so dark rendering is unchanged.
+
+   Runtime themes (VS Code themes, later phases) override the semantic tokens as
+   inline props on <html>; these definitions are the pre-theme fallback. */
+@layer tokens {
+  :root {
+    /* ---- Neutral ramp (light end to dark end) ---- */
+    --sway-white: #ffffff;
+    --sway-gray-50: #f3f3f3;
+    --sway-gray-100: #ededed;
+    --sway-gray-150: #e8e8e8;
+    --sway-gray-200: #e0e0e0;
+    --sway-gray-500: #6a6a6a;
+    --sway-gray-600: #808080;
+    --sway-gray-800: #2a2d2e;
+    --sway-gray-850: #2d2d2d;
+    --sway-gray-900: #252526;
+    --sway-gray-950: #1e1e1e;
+    --sway-gray-990: #1a1a1a;
+    --sway-black: #000000;
+
+    /* Foreground endpoints */
+    --sway-fg-dark: #d4d4d4;
+    --sway-fg-light: #1e1e1e;
+
+    /* Accent (blue) */
+    --sway-blue-100: #cfe3fb;
+    --sway-blue-500: #4a9eff;
+    --sway-blue-600: #005fb8;
+    --sway-blue-900: #094771;
+
+    /* ---- Type ---- */
+    --sway-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --sway-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
+    --sway-text-xs: 11px;
+    --sway-text-sm: 12px;
+    --sway-text-md: 13px;
+    --sway-text-lg: 15px;
+    --sway-text-xl: 18px;
+    --sway-line-tight: 1.2;
+    --sway-line-normal: 1.5;
+
+    /* ---- Spacing ---- */
+    --sway-space-1: 2px;
+    --sway-space-2: 4px;
+    --sway-space-3: 6px;
+    --sway-space-4: 8px;
+    --sway-space-5: 12px;
+    --sway-space-6: 16px;
+    --sway-space-7: 24px;
+    --sway-space-8: 32px;
+
+    /* ---- Radii ---- */
+    --sway-radius-sm: 3px;
+    --sway-radius-md: 5px;
+    --sway-radius-lg: 8px;
+    --sway-radius-pill: 999px;
+
+    /* ---- Border widths ---- */
+    --sway-border-thin: 1px;
+    --sway-border-thick: 2px;
+
+    /* ---- Motion ---- */
+    --sway-duration-fast: 80ms;
+    --sway-duration-med: 160ms;
+    --sway-ease: ease;
+
+    /* ---- Syntax (CM6) defaults: VS Code Dark+ palette. Theme-driven in a
+       later phase; defined here so an unthemed boot still colors code. ---- */
+    --syn-keyword: #569cd6;
+    --syn-string: #ce9178;
+    --syn-comment: #6a9955;
+    --syn-number: #b5cea8;
+    --syn-function: #dcdcaa;
+    --syn-type: #4ec9b0;
+    --syn-variable: #9cdcfe;
+  }
+
+  /* ---- Semantic tokens, dark (default) ---- */
+  :root,
+  :root[data-theme="dark"] {
+    --bg: var(--sway-gray-990);
+    --pane-bg: var(--sway-gray-950);
+    --pane-head-bg: var(--sway-gray-900);
+    --border: var(--sway-gray-850);
+    --text: var(--sway-fg-dark);
+    --text-dim: var(--sway-gray-600);
+    --accent: var(--sway-blue-500);
+    --sel: var(--sway-blue-900);
+    --hover: var(--sway-gray-800);
+    --input-bg: var(--sway-gray-990);
+  }
+
+  /* ---- Semantic tokens, light (not user-selectable until the CSS migration
+     completes; defined now so the token layer is provably two-theme) ---- */
+  :root[data-theme="light"] {
+    --bg: var(--sway-white);
+    --pane-bg: var(--sway-gray-50);
+    --pane-head-bg: var(--sway-gray-150);
+    --border: var(--sway-gray-200);
+    --text: var(--sway-fg-light);
+    --text-dim: var(--sway-gray-500);
+    --accent: var(--sway-blue-600);
+    --sel: var(--sway-blue-100);
+    --hover: var(--sway-gray-100);
+    --input-bg: var(--sway-white);
+  }
+}
