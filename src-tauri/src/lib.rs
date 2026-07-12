@@ -131,6 +131,7 @@ pub fn run() {
             git::git_remote_add,
             git::git_origin,
             git::git_fetch,
+            git::delete_remote_branch,
             git::git_has_credential_helper,
             askpass::askpass_respond,
             lsp::lsp_start,

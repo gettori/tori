@@ -13,13 +13,18 @@ export default function WorktreeRemoveDialog(props: {
   // null while the status is still loading; the flags fill in async.
   dirty: boolean | null;
   unpushed: boolean | null;
+  // Whether the branch tracks a remote branch (so it can be deleted there too).
+  hasRemote: boolean | null;
   busy: boolean;
-  onConfirm: (deleteBranch: boolean) => void;
+  onConfirm: (opts: { deleteLocal: boolean; deleteRemote: boolean }) => void;
   onCancel: () => void;
 }) {
-  // Default on: the common case is discarding a finished/abandoned branch's worktree
-  // and the branch with it. Only meaningful when the worktree actually has a branch.
-  const [deleteBranch, setDeleteBranch] = createSignal(props.branch != null);
+  // Local delete on by default: the common case is discarding a finished branch's
+  // worktree and its local branch. Remote delete off by default, it's a network op
+  // that affects everyone, so it must be an explicit opt-in.
+  const [deleteLocal, setDeleteLocal] = createSignal(props.branch != null);
+  const [deleteRemote, setDeleteRemote] = createSignal(false);
+  const confirm = () => props.onConfirm({ deleteLocal: deleteLocal(), deleteRemote: deleteRemote() });
   let ok: HTMLButtonElement | undefined;
 
   onMount(() => requestAnimationFrame(() => ok?.focus()));
@@ -30,7 +35,7 @@ export default function WorktreeRemoveDialog(props: {
       props.onCancel();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (!props.busy) props.onConfirm(deleteBranch());
+      if (!props.busy) confirm();
     }
   }
 
@@ -84,12 +89,21 @@ export default function WorktreeRemoveDialog(props: {
             <label class="wt-check">
               <input
                 type="checkbox"
-                checked={deleteBranch()}
-                onChange={(e) => setDeleteBranch(e.currentTarget.checked)}
+                checked={deleteLocal()}
+                onChange={(e) => setDeleteLocal(e.currentTarget.checked)}
               />
-              <span>
-                Also delete branch <strong>{props.branch}</strong> (git branch -D)
-              </span>
+              <span>Delete local branch (git branch -D)</span>
+            </label>
+          </Show>
+
+          <Show when={props.hasRemote}>
+            <label class="wt-check">
+              <input
+                type="checkbox"
+                checked={deleteRemote()}
+                onChange={(e) => setDeleteRemote(e.currentTarget.checked)}
+              />
+              <span>Delete remote branch (git push --delete)</span>
             </label>
           </Show>
 
@@ -97,12 +111,7 @@ export default function WorktreeRemoveDialog(props: {
             <button class="modal-btn" onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button
-              ref={ok}
-              class="modal-btn danger"
-              disabled={props.busy}
-              onClick={() => props.onConfirm(deleteBranch())}
-            >
+            <button ref={ok} class="modal-btn warn" disabled={props.busy} onClick={() => confirm()}>
               {props.busy ? "Removing…" : "Remove worktree"}
             </button>
           </div>

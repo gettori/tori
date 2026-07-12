@@ -416,6 +416,15 @@ body.dragging .term-host {
 .modal-btn.danger:hover {
   filter: brightness(1.08);
 }
+.modal-btn.warn {
+  /* A darker orange than the --warn text color, so white label text stays legible. */
+  background: var(--warn-strong, #b56319);
+  border-color: var(--warn-strong, #b56319);
+  color: #fff;
+}
+.modal-btn.warn:hover {
+  filter: brightness(1.08);
+}
 .modal-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
