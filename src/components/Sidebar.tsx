@@ -434,7 +434,7 @@ export default function Sidebar(props: {
             .flatMap((g) => g.projects)
             .filter((p) => {
               const k = p.branchUnits[0]?.kind;
-              return k === "plain" || k === "worktree";
+              return k === "plain" || k === "worktree" || k === "incomplete";
             })
             .map(async (p) => {
               try {
@@ -586,9 +586,9 @@ export default function Sidebar(props: {
 
   async function cleanupStub(u: BranchUnit) {
     const ok = await askConfirm({
-      title: "Remove this incomplete stub?",
-      message: "A .bare with no worktrees, left by an interrupted bootstrap.",
-      confirmLabel: "Remove stub",
+      title: "Remove this empty container?",
+      message: "Deletes the .bare repository and its folder. Any branches only in it are lost.",
+      confirmLabel: "Remove",
       danger: true,
     });
     if (!ok) return;
@@ -1016,16 +1016,32 @@ export default function Sidebar(props: {
         items.push({ label: "Remove project", danger: true, onClick: () => openRemoveProject(p) });
         return items;
       }
+      case "incomplete":
+        // A bare container with no worktrees (a killed bootstrap, or all worktrees
+        // removed). It is still a valid `.bare`, so offer the worktree-container
+        // actions to bring one back, plus stub removal.
+        return [
+          { label: "Add Worktree", onClick: () => addWorktree(p) },
+          ...(hasOrigin(p)
+            ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
+            : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
+          { separator: true },
+          { label: "Remove empty container", danger: true, onClick: () => cleanupStub(p.branchUnits[0]) },
+        ];
       default:
         return [];
     }
   };
 
   const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
-    // An incomplete stub (a .bare with no worktree) has nothing to run; its only
-    // action is removal.
+    // An incomplete stub (a .bare with no worktree): it can still spawn a worktree
+    // (its branches live in .bare), so offer that as well as removal.
     if (u.kind === "incomplete") {
-      return [{ label: "Remove stub", danger: true, onClick: () => cleanupStub(u) }];
+      return [
+        { label: "Add Worktree", onClick: () => addWorktree(p) },
+        { separator: true },
+        { label: "Remove empty container", danger: true, onClick: () => cleanupStub(u) },
+      ];
     }
     const items: MenuItem[] = [{ label: "New session", onClick: () => startSession(g, p, u) }];
     if (u.kind === "worktree") {
@@ -1532,7 +1548,7 @@ export default function Sidebar(props: {
                                       <Chevron open={uopen()} />
                                       <span class="label">{unitLabel(u)}</span>
                                       <Show when={u.kind === "incomplete"}>
-                                        <span class="badge hint" title="A .bare with no worktrees (right-click to remove)">stub</span>
+                                        <span class="badge hint" title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
                                       </Show>
                                       <Show when={unitMismatch(u)}>
                                         <span class="badge" title="Not the current checkout">≠ checkout</span>
