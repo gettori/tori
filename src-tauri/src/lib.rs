@@ -8,11 +8,13 @@ mod lsp;
 mod model;
 mod pty;
 mod sessions;
+mod settings;
 mod theme;
 mod worktree;
 
 use config::{ConfigWatch, ProjectIndex, RootWatch};
 use fs::FsWatch;
+use settings::SettingsWatch;
 use lsp::LspState;
 use pty::PtyState;
 use sessions::{PiIndex, SessionIndex, SessionWatch};
@@ -82,6 +84,7 @@ pub fn run() {
         .manage(SessionIndex::default())
         .manage(PiIndex::default())
         .manage(SessionWatch::default())
+        .manage(SettingsWatch::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -159,6 +162,9 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             theme::get_theme_colors,
             theme::get_theme_colors_from_path,
+            settings::get_settings,
+            settings::set_settings,
+            settings::settings_watch_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

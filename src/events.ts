@@ -5,6 +5,7 @@ export const FOCUS_TERMINAL = "sway:focus-terminal";
 export const CLOSE_TAB = "sway:close-tab";
 export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";
+export const SETTINGS_CHANGED = "sway:settings-changed";
 
 // Payload-carrying event: open a file in the editor at an optional position.
 // (File-change fan-out is not here — that rides the backend `fs://changed`

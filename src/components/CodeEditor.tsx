@@ -37,8 +37,8 @@ const swayTheme = EditorView.theme(
     "&": { backgroundColor: "var(--bg)", color: "var(--text)", height: "100%" },
     ".cm-content": {
       caretColor: "var(--text)",
-      fontFamily: '"SF Mono", Menlo, Monaco, monospace',
-      fontSize: "13px",
+      fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',
+      fontSize: "var(--editor-font-size, 13px)",
     },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {

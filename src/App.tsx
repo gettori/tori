@@ -8,6 +8,7 @@ import QuickOpen from "./components/QuickOpen";
 import AskpassDialog from "./components/AskpassDialog";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { initTheme } from "./theme";
+import { initSettings } from "./settings";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -113,6 +114,7 @@ function App() {
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     initTheme();
+    initSettings();
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);

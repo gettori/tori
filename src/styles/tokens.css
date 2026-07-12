@@ -71,6 +71,15 @@
     --sway-duration-med: 160ms;
     --sway-ease: ease;
 
+    /* ---- Settings-driven tokens (overridden by the settings store as inline
+       props on <html>; defaults here match the pre-settings look). ---- */
+    --ui-font-size: 13px;
+    --ui-line-height: var(--sway-line-normal);
+    --ui-radius: var(--sway-radius-md);
+    --ui-density: 1;
+    --editor-font-family: "SF Mono", Menlo, Monaco, monospace;
+    --editor-font-size: 13px;
+
     /* ---- Syntax (CM6) defaults: VS Code Dark+ palette. Theme-driven in a
        later phase; defined here so an unthemed boot still colors code. ---- */
     --syn-keyword: #569cd6;
