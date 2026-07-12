@@ -85,11 +85,11 @@ export default function BranchRemoveDialog(props: {
             </label>
           </Show>
 
-          <div class="modal-msg">
-            {deleteLocal()
-              ? "The local branch is deleted from git."
-              : "The branch stays in git; it is only removed from Sway’s list (detach)."}
-          </div>
+          <Show when={!deleteLocal()}>
+            <div class="modal-msg">
+              The branch stays in git; it is only removed from Sway’s list (detach).
+            </div>
+          </Show>
 
           <div class="modal-actions">
             <button class="modal-btn" onClick={() => props.onCancel()}>
