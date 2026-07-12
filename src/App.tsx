@@ -7,7 +7,7 @@ import WindowControls from "./components/WindowControls";
 import QuickOpen from "./components/QuickOpen";
 import AskpassDialog from "./components/AskpassDialog";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
-import { applyTheme } from "./theme";
+import { initTheme } from "./theme";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -112,12 +112,10 @@ function App() {
 
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("focus", applyTheme);
-    applyTheme();
+    initTheme();
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("focus", applyTheme);
     document.body.classList.remove("dragging");
   });
 
