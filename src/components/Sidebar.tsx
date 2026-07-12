@@ -681,10 +681,22 @@ export default function Sidebar(props: {
     const { p } = req;
     setInitReq({ ...req, busy: true });
     try {
-      await invoke(opts.bare ? "bare_init" : "git_init", {
-        projectPath: p.path,
-        branch: opts.branch || null,
-      });
+      if (opts.bare) {
+        await invoke("bare_init", { projectPath: p.path, branch: opts.branch || null });
+      } else {
+        // git_init returns whether an initial commit was made; a false means git has
+        // no identity, so the repo is unborn (branches can't be created yet).
+        const committed = await invoke<boolean>("git_init", {
+          projectPath: p.path,
+          branch: opts.branch || null,
+        });
+        if (!committed) {
+          setError(
+            "Repo created, but git has no user.name/user.email set, so no initial commit was made. Configure a git identity, then commit to start creating branches.",
+            "info",
+          );
+        }
+      }
       if (opts.url) {
         await invoke("git_remote_add", { projectPath: p.path, url: opts.url });
       }
