@@ -8,6 +8,9 @@ import QuickOpen from "./components/QuickOpen";
 import AskpassDialog from "./components/AskpassDialog";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { applyTheme } from "./theme";
+import "./styles/reset.css";
+import "./styles/tokens.css";
+import "./styles/base.css";
 import "./App.css";
 
 const LS_LAYOUT = "sway.layout.v1";
