@@ -204,10 +204,26 @@ target/
 Thumbs.db
 ";
 
+/// Whether git has a usable author identity (both `user.name` and `user.email`, any
+/// scope), so an initial commit won't fail with "Author identity unknown".
+fn has_git_identity(repo: &str) -> bool {
+    let set = |key: &str| {
+        Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["config", "--get", key])
+            .output()
+            .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+            .unwrap_or(false)
+    };
+    set("user.name") && set("user.email")
+}
+
 /// Core of `git_init` without the app event, so it is unit-testable: `git init`
 /// (optional initial branch via symbolic-ref, portable across git versions) and
-/// a scaffolded .gitignore when none exists. Refuses an existing repo.
-fn do_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
+/// a scaffolded .gitignore when none exists. Refuses an existing repo. Returns
+/// whether an initial commit was made (false when git has no identity).
+fn do_init(dir: &Path, branch: Option<&str>) -> Result<bool, String> {
     if dir.join(".git").exists() {
         return Err("This folder is already a git repository.".into());
     }
@@ -225,19 +241,24 @@ fn do_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
     }
     // Born the branch with an empty root commit so the repo is immediately usable:
     // the branch shows by name (not a nameless folder unit) and new branches can be
-    // created off it. Best-effort, skipped silently when git has no author identity,
-    // so init never hard-fails; discovery still shows the unborn branch by name.
-    let _ = git_run(&path, &["commit", "--allow-empty", "-q", "-m", "Initial commit"]);
-    Ok(())
+    // created off it. Skipped when git has no author identity, so init never
+    // hard-fails; discovery still shows the unborn branch by name, and the UI warns.
+    if !has_git_identity(&path) {
+        return Ok(false);
+    }
+    git_run(&path, &["commit", "--allow-empty", "-q", "-m", "Initial commit"])?;
+    Ok(true)
 }
 
 /// Initialize a git repo in a plain-dir project (optional initial branch),
 /// scaffolding a default .gitignore. Re-discovers (plain-dir becomes plain).
+/// Returns whether an initial commit was made, so the UI can warn when a missing
+/// git identity left the repo unborn.
 #[tauri::command]
-pub fn git_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
-    do_init(Path::new(&project_path), branch.as_deref())?;
+pub fn git_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<bool, String> {
+    let committed = do_init(Path::new(&project_path), branch.as_deref())?;
     let _ = app.emit("config://changed", ());
-    Ok(())
+    Ok(committed)
 }
 
 /// Capture the trimmed stdout of `git -C <repo> <args>`, or an error with stderr.
