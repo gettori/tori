@@ -330,6 +330,48 @@ pub(crate) fn branch_push_target(repo: &Path, branch: &str) -> Option<(String, S
     Some((remote, refname))
 }
 
+/// Whether a ref exists in `repo`.
+fn ref_exists(repo: &Path, refname: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--verify", "--quiet", refname])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// The `(remote, ref)` to delete for a branch, or None when no remote branch is
+/// known. Prefers the branch's tracking config (so a differently-named upstream
+/// still resolves), then falls back to a same-named remote-tracking ref (origin
+/// first) for a branch that was pushed but never set up to track, which is why the
+/// config-only check missed it.
+pub(crate) fn resolve_remote_branch(repo: &Path, branch: &str) -> Option<(String, String)> {
+    if let Some(target) = branch_push_target(repo, branch) {
+        return Some(target);
+    }
+    let remotes = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("remote")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect::<Vec<_>>())
+        .unwrap_or_default();
+    // Origin first, then the rest, so the common case resolves to origin.
+    let ordered = remotes
+        .iter()
+        .filter(|r| *r == "origin")
+        .chain(remotes.iter().filter(|r| *r != "origin"));
+    for remote in ordered {
+        if ref_exists(repo, &format!("refs/remotes/{remote}/{branch}")) {
+            return Some((remote.clone(), branch.to_string()));
+        }
+    }
+    None
+}
+
 /// The worktree's currently checked-out branch, or None for a detached/unborn HEAD.
 fn branch_at(path: &Path) -> Option<String> {
     Command::new("git")
@@ -377,7 +419,7 @@ fn branch_unpushed(worktree: &Path) -> bool {
 #[tauri::command]
 pub fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
     let p = Path::new(&path);
-    let has_remote = branch_at(p).and_then(|b| branch_push_target(p, &b)).is_some();
+    let has_remote = branch_at(p).and_then(|b| resolve_remote_branch(p, &b)).is_some();
     Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p), has_remote })
 }
 
@@ -418,7 +460,7 @@ pub fn branch_status(repo: String, branch: String) -> Result<BranchStatus, Strin
     let p = Path::new(&repo);
     Ok(BranchStatus {
         unpushed: named_branch_unpushed(p, &branch),
-        has_remote: branch_push_target(p, &branch).is_some(),
+        has_remote: resolve_remote_branch(p, &branch).is_some(),
     })
 }
 
@@ -652,6 +694,56 @@ mod tests {
         git(&feat, &["add", "."]);
         git(&feat, &["commit", "-qm", "feature work"]);
         assert!(branch_unpushed(&feat), "a local-only branch is unpushed");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn resolve_remote_branch_uses_config_then_tracking_ref() {
+        let tmp = unique_tmp();
+        // A remote with a `main` branch to clone from.
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        let remote = tmp.join("remote.git");
+        git(&tmp, &["init", "-q", "--bare", remote.to_str().unwrap()]);
+        git(&src, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(&src, &["push", "-q", "origin", "main"]);
+
+        // A clone: main tracks origin/main (config present).
+        let repo = tmp.join("repo");
+        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), repo.to_str().unwrap()]);
+        assert_eq!(
+            resolve_remote_branch(&repo, "main"),
+            Some(("origin".to_string(), "main".to_string())),
+            "a tracking branch resolves via config",
+        );
+
+        // A branch pushed WITHOUT -u: no tracking config, but origin/feat exists.
+        git(&repo, &["checkout", "-q", "-b", "feat"]);
+        std::fs::write(repo.join("b.txt"), "x").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "feat"]);
+        git(&repo, &["push", "-q", "origin", "feat"]); // no -u, so no branch.feat.merge
+        assert!(
+            branch_push_target(&repo, "feat").is_none(),
+            "no tracking config for a plain push",
+        );
+        assert_eq!(
+            resolve_remote_branch(&repo, "feat"),
+            Some(("origin".to_string(), "feat".to_string())),
+            "still resolves via the remote-tracking ref",
+        );
+
+        // A purely local branch has no remote to delete.
+        git(&repo, &["checkout", "-q", "-b", "local-only"]);
+        assert_eq!(resolve_remote_branch(&repo, "local-only"), None);
 
         std::fs::remove_dir_all(&tmp).ok();
     }

@@ -425,7 +425,7 @@ pub fn delete_remote_branch(
     repo: String,
     branch: String,
 ) -> Result<(), String> {
-    let (remote, refname) = crate::worktree::branch_push_target(Path::new(&repo), &branch)
+    let (remote, refname) = crate::worktree::resolve_remote_branch(Path::new(&repo), &branch)
         .ok_or("This branch has no remote branch to delete.")?;
     let inner = state.0.clone();
     let op_id = next_op_id();
