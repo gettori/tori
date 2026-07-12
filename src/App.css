@@ -611,6 +611,9 @@ body.dragging .term-host {
 .wt-check input {
   cursor: pointer;
 }
+.init-check {
+  margin-top: 14px;
+}
 
 .tree-scroll {
   flex: 1;
