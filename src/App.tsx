@@ -6,8 +6,8 @@ import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls";
 import QuickOpen from "./components/QuickOpen";
 import AskpassDialog from "./components/AskpassDialog";
+import SettingsPanel from "./components/SettingsPanel";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
-import { initTheme } from "./theme";
 import { initSettings } from "./settings";
 import "./styles/reset.css";
 import "./styles/tokens.css";
@@ -53,6 +53,7 @@ function App() {
   const [editor, setEditor] = createSignal(initial.editor);
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
   const [quickOpen, setQuickOpen] = createSignal(false);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
 
   createEffect(() => {
     const s = selected();
@@ -113,7 +114,6 @@ function App() {
 
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
-    initTheme();
     initSettings();
   });
   onCleanup(() => {
@@ -126,6 +126,12 @@ function App() {
       <header class="topbar" data-tauri-drag-region>
         <WindowControls />
         <Toolbar selected={selected()} />
+        <button class="topbar-gear" title="Settings" onClick={() => setSettingsOpen(true)}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
       </header>
 
       <div class="body">
@@ -152,6 +158,10 @@ function App() {
 
       <Show when={quickOpen()}>
         <QuickOpen root={selected()?.folderPath ?? null} onClose={() => setQuickOpen(false)} />
+      </Show>
+
+      <Show when={settingsOpen()}>
+        <SettingsPanel onClose={() => setSettingsOpen(false)} />
       </Show>
 
       <AskpassDialog />

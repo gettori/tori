@@ -1,0 +1,134 @@
+/* First component on the target architecture: scoped CSS Module reading only
+   design tokens (no hardcoded colors), sitting in the `components` layer. */
+@layer components {
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: var(--sway-space-8) var(--sway-space-6);
+    z-index: 100;
+    overflow: auto;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 560px;
+    background: var(--pane-bg);
+    color: var(--text);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--ui-radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    font-family: var(--sway-font-ui);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sway-space-5) var(--sway-space-6);
+    border-bottom: var(--sway-border-thin) solid var(--border);
+  }
+
+  .title {
+    font-size: var(--sway-text-lg);
+    font-weight: 600;
+  }
+
+  .close {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: var(--sway-text-xl);
+    line-height: 1;
+    cursor: pointer;
+    padding: var(--sway-space-1) var(--sway-space-3);
+    border-radius: var(--sway-radius-sm);
+  }
+  .close:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .body {
+    padding: var(--sway-space-5) var(--sway-space-6) var(--sway-space-7);
+  }
+
+  .section {
+    margin-top: var(--sway-space-6);
+  }
+  .section:first-child {
+    margin-top: 0;
+  }
+
+  .sectionTitle {
+    font-size: var(--sway-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: var(--sway-space-4);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sway-space-5);
+    padding: var(--sway-space-3) 0;
+  }
+
+  .label {
+    font-size: var(--sway-text-md);
+    color: var(--text);
+  }
+
+  .control {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-3);
+  }
+
+  .input,
+  .select {
+    background: var(--input-bg);
+    color: var(--text);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-sm);
+    padding: var(--sway-space-2) var(--sway-space-3);
+    font: inherit;
+    font-size: var(--sway-text-sm);
+  }
+  .input:focus,
+  .select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .text {
+    width: 240px;
+  }
+  .num {
+    width: 72px;
+  }
+
+  .importBtn {
+    background: transparent;
+    color: var(--accent);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-sm);
+    padding: var(--sway-space-2) var(--sway-space-4);
+    font-size: var(--sway-text-sm);
+    cursor: pointer;
+  }
+  .importBtn:hover {
+    background: var(--hover);
+  }
+
+  .hint {
+    font-size: var(--sway-text-xs);
+    color: var(--text-dim);
+    margin-top: var(--sway-space-2);
+  }
+}
