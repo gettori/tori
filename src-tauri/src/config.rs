@@ -380,15 +380,27 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
             });
         }
     }
-    // A repo with no branches yet still shows its folder as a single plain unit.
+    // A repo with no branch refs yet. An unborn HEAD (freshly `git init`ed, no
+    // commit) still names its branch via symbolic-ref, so show that by name and as
+    // the current checkout, rather than a nameless folder unit. Only a truly
+    // headless repo falls back to the folder unit.
     if units.is_empty() {
-        units.push(BranchUnit {
-            label: basename(path),
-            folder_path: path.to_string_lossy().into_owned(),
-            branch: None,
-            kind: ProjectKind::Plain,
-            is_current: false,
-        });
+        match current_branch(path) {
+            Some(b) => units.push(BranchUnit {
+                label: b.clone(),
+                folder_path: path.to_string_lossy().into_owned(),
+                branch: Some(b),
+                kind: ProjectKind::Plain,
+                is_current: true,
+            }),
+            None => units.push(BranchUnit {
+                label: basename(path),
+                folder_path: path.to_string_lossy().into_owned(),
+                branch: None,
+                kind: ProjectKind::Plain,
+                is_current: false,
+            }),
+        }
     }
     units
 }
@@ -1458,6 +1470,25 @@ mod tests {
     }
 
     #[test]
+    fn unborn_repo_shows_head_branch_by_name() {
+        // A freshly `git init`ed repo with no commit: HEAD is unborn, so `git branch`
+        // lists nothing, but probe should still show the branch by name (not a
+        // nameless folder unit) and mark it current.
+        let dir = unique_tmp();
+        git(&dir, &["init", "-q"]);
+        git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+        let units = probe_project(&dir);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].kind, ProjectKind::Plain);
+        assert_eq!(units[0].branch.as_deref(), Some("main"));
+        assert_eq!(units[0].label, "main");
+        assert!(units[0].is_current);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn list_remote_branches_strips_prefix_and_drops_head() {
         let dir = unique_tmp();
         init_repo(&dir, "main");
@@ -1698,15 +1729,19 @@ mod tests {
     }
 
     #[test]
-    fn plain_units_unborn_head_yields_one_folder_unit() {
+    fn plain_units_unborn_head_yields_one_named_current_unit() {
         let tmp = unique_tmp();
         let repo = tmp.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
-        git(&repo, &["init", "-q"]); // no commits: unborn HEAD, no branches
+        git(&repo, &["init", "-q"]); // no commits: unborn HEAD, no branch refs
 
+        // The unborn HEAD still names a branch; show it by name and as current,
+        // rather than a nameless folder unit.
         let units = plain_branch_units(&repo, &HashSet::new());
         assert_eq!(units.len(), 1);
-        assert!(units[0].branch.is_none());
+        assert!(units[0].branch.is_some());
+        assert_eq!(units[0].label, units[0].branch.clone().unwrap());
+        assert!(units[0].is_current);
         assert_eq!(units[0].kind, ProjectKind::Plain);
 
         std::fs::remove_dir_all(&tmp).ok();
