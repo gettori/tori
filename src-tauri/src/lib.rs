@@ -158,6 +158,7 @@ pub fn run() {
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
             theme::get_theme_colors,
+            theme::get_theme_colors_from_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

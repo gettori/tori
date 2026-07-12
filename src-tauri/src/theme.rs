@@ -187,6 +187,29 @@ fn apply_customizations(colors: &mut HashMap<String, String>, settings: &Value, 
     }
 }
 
+/// Read a single theme file (any VS Code theme JSON/JSONC) into ThemeColors,
+/// following `include`. Used by the in-app theme import, which lets Sway load a
+/// theme without VS Code being installed.
+#[tauri::command]
+pub fn get_theme_colors_from_path(path: String) -> Result<ThemeColors, String> {
+    let p = PathBuf::from(&path);
+    if !p.is_file() {
+        return Err(format!("theme file not found: {path}"));
+    }
+    let mut colors = HashMap::new();
+    let mut tokens = HashMap::new();
+    let mut kind = None;
+    collect(&p, &mut colors, &mut tokens, &mut kind);
+    if colors.is_empty() && tokens.is_empty() {
+        return Err(format!("not a readable theme file: {path}"));
+    }
+    Ok(ThemeColors {
+        kind,
+        colors,
+        syntax: distill_syntax(&tokens),
+    })
+}
+
 #[tauri::command]
 pub fn get_theme_colors() -> Result<ThemeColors, String> {
     let settings = read_value(&settings_path()).unwrap_or(Value::Null);
@@ -241,6 +264,36 @@ mod tests {
         assert_eq!(syn.get("function").map(String::as_str), Some("#dcdcaa"));
         // variable had no foreground anywhere -> absent (frontend falls back)
         assert!(syn.get("variable").is_none());
+    }
+
+    #[test]
+    fn imports_an_arbitrary_theme_file_with_colors_and_syntax() {
+        let dir = std::env::temp_dir().join(format!("sway-theme-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("my-theme.json");
+        std::fs::write(
+            &file,
+            r##"{
+                // JSONC comment tolerated by json5
+                "type": "dark",
+                "colors": { "editor.background": "#101010", "foreground": "#eeeeee" },
+                "tokenColors": [
+                    { "scope": "comment", "settings": { "foreground": "#6a9955" } },
+                    { "scope": ["keyword", "storage.type"], "settings": { "foreground": "#ff00ff" } }
+                ]
+            }"##,
+        )
+        .unwrap();
+
+        let t = get_theme_colors_from_path(file.to_string_lossy().to_string())
+            .expect("import must succeed");
+        assert_eq!(t.kind.as_deref(), Some("dark"));
+        assert_eq!(t.colors.get("editor.background").map(String::as_str), Some("#101010"));
+        assert_eq!(t.syntax.get("keyword").map(String::as_str), Some("#ff00ff"));
+        assert_eq!(t.syntax.get("comment").map(String::as_str), Some("#6a9955"));
+
+        assert!(get_theme_colors_from_path("/no/such/theme.json".into()).is_err());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -17,11 +17,11 @@ function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
 }
 
-// Syntax colors read live from the --syn-* CSS vars set by theme.ts (which
-// distills them from the active VS Code theme's tokenColors). Because the values
-// are var() references, re-theming on THEME_APPLIED is automatic: theme.ts
-// rewrites the vars and the browser re-resolves them on the next paint, so the
-// editor never needs to reconfigure for a theme change.
+// Syntax colors read live from the --syn-* CSS vars set by the theme module
+// (src/theme, which distills them from the active theme's tokenColors). Because
+// the values are var() references, re-theming on THEME_APPLIED is automatic: the
+// theme module rewrites the vars and the browser re-resolves them on the next
+// paint, so the editor never needs to reconfigure for a theme change.
 const swayHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier], color: "var(--syn-keyword)" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
