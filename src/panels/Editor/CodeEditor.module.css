@@ -1,0 +1,59 @@
+/* CodeEditor styles (hash-scoped). CodeMirror applies `.cm-*` to its own DOM, so
+   those are reached via :global() under the scoped `.codeEditor` host. The git
+   diff-gutter classes (`.cm-diff-gutter`, `.cm-diff-*`) are emitted as literal
+   strings by src/diffGutter.ts, so they stay fully global in App.css. */
+.codeEditorWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.codeEditor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.codeEditor :global(.cm-editor) {
+  height: 100%;
+}
+
+.codeEditor :global(.cm-scroller) {
+  overflow: auto;
+}
+
+/* While a splitter drag is in progress, stop the editor from swallowing pointer
+   events so window-level pointermove keeps firing (was a global
+   `body.dragging .code-editor` rule in App.css). */
+:global(body.dragging) .codeEditor {
+  pointer-events: none;
+}
+
+/* External-change conflict banner */
+.reloadBanner {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--accent);
+}
+
+.reloadBanner button {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: calc(3px * var(--ui-radius-scale));
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  cursor: pointer;
+}
+
+.reloadBanner button:hover {
+  border-color: var(--accent);
+}

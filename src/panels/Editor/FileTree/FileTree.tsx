@@ -1,10 +1,10 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../../events";
-import FileIcon from "../../seti/FileIcon";
-import Chevron from "../Chevron/Chevron";
-import ContextMenu, { type MenuItem, type MenuState } from "../ContextMenu/ContextMenu";
-import { type ConfirmOpts } from "../Dialogs/ConfirmDialog";
+import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../../../events";
+import FileIcon from "../../../seti/FileIcon";
+import Chevron from "../../../components/Chevron/Chevron";
+import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
+import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };

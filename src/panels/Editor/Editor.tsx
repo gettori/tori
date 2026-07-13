@@ -4,11 +4,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
 import FileTree from "./FileTree/FileTree";
-import PromptModal from "./Dialogs/PromptModal";
-import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./Dialogs/ConfirmDialog";
+import PromptModal from "../../components/Dialogs/PromptModal";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
-import OverflowTabBar from "./OverflowTabBar";
-import FileIcon from "../seti/FileIcon";
+import OverflowTabBar from "../../components/OverflowTabBar";
+import FileIcon from "../../seti/FileIcon";
 import {
   onWith,
   OPEN_IN_EDITOR,
@@ -16,11 +16,12 @@ import {
   DRAG_PATH_MIME,
   type OpenInEditor,
   type PurgeUnderPath,
-} from "../events";
-import { isUnderPath } from "../pathScope";
-import { isSelfWrite } from "../selfWrites";
-import { ensureLsp } from "../lspClient";
-import type { Selection } from "./Sidebar";
+} from "../../events";
+import { isUnderPath } from "../../pathScope";
+import { isSelfWrite } from "../../selfWrites";
+import { ensureLsp } from "../../lspClient";
+import type { Selection } from "../../components/Sidebar";
+import styles from "./Editor.module.css";
 
 type OpenFile = { path: string; name: string };
 
@@ -31,7 +32,7 @@ function basename(path: string): string {
 // Same-origin CM6 editor pane: ⟨ tabs + code │ file tree ⟩. Owns the
 // open-editors model (tabs, active file, per-file dirty state); CodeEditor holds
 // the per-file buffers and FileTree drives opens via OPEN_IN_EDITOR.
-export default function EditorPane(props: { selected: Selection | null }) {
+export default function Editor(props: { selected: Selection | null }) {
   const [openFiles, setOpenFiles] = createSignal<OpenFile[]>([]);
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
@@ -213,10 +214,10 @@ export default function EditorPane(props: { selected: Selection | null }) {
   });
 
   return (
-    <div class="editor-pane">
-      <div class="editor-main">
+    <div class={styles.editorPane}>
+      <div class={styles.editorMain}>
         <OverflowTabBar
-          class="editor-tabs"
+          class={styles.editorTabs}
           items={openFiles()}
           activeId={activePath()}
           idOf={(f) => f.path}
@@ -224,8 +225,8 @@ export default function EditorPane(props: { selected: Selection | null }) {
           onReorder={setOpenFiles}
           renderTab={(f) => (
             <div
-              class="tab"
-              classList={{ active: f.path === activePath() }}
+              class={styles.tab}
+              classList={{ [styles.active]: f.path === activePath() }}
               onClick={() => setActivePath(f.path)}
               title={f.path}
               draggable={true}
@@ -271,8 +272,8 @@ export default function EditorPane(props: { selected: Selection | null }) {
           )}
           trailing={
             <button
-              class="follow-toggle"
-              classList={{ active: follow() }}
+              class={styles.followToggle}
+              classList={{ [styles.active]: follow() }}
               onClick={() => setFollow(!follow())}
               title="Follow: auto-open the most-recently-changed file"
             >
@@ -282,7 +283,7 @@ export default function EditorPane(props: { selected: Selection | null }) {
         />
         <Show
           when={openFiles().length}
-          fallback={<div class="editor-empty">Open a file from the tree to start editing.</div>}
+          fallback={<div class={styles.editorEmpty}>Open a file from the tree to start editing.</div>}
         >
           <CodeEditor
             activePath={activePath()}
@@ -293,26 +294,26 @@ export default function EditorPane(props: { selected: Selection | null }) {
           />
         </Show>
       </div>
-      <div class="right-panel">
-        <div class="right-tabs">
+      <div class={styles.rightPanel}>
+        <div class={styles.rightTabs}>
           <button
-            class="right-tab"
-            classList={{ active: rightMode() === "files" }}
+            class={styles.rightTab}
+            classList={{ [styles.active]: rightMode() === "files" }}
             onClick={() => setRightMode("files")}
           >
             Files
           </button>
           <button
-            class="right-tab"
-            classList={{ active: rightMode() === "changes" }}
+            class={styles.rightTab}
+            classList={{ [styles.active]: rightMode() === "changes" }}
             onClick={() => setRightMode("changes")}
           >
             Changes
           </button>
           <Show when={sharedPath()}>
             <button
-              class="right-tab"
-              classList={{ active: rightMode() === "shared" }}
+              class={styles.rightTab}
+              classList={{ [styles.active]: rightMode() === "shared" }}
               onClick={() => setRightMode("shared")}
             >
               Shared
@@ -320,8 +321,8 @@ export default function EditorPane(props: { selected: Selection | null }) {
           </Show>
           <Show when={docsPath()}>
             <button
-              class="right-tab"
-              classList={{ active: rightMode() === "docs" }}
+              class={styles.rightTab}
+              classList={{ [styles.active]: rightMode() === "docs" }}
               onClick={() => setRightMode("docs")}
             >
               Docs
