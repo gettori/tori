@@ -73,7 +73,7 @@
 
     /* ---- Settings-driven tokens (overridden by the settings store as inline
        props on <html>; defaults here match the pre-settings look). ---- */
-    --ui-font-size: 13px;
+    --ui-scale: 1; /* chrome font-size multiplier; = uiFontSize / 13 */
     --ui-line-height: var(--sway-line-normal);
     --ui-radius: var(--sway-radius-md);
     --ui-density: 1;
