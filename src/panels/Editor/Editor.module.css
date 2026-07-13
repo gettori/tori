@@ -1,0 +1,141 @@
+/* Editor panel chrome (hash-scoped). Shared tab-content classes (.tab-name,
+   .tab-dirty, .tab-close) stay global (also used by the OverflowTabBar overflow
+   menu), so they're referenced via :global() from the scoped .editorTabs. */
+.editorPane {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.editorMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editorEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--ui-scale));
+  text-align: center;
+  padding: calc(20px * var(--ui-density));
+}
+
+.editorErr {
+  padding: calc(10px * var(--ui-density));
+  color: #f08080;
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.followToggle {
+  margin-left: auto;
+  flex: none;
+  align-self: center;
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: calc(3px * var(--ui-radius-scale));
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  margin-right: 6px;
+  cursor: pointer;
+}
+
+.followToggle.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Editor tab bar */
+.editorTabs {
+  display: flex;
+  flex: none;
+  min-height: 34px;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.editorTabs .tab {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: 0 calc(8px * var(--ui-density)) 0 calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim);
+  background: var(--pane-head-bg);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editorTabs .tab.active {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.editorTabs :global(.tab-name) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.editorTabs :global(.tab-dirty) {
+  font-size: calc(10px * var(--ui-scale));
+  color: var(--accent);
+}
+
+.editorTabs :global(.tab-close) {
+  font-size: calc(14px * var(--ui-scale));
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 calc(2px * var(--ui-density));
+  border-radius: calc(3px * var(--ui-radius-scale));
+}
+
+.editorTabs :global(.tab-close):hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* Right panel: Files / Changes toggle + the active panel */
+.rightPanel {
+  width: 240px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+.rightTabs {
+  height: 34px;
+  display: flex;
+  flex: none;
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.rightTab {
+  flex: 1;
+  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.rightTab.active {
+  color: var(--text);
+  background: var(--pane-bg);
+}

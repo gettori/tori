@@ -9,9 +9,10 @@ import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, fol
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
-import { markSelfWrite, isSelfWrite } from "../selfWrites";
-import { diffGutterExtension, setDiffMarkers, type Hunk } from "../diffGutter";
-import { lspPluginFor } from "../lspClient";
+import { markSelfWrite, isSelfWrite } from "../../selfWrites";
+import { diffGutterExtension, setDiffMarkers, type Hunk } from "../../diffGutter";
+import { lspPluginFor } from "../../lspClient";
+import styles from "./CodeEditor.module.css";
 
 function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
@@ -329,15 +330,15 @@ export default function CodeEditor(props: {
   });
 
   return (
-    <div class="code-editor-wrap">
+    <div class={styles.codeEditorWrap}>
       <Show when={conflict()}>
-        <div class="reload-banner">
+        <div class={styles.reloadBanner}>
           <span>This file changed on disk while you had unsaved edits.</span>
           <button onClick={reloadConflict}>Reload</button>
           <button onClick={keepMine}>Keep mine</button>
         </div>
       </Show>
-      <div class="code-editor" ref={host} />
+      <div class={styles.codeEditor} ref={host} />
     </div>
   );
 }

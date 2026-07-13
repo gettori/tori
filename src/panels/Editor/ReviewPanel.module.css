@@ -1,0 +1,82 @@
+/* Review panel (git changes list + inline diff), hash-scoped. The shared
+   `.tree-empty` empty-state stays global (via :global), same as FileTree. */
+.reviewPanel {
+  flex: 1;
+  overflow: auto;
+  background: var(--pane-bg);
+  padding: calc(4px * var(--ui-density)) 0;
+  font-size: calc(13px * var(--ui-scale));
+  user-select: none;
+}
+
+.reviewPanel :global(.tree-empty) {
+  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  color: var(--text-dim);
+}
+
+.reviewRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reviewRow:hover {
+  background: var(--hover);
+}
+
+.reviewStatus {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.reviewStatus.added {
+  color: #2ea043;
+}
+.reviewStatus.modified {
+  color: #d29922;
+}
+.reviewStatus.deleted {
+  color: #f85149;
+}
+.reviewStatus.untracked {
+  color: var(--text-dim);
+}
+
+.reviewName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.reviewDiff {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
+  background: var(--bg);
+}
+
+.reviewDiff .diffLine {
+  white-space: pre;
+  padding: 0 calc(8px * var(--ui-density));
+}
+
+.reviewDiff .diffLine.add {
+  color: #2ea043;
+}
+.reviewDiff .diffLine.del {
+  color: #f85149;
+}
+.reviewDiff .diffLine.hunk {
+  color: var(--accent);
+}
+.reviewDiff .diffLine.meta {
+  color: var(--text-dim);
+}

@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import Sidebar, { type Selection } from "./components/Sidebar";
 import Terminal from "./panels/Terminal/Terminal";
-import EditorPane from "./components/EditorPane";
+import Editor from "./panels/Editor/Editor";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
@@ -150,7 +150,7 @@ function App() {
             </main>
             <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
-              <EditorPane selected={selected()} />
+              <Editor selected={selected()} />
             </section>
           </div>
         </div>
