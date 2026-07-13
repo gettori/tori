@@ -1,3 +1,14 @@
+/* Inter, bundled as a single variable woff2 (public/inter.woff2) covering the
+   full 100-900 weight axis, so 400/500/600/700 all render as real weights (no
+   faux-bold). Declared outside @layer so the @font-face is never shadowed. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/inter.woff2") format("woff2");
+}
+
 /* Base element defaults that read from the token layer. The UI font-family used
    to live on App.css :root; it moves here so tokens.css owns the value. */
 @layer base {

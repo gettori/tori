@@ -22,7 +22,7 @@ export type Settings = { appearance: Appearance; typography: Typography; layout:
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "dark-plus", importPath: null },
   typography: {
-    uiFontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
+    uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 13,
     editorFontFamily: '"SF Mono", Menlo, Monaco, monospace',
     editorFontSize: 13,

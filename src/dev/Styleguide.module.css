@@ -1,0 +1,230 @@
+/* Dev-only styleguide styling. Chrome tier (spacious), reads the shared tokens
+   so it doubles as a smoke test that they resolve in both themes. */
+
+.page {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sway-font-ui);
+  font-size: calc(13px * var(--ui-scale));
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(12px * var(--ui-density));
+  padding: calc(12px * var(--ui-density)) calc(24px * var(--ui-density));
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+  color: var(--brand);
+  font-size: calc(15px * var(--ui-scale));
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(12px * var(--ui-density));
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  overflow: hidden;
+}
+.seg button {
+  background: var(--input-bg);
+  color: var(--text);
+  border: none;
+  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
+  font: inherit;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--brand-subtle);
+  color: var(--brand);
+}
+
+.slider {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(32px * var(--ui-density));
+  padding: calc(24px * var(--ui-density));
+  max-width: 1100px;
+}
+
+.body h2 {
+  margin: 0 0 calc(12px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: calc(12px * var(--ui-density));
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(12px * var(--ui-density));
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.chip {
+  height: 44px;
+  border-radius: var(--sway-radius-md);
+  border: 1px solid var(--border);
+}
+.swatch code {
+  font-family: var(--sway-font-mono);
+  font-size: calc(11px * var(--ui-scale));
+}
+.note {
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+}
+.brandText {
+  margin: calc(4px * var(--ui-density)) 0 0;
+  font-weight: 600;
+}
+
+.pillRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(16px * var(--ui-density));
+  margin-top: calc(16px * var(--ui-density));
+}
+.pill {
+  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  background: var(--brand-subtle);
+  color: var(--brand);
+  border-radius: var(--sway-radius-pill);
+  font-weight: 500;
+}
+.barItem {
+  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  border-left: 3px solid var(--brand-bar);
+  background: var(--pane-bg);
+}
+.ringBtn {
+  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+  cursor: pointer;
+}
+
+.shadowRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(32px * var(--ui-density));
+  padding: calc(8px * var(--ui-density)) 0;
+}
+.shadowBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 90px;
+  background: var(--pane-bg);
+  border-radius: var(--sway-radius-lg);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--sway-font-mono);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim);
+}
+
+.typeScale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(16px * var(--ui-density));
+  margin-top: calc(12px * var(--ui-density));
+}
+
+.spaceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(16px * var(--ui-density));
+}
+.spaceItem {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+}
+.spaceBar {
+  height: 16px;
+  background: var(--brand);
+  border-radius: var(--sway-radius-sm);
+}
+.spaceItem code {
+  font-family: var(--sway-font-mono);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim);
+}
+
+.radiiRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(16px * var(--ui-density));
+  margin-top: calc(16px * var(--ui-density));
+}
+.radiusBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 64px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim);
+}
+
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(12px * var(--ui-density));
+  margin-bottom: calc(12px * var(--ui-density));
+}
+
+.iconRow {
+  display: flex;
+  align-items: center;
+  gap: calc(20px * var(--ui-density));
+  color: var(--brand);
+}
