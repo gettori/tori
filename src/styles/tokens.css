@@ -104,6 +104,12 @@
     --sel: var(--sway-blue-900);
     --hover: var(--sway-gray-800);
     --input-bg: var(--sway-gray-990);
+    /* Status accents. These are the values App.css already assumes as var()
+       fallbacks (e.g. var(--danger, #e06c75)); defining them makes those
+       theme-aware. Dark values equal the fallbacks, so dark is unchanged. */
+    --danger: #e06c75;
+    --warn: #d19a66;
+    --warn-strong: #b56319;
   }
 
   /* ---- Semantic tokens, light (not user-selectable until the CSS migration
@@ -119,5 +125,8 @@
     --sel: var(--sway-blue-100);
     --hover: var(--sway-gray-100);
     --input-bg: var(--sway-white);
+    --danger: #cf222e;
+    --warn: #9a6700;
+    --warn-strong: #bc4c00;
   }
 }
