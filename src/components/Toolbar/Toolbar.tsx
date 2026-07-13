@@ -1,9 +1,10 @@
 import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, SESSIONS_REFRESH } from "../events";
-import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
-import ClaudeIcon from "../seti/ClaudeIcon";
-import PiIcon from "../seti/PiIcon";
+import { emit, SESSIONS_REFRESH } from "../../events";
+import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
+import ClaudeIcon from "../../seti/ClaudeIcon";
+import PiIcon from "../../seti/PiIcon";
+import styles from "./Toolbar.module.css";
 
 type SessionDetail = {
   prompt_count: number;
@@ -85,7 +86,7 @@ function contextWindow(model: string | null): number {
 // crisp and uniform next to the context gauge, independent of the UI font.
 function ModelIcon() {
   return (
-    <svg class="stat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
       <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
       <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
@@ -94,7 +95,7 @@ function ModelIcon() {
 }
 function PromptIcon() {
   return (
-    <svg class="stat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
     </svg>
@@ -102,7 +103,7 @@ function PromptIcon() {
 }
 function TurnIcon() {
   return (
-    <svg class="stat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <polyline points="23 4 23 10 17 10" />
       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
     </svg>
@@ -110,7 +111,7 @@ function TurnIcon() {
 }
 function ToolIcon() {
   return (
-    <svg class="stat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
     </svg>
   );
@@ -128,7 +129,7 @@ function CtxGauge(props: { pct: number }) {
     return `M8 8 L8 1 A7 7 0 ${large} 1 ${x} ${y} Z`;
   };
   return (
-    <svg class="stat-ico" viewBox="0 0 16 16" aria-hidden="true">
+    <svg class={styles.statIco} viewBox="0 0 16 16" aria-hidden="true">
       <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4" />
       <Show when={wedge()}>{(d) => <path d={d()} fill="currentColor" />}</Show>
     </svg>
@@ -262,16 +263,16 @@ export default function Toolbar(props: { selected: Selection | null }) {
   }
 
   return (
-    <div class="toolbar">
-      <Show when={sel()} fallback={<div class="tb-empty">Select a branch or session</div>}>
-        <div class="tb-row">
-          <div class="tb-info">
+    <div class={styles.toolbar}>
+      <Show when={sel()} fallback={<div class={styles.tbEmpty}>Select a branch or session</div>}>
+        <div class={styles.tbRow}>
+          <div class={styles.tbInfo}>
             <Show
               when={!renaming()}
               fallback={
-                <div class="rename-row">
+                <div class={styles.renameRow}>
                   <input
-                    class="rename-input"
+                    class={styles.renameInput}
                     value={nameDraft()}
                     placeholder="session name"
                     onInput={(e) => setNameDraft(e.currentTarget.value)}
@@ -282,46 +283,46 @@ export default function Toolbar(props: { selected: Selection | null }) {
                 </div>
               }
             >
-              <nav class="tb-crumb" aria-label="location">
-                <span class="crumb dim">{sel()!.groupName}</span>
-                <span class="crumb-sep dim">›</span>
-                <span class="crumb dim">{sel()!.projectName}</span>
-                <span class="crumb-sep dim">›</span>
+              <nav class={styles.tbCrumb} aria-label="location">
+                <span class={`${styles.crumb} dim`}>{sel()!.groupName}</span>
+                <span class={`${styles.crumbSep} dim`}>›</span>
+                <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
+                <span class={`${styles.crumbSep} dim`}>›</span>
                 <Show
                   when={isSession()}
-                  fallback={<span class="crumb leaf">{sel()!.branch}</span>}
+                  fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
                 >
-                  <span class="crumb dim">{sel()!.branch}</span>
-                  <span class="crumb-sep dim">›</span>
-                  <span class="crumb leaf">
+                  <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
+                  <span class={`${styles.crumbSep} dim`}>›</span>
+                  <span class={`${styles.crumb} ${styles.leaf}`}>
                     <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
                     {displayName()}
                   </span>
                 </Show>
               </nav>
               <Show when={isSession() && detail()}>
-                <span class="tb-divider" />
-                <span class="tb-stats">
+                <span class={styles.tbDivider} />
+                <span class={styles.tbStats}>
                   <Show when={detail()!.model}>
-                    <span class="stat stat-model" title="Model">
+                    <span class={`${styles.stat} ${styles.statModel}`} title="Model">
                       <ModelIcon />{modelLabel(detail()!.model)}
                     </span>
-                    <span class="stat-sep">·</span>
+                    <span class={styles.statSep}>·</span>
                   </Show>
-                  <span class="stat" title="Prompts you sent">
+                  <span class={styles.stat} title="Prompts you sent">
                     <PromptIcon />{detail()!.prompt_count}
                   </span>
-                  <span class="stat-sep">·</span>
-                  <span class="stat" title="Agent turns">
+                  <span class={styles.statSep}>·</span>
+                  <span class={styles.stat} title="Agent turns">
                     <TurnIcon />{detail()!.turn_count}
                   </span>
-                  <span class="stat-sep">·</span>
-                  <span class="stat" title="Tool calls">
+                  <span class={styles.statSep}>·</span>
+                  <span class={styles.stat} title="Tool calls">
                     <ToolIcon />{detail()!.tool_count}
                   </span>
-                  <span class="stat-sep">·</span>
+                  <span class={styles.statSep}>·</span>
                   <span
-                    class="stat"
+                    class={styles.stat}
                     title={`Context: ${Math.round((detail()!.context_tokens / contextWindow(detail()!.model)) * 100)}% of ${fmt(contextWindow(detail()!.model))}`}
                   >
                     <CtxGauge pct={(detail()!.context_tokens / contextWindow(detail()!.model)) * 100} />
@@ -332,7 +333,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
             </Show>
           </div>
 
-          <div class="tb-actions">
+          <div class={styles.tbActions}>
             <Show
               when={isSession()}
               fallback={<button class="btn primary" onClick={() => openGhostty(false)}>+ New in Ghostty</button>}
@@ -350,27 +351,27 @@ export default function Toolbar(props: { selected: Selection | null }) {
         </div>
 
         <Show when={showWt()}>
-          <div class="tb-worktrees">
+          <div class={styles.tbWorktrees}>
             <For each={worktrees()} fallback={<span class="dim sm">no worktrees</span>}>
               {(w) => (
-                <div class="wt-row">
-                  <span class="wt-branch">{w.branch || "(detached)"}</span>
-                  <span class="wt-path dim">{w.path}</span>
-                  <Show when={w.is_main}><span class="wt-main">main</span></Show>
+                <div class={styles.wtRow}>
+                  <span class={styles.wtBranch}>{w.branch || "(detached)"}</span>
+                  <span class={`${styles.wtPath} dim`}>{w.path}</span>
+                  <Show when={w.is_main}><span class={styles.wtMain}>main</span></Show>
                   <Show when={!w.is_main}>
                     <button class="btn xs ghost" onClick={() => removeWorktree(w.path)}>remove</button>
                   </Show>
                 </div>
               )}
             </For>
-            <div class="wt-add">
-              <input class="wt-input" value={wtPath()} placeholder="worktree path" onInput={(e) => setWtPath(e.currentTarget.value)} />
+            <div class={styles.wtAdd}>
+              <input class={styles.wtInput} value={wtPath()} placeholder="worktree path" onInput={(e) => setWtPath(e.currentTarget.value)} />
               <button class="btn sm" onClick={addWorktree}>+ Add for {sel()!.branch}</button>
             </div>
           </div>
         </Show>
 
-        <Show when={err()}><div class="tb-err">{err()}</div></Show>
+        <Show when={err()}><div class={styles.tbErr}>{err()}</div></Show>
       </Show>
     </div>
   );
