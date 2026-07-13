@@ -16,7 +16,7 @@
   border-radius: 50%;
   background: var(--border);
   cursor: default;
-  transition: background 0.12s ease;
+  transition: background var(--sway-duration-fast) ease;
 }
 
 .winControls:hover .winDot.close {
