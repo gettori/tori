@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
-import Sidebar, { type Selection } from "./components/Sidebar";
+import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
 import Toolbar from "./components/Toolbar";
@@ -137,7 +137,7 @@ function App() {
       <div class="body">
         <aside class="pane sidebar" style={{ width: `${sidebar()}px` }}>
           <div class="pane-body tree-body">
-            <Sidebar selected={selected()} onSelect={setSelected} />
+            <LeftSidebar selected={selected()} onSelect={setSelected} />
           </div>
         </aside>
 
