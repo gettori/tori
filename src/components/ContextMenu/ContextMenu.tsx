@@ -1,5 +1,6 @@
 import { For, onCleanup, onMount, createSignal } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./ContextMenu.module.css";
 
 // A right-click menu entry: an action row, or a visual separator.
 export type MenuItem =
@@ -51,18 +52,18 @@ export default function ContextMenu(props: { menu: MenuState; onClose: () => voi
     <Portal>
       <div
         ref={el}
-        class="ctx-menu"
+        class={styles.ctxMenu}
         style={{ left: `${pos().left}px`, top: `${pos().top}px` }}
         onContextMenu={(e) => e.preventDefault()}
       >
         <For each={props.menu.items}>
           {(it) =>
             "separator" in it ? (
-              <div class="ctx-sep" />
+              <div class={styles.ctxSep} />
             ) : (
               <div
-                class="ctx-item"
-                classList={{ danger: !!it.danger, warn: !!it.warn, disabled: !!it.disabled }}
+                class={styles.ctxItem}
+                classList={{ [styles.danger]: !!it.danger, [styles.warn]: !!it.warn, [styles.disabled]: !!it.disabled }}
                 onClick={() => {
                   if (it.disabled) return;
                   props.onClose();

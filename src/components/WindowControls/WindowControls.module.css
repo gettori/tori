@@ -1,0 +1,30 @@
+/* Custom traffic lights: smaller, centered, gray until the group is hovered */
+.winControls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+  padding: 0 calc(16px * var(--ui-density));
+  -webkit-app-region: no-drag;
+}
+
+.winDot {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: default;
+  transition: background 0.12s ease;
+}
+
+.winControls:hover .winDot.close {
+  background: #ff5f57;
+}
+.winControls:hover .winDot.min {
+  background: #febc2e;
+}
+.winControls:hover .winDot.zoom {
+  background: #28c840;
+}

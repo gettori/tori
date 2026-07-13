@@ -102,37 +102,6 @@ body.dragging .term-host {
   color: var(--text);
 }
 
-/* Custom traffic lights: smaller, centered, gray until the group is hovered */
-.win-controls {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-density));
-  padding: 0 calc(16px * var(--ui-density));
-  -webkit-app-region: no-drag;
-}
-
-.win-dot {
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--border);
-  cursor: default;
-  transition: background 0.12s ease;
-}
-
-.win-controls:hover .win-dot.close {
-  background: #ff5f57;
-}
-.win-controls:hover .win-dot.min {
-  background: #febc2e;
-}
-.win-controls:hover .win-dot.zoom {
-  background: #28c840;
-}
-
 .pane {
   display: flex;
   flex-direction: column;
@@ -275,50 +244,6 @@ body.dragging .term-host {
   color: var(--danger, #e06c75);
 }
 .gear-divider {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--border);
-}
-
-/* ---- Generic right-click context menu (portaled) ---- */
-.ctx-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 170px;
-  max-width: 320px;
-  padding: calc(4px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-}
-
-.ctx-item {
-  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
-  border-radius: calc(4px * var(--ui-radius-scale));
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ctx-item:hover {
-  background: var(--hover);
-}
-.ctx-item.danger {
-  color: var(--danger, #e06c75);
-}
-.ctx-item.warn {
-  color: var(--warn, #d19a66);
-}
-.ctx-item.disabled {
-  color: var(--text-dim);
-  cursor: default;
-}
-.ctx-item.disabled:hover {
-  background: transparent;
-}
-
-.ctx-sep {
   height: 1px;
   margin: 4px 6px;
   background: var(--border);
@@ -670,70 +595,6 @@ body.dragging .term-host {
 }
 
 /* Toast notifications (bottom-right stack; see Toasts.tsx). */
-.toast-stack {
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  gap: calc(8px * var(--ui-density));
-  max-width: min(380px, calc(100vw - 28px));
-  pointer-events: none;
-}
-.toast {
-  display: flex;
-  align-items: flex-start;
-  gap: calc(8px * var(--ui-density));
-  padding: calc(9px * var(--ui-density)) calc(10px * var(--ui-density)) calc(9px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  line-height: 1.4;
-  color: var(--text);
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-  pointer-events: auto;
-  animation: toast-in 140ms ease-out;
-}
-.toast.error {
-  border-left-color: #e06c75;
-}
-.toast.info {
-  border-left-color: var(--accent);
-}
-.toast-msg {
-  flex: 1;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 40vh;
-  overflow-y: auto;
-}
-.toast-close {
-  flex: none;
-  margin-top: -1px;
-  padding: 0 calc(2px * var(--ui-density));
-  font-size: calc(15px * var(--ui-scale));
-  line-height: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.toast-close:hover {
-  color: var(--text);
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .row {
   display: flex;
@@ -932,7 +793,6 @@ body.dragging .term-host {
   font-family: Menlo, Monaco, monospace;
   font-size: calc(11px * var(--ui-scale));
 }
-
 
 .arch-pill {
   color: #b08000;
@@ -1782,34 +1642,6 @@ body.dragging .term-host {
   padding: calc(4px * var(--ui-density)) 0;
   font-size: calc(13px * var(--ui-scale));
   user-select: none;
-}
-
-/* Disclosure chevron (shared `<Chevron>`): a single `›` glyph that rotates 90°
-   when expanded (the VS Code disclosure style), boxed to match `.seti-icon`'s
-   leading column so it aligns in both the file tree and the sidebar. */
-.chevron {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--text-dim);
-  /* `›` is a thin glyph, so it runs a touch larger than the filled seti icons
-     to optically match their weight at the same 16px slot. */
-  font-size: calc(20px * var(--ui-scale));
-  line-height: 1;
-}
-/* Inner span wraps just the glyph so the rotation pivots on the chevron itself
-   (stays in place on expand). The fixed 16px height keeps the glyph from
-   making rows taller. */
-.chevron .chev {
-  display: inline-flex;
-  line-height: 1;
-  transition: transform 0.1s ease;
-}
-.chevron .chev.open {
-  transform: rotate(90deg);
 }
 
 .review-panel .tree-empty {

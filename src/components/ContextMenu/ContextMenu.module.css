@@ -1,0 +1,43 @@
+/* Generic right-click context menu (portaled). */
+.ctxMenu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 170px;
+  max-width: 320px;
+  padding: calc(4px * var(--ui-density));
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(6px * var(--ui-radius-scale));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.ctxItem {
+  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctxItem:hover {
+  background: var(--hover);
+}
+.ctxItem.danger {
+  color: var(--danger, #e06c75);
+}
+.ctxItem.warn {
+  color: var(--warn, #d19a66);
+}
+.ctxItem.disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+.ctxItem.disabled:hover {
+  background: transparent;
+}
+
+.ctxSep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
