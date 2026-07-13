@@ -4,7 +4,7 @@ import TerminalArea from "./components/TerminalArea";
 import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
-import QuickOpen from "./components/QuickOpen";
+import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import SettingsPanel from "./components/SettingsPanel";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";

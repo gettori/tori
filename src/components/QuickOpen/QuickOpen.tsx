@@ -1,8 +1,9 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR } from "../events";
-import FileIcon from "../seti/FileIcon";
-import { fuzzyScore } from "../fuzzy";
+import { emitWith, OPEN_IN_EDITOR } from "../../events";
+import FileIcon from "../../seti/FileIcon";
+import { fuzzyScore } from "../../fuzzy";
+import styles from "./QuickOpen.module.css";
 
 const MAX_RESULTS = 200;
 
@@ -69,11 +70,11 @@ export default function QuickOpen(props: { root: string | null; onClose: () => v
   }
 
   return (
-    <div class="qo-backdrop" onClick={props.onClose}>
-      <div class="qo-panel" onClick={(e) => e.stopPropagation()}>
+    <div class={styles.qoBackdrop} onClick={props.onClose}>
+      <div class={styles.qoPanel} onClick={(e) => e.stopPropagation()}>
         <input
           ref={input}
-          class="qo-input"
+          class={styles.qoInput}
           placeholder="Go to file…"
           value={query()}
           onInput={(e) => {
@@ -82,18 +83,18 @@ export default function QuickOpen(props: { root: string | null; onClose: () => v
           }}
           onKeyDown={onKeyDown}
         />
-        <div class="qo-list">
-          <Show when={results().length} fallback={<div class="qo-empty">No matching files</div>}>
+        <div class={styles.qoList}>
+          <Show when={results().length} fallback={<div class={styles.qoEmpty}>No matching files</div>}>
             <For each={results()}>
               {(rel, i) => (
                 <div
-                  class="qo-item"
-                  classList={{ active: i() === index() }}
+                  class={styles.qoItem}
+                  classList={{ [styles.active]: i() === index() }}
                   onClick={() => open(rel)}
                   onMouseEnter={() => setIndex(i())}
                 >
                   <FileIcon name={rel.split("/").pop()!} />
-                  <span class="qo-name">{rel}</span>
+                  <span class={styles.qoName}>{rel}</span>
                 </div>
               )}
             </For>
