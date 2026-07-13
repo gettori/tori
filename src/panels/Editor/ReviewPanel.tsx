@@ -1,7 +1,8 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR } from "../events";
+import { emitWith, OPEN_IN_EDITOR } from "../../events";
+import styles from "./ReviewPanel.module.css";
 
 type FileStatus = { status: string; path: string };
 
@@ -79,17 +80,17 @@ export default function ReviewPanel(props: { root: string | null }) {
   onCleanup(() => unlisten?.());
 
   return (
-    <div class="review-panel">
+    <div class={styles.reviewPanel}>
       <Show when={files().length} fallback={<div class="tree-empty">No changes</div>}>
         <For each={files()}>
           {(f) => (
-            <div class="review-file">
-              <div class="review-row" onClick={() => toggleDiff(f.path)} title={f.path}>
-                <span class={`review-status ${statusClass(f.status)}`}>
+            <div>
+              <div class={styles.reviewRow} onClick={() => toggleDiff(f.path)} title={f.path}>
+                <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>
                   {f.status.trim() || "?"}
                 </span>
                 <span
-                  class="review-name"
+                  class={styles.reviewName}
                   onClick={(e) => {
                     e.stopPropagation();
                     openFile(f.path);
@@ -99,9 +100,9 @@ export default function ReviewPanel(props: { root: string | null }) {
                 </span>
               </div>
               <Show when={expanded() === f.path}>
-                <div class="review-diff">
+                <div class={styles.reviewDiff}>
                   <For each={diff().split("\n")}>
-                    {(line) => <div class={`diff-line ${diffLineClass(line)}`}>{line || " "}</div>}
+                    {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
                   </For>
                 </div>
               </Show>
