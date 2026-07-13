@@ -1,6 +1,7 @@
 import { createSignal, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // One direct child of the group folder, as returned by `group_delete_preview`.
 export type DeleteEntry = {
@@ -113,12 +114,12 @@ export default function ConfirmDeleteGroup(props: {
             spellcheck={false}
           />
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button class={`${styles.modalBtn} ${styles.danger}`} disabled={!matches()} onClick={() => props.onConfirm()}>
+            </Button>
+            <Button variant="danger" disabled={!matches()} onClick={() => props.onConfirm()}>
               {props.confirmLabel ?? "Delete group"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

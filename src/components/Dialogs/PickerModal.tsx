@@ -2,6 +2,7 @@ import { createSignal, createMemo, createEffect, onMount, For, Show } from "soli
 import { Portal } from "solid-js/web";
 import { fuzzyScore } from "../../utils/fuzzy";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // A portaled, filterable single-select picker modal. Replaces a comma-joined
 // prompt title when the caller must pick one item from a potentially large list
@@ -145,12 +146,12 @@ export default function PickerModal(props: {
             </Show>
           </div>
           <div class={styles.modalActions}>
-            <button type="button" class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button type="button" class={`${styles.modalBtn} ${styles.primary}`} onClick={() => commitTyped()}>
+            </Button>
+            <Button variant="primary" onClick={() => commitTyped()}>
               {props.okLabel ?? "OK"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // The in-app credential dialog for the askpass bridge. A backgrounded git op
 // (fetch/pull/push) that needs a credential emits `askpass://prompt` per field;
@@ -92,12 +93,12 @@ export default function AskpassDialog() {
                 </div>
               </Show>
               <div class={styles.modalActions}>
-                <button class={styles.modalBtn} onClick={() => cancel()}>
+                <Button onClick={() => cancel()}>
                   Cancel
-                </button>
-                <button class={`${styles.modalBtn} ${styles.primary}`} onClick={() => submit()}>
+                </Button>
+                <Button variant="primary" onClick={() => submit()}>
                   OK
-                </button>
+                </Button>
               </div>
             </div>
           </div>

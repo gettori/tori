@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // A portaled text-input modal that replaces window.prompt, which macOS WKWebView
 // (Tauri's webview) does not implement, so every prompt()-based sidebar action
@@ -55,12 +56,12 @@ export default function PromptModal(props: {
             onKeyDown={onKeyDown}
           />
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button class={`${styles.modalBtn} ${styles.primary}`} onClick={() => props.onSubmit(value())}>
+            </Button>
+            <Button variant="primary" onClick={() => props.onSubmit(value())}>
               {props.okLabel ?? "OK"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { createSignal, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // Turn a non-git folder into a repo, in one dialog. Replaces the separate
 // "Initialize git repo…" and "Bare + worktree…" menu items: pick the initial
@@ -76,12 +77,12 @@ export default function InitGitDialog(props: {
           </div>
 
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button class={`${styles.modalBtn} ${styles.primary}`} disabled={props.busy} onClick={() => confirm()}>
+            </Button>
+            <Button variant="primary" disabled={props.busy} onClick={() => confirm()}>
               {props.busy ? "Initializing…" : "Initialize"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

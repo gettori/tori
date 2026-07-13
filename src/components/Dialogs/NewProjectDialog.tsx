@@ -1,6 +1,7 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 export type NewProjectMode = "folder" | "clone" | "bare";
 
@@ -118,16 +119,16 @@ export default function NewProjectDialog(props: {
           />
 
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button
-              class={`${styles.modalBtn} ${styles.primary}`}
+            </Button>
+            <Button
+              variant="primary"
               disabled={props.busy || !canConfirm()}
               onClick={() => confirm()}
             >
               {props.busy ? "Working…" : "Create"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
