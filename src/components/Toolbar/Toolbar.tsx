@@ -4,6 +4,7 @@ import { emit, SESSIONS_REFRESH } from "../../utils/events";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
+import Button from "../Button/Button";
 import styles from "./Toolbar.module.css";
 
 type SessionDetail = {
@@ -278,8 +279,8 @@ export default function Toolbar(props: { selected: Selection | null }) {
                     onInput={(e) => setNameDraft(e.currentTarget.value)}
                     onKeyDown={(e) => e.key === "Enter" && saveName()}
                   />
-                  <button class="btn sm" onClick={saveName}>Save</button>
-                  <button class="btn sm ghost" onClick={() => setRenaming(false)}>Cancel</button>
+                  <Button size="sm" onClick={saveName}>Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>Cancel</Button>
                 </div>
               }
             >
@@ -336,17 +337,17 @@ export default function Toolbar(props: { selected: Selection | null }) {
           <div class={styles.tbActions}>
             <Show
               when={isSession()}
-              fallback={<button class="btn primary" onClick={() => openGhostty(false)}>+ New in Ghostty</button>}
+              fallback={<Button size="sm" variant="primary" onClick={() => openGhostty(false)}>+ New in Ghostty</Button>}
             >
-              <button class="btn primary" onClick={() => openGhostty(true)}>Resume in Ghostty</button>
-              <button class="btn" onClick={() => { setNameDraft(displayName()); setRenaming(true); }}>Rename</button>
-              <button class="btn" onClick={toggleArchive}>{sel()!.sessionArchived ? "Unarchive" : "Archive"}</button>
-              <button class={`btn ${confirmDelete() ? "danger" : ""}`} onClick={doDelete}>
+              <Button size="sm" variant="primary" onClick={() => openGhostty(true)}>Resume in Ghostty</Button>
+              <Button size="sm" onClick={() => { setNameDraft(displayName()); setRenaming(true); }}>Rename</Button>
+              <Button size="sm" onClick={toggleArchive}>{sel()!.sessionArchived ? "Unarchive" : "Archive"}</Button>
+              <Button size="sm" variant={confirmDelete() ? "danger" : "default"} onClick={doDelete}>
                 {confirmDelete() ? "Really?" : "Delete"}
-              </button>
+              </Button>
             </Show>
-            <button class="btn" onClick={openVSCode} title="Open in the real VS Code app">VSCode ↗</button>
-            <button class="btn" onClick={toggleWt}>Worktrees</button>
+            <Button size="sm" onClick={openVSCode} title="Open in the real VS Code app">VSCode ↗</Button>
+            <Button size="sm" onClick={toggleWt}>Worktrees</Button>
           </div>
         </div>
 
@@ -359,14 +360,14 @@ export default function Toolbar(props: { selected: Selection | null }) {
                   <span class={`${styles.wtPath} dim`}>{w.path}</span>
                   <Show when={w.is_main}><span class={styles.wtMain}>main</span></Show>
                   <Show when={!w.is_main}>
-                    <button class="btn xs ghost" onClick={() => removeWorktree(w.path)}>remove</button>
+                    <Button size="xs" variant="ghost" onClick={() => removeWorktree(w.path)}>remove</Button>
                   </Show>
                 </div>
               )}
             </For>
             <div class={styles.wtAdd}>
               <input class={styles.wtInput} value={wtPath()} placeholder="worktree path" onInput={(e) => setWtPath(e.currentTarget.value)} />
-              <button class="btn sm" onClick={addWorktree}>+ Add for {sel()!.branch}</button>
+              <Button size="sm" onClick={addWorktree}>+ Add for {sel()!.branch}</Button>
             </div>
           </div>
         </Show>
