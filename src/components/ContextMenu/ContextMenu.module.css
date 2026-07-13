@@ -7,17 +7,18 @@
   padding: calc(4px * var(--ui-density));
   background: var(--pane-bg);
   border: 1px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 .ctxItem {
   padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   color: var(--text);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-sm);
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--sway-duration-fast) ease;
 }
 .ctxItem:hover {
   background: var(--hover);

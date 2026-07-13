@@ -32,6 +32,8 @@ import { isUnderPath, countRunningUnder } from "../../utils/pathScope";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
+import Icon from "../../components/Icon/Icon";
+import { Settings } from "lucide-solid";
 import styles from "./LeftSidebar.module.css";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
@@ -1469,7 +1471,7 @@ export default function LeftSidebar(props: {
             title="Sidebar actions"
             onClick={() => setGearOpen(!gearOpen())}
           >
-            ⚙
+            <Icon icon={Settings} />
           </button>
           <Show when={gearOpen()}>
             <div class={styles.gearMenu}>

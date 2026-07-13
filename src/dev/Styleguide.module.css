@@ -175,6 +175,27 @@
   margin-top: calc(12px * var(--ui-density));
 }
 
+.patternGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: calc(24px * var(--ui-density));
+  align-items: start;
+}
+.patternCell {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-density));
+}
+.menuRow {
+  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  border-radius: var(--sway-radius-sm);
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+}
+.menuRow:hover {
+  background: var(--hover);
+}
+
 .spaceRow {
   display: flex;
   flex-wrap: wrap;
