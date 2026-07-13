@@ -139,7 +139,7 @@ body.dragging {
 }
 
 .splitter:hover {
-  background: var(--accent);
+  background: var(--brand);
 }
 
 /* ---- Sidebar tree ---- */
@@ -349,7 +349,7 @@ body.dragging {
 .tab-overflow-count:hover,
 .tab-overflow-count.active {
   color: var(--text);
-  border-color: var(--accent);
+  border-color: var(--brand);
 }
 
 /* The dropdown listing the overflow tabs (portaled to <body>, so the bar's

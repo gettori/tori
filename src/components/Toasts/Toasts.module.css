@@ -20,8 +20,8 @@
   background: var(--pane-head-bg);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-lg);
   pointer-events: auto;
   animation: toast-in 140ms ease-out;
 }
@@ -29,7 +29,7 @@
   border-left-color: #e06c75;
 }
 .toast.info {
-  border-left-color: var(--accent);
+  border-left-color: var(--brand);
 }
 .toastMsg {
   flex: 1;

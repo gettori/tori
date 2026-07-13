@@ -47,9 +47,9 @@
 }
 
 .followToggle.active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--brand-on);
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 /* Editor tab bar */
@@ -88,7 +88,7 @@
 
 .editorTabs :global(.tab-dirty) {
   font-size: calc(10px * var(--ui-scale));
-  color: var(--accent);
+  color: var(--brand);
 }
 
 .editorTabs :global(.tab-close) {

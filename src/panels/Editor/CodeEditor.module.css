@@ -41,7 +41,7 @@
   font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   background: var(--pane-head-bg);
-  border-bottom: 1px solid var(--accent);
+  border-bottom: 1px solid var(--brand);
 }
 
 .reloadBanner button {

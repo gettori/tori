@@ -4,6 +4,7 @@ import Icon from "../components/Icon/Icon";
 import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";
 import styles from "./Styleguide.module.css";
+import patterns from "../styles/patterns.module.css";
 
 /** Dev-only visual QA surface for the design system. NOT a router route (sway
  *  has none): App renders it when `import.meta.env.DEV && location.hash ===
@@ -17,6 +18,7 @@ const BRAND = [
   ["--brand-subtle", "pill fill (translucent)"],
   ["--brand-bar", "left active-item accent bar"],
   ["--brand-ring", "focus ring (translucent)"],
+  ["--brand-on", "text/icon on a filled --brand surface"],
 ] as const;
 
 const SEMANTIC = [
@@ -197,6 +199,33 @@ export default function Styleguide() {
               </div>
             )}
           </For>
+        </section>
+
+        <section>
+          <h2>Chrome patterns</h2>
+          <div class={styles.patternGrid}>
+            <div class={styles.patternCell}>
+              <span class={styles.note}>input (.input)</span>
+              <input class={patterns.input} placeholder="Focus me for the gold ring" />
+            </div>
+            <div class={styles.patternCell}>
+              <span class={styles.note}>menu surface (.menuSurface)</span>
+              <div class={patterns.menuSurface}>
+                <div class={styles.menuRow}>Menu item</div>
+                <div class={styles.menuRow}>Another item</div>
+              </div>
+            </div>
+            <div class={styles.patternCell}>
+              <span class={styles.note}>pill (.pill)</span>
+              <span class={patterns.pill}>
+                <Icon icon={GitBranch} size={13} /> active pill
+              </span>
+            </div>
+            <div class={styles.patternCell}>
+              <span class={styles.note}>card (.card)</span>
+              <div class={patterns.card}>A spacious card with soft elevation.</div>
+            </div>
+          </div>
         </section>
 
         <section>
