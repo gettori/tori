@@ -2,7 +2,7 @@ import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
-import Toolbar from "./components/Toolbar";
+import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
