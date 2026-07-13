@@ -1773,8 +1773,8 @@ body.dragging .term-host {
   background: var(--pane-bg);
 }
 
-/* File tree (right of the editor) */
-.file-tree,
+/* File tree (right of the editor). The FileTree-specific rules moved to
+   src/components/FileTree.css; .review-panel (its owner not yet migrated) stays. */
 .review-panel {
   flex: 1;
   overflow: auto;
@@ -1782,47 +1782,6 @@ body.dragging .term-host {
   padding: 4px 0;
   font-size: 13px;
   user-select: none;
-}
-
-/* Header actions for the editable Shared tree; sticks to the top so New
-   File/New Folder stay reachable while the tree scrolls. */
-.tree-actions {
-  position: sticky;
-  top: -4px;
-  display: flex;
-  gap: 6px;
-  padding: 4px 8px;
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
-}
-
-.tree-action {
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.tree-action:hover {
-  color: var(--text);
-  background: var(--pane-head-bg);
-}
-
-.file-tree .tree-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  cursor: pointer;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.file-tree .tree-row:hover {
-  background: var(--hover);
 }
 
 /* Disclosure chevron (shared `<Chevron>`): a single `›` glyph that rotates 90°
@@ -1853,11 +1812,6 @@ body.dragging .term-host {
   transform: rotate(90deg);
 }
 
-.file-tree .tree-name.is-dir {
-  color: var(--text);
-}
-
-.file-tree .tree-empty,
 .review-panel .tree-empty {
   padding: 8px 12px;
   color: var(--text-dim);

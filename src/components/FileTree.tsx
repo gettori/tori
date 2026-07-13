@@ -5,6 +5,7 @@ import FileIcon from "../seti/FileIcon";
 import Chevron from "./Chevron";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
 import { type ConfirmOpts } from "./ConfirmDialog";
+import "./FileTree.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
