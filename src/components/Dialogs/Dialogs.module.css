@@ -68,48 +68,9 @@
   gap: calc(8px * var(--ui-density));
   margin-top: 14px;
 }
-.modalBtn {
-  padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
-  color: var(--text);
-  cursor: pointer;
-}
-.modalBtn:hover {
-  background: var(--hover);
-}
-.modalBtn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.modalBtn.primary:hover {
-  filter: brightness(1.08);
-}
-.modalBtn.danger {
-  background: var(--danger, #e06c75);
-  border-color: var(--danger, #e06c75);
-  color: #fff;
-}
-.modalBtn.danger:hover {
-  filter: brightness(1.08);
-}
-.modalBtn.warn {
-  /* A darker orange than the --warn text color, so white label text stays legible. */
-  background: var(--warn-strong, #b56319);
-  border-color: var(--warn-strong, #b56319);
-  color: #fff;
-}
-.modalBtn.warn:hover {
-  filter: brightness(1.08);
-}
-.modalBtn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  filter: none;
-}
+/* Modal action buttons now use the shared <Button> component; the old modal
+   button block was removed in the button unification. The .warn token lives on
+   below in .delTag.warn. */
 
 /* ---- Filterable single-select picker (PickerModal). Reuses .modalBackdrop /
    .modal chrome, adds a scrollable result list and an in-input clear button. ---- */

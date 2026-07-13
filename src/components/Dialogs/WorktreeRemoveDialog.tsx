@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // The removal confirmation for a single worktree. Shows what is being deleted (the
 // branch + folder path), warns when the tree has uncommitted or unpushed work about
@@ -109,12 +110,12 @@ export default function WorktreeRemoveDialog(props: {
           </Show>
 
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button ref={ok} class={`${styles.modalBtn} ${styles.warn}`} disabled={props.busy} onClick={() => confirm()}>
+            </Button>
+            <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
               {props.busy ? "Removing…" : "Remove worktree"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
