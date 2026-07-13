@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import styles from "./WindowControls.module.css";
 
 // Custom macOS-style traffic lights: smaller than native, vertically centered,
 // and gray until the group is hovered. The native buttons are hidden in Rust
@@ -6,19 +7,19 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 export default function WindowControls() {
   const win = getCurrentWindow();
   return (
-    <div class="win-controls">
+    <div class={styles.winControls}>
       <button
-        class="win-dot close"
+        class={`${styles.winDot} ${styles.close}`}
         aria-label="Close"
         onClick={() => win.close()}
       />
       <button
-        class="win-dot min"
+        class={`${styles.winDot} ${styles.min}`}
         aria-label="Minimize"
         onClick={() => win.minimize()}
       />
       <button
-        class="win-dot zoom"
+        class={`${styles.winDot} ${styles.zoom}`}
         aria-label="Zoom"
         onClick={() => win.toggleMaximize()}
       />

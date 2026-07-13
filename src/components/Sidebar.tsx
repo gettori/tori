@@ -1,7 +1,7 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
+import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu/ContextMenu";
 import PromptModal from "./PromptModal";
 import PickerModal from "./PickerModal";
 import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
@@ -10,7 +10,7 @@ import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 import BranchRemoveDialog from "./BranchRemoveDialog";
 import InitGitDialog from "./InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "./NewProjectDialog";
-import Toasts, { type Toast } from "./Toasts";
+import Toasts, { type Toast } from "./Toasts/Toasts";
 import {
   on as onEvent,
   onWith,
@@ -30,7 +30,7 @@ import {
 import { isUnderPath, countRunningUnder } from "../pathScope";
 import ClaudeIcon from "../seti/ClaudeIcon";
 import PiIcon from "../seti/PiIcon";
-import Chevron from "./Chevron";
+import Chevron from "./Chevron/Chevron";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
 // the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).

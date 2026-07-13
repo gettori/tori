@@ -3,7 +3,7 @@ import Sidebar, { type Selection } from "./components/Sidebar";
 import TerminalArea from "./components/TerminalArea";
 import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
-import WindowControls from "./components/WindowControls";
+import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen";
 import AskpassDialog from "./components/AskpassDialog";
 import SettingsPanel from "./components/SettingsPanel";

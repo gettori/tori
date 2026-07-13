@@ -2,8 +2,8 @@ import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../../events";
 import FileIcon from "../../seti/FileIcon";
-import Chevron from "../Chevron";
-import ContextMenu, { type MenuItem, type MenuState } from "../ContextMenu";
+import Chevron from "../Chevron/Chevron";
+import ContextMenu, { type MenuItem, type MenuState } from "../ContextMenu/ContextMenu";
 import { type ConfirmOpts } from "../ConfirmDialog";
 import styles from "./FileTree.module.css";
 
