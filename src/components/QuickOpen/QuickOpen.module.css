@@ -1,0 +1,64 @@
+/* Quick-open (⌘P) overlay */
+.qoBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: calc(80px * var(--ui-density));
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.qoPanel {
+  width: 560px;
+  max-width: 90vw;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(8px * var(--ui-radius-scale));
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.qoInput {
+  flex: none;
+  padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(13px * var(--ui-scale));
+  color: var(--text);
+  background: var(--input-bg);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+}
+
+.qoList {
+  overflow-y: auto;
+}
+
+.qoItem {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.qoItem .qoName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qoItem.active {
+  background: var(--sel);
+}
+
+.qoEmpty {
+  padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim);
+}
