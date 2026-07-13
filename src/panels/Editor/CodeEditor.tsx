@@ -10,8 +10,8 @@ import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
-import { diffGutterExtension, setDiffMarkers, type Hunk } from "../../diffGutter";
-import { lspPluginFor } from "../../lspClient";
+import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
+import { lspPluginFor } from "./lspClient";
 import styles from "./CodeEditor.module.css";
 
 function relTo(root: string, abs: string): string {

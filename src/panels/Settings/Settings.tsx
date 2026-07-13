@@ -1,7 +1,7 @@
 import { onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import { settings, saveSettings, type Appearance, type Typography, type Layout } from "../../settings";
+import { settings, saveSettings, type Appearance, type Typography, type Layout } from "./settingsStore";
 import { listSelectableThemes } from "../../theme";
 import styles from "./Settings.module.css";
 

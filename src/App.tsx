@@ -8,7 +8,7 @@ import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import Settings from "./panels/Settings/Settings";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./utils/events";
-import { initSettings } from "./settings";
+import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
