@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CodeEditor from "./CodeEditor";
-import FileTree from "./FileTree";
+import FileTree from "./FileTree/FileTree";
 import PromptModal from "./PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
