@@ -52,8 +52,7 @@ body.dragging {
 
 /* While dragging a splitter, stop the editor and terminal from swallowing
    pointer events so window-level pointermove keeps firing. */
-body.dragging .code-editor,
-body.dragging .term-host {
+body.dragging .code-editor {
   pointer-events: none;
 }
 
@@ -791,46 +790,7 @@ body.dragging .term-host {
   font-size: calc(11px * var(--ui-scale));
 }
 
-/* Terminal pane */
-.term-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.term-tabs {
-  display: flex;
-  align-items: flex-end;
-  gap: calc(2px * var(--ui-density));
-  min-height: 34px;
-  padding: 0 calc(4px * var(--ui-density));
-  background: var(--pane-head-bg);
-  border-bottom: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.term-tab {
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-density));
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(13px * var(--ui-scale));
-  color: var(--text-dim);
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: calc(4px * var(--ui-radius-scale)) calc(4px * var(--ui-radius-scale)) 0 0;
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-.term-tab.active {
-  color: var(--text);
-  background: var(--pane-bg);
-}
-
+/* Shared tab-bar content (terminal + editor tabs) */
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -847,192 +807,6 @@ body.dragging .term-host {
 .tab-close:hover {
   background: #444;
   color: #fff;
-}
-
-/* Split button: "+ Claude" main action + caret that opens a launch menu.
-   align-items: stretch makes the caret match the taller main half's height. */
-.term-new-split {
-  position: relative;
-  display: inline-flex;
-  align-items: stretch;
-  margin-left: 2px;
-}
-
-.term-new {
-  align-self: stretch;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  font-size: calc(13px * var(--ui-scale));
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.term-new-main {
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  border-radius: calc(4px * var(--ui-radius-scale)) 0 0 calc(4px * var(--ui-radius-scale));
-  border-right: none;
-}
-
-.term-new-caret {
-  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
-  border-radius: 0 4px 4px 0;
-}
-
-/* The caret glyph is a › rotated to point down; it flips when the menu is open. */
-.term-new-chevron {
-  display: inline-block;
-  line-height: 1;
-  transform: rotate(90deg);
-  transition: transform 0.12s ease;
-}
-
-.term-new-caret[aria-expanded="true"] .term-new-chevron {
-  transform: rotate(-90deg);
-}
-
-.term-new:hover:not(:disabled) {
-  color: #fff;
-  border-color: var(--accent);
-}
-
-/* Keep the shared divider crisp when only one half is hovered. */
-.term-new-main:hover:not(:disabled) + .term-new-caret:not(:hover) {
-  border-left-color: var(--accent);
-}
-
-.term-new:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.term-new-menu {
-  position: fixed;
-  transform: translateX(-100%);
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  min-width: 140px;
-  padding: calc(4px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-}
-
-.term-new-menu-item {
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: calc(13px * var(--ui-scale));
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  border-radius: calc(4px * var(--ui-radius-scale));
-  cursor: pointer;
-}
-
-.term-new-menu-item:hover {
-  color: #fff;
-  background: var(--accent);
-}
-
-.term-stage {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  display: flex;
-  background: var(--bg);
-}
-
-.term-host-wrap {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-.term-host-wrap.hidden {
-  display: none;
-}
-
-.term-host {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  background: var(--bg);
-}
-
-.term-search {
-  position: absolute;
-  top: 6px;
-  right: 14px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.term-search-input {
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
-  background: var(--input-bg);
-  border: 1px solid var(--border);
-  border-radius: calc(3px * var(--ui-radius-scale));
-  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
-  outline: none;
-}
-
-.term-search button {
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0 calc(3px * var(--ui-density));
-}
-
-.term-search button:hover {
-  color: var(--text);
-}
-
-.term-host .xterm {
-  /* Padding goes on the xterm element itself: FitAddon subtracts this element's
-     padding when computing rows/cols, so the bottom row isn't clipped. Padding
-     on the host wrapper is NOT accounted for and causes the cut. */
-  height: 100%;
-  padding: 0 0 calc(10px * var(--ui-density)) calc(10px * var(--ui-density));
-  background: var(--bg);
-}
-
-/* Hide the scrollbar: its viewport ignores the padding and shows a light strip
-   on the right. The claude TUI manages its own screen, so the bar isn't needed. */
-.term-host .xterm-viewport {
-  background-color: var(--bg) !important;
-  scrollbar-width: none;
-}
-
-.term-host .xterm-viewport::-webkit-scrollbar {
-  display: none;
-}
-
-.term-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-  font-size: calc(13px * var(--ui-scale));
-  text-align: center;
-  padding: calc(20px * var(--ui-density));
 }
 
 /* Editor pane (code-server iframe) */
@@ -1146,7 +920,7 @@ body.dragging .term-host {
   overflow: hidden;
 }
 
-/* Overflow tab bar (shared by .term-tabs and .editor-tabs via OverflowTabBar) */
+/* Overflow tab bar (shared by the terminal + editor tab bars via OverflowTabBar) */
 
 /* Inert measuring row: a hidden clone of every tab, used only to read true
    widths (gaps/padding/borders intact). Absolute + visibility:hidden keeps it

@@ -1,12 +1,12 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import Sidebar, { type Selection } from "./components/Sidebar";
-import TerminalArea from "./components/TerminalArea";
+import Terminal from "./panels/Terminal/Terminal";
 import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
-import SettingsPanel from "./components/SettingsPanel";
+import Settings from "./panels/Settings/Settings";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { initSettings } from "./settings";
 import "./styles/reset.css";
@@ -146,7 +146,7 @@ function App() {
         <div class="workspace">
           <div class="work-split">
             <main class="pane terminal">
-              <TerminalArea selected={selected()} />
+              <Terminal selected={selected()} />
             </main>
             <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
@@ -161,7 +161,7 @@ function App() {
       </Show>
 
       <Show when={settingsOpen()}>
-        <SettingsPanel onClose={() => setSettingsOpen(false)} />
+        <Settings onClose={() => setSettingsOpen(false)} />
       </Show>
 
       <AskpassDialog />
