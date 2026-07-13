@@ -35,8 +35,23 @@
     --sway-blue-600: #005fb8;
     --sway-blue-900: #094771;
 
+    /* ---- Brand ramp (champagne / brass gold) ----
+       The fixed brand identity, independent of the theme-following blue accent.
+       Chrome selection/focus/active read the semantic --brand-* family below;
+       these primitives are the raw ramp both themes select from. */
+    --sway-gold-50: #faf4e6;
+    --sway-gold-100: #f1e3c4;
+    --sway-gold-200: #e6cf9d;
+    --sway-gold-300: #d9bd85;
+    --sway-gold-400: #cda868;
+    --sway-gold-500: #c19653;
+    --sway-gold-600: #a97f42;
+    --sway-gold-700: #8a6733;
+    --sway-gold-800: #6b4f27;
+    --sway-gold-900: #4a3719;
+
     /* ---- Type ---- */
-    --sway-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --sway-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     --sway-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
     --sway-text-xs: 11px;
     --sway-text-sm: 12px;
@@ -111,6 +126,21 @@
     --warn: #d19a66;
     --warn-strong: #b56319;
     --success: #2ea043;
+
+    /* Brand (champagne gold), dark. A fixed identity that theme-import does NOT
+       repaint (it maps onto --accent/--sel/--bg, never --brand-*). Chrome uses
+       these for selection pills, the left accent bar, focus rings, active icons;
+       editor syntax + git/diff colors stay on --accent and are untouched. */
+    --brand: var(--sway-gold-400);
+    --brand-strong: var(--sway-gold-300);
+    --brand-subtle: rgba(201, 150, 83, 0.16); /* gold-500 @ low alpha: pill fill */
+    --brand-bar: var(--sway-gold-400); /* left active-item accent bar */
+    --brand-ring: rgba(201, 150, 83, 0.5); /* focus ring */
+
+    /* Elevation, dark: deeper/opaquer so floating chrome reads off the dark bg. */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
   }
 
   /* ---- Semantic tokens, light (not user-selectable until the CSS migration
@@ -130,5 +160,29 @@
     --warn: #9a6700;
     --warn-strong: #bc4c00;
     --success: #1a7f37;
+
+    /* Brand (champagne gold), light. Darker ramp stops so the gold stays legible
+       on light chrome (theme-import can repaint chrome light today), and a softer
+       subtle-fill/ring since it sits on a bright surface. */
+    --brand: var(--sway-gold-600);
+    --brand-strong: var(--sway-gold-700);
+    --brand-subtle: rgba(169, 127, 66, 0.14); /* gold-600 @ low alpha: pill fill */
+    --brand-bar: var(--sway-gold-500);
+    --brand-ring: rgba(169, 127, 66, 0.4);
+
+    /* Elevation, light: soft/low-opacity so it reads on a bright surface. */
+    --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.08);
+    --shadow-md: 0 4px 12px rgba(23, 23, 23, 0.12);
+    --shadow-lg: 0 12px 32px rgba(23, 23, 23, 0.18);
   }
+
+  /* ---- Spacing conventions (two-tier density) ----
+     Chrome surfaces (sidebar, toolbar, dialogs, settings, menus, toasts,
+     buttons) are SPACIOUS: generous padding, section rhythm, pills, soft
+     elevation. Reach for --sway-space-5/6/7 (12/16/24px) and --shadow-md/lg.
+     Work surfaces (editor, terminal, file tree, session tree, tabs) stay DENSE:
+     tight rows, upgraded only via radii/hover/type. Reach for --sway-space-2/3
+     (4/6px) and at most --shadow-sm. All padding/gap that should react to the
+     density setting must be `calc(<px> * var(--ui-density))`; radii use
+     `calc(<px> * var(--ui-radius-scale))`; chrome font-size `* var(--ui-scale)`. */
 }
