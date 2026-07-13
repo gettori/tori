@@ -15,16 +15,17 @@
 }
 .modal {
   width: min(420px, calc(100vw - 48px));
-  padding: calc(16px * var(--ui-density));
+  padding: calc(20px * var(--ui-density));
   background: var(--pane-bg);
   border: 1px solid var(--border);
-  border-radius: calc(8px * var(--ui-radius-scale));
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+  border-radius: var(--sway-radius-lg);
+  box-shadow: var(--shadow-lg);
 }
 .modalTitle {
-  font-size: calc(13px * var(--ui-scale));
+  font-size: calc(14px * var(--ui-scale));
+  font-weight: 600;
   color: var(--text);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   white-space: pre-wrap;
 }
 .modalNote {
@@ -45,16 +46,20 @@
 }
 .modalInput {
   width: 100%;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(7px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
   background: var(--input-bg);
   border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   color: var(--text);
   outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
 }
 .modalInput:focus {
   border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .modalHint {
   font-size: calc(11px * var(--ui-scale));
@@ -78,7 +83,7 @@
   display: flex;
   flex-direction: column;
   max-height: min(70vh, 520px);
-  padding: calc(12px * var(--ui-density));
+  padding: calc(16px * var(--ui-density));
 }
 .pickerInputWrap {
   position: relative;
@@ -99,10 +104,10 @@
   margin-top: 10px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
 }
 .pickerItem {
-  padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   cursor: pointer;
@@ -110,6 +115,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pickerItem:hover {
+  background: var(--hover);
+}
+/* Keyboard/selected row wins over hover (declared after, same specificity). */
 .pickerItem.active {
   background: var(--brand-subtle);
 }
@@ -145,7 +154,7 @@
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   background: var(--input-bg);
 }
 .delEmpty {
@@ -192,7 +201,7 @@
 /* ---- Worktree / branch remove dialogs ---- */
 .wtDetail {
   border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   background: var(--input-bg);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   margin-bottom: 10px;
@@ -244,7 +253,7 @@
   display: flex;
   gap: 0;
   border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   overflow: hidden;
   margin-bottom: 10px;
 }

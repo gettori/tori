@@ -18,9 +18,9 @@
   flex-direction: column;
   background: var(--pane-bg);
   border: 1px solid var(--border);
-  border-radius: calc(8px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-lg);
   overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-lg);
 }
 
 .qoInput {
@@ -53,6 +53,11 @@
   text-overflow: ellipsis;
 }
 
+.qoItem:hover {
+  background: var(--hover);
+}
+
+/* Keyboard/selected row wins over hover (declared after, same specificity). */
 .qoItem.active {
   background: var(--brand-subtle);
 }
