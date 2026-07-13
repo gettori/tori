@@ -1,16 +1,16 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu/ContextMenu";
-import PromptModal from "./Dialogs/PromptModal";
-import PickerModal from "./Dialogs/PickerModal";
-import ConfirmDeleteGroup, { type DeleteEntry } from "./Dialogs/ConfirmDeleteGroup";
-import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./Dialogs/ConfirmDialog";
-import WorktreeRemoveDialog from "./Dialogs/WorktreeRemoveDialog";
-import BranchRemoveDialog from "./Dialogs/BranchRemoveDialog";
-import InitGitDialog from "./Dialogs/InitGitDialog";
-import NewProjectDialog, { type NewProjectMode } from "./Dialogs/NewProjectDialog";
-import Toasts, { type Toast } from "./Toasts/Toasts";
+import ContextMenu, { type MenuItem, type MenuState } from "../../components/ContextMenu/ContextMenu";
+import PromptModal from "../../components/Dialogs/PromptModal";
+import PickerModal from "../../components/Dialogs/PickerModal";
+import ConfirmDeleteGroup, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteGroup";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
+import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
+import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
+import InitGitDialog from "../../components/Dialogs/InitGitDialog";
+import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
+import Toasts, { type Toast } from "../../components/Toasts/Toasts";
 import {
   on as onEvent,
   onWith,
@@ -26,11 +26,12 @@ import {
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
-} from "../events";
-import { isUnderPath, countRunningUnder } from "../pathScope";
-import ClaudeIcon from "../seti/ClaudeIcon";
-import PiIcon from "../seti/PiIcon";
-import Chevron from "./Chevron/Chevron";
+} from "../../events";
+import { isUnderPath, countRunningUnder } from "../../pathScope";
+import ClaudeIcon from "../../seti/ClaudeIcon";
+import PiIcon from "../../seti/PiIcon";
+import Chevron from "../../components/Chevron/Chevron";
+import styles from "./LeftSidebar.module.css";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
 // the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).
@@ -130,7 +131,7 @@ function loadExpanded(): Set<string> {
   return new Set<string>();
 }
 
-export default function Sidebar(props: {
+export default function LeftSidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
 }) {
@@ -1247,14 +1248,14 @@ export default function Sidebar(props: {
       <>
         <Show when={isHistorical(u)}>
           <div
-            class={`row dim ${histSub} historical`}
+            class={`${styles.row} ${styles.dim} ${styles[histSub]} ${styles.historical}`}
             onClick={() => toggle(hkey(u))}
             title="Sessions predating this recreated folder"
           >
             <Chevron open={expanded().has(hkey(u))} />
-            <span class="label">Historical ({unitSessions(p, u).length})</span>
+            <span class={styles.label}>Historical ({unitSessions(p, u).length})</span>
             <button
-              class="adopt-btn"
+              class={styles.adoptBtn}
               title="Adopt these sessions into the normal listing"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1266,12 +1267,12 @@ export default function Sidebar(props: {
           </div>
         </Show>
         <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
-          <For each={unitSessions(p, u)} fallback={<div class={`row dim ${sub}`}>no sessions</div>}>
+          <For each={unitSessions(p, u)} fallback={<div class={`${styles.row} ${styles.dim} ${styles[sub]}`}>no sessions</div>}>
             {(s) => {
               const badge = sessionBadge(p, u, s);
               return (
                 <div
-                  class={`row session ${sub} ${props.selected?.sessionId === s.id ? "sel" : ""}`}
+                  class={`${styles.row} ${styles.session} ${styles[sub]} ${props.selected?.sessionId === s.id ? styles.sel : ""}`}
                   onClick={() => selectSession(g, p, u, s)}
                   onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
                   title={s.name || s.title}
@@ -1281,10 +1282,10 @@ export default function Sidebar(props: {
                   <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
                     <PiIcon />
                   </Show>
-                  <span class="label">{s.name || s.title}</span>
+                  <span class={styles.label}>{s.name || s.title}</span>
                   <Show when={badge}>
                     <span
-                      class={`badge ${badge!.hint ? "hint" : ""}`}
+                      class={`${styles.badge} ${badge!.hint ? styles.hint : ""}`}
                       title={
                         badge!.hint
                           ? "Branchless session: files reflect the current checkout"
@@ -1294,7 +1295,7 @@ export default function Sidebar(props: {
                       {badge!.text}
                     </span>
                   </Show>
-                  <span class="when">{ago(s.last_active)}</span>
+                  <span class={styles.when}>{ago(s.last_active)}</span>
                 </div>
               );
             }}
@@ -1450,60 +1451,60 @@ export default function Sidebar(props: {
   });
 
   return (
-    <div class="tree">
-      <div class="tree-search">
+    <div class={styles.tree}>
+      <div class={styles.treeSearch}>
         <input
           ref={searchEl}
-          class="search-input"
+          class={styles.searchInput}
           placeholder="Filter projects / sessions (⌘P)"
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Escape" && setQuery("")}
         />
-        <div class="gear-wrap" ref={gearEl}>
+        <div class={styles.gearWrap} ref={gearEl}>
           <button
-            class="gear-btn"
-            classList={{ active: gearOpen() }}
+            class={styles.gearBtn}
+            classList={{ [styles.active]: gearOpen() }}
             title="Sidebar actions"
             onClick={() => setGearOpen(!gearOpen())}
           >
             ⚙
           </button>
           <Show when={gearOpen()}>
-            <div class="gear-menu">
+            <div class={styles.gearMenu}>
               <Show when={hasRoot()}>
-                <div class="gear-item" onClick={() => gearAction(addGroup)}>New group</div>
+                <div class={styles.gearItem} onClick={() => gearAction(addGroup)}>New group</div>
               </Show>
-              <div class="gear-item" onClick={() => gearAction(pinFolder)}>Pin folder to "Other"</div>
-              <div class="gear-divider" />
-              <div class="gear-item" onClick={() => gearAction(addBaseFolder)}>Add/Update root</div>
+              <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>Pin folder to "Other"</div>
+              <div class={styles.gearDivider} />
+              <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>Add/Update root</div>
               <Show when={hasRoot()}>
-                <div class="gear-item danger" onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
+                <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
               </Show>
             </div>
           </Show>
         </div>
       </div>
 
-      <div class="tree-scroll">
+      <div class={styles.treeScroll}>
         <For each={visibleGroups()}>
           {(g, i) => {
             const open = () => expanded().has(gkey(g)) || !!q();
             return (
               <>
               <Show when={g.external && i() === firstExternalIdx()}>
-                <div class="tree-divider" title="Pinned folders outside your base folder">Other</div>
+                <div class={styles.treeDivider} title="Pinned folders outside your base folder">Other</div>
               </Show>
               <div class="node">
                 <div
-                  class="row group"
+                  class={`${styles.row} ${styles.group}`}
                   onClick={() => toggle(gkey(g))}
                   onContextMenu={(e) => openMenu(e, groupMenu(g))}
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
                 >
                   <Chevron open={open()} />
-                  <span class="label">{g.name}</span>
+                  <span class={styles.label}>{g.name}</span>
                 </div>
                 <Show when={open()}>
                   <For each={g.projects.filter(projectVisible)}>
@@ -1518,7 +1519,7 @@ export default function Sidebar(props: {
                       return (
                         <div class="node">
                           <div
-                            class="row project sub1"
+                            class={`${styles.row} ${styles.project} ${styles.sub1}`}
                             onClick={() => {
                               toggle(pkey(g, p));
                               if (plainDir() && folderUnit()) {
@@ -1531,7 +1532,7 @@ export default function Sidebar(props: {
                             onDragStart={(e) => startAbsDrag(e, p.path)}
                           >
                             <Chevron open={popen()} />
-                            <span class="label">{p.name}</span>
+                            <span class={styles.label}>{p.name}</span>
                           </div>
                           <Show when={popen()}>
                             <Show
@@ -1544,14 +1545,14 @@ export default function Sidebar(props: {
                             >
                             <For
                               each={p.branchUnits}
-                              fallback={<div class="row dim sub2">no branches</div>}
+                              fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub2}`}>no branches</div>}
                             >
                               {(u) => {
                                 const uopen = () => expanded().has(ukey(g, p, u));
                                 return (
                                   <div class="node">
                                     <div
-                                      class={`row branch sub2 ${unitSelected(u) ? "sel" : ""}`}
+                                      class={`${styles.row} ${styles.branch} ${styles.sub2} ${unitSelected(u) ? styles.sel : ""}`}
                                       onClick={() => {
                                         toggle(ukey(g, p, u));
                                         fetchSessions(u.folderPath);
@@ -1562,15 +1563,15 @@ export default function Sidebar(props: {
                                       onDragStart={(e) => startAbsDrag(e, u.folderPath)}
                                     >
                                       <Chevron open={uopen()} />
-                                      <span class="label">{unitLabel(u)}</span>
+                                      <span class={styles.label}>{unitLabel(u)}</span>
                                       <Show when={u.kind === "incomplete"}>
-                                        <span class="badge hint" title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
+                                        <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
                                       </Show>
                                       <Show when={unitMismatch(u)}>
-                                        <span class="badge" title="Not the current checkout">≠ checkout</span>
+                                        <span class={styles.badge} title="Not the current checkout">≠ checkout</span>
                                       </Show>
                                       <Show when={u.isCurrent}>
-                                        <span class="dot" title="current checkout">●</span>
+                                        <span class={styles.dot} title="current checkout">●</span>
                                       </Show>
                                     </div>
                                     <Show when={uopen()}>
@@ -1613,7 +1614,7 @@ export default function Sidebar(props: {
       </div>
 
       <Show when={config()}>
-        <div class="tree-foot" title={config()!.path}>
+        <div class={styles.treeFoot} title={config()!.path}>
           {config()!.path.replace(/^.*\/\.config\//, "~/.config/")}
         </div>
       </Show>

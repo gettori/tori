@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import OverflowTabBar from "../../components/OverflowTabBar";
-import type { Selection } from "../../components/Sidebar";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
   onWith,

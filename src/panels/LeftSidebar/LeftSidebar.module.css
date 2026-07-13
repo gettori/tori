@@ -1,0 +1,245 @@
+/* Left sidebar (Group -> Project -> branch-unit -> Session tree) styles,
+   hash-scoped. Kept global in App.css: the shared button system (.btn/.ghost),
+   the .tree-body pane wrapper (App.tsx), and the shared .tree-empty empty-state
+   base (also used by ReviewPanel). */
+.tree {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: calc(13px * var(--ui-scale));
+  user-select: none;
+  min-height: 0;
+  min-width: 0;
+}
+
+.treeSearch {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(4px * var(--ui-density));
+  border-bottom: 1px solid var(--border);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--accent);
+}
+
+/* ---- Gear dropdown (sidebar actions) ---- */
+.gearWrap {
+  position: relative;
+  flex: none;
+}
+
+.gearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  font-size: calc(13px * var(--ui-scale));
+  cursor: pointer;
+}
+.gearBtn:hover,
+.gearBtn.active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.gearMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 180px;
+  padding: calc(4px * var(--ui-density));
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(6px * var(--ui-radius-scale));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.gearItem {
+  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gearItem:hover {
+  background: var(--hover);
+}
+.gearItem.danger {
+  color: var(--danger, #e06c75);
+}
+.gearDivider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.treeScroll {
+  flex: 1;
+  overflow: auto;
+  padding: calc(4px * var(--ui-density)) 0;
+  min-height: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  height: 24px;
+  padding: 0 calc(8px * var(--ui-density));
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+.row.sel {
+  background: var(--sel);
+}
+
+.row.group .label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.row.project .label,
+.row.branch.sel .label,
+.row.session.sel .label {
+  color: var(--text);
+}
+
+.row.branch .label,
+.row.session .label {
+  color: var(--text-dim);
+}
+
+.row.session.sel .label {
+  color: #fff;
+}
+
+.row.sub1 {
+  padding-left: calc(20px * var(--ui-density));
+}
+.row.sub2 {
+  padding-left: calc(32px * var(--ui-density));
+}
+.row.sub3 {
+  padding-left: calc(44px * var(--ui-density));
+}
+
+.row.dim {
+  color: var(--text-dim);
+  font-style: italic;
+  cursor: default;
+}
+.row.dim:hover {
+  background: transparent;
+}
+
+.row .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  color: #4ec9b0;
+  font-size: calc(8px * var(--ui-scale));
+  margin-left: auto;
+}
+
+.row.session .when {
+  margin-left: auto;
+  padding-left: calc(8px * var(--ui-density));
+  font-size: calc(10px * var(--ui-scale));
+  color: #5a5a5a;
+  flex: 0 0 auto;
+}
+
+/* Mismatch flag: a session/branch whose recorded branch is not the working
+   tree's current checkout (plain repos only). Pushed to the right, before the
+   timestamp. The generic `.hint` variant marks branchless (pi) sessions. */
+.row .badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: calc(9px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-density));
+  border-radius: calc(3px * var(--ui-radius-scale));
+  color: #e0a458;
+  background: rgba(224, 164, 88, 0.13);
+}
+
+.row .badge + .when {
+  margin-left: 6px;
+}
+
+.row .badge.hint {
+  color: var(--text-dim);
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.treeFoot {
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(10px * var(--ui-scale));
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "Historical" sub-group: sessions predating a recreated folder, with an inline
+   Adopt affordance. */
+.row.historical .label {
+  font-style: italic;
+}
+.adoptBtn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: calc(1px * var(--ui-density)) calc(6px * var(--ui-density));
+  font-size: calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(3px * var(--ui-radius-scale));
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.adoptBtn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* "Other" section header: a divider above pinned external folders. */
+.treeDivider {
+  margin: 6px 8px 2px;
+  padding-top: calc(6px * var(--ui-density));
+  border-top: 1px solid var(--border);
+  font-size: calc(10px * var(--ui-scale));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}

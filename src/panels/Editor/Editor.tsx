@@ -20,7 +20,7 @@ import {
 import { isUnderPath } from "../../pathScope";
 import { isSelfWrite } from "../../selfWrites";
 import { ensureLsp } from "../../lspClient";
-import type { Selection } from "../../components/Sidebar";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
 type OpenFile = { path: string; name: string };
