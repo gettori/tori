@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import OverflowTabBar from "../../components/OverflowTabBar";
+import Icon from "../../components/Icon/Icon";
+import { X, ChevronDown } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -196,16 +198,16 @@ export default function Terminal(props: {
             title={t.cwd}
           >
             <span class="tab-label">{t.title}</span>
-            <span class="tab-close" onClick={(e) => close(t.id, e)}>
-              ×
+            <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
+              <Icon icon={X} size={14} />
             </span>
           </div>
         )}
         renderMenuItem={(t) => (
           <>
             <span class="tab-label">{t.title}</span>
-            <span class="tab-close" onClick={(e) => close(t.id, e)}>
-              ×
+            <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
+              <Icon icon={X} size={14} />
             </span>
           </>
         )}
@@ -232,7 +234,7 @@ export default function Terminal(props: {
               aria-expanded={menuOpen()}
               onClick={toggleMenu}
             >
-              <span class={styles.termNewChevron}>›</span>
+              <Icon icon={ChevronDown} size={14} class={styles.termNewChevron} />
             </button>
             <Show when={menuOpen()}>
               <Portal>
