@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { fuzzyScore } from "../../fuzzy";
+import { fuzzyScore } from "../../utils/fuzzy";
 import styles from "./Dialogs.module.css";
 
 // A portaled, filterable single-select picker modal. Replaces a comma-joined

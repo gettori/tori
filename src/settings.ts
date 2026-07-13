@@ -5,7 +5,7 @@
 import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { emit, SETTINGS_CHANGED } from "./events";
+import { emit, SETTINGS_CHANGED } from "./utils/events";
 import { setTheme, importThemeFromPath } from "./theme";
 
 export type Appearance = { theme: string; importPath: string | null };

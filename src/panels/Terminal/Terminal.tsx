@@ -15,8 +15,8 @@ import {
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
-} from "../../events";
-import { isUnderPath } from "../../pathScope";
+} from "../../utils/events";
+import { isUnderPath } from "../../utils/pathScope";
 import styles from "./Terminal.module.css";
 
 type OpenTerm = {

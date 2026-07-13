@@ -1,8 +1,8 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR } from "../../events";
+import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import FileIcon from "../../seti/FileIcon";
-import { fuzzyScore } from "../../fuzzy";
+import { fuzzyScore } from "../../utils/fuzzy";
 import styles from "./QuickOpen.module.css";
 
 const MAX_RESULTS = 200;

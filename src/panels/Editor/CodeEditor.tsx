@@ -9,7 +9,7 @@ import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, fol
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
-import { markSelfWrite, isSelfWrite } from "../../selfWrites";
+import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "../../diffGutter";
 import { lspPluginFor } from "../../lspClient";
 import styles from "./CodeEditor.module.css";
