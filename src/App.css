@@ -247,46 +247,6 @@ body.dragging {
   margin: 16px 0 24px;
 }
 
-.btn {
-  background: var(--hover);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: calc(5px * var(--ui-radius-scale));
-  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  cursor: pointer;
-}
-
-.btn:hover {
-  border-color: var(--accent);
-}
-
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-
-.btn.danger {
-  background: #d04444;
-  border-color: #d04444;
-  color: #fff;
-}
-
-.btn.ghost {
-  background: transparent;
-}
-
-.btn.sm {
-  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
-}
-
-.btn.xs {
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
-}
-
 .section {
   border-top: 1px solid var(--border);
   padding-top: calc(16px * var(--ui-density));

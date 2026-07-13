@@ -11,6 +11,7 @@ import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
 import Toasts, { type Toast } from "../../components/Toasts/Toasts";
+import Button from "../../components/Button/Button";
 import {
   on as onEvent,
   onWith,
@@ -1601,13 +1602,13 @@ export default function LeftSidebar(props: {
               fallback={
                 <>
                   <p>No projects found under your base folders.</p>
-                  <button class="btn" onClick={addGroup}>+ Create group</button>
-                  <button class="btn ghost" onClick={addBaseFolder}>Add another base folder</button>
+                  <Button onClick={addGroup}>+ Create group</Button>
+                  <Button variant="ghost" onClick={addBaseFolder}>Add another base folder</Button>
                 </>
               }
             >
               <p>Welcome to Sway. Add a base folder to discover your projects.</p>
-              <button class="btn" onClick={addBaseFolder}>Add base folder</button>
+              <Button onClick={addBaseFolder}>Add base folder</Button>
             </Show>
           </div>
         </Show>

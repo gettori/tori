@@ -1,5 +1,5 @@
-/* Toolbar (top menubar) styles, hash-scoped. Kept global in App.css: the shared
-   .btn/.ghost button system (also LeftSidebar's), the .sm.dim modifier, the
+/* Toolbar (top menubar) styles, hash-scoped. Buttons use the shared <Button>
+   component. Kept global in App.css: the .sm.dim modifier, the
    .workspace/.work-split/.pane layout (App.tsx), and .claude-icon/.pi-icon (seti
    marks) which are reached here via :global(). */
 .wtRow {
@@ -194,11 +194,6 @@
   display: flex;
   gap: calc(4px * var(--ui-density));
   flex: 0 0 auto;
-}
-
-.toolbar :global(.btn) {
-  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
 }
 
 .tbWorktrees {

@@ -1,7 +1,7 @@
 /* Left sidebar (Group -> Project -> branch-unit -> Session tree) styles,
-   hash-scoped. Kept global in App.css: the shared button system (.btn/.ghost),
-   the .tree-body pane wrapper (App.tsx), and the shared .tree-empty empty-state
-   base (also used by ReviewPanel). */
+   hash-scoped. Buttons use the shared <Button> component. Kept global in
+   App.css: the .tree-body pane wrapper (App.tsx), and the shared .tree-empty
+   empty-state base (also used by ReviewPanel). */
 .tree {
   flex: 1;
   height: 100%;
