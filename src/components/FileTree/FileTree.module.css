@@ -1,10 +1,10 @@
-/* FileTree component styles, split out of the App.css monolith. Global class
-   names (not hash-scoped), already token-based, so this is a pure relocation:
-   dark is byte-identical and light follows the tokens. The shared `.review-panel`
-   and base `.tree-empty`/`.chevron` rules stay in App.css (their owners haven't
-   migrated). */
+/* FileTree component styles, hash-scoped via CSS Modules and co-located with the
+   component. Token-based, so dark is byte-identical and light follows the tokens.
+   The generic `.tree-empty` empty-state primitive stays global in App.css (still
+   shared by the unmigrated Sidebar and ReviewPanel); FileTree's own empty state
+   is the local `.empty` here. */
 
-.file-tree {
+.fileTree {
   flex: 1;
   overflow: auto;
   background: var(--pane-bg);
@@ -15,7 +15,7 @@
 
 /* Header actions for the editable Shared tree; sticks to the top so New
    File/New Folder stay reachable while the tree scrolls. */
-.tree-actions {
+.treeActions {
   position: sticky;
   top: -4px;
   display: flex;
@@ -25,7 +25,7 @@
   border-bottom: 1px solid var(--border);
 }
 
-.tree-action {
+.treeAction {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim);
@@ -35,12 +35,12 @@
   cursor: pointer;
 }
 
-.tree-action:hover {
+.treeAction:hover {
   color: var(--text);
   background: var(--pane-head-bg);
 }
 
-.file-tree .tree-row {
+.treeRow {
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-density));
@@ -50,15 +50,15 @@
   white-space: nowrap;
 }
 
-.file-tree .tree-row:hover {
+.treeRow:hover {
   background: var(--hover);
 }
 
-.file-tree .tree-name.is-dir {
+.treeName.isDir {
   color: var(--text);
 }
 
-.file-tree .tree-empty {
+.empty {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   color: var(--text-dim);
 }
