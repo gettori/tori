@@ -103,7 +103,7 @@
   .input:focus,
   .select:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--brand);
   }
 
   .text {

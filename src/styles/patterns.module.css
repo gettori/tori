@@ -1,0 +1,57 @@
+/* Reusable chrome-tier surface patterns. Import this module into a component
+   module and `composes: input from "../../styles/patterns.module.css"` (or copy
+   the recipe). Every value reads a shared token, so the gold brand and the soft
+   elevation stay consistent across chrome (no ad-hoc hex). Chrome tier is
+   spacious with soft elevation; see the spacing conventions in tokens.css. */
+
+/* Rounded text input with a gold focus ring. */
+.input {
+  display: block;
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  color: var(--text);
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-family: inherit;
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.4;
+  outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+.input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* Floating menu / dropdown surface (context menu, gear menu, overflow menu). */
+.menuSurface {
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
+  padding: calc(4px * var(--ui-density));
+}
+
+/* Active-row pill: translucent gold fill on the pill radius. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  background: var(--brand-subtle);
+  color: var(--text);
+  border-radius: var(--sway-radius-pill);
+  padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+}
+
+/* Spacious content card: rounded container with soft elevation. */
+.card {
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: calc(16px * var(--ui-density));
+}

@@ -1,6 +1,7 @@
-/* Disclosure chevron (shared `<Chevron>`): a single `›` glyph that rotates 90°
-   when expanded (the VS Code disclosure style), boxed to match `.seti-icon`'s
-   leading column so it aligns in both the file tree and the sidebar. */
+/* Disclosure chevron (shared `<Chevron>`): a Lucide chevron-right that rotates
+   90° when expanded (the VS Code disclosure style), boxed to match
+   `.seti-icon`'s leading column so it aligns in both the file tree and the
+   sidebar. */
 .chevron {
   flex: none;
   display: inline-flex;
@@ -9,18 +10,14 @@
   width: 16px;
   height: 16px;
   color: var(--text-dim);
-  /* `›` is a thin glyph, so it runs a touch larger than the filled seti icons
-     to optically match their weight at the same 16px slot. */
-  font-size: calc(20px * var(--ui-scale));
-  line-height: 1;
 }
-/* Inner span wraps just the glyph so the rotation pivots on the chevron itself
-   (stays in place on expand). The fixed 16px height keeps the glyph from
-   making rows taller. */
+/* Inner span wraps just the icon so the rotation pivots on the chevron itself
+   (stays in place on expand). The fixed 16px slot keeps the icon from making
+   rows taller. */
 .chevron .chev {
   display: inline-flex;
   line-height: 1;
-  transition: transform 0.1s ease;
+  transition: transform var(--sway-duration-fast) ease;
 }
 .chevron .chev.open {
   transform: rotate(90deg);

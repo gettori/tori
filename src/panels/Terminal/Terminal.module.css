@@ -87,12 +87,12 @@
 
 .termNew:hover:not(:disabled) {
   color: #fff;
-  border-color: var(--accent);
+  border-color: var(--brand);
 }
 
 /* Keep the shared divider crisp when only one half is hovered. */
 .termNewMain:hover:not(:disabled) + .termNewCaret:not(:hover) {
-  border-left-color: var(--accent);
+  border-left-color: var(--brand);
 }
 
 .termNew:disabled {
@@ -126,8 +126,8 @@
 }
 
 .termNewMenuItem:hover {
-  color: #fff;
-  background: var(--accent);
+  color: var(--brand-on);
+  background: var(--brand);
 }
 
 .termStage {

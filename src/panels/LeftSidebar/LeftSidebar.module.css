@@ -34,7 +34,7 @@
 }
 
 .searchInput:focus {
-  border-color: var(--accent);
+  border-color: var(--brand);
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
@@ -53,13 +53,12 @@
   border: 1px solid var(--border);
   color: var(--text-dim);
   border-radius: calc(4px * var(--ui-radius-scale));
-  font-size: calc(13px * var(--ui-scale));
   cursor: pointer;
 }
 .gearBtn:hover,
 .gearBtn.active {
   color: var(--text);
-  border-color: var(--accent);
+  border-color: var(--brand);
 }
 
 .gearMenu {
@@ -118,7 +117,7 @@
 }
 
 .row.sel {
-  background: var(--sel);
+  background: var(--brand-subtle);
 }
 
 .row.group .label {

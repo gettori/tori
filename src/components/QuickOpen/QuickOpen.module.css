@@ -54,7 +54,7 @@
 }
 
 .qoItem.active {
-  background: var(--sel);
+  background: var(--brand-subtle);
 }
 
 .qoEmpty {
