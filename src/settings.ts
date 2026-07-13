@@ -44,7 +44,10 @@ export function applySettings(s: Settings) {
   st.setProperty("--editor-font-family", s.typography.editorFontFamily);
   st.setProperty("--editor-font-size", `${s.typography.editorFontSize}px`);
   st.setProperty("--ui-line-height", String(s.typography.lineHeight));
-  st.setProperty("--ui-radius", `${s.layout.radius}px`);
+  // Radii are `calc(<px> * var(--ui-radius-scale))`; scale is the chosen radius
+  // over the 5px baseline, so the default (5) is 1 and renders unchanged.
+  st.setProperty("--ui-radius-scale", String(s.layout.radius / 5));
+  // Padding/gap are `calc(<px> * var(--ui-density))`; compact tightens spacing.
   st.setProperty("--ui-density", s.layout.density === "compact" ? "0.85" : "1");
 }
 

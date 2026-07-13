@@ -8,7 +8,7 @@
   flex: 1;
   overflow: auto;
   background: var(--pane-bg);
-  padding: 4px 0;
+  padding: calc(4px * var(--ui-density)) 0;
   font-size: calc(13px * var(--ui-scale));
   user-select: none;
 }
@@ -19,19 +19,19 @@
   position: sticky;
   top: -4px;
   display: flex;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
   background: var(--pane-bg);
   border-bottom: 1px solid var(--border);
 }
 
 .tree-action {
-  padding: 2px 8px;
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: calc(4px * var(--ui-radius-scale));
   cursor: pointer;
 }
 
@@ -43,8 +43,8 @@
 .file-tree .tree-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   cursor: pointer;
   color: var(--text);
   white-space: nowrap;
@@ -59,6 +59,6 @@
 }
 
 .file-tree .tree-empty {
-  padding: 8px 12px;
+  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   color: var(--text-dim);
 }
