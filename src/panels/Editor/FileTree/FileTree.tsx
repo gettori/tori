@@ -4,6 +4,8 @@ import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from
 import FileIcon from "../../../seti/FileIcon";
 import Chevron from "../../../components/Chevron/Chevron";
 import Button from "../../../components/Button/Button";
+import Icon from "../../../components/Icon/Icon";
+import { FilePlus, FolderPlus } from "lucide-solid";
 import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import styles from "./FileTree.module.css";
@@ -221,9 +223,11 @@ export default function FileTree(props: {
         {(c) => (
           <div class={styles.treeActions}>
             <Button variant="ghost" size="xs" onClick={() => newFileIn(c(), c().root, reloadRoots)}>
+              <Icon icon={FilePlus} size={13} />
               New File
             </Button>
             <Button variant="ghost" size="xs" onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
+              <Icon icon={FolderPlus} size={13} />
               New Folder
             </Button>
           </div>
