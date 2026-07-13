@@ -67,11 +67,9 @@ describe("resolveTheme", () => {
   });
 });
 
-describe("bundled theme gating", () => {
-  it("ships both themes but only offers dark ones (light gated off)", () => {
+describe("bundled themes", () => {
+  it("ships and offers both dark and light (light un-gated)", () => {
     expect(listThemes().map((t) => t.id).sort()).toEqual(["dark-plus", "light-plus"]);
-    const selectable = listSelectableThemes();
-    expect(selectable.map((t) => t.id)).toEqual(["dark-plus"]);
-    expect(selectable.some((t) => t.kind === "light")).toBe(false);
+    expect(listSelectableThemes().map((t) => t.id).sort()).toEqual(["dark-plus", "light-plus"]);
   });
 });

@@ -1,6 +1,5 @@
-// Registry of themes shipped with Sway. Light+ exists but is not `selectable`
-// yet: the picker only offers dark themes until the CSS-module migration
-// completes and light mode is un-gated (see plan Phase 5e).
+// Registry of themes shipped with Sway. Both are selectable now that the chrome
+// is token-driven (light values resolve via :root[data-theme="light"]).
 import darkPlus from "./themes/dark-plus.json";
 import lightPlus from "./themes/light-plus.json";
 import { type RawTheme } from "./vscodeMap";
@@ -15,7 +14,7 @@ export type BundledTheme = {
 
 const THEMES: BundledTheme[] = [
   { id: "dark-plus", label: "Dark+", kind: "dark", selectable: true, raw: darkPlus as unknown as RawTheme },
-  { id: "light-plus", label: "Light+", kind: "light", selectable: false, raw: lightPlus as unknown as RawTheme },
+  { id: "light-plus", label: "Light+", kind: "light", selectable: true, raw: lightPlus as unknown as RawTheme },
 ];
 
 export const DEFAULT_THEME_ID = "dark-plus";
