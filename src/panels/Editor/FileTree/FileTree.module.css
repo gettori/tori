@@ -25,21 +25,6 @@
   border-bottom: 1px solid var(--border);
 }
 
-.treeAction {
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: calc(4px * var(--ui-radius-scale));
-  cursor: pointer;
-}
-
-.treeAction:hover {
-  color: var(--text);
-  background: var(--pane-head-bg);
-}
-
 .treeRow {
   display: flex;
   align-items: center;

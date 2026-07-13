@@ -1257,8 +1257,10 @@ export default function LeftSidebar(props: {
           >
             <Chevron open={expanded().has(hkey(u))} />
             <span class={styles.label}>Historical ({unitSessions(p, u).length})</span>
-            <button
-              class={styles.adoptBtn}
+            <Button
+              variant="ghost"
+              size="xs"
+              style={{ "margin-left": "auto" }}
               title="Adopt these sessions into the normal listing"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1266,7 +1268,7 @@ export default function LeftSidebar(props: {
               }}
             >
               Adopt
-            </button>
+            </Button>
           </div>
         </Show>
         <Show when={!isHistorical(u) || expanded().has(hkey(u))}>

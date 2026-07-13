@@ -123,9 +123,9 @@ export default function PickerModal(props: {
               onKeyDown={onKeyDown}
             />
             <Show when={query()}>
-              <button type="button" class={styles.pickerClear} aria-label="Clear" onClick={clear}>
+              <Button class={styles.pickerClear} variant="ghost" size="xs" aria-label="Clear" onClick={clear}>
                 ×
-              </button>
+              </Button>
             </Show>
           </div>
           <div class={styles.pickerList}>

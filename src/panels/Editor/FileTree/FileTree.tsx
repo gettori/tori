@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../../../utils/events";
 import FileIcon from "../../../seti/FileIcon";
 import Chevron from "../../../components/Chevron/Chevron";
+import Button from "../../../components/Button/Button";
 import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import styles from "./FileTree.module.css";
@@ -219,12 +220,12 @@ export default function FileTree(props: {
       <Show when={ctx()}>
         {(c) => (
           <div class={styles.treeActions}>
-            <button class={styles.treeAction} onClick={() => newFileIn(c(), c().root, reloadRoots)}>
+            <Button variant="ghost" size="xs" onClick={() => newFileIn(c(), c().root, reloadRoots)}>
               New File
-            </button>
-            <button class={styles.treeAction} onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
+            </Button>
+            <Button variant="ghost" size="xs" onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
               New Folder
-            </button>
+            </Button>
           </div>
         )}
       </Show>

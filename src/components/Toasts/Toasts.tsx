@@ -1,5 +1,6 @@
 import { For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
+import Button from "../Button/Button";
 import styles from "./Toasts.module.css";
 
 // A transient notification. `error` toasts are the common case (a failed git op,
@@ -30,9 +31,9 @@ function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) =>
       onMouseLeave={() => arm()}
     >
       <span class={styles.toastMsg}>{props.toast.message}</span>
-      <button class={styles.toastClose} title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
+      <Button class={styles.toastClose} variant="ghost" size="xs" aria-label="Dismiss" title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
         ×
-      </button>
+      </Button>
     </div>
   );
 }

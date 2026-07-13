@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { settings, saveSettings, type Appearance, type Typography, type Layout } from "./settingsStore";
 import { listSelectableThemes } from "../../theme";
+import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
 
 // The in-app settings screen. Reads the reactive settings store and writes back
@@ -46,9 +47,9 @@ export default function Settings(props: { onClose: () => void }) {
         >
           <div class={styles.header}>
             <div class={styles.title}>Settings</div>
-            <button class={styles.close} title="Close" onClick={() => props.onClose()}>
+            <Button variant="ghost" size="xs" aria-label="Close" title="Close" onClick={() => props.onClose()}>
               ×
-            </button>
+            </Button>
           </div>
 
           <div class={styles.body}>
@@ -70,9 +71,9 @@ export default function Settings(props: { onClose: () => void }) {
                       <option value="import">Imported</option>
                     </Show>
                   </select>
-                  <button class={styles.importBtn} onClick={importTheme}>
+                  <Button variant="ghost" size="sm" onClick={importTheme}>
                     Import theme…
-                  </button>
+                  </Button>
                 </div>
               </div>
               <Show when={settings.appearance.theme === "import" && settings.appearance.importPath}>
