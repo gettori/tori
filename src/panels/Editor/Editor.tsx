@@ -19,7 +19,7 @@ import {
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { isSelfWrite } from "../../utils/selfWrites";
-import { ensureLsp } from "../../lspClient";
+import { ensureLsp } from "./lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
