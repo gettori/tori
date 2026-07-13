@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
@@ -14,6 +14,9 @@ import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./App.css";
+
+// Dev-only styleguide, code-split so it never ships in the production bundle.
+const Styleguide = lazy(() => import("./dev/Styleguide"));
 
 const LS_LAYOUT = "sway.layout.v1";
 const LS_SELECTION = "sway.selection.v1";
@@ -49,6 +52,17 @@ function loadSelection(): Selection | null {
 }
 
 function App() {
+  // Dev-only QA surface, gated by an env flag + a #styleguide hash (NOT a route).
+  // Rendered standalone so the app's settings/theme init never fights its
+  // density/scale/theme controls.
+  if (import.meta.env.DEV && window.location.hash === "#styleguide") {
+    return (
+      <Suspense>
+        <Styleguide />
+      </Suspense>
+    );
+  }
+
   const initial = loadLayout();
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [editor, setEditor] = createSignal(initial.editor);
