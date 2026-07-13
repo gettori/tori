@@ -10,6 +10,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
+import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
 
@@ -269,9 +270,9 @@ export default function TerminalView(props: {
               }
             }}
           />
-          <button onClick={() => find(false)} title="Previous">↑</button>
-          <button onClick={() => find(true)} title="Next">↓</button>
-          <button onClick={closeSearch} title="Close">×</button>
+          <Button variant="ghost" size="xs" aria-label="Previous" title="Previous" onClick={() => find(false)}>↑</Button>
+          <Button variant="ghost" size="xs" aria-label="Next" title="Next" onClick={() => find(true)}>↓</Button>
+          <Button variant="ghost" size="xs" aria-label="Close" title="Close" onClick={closeSearch}>×</Button>
         </div>
       </Show>
       <div class={styles.termHost} ref={host} />

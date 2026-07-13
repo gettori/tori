@@ -12,6 +12,7 @@ import { json } from "@codemirror/lang-json";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
 import { lspPluginFor } from "./lspClient";
+import Button from "../../components/Button/Button";
 import styles from "./CodeEditor.module.css";
 
 function relTo(root: string, abs: string): string {
@@ -334,8 +335,8 @@ export default function CodeEditor(props: {
       <Show when={conflict()}>
         <div class={styles.reloadBanner}>
           <span>This file changed on disk while you had unsaved edits.</span>
-          <button onClick={reloadConflict}>Reload</button>
-          <button onClick={keepMine}>Keep mine</button>
+          <Button size="sm" onClick={reloadConflict}>Reload</Button>
+          <Button size="sm" onClick={keepMine}>Keep mine</Button>
         </div>
       </Show>
       <div class={styles.codeEditor} ref={host} />

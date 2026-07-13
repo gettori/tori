@@ -215,21 +215,6 @@
 .row.historical .label {
   font-style: italic;
 }
-.adoptBtn {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: calc(1px * var(--ui-density)) calc(6px * var(--ui-density));
-  font-size: calc(10px * var(--ui-scale));
-  border: 1px solid var(--border);
-  border-radius: calc(3px * var(--ui-radius-scale));
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.adoptBtn:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
 
 /* "Other" section header: a divider above pinned external folders. */
 .treeDivider {

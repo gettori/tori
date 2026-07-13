@@ -38,19 +38,10 @@
   max-height: 40vh;
   overflow-y: auto;
 }
+/* Layout only; the visual treatment now comes from the shared <Button>. */
 .toastClose {
   flex: none;
-  margin-top: -1px;
-  padding: 0 calc(2px * var(--ui-density));
-  font-size: calc(15px * var(--ui-scale));
-  line-height: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.toastClose:hover {
-  color: var(--text);
+  align-self: start;
 }
 
 @keyframes toast-in {
