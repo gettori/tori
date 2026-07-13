@@ -5,6 +5,8 @@ import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Button from "../Button/Button";
+import Icon from "../Icon/Icon";
+import { Brain, Pencil, RefreshCw, Wrench, ChevronRight } from "lucide-solid";
 import styles from "./Toolbar.module.css";
 
 type SessionDetail = {
@@ -83,39 +85,19 @@ function contextWindow(model: string | null): number {
   return staticCap(id);
 }
 
-// Stats-row glyphs as stroked SVGs (24-unit viewBox, currentColor) so they read
-// crisp and uniform next to the context gauge, independent of the UI font.
+// Stats-row glyphs as Lucide icons (currentColor, uniformly boxed by .statIco)
+// so they read crisp next to the context gauge and match the app icon system.
 function ModelIcon() {
-  return (
-    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
-    </svg>
-  );
+  return <Icon icon={Brain} class={styles.statIco} />;
 }
 function PromptIcon() {
-  return (
-    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
+  return <Icon icon={Pencil} class={styles.statIco} />;
 }
 function TurnIcon() {
-  return (
-    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <polyline points="23 4 23 10 17 10" />
-      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-    </svg>
-  );
+  return <Icon icon={RefreshCw} class={styles.statIco} />;
 }
 function ToolIcon() {
-  return (
-    <svg class={styles.statIco} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-    </svg>
-  );
+  return <Icon icon={Wrench} class={styles.statIco} />;
 }
 // Context as a pie gauge that fills with actual usage (top, clockwise).
 function CtxGauge(props: { pct: number }) {
@@ -286,15 +268,15 @@ export default function Toolbar(props: { selected: Selection | null }) {
             >
               <nav class={styles.tbCrumb} aria-label="location">
                 <span class={`${styles.crumb} dim`}>{sel()!.groupName}</span>
-                <span class={`${styles.crumbSep} dim`}>›</span>
+                <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
                 <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
-                <span class={`${styles.crumbSep} dim`}>›</span>
+                <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
                 <Show
                   when={isSession()}
                   fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
                 >
                   <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
-                  <span class={`${styles.crumbSep} dim`}>›</span>
+                  <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
                   <span class={`${styles.crumb} ${styles.leaf}`}>
                     <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
                     {displayName()}

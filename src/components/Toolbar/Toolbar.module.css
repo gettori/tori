@@ -40,16 +40,20 @@
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   font-family: Menlo, Monaco, monospace;
   outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
 }
 
 .wtInput:focus,
 .renameInput:focus {
   border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 .renameRow {
