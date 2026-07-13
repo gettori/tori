@@ -1,7 +1,7 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR } from "../../events";
+import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import styles from "./ReviewPanel.module.css";
 
 type FileStatus = { status: string; path: string };

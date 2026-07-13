@@ -2,7 +2,7 @@
 // file; it no longer mirrors an installed VS Code on window focus. The active
 // theme is resolved to CSS custom properties and painted onto <html>.
 import { invoke } from "@tauri-apps/api/core";
-import { emit, THEME_APPLIED } from "../events";
+import { emit, THEME_APPLIED } from "../utils/events";
 import { type ThemeColors } from "./vscodeMap";
 import { distillVsCodeTheme } from "./distill";
 import { resolveTheme, applyResolved } from "./resolver";

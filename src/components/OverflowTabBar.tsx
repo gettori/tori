@@ -9,7 +9,7 @@ import {
   type JSX,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { computeVisibleCount, moveIntoView, type Reserves } from "./tabOverflow";
+import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 
 // A tab bar that never scrolls: it renders only the tabs that fully fit, plus a
 // `+N` button whose dropdown lists the rest. Generic over the tab item type T;

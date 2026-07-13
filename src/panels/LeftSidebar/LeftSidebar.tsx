@@ -26,8 +26,8 @@ import {
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
-} from "../../events";
-import { isUnderPath, countRunningUnder } from "../../pathScope";
+} from "../../utils/events";
+import { isUnderPath, countRunningUnder } from "../../utils/pathScope";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
