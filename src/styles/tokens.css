@@ -110,6 +110,7 @@
     --danger: #e06c75;
     --warn: #d19a66;
     --warn-strong: #b56319;
+    --success: #2ea043;
   }
 
   /* ---- Semantic tokens, light (not user-selectable until the CSS migration
@@ -128,5 +129,6 @@
     --danger: #cf222e;
     --warn: #9a6700;
     --warn-strong: #bc4c00;
+    --success: #1a7f37;
   }
 }

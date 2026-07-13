@@ -7,6 +7,7 @@ import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import Settings from "./panels/Settings/Settings";
+import ButtonDemo from "./components/Button/ButtonDemo"; // TEMP (Phase 1), removed in Phase 4
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./utils/events";
 import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
@@ -120,6 +121,11 @@ function App() {
     window.removeEventListener("keydown", onKeyDown);
     document.body.classList.remove("dragging");
   });
+
+  // TEMP (Phase 1): `?btn-demo` shows the Button demo grid. Removed in Phase 4.
+  if (new URLSearchParams(location.search).has("btn-demo")) {
+    return <ButtonDemo />;
+  }
 
   return (
     <div class="app">

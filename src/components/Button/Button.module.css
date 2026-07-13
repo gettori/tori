@@ -1,0 +1,114 @@
+/* The one Button. Ports the old global `.btn` block and the dialog `modalBtn`
+   block onto the shared semantic tokens, unified into six variants and three
+   sizes. Colored variants (primary/success/warn/danger) hover with a brightness
+   lift (from `modalBtn`); the flat variants (default/ghost) hover to an accent
+   border (from `.btn`). */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--ui-density));
+  background: var(--hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: calc(5px * var(--ui-radius-scale));
+  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-family: inherit;
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+/* Icons scale with the UI; overridable per call site via --btn-icon-size. */
+.btn svg {
+  width: var(--btn-icon-size, calc(14px * var(--ui-scale)));
+  height: var(--btn-icon-size, calc(14px * var(--ui-scale)));
+  flex: 0 0 auto;
+}
+
+.label {
+  display: inline-block;
+}
+
+/* ---- Variants ---- */
+
+/* default: the flat --hover base above, nothing extra. */
+.default {
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.success {
+  background: var(--success, #2ea043);
+  border-color: var(--success, #2ea043);
+  color: #fff;
+  font-weight: 600;
+}
+
+.warn {
+  /* Darker than the --warn text color so white label text stays legible. */
+  background: var(--warn-strong, #b56319);
+  border-color: var(--warn-strong, #b56319);
+  color: #fff;
+}
+
+.danger {
+  background: var(--danger, #e06c75);
+  border-color: var(--danger, #e06c75);
+  color: #fff;
+}
+
+.ghost {
+  background: transparent;
+}
+
+/* ---- Hover ---- */
+.default:hover,
+.ghost:hover {
+  border-color: var(--accent);
+}
+
+.primary:hover,
+.success:hover,
+.warn:hover,
+.danger:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- Sizes (md is the base above) ---- */
+.md {
+}
+
+.sm {
+  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
+}
+
+.xs {
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+}
+
+/* ---- Icon-only: square padding, no label ---- */
+.iconOnly {
+  padding: calc(6px * var(--ui-density));
+  aspect-ratio: 1;
+}
+.iconOnly.sm {
+  padding: calc(4px * var(--ui-density));
+}
+.iconOnly.xs {
+  padding: calc(2px * var(--ui-density));
+}
+
+/* ---- Disabled ---- */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
