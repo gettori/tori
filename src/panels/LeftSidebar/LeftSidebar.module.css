@@ -16,8 +16,8 @@
 .treeSearch {
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
-  padding: calc(4px * var(--ui-density));
+  gap: calc(6px * var(--ui-density));
+  padding: calc(8px * var(--ui-density));
   border-bottom: 1px solid var(--border);
 }
 
@@ -27,14 +27,18 @@
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: calc(4px * var(--ui-radius-scale));
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  border-radius: var(--sway-radius-md);
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
 }
 
 .searchInput:focus {
   border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
@@ -47,13 +51,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
 }
 .gearBtn:hover,
 .gearBtn.active {
@@ -63,24 +70,40 @@
 
 .gearMenu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 1000;
   min-width: 180px;
   padding: calc(4px * var(--ui-density));
   background: var(--pane-bg);
   border: 1px solid var(--border);
-  border-radius: calc(6px * var(--ui-radius-scale));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 .gearItem {
-  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   color: var(--text);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-sm);
   cursor: pointer;
   white-space: nowrap;
+}
+/* Lucide affordance icon in a gear-menu item: dimmed, inherits the row colour. */
+.gearItem :global(svg) {
+  flex: none;
+  color: var(--text-dim);
+}
+.gearItem:hover :global(svg) {
+  color: var(--text);
+}
+/* The danger item tints its own text; let its icon follow (not the dim above). */
+.gearItem.danger :global(svg),
+.gearItem.danger:hover :global(svg) {
+  color: inherit;
 }
 .gearItem:hover {
   background: var(--hover);
@@ -97,31 +120,56 @@
 .treeScroll {
   flex: 1;
   overflow: auto;
-  padding: calc(4px * var(--ui-density)) 0;
+  padding: calc(6px * var(--ui-density)) 0;
   min-height: 0;
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-density));
   height: 24px;
+  margin: 0 calc(6px * var(--ui-density));
   padding: 0 calc(8px * var(--ui-density));
+  border-radius: var(--sway-radius-md);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
+  transition: background var(--sway-duration-fast) ease;
 }
 
 .row:hover {
   background: var(--hover);
 }
 
+/* Active-row pill: translucent gold fill on the rounded row (see the shared
+   .pill pattern). Sub-items additionally grow a left gold accent bar below. */
 .row.sel {
   background: var(--brand-subtle);
 }
 
+/* Left gold accent bar on an active sub-item (a selected branch or session),
+   centred inside the pill so it reads as a rail without fighting the rounded
+   corners. Group/project rows get the pill only, no bar. */
+.row.branch.sel::before,
+.row.session.sel::before {
+  content: "";
+  position: absolute;
+  left: calc(3px * var(--ui-density));
+  top: 50%;
+  height: 60%;
+  width: 3px;
+  transform: translateY(-50%);
+  border-radius: var(--sway-radius-pill);
+  background: var(--brand-bar);
+}
+
 .row.group .label {
   font-weight: 600;
+  font-size: calc(11px * var(--ui-scale));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text);
 }
 
@@ -137,7 +185,7 @@
 }
 
 .row.session.sel .label {
-  color: #fff;
+  color: var(--text);
 }
 
 .row.sub1 {
@@ -201,7 +249,7 @@
 }
 
 .treeFoot {
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(10px * var(--ui-scale));
   color: var(--text-dim);
   border-top: 1px solid var(--border);

@@ -33,7 +33,7 @@ import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
-import { Settings } from "lucide-solid";
+import { Settings, FolderPlus, Pin, FolderOpen, RotateCcw } from "lucide-solid";
 import styles from "./LeftSidebar.module.css";
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
@@ -1478,13 +1478,21 @@ export default function LeftSidebar(props: {
           <Show when={gearOpen()}>
             <div class={styles.gearMenu}>
               <Show when={hasRoot()}>
-                <div class={styles.gearItem} onClick={() => gearAction(addGroup)}>New group</div>
+                <div class={styles.gearItem} onClick={() => gearAction(addGroup)}>
+                  <Icon icon={FolderPlus} size={14} />New group
+                </div>
               </Show>
-              <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>Pin folder to "Other"</div>
+              <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
+                <Icon icon={Pin} size={14} />Pin folder to "Other"
+              </div>
               <div class={styles.gearDivider} />
-              <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>Add/Update root</div>
+              <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
+                <Icon icon={FolderOpen} size={14} />Add/Update root
+              </div>
               <Show when={hasRoot()}>
-                <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>Reset root (forget only)</div>
+                <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>
+                  <Icon icon={RotateCcw} size={14} />Reset root (forget only)
+                </div>
               </Show>
             </div>
           </Show>
