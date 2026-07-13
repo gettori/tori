@@ -1,6 +1,7 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { fuzzyScore } from "../fuzzy";
+import { fuzzyScore } from "../../fuzzy";
+import styles from "./Dialogs.module.css";
 
 // A portaled, filterable single-select picker modal. Replaces a comma-joined
 // prompt title when the caller must pick one item from a potentially large list
@@ -105,13 +106,13 @@ export default function PickerModal(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop picker-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal picker" onMouseDown={(e) => e.stopPropagation()}>
-          <div class="modal-title">{props.title}</div>
-          <div class="picker-input-wrap">
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={`${styles.modal} ${styles.picker}`} onMouseDown={(e) => e.stopPropagation()}>
+          <div class={styles.modalTitle}>{props.title}</div>
+          <div class={styles.pickerInputWrap}>
             <input
               ref={input}
-              class="modal-input picker-input"
+              class={`${styles.modalInput} ${styles.pickerInput}`}
               placeholder={props.placeholder}
               value={query()}
               onInput={(e) => {
@@ -121,19 +122,19 @@ export default function PickerModal(props: {
               onKeyDown={onKeyDown}
             />
             <Show when={query()}>
-              <button type="button" class="picker-clear" aria-label="Clear" onClick={clear}>
+              <button type="button" class={styles.pickerClear} aria-label="Clear" onClick={clear}>
                 ×
               </button>
             </Show>
           </div>
-          <div class="picker-list">
-            <Show when={results().length} fallback={<div class="picker-empty">No matches</div>}>
+          <div class={styles.pickerList}>
+            <Show when={results().length} fallback={<div class={styles.pickerEmpty}>No matches</div>}>
               <For each={results()}>
                 {(item, i) => (
                   <div
                     ref={(el) => (rows[i()] = el)}
-                    class="picker-item"
-                    classList={{ active: i() === index() }}
+                    class={styles.pickerItem}
+                    classList={{ [styles.active]: i() === index() }}
                     onClick={() => props.onSubmit(item)}
                     onMouseEnter={() => setIndex(i())}
                   >
@@ -143,11 +144,11 @@ export default function PickerModal(props: {
               </For>
             </Show>
           </div>
-          <div class="modal-actions">
-            <button type="button" class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button type="button" class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button type="button" class="modal-btn primary" onClick={() => commitTyped()}>
+            <button type="button" class={`${styles.modalBtn} ${styles.primary}`} onClick={() => commitTyped()}>
               {props.okLabel ?? "OK"}
             </button>
           </div>

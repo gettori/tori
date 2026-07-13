@@ -4,7 +4,7 @@ import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from
 import FileIcon from "../../seti/FileIcon";
 import Chevron from "../Chevron/Chevron";
 import ContextMenu, { type MenuItem, type MenuState } from "../ContextMenu/ContextMenu";
-import { type ConfirmOpts } from "../ConfirmDialog";
+import { type ConfirmOpts } from "../Dialogs/ConfirmDialog";
 import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };

@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 // The removal confirmation for a single worktree. Shows what is being deleted (the
 // branch + folder path), warns when the tree has uncommitted or unpushed work about
@@ -41,52 +42,52 @@ export default function WorktreeRemoveDialog(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
         <div
-          class="modal modal-danger"
+          class={`${styles.modal} ${styles.modalDanger}`}
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={onKeyDown}
         >
-          <div class="modal-title">Remove worktree “{props.label}”?</div>
+          <div class={styles.modalTitle}>Remove worktree “{props.label}”?</div>
 
-          <div class="wt-detail">
+          <div class={styles.wtDetail}>
             <Show when={props.branch}>
-              <div class="wt-detail-row">
-                <span class="wt-detail-key">Branch</span>
-                <span class="wt-detail-val">{props.branch}</span>
+              <div class={styles.wtDetailRow}>
+                <span class={styles.wtDetailKey}>Branch</span>
+                <span class={styles.wtDetailVal}>{props.branch}</span>
               </div>
             </Show>
-            <div class="wt-detail-row">
-              <span class="wt-detail-key">Folder</span>
-              <span class="wt-detail-val" title={props.path}>{props.path}</span>
+            <div class={styles.wtDetailRow}>
+              <span class={styles.wtDetailKey}>Folder</span>
+              <span class={styles.wtDetailVal} title={props.path}>{props.path}</span>
             </div>
-            <div class="wt-detail-row">
-              <span class="wt-detail-key">Status</span>
-              <span class="wt-detail-tags">
+            <div class={styles.wtDetailRow}>
+              <span class={styles.wtDetailKey}>Status</span>
+              <span class={styles.wtDetailTags}>
                 <Show when={props.dirty === null || props.unpushed === null}>
-                  <span class="del-tag muted">checking…</span>
+                  <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
                 </Show>
                 <Show when={props.dirty}>
-                  <span class="del-tag warn">uncommitted changes</span>
+                  <span class={`${styles.delTag} ${styles.warn}`}>uncommitted changes</span>
                 </Show>
                 <Show when={props.unpushed}>
-                  <span class="del-tag warn">unpushed commits</span>
+                  <span class={`${styles.delTag} ${styles.warn}`}>unpushed commits</span>
                 </Show>
                 <Show when={props.dirty === false && props.unpushed === false}>
-                  <span class="del-tag muted">clean</span>
+                  <span class={`${styles.delTag} ${styles.muted}`}>clean</span>
                 </Show>
               </span>
             </div>
           </div>
 
           <Show when={props.dirty || props.unpushed}>
-            <div class="modal-warn">
+            <div class={styles.modalWarn}>
               This deletes work that is not saved anywhere else. It cannot be undone.
             </div>
           </Show>
 
           <Show when={props.branch}>
-            <label class="wt-check">
+            <label class={styles.wtCheck}>
               <input
                 type="checkbox"
                 checked={deleteLocal()}
@@ -97,7 +98,7 @@ export default function WorktreeRemoveDialog(props: {
           </Show>
 
           <Show when={props.hasRemote}>
-            <label class="wt-check">
+            <label class={styles.wtCheck}>
               <input
                 type="checkbox"
                 checked={deleteRemote()}
@@ -107,11 +108,11 @@ export default function WorktreeRemoveDialog(props: {
             </label>
           </Show>
 
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button ref={ok} class="modal-btn warn" disabled={props.busy} onClick={() => confirm()}>
+            <button ref={ok} class={`${styles.modalBtn} ${styles.warn}`} disabled={props.busy} onClick={() => confirm()}>
               {props.busy ? "Removing…" : "Remove worktree"}
             </button>
           </div>

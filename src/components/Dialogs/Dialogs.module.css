@@ -1,0 +1,330 @@
+/* Shared styles for the dialog cluster (all `src/components/dialogs/*`). Every
+   dialog imports this one module, so the hashed class names are identical across
+   them (no cross-module `composes` needed). Token-based, so dark is byte-identical
+   to the pre-migration App.css and light follows the tokens. */
+
+/* ---- Base modal chrome (in-app window.prompt replacement + all dialogs) ---- */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.modal {
+  width: min(420px, calc(100vw - 48px));
+  padding: calc(16px * var(--ui-density));
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(8px * var(--ui-radius-scale));
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+}
+.modalTitle {
+  font-size: calc(13px * var(--ui-scale));
+  color: var(--text);
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+.modalNote {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim, #9aa0aa);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+.modalMsg {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim, #9aa0aa);
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+.modalNote strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.modalInput {
+  width: 100%;
+  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(13px * var(--ui-scale));
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  color: var(--text);
+  outline: none;
+}
+.modalInput:focus {
+  border-color: var(--accent);
+}
+.modalHint {
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim, #8a8a8a);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(8px * var(--ui-density));
+  margin-top: 14px;
+}
+.modalBtn {
+  padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  color: var(--text);
+  cursor: pointer;
+}
+.modalBtn:hover {
+  background: var(--hover);
+}
+.modalBtn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.modalBtn.primary:hover {
+  filter: brightness(1.08);
+}
+.modalBtn.danger {
+  background: var(--danger, #e06c75);
+  border-color: var(--danger, #e06c75);
+  color: #fff;
+}
+.modalBtn.danger:hover {
+  filter: brightness(1.08);
+}
+.modalBtn.warn {
+  /* A darker orange than the --warn text color, so white label text stays legible. */
+  background: var(--warn-strong, #b56319);
+  border-color: var(--warn-strong, #b56319);
+  color: #fff;
+}
+.modalBtn.warn:hover {
+  filter: brightness(1.08);
+}
+.modalBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ---- Filterable single-select picker (PickerModal). Reuses .modalBackdrop /
+   .modal chrome, adds a scrollable result list and an in-input clear button. ---- */
+.picker {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 520px);
+  padding: calc(12px * var(--ui-density));
+}
+.pickerInputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.pickerInput {
+  padding-right: calc(26px * var(--ui-density)); /* room for the clear button */
+}
+.pickerClear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: calc(15px * var(--ui-scale));
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: calc(3px * var(--ui-radius-scale));
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.pickerClear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.pickerList {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+}
+.pickerItem {
+  padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pickerItem.active {
+  background: var(--sel);
+}
+.pickerEmpty {
+  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim);
+}
+
+/* ---- Delete-group confirmation extras (reuses the .modal chrome above). ---- */
+.modalDanger {
+  width: min(480px, calc(100vw - 48px));
+}
+.modalWarn {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--danger, #e06c75);
+  margin-bottom: 10px;
+}
+.modalLabel {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim, #9aa0aa);
+  margin: 12px 0 6px;
+}
+.delSummary {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(12px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-dim, #9aa0aa);
+  margin-bottom: 8px;
+}
+.delEntries {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  background: var(--input-bg);
+}
+.delEmpty {
+  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim, #9aa0aa);
+}
+.delEntry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+}
+.delEntry + .delEntry {
+  border-top: 1px solid var(--border);
+}
+.delEntryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.delEntryTags {
+  display: flex;
+  gap: calc(4px * var(--ui-density));
+  flex-shrink: 0;
+}
+.delTag {
+  font-size: calc(10px * var(--ui-scale));
+  padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
+  border-radius: calc(3px * var(--ui-radius-scale));
+  border: 1px solid var(--border);
+}
+.delTag.muted {
+  color: var(--text-dim, #9aa0aa);
+}
+.delTag.warn {
+  color: var(--danger, #e06c75);
+  border-color: var(--danger, #e06c75);
+}
+
+/* ---- Worktree / branch remove dialogs ---- */
+.wtDetail {
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  background: var(--input-bg);
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  margin-bottom: 10px;
+}
+.wtDetailRow {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-density));
+  padding: calc(3px * var(--ui-density)) 0;
+  font-size: calc(12px * var(--ui-scale));
+}
+.wtDetailKey {
+  flex-shrink: 0;
+  width: 56px;
+  color: var(--text-dim, #9aa0aa);
+}
+.wtDetailVal {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.wtDetailTags {
+  display: flex;
+  gap: calc(4px * var(--ui-density));
+  flex-wrap: wrap;
+}
+.wtCheck {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  margin: 4px 0 4px;
+  cursor: pointer;
+}
+.wtCheck input {
+  cursor: pointer;
+}
+.initCheck {
+  margin-top: 14px;
+}
+
+/* ---- Segmented mode picker (NewProjectDialog). One row of buttons that share a
+   border; the active segment fills with the accent. ---- */
+.seg {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.segBtn {
+  flex: 1;
+  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(12px * var(--ui-scale));
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.segBtn:first-child {
+  border-left: none;
+}
+.segBtn:hover {
+  background: var(--hover);
+}
+.segBtn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.segBtn.active:hover {
+  filter: brightness(1.08);
+  background: var(--accent);
+}

@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 // A portaled text-input modal that replaces window.prompt, which macOS WKWebView
 // (Tauri's webview) does not implement, so every prompt()-based sidebar action
@@ -40,24 +41,24 @@ export default function PromptModal(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal" onMouseDown={(e) => e.stopPropagation()}>
-          <div class="modal-title">{props.title}</div>
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()}>
+          <div class={styles.modalTitle}>{props.title}</div>
           <Show when={props.note}>
-            <div class="modal-note">{props.note}</div>
+            <div class={styles.modalNote}>{props.note}</div>
           </Show>
           <input
             ref={input}
-            class="modal-input"
+            class={styles.modalInput}
             value={value()}
             onInput={(e) => setValue(e.currentTarget.value)}
             onKeyDown={onKeyDown}
           />
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button class="modal-btn primary" onClick={() => props.onSubmit(value())}>
+            <button class={`${styles.modalBtn} ${styles.primary}`} onClick={() => props.onSubmit(value())}>
               {props.okLabel ?? "OK"}
             </button>
           </div>

@@ -5,7 +5,7 @@ import EditorPane from "./components/EditorPane";
 import Toolbar from "./components/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen";
-import AskpassDialog from "./components/AskpassDialog";
+import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import SettingsPanel from "./components/SettingsPanel";
 import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./events";
 import { initSettings } from "./settings";

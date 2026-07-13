@@ -2,6 +2,7 @@ import { createSignal, onMount, onCleanup, Show, createEffect } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import styles from "./Dialogs.module.css";
 
 // The in-app credential dialog for the askpass bridge. A backgrounded git op
 // (fetch/pull/push) that needs a credential emits `askpass://prompt` per field;
@@ -74,27 +75,27 @@ export default function AskpassDialog() {
     <Show when={current()}>
       {(c) => (
         <Portal>
-          <div class="modal-backdrop" onMouseDown={() => cancel()}>
-            <div class="modal" onMouseDown={(e) => e.stopPropagation()}>
-              <div class="modal-title">{c().prompt}</div>
+          <div class={styles.modalBackdrop} onMouseDown={() => cancel()}>
+            <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()}>
+              <div class={styles.modalTitle}>{c().prompt}</div>
               <input
                 ref={input}
-                class="modal-input"
+                class={styles.modalInput}
                 type={c().kind === "password" ? "password" : "text"}
                 value={value()}
                 onInput={(e) => setValue(e.currentTarget.value)}
                 onKeyDown={onKeyDown}
               />
               <Show when={c().kind === "password"}>
-                <div class="modal-hint">
+                <div class={styles.modalHint}>
                   HTTPS wants a personal access token, not your account password.
                 </div>
               </Show>
-              <div class="modal-actions">
-                <button class="modal-btn" onClick={() => cancel()}>
+              <div class={styles.modalActions}>
+                <button class={styles.modalBtn} onClick={() => cancel()}>
                   Cancel
                 </button>
-                <button class="modal-btn primary" onClick={() => submit()}>
+                <button class={`${styles.modalBtn} ${styles.primary}`} onClick={() => submit()}>
                   OK
                 </button>
               </div>
