@@ -190,19 +190,6 @@
   outline: none;
 }
 
-.termSearch button {
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0 calc(3px * var(--ui-density));
-}
-
-.termSearch button:hover {
-  color: var(--text);
-}
-
 .termHost :global(.xterm) {
   /* Padding goes on the xterm element itself: FitAddon subtracts this element's
      padding when computing rows/cols, so the bottom row isn't clipped. Padding

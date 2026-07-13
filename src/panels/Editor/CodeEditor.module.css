@@ -44,16 +44,3 @@
   border-bottom: 1px solid var(--brand);
 }
 
-.reloadBanner button {
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
-  background: var(--hover);
-  border: 1px solid var(--border);
-  border-radius: calc(3px * var(--ui-radius-scale));
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  cursor: pointer;
-}
-
-.reloadBanner button:hover {
-  border-color: var(--accent);
-}

@@ -79,20 +79,10 @@ body.dragging {
   min-width: 0;
 }
 
+/* Layout only; the visual treatment now comes from the shared <Button>. */
 .topbar-gear {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 calc(12px * var(--ui-density));
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-.topbar-gear:hover {
-  color: var(--text);
+  margin-right: calc(6px * var(--ui-density));
 }
 
 .pane {

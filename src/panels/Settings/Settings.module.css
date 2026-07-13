@@ -37,21 +37,6 @@
     font-weight: 600;
   }
 
-  .close {
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    font-size: var(--sway-text-xl);
-    line-height: 1;
-    cursor: pointer;
-    padding: var(--sway-space-1) var(--sway-space-3);
-    border-radius: var(--sway-radius-sm);
-  }
-  .close:hover {
-    background: var(--hover);
-    color: var(--text);
-  }
-
   .body {
     padding: var(--sway-space-5) var(--sway-space-6) var(--sway-space-7);
   }
@@ -111,19 +96,6 @@
   }
   .num {
     width: 72px;
-  }
-
-  .importBtn {
-    background: transparent;
-    color: var(--accent);
-    border: var(--sway-border-thin) solid var(--border);
-    border-radius: var(--sway-radius-sm);
-    padding: var(--sway-space-2) var(--sway-space-4);
-    font-size: var(--sway-text-sm);
-    cursor: pointer;
-  }
-  .importBtn:hover {
-    background: var(--hover);
   }
 
   .hint {
