@@ -9,8 +9,9 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../events";
+import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../events";
 import "@xterm/xterm/css/xterm.css";
+import styles from "./Terminal.module.css";
 
 // File paths in terminal output, with optional :line:col. Requires an extension
 // so it doesn't match arbitrary words; existence is validated before linking.
@@ -239,8 +240,8 @@ export default function TerminalView(props: {
 
   return (
     <div
-      class="term-host-wrap"
-      classList={{ hidden: !props.active }}
+      class={styles.termHostWrap}
+      classList={{ [styles.hidden]: !props.active }}
       onDragOver={(e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
@@ -248,10 +249,10 @@ export default function TerminalView(props: {
       onDrop={handleDrop}
     >
       <Show when={showSearch()}>
-        <div class="term-search">
+        <div class={styles.termSearch}>
           <input
             ref={searchInput}
-            class="term-search-input"
+            class={styles.termSearchInput}
             placeholder="Find"
             value={query()}
             onInput={(e) => {
@@ -273,7 +274,7 @@ export default function TerminalView(props: {
           <button onClick={closeSearch} title="Close">×</button>
         </div>
       </Show>
-      <div class="term-host" ref={host} />
+      <div class={styles.termHost} ref={host} />
     </div>
   );
 }

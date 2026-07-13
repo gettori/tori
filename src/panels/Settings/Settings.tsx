@@ -1,15 +1,15 @@
 import { onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import { settings, saveSettings, type Appearance, type Typography, type Layout } from "../settings";
-import { listSelectableThemes } from "../theme";
-import styles from "./SettingsPanel.module.css";
+import { settings, saveSettings, type Appearance, type Typography, type Layout } from "../../settings";
+import { listSelectableThemes } from "../../theme";
+import styles from "./Settings.module.css";
 
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled overlay like the other modals: Escape / backdrop click closes, the
 // first control takes focus on open.
-export default function SettingsPanel(props: { onClose: () => void }) {
+export default function Settings(props: { onClose: () => void }) {
   let firstControl: HTMLSelectElement | undefined;
   onMount(() => requestAnimationFrame(() => firstControl?.focus()));
 
