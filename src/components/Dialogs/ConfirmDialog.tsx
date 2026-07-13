@@ -1,6 +1,7 @@
 import { onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
+import Button from "../Button/Button";
 
 // A portaled yes/no confirmation modal, the async replacement for window.confirm
 // (which macOS WKWebView, Tauri's webview, does not implement, so every
@@ -45,16 +46,16 @@ export default function ConfirmDialog(props: {
             <div class={styles.modalMsg}>{props.message}</div>
           </Show>
           <div class={styles.modalActions}>
-            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
+            <Button onClick={() => props.onCancel()}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               ref={ok}
-              class={`${styles.modalBtn} ${props.danger ? styles.danger : styles.primary}`}
+              variant={props.danger ? "danger" : "primary"}
               onClick={() => props.onConfirm()}
             >
               {props.confirmLabel ?? "OK"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
