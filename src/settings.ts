@@ -38,7 +38,9 @@ export { settings };
 export function applySettings(s: Settings) {
   const st = document.documentElement.style;
   st.setProperty("--sway-font-ui", s.typography.uiFontFamily);
-  st.setProperty("--ui-font-size", `${s.typography.uiFontSize}px`);
+  // Chrome font-sizes are `calc(<px> * var(--ui-scale))`; scale is the chosen UI
+  // size over the 13px baseline, so the default (13) is 1 and renders unchanged.
+  st.setProperty("--ui-scale", String(s.typography.uiFontSize / 13));
   st.setProperty("--editor-font-family", s.typography.editorFontFamily);
   st.setProperty("--editor-font-size", `${s.typography.editorFontSize}px`);
   st.setProperty("--ui-line-height", String(s.typography.lineHeight));

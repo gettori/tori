@@ -9,7 +9,7 @@
   overflow: auto;
   background: var(--pane-bg);
   padding: 4px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   user-select: none;
 }
 
@@ -27,7 +27,7 @@
 
 .tree-action {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);

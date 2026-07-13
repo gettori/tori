@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: center;
   width: 16px;
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-scale));
   line-height: 1;
   font-family: "seti";
   color: inherit;
@@ -154,7 +154,7 @@ body.dragging .term-host {
   display: flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--text-dim);
@@ -192,7 +192,7 @@ body.dragging .term-host {
   height: 100%;
   display: flex;
   flex-direction: column;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   user-select: none;
   min-height: 0;
   min-width: 0;
@@ -214,7 +214,7 @@ body.dragging .term-host {
   color: var(--text);
   border-radius: 4px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   outline: none;
 }
 
@@ -238,7 +238,7 @@ body.dragging .term-host {
   border: 1px solid var(--border);
   color: var(--text-dim);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   cursor: pointer;
 }
 .gear-btn:hover,
@@ -262,7 +262,7 @@ body.dragging .term-host {
 
 .gear-item {
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   border-radius: 4px;
   cursor: pointer;
@@ -295,7 +295,7 @@ body.dragging .term-host {
 
 .ctx-item {
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   border-radius: 4px;
   cursor: pointer;
@@ -343,19 +343,19 @@ body.dragging .term-host {
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
 }
 .modal-title {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   color: var(--text);
   margin-bottom: 10px;
   white-space: pre-wrap;
 }
 .modal-note {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim, #9aa0aa);
   margin-bottom: 8px;
   word-break: break-all;
 }
 .modal-msg {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim, #9aa0aa);
   margin-bottom: 12px;
   white-space: pre-wrap;
@@ -367,7 +367,7 @@ body.dragging .term-host {
 .modal-input {
   width: 100%;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -378,7 +378,7 @@ body.dragging .term-host {
   border-color: var(--accent);
 }
 .modal-hint {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim, #8a8a8a);
   margin-top: 8px;
   line-height: 1.4;
@@ -391,7 +391,7 @@ body.dragging .term-host {
 }
 .modal-btn {
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -459,7 +459,7 @@ body.dragging .term-host {
   width: 18px;
   height: 18px;
   padding: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale));
   line-height: 1;
   background: transparent;
   border: none;
@@ -481,7 +481,7 @@ body.dragging .term-host {
 }
 .picker-item {
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
@@ -493,7 +493,7 @@ body.dragging .term-host {
 }
 .picker-empty {
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
 }
 
@@ -502,12 +502,12 @@ body.dragging .term-host {
   width: min(480px, calc(100vw - 48px));
 }
 .modal-warn {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--danger, #e06c75);
   margin-bottom: 10px;
 }
 .modal-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim, #9aa0aa);
   margin: 12px 0 6px;
 }
@@ -515,7 +515,7 @@ body.dragging .term-host {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim, #9aa0aa);
   margin-bottom: 8px;
 }
@@ -528,7 +528,7 @@ body.dragging .term-host {
 }
 .del-empty {
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim, #9aa0aa);
 }
 .del-entry {
@@ -537,7 +537,7 @@ body.dragging .term-host {
   justify-content: space-between;
   gap: 8px;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
 }
 .del-entry + .del-entry {
@@ -554,7 +554,7 @@ body.dragging .term-host {
   flex-shrink: 0;
 }
 .del-tag {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--border);
@@ -580,7 +580,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 10px;
   padding: 3px 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 .wt-detail-key {
   flex-shrink: 0;
@@ -604,7 +604,7 @@ body.dragging .term-host {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   margin: 4px 0 4px;
   cursor: pointer;
@@ -629,7 +629,7 @@ body.dragging .term-host {
 .seg-btn {
   flex: 1;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   background: transparent;
   border: none;
   border-left: 1px solid var(--border);
@@ -662,7 +662,7 @@ body.dragging .term-host {
 .detail-err {
   margin: 6px 8px;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   color: #f08080;
   background: #2a1a1a;
   border-radius: 4px;
@@ -686,7 +686,7 @@ body.dragging .term-host {
   align-items: flex-start;
   gap: 8px;
   padding: 9px 10px 9px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1.4;
   color: var(--text);
   background: var(--pane-head-bg);
@@ -714,7 +714,7 @@ body.dragging .term-host {
   flex: none;
   margin-top: -1px;
   padding: 0 2px;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale));
   line-height: 1;
   background: transparent;
   border: none;
@@ -800,14 +800,14 @@ body.dragging .term-host {
 
 .dot {
   color: #4ec9b0;
-  font-size: 8px;
+  font-size: calc(8px * var(--ui-scale));
   margin-left: auto;
 }
 
 .row.session .when {
   margin-left: auto;
   padding-left: 8px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   color: #5a5a5a;
   flex: 0 0 auto;
 }
@@ -818,7 +818,7 @@ body.dragging .term-host {
 .row .badge {
   margin-left: auto;
   flex: 0 0 auto;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-scale));
   padding: 0 4px;
   border-radius: 3px;
   color: #e0a458;
@@ -836,7 +836,7 @@ body.dragging .term-host {
 
 .tree-foot {
   padding: 6px 10px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   color: var(--text-dim);
   border-top: 1px solid var(--border);
   white-space: nowrap;
@@ -853,7 +853,7 @@ body.dragging .term-host {
   flex: 0 0 auto;
   margin-left: auto;
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   border: 1px solid var(--border);
   border-radius: 3px;
   background: transparent;
@@ -870,7 +870,7 @@ body.dragging .term-host {
   margin: 6px 8px 2px;
   padding-top: 6px;
   border-top: 1px solid var(--border);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -885,7 +885,7 @@ body.dragging .term-host {
   gap: 8px;
   align-items: flex-start;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .tree-empty p {
@@ -907,17 +907,17 @@ body.dragging .term-host {
   align-items: center;
   justify-content: center;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
 }
 
 .detail-head h2 {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-scale));
   font-weight: 600;
 }
 
 .detail .sub {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -930,13 +930,13 @@ body.dragging .term-host {
 .detail .path {
   margin-top: 4px;
   font-family: Menlo, Monaco, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 
 .arch-pill {
   color: #b08000;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   border: 1px solid #5a4a00;
   border-radius: 3px;
   padding: 0 5px;
@@ -946,7 +946,7 @@ body.dragging .term-host {
   display: flex;
   gap: 18px;
   margin: 16px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   color: var(--text-dim);
 }
 
@@ -956,7 +956,7 @@ body.dragging .term-host {
 
 .stats .model {
   font-family: Menlo, Monaco, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .actions {
@@ -972,7 +972,7 @@ body.dragging .term-host {
   color: var(--text);
   border-radius: 5px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   cursor: pointer;
 }
 
@@ -1003,7 +1003,7 @@ body.dragging .term-host {
 
 .btn.xs {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .section {
@@ -1012,7 +1012,7 @@ body.dragging .term-host {
 }
 
 .section-title {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1025,7 +1025,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 10px;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .wt-branch {
@@ -1035,7 +1035,7 @@ body.dragging .term-host {
 
 .wt-path {
   font-family: Menlo, Monaco, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
@@ -1043,7 +1043,7 @@ body.dragging .term-host {
 
 .wt-main {
   color: #4ec9b0;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
 }
 
 .wt-add {
@@ -1060,7 +1060,7 @@ body.dragging .term-host {
   color: var(--text);
   border-radius: 4px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-family: Menlo, Monaco, monospace;
   outline: none;
 }
@@ -1079,12 +1079,12 @@ body.dragging .term-host {
 
 .rename-input {
   font-family: inherit;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale));
   max-width: 320px;
 }
 
 .sm.dim {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
 }
 
@@ -1123,7 +1123,7 @@ body.dragging .term-host {
 
 .tb-empty {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   padding: 2px 0;
 }
 
@@ -1144,7 +1144,7 @@ body.dragging .term-host {
 
 .tb-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1155,7 +1155,7 @@ body.dragging .term-host {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   white-space: nowrap;
   color: var(--text-dim);
 }
@@ -1192,7 +1192,7 @@ body.dragging .term-host {
 
 .tb-stats .stat-sep {
   color: var(--text-dim);
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-scale));
   line-height: 1;
 }
 
@@ -1205,7 +1205,7 @@ body.dragging .term-host {
 }
 
 .tb-crumb .crumb {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1216,7 +1216,7 @@ body.dragging .term-host {
 .tb-crumb .crumb.leaf {
   flex: 0 1 auto;
   /* Match the sidebar session row (`.tree` is 13px). */
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   color: var(--text);
   display: inline-flex;
   align-items: center;
@@ -1231,7 +1231,7 @@ body.dragging .term-host {
 }
 
 .tb-crumb .crumb-sep {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   flex: 0 0 auto;
   color: var(--text-dim);
 }
@@ -1244,7 +1244,7 @@ body.dragging .term-host {
 
 .toolbar .btn {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .tb-worktrees {
@@ -1256,7 +1256,7 @@ body.dragging .term-host {
 .tb-err {
   margin-top: 6px;
   color: #f08080;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 /* Terminal pane */
@@ -1283,7 +1283,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   color: var(--text-dim);
   background: var(--pane-head-bg);
   border: 1px solid var(--border);
@@ -1305,7 +1305,7 @@ body.dragging .term-host {
 }
 
 .tab-close {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   line-height: 1;
   color: var(--text-dim);
   border-radius: 3px;
@@ -1331,7 +1331,7 @@ body.dragging .term-host {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1395,7 +1395,7 @@ body.dragging .term-host {
   background: transparent;
   border: none;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -1450,7 +1450,7 @@ body.dragging .term-host {
 }
 
 .term-search-input {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   background: var(--input-bg);
   border: 1px solid var(--border);
@@ -1460,7 +1460,7 @@ body.dragging .term-host {
 }
 
 .term-search button {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
   background: none;
   border: none;
@@ -1498,7 +1498,7 @@ body.dragging .term-host {
   align-items: center;
   justify-content: center;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   text-align: center;
   padding: 20px;
 }
@@ -1547,14 +1547,14 @@ body.dragging .term-host {
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   background: var(--pane-head-bg);
   border-bottom: 1px solid var(--accent);
 }
 
 .reload-banner button {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   background: var(--hover);
   border: 1px solid var(--border);
@@ -1571,7 +1571,7 @@ body.dragging .term-host {
   margin-left: auto;
   flex: none;
   align-self: center;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);
@@ -1593,7 +1593,7 @@ body.dragging .term-host {
   align-items: center;
   justify-content: center;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   text-align: center;
   padding: 20px;
 }
@@ -1601,7 +1601,7 @@ body.dragging .term-host {
 .editor-err {
   padding: 10px;
   color: #f08080;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 /* Editor tab bar */
@@ -1644,7 +1644,7 @@ body.dragging .term-host {
   flex: none;
   margin: 0 4px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
   background: transparent;
   border: 1px solid var(--border);
@@ -1679,7 +1679,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   border-radius: 4px;
   cursor: pointer;
@@ -1700,7 +1700,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 6px;
   padding: 0 8px 0 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
   background: var(--pane-head-bg);
   border-right: 1px solid var(--border);
@@ -1720,12 +1720,12 @@ body.dragging .term-host {
 }
 
 .editor-tabs .tab-dirty {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   color: var(--accent);
 }
 
 .editor-tabs .tab-close {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   line-height: 1;
   color: var(--text-dim);
   background: none;
@@ -1761,7 +1761,7 @@ body.dragging .term-host {
 .right-tab {
   flex: 1;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
   background: none;
   border: none;
@@ -1780,7 +1780,7 @@ body.dragging .term-host {
   overflow: auto;
   background: var(--pane-bg);
   padding: 4px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   user-select: none;
 }
 
@@ -1797,7 +1797,7 @@ body.dragging .term-host {
   color: var(--text-dim);
   /* `›` is a thin glyph, so it runs a touch larger than the filled seti icons
      to optically match their weight at the same 16px slot. */
-  font-size: 20px;
+  font-size: calc(20px * var(--ui-scale));
   line-height: 1;
 }
 /* Inner span wraps just the glyph so the rotation pivots on the chevron itself
@@ -1845,7 +1845,7 @@ body.dragging .term-host {
 .qo-input {
   flex: none;
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   color: var(--text);
   background: var(--input-bg);
   border: none;
@@ -1862,7 +1862,7 @@ body.dragging .term-host {
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
@@ -1878,7 +1878,7 @@ body.dragging .term-host {
 
 .qo-empty {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
 }
 
@@ -1919,7 +1919,7 @@ body.dragging .term-host {
   width: 18px;
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .review-status.added {
@@ -1943,7 +1943,7 @@ body.dragging .term-host {
 
 .review-diff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   line-height: 1.4;
   overflow-x: auto;
   padding: 4px 0 6px;
