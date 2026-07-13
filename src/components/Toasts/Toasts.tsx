@@ -1,5 +1,6 @@
-import { For, onCleanup, createSignal } from "solid-js";
+import { For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Toasts.module.css";
 
 // A transient notification. `error` toasts are the common case (a failed git op,
 // a rejected worktree removal); `info` is available for successes/notices.
@@ -9,7 +10,6 @@ export type Toast = { id: number; message: string; kind: "error" | "info" };
 // hovered so a long git error stays readable. A manual close is always offered.
 function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) => void }) {
   let timer: number | undefined;
-  const [paused, setPaused] = createSignal(false);
 
   function arm() {
     clear();
@@ -24,19 +24,13 @@ function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) =>
 
   return (
     <div
-      class="toast"
-      classList={{ error: props.toast.kind === "error", info: props.toast.kind === "info", paused: paused() }}
-      onMouseEnter={() => {
-        setPaused(true);
-        clear();
-      }}
-      onMouseLeave={() => {
-        setPaused(false);
-        arm();
-      }}
+      class={styles.toast}
+      classList={{ [styles.error]: props.toast.kind === "error", [styles.info]: props.toast.kind === "info" }}
+      onMouseEnter={() => clear()}
+      onMouseLeave={() => arm()}
     >
-      <span class="toast-msg">{props.toast.message}</span>
-      <button class="toast-close" title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
+      <span class={styles.toastMsg}>{props.toast.message}</span>
+      <button class={styles.toastClose} title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
         ×
       </button>
     </div>
@@ -47,7 +41,7 @@ function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) =>
 export default function Toasts(props: { toasts: Toast[]; ttl?: number; onDismiss: (id: number) => void }) {
   return (
     <Portal>
-      <div class="toast-stack">
+      <div class={styles.toastStack}>
         <For each={props.toasts}>
           {(t) => <ToastRow toast={t} ttl={props.ttl ?? 8000} onDismiss={props.onDismiss} />}
         </For>
