@@ -57,9 +57,9 @@
     --sway-space-8: 32px;
 
     /* ---- Radii ---- */
-    --sway-radius-sm: 3px;
-    --sway-radius-md: 5px;
-    --sway-radius-lg: 8px;
+    --sway-radius-sm: calc(3px * var(--ui-radius-scale));
+    --sway-radius-md: calc(5px * var(--ui-radius-scale));
+    --sway-radius-lg: calc(8px * var(--ui-radius-scale));
     --sway-radius-pill: 999px;
 
     /* ---- Border widths ---- */
@@ -75,8 +75,8 @@
        props on <html>; defaults here match the pre-settings look). ---- */
     --ui-scale: 1; /* chrome font-size multiplier; = uiFontSize / 13 */
     --ui-line-height: var(--sway-line-normal);
-    --ui-radius: var(--sway-radius-md);
-    --ui-density: 1;
+    --ui-radius-scale: 1; /* border-radius multiplier; = radius / 5 */
+    --ui-density: 1; /* padding/gap multiplier; compact = 0.85 */
     --editor-font-family: "SF Mono", Menlo, Monaco, monospace;
     --editor-font-size: 13px;
 

@@ -19,7 +19,7 @@
     background: var(--pane-bg);
     color: var(--text);
     border: var(--sway-border-thin) solid var(--border);
-    border-radius: var(--ui-radius);
+    border-radius: var(--sway-radius-md);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
     font-family: var(--sway-font-ui);
   }
