@@ -1,11 +1,11 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../events";
-import FileIcon from "../seti/FileIcon";
-import Chevron from "./Chevron";
-import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu";
-import { type ConfirmOpts } from "./ConfirmDialog";
-import "./FileTree.css";
+import { emitWith, OPEN_IN_EDITOR, DRAG_PATH_MIME, TOAST, type ToastEvent } from "../../events";
+import FileIcon from "../../seti/FileIcon";
+import Chevron from "../Chevron";
+import ContextMenu, { type MenuItem, type MenuState } from "../ContextMenu";
+import { type ConfirmOpts } from "../ConfirmDialog";
+import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 
@@ -151,9 +151,9 @@ function TreeNode(props: {
   }
 
   return (
-    <div class="tree-node">
+    <div>
       <div
-        class="tree-row"
+        class={styles.treeRow}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
         onContextMenu={onContextMenu}
@@ -169,7 +169,7 @@ function TreeNode(props: {
         ) : (
           <FileIcon name={props.entry.name} />
         )}
-        <span class="tree-name" classList={{ "is-dir": props.entry.is_dir }}>
+        <span class={styles.treeName} classList={{ [styles.isDir]: props.entry.is_dir }}>
           {props.entry.name}
         </span>
       </div>
@@ -215,20 +215,20 @@ export default function FileTree(props: {
   };
 
   return (
-    <div class="file-tree">
+    <div class={styles.fileTree}>
       <Show when={ctx()}>
         {(c) => (
-          <div class="tree-actions">
-            <button class="tree-action" onClick={() => newFileIn(c(), c().root, reloadRoots)}>
+          <div class={styles.treeActions}>
+            <button class={styles.treeAction} onClick={() => newFileIn(c(), c().root, reloadRoots)}>
               New File
             </button>
-            <button class="tree-action" onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
+            <button class={styles.treeAction} onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
               New Folder
             </button>
           </div>
         )}
       </Show>
-      <Show when={roots().length} fallback={<div class="tree-empty">No files</div>}>
+      <Show when={roots().length} fallback={<div class={styles.empty}>No files</div>}>
         <For each={roots()}>
           {(e) => <TreeNode entry={e} depth={0} ctx={ctx()} reloadParent={reloadRoots} />}
         </For>
