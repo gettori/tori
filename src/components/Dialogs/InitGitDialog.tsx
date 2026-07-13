@@ -1,5 +1,6 @@
 import { createSignal, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 // Turn a non-git folder into a repo, in one dialog. Replaces the separate
 // "Initialize git repo…" and "Bare + worktree…" menu items: pick the initial
@@ -33,14 +34,14 @@ export default function InitGitDialog(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class="modal-title">Initialize git in “{props.folderName}”</div>
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+          <div class={styles.modalTitle}>Initialize git in “{props.folderName}”</div>
 
-          <div class="modal-label">Initial branch</div>
+          <div class={styles.modalLabel}>Initial branch</div>
           <input
             ref={first}
-            class="modal-input"
+            class={styles.modalInput}
             value={branch()}
             placeholder="blank = git default (main)"
             onInput={(e) => setBranch(e.currentTarget.value)}
@@ -49,9 +50,9 @@ export default function InitGitDialog(props: {
             spellcheck={false}
           />
 
-          <div class="modal-label">Remote URL (origin)</div>
+          <div class={styles.modalLabel}>Remote URL (origin)</div>
           <input
-            class="modal-input"
+            class={styles.modalInput}
             value={url()}
             placeholder="https://… (optional)"
             onInput={(e) => setUrl(e.currentTarget.value)}
@@ -60,7 +61,7 @@ export default function InitGitDialog(props: {
             spellcheck={false}
           />
 
-          <label class="wt-check init-check">
+          <label class={`${styles.wtCheck} ${styles.initCheck}`}>
             <input
               type="checkbox"
               checked={bare()}
@@ -68,17 +69,17 @@ export default function InitGitDialog(props: {
             />
             <span>Bare + worktree layout (branches as sibling folders)</span>
           </label>
-          <div class="modal-msg">
+          <div class={styles.modalMsg}>
             {bare()
               ? "Creates a .bare repo with one initial worktree; add more branches as their own folders."
               : "A normal git repository in this folder."}
           </div>
 
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button class="modal-btn primary" disabled={props.busy} onClick={() => confirm()}>
+            <button class={`${styles.modalBtn} ${styles.primary}`} disabled={props.busy} onClick={() => confirm()}>
               {props.busy ? "Initializing…" : "Initialize"}
             </button>
           </div>
