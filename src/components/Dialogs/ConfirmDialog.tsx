@@ -1,5 +1,6 @@
 import { onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 // A portaled yes/no confirmation modal, the async replacement for window.confirm
 // (which macOS WKWebView, Tauri's webview, does not implement, so every
@@ -37,19 +38,19 @@ export default function ConfirmDialog(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class="modal-title">{props.title}</div>
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+          <div class={styles.modalTitle}>{props.title}</div>
           <Show when={props.message}>
-            <div class="modal-msg">{props.message}</div>
+            <div class={styles.modalMsg}>{props.message}</div>
           </Show>
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
             <button
               ref={ok}
-              class={`modal-btn ${props.danger ? "danger" : "primary"}`}
+              class={`${styles.modalBtn} ${props.danger ? styles.danger : styles.primary}`}
               onClick={() => props.onConfirm()}
             >
               {props.confirmLabel ?? "OK"}

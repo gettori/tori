@@ -2,14 +2,14 @@ import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ContextMenu, { type MenuItem, type MenuState } from "./ContextMenu/ContextMenu";
-import PromptModal from "./PromptModal";
-import PickerModal from "./PickerModal";
-import ConfirmDeleteGroup, { type DeleteEntry } from "./ConfirmDeleteGroup";
-import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./ConfirmDialog";
-import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
-import BranchRemoveDialog from "./BranchRemoveDialog";
-import InitGitDialog from "./InitGitDialog";
-import NewProjectDialog, { type NewProjectMode } from "./NewProjectDialog";
+import PromptModal from "./Dialogs/PromptModal";
+import PickerModal from "./Dialogs/PickerModal";
+import ConfirmDeleteGroup, { type DeleteEntry } from "./Dialogs/ConfirmDeleteGroup";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "./Dialogs/ConfirmDialog";
+import WorktreeRemoveDialog from "./Dialogs/WorktreeRemoveDialog";
+import BranchRemoveDialog from "./Dialogs/BranchRemoveDialog";
+import InitGitDialog from "./Dialogs/InitGitDialog";
+import NewProjectDialog, { type NewProjectMode } from "./Dialogs/NewProjectDialog";
 import Toasts, { type Toast } from "./Toasts/Toasts";
 import {
   on as onEvent,

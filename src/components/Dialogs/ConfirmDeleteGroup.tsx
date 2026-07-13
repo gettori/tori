@@ -1,5 +1,6 @@
 import { createSignal, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 // One direct child of the group folder, as returned by `group_delete_preview`.
 export type DeleteEntry = {
@@ -56,39 +57,39 @@ export default function ConfirmDeleteGroup(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal modal-danger" onMouseDown={(e) => e.stopPropagation()}>
-          <div class="modal-title">{props.title ?? `Delete group “${props.groupName}”?`}</div>
-          <div class="modal-warn">
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={`${styles.modal} ${styles.modalDanger}`} onMouseDown={(e) => e.stopPropagation()}>
+          <div class={styles.modalTitle}>{props.title ?? `Delete group “${props.groupName}”?`}</div>
+          <div class={styles.modalWarn}>
             This permanently deletes the folder and everything below. It cannot be undone.
           </div>
 
-          <div class="del-summary">
+          <div class={styles.delSummary}>
             <span>{props.runningCount} agent{props.runningCount === 1 ? "" : "s"} running here</span>
             <span>
               {props.sizeBytes === null ? "calculating size…" : formatBytes(props.sizeBytes)}
             </span>
           </div>
 
-          <div class="del-entries">
+          <div class={styles.delEntries}>
             <Show
               when={props.entries.length}
-              fallback={<div class="del-empty">No contents (empty group)</div>}
+              fallback={<div class={styles.delEmpty}>No contents (empty group)</div>}
             >
               <For each={props.entries}>
                 {(e) => (
-                  <div class="del-entry">
-                    <span class="del-entry-name">{e.name}</span>
-                    <span class="del-entry-tags">
-                      <Show when={e.kind === "repo"} fallback={<span class="del-tag muted">{e.kind}</span>}>
+                  <div class={styles.delEntry}>
+                    <span class={styles.delEntryName}>{e.name}</span>
+                    <span class={styles.delEntryTags}>
+                      <Show when={e.kind === "repo"} fallback={<span class={`${styles.delTag} ${styles.muted}`}>{e.kind}</span>}>
                         <Show when={props.loading}>
-                          <span class="del-tag muted">checking…</span>
+                          <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
                         </Show>
                         <Show when={!props.loading && e.dirty}>
-                          <span class="del-tag warn">uncommitted</span>
+                          <span class={`${styles.delTag} ${styles.warn}`}>uncommitted</span>
                         </Show>
                         <Show when={!props.loading && e.unpushed}>
-                          <span class="del-tag warn">unpushed</span>
+                          <span class={`${styles.delTag} ${styles.warn}`}>unpushed</span>
                         </Show>
                       </Show>
                     </span>
@@ -98,12 +99,12 @@ export default function ConfirmDeleteGroup(props: {
             </Show>
           </div>
 
-          <div class="modal-label">
+          <div class={styles.modalLabel}>
             Type <strong>{props.groupName}</strong> to confirm
           </div>
           <input
             ref={input}
-            class="modal-input"
+            class={styles.modalInput}
             value={value()}
             onInput={(e) => setValue(e.currentTarget.value)}
             onKeyDown={onKeyDown}
@@ -111,11 +112,11 @@ export default function ConfirmDeleteGroup(props: {
             autocorrect="off"
             spellcheck={false}
           />
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
-            <button class="modal-btn danger" disabled={!matches()} onClick={() => props.onConfirm()}>
+            <button class={`${styles.modalBtn} ${styles.danger}`} disabled={!matches()} onClick={() => props.onConfirm()}>
               {props.confirmLabel ?? "Delete group"}
             </button>
           </div>

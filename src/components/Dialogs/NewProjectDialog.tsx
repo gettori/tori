@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import styles from "./Dialogs.module.css";
 
 export type NewProjectMode = "folder" | "clone" | "bare";
 
@@ -67,17 +68,17 @@ export default function NewProjectDialog(props: {
 
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={() => props.onCancel()}>
-        <div class="modal" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class="modal-title">New in “{props.groupName}”</div>
+      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
+        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+          <div class={styles.modalTitle}>New in “{props.groupName}”</div>
 
-          <div class="seg" role="group" aria-label="What to create">
+          <div class={styles.seg} role="group" aria-label="What to create">
             <For each={segs}>
               {(s) => (
                 <button
                   type="button"
-                  class="seg-btn"
-                  classList={{ active: mode() === s.key }}
+                  class={styles.segBtn}
+                  classList={{ [styles.active]: mode() === s.key }}
                   aria-pressed={mode() === s.key}
                   onClick={() => setMode(s.key)}
                 >
@@ -86,12 +87,12 @@ export default function NewProjectDialog(props: {
               )}
             </For>
           </div>
-          <div class="modal-msg">{helper()}</div>
+          <div class={styles.modalMsg}>{helper()}</div>
 
           <Show when={needsUrl()}>
-            <div class="modal-label">Repository URL</div>
+            <div class={styles.modalLabel}>Repository URL</div>
             <input
-              class="modal-input"
+              class={styles.modalInput}
               value={url()}
               placeholder="https://…"
               onInput={(e) => onUrlInput(e.currentTarget.value)}
@@ -101,10 +102,10 @@ export default function NewProjectDialog(props: {
             />
           </Show>
 
-          <div class="modal-label">{needsUrl() ? "Folder name" : "Name"}</div>
+          <div class={styles.modalLabel}>{needsUrl() ? "Folder name" : "Name"}</div>
           <input
             ref={first}
-            class="modal-input"
+            class={styles.modalInput}
             value={name()}
             placeholder={needsUrl() ? "defaults from the URL" : "folder name"}
             onInput={(e) => {
@@ -116,12 +117,12 @@ export default function NewProjectDialog(props: {
             spellcheck={false}
           />
 
-          <div class="modal-actions">
-            <button class="modal-btn" onClick={() => props.onCancel()}>
+          <div class={styles.modalActions}>
+            <button class={styles.modalBtn} onClick={() => props.onCancel()}>
               Cancel
             </button>
             <button
-              class="modal-btn primary"
+              class={`${styles.modalBtn} ${styles.primary}`}
               disabled={props.busy || !canConfirm()}
               onClick={() => confirm()}
             >
