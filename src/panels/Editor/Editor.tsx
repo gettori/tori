@@ -9,6 +9,8 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import ReviewPanel from "./ReviewPanel";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import FileIcon from "../../seti/FileIcon";
+import Icon from "../../components/Icon/Icon";
+import { X } from "lucide-solid";
 import {
   onWith,
   OPEN_IN_EDITOR,
@@ -243,12 +245,13 @@ export default function Editor(props: { selected: Selection | null }) {
               </Show>
               <button
                 class="tab-close"
+                aria-label="Close"
                 onClick={(e) => {
                   e.stopPropagation();
                   closeTab(f.path);
                 }}
               >
-                ×
+                <Icon icon={X} size={14} />
               </button>
             </div>
           )}
@@ -261,12 +264,13 @@ export default function Editor(props: { selected: Selection | null }) {
               </Show>
               <button
                 class="tab-close"
+                aria-label="Close"
                 onClick={(e) => {
                   e.stopPropagation();
                   closeTab(f.path);
                 }}
               >
-                ×
+                <Icon icon={X} size={14} />
               </button>
             </>
           )}
