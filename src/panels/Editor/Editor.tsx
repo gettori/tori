@@ -16,9 +16,9 @@ import {
   DRAG_PATH_MIME,
   type OpenInEditor,
   type PurgeUnderPath,
-} from "../../events";
-import { isUnderPath } from "../../pathScope";
-import { isSelfWrite } from "../../selfWrites";
+} from "../../utils/events";
+import { isUnderPath } from "../../utils/pathScope";
+import { isSelfWrite } from "../../utils/selfWrites";
 import { ensureLsp } from "../../lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";

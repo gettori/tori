@@ -1,6 +1,6 @@
 import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, SESSIONS_REFRESH } from "../../events";
+import { emit, SESSIONS_REFRESH } from "../../utils/events";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
