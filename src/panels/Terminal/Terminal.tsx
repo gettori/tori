@@ -3,8 +3,8 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
-import OverflowTabBar from "./OverflowTabBar";
-import type { Selection } from "./Sidebar";
+import OverflowTabBar from "../../components/OverflowTabBar";
+import type { Selection } from "../../components/Sidebar";
 import {
   on as onEvent,
   onWith,
@@ -15,8 +15,9 @@ import {
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
-} from "../events";
-import { isUnderPath } from "../pathScope";
+} from "../../events";
+import { isUnderPath } from "../../pathScope";
+import styles from "./Terminal.module.css";
 
 type OpenTerm = {
   id: string;
@@ -26,7 +27,7 @@ type OpenTerm = {
   args: string[];
 };
 
-export default function TerminalArea(props: {
+export default function Terminal(props: {
   selected: Selection | null;
   onOpenChange?: (ids: Set<string>) => void;
 }) {
@@ -180,9 +181,9 @@ export default function TerminalArea(props: {
   }
 
   return (
-    <div class="term-area">
+    <div class={styles.termArea}>
       <OverflowTabBar
-        class="term-tabs"
+        class={styles.termTabs}
         items={open()}
         activeId={active()}
         idOf={(t) => t.id}
@@ -190,7 +191,7 @@ export default function TerminalArea(props: {
         onReorder={setOpen}
         renderTab={(t) => (
           <div
-            class={`term-tab ${active() === t.id ? "active" : ""}`}
+            class={`${styles.termTab} ${active() === t.id ? styles.active : ""}`}
             onClick={() => setActive(t.id)}
             title={t.cwd}
           >
@@ -209,9 +210,9 @@ export default function TerminalArea(props: {
           </>
         )}
         trailing={
-          <div class="term-new-split" ref={splitEl}>
+          <div class={styles.termNewSplit} ref={splitEl}>
             <button
-              class="term-new term-new-main"
+              class={`${styles.termNew} ${styles.termNewMain}`}
               disabled={!props.selected}
               title={
                 props.selected
@@ -224,20 +225,20 @@ export default function TerminalArea(props: {
             </button>
             <button
               ref={caretEl}
-              class="term-new term-new-caret"
+              class={`${styles.termNew} ${styles.termNewCaret}`}
               disabled={!props.selected}
               title="More launch options"
               aria-haspopup="menu"
               aria-expanded={menuOpen()}
               onClick={toggleMenu}
             >
-              <span class="term-new-chevron">›</span>
+              <span class={styles.termNewChevron}>›</span>
             </button>
             <Show when={menuOpen()}>
               <Portal>
                 <div
                   ref={menuEl}
-                  class="term-new-menu"
+                  class={styles.termNewMenu}
                   role="menu"
                   style={{ left: `${menuPos().left}px`, top: `${menuPos().top}px` }}
                 >
@@ -246,7 +247,7 @@ export default function TerminalArea(props: {
                     fallback={
                       <>
                         <button
-                          class="term-new-menu-item"
+                          class={styles.termNewMenuItem}
                           role="menuitem"
                           onClick={() => {
                             setMenuOpen(false);
@@ -256,7 +257,7 @@ export default function TerminalArea(props: {
                           Claude (yolo)
                         </button>
                         <button
-                          class="term-new-menu-item"
+                          class={styles.termNewMenuItem}
                           role="menuitem"
                           onClick={() => {
                             setMenuOpen(false);
@@ -269,7 +270,7 @@ export default function TerminalArea(props: {
                     }
                   >
                     <button
-                      class="term-new-menu-item"
+                      class={styles.termNewMenuItem}
                       role="menuitem"
                       onClick={() => {
                         setMenuOpen(false);
@@ -279,7 +280,7 @@ export default function TerminalArea(props: {
                       Claude
                     </button>
                     <button
-                      class="term-new-menu-item"
+                      class={styles.termNewMenuItem}
                       role="menuitem"
                       onClick={() => {
                         setMenuOpen(false);
@@ -296,11 +297,11 @@ export default function TerminalArea(props: {
         }
       />
 
-      <div class="term-stage">
+      <div class={styles.termStage}>
         <Show
           when={open().length}
           fallback={
-            <div class="term-empty">
+            <div class={styles.termEmpty}>
               Select a session to resume it, or pick a branch and start a new Claude or pi session.
             </div>
           }

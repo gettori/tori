@@ -1,0 +1,235 @@
+/* Terminal panel styles (hash-scoped). The shared `.tab-label`/`.tab-close`
+   tab-content classes stay global in App.css (also used by the editor tabs), and
+   `OverflowTabBar` keeps its own global classes; only `.term-*` moves here.
+   xterm.js applies `.xterm*` to its own DOM, so those are wrapped in :global(). */
+.termArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.termTabs {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(2px * var(--ui-density));
+  min-height: 34px;
+  padding: 0 calc(4px * var(--ui-density));
+  background: var(--pane-head-bg);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.termTab {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(13px * var(--ui-scale));
+  color: var(--text-dim);
+  background: var(--pane-head-bg);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: calc(4px * var(--ui-radius-scale)) calc(4px * var(--ui-radius-scale)) 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.termTab.active {
+  color: var(--text);
+  background: var(--pane-bg);
+}
+
+/* Split button: "+ Claude" main action + caret that opens a launch menu.
+   align-items: stretch makes the caret match the taller main half's height. */
+.termNewSplit {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  margin-left: 2px;
+}
+
+.termNew {
+  align-self: stretch;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: calc(13px * var(--ui-scale));
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.termNewMain {
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  border-radius: calc(4px * var(--ui-radius-scale)) 0 0 calc(4px * var(--ui-radius-scale));
+  border-right: none;
+}
+
+.termNewCaret {
+  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
+  border-radius: 0 4px 4px 0;
+}
+
+/* The caret glyph is a › rotated to point down; it flips when the menu is open. */
+.termNewChevron {
+  display: inline-block;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.termNewCaret[aria-expanded="true"] .termNewChevron {
+  transform: rotate(-90deg);
+}
+
+.termNew:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Keep the shared divider crisp when only one half is hovered. */
+.termNewMain:hover:not(:disabled) + .termNewCaret:not(:hover) {
+  border-left-color: var(--accent);
+}
+
+.termNew:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.termNewMenu {
+  position: fixed;
+  transform: translateX(-100%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: calc(4px * var(--ui-density));
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(6px * var(--ui-radius-scale));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.termNewMenuItem {
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--ui-scale));
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  border-radius: calc(4px * var(--ui-radius-scale));
+  cursor: pointer;
+}
+
+.termNewMenuItem:hover {
+  color: #fff;
+  background: var(--accent);
+}
+
+.termStage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--bg);
+}
+
+.termHostWrap {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.termHostWrap.hidden {
+  display: none;
+}
+
+.termHost {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+
+/* While a splitter drag is in progress, stop the terminal from swallowing
+   pointer events so window-level pointermove keeps firing (mirrors the global
+   `body.dragging .code-editor` guard in App.css). */
+:global(body.dragging) .termHost {
+  pointer-events: none;
+}
+
+.termSearch {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
+  background: var(--pane-head-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-radius-scale));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.termSearchInput {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(3px * var(--ui-radius-scale));
+  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
+  outline: none;
+}
+
+.termSearch button {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 calc(3px * var(--ui-density));
+}
+
+.termSearch button:hover {
+  color: var(--text);
+}
+
+.termHost :global(.xterm) {
+  /* Padding goes on the xterm element itself: FitAddon subtracts this element's
+     padding when computing rows/cols, so the bottom row isn't clipped. Padding
+     on the host wrapper is NOT accounted for and causes the cut. */
+  height: 100%;
+  padding: 0 0 calc(10px * var(--ui-density)) calc(10px * var(--ui-density));
+  background: var(--bg);
+}
+
+/* Hide the scrollbar: its viewport ignores the padding and shows a light strip
+   on the right. The claude TUI manages its own screen, so the bar isn't needed. */
+.termHost :global(.xterm-viewport) {
+  background-color: var(--bg) !important;
+  scrollbar-width: none;
+}
+
+.termHost :global(.xterm-viewport)::-webkit-scrollbar {
+  display: none;
+}
+
+.termEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--ui-scale));
+  text-align: center;
+  padding: calc(20px * var(--ui-density));
+}
