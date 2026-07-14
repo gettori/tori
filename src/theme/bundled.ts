@@ -13,7 +13,7 @@ export type BundledTheme = {
 };
 
 const THEMES: BundledTheme[] = [
-  { id: "dark-plus", label: "Dark+", kind: "dark", selectable: true, raw: darkPlus as unknown as RawTheme },
+  { id: "dark-plus", label: "Sway Dark", kind: "dark", selectable: true, raw: darkPlus as unknown as RawTheme },
   { id: "light-plus", label: "Light+", kind: "light", selectable: true, raw: lightPlus as unknown as RawTheme },
 ];
 
