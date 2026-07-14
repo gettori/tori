@@ -29,6 +29,18 @@
     --sway-fg-dark: #d4d4d4;
     --sway-fg-light: #1e1e1e;
 
+    /* ---- Cool navy surface ramp (dark theme) ----
+       The dark chrome palette, a deep cool navy rather than a neutral charcoal.
+       Sampled from the premium reference; the dark semantic tokens below select
+       these instead of the neutral grays. Light theme keeps the gray ramp. */
+    --sway-navy-950: #0e141b; /* app root bg (behind panes) */
+    --sway-navy-900: #111720; /* pane bg */
+    --sway-navy-850: #1b232e; /* raised head / input field */
+    --sway-navy-800: #212b37; /* hover / active row */
+    --sway-navy-700: #232c38; /* border */
+    --sway-fg-navy: #e6e9f0; /* primary text (cool near-white) */
+    --sway-fg-navy-dim: #8b929e; /* dim text (cool grey) */
+
     /* Accent (blue) */
     --sway-blue-100: #cfe3fb;
     --sway-blue-500: #4a9eff;
@@ -109,16 +121,16 @@
   /* ---- Semantic tokens, dark (default) ---- */
   :root,
   :root[data-theme="dark"] {
-    --bg: var(--sway-gray-990);
-    --pane-bg: var(--sway-gray-950);
-    --pane-head-bg: var(--sway-gray-900);
-    --border: var(--sway-gray-850);
-    --text: var(--sway-fg-dark);
-    --text-dim: var(--sway-gray-600);
+    --bg: var(--sway-navy-950);
+    --pane-bg: var(--sway-navy-900);
+    --pane-head-bg: var(--sway-navy-850);
+    --border: var(--sway-navy-700);
+    --text: var(--sway-fg-navy);
+    --text-dim: var(--sway-fg-navy-dim);
     --accent: var(--sway-blue-500);
     --sel: var(--sway-blue-900);
-    --hover: var(--sway-gray-800);
-    --input-bg: var(--sway-gray-990);
+    --hover: var(--sway-navy-800);
+    --input-bg: var(--sway-navy-850);
     /* Status accents. These are the values App.css already assumes as var()
        fallbacks (e.g. var(--danger, #e06c75)); defining them makes those
        theme-aware. Dark values equal the fallbacks, so dark is unchanged. */

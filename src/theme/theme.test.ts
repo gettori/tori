@@ -13,7 +13,7 @@ describe("distillVsCodeTheme", () => {
   it("extracts colors and all seven syntax categories from bundled Dark+", () => {
     const tc = distillVsCodeTheme(DARK);
     expect(tc.kind).toBe("dark");
-    expect(tc.colors["editor.background"]).toBe("#1a1a1a");
+    expect(tc.colors["editor.background"]).toBe("#0e141b");
     expect(tc.syntax).toEqual({
       keyword: "#569cd6",
       string: "#ce9178",
@@ -36,19 +36,19 @@ describe("distillVsCodeTheme", () => {
 });
 
 describe("resolveTheme", () => {
-  it("maps Dark+ to the exact current dark chrome tokens (dark stays identical)", () => {
+  it("maps the default dark theme to the cool-navy chrome tokens", () => {
     const resolved = resolveTheme(distillVsCodeTheme(DARK));
     expect(resolved).toMatchObject({
-      "--bg": "#1a1a1a",
-      "--pane-bg": "#1e1e1e",
-      "--pane-head-bg": "#252526",
-      "--border": "#2d2d2d",
-      "--text": "#d4d4d4",
-      "--text-dim": "#808080",
+      "--bg": "#0e141b",
+      "--pane-bg": "#111720",
+      "--pane-head-bg": "#1b232e",
+      "--border": "#232c38",
+      "--text": "#e6e9f0",
+      "--text-dim": "#8b929e",
       "--accent": "#4a9eff",
       "--sel": "#094771",
-      "--hover": "#2a2d2e",
-      "--input-bg": "#1a1a1a",
+      "--hover": "#212b37",
+      "--input-bg": "#1b232e",
     });
   });
 
