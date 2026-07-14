@@ -151,7 +151,7 @@
 
 /* Left gold accent bar on an active sub-item (a selected branch or session),
    centred inside the pill so it reads as a rail without fighting the rounded
-   corners. Group/project rows get the pill only, no bar. */
+   corners. Project rows get the pill only, no bar. */
 .row.branch.sel::before,
 .row.session.sel::before {
   content: "";
@@ -163,14 +163,6 @@
   transform: translateY(-50%);
   border-radius: var(--sway-radius-pill);
   background: var(--brand-bar);
-}
-
-.row.group .label {
-  font-weight: 600;
-  font-size: calc(11px * var(--ui-scale));
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text);
 }
 
 .row.project .label,
@@ -194,9 +186,6 @@
 .row.sub2 {
   padding-left: calc(32px * var(--ui-density));
 }
-.row.sub3 {
-  padding-left: calc(44px * var(--ui-density));
-}
 
 .row.dim {
   color: var(--text-dim);
@@ -208,8 +197,43 @@
 }
 
 .row .label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Leading type icon on a project / branch row, boxed to the same 16px
+   slot as `.seti-icon` so labels line up across levels. Dimmed by default;
+   brightens on the active pill alongside the label. */
+.rowIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-dim);
+}
+.row.sel .rowIcon {
+  color: var(--text);
+}
+
+/* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
+   that rotates 180° into a chevron-up when the row is expanded. Because the
+   label grows (flex:1), it always sits flush right after any badges/dot. */
+.rowChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-dim);
+  transition: transform var(--sway-duration-fast) ease;
+}
+.rowChevron.open {
+  transform: rotate(180deg);
 }
 
 .dot {
@@ -264,14 +288,68 @@
   font-style: italic;
 }
 
-/* "Other" section header: a divider above pinned external folders. */
-.treeDivider {
-  margin: 6px 8px 2px;
-  padding-top: calc(6px * var(--ui-density));
+/* ---- Space bar (groups as Arc-style spaces) ----
+   A horizontal strip pinned above the config footer, one tile per group with a
+   single active space; the tree above renders only the active group's projects. */
+.spaceBar {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
   border-top: 1px solid var(--border);
-  font-size: calc(10px * var(--ui-scale));
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  overflow-x: auto;
+}
+
+/* A group tile: a rounded square showing the group's initial. Dim by default;
+   the active space is marked with the gold brand. */
+.space {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
   color: var(--text-dim);
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease;
+}
+.space:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+.space.active {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+}
+
+/* The "new group" tile, pushed to the trailing edge. */
+.spaceAdd {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--sway-radius-md);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
+}
+.spaceAdd:hover {
+  color: var(--text);
+  border-color: var(--brand);
 }
