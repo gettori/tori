@@ -33,7 +33,7 @@ export const NEW_SESSION = "sway:new-session";
 export type NewSession = { folderPath: string; projectName: string; agent?: "claude" | "pi" };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
-// group is deleted). The terminal area kills + closes PTY tabs whose cwd is under
+// space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
 // it; the editor pane closes buffers under it. Emitted before the native delete so
 // no agent keeps writing into a vanishing cwd.
 export const PURGE_UNDER_PATH = "sway:purge-under-path";
@@ -50,7 +50,7 @@ export type ToastEvent = { message: string; kind?: "error" | "info" };
 export const DRAG_PATH_MIME = "application/x-sway-path";
 
 // DataTransfer MIME carrying one or more newline-separated ABSOLUTE paths when
-// dragging a left-sidebar row (group / project / branch / session) onto the
+// dragging a left-sidebar row (space / project / branch / session) onto the
 // terminal. Unlike DRAG_PATH_MIME these are inserted verbatim as `@<abspath>`
 // (not relativized to the cwd), so the agent gets the full path to read from.
 export const DRAG_ABS_PATH_MIME = "application/x-sway-abspath";

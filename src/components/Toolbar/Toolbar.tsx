@@ -267,7 +267,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
               }
             >
               <nav class={styles.tbCrumb} aria-label="location">
-                <span class={`${styles.crumb} dim`}>{sel()!.groupName}</span>
+                <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
                 <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
                 <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
                 <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />

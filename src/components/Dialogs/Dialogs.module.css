@@ -128,7 +128,7 @@
   color: var(--text-dim);
 }
 
-/* ---- Delete-group confirmation extras (reuses the .modal chrome above). ---- */
+/* ---- Delete-space confirmation extras (reuses the .modal chrome above). ---- */
 .modalDanger {
   width: min(480px, calc(100vw - 48px));
 }

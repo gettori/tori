@@ -1,6 +1,6 @@
 // Sway config. Projects are DISCOVERED from the filesystem, not declared:
-// the user lists base "roots" (default `~/Projects`); each `<root>/<group>/<project>`
-// folder becomes a project, grouped by its first-level dir. Extra out-of-root
+// the user lists base "roots" (default `~/Projects`); each `<root>/<space>/<project>`
+// folder becomes a project, one space per first-level dir. Extra out-of-root
 // project folders can be added explicitly. A legacy `[[project]]` table is still
 // honored (folded in as explicit paths) so old configs keep working.
 //
@@ -33,8 +33,8 @@ struct RawConfig {
     docs: RawDocs,
 }
 
-// A parallel notes/docs tree that mirrors `<root>/<group>/<project>` under a
-// single base folder, so a project's docs live at `<docs.root>/<group>/<project>`.
+// A parallel notes/docs tree that mirrors `<root>/<space>/<project>` under a
+// single base folder, so a project's docs live at `<docs.root>/<space>/<project>`.
 #[derive(Deserialize, Default)]
 struct RawDocs {
     /// Base folder for the mirrored docs tree. Defaults to the grimoire vault.
@@ -53,7 +53,7 @@ fn docs_root(raw: &RawConfig) -> String {
 
 #[derive(Deserialize, Default)]
 struct RawDiscovery {
-    /// Base folders scanned as `<root>/<group>/<project>`.
+    /// Base folders scanned as `<root>/<space>/<project>`.
     #[serde(default)]
     roots: Vec<String>,
     /// Folder names skipped during the scan (in addition to dotfiles).
@@ -68,7 +68,10 @@ struct RawDiscovery {
 // folder basename, so a legacy entry's declared name is ignored on migration.
 #[derive(Deserialize)]
 struct RawProject {
-    group: String,
+    // Accept the historical `group = ...` key so configs written before the
+    // group→space rename still parse.
+    #[serde(alias = "group")]
+    space: String,
     path: String,
 }
 
@@ -106,23 +109,23 @@ pub struct Project {
 }
 
 #[derive(Serialize, Clone)]
-pub struct Group {
+pub struct Space {
     pub name: String,
-    // The group's directory, so the UI can mkdir a new project folder under it.
+    // The space's directory, so the UI can mkdir a new project folder under it.
     pub path: String,
     pub projects: Vec<Project>,
-    // True for a group assembled from external pins (rendered under "Other"),
-    // false for one discovered under the root. Root and external groups of the
-    // same name stay distinct, so "Other" never absorbs a root group.
+    // True for a space assembled from external pins (rendered under "Other"),
+    // false for one discovered under the root. Root and external spaces of the
+    // same name stay distinct, so "Other" never absorbs a root space.
     pub external: bool,
 }
 
 #[derive(Serialize, Clone)]
 pub struct ResolvedConfig {
     pub path: String,
-    // The configured base folders (expanded). Empty + no groups => first run.
+    // The configured base folders (expanded). Empty + no spaces => first run.
     pub roots: Vec<String>,
-    pub groups: Vec<Group>,
+    pub spaces: Vec<Space>,
 }
 
 #[derive(Serialize, Clone)]
@@ -188,12 +191,12 @@ const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base fo
 # Add a base folder from the app, or declare roots here:
 #
 # [discovery]
-# roots  = ["~/Projects"]   # base folders scanned as <root>/<group>/<project>
+# roots  = ["~/Projects"]   # base folders scanned as <root>/<space>/<project>
 # ignore = ["node_modules"] # folder names to skip (dotfiles are always skipped)
 # paths  = []               # explicit out-of-root project folders
 #
 # [docs]
-# root = "~/.dotfiles/grimoire/docs"  # mirrored notes tree: <root>/<group>/<project>
+# root = "~/.dotfiles/grimoire/docs"  # mirrored notes tree: <root>/<space>/<project>
 "#;
 
 fn ensure_config() -> Result<String, String> {
@@ -506,33 +509,33 @@ fn cached_probe(index: &ProjectIndex, path: &Path) -> Vec<BranchUnit> {
 
 // --- discovery ---
 
-/// `(group, path)` for an explicit out-of-root path; group = parent dir name.
-fn extra_group_and_path(raw_path: &str) -> (String, PathBuf) {
+/// `(space, path)` for an explicit out-of-root path; space = parent dir name.
+fn extra_space_and_path(raw_path: &str) -> (String, PathBuf) {
     let p = PathBuf::from(expand_tilde(raw_path));
-    let group = p
+    let space = p
         .parent()
         .and_then(|x| x.file_name())
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    (group, p)
+    (space, p)
 }
 
-/// Index of the group named `name` in `groups`, creating an (initially empty)
-/// entry anchored at `path` when absent. Empty group dirs are surfaced too, so a
-/// freshly created group is selectable before it holds any project.
-fn ensure_group_idx(groups: &mut Vec<Group>, name: &str, path: &Path, external: bool) -> usize {
-    // Match on name AND origin so a root group and an external pin sharing a name
-    // remain two distinct groups (root in the main tree, the pin under "Other").
-    if let Some(i) = groups.iter().position(|g| g.name == name && g.external == external) {
+/// Index of the space named `name` in `spaces`, creating an (initially empty)
+/// entry anchored at `path` when absent. Empty space dirs are surfaced too, so a
+/// freshly created space is selectable before it holds any project.
+fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path, external: bool) -> usize {
+    // Match on name AND origin so a root space and an external pin sharing a name
+    // remain two distinct spaces (root in the main tree, the pin under "Other").
+    if let Some(i) = spaces.iter().position(|g| g.name == name && g.external == external) {
         return i;
     }
-    groups.push(Group {
+    spaces.push(Space {
         name: name.to_string(),
         path: path.to_string_lossy().into_owned(),
         projects: Vec::new(),
         external,
     });
-    groups.len() - 1
+    spaces.len() - 1
 }
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
@@ -541,11 +544,11 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     // load (not only on explicit reset), so discovery yields one tree, never two.
     let roots: Vec<String> = raw.discovery.roots.iter().take(1).map(|r| expand_tilde(r)).collect();
 
-    let mut groups: Vec<Group> = Vec::new();
+    let mut spaces: Vec<Space> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
     let mut seen_paths: HashSet<PathBuf> = HashSet::new(); // cache eviction (raw)
 
-    let mut add_project = |groups: &mut Vec<Group>, gi: usize, ppath: PathBuf, external: bool| {
+    let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf, external: bool| {
         let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
             return; // reachable via several roots/paths: keep the first
@@ -557,45 +560,45 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             branch_units: cached_probe(index, &ppath),
             external,
         };
-        groups[gi].projects.push(project);
+        spaces[gi].projects.push(project);
     };
 
-    // 1. Roots scanned as <root>/<group>/<project>; empty group dirs registered.
+    // 1. Roots scanned as <root>/<space>/<project>; empty space dirs registered.
     for root in &roots {
         let root = PathBuf::from(root);
-        let Ok(group_dirs) = std::fs::read_dir(&root) else {
+        let Ok(space_dirs) = std::fs::read_dir(&root) else {
             continue;
         };
-        for g in group_dirs.flatten() {
+        for g in space_dirs.flatten() {
             let gpath = g.path();
             if !gpath.is_dir() || skip(&basename(&gpath)) {
                 continue;
             }
-            let gi = ensure_group_idx(&mut groups, &basename(&gpath), &gpath, false);
+            let gi = ensure_space_idx(&mut spaces, &basename(&gpath), &gpath, false);
             if let Ok(projects) = std::fs::read_dir(&gpath) {
                 for p in projects.flatten() {
                     let ppath = p.path();
                     if ppath.is_dir() && !skip(&basename(&ppath)) {
-                        add_project(&mut groups, gi, ppath, false);
+                        add_project(&mut spaces, gi, ppath, false);
                     }
                 }
             }
         }
     }
 
-    // 2. Explicit extra paths: discovery.paths (group from parent dir) + legacy
-    // [[project]] entries (keeping their declared group).
+    // 2. Explicit extra paths: discovery.paths (space from parent dir) + legacy
+    // [[project]] entries (keeping their declared space).
     let mut extra: Vec<(String, PathBuf)> = Vec::new();
     for p in &raw.discovery.paths {
-        extra.push(extra_group_and_path(p));
+        extra.push(extra_space_and_path(p));
     }
     for p in &raw.project {
-        extra.push((p.group.clone(), PathBuf::from(expand_tilde(&p.path))));
+        extra.push((p.space.clone(), PathBuf::from(expand_tilde(&p.path))));
     }
     for (gname, ppath) in extra {
-        let group_path = ppath.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| ppath.clone());
-        let gi = ensure_group_idx(&mut groups, &gname, &group_path, true);
-        add_project(&mut groups, gi, ppath, true);
+        let space_path = ppath.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| ppath.clone());
+        let gi = ensure_space_idx(&mut spaces, &gname, &space_path, true);
+        add_project(&mut spaces, gi, ppath, true);
     }
 
     // Evict cache entries for projects that no longer exist.
@@ -606,7 +609,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     ResolvedConfig {
         path: config_path().to_string_lossy().into_owned(),
         roots,
-        groups,
+        spaces,
     }
 }
 
@@ -617,7 +620,7 @@ pub fn get_config(index: State<ProjectIndex>) -> Result<ResolvedConfig, String> 
     Ok(resolve(raw, &index))
 }
 
-/// The base folder of the mirrored docs tree (`<docs.root>/<group>/<project>`),
+/// The base folder of the mirrored docs tree (`<docs.root>/<space>/<project>`),
 /// so the editor can show a project's notes alongside its files.
 #[tauri::command]
 pub fn get_docs_root() -> Result<String, String> {
@@ -922,7 +925,7 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
     Ok(())
 }
 
-// --- first-run onboarding + create group/folder ---
+// --- first-run onboarding + create space/folder ---
 
 /// Native macOS folder picker (dependency-free, via osascript). Returns the
 /// chosen folder, or None when the user cancels (so the UI can stay put).
@@ -1079,9 +1082,9 @@ fn valid_name(name: &str) -> Result<String, String> {
     Ok(n.to_string())
 }
 
-/// mkdir a new group under a root. Returns the created dir.
+/// mkdir a new space under a root. Returns the created dir.
 #[tauri::command]
-pub fn add_group(app: AppHandle, root: String, name: String) -> Result<String, String> {
+pub fn add_space(app: AppHandle, root: String, name: String) -> Result<String, String> {
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
     if dir.exists() {
@@ -1092,11 +1095,11 @@ pub fn add_group(app: AppHandle, root: String, name: String) -> Result<String, S
     Ok(dir.to_string_lossy().into_owned())
 }
 
-/// mkdir a new project folder under a group. Returns the created dir.
+/// mkdir a new project folder under a space. Returns the created dir.
 #[tauri::command]
-pub fn add_folder(app: AppHandle, group_path: String, name: String) -> Result<String, String> {
+pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<String, String> {
     let n = valid_name(&name)?;
-    let dir = PathBuf::from(&group_path).join(&n);
+    let dir = PathBuf::from(&space_path).join(&n);
     if dir.exists() {
         return Err(format!("\"{n}\" already exists"));
     }
@@ -1129,17 +1132,17 @@ pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Pure guard: given the single collapsed root and a candidate group path, return
-/// the group dir to delete or an error. A group is a *direct child* of the root,
+/// Pure guard: given the single collapsed root and a candidate space path, return
+/// the space dir to delete or an error. A space is a *direct child* of the root,
 /// so we refuse the root itself, `$HOME`, and anything not directly under the root
 /// (a project, a nested path, or an outside path). Both sides are canonicalized so
-/// a symlinked group resolving outside the root is refused, never followed.
-fn do_delete_group(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
+/// a symlinked space resolving outside the root is refused, never followed.
+fn do_delete_space(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let root = root.ok_or("No base folder configured")?;
     let root_c = std::fs::canonicalize(expand_tilde(root))
         .map_err(|_| "Base folder does not exist".to_string())?;
     let dir_c =
-        std::fs::canonicalize(path).map_err(|_| "Group folder does not exist".to_string())?;
+        std::fs::canonicalize(path).map_err(|_| "Space folder does not exist".to_string())?;
     if dir_c == root_c {
         return Err("Refusing to delete the base folder itself".into());
     }
@@ -1150,19 +1153,19 @@ fn do_delete_group(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     }
     match dir_c.parent() {
         Some(p) if p == root_c => Ok(dir_c),
-        _ => Err("Refusing: not a group directly under the base folder".into()),
+        _ => Err("Refusing: not a space directly under the base folder".into()),
     }
 }
 
-/// Permanently `rm -rf` a root group and everything inside it. Guarded by
-/// `do_delete_group` against escaping the base folder; the destructive typed-name
+/// Permanently `rm -rf` a root space and everything inside it. Guarded by
+/// `do_delete_space` against escaping the base folder; the destructive typed-name
 /// confirmation lives in the UI. Non-atomic: a mid-delete failure can leave a
 /// partial folder, surfaced as an error. Emits `config://changed` to re-discover.
 #[tauri::command]
-pub fn delete_group(app: AppHandle, path: String) -> Result<(), String> {
+pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
-    let dir = do_delete_group(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
+    let dir = do_delete_space(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -1170,8 +1173,8 @@ pub fn delete_group(app: AppHandle, path: String) -> Result<(), String> {
 
 /// Pure guard: given the single collapsed root and a candidate plain-folder path,
 /// return the folder dir to delete or an error. A plain folder is a *project* (a
-/// child of a group), so it must be a strict descendant of the root but never the
-/// root, a group directly under it, or `$HOME`. Both sides are canonicalized so a
+/// child of a space), so it must be a strict descendant of the root but never the
+/// root, a space directly under it, or `$HOME`. Both sides are canonicalized so a
 /// symlink resolving outside the root is refused, never followed. Git-ness is
 /// checked by the caller (probe), not here.
 fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
@@ -1188,7 +1191,7 @@ fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
         }
     }
     if dir_c.parent() == Some(root_c.as_path()) {
-        return Err("Refusing: this is a group, not a folder (use Delete group)".into());
+        return Err("Refusing: this is a space, not a folder (use Delete space)".into());
     }
     if !dir_c.starts_with(&root_c) {
         return Err("Refusing: not a folder under the base folder".into());
@@ -1197,7 +1200,7 @@ fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
 }
 
 /// Permanently `rm -rf` a non-git project folder (a plain-dir). Guarded by
-/// `do_remove_folder` against escaping the base folder / hitting a group, and by a
+/// `do_remove_folder` against escaping the base folder / hitting a space, and by a
 /// `probe_project` re-check that refuses anything git (a repo or worktree
 /// container), so tracked work can never be deleted through this path. The
 /// typed-name confirmation lives in the UI. Emits `config://changed`.
@@ -1218,7 +1221,7 @@ pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
 
 /// Permanently `rm -rf` a git *project* folder: a plain repo or a worktree
 /// container (with its `.bare` and every worktree). Shares `do_remove_folder`'s
-/// location guard (a project is a grandchild of the root, never the root, a group,
+/// location guard (a project is a grandchild of the root, never the root, a space,
 /// or `$HOME`), then a `probe_project` re-check that *requires* a git project, so
 /// a plain-dir (which has `remove_folder`) or an incomplete stub (which has "Remove
 /// stub") never routes here. The typed-name confirmation lives in the UI. Emits
@@ -1237,7 +1240,7 @@ pub fn remove_project(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// One direct child of a group folder in the delete preview: a git repo (with its
+/// One direct child of a space folder in the delete preview: a git repo (with its
 /// at-risk flags), a plain folder, or a loose file. Non-repo entries carry no flags.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1250,7 +1253,7 @@ pub struct PreviewEntry {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GroupPreview {
+pub struct SpacePreview {
     pub size_bytes: u64,
     pub entries: Vec<PreviewEntry>,
 }
@@ -1300,12 +1303,12 @@ fn repo_status(path: &Path) -> Option<(bool, bool)> {
     Some((dirty, unpushed))
 }
 
-/// Enumerate *every* direct child of a group folder (not only discovered projects)
+/// Enumerate *every* direct child of a space folder (not only discovered projects)
 /// so the delete confirmation shows the full blast radius: loose files and non-git
 /// folders that discovery skips are still surfaced. Per-repo at-risk flags + total
 /// on-disk size drive the dialog.
 #[tauri::command]
-pub fn group_delete_preview(path: String) -> Result<GroupPreview, String> {
+pub fn space_delete_preview(path: String) -> Result<SpacePreview, String> {
     let dir = PathBuf::from(&path);
     let mut entries: Vec<PreviewEntry> = Vec::new();
     for ent in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
@@ -1322,17 +1325,17 @@ pub fn group_delete_preview(path: String) -> Result<GroupPreview, String> {
         entries.push(entry);
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(GroupPreview { size_bytes: dir_size(&dir), entries })
+    Ok(SpacePreview { size_bytes: dir_size(&dir), entries })
 }
 
 /// Delete preview for a git *project* folder (plain repo or worktree container).
-/// Like `group_delete_preview` for the blast radius, but prepends the project's own
+/// Like `space_delete_preview` for the blast radius, but prepends the project's own
 /// repo status as the first entry, so deleting a repo root surfaces *its own*
 /// uncommitted / unpushed work (a plain repo's own state, or a worktree container's
-/// aggregate), which the children-only group view would miss. Children follow
+/// aggregate), which the children-only space view would miss. Children follow
 /// (a worktree container's worktrees + `.bare`, or a plain repo's working tree).
 #[tauri::command]
-pub fn project_delete_preview(path: String) -> Result<GroupPreview, String> {
+pub fn project_delete_preview(path: String) -> Result<SpacePreview, String> {
     let dir = PathBuf::from(&path);
     let mut entries: Vec<PreviewEntry> = Vec::new();
     // The project itself first: its own at-risk flags, labelled so it reads as the
@@ -1345,7 +1348,7 @@ pub fn project_delete_preview(path: String) -> Result<GroupPreview, String> {
             unpushed,
         });
     }
-    // Then each direct child, sorted. Unlike the group preview, a child is only a
+    // Then each direct child, sorted. Unlike the space preview, a child is only a
     // "repo" when it is its *own* checkout, i.e. it has a `.git` (a worktree folder
     // has a `.git` file, a nested clone a `.git` dir). Without that gate every plain
     // subdir would `git -C` up into the enclosing repo and be mislabelled a repo. A
@@ -1371,13 +1374,13 @@ pub fn project_delete_preview(path: String) -> Result<GroupPreview, String> {
     }
     children.sort_by(|a, b| a.name.cmp(&b.name));
     entries.extend(children);
-    Ok(GroupPreview { size_bytes: dir_size(&dir), entries })
+    Ok(SpacePreview { size_bytes: dir_size(&dir), entries })
 }
 
 #[derive(Default)]
 pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
 
-/// Shallow watch of the configured roots (and their immediate group dirs) so
+/// Shallow watch of the configured roots (and their immediate space dirs) so
 /// folders created outside the app surface without a restart. The config-file
 /// watcher only sees the toml itself, never filesystem creates under the roots.
 /// Deliberately non-recursive (one extra level) to avoid watching deep trees.
@@ -1410,7 +1413,7 @@ pub fn roots_watch_start(
         if !rp.is_dir() {
             continue;
         }
-        let _ = watcher.watch(&rp, RecursiveMode::NonRecursive); // new groups
+        let _ = watcher.watch(&rp, RecursiveMode::NonRecursive); // new spaces
         if let Ok(entries) = std::fs::read_dir(&rp) {
             for e in entries.flatten() {
                 let gp = e.path();
@@ -1535,7 +1538,7 @@ mod tests {
             project: legacy
                 .iter()
                 .map(|(g, p)| RawProject {
-                    group: g.to_string(),
+                    space: g.to_string(),
                     path: p.to_string(),
                 })
                 .collect(),
@@ -1543,13 +1546,13 @@ mod tests {
         }
     }
 
-    fn group<'a>(cfg: &'a ResolvedConfig, name: &str) -> Option<&'a Group> {
-        cfg.groups.iter().find(|g| g.name == name)
+    fn space<'a>(cfg: &'a ResolvedConfig, name: &str) -> Option<&'a Space> {
+        cfg.spaces.iter().find(|g| g.name == name)
     }
 
     fn project<'a>(cfg: &'a ResolvedConfig, grp: &str, proj: &str) -> &'a Project {
-        group(cfg, grp)
-            .unwrap_or_else(|| panic!("group {grp} missing"))
+        space(cfg, grp)
+            .unwrap_or_else(|| panic!("space {grp} missing"))
             .projects
             .iter()
             .find(|p| p.name == proj)
@@ -1574,7 +1577,7 @@ mod tests {
         // hidden dir holding a would-be project: must be skipped.
         std::fs::create_dir_all(personal.join(".hidden/secret")).unwrap();
 
-        // ignored group.
+        // ignored space.
         std::fs::create_dir_all(root.join("node_modules/junk")).unwrap();
 
         // a source repo to seed bare clones from.
@@ -1631,13 +1634,13 @@ mod tests {
             &index,
         );
 
-        // Groups: personal + extra; node_modules ignored.
-        assert!(group(&cfg, "personal").is_some());
-        assert!(group(&cfg, "extra").is_some());
-        assert!(group(&cfg, "node_modules").is_none());
+        // Spaces: personal + extra; node_modules ignored.
+        assert!(space(&cfg, "personal").is_some());
+        assert!(space(&cfg, "extra").is_some());
+        assert!(space(&cfg, "node_modules").is_none());
 
         // personal projects: no dotdir, the four real folders only.
-        let mut names: Vec<&str> = group(&cfg, "personal")
+        let mut names: Vec<&str> = space(&cfg, "personal")
             .unwrap()
             .projects
             .iter()
@@ -1648,15 +1651,15 @@ mod tests {
 
         // Dedup: plainrepo (discovered + explicit) appears exactly once.
         let plain_count = cfg
-            .groups
+            .spaces
             .iter()
             .flat_map(|g| &g.projects)
             .filter(|p| p.name == "plainrepo")
             .count();
         assert_eq!(plain_count, 1);
 
-        // out-of-root explicit path appears once, under its parent-named group.
-        assert_eq!(group(&cfg, "extra").unwrap().projects.len(), 1);
+        // out-of-root explicit path appears once, under its parent-named space.
+        assert_eq!(space(&cfg, "extra").unwrap().projects.len(), 1);
 
         // plain kind: only the current checkout is visible when nothing is attached
         // (feature is checked out; unattached main is absent).
@@ -1851,13 +1854,13 @@ mod tests {
             &index,
         );
 
-        // Exactly the declared project, under its declared group, nothing else.
-        assert_eq!(cfg.groups.len(), 1);
-        assert_eq!(cfg.groups[0].name, "teamx");
-        assert_eq!(cfg.groups[0].projects.len(), 1);
-        assert_eq!(cfg.groups[0].projects[0].name, "declared");
+        // Exactly the declared project, under its declared space, nothing else.
+        assert_eq!(cfg.spaces.len(), 1);
+        assert_eq!(cfg.spaces[0].name, "teamx");
+        assert_eq!(cfg.spaces[0].projects.len(), 1);
+        assert_eq!(cfg.spaces[0].projects[0].name, "declared");
         // The default ~/Projects root must NOT kick in when legacy paths exist.
-        assert!(group(&cfg, "other").is_none());
+        assert!(space(&cfg, "other").is_none());
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1896,16 +1899,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_group_dir_is_surfaced() {
+    fn empty_space_dir_is_surfaced() {
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
-        // A group folder with no project subdirs (just created from the UI).
-        std::fs::create_dir_all(root.join("newgroup")).unwrap();
+        // A space folder with no project subdirs (just created from the UI).
+        std::fs::create_dir_all(root.join("newspace")).unwrap();
         let index = ProjectIndex::default();
         let cfg = resolve(raw(&[root.to_str().unwrap()], &[], &[], &[]), &index);
-        let g = group(&cfg, "newgroup").expect("empty group should appear");
+        let g = space(&cfg, "newspace").expect("empty space should appear");
         assert!(g.projects.is_empty());
-        assert!(g.path.ends_with("newgroup")); // path lets the UI add a folder under it
+        assert!(g.path.ends_with("newspace")); // path lets the UI add a folder under it
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1932,7 +1935,7 @@ mod tests {
         assert_eq!(cfg.discovery.roots, vec!["/c".to_string()]);
         // `paths` and legacy [[project]] survive the rewrite.
         assert_eq!(cfg.discovery.paths, vec!["/p/ext".to_string()]);
-        let legacy = "[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n[discovery]\nroots = [\"/a\", \"/b\"]\n";
+        let legacy = "[[project]]\nname = \"a\"\nspace = \"g\"\npath = \"/p/a\"\n[discovery]\nroots = [\"/a\", \"/b\"]\n";
         let merged = replace_root(legacy, "/r").unwrap();
         assert!(merged.contains("[[project]]"));
         assert!(merged.contains("/p/a"));
@@ -1942,7 +1945,7 @@ mod tests {
 
     #[test]
     fn clear_root_empties_roots_and_preserves_other_keys() {
-        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n\n[[project]]\nname = \"a\"\ngroup = \"g\"\npath = \"/p/a\"\n";
+        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n\n[[project]]\nname = \"a\"\nspace = \"g\"\npath = \"/p/a\"\n";
         let cleared = clear_root(two).unwrap();
         let cfg: RawConfig = toml::from_str(&cleared).unwrap();
         assert!(cfg.discovery.roots.is_empty());
@@ -1960,7 +1963,7 @@ mod tests {
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
         init_repo(&root.join("personal/inroot"), "main");
-        // An out-of-root pinned project (group = its parent dir name).
+        // An out-of-root pinned project (space = its parent dir name).
         let ext = tmp.join("Outside/work/pinned");
         init_repo(&ext, "main");
 
@@ -1970,11 +1973,11 @@ mod tests {
             &index,
         );
 
-        let root_grp = group(&cfg, "personal").expect("root group");
+        let root_grp = space(&cfg, "personal").expect("root space");
         assert!(!root_grp.external);
         assert!(!root_grp.projects[0].external);
 
-        let other = group(&cfg, "work").expect("external group");
+        let other = space(&cfg, "work").expect("external space");
         assert!(other.external);
         assert_eq!(other.projects.len(), 1);
         assert!(other.projects[0].external);
@@ -2008,7 +2011,7 @@ mod tests {
     fn is_inside_detects_nesting() {
         let tmp = unique_tmp();
         let root = tmp.join("root");
-        let inside = root.join("group/proj");
+        let inside = root.join("space/proj");
         let outside = tmp.join("elsewhere/proj");
         std::fs::create_dir_all(&inside).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
@@ -2023,7 +2026,7 @@ mod tests {
     #[test]
     fn multi_root_config_yields_one_discovered_tree() {
         let tmp = unique_tmp();
-        // Two distinct roots, each with its own group/project.
+        // Two distinct roots, each with its own space/project.
         let root_a = tmp.join("A");
         let root_b = tmp.join("B");
         init_repo(&root_a.join("ga/pa"), "main");
@@ -2035,35 +2038,35 @@ mod tests {
             &index,
         );
 
-        // Only the first root is scanned: its group present, the second's absent.
+        // Only the first root is scanned: its space present, the second's absent.
         assert_eq!(cfg.roots.len(), 1);
-        assert!(group(&cfg, "ga").is_some());
-        assert!(group(&cfg, "gb").is_none());
+        assert!(space(&cfg, "ga").is_some());
+        assert!(space(&cfg, "gb").is_none());
 
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
-    fn delete_group_guard_refuses_and_accepts() {
+    fn delete_space_guard_refuses_and_accepts() {
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
-        let group_dir = root.join("personal");
-        let nested = group_dir.join("proj");
+        let space_dir = root.join("personal");
+        let nested = space_dir.join("proj");
         let outside = tmp.join("Outside");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
 
         let rs = root.to_str().unwrap();
-        // A direct child of the root is a group: accepted, returns the canonical dir.
-        let ok = do_delete_group(Some(rs), group_dir.to_str().unwrap()).unwrap();
-        assert_eq!(ok, std::fs::canonicalize(&group_dir).unwrap());
+        // A direct child of the root is a space: accepted, returns the canonical dir.
+        let ok = do_delete_space(Some(rs), space_dir.to_str().unwrap()).unwrap();
+        assert_eq!(ok, std::fs::canonicalize(&space_dir).unwrap());
         // The root itself, a grandchild (a project), and an outside path are refused.
-        assert!(do_delete_group(Some(rs), rs).is_err());
-        assert!(do_delete_group(Some(rs), nested.to_str().unwrap()).is_err());
-        assert!(do_delete_group(Some(rs), outside.to_str().unwrap()).is_err());
+        assert!(do_delete_space(Some(rs), rs).is_err());
+        assert!(do_delete_space(Some(rs), nested.to_str().unwrap()).is_err());
+        assert!(do_delete_space(Some(rs), outside.to_str().unwrap()).is_err());
         // No configured root, and a non-existent (e.g. tilde-expanded) root, both err.
-        assert!(do_delete_group(None, group_dir.to_str().unwrap()).is_err());
-        assert!(do_delete_group(Some("~/sway_nonexistent_base_xyz"), group_dir.to_str().unwrap()).is_err());
+        assert!(do_delete_space(None, space_dir.to_str().unwrap()).is_err());
+        assert!(do_delete_space(Some("~/sway_nonexistent_base_xyz"), space_dir.to_str().unwrap()).is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2072,20 +2075,20 @@ mod tests {
     fn remove_folder_guard_refuses_and_accepts() {
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
-        let group_dir = root.join("personal");
-        let folder = group_dir.join("notes"); // a project (grandchild of root)
+        let space_dir = root.join("personal");
+        let folder = space_dir.join("notes"); // a project (grandchild of root)
         let outside = tmp.join("Outside");
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
 
         let rs = root.to_str().unwrap();
-        // A folder under a group (grandchild of the root) is accepted.
+        // A folder under a space (grandchild of the root) is accepted.
         let ok = do_remove_folder(Some(rs), folder.to_str().unwrap()).unwrap();
         assert_eq!(ok, std::fs::canonicalize(&folder).unwrap());
-        // The root itself, a group (direct child of the root), and an outside path
+        // The root itself, a space (direct child of the root), and an outside path
         // are all refused.
         assert!(do_remove_folder(Some(rs), rs).is_err());
-        assert!(do_remove_folder(Some(rs), group_dir.to_str().unwrap()).is_err());
+        assert!(do_remove_folder(Some(rs), space_dir.to_str().unwrap()).is_err());
         assert!(do_remove_folder(Some(rs), outside.to_str().unwrap()).is_err());
         // No configured root, and a non-existent root, both err.
         assert!(do_remove_folder(None, folder.to_str().unwrap()).is_err());
@@ -2095,7 +2098,7 @@ mod tests {
     }
 
     #[test]
-    fn group_delete_preview_classifies_and_flags() {
+    fn space_delete_preview_classifies_and_flags() {
         let tmp = unique_tmp();
         let grp = tmp.join("personal");
         std::fs::create_dir_all(&grp).unwrap();
@@ -2122,7 +2125,7 @@ mod tests {
         std::fs::create_dir_all(grp.join("notes")).unwrap();
         std::fs::write(grp.join("todo.txt"), "x").unwrap();
 
-        let preview = group_delete_preview(grp.to_string_lossy().into_owned()).unwrap();
+        let preview = space_delete_preview(grp.to_string_lossy().into_owned()).unwrap();
         let find = |name: &str| preview.entries.iter().find(|e| e.name == name).unwrap();
 
         let p = find("pushed");

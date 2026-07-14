@@ -5,13 +5,13 @@ import Button from "../Button/Button";
 
 export type NewProjectMode = "folder" | "clone" | "bare";
 
-// Create something under a group, in one dialog. Replaces the separate "New
-// folder", "Clone repo…" and "Bare + worktree…" group-menu items: a segmented
+// Create something under a space, in one dialog. Replaces the separate "New
+// folder", "Clone repo…" and "Bare + worktree…" space-menu items: a segmented
 // control picks the mode, a Name field is always shown, and a URL field appears
 // only for clone/bare (auto-filling the name from the URL until it is edited by
 // hand). Enter confirms, Escape or a backdrop click cancels.
 export default function NewProjectDialog(props: {
-  groupName: string;
+  spaceName: string;
   busy: boolean;
   onConfirm: (opts: { mode: NewProjectMode; name: string; url: string }) => void;
   onCancel: () => void;
@@ -71,7 +71,7 @@ export default function NewProjectDialog(props: {
     <Portal>
       <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
         <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class={styles.modalTitle}>New in “{props.groupName}”</div>
+          <div class={styles.modalTitle}>New in “{props.spaceName}”</div>
 
           <div class={styles.seg} role="group" aria-label="What to create">
             <For each={segs}>
