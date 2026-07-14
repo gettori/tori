@@ -1,4 +1,4 @@
-/* Left sidebar (Group -> Project -> branch-unit -> Session tree) styles,
+/* Left sidebar (Space -> Project -> branch-unit -> Session tree) styles,
    hash-scoped. Buttons use the shared <Button> component. Kept global in
    App.css: the .tree-body pane wrapper (App.tsx), and the shared .tree-empty
    empty-state base (also used by ReviewPanel). */
@@ -282,15 +282,15 @@
   text-overflow: ellipsis;
 }
 
-/* "Historical" sub-group: sessions predating a recreated folder, with an inline
+/* "Historical" sub-section: sessions predating a recreated folder, with an inline
    Adopt affordance. */
 .row.historical .label {
   font-style: italic;
 }
 
-/* ---- Space bar (groups as Arc-style spaces) ----
-   A horizontal strip pinned above the config footer, one tile per group with a
-   single active space; the tree above renders only the active group's projects. */
+/* ---- Space bar (spaces as Arc-style spaces) ----
+   A horizontal strip pinned above the config footer, one tile per space with a
+   single active space; the tree above renders only the active space's projects. */
 .spaceBar {
   display: flex;
   align-items: center;
@@ -300,7 +300,7 @@
   overflow-x: auto;
 }
 
-/* A group tile: a rounded square showing the group's initial. Dim by default;
+/* A space tile: a rounded square showing the space's initial. Dim by default;
    the active space is marked with the gold brand. */
 .space {
   flex: none;
@@ -331,7 +331,7 @@
   background: var(--brand-subtle);
 }
 
-/* The "new group" tile, pushed to the trailing edge. */
+/* The "new space" tile, pushed to the trailing edge. */
 .spaceAdd {
   flex: none;
   margin-left: auto;

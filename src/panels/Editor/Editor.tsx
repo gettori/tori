@@ -83,8 +83,8 @@ export default function Editor(props: { selected: Selection | null }) {
     req?.resolve(v);
   }
 
-  // A parallel docs/notes tree mirroring <docsRoot>/<group>/<project>, keyed on
-  // the canonical group/project (not the branch-unit folder), surfaced as its own
+  // A parallel docs/notes tree mirroring <docsRoot>/<space>/<project>, keyed on
+  // the canonical space/project (not the branch-unit folder), surfaced as its own
   // Docs tab only when that folder actually exists.
   const [docsRoot, setDocsRoot] = createSignal<string | null>(null);
   const [docsPath, setDocsPath] = createSignal<string | null>(null);
@@ -98,7 +98,7 @@ export default function Editor(props: { selected: Selection | null }) {
   createEffect(
     on([() => props.selected, docsRoot], async ([sel, dr]) => {
       if (!sel || !dr) return setDocsPath(null);
-      const candidate = `${dr}/${sel.groupName}/${sel.projectName}`;
+      const candidate = `${dr}/${sel.spaceName}/${sel.projectName}`;
       const exists = await invoke<boolean>("file_exists", { path: candidate }).catch(() => false);
       setDocsPath(exists ? candidate : null);
     }),
@@ -155,7 +155,7 @@ export default function Editor(props: { selected: Selection | null }) {
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
   }
 
-  // A group is being deleted: force-close every open tab rooted under it, without
+  // A space is being deleted: force-close every open tab rooted under it, without
   // the per-file dirty prompt (the folder is going away regardless).
   function purgeUnder(path: string) {
     const gone = new Set(openPaths().filter((p) => isUnderPath(p, path)));

@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ContextMenu, { type MenuItem, type MenuState } from "../../components/ContextMenu/ContextMenu";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
-import ConfirmDeleteGroup, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteGroup";
+import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
@@ -50,7 +50,7 @@ import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a project row, keyed by its git kind: a worktree container
 // (or an empty .bare stub) reads as a fork, a plain repo as a branch, and a
-// non-git folder as a plain folder (matching a group's folder mark).
+// non-git folder as a plain folder (matching a space's folder mark).
 function projectIcon(kind: string | undefined): LucideIcon {
   switch (kind) {
     case "worktree":
@@ -74,7 +74,7 @@ function RowChevron(props: { open: boolean }) {
 }
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
-// the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).
+// the terminal inserts verbatim as `@<abspath>` (newline-separated for a space).
 function startAbsDrag(e: DragEvent, paths: string | string[]) {
   const value = (Array.isArray(paths) ? paths : [paths]).filter(Boolean).join("\n");
   if (!value) return;
@@ -112,8 +112,8 @@ type BranchUnit = {
 };
 type Branch = { name: string; current: boolean };
 type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
-type Group = { name: string; path: string; projects: Project[]; external: boolean };
-type ResolvedConfig = { path: string; roots: string[]; groups: Group[] };
+type Space = { name: string; path: string; projects: Project[]; external: boolean };
+type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 type SessionMeta = {
   id: string;
   path: string;
@@ -127,7 +127,7 @@ type SessionMeta = {
 };
 
 export type Selection = {
-  groupName: string;
+  spaceName: string;
   projectName: string;
   projectPath: string;
   // The branch-unit's working folder: the anchor every path consumer uses.
@@ -149,11 +149,11 @@ export type Selection = {
 };
 
 const LS_EXPANDED = "sway.expanded.v1";
-const LS_ACTIVE_GROUP = "sway.active-group.v1";
+const LS_ACTIVE_SPACE = "sway.active-space.v1";
 
-function loadActiveGroup(): string | null {
+function loadActiveSpace(): string | null {
   try {
-    return localStorage.getItem(LS_ACTIVE_GROUP);
+    return localStorage.getItem(LS_ACTIVE_SPACE);
   } catch {
     return null;
   }
@@ -203,7 +203,7 @@ export default function LeftSidebar(props: {
   // Sessions keyed by branch-unit folderPath (the cwd anchor).
   const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
   // Per-folder "historical" flag: sessions predating a recreated folder, hidden
-  // under a collapsed "Historical" group until adopted.
+  // under a collapsed "Historical" section until adopted.
   const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
   // Per-project "has an origin remote" flag: gates whether Attach Existing
   // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
@@ -233,31 +233,31 @@ export default function LeftSidebar(props: {
   // Single-root model: a root is present when roots[0] exists.
   const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
-  // Groups are "spaces" (Arc-style): shown as an icon strip at the bottom, one
-  // active at a time, and the tree renders only the active group's projects.
-  // Render order: root-discovered groups first, pinned externals after. This is
+  // Spaces are "spaces" (Arc-style): shown as an icon strip at the bottom, one
+  // active at a time, and the tree renders only the active space's projects.
+  // Render order: root-discovered spaces first, pinned externals after. This is
   // the FULL list (never q-filtered) so the space strip is stable while filtering.
-  const visibleGroups = () => {
-    const gs = config()?.groups ?? [];
+  const visibleSpaces = () => {
+    const gs = config()?.spaces ?? [];
     return [...gs.filter((g) => !g.external), ...gs.filter((g) => g.external)];
   };
 
-  // The active space. Persisted by name; falls back to the first group when the
-  // stored name is gone (e.g. the active group was deleted), so it self-heals.
-  const [activeGroupName, setActiveGroupName] = createSignal<string | null>(loadActiveGroup());
+  // The active space. Persisted by name; falls back to the first space when the
+  // stored name is gone (e.g. the active space was deleted), so it self-heals.
+  const [activeSpaceName, setActiveSpaceName] = createSignal<string | null>(loadActiveSpace());
   createEffect(() => {
-    const n = activeGroupName();
+    const n = activeSpaceName();
     try {
-      if (n) localStorage.setItem(LS_ACTIVE_GROUP, n);
+      if (n) localStorage.setItem(LS_ACTIVE_SPACE, n);
     } catch {
       // ignore quota
     }
   });
-  const activeGroup = (): Group | null => {
-    const gs = visibleGroups();
-    return gs.find((g) => g.name === activeGroupName()) ?? gs[0] ?? null;
+  const activeSpace = (): Space | null => {
+    const gs = visibleSpaces();
+    return gs.find((g) => g.name === activeSpaceName()) ?? gs[0] ?? null;
   };
-  const activeProjects = () => (activeGroup()?.projects ?? []).filter(projectVisible);
+  const activeProjects = () => (activeSpace()?.projects ?? []).filter(projectVisible);
 
   // Per-node right-click menu. Set on `contextmenu`, cleared on close.
   const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -315,9 +315,9 @@ export default function LeftSidebar(props: {
     req?.resolve(v);
   }
 
-  // The delete-group confirmation. Opened with provisional entry names from the
+  // The delete-space confirmation. Opened with provisional entry names from the
   // tree; the async preview (flags + size) and the running-agent count fill in.
-  type GroupPreview = { sizeBytes: number; entries: DeleteEntry[] };
+  type SpacePreview = { sizeBytes: number; entries: DeleteEntry[] };
   // The worktree removal confirmation. Opened with the unit + repo; dirty/unpushed
   // fill in async from `worktree_status`, `busy` gates the buttons during removal.
   const [wtReq, setWtReq] = createSignal<{
@@ -343,12 +343,12 @@ export default function LeftSidebar(props: {
   // layout). `busy` gates the buttons while init runs.
   const [initReq, setInitReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
 
-  // The group-level "New…" dialog: create an empty folder, clone a repo, or
+  // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
-  const [newReq, setNewReq] = createSignal<{ g: Group; busy: boolean } | null>(null);
+  const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean } | null>(null);
 
   const [deleteReq, setDeleteReq] = createSignal<{
-    mode: "group" | "folder" | "project";
+    mode: "space" | "folder" | "project";
     name: string;
     path: string;
     entries: DeleteEntry[];
@@ -357,11 +357,11 @@ export default function LeftSidebar(props: {
     sizeBytes: number | null;
   } | null>(null);
 
-  // Count agents running anywhere under the group (prefix match on session cwd, so
+  // Count agents running anywhere under the space (prefix match on session cwd, so
   // an agent in a project subfolder counts too), reusing the same list_sessions +
   // session_running primitives as the worktree-removal guard.
-  async function countRunningAgents(groupPath: string): Promise<number> {
-    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: groupPath }).catch(
+  async function countRunningAgents(spacePath: string): Promise<number> {
+    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: spacePath }).catch(
       () => [] as SessionMeta[],
     );
     const running = new Set<string>();
@@ -375,13 +375,13 @@ export default function LeftSidebar(props: {
     return countRunningUnder(
       nested.map((s) => ({ id: s.id, folderPath: s.cwd })),
       running,
-      groupPath,
+      spacePath,
     );
   }
 
-  function openDeleteGroup(g: Group) {
+  function openDeleteSpace(g: Space) {
     setDeleteReq({
-      mode: "group",
+      mode: "space",
       name: g.name,
       path: g.path,
       entries: g.projects.map((p) => ({ name: p.name, kind: "repo", dirty: false, unpushed: false })),
@@ -389,17 +389,17 @@ export default function LeftSidebar(props: {
       runningCount: 0,
       sizeBytes: null,
     });
-    // Only patch the request if it still targets this group (guards a fast re-open).
+    // Only patch the request if it still targets this space (guards a fast re-open).
     const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
       setDeleteReq((r) => (r && r.path === g.path ? fn(r) : r));
-    invoke<GroupPreview>("group_delete_preview", { path: g.path })
+    invoke<SpacePreview>("space_delete_preview", { path: g.path })
       .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
       .catch(() => forThis((r) => ({ ...r, loading: false })));
     countRunningAgents(g.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
   }
 
   // Open the typed-name confirmation for removing a non-git project folder. Reuses
-  // the group delete dialog (same blast-radius preview) with folder wording; the
+  // the space delete dialog (same blast-radius preview) with folder wording; the
   // `folder` mode routes confirm to `remove_folder`.
   function openRemoveFolder(p: Project) {
     setDeleteReq({
@@ -413,7 +413,7 @@ export default function LeftSidebar(props: {
     });
     const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
       setDeleteReq((r) => (r && r.path === p.path ? fn(r) : r));
-    invoke<GroupPreview>("group_delete_preview", { path: p.path })
+    invoke<SpacePreview>("space_delete_preview", { path: p.path })
       .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
       .catch(() => forThis((r) => ({ ...r, loading: false })));
     countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
@@ -435,7 +435,7 @@ export default function LeftSidebar(props: {
     });
     const forThis = (fn: (r: NonNullable<ReturnType<typeof deleteReq>>) => typeof r) =>
       setDeleteReq((r) => (r && r.path === p.path ? fn(r) : r));
-    invoke<GroupPreview>("project_delete_preview", { path: p.path })
+    invoke<SpacePreview>("project_delete_preview", { path: p.path })
       .then((pv) => forThis((r) => ({ ...r, entries: pv.entries, sizeBytes: pv.sizeBytes, loading: false })))
       .catch(() => forThis((r) => ({ ...r, loading: false })));
     countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
@@ -443,15 +443,15 @@ export default function LeftSidebar(props: {
 
   // Confirmed: tear down PTYs + editor tabs under the target BEFORE the native
   // delete (so no agent writes into a vanishing cwd), then remove the folder and
-  // clear the selection if it pointed inside. Routes by mode: a group calls
-  // `delete_group`, a plain folder `remove_folder`, a git project `remove_project`.
-  async function confirmDeleteGroup() {
+  // clear the selection if it pointed inside. Routes by mode: a space calls
+  // `delete_space`, a plain folder `remove_folder`, a git project `remove_project`.
+  async function confirmDeleteSpace() {
     const req = deleteReq();
     if (!req) return;
     setDeleteReq(null);
     emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
     const cmd =
-      req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_group";
+      req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
     try {
       await invoke(cmd, { path: req.path });
       const sel = props.selected;
@@ -487,13 +487,13 @@ export default function LeftSidebar(props: {
       invoke("roots_watch_start", { roots: cfg.roots }).catch(() => {});
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
-      const folders = cfg.groups.flatMap((g) =>
+      const folders = cfg.spaces.flatMap((g) =>
         g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
       );
       invoke("seed_adopted", { folders }).catch(() => {});
       // Seed each plain repo's attached-branch set once (origin default, else the
       // checkout), so it shows a sensible branch instead of every local branch.
-      const plainRepos = cfg.groups
+      const plainRepos = cfg.spaces
         .flatMap((g) => g.projects)
         .filter((p) => p.branchUnits.some((u) => u.kind === "plain"))
         .map((p) => p.path);
@@ -503,7 +503,7 @@ export default function LeftSidebar(props: {
       void (async () => {
         const map: Record<string, boolean> = {};
         await Promise.all(
-          cfg.groups
+          cfg.spaces
             .flatMap((g) => g.projects)
             .filter((p) => {
               const k = p.branchUnits[0]?.kind;
@@ -579,13 +579,13 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function addGroup() {
+  async function addSpace() {
     const roots = config()?.roots ?? [];
     if (!roots.length) return;
-    const name = await askText("New group name:");
+    const name = await askText("New space name:");
     if (!name) return;
     try {
-      await invoke("add_group", { root: roots[0], name });
+      await invoke("add_space", { root: roots[0], name });
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -603,7 +603,7 @@ export default function LeftSidebar(props: {
   // Pre-check the target dir is free, then run the command in a terminal tab
   // (native git progress + ambient auth, no in-app credentials). The terminal
   // area re-discovers when the tab exits.
-  async function runInTab(g: Group, name: string, kind: string, program: string, args: string[]) {
+  async function runInTab(g: Space, name: string, kind: string, program: string, args: string[]) {
     const bad = badName(name);
     if (bad) return setError(bad);
     const target = `${g.path}/${name.trim()}`;
@@ -624,8 +624,8 @@ export default function LeftSidebar(props: {
     });
   }
 
-  // Open the group-level "New…" dialog.
-  function openNewProject(g: Group) {
+  // Open the space-level "New…" dialog.
+  function openNewProject(g: Space) {
     setNewReq({ g, busy: false });
   }
 
@@ -640,7 +640,7 @@ export default function LeftSidebar(props: {
     if (opts.mode === "folder") {
       setNewReq({ ...req, busy: true });
       try {
-        await invoke("add_folder", { groupPath: g.path, name: opts.name });
+        await invoke("add_folder", { spacePath: g.path, name: opts.name });
         await loadConfig();
         setNewReq(null);
       } catch (e) {
@@ -953,7 +953,7 @@ export default function LeftSidebar(props: {
   }
 
   // Switch the shared working tree to this branch (runs the checkout guard).
-  async function checkoutUnit(g: Group, p: Project, u: BranchUnit) {
+  async function checkoutUnit(g: Space, p: Project, u: BranchUnit) {
     await selectUnit(g, p, u);
   }
 
@@ -1044,16 +1044,16 @@ export default function LeftSidebar(props: {
 
   // --- per-node context menus ---
 
-  // Create/clone/bootstrap target the root tree; an external ("Other") group is
-  // just a pin's parent dir, so it gets no group-level actions (unpin is per
+  // Create/clone/bootstrap target the root tree; an external ("Other") space is
+  // just a pin's parent dir, so it gets no space-level actions (unpin is per
   // project, in projectMenu).
-  const groupMenu = (g: Group): MenuItem[] =>
+  const spaceMenu = (g: Space): MenuItem[] =>
     g.external
       ? []
       : [
           { label: "New…", onClick: () => openNewProject(g) },
           { separator: true },
-          { label: "Delete group", danger: true, onClick: () => openDeleteGroup(g) },
+          { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
         ];
 
   // A project's git kind comes from its branch-units (all share one kind).
@@ -1062,7 +1062,7 @@ export default function LeftSidebar(props: {
   // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
   // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
   // a plain repo commits / sets a remote / pushes.
-  const projectMenu = (g: Group, p: Project): MenuItem[] => {
+  const projectMenu = (g: Space, p: Project): MenuItem[] => {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
     switch (projectKind(p)) {
       case "worktree":
@@ -1117,7 +1117,7 @@ export default function LeftSidebar(props: {
     }
   };
 
-  const unitMenu = (g: Group, p: Project, u: BranchUnit): MenuItem[] => {
+  const unitMenu = (g: Space, p: Project, u: BranchUnit): MenuItem[] => {
     // An incomplete stub (a .bare with no worktree): it can still spawn a worktree
     // (its branches live in .bare), so offer that as well as removal.
     if (u.kind === "incomplete") {
@@ -1144,7 +1144,7 @@ export default function LeftSidebar(props: {
     return items;
   };
 
-  const sessionMenu = (g: Group, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
+  const sessionMenu = (g: Space, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
     { label: "New session", onClick: () => startSession(g, p, u) },
     { separator: true },
     { label: "Rename…", onClick: () => renameSession(s) },
@@ -1196,7 +1196,7 @@ export default function LeftSidebar(props: {
 
   // After config loads, re-hydrate sessions for restored-open branch-units.
   async function restoreOpen(cfg: ResolvedConfig) {
-    for (const g of cfg.groups) {
+    for (const g of cfg.spaces) {
       for (const p of g.projects) {
         // A non-git folder anchors sessions on the project row (pkey), not a branch
         // node (ukey), so re-hydrate it when the project itself is open.
@@ -1213,9 +1213,9 @@ export default function LeftSidebar(props: {
     }
   }
 
-  const pkey = (g: Group, p: Project) => `p:${g.name}/${p.name}`;
-  const ukey = (g: Group, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
-  const hkey = (u: BranchUnit) => `h:${u.folderPath}`; // "Historical" sub-group
+  const pkey = (g: Space, p: Project) => `p:${g.name}/${p.name}`;
+  const ukey = (g: Space, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
+  const hkey = (u: BranchUnit) => `h:${u.folderPath}`; // "Historical" sub-section
   const isHistorical = (u: BranchUnit) => historical()[u.folderPath] === true;
 
   const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
@@ -1248,10 +1248,10 @@ export default function LeftSidebar(props: {
     return true;
   }
 
-  async function selectUnit(g: Group, p: Project, u: BranchUnit): Promise<boolean> {
+  async function selectUnit(g: Space, p: Project, u: BranchUnit): Promise<boolean> {
     if (!(await ensureBranch(p, u, u.branch))) return false;
     props.onSelect({
-      groupName: g.name,
+      spaceName: g.name,
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
@@ -1265,18 +1265,18 @@ export default function LeftSidebar(props: {
   // ask the terminal area to launch a fresh agent session in its folder. Merely
   // selecting the unit only enables the "+ Claude" button, which the label's
   // "New session" promise would not fulfil on its own.
-  async function startSession(g: Group, p: Project, u: BranchUnit) {
+  async function startSession(g: Space, p: Project, u: BranchUnit) {
     if (await selectUnit(g, p, u)) {
       emitWith<NewSession>(NEW_SESSION, { folderPath: u.folderPath, projectName: p.name });
     }
   }
 
-  async function selectSession(g: Group, p: Project, u: BranchUnit, s: SessionMeta) {
+  async function selectSession(g: Space, p: Project, u: BranchUnit, s: SessionMeta) {
     // A Claude session wants its recorded branch checked out; pi has no branch.
     const target = s.agent === "pi" ? null : s.branch || u.branch;
     if (!(await ensureBranch(p, u, target))) return;
     props.onSelect({
-      groupName: g.name,
+      spaceName: g.name,
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
@@ -1304,11 +1304,11 @@ export default function LeftSidebar(props: {
     );
   }
 
-  // The session listing for one branch-unit (an optional "Historical" sub-group +
+  // The session listing for one branch-unit (an optional "Historical" sub-section +
   // the session rows). Extracted so it renders both under a branch node (sub2) and
   // directly under a non-git folder that has no branch node (sub1). `sub` is the
   // session rows' indent class; the historical header sits at the same level.
-  function sessionRows(g: Group, p: Project, u: BranchUnit, sub: "sub1" | "sub2") {
+  function sessionRows(g: Space, p: Project, u: BranchUnit, sub: "sub1" | "sub2") {
     const histSub = sub;
     return (
       <>
@@ -1537,8 +1537,8 @@ export default function LeftSidebar(props: {
           <Show when={gearOpen()}>
             <div class={styles.gearMenu}>
               <Show when={hasRoot()}>
-                <div class={styles.gearItem} onClick={() => gearAction(addGroup)}>
-                  <Icon icon={FolderPlus} size={14} />New group
+                <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
+                  <Icon icon={FolderPlus} size={14} />New space
                 </div>
               </Show>
               <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
@@ -1561,7 +1561,7 @@ export default function LeftSidebar(props: {
       <div class={styles.treeScroll}>
         <For each={activeProjects()}>
           {(p) => {
-            const g = activeGroup()!;
+            const g = activeSpace()!;
             const popen = () => expanded().has(pkey(g, p));
             // A non-git folder has no branch node: the project row is the
             // session anchor, so clicking it selects the single unit and its
@@ -1645,20 +1645,20 @@ export default function LeftSidebar(props: {
           }}
         </For>
 
-        <Show when={(config()?.groups ?? []).length > 0 && activeProjects().length === 0}>
+        <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
           <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>
             {q() ? "no matches in this space" : "no projects in this space"}
           </div>
         </Show>
 
-        <Show when={(config()?.groups ?? []).length === 0}>
+        <Show when={(config()?.spaces ?? []).length === 0}>
           <div class="tree-empty">
             <Show
               when={(config()?.roots?.length ?? 0) === 0}
               fallback={
                 <>
                   <p>No projects found under your base folders.</p>
-                  <Button onClick={addGroup}>+ Create group</Button>
+                  <Button onClick={addSpace}>+ Create space</Button>
                   <Button variant="ghost" onClick={addBaseFolder}>Add another base folder</Button>
                 </>
               }
@@ -1670,16 +1670,16 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      <Show when={visibleGroups().length > 0}>
+      <Show when={visibleSpaces().length > 0}>
         <div class={styles.spaceBar}>
-          <For each={visibleGroups()}>
+          <For each={visibleSpaces()}>
             {(g) => (
               <button
                 class={styles.space}
-                classList={{ [styles.active]: activeGroup()?.name === g.name }}
+                classList={{ [styles.active]: activeSpace()?.name === g.name }}
                 title={g.external ? `${g.name} (pinned)` : g.name}
-                onClick={() => setActiveGroupName(g.name)}
-                onContextMenu={(e) => openMenu(e, groupMenu(g))}
+                onClick={() => setActiveSpaceName(g.name)}
+                onContextMenu={(e) => openMenu(e, spaceMenu(g))}
                 draggable={true}
                 onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
               >
@@ -1688,7 +1688,7 @@ export default function LeftSidebar(props: {
             )}
           </For>
           <Show when={hasRoot()}>
-            <button class={styles.spaceAdd} title="New group" onClick={addGroup}>
+            <button class={styles.spaceAdd} title="New space" onClick={addSpace}>
               <Icon icon={Plus} size={16} />
             </button>
           </Show>
@@ -1727,8 +1727,8 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={deleteReq()}>
-        <ConfirmDeleteGroup
-          groupName={deleteReq()!.name}
+        <ConfirmDeleteSpace
+          spaceName={deleteReq()!.name}
           entries={deleteReq()!.entries}
           loading={deleteReq()!.loading}
           runningCount={deleteReq()!.runningCount}
@@ -1747,7 +1747,7 @@ export default function LeftSidebar(props: {
                 ? "Remove project"
                 : undefined
           }
-          onConfirm={() => confirmDeleteGroup()}
+          onConfirm={() => confirmDeleteSpace()}
           onCancel={() => setDeleteReq(null)}
         />
       </Show>
@@ -1799,7 +1799,7 @@ export default function LeftSidebar(props: {
 
       <Show when={newReq()}>
         <NewProjectDialog
-          groupName={newReq()!.g.name}
+          spaceName={newReq()!.g.name}
           busy={newReq()!.busy}
           onConfirm={(opts) => confirmNewProject(opts)}
           onCancel={() => setNewReq(null)}
