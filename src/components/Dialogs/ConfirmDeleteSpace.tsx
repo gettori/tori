@@ -3,7 +3,7 @@ import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 
-// One direct child of the group folder, as returned by `group_delete_preview`.
+// One direct child of the space folder, as returned by `space_delete_preview`.
 export type DeleteEntry = {
   name: string;
   kind: "repo" | "folder" | "file";
@@ -23,25 +23,25 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-// A GitHub-style destructive confirmation for deleting a group. It shows the full
+// A GitHub-style destructive confirmation for deleting a space. It shows the full
 // blast radius (every child entry, not just discovered projects), the at-risk
 // flags, running agents, and total size, and only enables Delete once the exact
-// group name is typed. Reuses the shared `.modal-*` chrome + `.danger` styling.
-export default function ConfirmDeleteGroup(props: {
-  groupName: string;
+// space name is typed. Reuses the shared `.modal-*` chrome + `.danger` styling.
+export default function ConfirmDeleteSpace(props: {
+  spaceName: string;
   entries: DeleteEntry[];
   loading: boolean;
   runningCount: number;
   sizeBytes: number | null;
   // Optional copy overrides so the same dialog serves a plain folder, not only a
-  // group (defaults keep the group wording).
+  // space (defaults keep the space wording).
   title?: string;
   confirmLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = createSignal("");
-  const matches = () => value() === props.groupName;
+  const matches = () => value() === props.spaceName;
   let input: HTMLInputElement | undefined;
 
   onMount(() => requestAnimationFrame(() => input?.focus()));
@@ -60,7 +60,7 @@ export default function ConfirmDeleteGroup(props: {
     <Portal>
       <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
         <div class={`${styles.modal} ${styles.modalDanger}`} onMouseDown={(e) => e.stopPropagation()}>
-          <div class={styles.modalTitle}>{props.title ?? `Delete group “${props.groupName}”?`}</div>
+          <div class={styles.modalTitle}>{props.title ?? `Delete space “${props.spaceName}”?`}</div>
           <div class={styles.modalWarn}>
             This permanently deletes the folder and everything below. It cannot be undone.
           </div>
@@ -75,7 +75,7 @@ export default function ConfirmDeleteGroup(props: {
           <div class={styles.delEntries}>
             <Show
               when={props.entries.length}
-              fallback={<div class={styles.delEmpty}>No contents (empty group)</div>}
+              fallback={<div class={styles.delEmpty}>No contents (empty space)</div>}
             >
               <For each={props.entries}>
                 {(e) => (
@@ -101,7 +101,7 @@ export default function ConfirmDeleteGroup(props: {
           </div>
 
           <div class={styles.modalLabel}>
-            Type <strong>{props.groupName}</strong> to confirm
+            Type <strong>{props.spaceName}</strong> to confirm
           </div>
           <input
             ref={input}
@@ -118,7 +118,7 @@ export default function ConfirmDeleteGroup(props: {
               Cancel
             </Button>
             <Button variant="danger" disabled={!matches()} onClick={() => props.onConfirm()}>
-              {props.confirmLabel ?? "Delete group"}
+              {props.confirmLabel ?? "Delete space"}
             </Button>
           </div>
         </div>

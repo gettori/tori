@@ -72,7 +72,7 @@ export default function Terminal(props: {
   });
   onCleanup(offClose);
 
-  // A group is being deleted: kill + close every terminal tab whose cwd is rooted
+  // A space is being deleted: kill + close every terminal tab whose cwd is rooted
   // under it, so no agent keeps running in a folder that is about to vanish.
   const offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => {
     for (const t of open()) {

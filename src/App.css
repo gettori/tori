@@ -151,7 +151,7 @@ body.dragging {
   line-height: 1.4;
 }
 
-/* Create-group / add-base-folder actions above the config-path footer. */
+/* Create-space / add-base-folder actions above the config-path footer. */
 /* ---- Detail panel ---- */
 .detail {
   flex: 1;

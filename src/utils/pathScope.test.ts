@@ -17,10 +17,10 @@ describe("countRunningUnder", () => {
     { id: "a", folderPath: "/r/personal/proj" }, // under, running
     { id: "b", folderPath: "/r/personal/proj/deep/sub" }, // subdir under, running
     { id: "c", folderPath: "/r/personal/proj" }, // under, NOT running
-    { id: "d", folderPath: "/r/other/proj" }, // sibling group, running
+    { id: "d", folderPath: "/r/other/proj" }, // sibling space, running
   ];
 
-  it("counts only sessions that are running AND under the group path", () => {
+  it("counts only sessions that are running AND under the space path", () => {
     const running = new Set(["a", "b", "c", "d"].filter((id) => id !== "c"));
     // a + b are under /r/personal and running; c is under but not running; d is a sibling.
     expect(countRunningUnder(sessions, running, "/r/personal")).toBe(2);
@@ -32,8 +32,8 @@ describe("countRunningUnder", () => {
     expect(countRunningUnder(sessions, running, "/r/personal")).toBe(1);
   });
 
-  it("is zero when nothing runs under the group", () => {
-    const running = new Set(["d"]); // only the sibling group runs
+  it("is zero when nothing runs under the space", () => {
+    const running = new Set(["d"]); // only the sibling space runs
     expect(countRunningUnder(sessions, running, "/r/personal")).toBe(0);
   });
 });

@@ -45,6 +45,8 @@ function loadSelection(): Selection | null {
       const s = JSON.parse(raw) as Selection;
       // Backfill the folder anchor for selections persisted before Phase 3.
       if (s && !s.folderPath) s.folderPath = s.projectPath;
+      // Backfill the space name for selections persisted under the old `groupName` key.
+      if (s && !s.spaceName) s.spaceName = (s as unknown as { groupName?: string }).groupName ?? "";
       return s;
     }
   } catch {
