@@ -208,6 +208,6 @@
 
 .tbErr {
   margin-top: 6px;
-  color: #f08080;
+  color: var(--danger);
   font-size: calc(11px * var(--ui-scale));
 }

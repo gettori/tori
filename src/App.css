@@ -111,7 +111,7 @@ body.dragging {
   flex: 0 0 4px;
   cursor: col-resize;
   background: var(--border);
-  transition: background 0.12s ease;
+  transition: background var(--sway-duration-fast) var(--sway-ease);
 }
 
 .splitter:hover {
@@ -129,8 +129,8 @@ body.dragging {
   margin: 6px 8px;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: #f08080;
-  background: #2a1a1a;
+  color: var(--danger);
+  background: var(--input-bg);
   border-radius: calc(4px * var(--ui-radius-scale));
   white-space: pre-wrap;
 }
@@ -192,9 +192,9 @@ body.dragging {
 }
 
 .arch-pill {
-  color: #b08000;
+  color: var(--warn);
   font-size: calc(11px * var(--ui-scale));
-  border: 1px solid #5a4a00;
+  border: 1px solid var(--warn);
   border-radius: calc(3px * var(--ui-radius-scale));
   padding: 0 calc(5px * var(--ui-density));
 }

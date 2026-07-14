@@ -26,7 +26,7 @@
   animation: toast-in 140ms ease-out;
 }
 .toast.error {
-  border-left-color: #e06c75;
+  border-left-color: var(--danger);
 }
 .toast.info {
   border-left-color: var(--brand);
