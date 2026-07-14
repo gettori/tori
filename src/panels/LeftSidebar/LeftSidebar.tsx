@@ -33,8 +33,45 @@ import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
-import { Settings, FolderPlus, Pin, FolderOpen, RotateCcw } from "lucide-solid";
+import {
+  Settings,
+  FolderPlus,
+  Pin,
+  FolderOpen,
+  RotateCcw,
+  Folder,
+  GitBranch,
+  GitFork,
+  ChevronDown,
+  Plus,
+} from "lucide-solid";
+import type { LucideIcon } from "lucide-solid";
 import styles from "./LeftSidebar.module.css";
+
+// Lucide glyph for a project row, keyed by its git kind: a worktree container
+// (or an empty .bare stub) reads as a fork, a plain repo as a branch, and a
+// non-git folder as a plain folder (matching a group's folder mark).
+function projectIcon(kind: string | undefined): LucideIcon {
+  switch (kind) {
+    case "worktree":
+    case "incomplete":
+      return GitFork;
+    case "plain":
+      return GitBranch;
+    default:
+      return Folder;
+  }
+}
+
+// Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned to
+// the row's right edge that flips to a chevron-up (rotate 180°) when expanded.
+function RowChevron(props: { open: boolean }) {
+  return (
+    <span class={styles.rowChevron} classList={{ [styles.open]: props.open }}>
+      <Icon icon={ChevronDown} size={14} />
+    </span>
+  );
+}
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
 // the terminal inserts verbatim as `@<abspath>` (newline-separated for a group).
@@ -112,6 +149,15 @@ export type Selection = {
 };
 
 const LS_EXPANDED = "sway.expanded.v1";
+const LS_ACTIVE_GROUP = "sway.active-group.v1";
+
+function loadActiveGroup(): string | null {
+  try {
+    return localStorage.getItem(LS_ACTIVE_GROUP);
+  } catch {
+    return null;
+  }
+}
 
 function ago(epochSecs: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - epochSecs);
@@ -187,13 +233,31 @@ export default function LeftSidebar(props: {
   // Single-root model: a root is present when roots[0] exists.
   const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
-  // Render order: root-discovered groups first, pinned externals after (under the
-  // "Other" divider). The divider is drawn before the first external group.
+  // Groups are "spaces" (Arc-style): shown as an icon strip at the bottom, one
+  // active at a time, and the tree renders only the active group's projects.
+  // Render order: root-discovered groups first, pinned externals after. This is
+  // the FULL list (never q-filtered) so the space strip is stable while filtering.
   const visibleGroups = () => {
-    const gs = (config()?.groups ?? []).filter(groupVisible);
+    const gs = config()?.groups ?? [];
     return [...gs.filter((g) => !g.external), ...gs.filter((g) => g.external)];
   };
-  const firstExternalIdx = () => visibleGroups().findIndex((g) => g.external);
+
+  // The active space. Persisted by name; falls back to the first group when the
+  // stored name is gone (e.g. the active group was deleted), so it self-heals.
+  const [activeGroupName, setActiveGroupName] = createSignal<string | null>(loadActiveGroup());
+  createEffect(() => {
+    const n = activeGroupName();
+    try {
+      if (n) localStorage.setItem(LS_ACTIVE_GROUP, n);
+    } catch {
+      // ignore quota
+    }
+  });
+  const activeGroup = (): Group | null => {
+    const gs = visibleGroups();
+    return gs.find((g) => g.name === activeGroupName()) ?? gs[0] ?? null;
+  };
+  const activeProjects = () => (activeGroup()?.projects ?? []).filter(projectVisible);
 
   // Per-node right-click menu. Set on `contextmenu`, cleared on close.
   const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -1149,7 +1213,6 @@ export default function LeftSidebar(props: {
     }
   }
 
-  const gkey = (g: Group) => `g:${g.name}`;
   const pkey = (g: Group, p: Project) => `p:${g.name}/${p.name}`;
   const ukey = (g: Group, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
   const hkey = (u: BranchUnit) => `h:${u.folderPath}`; // "Historical" sub-group
@@ -1242,11 +1305,11 @@ export default function LeftSidebar(props: {
   }
 
   // The session listing for one branch-unit (an optional "Historical" sub-group +
-  // the session rows). Extracted so it renders both under a branch node (sub3) and
-  // directly under a non-git folder that has no branch node (sub2). `sub` is the
-  // session rows' indent class; the historical header sits one level above.
-  function sessionRows(g: Group, p: Project, u: BranchUnit, sub: "sub2" | "sub3") {
-    const histSub = sub === "sub3" ? "sub3" : "sub2";
+  // the session rows). Extracted so it renders both under a branch node (sub2) and
+  // directly under a non-git folder that has no branch node (sub1). `sub` is the
+  // session rows' indent class; the historical header sits at the same level.
+  function sessionRows(g: Group, p: Project, u: BranchUnit, sub: "sub1" | "sub2") {
+    const histSub = sub;
     return (
       <>
         <Show when={isHistorical(u)}>
@@ -1380,10 +1443,6 @@ export default function LeftSidebar(props: {
     if (!q()) return true;
     return p.name.toLowerCase().includes(q()) || sessionsMatch(p);
   }
-  function groupVisible(g: Group) {
-    if (!q()) return true;
-    return g.name.toLowerCase().includes(q()) || g.projects.some(projectVisible);
-  }
   function sessionVisible(s: SessionMeta) {
     return !q() || sessionText(s).includes(q());
   }
@@ -1500,112 +1559,97 @@ export default function LeftSidebar(props: {
       </div>
 
       <div class={styles.treeScroll}>
-        <For each={visibleGroups()}>
-          {(g, i) => {
-            const open = () => expanded().has(gkey(g)) || !!q();
+        <For each={activeProjects()}>
+          {(p) => {
+            const g = activeGroup()!;
+            const popen = () => expanded().has(pkey(g, p));
+            // A non-git folder has no branch node: the project row is the
+            // session anchor, so clicking it selects the single unit and its
+            // sessions render directly beneath (nothing but its own sessions,
+            // never a same-named branch stub).
+            const plainDir = () => projectKind(p) === "plain-dir";
+            const folderUnit = () => p.branchUnits[0];
             return (
-              <>
-              <Show when={g.external && i() === firstExternalIdx()}>
-                <div class={styles.treeDivider} title="Pinned folders outside your base folder">Other</div>
-              </Show>
               <div class="node">
                 <div
-                  class={`${styles.row} ${styles.group}`}
-                  onClick={() => toggle(gkey(g))}
-                  onContextMenu={(e) => openMenu(e, groupMenu(g))}
+                  class={`${styles.row} ${styles.project}`}
+                  onClick={() => {
+                    toggle(pkey(g, p));
+                    if (plainDir() && folderUnit()) {
+                      fetchSessions(folderUnit().folderPath);
+                      selectUnit(g, p, folderUnit());
+                    }
+                  }}
+                  onContextMenu={(e) => openMenu(e, projectMenu(g, p))}
                   draggable={true}
-                  onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
+                  onDragStart={(e) => startAbsDrag(e, p.path)}
                 >
-                  <Chevron open={open()} />
-                  <span class={styles.label}>{g.name}</span>
+                  <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} size={14} /></span>
+                  <span class={styles.label}>{p.name}</span>
+                  <RowChevron open={popen()} />
                 </div>
-                <Show when={open()}>
-                  <For each={g.projects.filter(projectVisible)}>
-                    {(p) => {
-                      const popen = () => expanded().has(pkey(g, p));
-                      // A non-git folder has no branch node: the project row is the
-                      // session anchor, so clicking it selects the single unit and
-                      // its sessions render directly beneath (nothing but its own
-                      // sessions, never a same-named branch stub).
-                      const plainDir = () => projectKind(p) === "plain-dir";
-                      const folderUnit = () => p.branchUnits[0];
+                <Show when={popen()}>
+                  <Show
+                    when={!plainDir()}
+                    fallback={
+                      <Show when={folderUnit()}>
+                        {sessionRows(g, p, folderUnit(), "sub1")}
+                      </Show>
+                    }
+                  >
+                  <For
+                    each={p.branchUnits}
+                    fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no branches</div>}
+                  >
+                    {(u) => {
+                      const uopen = () => expanded().has(ukey(g, p, u));
                       return (
                         <div class="node">
                           <div
-                            class={`${styles.row} ${styles.project} ${styles.sub1}`}
+                            class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
                             onClick={() => {
-                              toggle(pkey(g, p));
-                              if (plainDir() && folderUnit()) {
-                                fetchSessions(folderUnit().folderPath);
-                                selectUnit(g, p, folderUnit());
-                              }
+                              toggle(ukey(g, p, u));
+                              fetchSessions(u.folderPath);
+                              selectUnit(g, p, u);
                             }}
-                            onContextMenu={(e) => openMenu(e, projectMenu(g, p))}
+                            onContextMenu={(e) => openMenu(e, unitMenu(g, p, u))}
                             draggable={true}
-                            onDragStart={(e) => startAbsDrag(e, p.path)}
+                            onDragStart={(e) => startAbsDrag(e, u.folderPath)}
                           >
-                            <Chevron open={popen()} />
-                            <span class={styles.label}>{p.name}</span>
-                          </div>
-                          <Show when={popen()}>
-                            <Show
-                              when={!plainDir()}
-                              fallback={
-                                <Show when={folderUnit()}>
-                                  {sessionRows(g, p, folderUnit(), "sub2")}
-                                </Show>
-                              }
-                            >
-                            <For
-                              each={p.branchUnits}
-                              fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub2}`}>no branches</div>}
-                            >
-                              {(u) => {
-                                const uopen = () => expanded().has(ukey(g, p, u));
-                                return (
-                                  <div class="node">
-                                    <div
-                                      class={`${styles.row} ${styles.branch} ${styles.sub2} ${unitSelected(u) ? styles.sel : ""}`}
-                                      onClick={() => {
-                                        toggle(ukey(g, p, u));
-                                        fetchSessions(u.folderPath);
-                                        selectUnit(g, p, u);
-                                      }}
-                                      onContextMenu={(e) => openMenu(e, unitMenu(g, p, u))}
-                                      draggable={true}
-                                      onDragStart={(e) => startAbsDrag(e, u.folderPath)}
-                                    >
-                                      <Chevron open={uopen()} />
-                                      <span class={styles.label}>{unitLabel(u)}</span>
-                                      <Show when={u.kind === "incomplete"}>
-                                        <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
-                                      </Show>
-                                      <Show when={unitMismatch(u)}>
-                                        <span class={styles.badge} title="Not the current checkout">≠ checkout</span>
-                                      </Show>
-                                      <Show when={u.isCurrent}>
-                                        <span class={styles.dot} title="current checkout">●</span>
-                                      </Show>
-                                    </div>
-                                    <Show when={uopen()}>
-                                      {sessionRows(g, p, u, "sub3")}
-                                    </Show>
-                                  </div>
-                                );
-                              }}
-                            </For>
+                            <span class={styles.rowIcon}>
+                              <Icon icon={u.kind === "incomplete" ? GitFork : GitBranch} size={14} />
+                            </span>
+                            <span class={styles.label}>{unitLabel(u)}</span>
+                            <Show when={u.kind === "incomplete"}>
+                              <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
                             </Show>
+                            <Show when={unitMismatch(u)}>
+                              <span class={styles.badge} title="Not the current checkout">≠ checkout</span>
+                            </Show>
+                            <Show when={u.isCurrent}>
+                              <span class={styles.dot} title="current checkout">●</span>
+                            </Show>
+                            <RowChevron open={uopen()} />
+                          </div>
+                          <Show when={uopen()}>
+                            {sessionRows(g, p, u, "sub2")}
                           </Show>
                         </div>
                       );
                     }}
                   </For>
+                  </Show>
                 </Show>
               </div>
-              </>
             );
           }}
         </For>
+
+        <Show when={(config()?.groups ?? []).length > 0 && activeProjects().length === 0}>
+          <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>
+            {q() ? "no matches in this space" : "no projects in this space"}
+          </div>
+        </Show>
 
         <Show when={(config()?.groups ?? []).length === 0}>
           <div class="tree-empty">
@@ -1625,6 +1669,31 @@ export default function LeftSidebar(props: {
           </div>
         </Show>
       </div>
+
+      <Show when={visibleGroups().length > 0}>
+        <div class={styles.spaceBar}>
+          <For each={visibleGroups()}>
+            {(g) => (
+              <button
+                class={styles.space}
+                classList={{ [styles.active]: activeGroup()?.name === g.name }}
+                title={g.external ? `${g.name} (pinned)` : g.name}
+                onClick={() => setActiveGroupName(g.name)}
+                onContextMenu={(e) => openMenu(e, groupMenu(g))}
+                draggable={true}
+                onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
+              >
+                {g.name.trim().charAt(0).toUpperCase() || "?"}
+              </button>
+            )}
+          </For>
+          <Show when={hasRoot()}>
+            <button class={styles.spaceAdd} title="New group" onClick={addGroup}>
+              <Icon icon={Plus} size={16} />
+            </button>
+          </Show>
+        </div>
+      </Show>
 
       <Show when={config()}>
         <div class={styles.treeFoot} title={config()!.path}>
