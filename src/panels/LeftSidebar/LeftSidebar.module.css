@@ -222,7 +222,7 @@
   margin-left: auto;
   padding-left: calc(8px * var(--ui-density));
   font-size: calc(10px * var(--ui-scale));
-  color: #5a5a5a;
+  color: var(--text-dim);
   flex: 0 0 auto;
 }
 

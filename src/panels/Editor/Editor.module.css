@@ -28,7 +28,7 @@
 
 .editorErr {
   padding: calc(10px * var(--ui-density));
-  color: #f08080;
+  color: var(--danger);
   font-size: calc(12px * var(--ui-scale));
 }
 

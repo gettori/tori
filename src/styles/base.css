@@ -16,3 +16,17 @@
     font-family: var(--sway-font-ui);
   }
 }
+
+/* Respect the OS "reduce motion" setting: neutralise the design system's
+   hover/active/focus transitions and any animations app-wide. Outside @layer
+   with !important so it overrides every component rule regardless of cascade. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
