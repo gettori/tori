@@ -1,12 +1,11 @@
-import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, SESSIONS_REFRESH } from "../../utils/events";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
-import { Brain, Pencil, RefreshCw, Wrench, ChevronRight } from "lucide-solid";
+import { Brain, Pencil, RefreshCw, Wrench, ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
 import styles from "./Toolbar.module.css";
 
 type SessionDetail = {
@@ -17,8 +16,6 @@ type SessionDetail = {
   context_tokens: number;
   model: string | null;
 };
-type Worktree = { path: string; branch: string; is_main: boolean };
-
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
@@ -123,12 +120,6 @@ function CtxGauge(props: { pct: number }) {
 export default function Toolbar(props: { selected: Selection | null }) {
   const [detail, setDetail] = createSignal<SessionDetail | null>(null);
   const [displayName, setDisplayName] = createSignal("");
-  const [renaming, setRenaming] = createSignal(false);
-  const [nameDraft, setNameDraft] = createSignal("");
-  const [confirmDelete, setConfirmDelete] = createSignal(false);
-  const [showWt, setShowWt] = createSignal(false);
-  const [worktrees, setWorktrees] = createSignal<Worktree[]>([]);
-  const [wtPath, setWtPath] = createSignal("");
   const [err, setErr] = createSignal("");
 
   ensureModelCaps();
@@ -141,8 +132,6 @@ export default function Toolbar(props: { selected: Selection | null }) {
       () => sel()?.sessionId,
       (id) => {
         setDetail(null);
-        setRenaming(false);
-        setConfirmDelete(false);
         setErr("");
         const s = sel();
         setDisplayName(s?.sessionName || s?.sessionTitle || "");
@@ -166,28 +155,6 @@ export default function Toolbar(props: { selected: Selection | null }) {
     ),
   );
 
-  createEffect(
-    on(
-      () => sel()?.projectPath,
-      (p) => {
-        setWorktrees([]);
-        setShowWt(false);
-        if (p) setWtPath(`${p}-${sel()?.branch ?? "branch"}`.replace(/[^\w/.-]/g, "-"));
-      },
-    ),
-  );
-
-  function loadWorktrees() {
-    const p = sel()?.projectPath;
-    if (p) invoke<Worktree[]>("list_worktrees", { repoPath: p }).then(setWorktrees).catch(() => {});
-  }
-
-  function toggleWt() {
-    const next = !showWt();
-    setShowWt(next);
-    if (next) loadWorktrees();
-  }
-
   async function openGhostty(resume: boolean) {
     const s = sel();
     if (!s) return;
@@ -199,160 +166,80 @@ export default function Toolbar(props: { selected: Selection | null }) {
     const s = sel();
     if (s) await invoke("open_in_vscode", { path: s.folderPath }).catch((e) => setErr(String(e)));
   }
-  async function saveName() {
-    const s = sel();
-    if (!s?.sessionId) return;
-    await invoke("set_session_name", { id: s.sessionId, name: nameDraft() }).catch((e) => setErr(String(e)));
-    setDisplayName(nameDraft() || s.sessionTitle || "");
-    setRenaming(false);
-    emit(SESSIONS_REFRESH);
-  }
-  async function toggleArchive() {
-    const s = sel();
-    if (!s?.sessionId) return;
-    await invoke("set_session_archived", { id: s.sessionId, archived: !s.sessionArchived }).catch((e) => setErr(String(e)));
-    emit(SESSIONS_REFRESH);
-  }
-  async function doDelete() {
-    const s = sel();
-    if (!s?.sessionPath) return;
-    if (!confirmDelete()) {
-      setConfirmDelete(true);
-      return;
-    }
-    await invoke("delete_session", { path: s.sessionPath }).catch((e) => setErr(String(e)));
-    setConfirmDelete(false);
-    emit(SESSIONS_REFRESH);
-  }
-  async function addWorktree() {
-    const s = sel();
-    if (!s || !wtPath().trim()) return;
-    try {
-      await invoke("add_worktree", { repoPath: s.projectPath, branch: s.branch, worktreePath: wtPath().trim() });
-      loadWorktrees();
-    } catch (e) {
-      setErr(String(e));
-    }
-  }
-  async function removeWorktree(path: string) {
-    const s = sel();
-    if (!s) return;
-    try {
-      await invoke("remove_worktree", { repoPath: s.projectPath, worktreePath: path });
-      loadWorktrees();
-    } catch (e) {
-      setErr(String(e));
-    }
-  }
 
   return (
     <div class={styles.toolbar}>
       <Show when={sel()} fallback={<div class={styles.tbEmpty}>Select a branch or session</div>}>
         <div class={styles.tbRow}>
           <div class={styles.tbInfo}>
-            <Show
-              when={!renaming()}
-              fallback={
-                <div class={styles.renameRow}>
-                  <input
-                    class={styles.renameInput}
-                    value={nameDraft()}
-                    placeholder="session name"
-                    onInput={(e) => setNameDraft(e.currentTarget.value)}
-                    onKeyDown={(e) => e.key === "Enter" && saveName()}
-                  />
-                  <Button size="sm" onClick={saveName}>Save</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>Cancel</Button>
-                </div>
-              }
-            >
-              <nav class={styles.tbCrumb} aria-label="location">
-                <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
+            <nav class={styles.tbCrumb} aria-label="location">
+              <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
+              <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
+              <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
+              <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
+              <Show
+                when={isSession()}
+                fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
+              >
+                <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
                 <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
-                <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
-                <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
-                <Show
-                  when={isSession()}
-                  fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
-                >
-                  <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
-                  <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
-                  <span class={`${styles.crumb} ${styles.leaf}`}>
-                    <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
-                    {displayName()}
-                  </span>
-                </Show>
-              </nav>
-              <Show when={isSession() && detail()}>
-                <span class={styles.tbDivider} />
-                <span class={styles.tbStats}>
-                  <Show when={detail()!.model}>
-                    <span class={`${styles.stat} ${styles.statModel}`} title="Model">
-                      <ModelIcon />{modelLabel(detail()!.model)}
-                    </span>
-                    <span class={styles.statSep}>·</span>
-                  </Show>
-                  <span class={styles.stat} title="Prompts you sent">
-                    <PromptIcon />{detail()!.prompt_count}
-                  </span>
-                  <span class={styles.statSep}>·</span>
-                  <span class={styles.stat} title="Agent turns">
-                    <TurnIcon />{detail()!.turn_count}
-                  </span>
-                  <span class={styles.statSep}>·</span>
-                  <span class={styles.stat} title="Tool calls">
-                    <ToolIcon />{detail()!.tool_count}
-                  </span>
-                  <span class={styles.statSep}>·</span>
-                  <span
-                    class={styles.stat}
-                    title={`Context: ${Math.round((detail()!.context_tokens / contextWindow(detail()!.model)) * 100)}% of ${fmt(contextWindow(detail()!.model))}`}
-                  >
-                    <CtxGauge pct={(detail()!.context_tokens / contextWindow(detail()!.model)) * 100} />
-                    {fmt(detail()!.context_tokens)}/{fmt(contextWindow(detail()!.model))}
-                  </span>
+                <span class={`${styles.crumb} ${styles.leaf}`}>
+                  <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
+                  {displayName()}
                 </span>
               </Show>
+            </nav>
+            <Show when={isSession() && detail()}>
+              <span class={styles.tbDivider} />
+              <span class={styles.tbStats}>
+                <Show when={detail()!.model}>
+                  <span class={`${styles.stat} ${styles.statModel}`} title="Model">
+                    <ModelIcon />{modelLabel(detail()!.model)}
+                  </span>
+                  <span class={styles.statSep}>·</span>
+                </Show>
+                <span class={styles.stat} title="Prompts you sent">
+                  <PromptIcon />{detail()!.prompt_count}
+                </span>
+                <span class={styles.statSep}>·</span>
+                <span class={styles.stat} title="Agent turns">
+                  <TurnIcon />{detail()!.turn_count}
+                </span>
+                <span class={styles.statSep}>·</span>
+                <span class={styles.stat} title="Tool calls">
+                  <ToolIcon />{detail()!.tool_count}
+                </span>
+                <span class={styles.statSep}>·</span>
+                <span
+                  class={styles.stat}
+                  title={`Context: ${Math.round((detail()!.context_tokens / contextWindow(detail()!.model)) * 100)}% of ${fmt(contextWindow(detail()!.model))}`}
+                >
+                  <CtxGauge pct={(detail()!.context_tokens / contextWindow(detail()!.model)) * 100} />
+                  {fmt(detail()!.context_tokens)}/{fmt(contextWindow(detail()!.model))}
+                </span>
+              </span>
             </Show>
           </div>
 
           <div class={styles.tbActions}>
-            <Show
-              when={isSession()}
-              fallback={<Button size="sm" variant="primary" onClick={() => openGhostty(false)}>+ New in Ghostty</Button>}
-            >
-              <Button size="sm" variant="primary" onClick={() => openGhostty(true)}>Resume in Ghostty</Button>
-              <Button size="sm" onClick={() => { setNameDraft(displayName()); setRenaming(true); }}>Rename</Button>
-              <Button size="sm" onClick={toggleArchive}>{sel()!.sessionArchived ? "Unarchive" : "Archive"}</Button>
-              <Button size="sm" variant={confirmDelete() ? "danger" : "default"} onClick={doDelete}>
-                {confirmDelete() ? "Really?" : "Delete"}
-              </Button>
-            </Show>
-            <Button size="sm" onClick={openVSCode} title="Open in the real VS Code app">VSCode ↗</Button>
-            <Button size="sm" onClick={toggleWt}>Worktrees</Button>
+            <Button
+              size="sm"
+              onClick={() => openGhostty(isSession())}
+              title={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
+              aria-label={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
+              icon={<Icon icon={SquareTerminal} class={styles.tbAppIco} />}
+              iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
+            />
+            <Button
+              size="sm"
+              onClick={openVSCode}
+              title="Open in VSCode"
+              aria-label="Open in VSCode"
+              icon={<Icon icon={Code2} class={styles.tbAppIco} />}
+              iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
+            />
           </div>
         </div>
-
-        <Show when={showWt()}>
-          <div class={styles.tbWorktrees}>
-            <For each={worktrees()} fallback={<span class="dim sm">no worktrees</span>}>
-              {(w) => (
-                <div class={styles.wtRow}>
-                  <span class={styles.wtBranch}>{w.branch || "(detached)"}</span>
-                  <span class={`${styles.wtPath} dim`}>{w.path}</span>
-                  <Show when={w.is_main}><span class={styles.wtMain}>main</span></Show>
-                  <Show when={!w.is_main}>
-                    <Button size="xs" variant="ghost" onClick={() => removeWorktree(w.path)}>remove</Button>
-                  </Show>
-                </div>
-              )}
-            </For>
-            <div class={styles.wtAdd}>
-              <input class={styles.wtInput} value={wtPath()} placeholder="worktree path" onInput={(e) => setWtPath(e.currentTarget.value)} />
-              <Button size="sm" onClick={addWorktree}>+ Add for {sel()!.branch}</Button>
-            </div>
-          </div>
-        </Show>
 
         <Show when={err()}><div class={styles.tbErr}>{err()}</div></Show>
       </Show>
