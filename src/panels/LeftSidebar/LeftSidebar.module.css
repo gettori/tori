@@ -148,16 +148,16 @@
   background: var(--hover);
 }
 
-/* Selected session: an inset gold pill that begins where the branch name starts
-   (--branch-label-x), not a full-width fill reaching the row's left edge, so it
-   reads as nested under its branch. Drawn behind the row content (z-index -1);
-   the row owns a stacking context (z-index 0) so the pill stays above the row's
-   background but below its text, and the hover fill is suppressed so the two
-   don't blend. */
-.row.session.sel {
+/* Session hover + selection share one inset fill slot that begins where the
+   branch name starts (--branch-label-x), so neither reaches the row's far left
+   and both read as nested under the branch. The fill sits behind the row content
+   (z-index -1); the row owns a stacking context (z-index 0) so it stays above
+   the row background but below the text, and the full-width row hover is
+   suppressed so only the inset fill shows. */
+.row.session {
   z-index: 0;
 }
-.row.session.sel::before {
+.row.session::before {
   content: "";
   position: absolute;
   left: var(--branch-label-x);
@@ -166,10 +166,16 @@
   bottom: 0;
   z-index: -1;
   border-radius: var(--sway-radius-md);
-  background: var(--brand-subtle);
-}
-.row.session.sel:hover {
   background: transparent;
+}
+.row.session:hover {
+  background: transparent;
+}
+.row.session:hover::before {
+  background: var(--hover);
+}
+.row.session.sel::before {
+  background: var(--brand-subtle);
 }
 
 /* Agent mark: neutral (monochrome) on an unselected session so the row reads
@@ -214,6 +220,32 @@
   height: 15px;
 }
 
+/* Branch hover: an inset fill that hugs the branch name with the standard 8px of
+   left padding (it starts 8px before the name, just past the elbow, so the text
+   is never jammed against the pill edge) and never reaches the far left. Sits
+   behind the content; the row owns a stacking context for the z-index -1 fill.
+   The selected state repurposes this same ::before as the gold rail segment. */
+.row.branch {
+  z-index: 0;
+}
+.row.branch::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--branch-label-x) - 8px * var(--ui-density));
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  border-radius: var(--sway-radius-md);
+  background: transparent;
+}
+.row.branch:hover {
+  background: transparent;
+}
+.row.branch:hover::before {
+  background: var(--hover);
+}
+
 /* Rounded elbow: a left+bottom bordered box in the row's top half whose
    bottom-left corner is rounded, curving from the rail into the row. */
 .row.branch::after {
@@ -228,15 +260,13 @@
   border-bottom-left-radius: calc(8px * var(--ui-density));
 }
 
-/* Selected branch: no pill; light the rail segment gold for this row and
-   thicken + gild the elbow. The full-height gold bar overlays the grey rail. */
+/* Selected branch: no fill; repurpose the ::before slot as a thin full-height
+   gold rail segment (overlaying the grey rail), plus the gilded elbow below. */
 .row.branch.sel::before {
-  content: "";
-  position: absolute;
   left: var(--rail-x-row);
-  top: 0;
-  bottom: 0;
+  right: auto;
   width: 2px;
+  border-radius: 0;
   background: var(--brand-bar);
 }
 .row.branch.sel::after {
