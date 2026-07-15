@@ -10,6 +10,7 @@ import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog"
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
+import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import Toasts, { type Toast } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import {
@@ -33,6 +34,7 @@ import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
+import { resolveIcon } from "../../components/Icon/iconRegistry";
 import {
   Settings,
   FolderPlus,
@@ -112,7 +114,7 @@ type BranchUnit = {
 };
 type Branch = { name: string; current: boolean };
 type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
-type Space = { name: string; path: string; projects: Project[]; external: boolean };
+type Space = { name: string; path: string; projects: Project[]; external: boolean; icon?: string };
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 type SessionMeta = {
   id: string;
@@ -241,6 +243,10 @@ export default function LeftSidebar(props: {
     const gs = config()?.spaces ?? [];
     return [...gs.filter((g) => !g.external), ...gs.filter((g) => g.external)];
   };
+  // Split for the space bar: root-discovered spaces, then pinned ("Other")
+  // spaces, with a divider rendered between the two groups when both exist.
+  const rootSpaces = () => visibleSpaces().filter((g) => !g.external);
+  const extSpaces = () => visibleSpaces().filter((g) => g.external);
 
   // The active space. Persisted by name; falls back to the first space when the
   // stored name is gone (e.g. the active space was deleted), so it self-heals.
@@ -346,6 +352,22 @@ export default function LeftSidebar(props: {
   // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
   const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean } | null>(null);
+
+  // The space create/edit dialog (icon picker). "new" creates a folder under the
+  // root; "edit" only rewrites the `[[space]]` icon (keyed by `name`), so the
+  // name is immutable there. `busy` gates double-submit like the sibling dialogs.
+  const [spaceReq, setSpaceReq] = createSignal<{
+    mode: SpaceDialogMode;
+    name: string;
+    icon: string | null;
+    busy: boolean;
+  } | null>(null);
+
+  // Drag-to-reorder state for the root space tiles (pinned spaces don't reorder).
+  // `dragSpace` is the name being dragged; `dropHint` marks the tile the drop
+  // would land before/after, for the insertion indicator.
+  const [dragSpace, setDragSpace] = createSignal<string | null>(null);
+  const [dropHint, setDropHint] = createSignal<{ name: string; after: boolean } | null>(null);
 
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "space" | "folder" | "project";
@@ -579,16 +601,73 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function addSpace() {
-    const roots = config()?.roots ?? [];
-    if (!roots.length) return;
-    const name = await askText("New space name:");
-    if (!name) return;
+  // Open the create-space dialog (needs a root to mkdir under).
+  function addSpace() {
+    if (!(config()?.roots ?? []).length) return;
+    setSpaceReq({ mode: "new", name: "", icon: null, busy: false });
+  }
+
+  // Open the edit-space dialog, prefilled. Keyed by name, so it works for a root
+  // space and an external pin alike; only the icon is editable.
+  function editSpace(g: Space) {
+    setSpaceReq({ mode: "edit", name: g.name, icon: g.icon ?? null, busy: false });
+  }
+
+  // Confirmed: create runs the single `add_space` command (mkdir + icon write +
+  // one emit); edit runs `set_space_meta`. Each command emits `config://changed`,
+  // which drives the reload, so there is no manual loadConfig here. On failure,
+  // surface the error and leave the dialog open.
+  async function confirmSpace(opts: { name: string; icon: string | null }) {
+    const req = spaceReq();
+    if (!req) return;
+    setSpaceReq({ ...req, busy: true });
     try {
-      await invoke("add_space", { root: roots[0], name });
-      await loadConfig();
+      if (req.mode === "new") {
+        const roots = config()?.roots ?? [];
+        if (!roots.length) throw new Error("No base folder configured");
+        await invoke("add_space", { root: roots[0], name: opts.name, icon: opts.icon });
+      } else {
+        await invoke("set_space_meta", { name: req.name, icon: opts.icon });
+      }
+      setSpaceReq(null);
     } catch (e) {
       setError(String(e));
+      setSpaceReq({ ...req, busy: false });
+    }
+  }
+
+  // Reorder drag lives alongside the tile's existing abs-path drag (which drops a
+  // space's project paths into the terminal): the abs-path payload is still set,
+  // and `dragSpace` gates the in-bar reorder. Only root tiles participate, so a
+  // pinned space is never a drag source or a drop target.
+  function onSpaceDragOver(e: DragEvent, g: Space) {
+    if (g.external || !dragSpace() || dragSpace() === g.name) return;
+    e.preventDefault(); // mark this tile a valid drop target
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDropHint({ name: g.name, after: e.clientX > r.left + r.width / 2 });
+  }
+
+  async function onSpaceDrop(e: DragEvent, g: Space) {
+    const from = dragSpace();
+    const hint = dropHint();
+    setDragSpace(null);
+    setDropHint(null);
+    if (g.external || !from || from === g.name) return;
+    e.preventDefault();
+    const after = hint?.name === g.name ? hint.after : false;
+    // Full new order of root-space names (persisted so the next reload keeps it).
+    const next = rootSpaces()
+      .map((s) => s.name)
+      .filter((n) => n !== from);
+    let at = next.indexOf(g.name);
+    if (at < 0) return;
+    if (after) at += 1;
+    next.splice(at, 0, from);
+    try {
+      await invoke("set_space_order", { names: next });
+    } catch (err) {
+      setError(String(err));
     }
   }
 
@@ -1045,14 +1124,15 @@ export default function LeftSidebar(props: {
   // --- per-node context menus ---
 
   // Create/clone/bootstrap target the root tree; an external ("Other") space is
-  // just a pin's parent dir, so it gets no space-level actions (unpin is per
-  // project, in projectMenu).
+  // just a pin's parent dir, so it gets no create/delete actions (unpin is per
+  // project, in projectMenu). Both kinds can edit their icon (keyed by name).
   const spaceMenu = (g: Space): MenuItem[] =>
     g.external
-      ? []
+      ? [{ label: "Edit space…", onClick: () => editSpace(g) }]
       : [
           { label: "New…", onClick: () => openNewProject(g) },
           { separator: true },
+          { label: "Edit space…", onClick: () => editSpace(g) },
           { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
         ];
 
@@ -1514,6 +1594,39 @@ export default function LeftSidebar(props: {
     offToast?.();
   });
 
+  // One space tile for the bottom bar: its icon when set, else the name's
+  // initial; active-marked, with its context menu and drag payload (all of the
+  // space's project paths).
+  const spaceTile = (g: Space) => (
+    <button
+      class={styles.space}
+      classList={{
+        [styles.active]: activeSpace()?.name === g.name,
+        [styles.dragging]: dragSpace() === g.name,
+        [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
+        [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
+      }}
+      title={g.external ? `${g.name} (pinned)` : g.name}
+      onClick={() => setActiveSpaceName(g.name)}
+      onContextMenu={(e) => openMenu(e, spaceMenu(g))}
+      draggable={true}
+      onDragStart={(e) => {
+        startAbsDrag(e, g.projects.map((p) => p.path));
+        if (!g.external) setDragSpace(g.name);
+      }}
+      onDragOver={(e) => onSpaceDragOver(e, g)}
+      onDrop={(e) => onSpaceDrop(e, g)}
+      onDragEnd={() => {
+        setDragSpace(null);
+        setDropHint(null);
+      }}
+    >
+      <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
+        {(glyph) => <Icon icon={glyph()} size={18} />}
+      </Show>
+    </button>
+  );
+
   return (
     <div class={styles.tree}>
       <div class={styles.treeSearch}>
@@ -1525,37 +1638,6 @@ export default function LeftSidebar(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Escape" && setQuery("")}
         />
-        <div class={styles.gearWrap} ref={gearEl}>
-          <button
-            class={styles.gearBtn}
-            classList={{ [styles.active]: gearOpen() }}
-            title="Sidebar actions"
-            onClick={() => setGearOpen(!gearOpen())}
-          >
-            <Icon icon={Settings} />
-          </button>
-          <Show when={gearOpen()}>
-            <div class={styles.gearMenu}>
-              <Show when={hasRoot()}>
-                <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
-                  <Icon icon={FolderPlus} size={14} />New space
-                </div>
-              </Show>
-              <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
-                <Icon icon={Pin} size={14} />Pin folder to "Other"
-              </div>
-              <div class={styles.gearDivider} />
-              <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
-                <Icon icon={FolderOpen} size={14} />Add/Update root
-              </div>
-              <Show when={hasRoot()}>
-                <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>
-                  <Icon icon={RotateCcw} size={14} />Reset root (forget only)
-                </div>
-              </Show>
-            </div>
-          </Show>
-        </div>
       </div>
 
       <div class={styles.treeScroll}>
@@ -1670,34 +1752,53 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      <Show when={visibleSpaces().length > 0}>
+      <Show when={config()}>
         <div class={styles.spaceBar}>
-          <For each={visibleSpaces()}>
-            {(g) => (
-              <button
-                class={styles.space}
-                classList={{ [styles.active]: activeSpace()?.name === g.name }}
-                title={g.external ? `${g.name} (pinned)` : g.name}
-                onClick={() => setActiveSpaceName(g.name)}
-                onContextMenu={(e) => openMenu(e, spaceMenu(g))}
-                draggable={true}
-                onDragStart={(e) => startAbsDrag(e, g.projects.map((p) => p.path))}
-              >
-                {g.name.trim().charAt(0).toUpperCase() || "?"}
-              </button>
-            )}
-          </For>
+          <div class={styles.gearWrap} ref={gearEl}>
+            <button
+              class={styles.gearBtn}
+              classList={{ [styles.active]: gearOpen() }}
+              title="Sidebar actions"
+              onClick={() => setGearOpen(!gearOpen())}
+            >
+              <Icon icon={Settings} />
+            </button>
+            <Show when={gearOpen()}>
+              <div class={styles.gearMenu}>
+                <Show when={hasRoot()}>
+                  <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
+                    <Icon icon={FolderPlus} size={14} />New space
+                  </div>
+                </Show>
+                <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
+                  <Icon icon={Pin} size={14} />Pin folder to "Other"
+                </div>
+                <div class={styles.gearDivider} />
+                <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
+                  <Icon icon={FolderOpen} size={14} />Add/Update root
+                </div>
+                <Show when={hasRoot()}>
+                  <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>
+                    <Icon icon={RotateCcw} size={14} />Reset root (forget only)
+                  </div>
+                </Show>
+              </div>
+            </Show>
+          </div>
+
+          <div class={styles.spaceScroll}>
+            <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
+            <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
+              <div class={styles.spaceDivider} />
+            </Show>
+            <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
+          </div>
+
           <Show when={hasRoot()}>
             <button class={styles.spaceAdd} title="New space" onClick={addSpace}>
               <Icon icon={Plus} size={16} />
             </button>
           </Show>
-        </div>
-      </Show>
-
-      <Show when={config()}>
-        <div class={styles.treeFoot} title={config()!.path}>
-          {config()!.path.replace(/^.*\/\.config\//, "~/.config/")}
         </div>
       </Show>
 
@@ -1803,6 +1904,17 @@ export default function LeftSidebar(props: {
           busy={newReq()!.busy}
           onConfirm={(opts) => confirmNewProject(opts)}
           onCancel={() => setNewReq(null)}
+        />
+      </Show>
+
+      <Show when={spaceReq()}>
+        <SpaceDialog
+          mode={spaceReq()!.mode}
+          name={spaceReq()!.name}
+          icon={spaceReq()!.icon}
+          busy={spaceReq()!.busy}
+          onConfirm={(opts) => confirmSpace(opts)}
+          onCancel={() => setSpaceReq(null)}
         />
       </Show>
 

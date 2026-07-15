@@ -51,8 +51,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text-dim);
@@ -68,10 +68,12 @@
   border-color: var(--brand);
 }
 
+/* Opens upward + left-aligned: the gear now lives at the bottom of the sidebar
+   (in the space bar), so the menu grows above it. */
 .gearMenu {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
   z-index: 1000;
   min-width: 180px;
   padding: calc(4px * var(--ui-density));
@@ -272,32 +274,44 @@
   background: rgba(128, 128, 128, 0.12);
 }
 
-.treeFoot {
-  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(10px * var(--ui-scale));
-  color: var(--text-dim);
-  border-top: 1px solid var(--border);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* "Historical" sub-section: sessions predating a recreated folder, with an inline
    Adopt affordance. */
 .row.historical .label {
   font-style: italic;
 }
 
-/* ---- Space bar (spaces as Arc-style spaces) ----
-   A horizontal strip pinned above the config footer, one tile per space with a
-   single active space; the tree above renders only the active space's projects. */
+/* ---- Space bar (Arc-style spaces) ----
+   The bottom strip: a settings gear pinned left, the "new space" tile pinned
+   right, and the centered, horizontally scrollable space tiles between them (one
+   tile per space; the tree above renders only the active space's projects). The
+   bar itself does not clip, so the gear menu can open upward past its top edge. */
 .spaceBar {
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
-  border-top: 1px solid var(--border);
+}
+
+/* The centered, scrollable middle region holding the space tiles. Grows to fill
+   the gap between the fixed gear (left) and add (right) buttons; overflow scrolls
+   only the tiles, keeping the gear menu clear of the clip. */
+.spaceScroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--ui-density));
   overflow-x: auto;
+}
+
+/* Vertical rule between root-discovered spaces and pinned ("Other") spaces. */
+.spaceDivider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: calc(2px * var(--ui-density)) calc(2px * var(--ui-density));
+  background: var(--border);
 }
 
 /* A space tile: a rounded square showing the space's initial. Dim by default;
@@ -330,11 +344,21 @@
   border-color: var(--brand);
   background: var(--brand-subtle);
 }
+/* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
+   bar on the side of the tile the drop would land against. */
+.space.dragging {
+  opacity: 0.4;
+}
+.space.dropBefore {
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+.space.dropAfter {
+  box-shadow: inset -2px 0 0 var(--brand);
+}
 
-/* The "new space" tile, pushed to the trailing edge. */
+/* The "new space" tile, pinned to the trailing edge of the bar. */
 .spaceAdd {
   flex: none;
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
