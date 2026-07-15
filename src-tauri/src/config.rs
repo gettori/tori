@@ -31,6 +31,25 @@ struct RawConfig {
     project: Vec<RawProject>,
     #[serde(default)]
     docs: RawDocs,
+    // Per-space metadata overlay (`[[space]]` tables), merged onto discovered
+    // spaces by name. Currently just an icon; the filesystem stays the source of
+    // truth for which spaces exist.
+    #[serde(default)]
+    space: Vec<SpaceMeta>,
+    // User-chosen order of root spaces, by name. Listed names sort first in this
+    // order; unlisted (e.g. freshly created) spaces keep discovery order after.
+    // Pinned ("Other") spaces are never reordered by this.
+    #[serde(default)]
+    space_order: Vec<String>,
+}
+
+// One `[[space]]` overlay entry: metadata keyed by the space's name (its folder
+// name). Absent icon / absent entry both mean "no icon".
+#[derive(Deserialize)]
+struct SpaceMeta {
+    name: String,
+    #[serde(default)]
+    icon: Option<String>,
 }
 
 // A parallel notes/docs tree that mirrors `<root>/<space>/<project>` under a
@@ -118,6 +137,10 @@ pub struct Space {
     // false for one discovered under the root. Root and external spaces of the
     // same name stay distinct, so "Other" never absorbs a root space.
     pub external: bool,
+    // A Lucide icon name (PascalCase) from the `[[space]]` overlay, keyed by name.
+    // None means the tile falls back to the name's initial letter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -534,6 +557,7 @@ fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path, external: 
         path: path.to_string_lossy().into_owned(),
         projects: Vec::new(),
         external,
+        icon: None,
     });
     spaces.len() - 1
 }
@@ -600,6 +624,29 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         let gi = ensure_space_idx(&mut spaces, &gname, &space_path, true);
         add_project(&mut spaces, gi, ppath, true);
     }
+
+    // Overlay per-space metadata (icon) from `[[space]]` tables, keyed by name.
+    // Keys by name only, so a root space and an external pin sharing a name both
+    // receive the icon (they share the one entry). Blank icons are ignored.
+    for meta in &raw.space {
+        if let Some(icon) = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            for g in spaces.iter_mut().filter(|g| g.name == meta.name) {
+                g.icon = Some(icon.to_string());
+            }
+        }
+    }
+
+    // Apply the user's root-space order (stable): externals sort after all roots
+    // and keep their relative order; a listed root sorts by its index in
+    // `space_order`; an unlisted root keeps discovery order (all share the max
+    // key, and the sort is stable). Only reorders roots, never pinned spaces.
+    spaces.sort_by_key(|g| {
+        if g.external {
+            return (1usize, usize::MAX);
+        }
+        let idx = raw.space_order.iter().position(|n| n == &g.name).unwrap_or(usize::MAX);
+        (0usize, idx)
+    });
 
     // Evict cache entries for projects that no longer exist.
     if let Ok(mut cache) = index.0.lock() {
@@ -1082,17 +1129,119 @@ fn valid_name(name: &str) -> Result<String, String> {
     Ok(n.to_string())
 }
 
-/// mkdir a new space under a root. Returns the created dir.
+/// Upsert or remove the `[[space]]` overlay entry for `name`, preserving the
+/// rest of the file (comments, formatting) via `toml_edit`. A blank/`None` icon
+/// prunes the entry; an emptied array-of-tables is dropped entirely. Pure over
+/// the config text so it can be unit-tested without touching the real config.
+fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>) -> Result<String, String> {
+    use toml_edit::{value, ArrayOfTables, Document, Item, Table};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+
+    if doc.get("space").is_none() {
+        doc["space"] = Item::ArrayOfTables(ArrayOfTables::new());
+    }
+    let tables = doc["space"]
+        .as_array_of_tables_mut()
+        .ok_or("`space` is not an array of tables")?;
+    let pos = tables
+        .iter()
+        .position(|t| t.get("name").and_then(|v| v.as_str()) == Some(name));
+
+    match icon {
+        Some(icon) => match pos {
+            Some(i) => {
+                tables.get_mut(i).unwrap()["icon"] = value(icon);
+            }
+            None => {
+                let mut t = Table::new();
+                t["name"] = value(name);
+                t["icon"] = value(icon);
+                tables.push(t);
+            }
+        },
+        None => {
+            if let Some(i) = pos {
+                tables.remove(i);
+            }
+        }
+    }
+
+    // Drop an emptied `[[space]]` so the file has no dangling array key.
+    if doc["space"].as_array_of_tables().map(|t| t.is_empty()).unwrap_or(false) {
+        doc.remove("space");
+    }
+    Ok(doc.to_string())
+}
+
+/// Read the config, upsert/prune the `[[space]]` icon for `name`, write it back.
+/// `icon` is already trimmed-to-`None` by the caller.
+fn write_space_meta(name: &str, icon: Option<&str>) -> Result<(), String> {
+    let serialized = upsert_space_meta(&ensure_config()?, name, icon)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+}
+
+/// mkdir a new space under a root, optionally recording its icon in one shot.
+/// Doing the mkdir + `[[space]]` write + single emit here (rather than a separate
+/// edit) avoids a letter→icon flash and a folder-exists-but-metadata-failed
+/// window. Returns the created dir.
 #[tauri::command]
-pub fn add_space(app: AppHandle, root: String, name: String) -> Result<String, String> {
+pub fn add_space(
+    app: AppHandle,
+    root: String,
+    name: String,
+    icon: Option<String>,
+) -> Result<String, String> {
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
     if dir.exists() {
         return Err(format!("\"{n}\" already exists"));
     }
     std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
+    if let Some(icon) = icon.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        write_space_meta(&n, Some(icon))?;
+    }
     let _ = app.emit("config://changed", ()); // explicit re-discovery
     Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Set (or clear) a space's icon, keyed by name. The edit path only: creates no
+/// folder. An empty/whitespace icon normalizes to `None`, pruning the entry.
+/// Mirrors `pin_path`: write store → emit `config://changed` (the sidebar's
+/// listener drives the reload).
+#[tauri::command]
+pub fn set_space_meta(app: AppHandle, name: String, icon: Option<String>) -> Result<(), String> {
+    let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    write_space_meta(&name, icon)?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Set the top-level `space_order` array (root-space names) via `toml_edit`,
+/// preserving the rest of the file. An empty list prunes the key. Pure over the
+/// config text so it can be unit-tested without touching the real config.
+fn write_space_order(text: &str, names: &[String]) -> Result<String, String> {
+    use toml_edit::{value, Array, Document};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    if names.is_empty() {
+        doc.remove("space_order");
+    } else {
+        let mut arr = Array::new();
+        for n in names {
+            arr.push(n.as_str());
+        }
+        doc["space_order"] = value(arr);
+    }
+    Ok(doc.to_string())
+}
+
+/// Persist the user-chosen order of root spaces (by name). The pinned ("Other")
+/// spaces are never included. Mirrors `pin_path`: write store → emit.
+#[tauri::command]
+pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+    let serialized = write_space_order(&ensure_config()?, &names)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
 }
 
 /// mkdir a new project folder under a space. Returns the created dir.
@@ -1543,6 +1692,8 @@ mod tests {
                 })
                 .collect(),
             docs: RawDocs::default(),
+            space: Vec::new(),
+            space_order: Vec::new(),
         }
     }
 
@@ -1921,6 +2072,107 @@ mod tests {
         assert!(valid_name("a\\b").is_err());
         assert!(valid_name("..").is_err()); // leading dot
         assert!(valid_name(".hidden").is_err());
+    }
+
+    #[test]
+    fn space_icon_overlays_onto_discovered_space() {
+        // What `add_space(root, name, Some(icon))` writes: a `[[space]]` entry.
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        std::fs::create_dir_all(root.join("personal")).unwrap();
+        let meta = upsert_space_meta("", "personal", Some("Rocket")).unwrap();
+        let full = format!("[discovery]\nroots = [\"{}\"]\n\n{meta}", root.display());
+        let raw: RawConfig = toml::from_str(&full).unwrap();
+        let index = ProjectIndex::default();
+        let cfg = resolve(raw, &index);
+        let g = space(&cfg, "personal").expect("space present");
+        assert_eq!(g.icon.as_deref(), Some("Rocket"));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn upsert_space_meta_adds_updates_and_prunes() {
+        // Add onto an empty config: creates the `[[space]]` entry.
+        let added = upsert_space_meta("", "personal", Some("Rocket")).unwrap();
+        let c1: RawConfig = toml::from_str(&added).unwrap();
+        assert_eq!(c1.space.len(), 1);
+        assert_eq!(c1.space[0].name, "personal");
+        assert_eq!(c1.space[0].icon.as_deref(), Some("Rocket"));
+
+        // Update the same entry in place, never a duplicate.
+        let updated = upsert_space_meta(&added, "personal", Some("Anchor")).unwrap();
+        let c2: RawConfig = toml::from_str(&updated).unwrap();
+        assert_eq!(c2.space.len(), 1);
+        assert_eq!(c2.space[0].icon.as_deref(), Some("Anchor"));
+
+        // Preserves comments and other keys (the toml_edit win over to_string_pretty).
+        let with_comment = "# my config\n[discovery]\nroots = [\"/r\"]\n";
+        let out = upsert_space_meta(with_comment, "work", Some("Box")).unwrap();
+        assert!(out.contains("# my config"));
+        assert!(out.contains("roots"));
+
+        // Clearing the icon prunes the entry and drops the emptied array.
+        let cleared = upsert_space_meta(&updated, "personal", None).unwrap();
+        let c3: RawConfig = toml::from_str(&cleared).unwrap();
+        assert!(c3.space.is_empty());
+        assert!(!cleared.contains("[[space]]"));
+    }
+
+    #[test]
+    fn write_space_order_sets_updates_and_prunes() {
+        let names = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+
+        // Set onto a config with a comment: the array is written, comment kept.
+        let out = write_space_order("# keep me\n", &names(&["b", "a"])).unwrap();
+        assert!(out.contains("# keep me"));
+        let c1: RawConfig = toml::from_str(&out).unwrap();
+        assert_eq!(c1.space_order, names(&["b", "a"]));
+
+        // Update replaces the whole list in place.
+        let out2 = write_space_order(&out, &names(&["a", "b", "c"])).unwrap();
+        let c2: RawConfig = toml::from_str(&out2).unwrap();
+        assert_eq!(c2.space_order, names(&["a", "b", "c"]));
+
+        // Empty list prunes the key entirely.
+        let out3 = write_space_order(&out2, &[]).unwrap();
+        assert!(!out3.contains("space_order"));
+        let c3: RawConfig = toml::from_str(&out3).unwrap();
+        assert!(c3.space_order.is_empty());
+    }
+
+    #[test]
+    fn space_order_reorders_roots_but_not_pins() {
+        // Two root spaces (discovery order alpha, beta) + one pinned space "ext".
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        std::fs::create_dir_all(root.join("alpha")).unwrap();
+        std::fs::create_dir_all(root.join("beta")).unwrap();
+        let ext_proj = tmp.join("ext/proj");
+        std::fs::create_dir_all(&ext_proj).unwrap();
+
+        // Order beta before alpha; the pinned space is untouched by that.
+        let mut raw = raw(
+            &[root.to_str().unwrap()],
+            &[],
+            &[ext_proj.to_str().unwrap()],
+            &[],
+        );
+        raw.space_order = vec!["beta".to_string(), "alpha".to_string()];
+        let index = ProjectIndex::default();
+        let cfg = resolve(raw, &index);
+
+        let roots: Vec<&str> = cfg
+            .spaces
+            .iter()
+            .filter(|g| !g.external)
+            .map(|g| g.name.as_str())
+            .collect();
+        assert_eq!(roots, vec!["beta", "alpha"]); // reordered
+        // The pinned space still appears, after the roots.
+        assert!(cfg.spaces.iter().any(|g| g.external && g.name == "ext"));
+        let last = cfg.spaces.last().unwrap();
+        assert!(last.external, "pinned space sorts after roots");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
