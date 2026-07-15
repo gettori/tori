@@ -2,73 +2,6 @@
    component. Kept global in App.css: the .sm.dim modifier, the
    .workspace/.work-split/.pane layout (App.tsx), and .claude-icon/.pi-icon (seti
    marks) which are reached here via :global(). */
-.wtRow {
-  display: flex;
-  align-items: center;
-  gap: calc(10px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) 0;
-  font-size: calc(12px * var(--ui-scale));
-}
-
-.wtBranch {
-  color: var(--text);
-  min-width: 90px;
-}
-
-.wtPath {
-  font-family: Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-
-.wtMain {
-  color: #4ec9b0;
-  font-size: calc(10px * var(--ui-scale));
-}
-
-.wtAdd {
-  display: flex;
-  gap: calc(8px * var(--ui-density));
-  margin-top: 10px;
-}
-
-.wtInput,
-.renameInput {
-  flex: 1;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: var(--sway-radius-md);
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  font-family: Menlo, Monaco, monospace;
-  outline: none;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
-}
-
-.wtInput:focus,
-.renameInput:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-ring);
-}
-
-.renameRow {
-  display: flex;
-  gap: calc(6px * var(--ui-density));
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.renameInput {
-  font-family: inherit;
-  font-size: calc(15px * var(--ui-scale));
-  max-width: 320px;
-}
-
 /* Toolbar (background + bottom border live on .topbar so the whole bar matches) */
 .toolbar {
   padding: calc(2px * var(--ui-density)) calc(10px * var(--ui-density)) 0;
@@ -200,10 +133,30 @@
   flex: 0 0 auto;
 }
 
-.tbWorktrees {
-  margin-top: 8px;
-  padding-top: calc(8px * var(--ui-density));
-  border-top: 1px solid var(--border);
+/* Ghostty/VSCode icon buttons: a fixed 24px pill holding a bigger app glyph
+   plus a small, dimmed launch arrow. Overrides the Button's content-driven
+   height, its iconOnly square (these have no text label), and its uniform
+   14px svg sizing. The .tbRow prefix lifts specificity above `.iconOnly.sm`. */
+.tbRow .tbActions button {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 4px;
+  aspect-ratio: auto;
+  gap: calc(4px * var(--ui-density));
+  /* Rest at the dimmed icon color (like the space tiles), brighten on hover. */
+  color: var(--text-dim);
+}
+.tbRow .tbActions button:hover {
+  color: var(--text);
+}
+.tbActions .tbAppIco {
+  width: 17px;
+  height: 17px;
+}
+.tbActions .tbArrow {
+  width: 10px;
+  height: 10px;
+  opacity: 0.5;
 }
 
 .tbErr {
