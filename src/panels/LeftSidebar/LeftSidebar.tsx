@@ -1374,14 +1374,12 @@ export default function LeftSidebar(props: {
     });
   }
 
+  // A branch-unit reads as selected when it is the direct selection OR when a
+  // session under it is (its sessions carry the unit's folderPath + label), so
+  // the branch stays highlighted as the context while a session is open.
   function unitSelected(u: BranchUnit) {
     const s = props.selected;
-    return (
-      s != null &&
-      s.folderPath === u.folderPath &&
-      s.branch === unitLabel(u) &&
-      s.sessionId == null
-    );
+    return s != null && s.folderPath === u.folderPath && s.branch === unitLabel(u);
   }
 
   // The session listing for one branch-unit (an optional "Historical" sub-section +
@@ -1490,12 +1488,6 @@ export default function LeftSidebar(props: {
       if (b && visible.has(b)) return (u.branch || "") === b;
       return isHome; // orphaned recorded branch (or branchless claude): re-home
     });
-  }
-
-  // A plain branch-unit that is not the current checkout: opening anything under
-  // it shows the current tree, not this branch.
-  function unitMismatch(u: BranchUnit) {
-    return u.kind === "plain" && !u.isCurrent;
   }
 
   // Per-session flag: a Claude session recorded on a branch other than the
@@ -1686,7 +1678,7 @@ export default function LeftSidebar(props: {
                     {(u) => {
                       const uopen = () => expanded().has(ukey(g, p, u));
                       return (
-                        <div class="node">
+                        <div class={`node ${styles.branchNode}`}>
                           <div
                             class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
                             onClick={() => {
@@ -1698,15 +1690,9 @@ export default function LeftSidebar(props: {
                             draggable={true}
                             onDragStart={(e) => startAbsDrag(e, u.folderPath)}
                           >
-                            <span class={styles.rowIcon}>
-                              <Icon icon={u.kind === "incomplete" ? GitFork : GitBranch} size={14} />
-                            </span>
                             <span class={styles.label}>{unitLabel(u)}</span>
                             <Show when={u.kind === "incomplete"}>
                               <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
-                            </Show>
-                            <Show when={unitMismatch(u)}>
-                              <span class={styles.badge} title="Not the current checkout">≠ checkout</span>
                             </Show>
                             <Show when={u.isCurrent}>
                               <span class={styles.dot} title="current checkout">●</span>

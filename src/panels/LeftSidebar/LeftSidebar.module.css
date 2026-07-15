@@ -11,6 +11,9 @@
   user-select: none;
   min-height: 0;
   min-width: 0;
+  /* Where a branch/worktree name begins (sub1 indent). Shared so a selected
+     session's inset pill can start on the same x and read as nested. */
+  --branch-label-x: calc(34px * var(--ui-density));
 }
 
 .treeSearch {
@@ -122,7 +125,7 @@
 .treeScroll {
   flex: 1;
   overflow: auto;
-  padding: calc(6px * var(--ui-density)) 0;
+  padding: calc(10px * var(--ui-density)) 0;
   min-height: 0;
 }
 
@@ -131,7 +134,7 @@
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-density));
-  height: 24px;
+  height: 30px;
   margin: 0 calc(6px * var(--ui-density));
   padding: 0 calc(8px * var(--ui-density));
   border-radius: var(--sway-radius-md);
@@ -145,26 +148,101 @@
   background: var(--hover);
 }
 
-/* Active-row pill: translucent gold fill on the rounded row (see the shared
-   .pill pattern). Sub-items additionally grow a left gold accent bar below. */
-.row.sel {
-  background: var(--brand-subtle);
+/* Selected session: an inset gold pill that begins where the branch name starts
+   (--branch-label-x), not a full-width fill reaching the row's left edge, so it
+   reads as nested under its branch. Drawn behind the row content (z-index -1);
+   the row owns a stacking context (z-index 0) so the pill stays above the row's
+   background but below its text, and the hover fill is suppressed so the two
+   don't blend. */
+.row.session.sel {
+  z-index: 0;
 }
-
-/* Left gold accent bar on an active sub-item (a selected branch or session),
-   centred inside the pill so it reads as a rail without fighting the rounded
-   corners. Project rows get the pill only, no bar. */
-.row.branch.sel::before,
 .row.session.sel::before {
   content: "";
   position: absolute;
-  left: calc(3px * var(--ui-density));
-  top: 50%;
-  height: 60%;
-  width: 3px;
-  transform: translateY(-50%);
-  border-radius: var(--sway-radius-pill);
+  left: var(--branch-label-x);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  border-radius: var(--sway-radius-md);
+  background: var(--brand-subtle);
+}
+.row.session.sel:hover {
+  background: transparent;
+}
+
+/* Agent mark: neutral (monochrome) on an unselected session so the row reads
+   calm, and its true Claude/pi brand colour only on the selected session. The
+   `.seti-icon` fill is `currentColor`, so overriding `color` recolours it; the
+   `:not(.sel)` rule outranks the global `.claude-icon`/`.pi-icon` tint. */
+.row.session:not(.sel) :global(.seti-icon) {
+  color: var(--text-dim);
+}
+
+/* ---- Git-branch graph (branch/worktree level) ----
+   Each branch sits in a `.branchNode`; a thin rail drops from the project and a
+   rounded elbow connects into every (iconless) branch row. `--rail-x` is the
+   rail's x from the node's left edge; the elbow/segment on the row compensate
+   for the row's own left margin so they line up on that same x. */
+.branchNode {
+  position: relative;
+  /* Centre the rail under the project row's icon: row margin (6px·d) + row
+     padding (8px·d) + half the 16px icon (8px). `--rail-x-row` is that same x
+     re-expressed from the row's own box (minus the row's 6px·d left margin), so
+     the elbow/segment drawn on the row line up on the rail. */
+  --rail-x: calc(14px * var(--ui-density) + 8px);
+  --rail-x-row: calc(8px * var(--ui-density) + 8px);
+}
+
+/* The vertical rail. Spans the node's full height so it passes behind an
+   expanded branch's sessions and meets the next branch with no gap. */
+.branchNode::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+/* The last branch terminates the rail at its own elbow (row centre), so nothing
+   dangles below the final item, even when it is expanded. */
+.branchNode:last-child::before {
+  bottom: auto;
+  height: 15px;
+}
+
+/* Rounded elbow: a left+bottom bordered box in the row's top half whose
+   bottom-left corner is rounded, curving from the rail into the row. */
+.row.branch::after {
+  content: "";
+  position: absolute;
+  left: var(--rail-x-row);
+  top: 0;
+  width: calc(9px * var(--ui-density));
+  height: 15px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: calc(8px * var(--ui-density));
+}
+
+/* Selected branch: no pill; light the rail segment gold for this row and
+   thicken + gild the elbow. The full-height gold bar overlays the grey rail. */
+.row.branch.sel::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x-row);
+  top: 0;
+  bottom: 0;
+  width: 2px;
   background: var(--brand-bar);
+}
+.row.branch.sel::after {
+  border-left-width: 2px;
+  border-bottom-width: 2px;
+  border-color: var(--brand-bar);
 }
 
 .row.project .label,
@@ -183,10 +261,10 @@
 }
 
 .row.sub1 {
-  padding-left: calc(20px * var(--ui-density));
+  padding-left: var(--branch-label-x);
 }
 .row.sub2 {
-  padding-left: calc(32px * var(--ui-density));
+  padding-left: calc(46px * var(--ui-density));
 }
 
 .row.dim {
@@ -216,9 +294,6 @@
   width: 16px;
   height: 16px;
   color: var(--text-dim);
-}
-.row.sel .rowIcon {
-  color: var(--text);
 }
 
 /* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
