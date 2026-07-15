@@ -79,10 +79,28 @@ body.dragging {
   min-width: 0;
 }
 
-/* Layout only; the visual treatment now comes from the shared <Button>. */
-.topbar-gear {
+/* Layout only; the visual treatment now comes from the shared <Button>. A fixed
+   24px square (centered, not stretched by the bar's align-items: stretch) so it
+   matches the toolbar's action buttons instead of spanning the full bar height.
+   The .topbar prefix lifts specificity above the Button's .iconOnly padding. */
+.topbar .topbar-gear {
   flex: 0 0 auto;
+  align-self: center;
+  box-sizing: border-box;
+  height: 24px;
+  width: 24px;
+  padding: 0;
+  aspect-ratio: auto;
   margin-right: calc(6px * var(--ui-density));
+  /* Rest at the dimmed icon color (like the space tiles), brighten on hover. */
+  color: var(--text-dim);
+}
+.topbar .topbar-gear:hover {
+  color: var(--text);
+}
+.topbar .topbar-gear svg {
+  width: 17px;
+  height: 17px;
 }
 
 .pane {
