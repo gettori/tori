@@ -142,6 +142,49 @@
   color: var(--text-dim, #9aa0aa);
   margin: 12px 0 6px;
 }
+.modalInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---- Space icon picker (SpaceDialog). Reuses the .modal chrome above. A
+   scrollable grid of the fixed icon set plus a leading "None" tile. ---- */
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: calc(6px * var(--ui-density));
+  margin-bottom: 4px;
+  max-height: 216px;
+  overflow-y: auto;
+}
+.iconTile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  color: var(--text-dim, #9aa0aa);
+  cursor: pointer;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    color var(--sway-duration-fast) ease;
+}
+.iconTile:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+.iconTile.iconSelected {
+  color: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+.iconNone {
+  font-size: calc(10px * var(--ui-scale));
+  font-weight: 500;
+}
 .delSummary {
   display: flex;
   justify-content: space-between;
