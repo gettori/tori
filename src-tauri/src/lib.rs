@@ -101,6 +101,8 @@ pub fn run() {
             config::pin_path,
             config::unpin_path,
             config::add_space,
+            config::set_space_meta,
+            config::set_space_order,
             config::add_folder,
             config::delete_space,
             config::remove_folder,
