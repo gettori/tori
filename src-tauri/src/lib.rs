@@ -1,3 +1,4 @@
+mod agents;
 mod askpass;
 mod config;
 mod env;
@@ -17,7 +18,7 @@ use fs::FsWatch;
 use settings::SettingsWatch;
 use lsp::LspState;
 use pty::PtyState;
-use sessions::{PiIndex, SessionIndex, SessionWatch, TouchedIndex};
+use sessions::{SessionIndex, SessionWatch, TouchedIndex};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -82,7 +83,6 @@ pub fn run() {
         .manage(FsWatch::default())
         .manage(LspState::default())
         .manage(SessionIndex::default())
-        .manage(PiIndex::default())
         .manage(SessionWatch::default())
         .manage(TouchedIndex::default())
         .manage(SettingsWatch::default())
@@ -143,6 +143,7 @@ pub fn run() {
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
+            agents::list_agents,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,

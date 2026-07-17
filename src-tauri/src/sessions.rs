@@ -1,13 +1,16 @@
-// Session discovery for two agents, merged by folder.
+// Session discovery for every registered agent adapter, merged by folder.
 //
 // Claude sessions live at ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl;
 // pi sessions live at ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<id>.jsonl. Both
 // encoded dir names are lossy, so we read `cwd` (and Claude's `gitBranch`) from
 // inside each file rather than decoding the folder name. Pi has no branch.
+// These paths, and the claude/pi split itself, are now `agents::registry()`
+// data rather than hardcoded here - see agents.rs.
 //
 // Scanning reads only the head of each file (cwd/branch/first prompt appear
 // early) and caches by mtime, so repeat scans are cheap. `list_sessions(folder)`
-// returns both agents whose recorded cwd is the folder or nested under it.
+// returns every adapter's sessions whose recorded cwd is the folder or nested
+// under it.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
@@ -19,6 +22,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
+
+use crate::agents;
 
 const HEAD_LINES: usize = 60;
 
@@ -51,22 +56,7 @@ struct CacheEntry {
 pub struct SessionIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
 
 #[derive(Default)]
-pub struct PiIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
-
-#[derive(Default)]
 pub struct SessionWatch(pub Mutex<Option<RecommendedWatcher>>);
-
-fn projects_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".claude/projects")
-}
-
-fn pi_sessions_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".pi/agent/sessions")
-}
 
 fn norm(path: &str) -> String {
     path.trim_end_matches('/').to_string()
@@ -117,7 +107,7 @@ fn clean_title(raw: &str) -> String {
     }
 }
 
-fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime) -> Option<SessionMeta> {
+fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_id: &str) -> Option<SessionMeta> {
     let id = path.file_stem()?.to_string_lossy().into_owned();
     let file = std::fs::File::open(path).ok()?;
     let reader = BufReader::new(file);
@@ -175,11 +165,29 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime) -> Opti
         created_at: epoch_secs(created),
         name: None,
         archived: false,
-        agent: "claude".into(),
+        agent: agent_id.to_string(),
     })
 }
 
-/// Walk all project dirs, refreshing the cache for changed/new files.
+/// Dispatch to the parser this adapter's `parser_kind` implements, stamping
+/// the resulting session with the adapter's own id (not a hardcoded literal),
+/// so a user-added adapter reusing an existing parser kind still shows under
+/// its own agent id.
+fn parse_by_adapter(
+    adapter: &agents::AgentAdapter,
+    path: &PathBuf,
+    mtime: SystemTime,
+    created: SystemTime,
+) -> Option<SessionMeta> {
+    match adapter.parser_kind {
+        agents::ParserKind::ClaudeJsonl => parse_session(path, mtime, created, &adapter.id),
+        agents::ParserKind::PiJsonl => parse_pi_session(path, mtime, created, &adapter.id),
+    }
+}
+
+/// Walk every registered adapter's discovery dir, refreshing the (shared,
+/// path-keyed) cache for changed/new files. One cache serves every adapter:
+/// their discovery dirs never overlap, so paths stay unique.
 fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     let mut cache = match index.0.lock() {
         Ok(c) => c,
@@ -187,32 +195,39 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     };
 
     let mut seen: Vec<PathBuf> = Vec::new();
-    let root = projects_dir();
 
-    if let Ok(dirs) = std::fs::read_dir(&root) {
-        for dir in dirs.flatten() {
-            let p = dir.path();
-            if !p.is_dir() {
-                continue;
-            }
-            if let Ok(files) = std::fs::read_dir(&p) {
-                for f in files.flatten() {
-                    let fp = f.path();
-                    if fp.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                        continue;
-                    }
-                    let metadata = f.metadata().ok();
-                    let mtime = metadata
-                        .as_ref()
-                        .and_then(|m| m.modified().ok())
-                        .unwrap_or(SystemTime::UNIX_EPOCH);
-                    let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
-                    seen.push(fp.clone());
+    for adapter in agents::registry() {
+        let root = &adapter.discovery_dir;
+        if let Ok(dirs) = std::fs::read_dir(root) {
+            for dir in dirs.flatten() {
+                let p = dir.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                if let Ok(files) = std::fs::read_dir(&p) {
+                    for f in files.flatten() {
+                        let fp = f.path();
+                        let matches_pattern = fp
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|n| adapter.filename_regex.is_match(n))
+                            .unwrap_or(false);
+                        if !matches_pattern {
+                            continue;
+                        }
+                        let metadata = f.metadata().ok();
+                        let mtime = metadata
+                            .as_ref()
+                            .and_then(|m| m.modified().ok())
+                            .unwrap_or(SystemTime::UNIX_EPOCH);
+                        let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
+                        seen.push(fp.clone());
 
-                    let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
-                    if !fresh {
-                        let meta = parse_session(&fp, mtime, created);
-                        cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                        let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
+                        if !fresh {
+                            let meta = parse_by_adapter(adapter, &fp, mtime, created);
+                            cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                        }
                     }
                 }
             }
@@ -229,7 +244,7 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
 /// from the first real user message in a bounded window, falling back to an
 /// id-slice for an empty session. last_active uses the file mtime (a better
 /// "last activity" signal than the head timestamp, and no ISO parse needed).
-fn parse_pi_session(path: &PathBuf, mtime: SystemTime, created: SystemTime) -> Option<SessionMeta> {
+fn parse_pi_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_id: &str) -> Option<SessionMeta> {
     let file = std::fs::File::open(path).ok()?;
     let reader = BufReader::new(file);
 
@@ -293,52 +308,8 @@ fn parse_pi_session(path: &PathBuf, mtime: SystemTime, created: SystemTime) -> O
         created_at: epoch_secs(created),
         name: None,
         archived: false,
-        agent: "pi".into(),
+        agent: agent_id.to_string(),
     })
-}
-
-/// Walk all pi session dirs, refreshing the cache for changed/new files.
-fn ensure_pi_index(index: &PiIndex) -> Vec<SessionMeta> {
-    let mut cache = match index.0.lock() {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    let mut seen: Vec<PathBuf> = Vec::new();
-    let root = pi_sessions_dir();
-
-    if let Ok(dirs) = std::fs::read_dir(&root) {
-        for dir in dirs.flatten() {
-            let p = dir.path();
-            if !p.is_dir() {
-                continue;
-            }
-            if let Ok(files) = std::fs::read_dir(&p) {
-                for f in files.flatten() {
-                    let fp = f.path();
-                    if fp.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                        continue;
-                    }
-                    let metadata = f.metadata().ok();
-                    let mtime = metadata
-                        .as_ref()
-                        .and_then(|m| m.modified().ok())
-                        .unwrap_or(SystemTime::UNIX_EPOCH);
-                    let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
-                    seen.push(fp.clone());
-
-                    let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
-                    if !fresh {
-                        let meta = parse_pi_session(&fp, mtime, created);
-                        cache.insert(fp.clone(), CacheEntry { mtime, meta });
-                    }
-                }
-            }
-        }
-    }
-
-    cache.retain(|k, _| seen.contains(k));
-    cache.values().filter_map(|e| e.meta.clone()).collect()
 }
 
 /// Does a session's recorded `cwd` belong to `folder` (the folder itself or a
@@ -359,19 +330,15 @@ fn filter_sort(all: Vec<SessionMeta>, folder: &str) -> Vec<SessionMeta> {
     v
 }
 
-/// Sessions (both agents) anchored at `folder` or nested under it, newest first.
+/// Sessions (every registered agent) anchored at `folder` or nested under it,
+/// newest first.
 #[tauri::command]
 pub fn list_sessions(
     index: State<SessionIndex>,
-    pi_index: State<PiIndex>,
     folder: String,
 ) -> Result<Vec<SessionMeta>, String> {
     let overlay = load_overlay();
-    let merged: Vec<SessionMeta> = ensure_index(&index)
-        .into_iter()
-        .chain(ensure_pi_index(&pi_index))
-        .collect();
-    let sessions = filter_sort(merged, &folder)
+    let sessions = filter_sort(ensure_index(&index), &folder)
         .into_iter()
         .map(|mut s| {
             if let Some(o) = overlay.get(&s.id) {
@@ -505,15 +472,10 @@ pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
 #[tauri::command]
 pub fn folder_historical(
     index: State<SessionIndex>,
-    pi_index: State<PiIndex>,
     folder: String,
 ) -> Result<bool, String> {
     let state = load_adopted();
-    let merged: Vec<SessionMeta> = ensure_index(&index)
-        .into_iter()
-        .chain(ensure_pi_index(&pi_index))
-        .collect();
-    let times: Vec<u64> = filter_sort(merged, &folder)
+    let times: Vec<u64> = filter_sort(ensure_index(&index), &folder)
         .iter()
         .map(|s| s.last_active)
         .collect();
@@ -585,13 +547,11 @@ pub fn delete_session(path: String) -> Result<(), String> {
 /// natively, no `-E` needed) that matches only a live `agent` process actually
 /// resuming session `id` - not merely any process whose command line contains
 /// the id, which is what a bare `pgrep -f <uuid>` would also catch (a `less`/
-/// `tail`/editor with the transcript file open).
+/// `tail`/editor with the transcript file open). The template itself is now
+/// adapter data (`agents::session_pattern`); this stays as the call site's
+/// entry point so callers/tests are unaffected by the registry underneath.
 fn session_pattern(agent: &str, id: &str) -> String {
-    if agent == "pi" {
-        format!("pi --session .*{id}")
-    } else {
-        format!("claude (--resume|-r) {id}")
-    }
+    agents::session_pattern(agent, id)
 }
 
 /// Is a live `agent` process currently resuming session `id`?
@@ -928,6 +888,7 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
         Err(_) => return Vec::new(),
     };
     let reader = BufReader::new(file);
+    let kind = agents::parser_kind_for(agent);
 
     let mut cwd: Option<String> = None;
     let mut acc: HashMap<String, TouchAcc> = HashMap::new();
@@ -949,7 +910,7 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
             .and_then(parse_rfc3339_secs)
             .unwrap_or(0);
 
-        if agent == "pi" {
+        if kind == agents::ParserKind::PiJsonl {
             if v.get("type").and_then(|t| t.as_str()) != Some("message") {
                 continue;
             }
@@ -1051,11 +1012,11 @@ pub fn session_touched_files(
     Ok(touched_files_cached(&index, &path, &agent))
 }
 
-/// Directories the session watcher covers - both agents' transcript roots, so
-/// a pi-side write also fires `sessions://changed` (previously only the Claude
-/// root was watched, leaving all pi-side reactivity dead).
+/// Directories the session watcher covers - every registered adapter's
+/// discovery dir, so a newly added agent's transcripts also fire
+/// `sessions://changed` with no watcher-side wiring of its own.
 fn watch_dirs() -> Vec<PathBuf> {
-    vec![projects_dir(), pi_sessions_dir()]
+    agents::registry().iter().map(|a| a.discovery_dir.clone()).collect()
 }
 
 #[tauri::command]
@@ -1181,6 +1142,7 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
         Err(_) => return Vec::new(),
     };
     let reader = BufReader::new(file);
+    let kind = agents::parser_kind_for(agent);
     let mut turns = Vec::new();
 
     for line in reader.lines().map_while(Result::ok) {
@@ -1194,7 +1156,7 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
             .and_then(parse_rfc3339_secs)
             .unwrap_or(0);
 
-        if agent == "pi" {
+        if kind == agents::ParserKind::PiJsonl {
             if v.get("type").and_then(|t| t.as_str()) != Some("message") {
                 continue;
             }
@@ -1378,7 +1340,7 @@ mod tests {
 {"type":"message","message":{"role":"user","content":[{"type":"text","text":"  Fix the parser bug  "}]}}
 "#;
         let p = tmp_file("2026-05-07T14-50-04_abc123def456.jsonl", body);
-        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now()).expect("parsed");
+        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now(), "pi").expect("parsed");
         assert_eq!(s.agent, "pi");
         assert_eq!(s.id, "abc123def456");
         assert_eq!(s.cwd, "/Users/x/proj/wt");
@@ -1394,7 +1356,7 @@ mod tests {
         let body =
             "{\"type\":\"session\",\"id\":\"0123456789abcdef\",\"cwd\":\"/Users/x/proj\"}\n";
         let p = tmp_file("ts_0123456789abcdef.jsonl", body);
-        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now()).expect("parsed");
+        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now(), "pi").expect("parsed");
         assert_eq!(s.cwd, "/Users/x/proj");
         assert_eq!(s.title, "pi session 01234567"); // first 8 chars of the id
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
