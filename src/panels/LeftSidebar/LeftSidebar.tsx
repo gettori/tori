@@ -28,8 +28,9 @@ import {
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
+  type LiveTab,
 } from "../../utils/events";
-import { isUnderPath, countRunningUnder } from "../../utils/pathScope";
+import { isUnderPath } from "../../utils/pathScope";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
@@ -185,6 +186,7 @@ function loadExpanded(): Set<string> {
 export default function LeftSidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
+  liveTabs?: LiveTab[];
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
 
@@ -332,6 +334,7 @@ export default function LeftSidebar(props: {
     dirty: boolean | null;
     unpushed: boolean | null;
     hasRemote: boolean | null;
+    runningCount: number;
     busy: boolean;
   } | null>(null);
 
@@ -379,26 +382,32 @@ export default function LeftSidebar(props: {
     sizeBytes: number | null;
   } | null>(null);
 
-  // Count agents running anywhere under the space (prefix match on session cwd, so
-  // an agent in a project subfolder counts too), reusing the same list_sessions +
-  // session_running primitives as the worktree-removal guard.
-  async function countRunningAgents(spacePath: string): Promise<number> {
-    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: spacePath }).catch(
+  // Live shell/agent tabs grouped under a folder (prefix match on the tab's
+  // workspace). Command tabs (clone/bootstrap) are transient, so they don't count.
+  function liveTabsUnder(path: string): LiveTab[] {
+    return (props.liveTabs ?? []).filter(
+      (t) => t.kind !== "command" && isUnderPath(t.workspace, path),
+    );
+  }
+
+  // How many things are running under `path`: every live shell/agent tab there,
+  // plus any pgrep-matched session that no live tab already represents (dedup by
+  // the tab's soft sessionId). Live tabs catch shell + fresh-agent tabs that pgrep
+  // can't see; the pgrep pass still catches a detached resumed session with no tab.
+  async function countRunningAgents(path: string): Promise<number> {
+    const tabs = liveTabsUnder(path);
+    const tabSessions = new Set(tabs.map((t) => t.sessionId).filter((x): x is string => !!x));
+    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path }).catch(
       () => [] as SessionMeta[],
     );
-    const running = new Set<string>();
+    let detached = 0;
     await Promise.all(
       nested.map(async (s) => {
-        if (await invoke<boolean>("session_running", { id: s.id }).catch(() => false)) {
-          running.add(s.id);
-        }
+        if (tabSessions.has(s.id) || !isUnderPath(s.cwd, path)) return;
+        if (await invoke<boolean>("session_running", { id: s.id }).catch(() => false)) detached++;
       }),
     );
-    return countRunningUnder(
-      nested.map((s) => ({ id: s.id, folderPath: s.cwd })),
-      running,
-      spacePath,
-    );
+    return tabs.length + detached;
   }
 
   function openDeleteSpace(g: Space) {
@@ -759,7 +768,12 @@ export default function LeftSidebar(props: {
   // status so the dialog can warn about work about to be lost. The teardown of any
   // live PTYs/editor tabs and the actual delete happen on confirm.
   function openRemoveWorktree(p: Project, u: BranchUnit) {
-    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, busy: false });
+    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, runningCount: 0, busy: false });
+    // Count what's running under the worktree (shell tabs + agents), so removal
+    // warns before it tears their PTYs down.
+    countRunningAgents(u.folderPath).then((n) =>
+      setWtReq((r) => (r && r.u.folderPath === u.folderPath ? { ...r, runningCount: n } : r)),
+    );
     invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean }>("worktree_status", {
       path: u.folderPath,
     })
@@ -1311,9 +1325,16 @@ export default function LeftSidebar(props: {
     if (u.kind !== "plain" || !target) return true;
     const cur = currentBranch(p);
     if (cur === null || cur === target) return true;
+    // Plain-repo checkout is non-destructive to tabs: nothing is killed, but the
+    // shared tree changes under any tab open here, so warn with the live count.
+    const n = liveTabsUnder(p.path).length;
+    const running =
+      n > 0
+        ? ` ${n} terminal tab${n === 1 ? " is" : "s are"} running here; their files will change to “${target}”.`
+        : "";
     const ok = await askConfirm({
       title: `Switch ${p.name} to “${target}”?`,
-      message: `This checks out "${target}" (currently "${cur}") and changes the shared working tree.`,
+      message: `This checks out "${target}" (currently "${cur}") and changes the shared working tree.${running}`,
       confirmLabel: "Switch",
     });
     if (!ok) return false;
@@ -1858,6 +1879,7 @@ export default function LeftSidebar(props: {
           dirty={wtReq()!.dirty}
           unpushed={wtReq()!.unpushed}
           hasRemote={wtReq()!.hasRemote}
+          runningCount={wtReq()!.runningCount}
           busy={wtReq()!.busy}
           onConfirm={(opts) => confirmRemoveWorktree(opts)}
           onCancel={() => setWtReq(null)}

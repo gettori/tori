@@ -10,7 +10,7 @@ import Settings from "./panels/Settings/Settings";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
-import { emit, FOCUS_SEARCH, FOCUS_TERMINAL } from "./utils/events";
+import { emit, FOCUS_SEARCH, FOCUS_TERMINAL, type LiveTab } from "./utils/events";
 import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
@@ -71,6 +71,9 @@ function App() {
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [editor, setEditor] = createSignal(initial.editor);
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
+  // Live terminal tabs, surfaced from the terminal area so the sidebar's confirms
+  // can count what is actually running in a folder.
+  const [liveTabs, setLiveTabs] = createSignal<LiveTab[]>([]);
   const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
 
@@ -158,7 +161,7 @@ function App() {
       <div class="body">
         <aside class="pane sidebar" style={{ width: `${sidebar()}px` }}>
           <div class="pane-body tree-body">
-            <LeftSidebar selected={selected()} onSelect={setSelected} />
+            <LeftSidebar selected={selected()} onSelect={setSelected} liveTabs={liveTabs()} />
           </div>
         </aside>
 
@@ -167,7 +170,7 @@ function App() {
         <div class="workspace">
           <div class="work-split">
             <main class="pane terminal">
-              <Terminal selected={selected()} />
+              <Terminal selected={selected()} onOpenChange={setLiveTabs} />
             </main>
             <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
