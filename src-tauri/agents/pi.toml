@@ -1,0 +1,24 @@
+schema_version = 1
+id = "pi"
+label = "Pi"
+
+[launch]
+program = "pi"
+base_args = []
+# pi has no distinct "skip permissions" flag - it launches in yolo mode by
+# default, so the yolo variant adds no extra args.
+yolo_args = []
+resume_args = ["--session", "{file}"]
+
+[discovery]
+dir = "~/.pi/agent/sessions"
+filename_pattern = '^(?P<id>.+)\.jsonl$'
+
+[parser]
+kind = "pi_jsonl"
+
+[running]
+pattern = 'pi --session .*{id}'
+
+[capabilities]
+pty_quiet_ms = 2000

@@ -29,6 +29,7 @@ dirs = "5"
 portable-pty = "0.8"
 json5 = "0.4"
 ureq = { version = "2", features = ["json"] }
+regex = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
