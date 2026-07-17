@@ -174,7 +174,7 @@ function App() {
             </main>
             <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
-              <Editor selected={selected()} />
+              <Editor selected={selected()} liveTabs={liveTabs()} />
             </section>
           </div>
         </div>

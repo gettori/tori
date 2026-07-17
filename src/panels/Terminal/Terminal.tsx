@@ -19,7 +19,7 @@ import {
   type PurgeUnderPath,
   type LiveTab,
 } from "../../utils/events";
-import { isUnderPath } from "../../utils/pathScope";
+import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import styles from "./Terminal.module.css";
 
 type TabKind = "shell" | "agent" | "command";
@@ -43,7 +43,14 @@ type OpenTerm = {
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
   sessionId?: string;
+  // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
+  // seconds. Used to attribute the session that appears afterward (see
+  // `backfillFreshSessions`).
+  spawnedAt?: number;
 };
+
+// Minimal shape of `list_sessions`' return, just what the backfill needs.
+type BackfillSession = { id: string; cwd: string; agent?: string; created_at: number };
 
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
@@ -121,11 +128,18 @@ export default function Terminal(props: {
     setMenuOpen(true);
   }
 
-  // Surface the live tabs (id + workspace + kind + soft sessionId) so the sidebar
-  // can count what's actually running in a folder for its confirms.
+  // Surface the live tabs (id + workspace + kind + soft sessionId + agent) so
+  // the sidebar can count what's running for its confirms and probe the right
+  // per-agent pgrep pattern for the status dot.
   createEffect(() =>
     props.onOpenChange?.(
-      open().map((o) => ({ id: o.id, workspace: o.workspace, kind: o.kind, sessionId: o.sessionId })),
+      open().map((o) => ({
+        id: o.id,
+        workspace: o.workspace,
+        kind: o.kind,
+        sessionId: o.sessionId,
+        agent: o.kind === "agent" ? (o.program === "pi" ? "pi" : "claude") : undefined,
+      })),
     ),
   );
 
@@ -149,6 +163,7 @@ export default function Terminal(props: {
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
+  let unlistenSessions: UnlistenFn | undefined;
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
       if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
@@ -181,6 +196,9 @@ export default function Terminal(props: {
       }
       if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
     });
+    // A transcript just appeared: try to attribute it to a fresh tab (see
+    // `backfillFreshSessions`) so the sidebar can focus it in place.
+    unlistenSessions = await listen("sessions://changed", () => void backfillFreshSessions());
   });
 
   // Close the launch dropdown on any click outside the split button or its
@@ -198,6 +216,7 @@ export default function Terminal(props: {
     offOpenTerminal?.();
     offNewSession?.();
     unlistenExit?.();
+    unlistenSessions?.();
   });
 
   function openOrActivate(t: OpenTerm) {
@@ -205,6 +224,45 @@ export default function Terminal(props: {
       setOpen([...open(), t]);
     }
     focusTab(t.workspace, t.id);
+  }
+
+  // A fresh `+Claude`/`+Pi` tab carries no sessionId until its transcript
+  // appears (Sway can't invent the id before the CLI writes it) - the
+  // "fresh-session double-open" gap: clicking that session's sidebar row can't
+  // find the tab. Attribute it here, but only in the unambiguous case: exactly
+  // one unattributed agent tab per workspace (two fresh tabs sharing a folder
+  // can't be told apart, so both stay unattributed) matched against exactly one
+  // session whose cwd matches and which was created at/after the tab's spawn
+  // (so an older session sharing the cwd is never misattributed).
+  async function backfillFreshSessions() {
+    const claimed = new Set(open().map((t) => t.sessionId).filter((x): x is string => !!x));
+    const byWorkspace = new Map<string, OpenTerm[]>();
+    for (const t of open()) {
+      if (t.kind !== "agent" || t.sessionId) continue;
+      byWorkspace.set(t.workspace, [...(byWorkspace.get(t.workspace) ?? []), t]);
+    }
+    for (const [workspace, tabs] of byWorkspace) {
+      if (tabs.length !== 1) continue; // ambiguous: two+ fresh tabs in this workspace
+      const tab = tabs[0];
+      const sessions = await invoke<BackfillSession[]>("list_sessions", { folder: workspace }).catch(
+        () => [] as BackfillSession[],
+      );
+      const candidates = sessions.filter(
+        (s) =>
+          !claimed.has(s.id) &&
+          s.agent === tab.program &&
+          sameCwd(s.cwd, tab.cwd) &&
+          s.created_at >= (tab.spawnedAt ?? 0),
+      );
+      if (candidates.length === 1) {
+        // Mutate in place + shallow-copy the outer array (same pattern as
+        // `mergeReorder`): every tab object keeps its reference, so `<For>`
+        // reconciles without remounting anything (gotcha #64 - a rebuilt item
+        // ref would kill this tab's PTY).
+        tab.sessionId = candidates[0].id;
+        setOpen([...open()]);
+      }
+    }
   }
 
   // Selecting anything reveals its workspace group. A session selection then does
@@ -226,6 +284,7 @@ export default function Terminal(props: {
 
   async function focusOrResume(sel: Selection) {
     const sessionId = sel.sessionId!;
+    const agent = sel.agent === "pi" ? "pi" : "claude";
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
       focusTab(existing.workspace, existing.id);
@@ -233,7 +292,7 @@ export default function Terminal(props: {
       // exited (dropped to the shell), retype the resume so the session comes
       // back in place. Best-effort: without shell integration we can't tell an
       // idle prompt from a foreground program, so treat "agent gone" as idle.
-      const running = await invoke<boolean>("session_running", { id: sessionId }).catch(() => true);
+      const running = await invoke<boolean>("session_running", { id: sessionId, agent }).catch(() => true);
       if (!running) {
         invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(
           () => {},
@@ -241,19 +300,17 @@ export default function Terminal(props: {
       }
       return;
     }
-    const isPi = sel.agent === "pi";
-    const program = isPi ? "pi" : "claude";
     const args =
-      isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sessionId];
+      agent === "pi" && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sessionId];
     openOrActivate({
       id: shellId(),
       title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
       cwd: sel.sessionCwd || sel.folderPath,
       workspace: sel.folderPath,
       kind: "agent",
-      program,
+      program: agent,
       args,
-      init: agentInit(program, args),
+      init: agentInit(agent, args),
       sessionId,
     });
   }
@@ -272,6 +329,11 @@ export default function Terminal(props: {
       program: agent,
       args,
       init: agentInit(agent, args),
+      // Floored to match the backend's whole-second `created_at` (epoch_secs
+      // truncates): comparing a fractional spawn time against a truncated
+      // creation time would spuriously reject a session created in the same
+      // wall-clock second as the spawn.
+      spawnedAt: Math.floor(Date.now() / 1000),
     });
   }
 
