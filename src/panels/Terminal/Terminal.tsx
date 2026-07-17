@@ -17,6 +17,7 @@ import {
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
+  type LiveTab,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import styles from "./Terminal.module.css";
@@ -62,7 +63,7 @@ function agentInit(program: string, args: string[]): string {
 
 export default function Terminal(props: {
   selected: Selection | null;
-  onOpenChange?: (ids: Set<string>) => void;
+  onOpenChange?: (tabs: LiveTab[]) => void;
 }) {
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
   // Tabs are grouped by workspace (branch-unit folder). Only the active
@@ -120,8 +121,13 @@ export default function Terminal(props: {
     setMenuOpen(true);
   }
 
-  // Report the set of live session ids so the sidebar can show running dots.
-  createEffect(() => props.onOpenChange?.(new Set(open().map((o) => o.id))));
+  // Surface the live tabs (id + workspace + kind + soft sessionId) so the sidebar
+  // can count what's actually running in a folder for its confirms.
+  createEffect(() =>
+    props.onOpenChange?.(
+      open().map((o) => ({ id: o.id, workspace: o.workspace, kind: o.kind, sessionId: o.sessionId })),
+    ),
+  );
 
   const offClose = onEvent(CLOSE_TAB, () => {
     const id = visibleId();

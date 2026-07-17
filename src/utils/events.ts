@@ -1,5 +1,17 @@
 // Lightweight window-event bus for cross-component actions.
 
+// A live terminal tab, surfaced from the terminal area to the sidebar so its
+// confirms (checkout, destructive delete) can count what's actually running in a
+// folder, including shell + fresh-agent tabs that pgrep can't see. `workspace` is
+// the branch-unit folder the tab is grouped under; `sessionId` (resumed agents
+// only) lets the sidebar dedup a tab against a pgrep-matched session.
+export type LiveTab = {
+  id: string;
+  workspace: string;
+  kind: "shell" | "agent" | "command";
+  sessionId?: string;
+};
+
 export const FOCUS_SEARCH = "sway:focus-search";
 export const FOCUS_TERMINAL = "sway:focus-terminal";
 export const CLOSE_TAB = "sway:close-tab";

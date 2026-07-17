@@ -17,6 +17,8 @@ export default function WorktreeRemoveDialog(props: {
   unpushed: boolean | null;
   // Whether the branch tracks a remote branch (so it can be deleted there too).
   hasRemote: boolean | null;
+  // Live shell/agent tabs running under this worktree, whose PTYs removal tears down.
+  runningCount: number;
   busy: boolean;
   onConfirm: (opts: { deleteLocal: boolean; deleteRemote: boolean }) => void;
   onCancel: () => void;
@@ -79,6 +81,15 @@ export default function WorktreeRemoveDialog(props: {
                 </Show>
               </span>
             </div>
+            <Show when={props.runningCount > 0}>
+              <div class={styles.wtDetailRow}>
+                <span class={styles.wtDetailKey}>Running</span>
+                <span class={styles.wtDetailVal}>
+                  {props.runningCount} terminal tab{props.runningCount === 1 ? "" : "s"} (their
+                  processes will be stopped)
+                </span>
+              </div>
+            </Show>
           </div>
 
           <Show when={props.dirty || props.unpushed}>
