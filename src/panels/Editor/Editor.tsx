@@ -7,17 +7,24 @@ import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
+import SessionPanel from "./SessionPanel";
+import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import FileIcon from "../../seti/FileIcon";
+import ClaudeIcon from "../../seti/ClaudeIcon";
+import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
 import { X } from "lucide-solid";
 import {
   onWith,
   OPEN_IN_EDITOR,
+  OPEN_TRANSCRIPT,
   PURGE_UNDER_PATH,
   DRAG_PATH_MIME,
   type OpenInEditor,
+  type OpenTranscript,
   type PurgeUnderPath,
+  type LiveTab,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { isSelfWrite } from "../../utils/selfWrites";
@@ -25,7 +32,13 @@ import { ensureLsp } from "./lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
-type OpenFile = { path: string; name: string };
+type FileTab = { kind: "file"; path: string; name: string };
+type TranscriptTab = { kind: "transcript"; id: string; sessionPath: string; agent: "claude" | "pi"; name: string };
+type Tab = FileTab | TranscriptTab;
+
+function tabId(t: Tab): string {
+  return t.kind === "file" ? t.path : `transcript:${t.id}`;
+}
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
@@ -34,18 +47,23 @@ function basename(path: string): string {
 // Same-origin CM6 editor pane: ⟨ tabs + code │ file tree ⟩. Owns the
 // open-editors model (tabs, active file, per-file dirty state); CodeEditor holds
 // the per-file buffers and FileTree drives opens via OPEN_IN_EDITOR.
-export default function Editor(props: { selected: Selection | null }) {
-  const [openFiles, setOpenFiles] = createSignal<OpenFile[]>([]);
-  const [activePath, setActivePath] = createSignal<string | null>(null);
+export default function Editor(props: { selected: Selection | null; liveTabs?: LiveTab[] }) {
+  const [tabs, setTabs] = createSignal<Tab[]>([]);
+  const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
-  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs">("files");
+  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs" | "session">("files");
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
   >(null);
   let gotoNonce = 0;
 
-  const openPaths = () => openFiles().map((f) => f.path);
+  const filePaths = () => tabs().filter((t): t is FileTab => t.kind === "file").map((t) => t.path);
+  const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
+  const activeTranscript = () => {
+    const t = activeTab();
+    return t && t.kind === "transcript" ? t : null;
+  };
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
@@ -104,11 +122,12 @@ export default function Editor(props: { selected: Selection | null }) {
     }),
   );
 
-  // A selection without an available Shared/Docs tab falls back to Files, so the
-  // pane is never stuck on a mode the current selection cannot show.
+  // A selection without an available Shared/Docs/Session tab falls back to
+  // Files, so the pane is never stuck on a mode the current selection can't show.
   createEffect(() => {
     if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
     if (rightMode() === "docs" && !docsPath()) setRightMode("files");
+    if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
   });
 
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
@@ -122,32 +141,44 @@ export default function Editor(props: { selected: Selection | null }) {
   );
 
   function openFile(path: string) {
-    if (!openFiles().some((f) => f.path === path)) {
-      setOpenFiles([...openFiles(), { path, name: basename(path) }]);
+    if (!tabs().some((t) => t.kind === "file" && t.path === path)) {
+      setTabs([...tabs(), { kind: "file", path, name: basename(path) }]);
     }
-    setActivePath(path);
+    setActiveId(path);
   }
 
-  async function closeTab(path: string) {
-    if (dirty()[path]) {
-      const name = openFiles().find((f) => f.path === path)?.name ?? path;
+  // Opened from the sidebar's session context menu (see OPEN_TRANSCRIPT below).
+  // Read-only, so there is never a dirty prompt on close.
+  function openTranscript(id: string, sessionPath: string, agent: "claude" | "pi", name: string) {
+    if (!tabs().some((t) => t.kind === "transcript" && t.id === id)) {
+      setTabs([...tabs(), { kind: "transcript", id, sessionPath, agent, name }]);
+    }
+    setActiveId(`transcript:${id}`);
+  }
+
+  async function closeTab(id: string) {
+    const tab = tabs().find((t) => tabId(t) === id);
+    if (!tab) return;
+    if (tab.kind === "file" && dirty()[tab.path]) {
       const ok = await askConfirm({
-        title: `Discard unsaved changes to ${name}?`,
+        title: `Discard unsaved changes to ${tab.name}?`,
         message: "The edits in this tab will be lost.",
         confirmLabel: "Discard",
         danger: true,
       });
       if (!ok) return;
     }
-    const remaining = openFiles().filter((f) => f.path !== path);
-    setOpenFiles(remaining);
-    setDirty((d) => {
-      const next = { ...d };
-      delete next[path];
-      return next;
-    });
-    if (activePath() === path) {
-      setActivePath(remaining.length ? remaining[remaining.length - 1].path : null);
+    const remaining = tabs().filter((t) => tabId(t) !== id);
+    setTabs(remaining);
+    if (tab.kind === "file") {
+      setDirty((d) => {
+        const next = { ...d };
+        delete next[tab.path];
+        return next;
+      });
+    }
+    if (activeId() === id) {
+      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
   }
 
@@ -156,23 +187,26 @@ export default function Editor(props: { selected: Selection | null }) {
   }
 
   // A space is being deleted: force-close every open tab rooted under it, without
-  // the per-file dirty prompt (the folder is going away regardless).
+  // the per-file dirty prompt (the folder is going away regardless). A
+  // transcript tab is "under" a path when its session's transcript file is.
   function purgeUnder(path: string) {
-    const gone = new Set(openPaths().filter((p) => isUnderPath(p, path)));
-    if (!gone.size) return;
-    setOpenFiles((fs) => fs.filter((f) => !gone.has(f.path)));
+    const goneTabs = tabs().filter((t) => isUnderPath(t.kind === "file" ? t.path : t.sessionPath, path));
+    if (!goneTabs.length) return;
+    const goneIds = new Set(goneTabs.map(tabId));
+    setTabs((ts) => ts.filter((t) => !goneIds.has(tabId(t))));
     setDirty((d) => {
       const next = { ...d };
-      for (const p of gone) delete next[p];
+      for (const t of goneTabs) if (t.kind === "file") delete next[t.path];
       return next;
     });
-    if (activePath() && gone.has(activePath()!)) {
-      const remaining = openFiles();
-      setActivePath(remaining.length ? remaining[remaining.length - 1].path : null);
+    if (activeId() && goneIds.has(activeId()!)) {
+      const remaining = tabs().filter((t) => !goneIds.has(tabId(t)));
+      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
   }
 
   let offOpen: (() => void) | undefined;
+  let offTranscript: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
@@ -182,6 +216,10 @@ export default function Editor(props: { selected: Selection | null }) {
       if (!d?.path) return;
       openFile(d.path);
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
+    });
+    offTranscript = onWith<OpenTranscript>(OPEN_TRANSCRIPT, (d) => {
+      if (!d?.id || !d.sessionPath) return;
+      openTranscript(d.id, d.sessionPath, d.agent, d.name);
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Follow mode: auto-open the most-recently-changed project file. The watcher
@@ -210,6 +248,7 @@ export default function Editor(props: { selected: Selection | null }) {
   });
   onCleanup(() => {
     offOpen?.();
+    offTranscript?.();
     offPurge?.();
     offClose?.();
     offFollow?.();
@@ -220,27 +259,30 @@ export default function Editor(props: { selected: Selection | null }) {
       <div class={styles.editorMain}>
         <OverflowTabBar
           class={styles.editorTabs}
-          items={openFiles()}
-          activeId={activePath()}
-          idOf={(f) => f.path}
-          onActivate={setActivePath}
-          onReorder={setOpenFiles}
-          renderTab={(f) => (
+          items={tabs()}
+          activeId={activeId()}
+          idOf={tabId}
+          onActivate={setActiveId}
+          onReorder={setTabs}
+          renderTab={(t) => (
             <div
               class={styles.tab}
-              classList={{ [styles.active]: f.path === activePath() }}
-              onClick={() => setActivePath(f.path)}
-              title={f.path}
-              draggable={true}
+              classList={{ [styles.active]: tabId(t) === activeId() }}
+              onClick={() => setActiveId(tabId(t))}
+              title={t.kind === "file" ? t.path : t.name}
+              draggable={t.kind === "file"}
               onDragStart={(e) => {
-                e.dataTransfer?.setData(DRAG_PATH_MIME, f.path);
-                e.dataTransfer?.setData("text/plain", f.path);
+                if (t.kind !== "file") return;
+                e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
+                e.dataTransfer?.setData("text/plain", t.path);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
               }}
             >
-              <FileIcon name={f.name} />
-              <span class="tab-name">{f.name}</span>
-              <Show when={dirty()[f.path]}>
+              <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
+                <FileIcon name={t.name} />
+              </Show>
+              <span class="tab-name">{t.name}</span>
+              <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
               </Show>
               <button
@@ -248,18 +290,20 @@ export default function Editor(props: { selected: Selection | null }) {
                 aria-label="Close"
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(f.path);
+                  closeTab(tabId(t));
                 }}
               >
                 <Icon icon={X} size={14} />
               </button>
             </div>
           )}
-          renderMenuItem={(f) => (
+          renderMenuItem={(t) => (
             <>
-              <FileIcon name={f.name} />
-              <span class="tab-name">{f.name}</span>
-              <Show when={dirty()[f.path]}>
+              <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
+                <FileIcon name={t.name} />
+              </Show>
+              <span class="tab-name">{t.name}</span>
+              <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
               </Show>
               <button
@@ -267,7 +311,7 @@ export default function Editor(props: { selected: Selection | null }) {
                 aria-label="Close"
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(f.path);
+                  closeTab(tabId(t));
                 }}
               >
                 <Icon icon={X} size={14} />
@@ -286,16 +330,21 @@ export default function Editor(props: { selected: Selection | null }) {
           }
         />
         <Show
-          when={openFiles().length}
+          when={filePaths().length}
           fallback={<div class={styles.editorEmpty}>Open a file from the tree to start editing.</div>}
         >
           <CodeEditor
-            activePath={activePath()}
-            openPaths={openPaths()}
+            activePath={activeTab()?.kind === "file" ? activeId() : null}
+            openPaths={filePaths()}
             projectRoot={root()}
             goto={gotoTarget()}
             onDirty={handleDirty}
           />
+        </Show>
+        <Show when={activeTranscript()}>
+          {(t) => (
+            <TranscriptViewer class={styles.transcriptOverlay} sessionPath={t().sessionPath} agent={t().agent} />
+          )}
         </Show>
       </div>
       <div class={styles.rightPanel}>
@@ -314,6 +363,15 @@ export default function Editor(props: { selected: Selection | null }) {
           >
             Changes
           </button>
+          <Show when={props.selected?.sessionId}>
+            <button
+              class={styles.rightTab}
+              classList={{ [styles.active]: rightMode() === "session" }}
+              onClick={() => setRightMode("session")}
+            >
+              Session
+            </button>
+          </Show>
           <Show when={sharedPath()}>
             <button
               class={styles.rightTab}
@@ -339,6 +397,16 @@ export default function Editor(props: { selected: Selection | null }) {
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} />
+          </Match>
+          <Match when={rightMode() === "session" && props.selected?.sessionId}>
+            <SessionPanel
+              path={props.selected!.sessionPath ?? null}
+              agent={props.selected!.agent === "pi" ? "pi" : "claude"}
+              cwd={props.selected!.sessionCwd ?? null}
+              projectRoot={root()}
+              selfSessionId={props.selected!.sessionId ?? null}
+              liveTabs={props.liveTabs ?? []}
+            />
           </Match>
           <Match when={rightMode() === "shared"}>
             <FileTree root={sharedPath()} editable askText={askText} askConfirm={askConfirm} />
