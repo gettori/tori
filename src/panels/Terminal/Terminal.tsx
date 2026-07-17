@@ -21,13 +21,40 @@ import {
 import { isUnderPath } from "../../utils/pathScope";
 import styles from "./Terminal.module.css";
 
+type TabKind = "shell" | "agent" | "command";
+
 type OpenTerm = {
   id: string;
   title: string;
   cwd: string;
+  // Every shell/agent tab hosts a login shell; an agent tab is that shell seeded
+  // with `init`. Command tabs (clone/bootstrap) spawn the program directly.
+  kind: TabKind;
   program: string;
   args: string[];
+  // Agent tabs: the command line typed into the shell once it's ready. Exiting
+  // the agent drops back to the live shell rather than closing the tab.
+  init?: string;
+  // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
+  // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
+  sessionId?: string;
 };
+
+// A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
+// one shell can host successive agents, and the uuid is a soft attribute.
+function shellId(): string {
+  return `sh:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// The command an agent tab types into its shell once (e.g. "claude --resume x\n").
+// Args are single-quoted: they're re-parsed by the shell (unlike a direct spawn),
+// so a session-file path containing spaces would otherwise word-split and fail.
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+function agentInit(program: string, args: string[]): string {
+  return `${[program, ...args.map(shQuote)].join(" ")}\n`;
+}
 
 export default function Terminal(props: {
   selected: Selection | null;
@@ -89,15 +116,30 @@ export default function Terminal(props: {
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
       if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
-      openOrActivate({ id: t.id, title: t.title, cwd: t.cwd, program: t.program, args: t.args });
+      openOrActivate({
+        id: t.id,
+        title: t.title,
+        cwd: t.cwd,
+        kind: "command",
+        program: t.program,
+        args: t.args,
+      });
     });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
     // Spawns at the named folder, with no props.selected timing dependency.
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
+    // A shell/agent tab that exits (the user typed `exit`) is closed; a command
+    // tab (clone/bootstrap) stays visible so its failure is inspectable, and
+    // re-discovers projects. Agent-exit within a live shell fires no event.
     unlistenExit = await listen<string>("pty://exit", (e) => {
       const id = e.payload;
+      const t = open().find((o) => o.id === id);
+      if (t && t.kind !== "command") {
+        closeId(id);
+        return;
+      }
       if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
     });
   });
@@ -136,12 +178,18 @@ export default function Terminal(props: {
       (sel) => {
         if (sel?.sessionId) {
           const isPi = sel.agent === "pi";
+          const program = isPi ? "pi" : "claude";
+          const args =
+            isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sel.sessionId];
           openOrActivate({
-            id: sel.sessionId,
+            id: shellId(),
             title: sel.sessionTitle?.slice(0, 28) || sel.sessionId.slice(0, 8),
             cwd: sel.sessionCwd || sel.folderPath,
-            program: isPi ? "pi" : "claude",
-            args: isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sel.sessionId],
+            kind: "agent",
+            program,
+            args,
+            init: agentInit(program, args),
+            sessionId: sel.sessionId,
           });
         }
       },
@@ -152,13 +200,15 @@ export default function Terminal(props: {
   // claude in yolo mode skips permission prompts; pi is always yolo so it just
   // launches normally.
   function spawnSession(agent: "claude" | "pi", folderPath: string, projectName: string, yolo = false) {
-    const id = `new:${agent}:${folderPath}:${Date.now()}`;
+    const args = agent === "claude" && yolo ? ["--dangerously-skip-permissions"] : [];
     openOrActivate({
-      id,
+      id: shellId(),
       title: `${projectName} ${agent}`,
       cwd: folderPath,
+      kind: "agent",
       program: agent,
-      args: agent === "claude" && yolo ? ["--dangerously-skip-permissions"] : [],
+      args,
+      init: agentInit(agent, args),
     });
   }
 
@@ -313,8 +363,10 @@ export default function Terminal(props: {
               <TerminalView
                 id={t.id}
                 cwd={t.cwd}
+                kind={t.kind}
                 program={t.program}
                 args={t.args}
+                init={t.init}
                 active={active() === t.id}
               />
             )}

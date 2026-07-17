@@ -4,6 +4,16 @@
 // spawns (PTY, external editors, the language server) uses this so binaries
 // resolve the same way they do in the user's shell.
 
+// The user's login shell, so PTY tabs spawn a real interactive shell (which
+// re-sources the user's profile, and thus owns PATH itself). Falls back to zsh,
+// the macOS default, when $SHELL is unset (e.g. an unusual launch environment).
+pub fn login_shell() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/bin/zsh".into())
+}
+
 pub fn augmented_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut parts: Vec<String> = vec![
