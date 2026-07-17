@@ -349,6 +349,23 @@
   margin-left: auto;
 }
 
+/* Session-row running indicator: solid = a live tab AND the probe confirms the
+   agent running; hollow = confirmed running with no open tab (resumed
+   elsewhere). Leading, before the agent icon; unmounted entirely otherwise. */
+.sessionDot {
+  flex: none;
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+}
+.sessionDot.solid {
+  background: var(--status-live);
+}
+.sessionDot.hollow {
+  background: transparent;
+  border: 1px solid var(--status-live);
+}
+
 .row.session .when {
   margin-left: auto;
   padding-left: calc(8px * var(--ui-density));
@@ -371,6 +388,24 @@
 }
 
 .row .badge + .when {
+  margin-left: 6px;
+}
+
+/* Touched-file count, selected session row only. Same trailing-cluster
+   push-right convention as .badge/.when: margin-left:auto by default (so it's
+   pushed right when nothing precedes it), overridden to a fixed gap once a
+   badge (or this element itself, for .when) already did the push. */
+.row .touchedCount {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: calc(10px * var(--ui-scale));
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.row .badge + .touchedCount {
+  margin-left: 6px;
+}
+.row .touchedCount + .when {
   margin-left: 6px;
 }
 

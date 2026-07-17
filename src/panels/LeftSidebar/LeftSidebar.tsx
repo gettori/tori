@@ -1,6 +1,7 @@
 import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import ContextMenu, { type MenuItem, type MenuState } from "../../components/ContextMenu/ContextMenu";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
@@ -24,11 +25,13 @@ import {
   NEW_SESSION,
   PURGE_UNDER_PATH,
   TOAST,
+  OPEN_TRANSCRIPT,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
   type LiveTab,
+  type OpenTranscript,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import ClaudeIcon from "../../seti/ClaudeIcon";
@@ -124,6 +127,7 @@ type SessionMeta = {
   branch: string;
   title: string;
   last_active: number;
+  created_at: number;
   name: string | null;
   archived: boolean;
   agent?: string;
@@ -404,10 +408,74 @@ export default function LeftSidebar(props: {
     await Promise.all(
       nested.map(async (s) => {
         if (tabSessions.has(s.id) || !isUnderPath(s.cwd, path)) return;
-        if (await invoke<boolean>("session_running", { id: s.id }).catch(() => false)) detached++;
+        const agent = s.agent === "pi" ? "pi" : "claude";
+        if (await invoke<boolean>("session_running", { id: s.id, agent }).catch(() => false)) detached++;
       }),
     );
     return tabs.length + detached;
+  }
+
+  // Per-session probe cache for the row status dot: last known `session_running`
+  // result, keyed by session id, plus the agent used (so a later re-probe of a
+  // detached session doesn't need a sessions() lookup). Solid = a live tab AND
+  // the probe confirms running; hollow = no live tab but the probe confirms
+  // running elsewhere; none otherwise (including "never probed"). Probing is
+  // trigger-driven only (row selection, sessions://changed, window focus) -
+  // never a periodic pgrep.
+  const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
+
+  async function probeSession(id: string, agent: string) {
+    const running = await invoke<boolean>("session_running", { id, agent }).catch(() => false);
+    setProbes((m) => ({ ...m, [id]: { agent, running } }));
+  }
+
+  function sessionDot(s: SessionMeta): "solid" | "hollow" | "none" {
+    const hasTab = (props.liveTabs ?? []).some((t) => t.sessionId === s.id);
+    const running = probes()[s.id]?.running === true;
+    if (hasTab && running) return "solid";
+    if (!hasTab && running) return "hollow";
+    return "none";
+  }
+
+  // Re-probe every session whose dot could currently be non-"none": every live
+  // tab's session (catches solid -> none, e.g. a Ctrl+C exit-to-shell) and every
+  // previously-confirmed detached session (catches hollow -> none, e.g. it
+  // exited). Called from sessions://changed and window focus only.
+  function probeActive() {
+    const seen = new Set<string>();
+    for (const t of props.liveTabs ?? []) {
+      if (!t.sessionId || seen.has(t.sessionId)) continue;
+      seen.add(t.sessionId);
+      void probeSession(t.sessionId, t.agent ?? probes()[t.sessionId]?.agent ?? "claude");
+    }
+    for (const [id, p] of Object.entries(probes())) {
+      if (p.running && !seen.has(id)) {
+        seen.add(id);
+        void probeSession(id, p.agent);
+      }
+    }
+  }
+
+  // Touched-file count for the *selected* session only, fetched via its own
+  // session_detail call on selection - deliberately independent of Toolbar's
+  // own session_detail poll (matches the probes-cache precedent above: each
+  // component fetches what it needs). null until the fetch resolves, so a
+  // stale count from the previously-selected session never flashes on the row.
+  const [touchedCount, setTouchedCount] = createSignal<number | null>(null);
+  // Guards against an out-of-order response: a slower fetch for a
+  // previously-selected (larger) session resolving after a newer, faster one
+  // must not overwrite the count with stale data.
+  let touchedCountFor: string | null = null;
+
+  async function loadTouchedCount(s: SessionMeta) {
+    touchedCountFor = s.id;
+    setTouchedCount(null);
+    const agent = s.agent === "pi" ? "pi" : "claude";
+    const detail = await invoke<{ touched_count: number }>("session_detail", { path: s.path, agent }).catch(
+      () => null,
+    );
+    if (touchedCountFor !== s.id) return; // a newer selection already started its own fetch
+    setTouchedCount(detail?.touched_count ?? null);
   }
 
   function openDeleteSpace(g: Space) {
@@ -1238,9 +1306,19 @@ export default function LeftSidebar(props: {
     return items;
   };
 
+  function openTranscript(s: SessionMeta) {
+    emitWith<OpenTranscript>(OPEN_TRANSCRIPT, {
+      id: s.id,
+      sessionPath: s.path,
+      agent: s.agent === "pi" ? "pi" : "claude",
+      name: s.name || s.title,
+    });
+  }
+
   const sessionMenu = (g: Space, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
     { label: "New session", onClick: () => startSession(g, p, u) },
     { separator: true },
+    { label: "Open transcript", onClick: () => openTranscript(s) },
     { label: "Rename…", onClick: () => renameSession(s) },
     { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
     { label: "Delete", danger: true, onClick: () => deleteSession(s) },
@@ -1393,6 +1471,10 @@ export default function LeftSidebar(props: {
       sessionName: s.name,
       sessionArchived: s.archived,
     });
+    // Probe on selection so the dot reflects this row immediately, not just on
+    // the next sessions://changed/window-focus trigger.
+    void probeSession(s.id, s.agent === "pi" ? "pi" : "claude");
+    void loadTouchedCount(s);
   }
 
   // A branch-unit reads as selected when it is the direct selection OR when a
@@ -1446,6 +1528,13 @@ export default function LeftSidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, s.path)}
                 >
+                  <Show when={sessionDot(s) !== "none"}>
+                    <span
+                      class={`${styles.sessionDot} ${styles[sessionDot(s)]}`}
+                      title={sessionDot(s) === "solid" ? "Agent running" : "Running elsewhere (no open tab)"}
+                      aria-hidden="true"
+                    />
+                  </Show>
                   <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
                     <PiIcon />
                   </Show>
@@ -1460,6 +1549,11 @@ export default function LeftSidebar(props: {
                       }
                     >
                       {badge!.text}
+                    </span>
+                  </Show>
+                  <Show when={props.selected?.sessionId === s.id && touchedCount() !== null}>
+                    <span class={styles.touchedCount} title="Files touched (writes/creates/deletes)">
+                      {touchedCount()}
                     </span>
                   </Show>
                   <span class={styles.when}>{ago(s.last_active)}</span>
@@ -1547,6 +1641,7 @@ export default function LeftSidebar(props: {
   let offSearch: (() => void) | undefined;
   let offRefresh: (() => void) | undefined;
   let offToast: (() => void) | undefined;
+  let offFocus: (() => void) | undefined;
   onMount(async () => {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
@@ -1554,7 +1649,16 @@ export default function LeftSidebar(props: {
     const cfg = config();
     if (cfg) await restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
-    unlistenSessions = await listen("sessions://changed", () => refreshSessions());
+    unlistenSessions = await listen("sessions://changed", () => {
+      refreshSessions();
+      probeActive();
+    });
+    // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
+    // exit-to-shell that happened while the window was unfocused (its own
+    // transcript write, if any, may already have been debounced away).
+    offFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) probeActive();
+    });
     // Attach-flow background fetch: fold remote-only branches into the open
     // picker live. Guarded by attachCtx (right repo) AND an open picker, so a
     // late/duplicate fetch-done after cancel or reopen can't resurrect or double.
@@ -1605,6 +1709,7 @@ export default function LeftSidebar(props: {
     offSearch?.();
     offRefresh?.();
     offToast?.();
+    offFocus?.();
   });
 
   // One space tile for the bottom bar: its icon when set, else the name's

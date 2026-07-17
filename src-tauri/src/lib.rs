@@ -17,7 +17,7 @@ use fs::FsWatch;
 use settings::SettingsWatch;
 use lsp::LspState;
 use pty::PtyState;
-use sessions::{PiIndex, SessionIndex, SessionWatch};
+use sessions::{PiIndex, SessionIndex, SessionWatch, TouchedIndex};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -84,6 +84,7 @@ pub fn run() {
         .manage(SessionIndex::default())
         .manage(PiIndex::default())
         .manage(SessionWatch::default())
+        .manage(TouchedIndex::default())
         .manage(SettingsWatch::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
@@ -152,6 +153,8 @@ pub fn run() {
             sessions::seed_adopted,
             sessions::folder_historical,
             sessions::session_detail,
+            sessions::session_touched_files,
+            sessions::session_transcript,
             model::model_context_caps,
             launch::open_in_vscode,
             launch::open_in_ghostty,

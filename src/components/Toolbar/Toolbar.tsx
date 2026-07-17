@@ -15,6 +15,7 @@ type SessionDetail = {
   output_tokens: number;
   context_tokens: number;
   model: string | null;
+  touched_count: number;
 };
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -137,13 +138,15 @@ export default function Toolbar(props: { selected: Selection | null }) {
         setDisplayName(s?.sessionName || s?.sessionTitle || "");
         if (id && s?.sessionPath) {
           const path = s.sessionPath;
-          const loadDetail = () => invoke<SessionDetail>("session_detail", { path }).then(setDetail).catch(() => {});
+          const agent = s?.agent === "pi" ? "pi" : "claude";
+          const loadDetail = () =>
+            invoke<SessionDetail>("session_detail", { path, agent }).then(setDetail).catch(() => {});
           loadDetail();
           // While the agent is live it keeps appending to the transcript, so
           // poll: re-check running each tick and re-read the file only while it
           // is. Idle sessions cost one running-check and nothing more.
           const timer = setInterval(() => {
-            invoke<boolean>("session_running", { id })
+            invoke<boolean>("session_running", { id, agent })
               .then((r) => {
                 if (r) loadDetail();
               })

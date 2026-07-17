@@ -1,0 +1,121 @@
+/* Read-only transcript viewer (hash-scoped). Sits as a full-cover overlay over
+   the editor's main pane when its virtual tab is active. */
+.viewer {
+  flex: 1;
+  overflow: auto;
+  background: var(--pane-bg);
+  padding: calc(10px * var(--ui-density));
+  font-size: calc(13px * var(--ui-scale));
+}
+
+.viewer :global(.tree-empty) {
+  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  color: var(--text-dim);
+}
+
+.turn {
+  margin-bottom: calc(10px * var(--ui-density));
+  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  border-radius: var(--sway-radius-sm);
+  border-left: 2px solid var(--border);
+}
+
+.turn.user {
+  border-left-color: var(--brand);
+}
+.turn.assistant {
+  border-left-color: var(--accent);
+}
+.turn.tool {
+  border-left-color: var(--text-dim);
+}
+
+.turnHeader {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-density));
+  margin-bottom: calc(4px * var(--ui-density));
+}
+
+.turnRole {
+  font-size: calc(10px * var(--ui-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.turnTime {
+  font-size: calc(10px * var(--ui-scale));
+  color: var(--text-dim);
+}
+
+.block {
+  margin: calc(2px * var(--ui-density)) 0;
+}
+
+.blockText {
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.block.thinking .blockText {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.blockSummary {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
+  border-radius: var(--sway-radius-sm);
+  background: var(--hover);
+  cursor: pointer;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform var(--sway-duration-fast) ease;
+  color: var(--text-dim);
+}
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.toolName {
+  color: var(--text);
+}
+
+.errorBadge {
+  color: #f85149;
+  font-size: calc(10px * var(--ui-scale));
+}
+
+.blockDetail {
+  margin: calc(4px * var(--ui-density)) 0 0;
+  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--bg);
+  border-radius: var(--sway-radius-sm);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.loadOlder {
+  display: block;
+  margin: calc(8px * var(--ui-density)) auto;
+  padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+  cursor: pointer;
+}
+.loadOlder:hover {
+  color: var(--text);
+  background: var(--hover);
+}

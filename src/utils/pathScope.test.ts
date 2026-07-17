@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isUnderPath, countRunningUnder } from "./pathScope";
+import { isUnderPath, countRunningUnder, sameCwd } from "./pathScope";
 
 describe("isUnderPath", () => {
   it("matches self and descendants, not siblings or prefixes", () => {
@@ -35,5 +35,14 @@ describe("countRunningUnder", () => {
   it("is zero when nothing runs under the space", () => {
     const running = new Set(["d"]); // only the sibling space runs
     expect(countRunningUnder(sessions, running, "/r/personal")).toBe(0);
+  });
+});
+
+describe("sameCwd", () => {
+  it("matches only exact paths, trailing slash normalized", () => {
+    expect(sameCwd("/r/personal/proj", "/r/personal/proj")).toBe(true);
+    expect(sameCwd("/r/personal/proj/", "/r/personal/proj")).toBe(true);
+    expect(sameCwd("/r/personal/proj/sub", "/r/personal/proj")).toBe(false); // nested, not exact
+    expect(sameCwd("/r/personal/proj-old", "/r/personal/proj")).toBe(false);
   });
 });

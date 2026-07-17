@@ -1,0 +1,230 @@
+import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitWith, OPEN_IN_EDITOR, type LiveTab } from "../../utils/events";
+import { isUnderPath } from "../../utils/pathScope";
+import styles from "./SessionPanel.module.css";
+
+type TouchOp = "read" | "create" | "edit" | "delete";
+type TouchedFile = { path: string; op: TouchOp; first_ts: number; last_ts: number; count: number };
+type SessionMetaLite = { id: string; path: string; agent?: string };
+
+const OP_LABEL: Record<TouchOp, string> = { read: "R", create: "C", edit: "E", delete: "D" };
+const OP_TITLE: Record<TouchOp, string> = {
+  read: "Read",
+  create: "Created",
+  edit: "Edited",
+  delete: "Deleted",
+};
+
+function diffLineClass(line: string): string {
+  if (line.startsWith("@@")) return "hunk";
+  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index "))
+    return "meta";
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
+  return "";
+}
+
+/** Session mode: what this session touched (writes/creates/deletes by default, a
+ *  toggle reveals reads), joined with git for an inline diff + click-to-open.
+ *  Files outside the session's recorded cwd sit under an "outside project"
+ *  bucket. Collision badges mark a file also touched by another *live* session
+ *  (bounded to the live-tab set - no historical parse fan-out). */
+export default function SessionPanel(props: {
+  path: string | null;
+  agent: "claude" | "pi";
+  cwd: string | null;
+  projectRoot: string | null;
+  selfSessionId: string | null;
+  liveTabs: LiveTab[];
+}) {
+  const [files, setFiles] = createSignal<TouchedFile[]>([]);
+  const [showReads, setShowReads] = createSignal(false);
+  const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
+  const [diffs, setDiffs] = createSignal<Record<string, string>>({});
+  const [collisions, setCollisions] = createSignal<Record<string, number>>({});
+  // Guards against an out-of-order response: rapidly switching the selected
+  // session while on the Session tab must not let a slower fetch for the
+  // previously-selected session overwrite the newly-selected one's data
+  // (the same race phase 2's loadTouchedCount fix addressed in LeftSidebar).
+  let requestFor: string | null = null;
+
+  async function refreshTouched() {
+    const path = props.path;
+    requestFor = path;
+    if (!path) {
+      setFiles([]);
+      return;
+    }
+    const files = await invoke<TouchedFile[]>("session_touched_files", { path, agent: props.agent }).catch(
+      () => [] as TouchedFile[],
+    );
+    if (requestFor !== path) return;
+    setFiles(files);
+  }
+
+  // Bounded to sessions with a live tab under this folder (the same
+  // list_sessions + liveTabs join the sidebar's countRunningAgents uses), so
+  // this never fans out into a historical transcript scan.
+  async function refreshCollisions() {
+    const path = props.path;
+    const root = props.projectRoot;
+    const liveIds = new Set(
+      props.liveTabs
+        .filter((t) => t.kind === "agent" && t.sessionId && t.sessionId !== props.selfSessionId)
+        .map((t) => t.sessionId!),
+    );
+    if (!root || !liveIds.size) {
+      if (requestFor === path) setCollisions({});
+      return;
+    }
+    const metas = await invoke<SessionMetaLite[]>("list_sessions", { folder: root }).catch(
+      () => [] as SessionMetaLite[],
+    );
+    const live = metas.filter((m) => liveIds.has(m.id));
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      live.map(async (m) => {
+        const agent = m.agent === "pi" ? "pi" : "claude";
+        const tf = await invoke<TouchedFile[]>("session_touched_files", { path: m.path, agent }).catch(
+          () => [] as TouchedFile[],
+        );
+        for (const f of tf) {
+          if (f.op === "read") continue;
+          counts[f.path] = (counts[f.path] ?? 0) + 1;
+        }
+      }),
+    );
+    if (requestFor !== path) return;
+    setCollisions(counts);
+  }
+
+  async function loadDiff(path: string) {
+    const root = props.projectRoot;
+    if (!root) return;
+    try {
+      const text = await invoke<string>("git_diff_text", { projectPath: root, file: path });
+      setDiffs((d) => ({ ...d, [path]: text }));
+    } catch {
+      setDiffs((d) => ({ ...d, [path]: "" }));
+    }
+  }
+
+  function toggleDiff(path: string) {
+    const next = new Set(expanded());
+    if (next.has(path)) {
+      next.delete(path);
+      setExpanded(next);
+      return;
+    }
+    next.add(path);
+    setExpanded(next);
+    void loadDiff(path);
+  }
+
+  function openFile(path: string) {
+    emitWith(OPEN_IN_EDITOR, { path });
+  }
+
+  function displayPath(path: string): string {
+    const root = props.projectRoot;
+    if (root && path.startsWith(`${root}/`)) return path.slice(root.length + 1);
+    return path;
+  }
+
+  createEffect(
+    on(
+      () => [props.path, props.agent] as const,
+      () => {
+        setExpanded(new Set<string>());
+        setDiffs({});
+        refreshTouched();
+        refreshCollisions();
+      },
+    ),
+  );
+
+  // Re-run collisions when the live-tab set itself changes (a session or its
+  // tab appears/disappears), not just when this panel's own session changes.
+  createEffect(
+    on(
+      () => props.liveTabs.map((t) => t.sessionId ?? "").join(","),
+      () => refreshCollisions(),
+    ),
+  );
+
+  let unlistenFs: UnlistenFn | undefined;
+  let unlistenSessions: UnlistenFn | undefined;
+  onMount(async () => {
+    // fs://changed only refreshes the git join (diffs of already-expanded
+    // rows) - the touched list itself is a transcript read, driven separately.
+    unlistenFs = await listen("fs://changed", () => {
+      for (const p of expanded()) void loadDiff(p);
+    });
+    unlistenSessions = await listen("sessions://changed", () => {
+      refreshTouched();
+      refreshCollisions();
+    });
+  });
+  onCleanup(() => {
+    unlistenFs?.();
+    unlistenSessions?.();
+  });
+
+  const visible = () => files().filter((f) => showReads() || f.op !== "read");
+  const inProject = () => visible().filter((f) => props.cwd && isUnderPath(f.path, props.cwd));
+  const outsideProject = () => visible().filter((f) => !props.cwd || !isUnderPath(f.path, props.cwd));
+
+  function row(f: TouchedFile) {
+    const collision = collisions()[f.path] ?? 0;
+    return (
+      <div>
+        <div class={styles.touchRow} onClick={() => toggleDiff(f.path)} title={f.path}>
+          <span class={`${styles.opBadge} ${styles[f.op]}`} title={OP_TITLE[f.op]}>
+            {OP_LABEL[f.op]}
+          </span>
+          <span
+            class={styles.touchName}
+            onClick={(e) => {
+              e.stopPropagation();
+              openFile(f.path);
+            }}
+          >
+            {displayPath(f.path)}
+          </span>
+          <Show when={collision > 0}>
+            <span class={styles.collisionBadge} title={`Also touched by ${collision} other running session${collision === 1 ? "" : "s"}`}>
+              {collision + 1}
+            </span>
+          </Show>
+        </div>
+        <Show when={expanded().has(f.path)}>
+          <div class={styles.touchDiff}>
+            <For each={(diffs()[f.path] ?? "").split("\n")}>
+              {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+            </For>
+          </div>
+        </Show>
+      </div>
+    );
+  }
+
+  return (
+    <div class={styles.sessionPanel}>
+      <label class={styles.readsToggle}>
+        <input type="checkbox" checked={showReads()} onChange={(e) => setShowReads(e.currentTarget.checked)} />
+        Show reads
+      </label>
+      <div class={styles.touchList}>
+        <Show when={visible().length} fallback={<div class="tree-empty">No touched files</div>}>
+          <For each={inProject()}>{row}</For>
+          <Show when={outsideProject().length}>
+            <div class={styles.bucketHeader}>Outside project</div>
+            <For each={outsideProject()}>{row}</For>
+          </Show>
+        </Show>
+      </div>
+    </div>
+  );
+}
