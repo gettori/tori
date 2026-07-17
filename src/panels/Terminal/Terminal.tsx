@@ -27,6 +27,10 @@ type OpenTerm = {
   id: string;
   title: string;
   cwd: string;
+  // The branch-unit anchor this tab is grouped under (the selected folderPath at
+  // spawn), NOT the tab cwd: a nested session still groups with its branch unit.
+  // Command tabs (clone/bootstrap) group under their own cwd.
+  workspace: string;
   // Every shell/agent tab hosts a login shell; an agent tab is that shell seeded
   // with `init`. Command tabs (clone/bootstrap) spawn the program directly.
   kind: TabKind;
@@ -61,7 +65,33 @@ export default function Terminal(props: {
   onOpenChange?: (ids: Set<string>) => void;
 }) {
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
-  const [active, setActive] = createSignal<string | null>(null);
+  // Tabs are grouped by workspace (branch-unit folder). Only the active
+  // workspace's tabs show in the bar/stage; every other group stays mounted and
+  // CSS-hidden so its PTYs keep running (gotcha #64). `activeWorkspace` is the
+  // group on screen; `activeByWorkspace` remembers the focused tab per group.
+  const [activeWorkspace, setActiveWorkspace] = createSignal<string | null>(null);
+  const [activeByWorkspace, setActiveByWorkspace] = createSignal<Record<string, string>>({});
+
+  const tabsIn = (ws: string) => open().filter((t) => t.workspace === ws);
+  const workspaceTabs = (): OpenTerm[] => {
+    const ws = activeWorkspace();
+    return ws ? tabsIn(ws) : [];
+  };
+  // The single visible tab: the active workspace's remembered tab, falling back
+  // to its first tab when that record is unset or points at a closed tab.
+  const visibleId = (): string | null => {
+    const ws = activeWorkspace();
+    if (!ws) return null;
+    const tabs = tabsIn(ws);
+    const recorded = activeByWorkspace()[ws];
+    if (recorded && tabs.some((t) => t.id === recorded)) return recorded;
+    return tabs.length ? tabs[0].id : null;
+  };
+  function focusTab(ws: string, id: string) {
+    setActiveWorkspace(ws);
+    setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
+  }
+
   // The "+ Claude ›" split button's dropdown of yolo-mode launchers. The menu is
   // portalled to <body> and anchored to the caret because the tab bar clips
   // overflow, which would otherwise hide a menu rendered inside it.
@@ -74,7 +104,7 @@ export default function Terminal(props: {
   // The agent of the focused tab drives the split button: the main action mirrors
   // the session you're in, defaulting to claude when nothing is open.
   const activeAgent = (): "claude" | "pi" => {
-    const t = open().find((o) => o.id === active());
+    const t = open().find((o) => o.id === visibleId());
     return t?.program === "pi" ? "pi" : "claude";
   };
 
@@ -94,7 +124,7 @@ export default function Terminal(props: {
   createEffect(() => props.onOpenChange?.(new Set(open().map((o) => o.id))));
 
   const offClose = onEvent(CLOSE_TAB, () => {
-    const id = active();
+    const id = visibleId();
     if (id) closeId(id);
   });
   onCleanup(offClose);
@@ -120,6 +150,9 @@ export default function Terminal(props: {
         id: t.id,
         title: t.title,
         cwd: t.cwd,
+        // Clone/bootstrap have no branch-unit yet, so they group under their own
+        // cwd; opening one reveals that group so its progress is visible.
+        workspace: t.cwd,
         kind: "command",
         program: t.program,
         args: t.args,
@@ -165,36 +198,59 @@ export default function Terminal(props: {
     if (!open().some((o) => o.id === t.id)) {
       setOpen([...open(), t]);
     }
-    setActive(t.id);
+    focusTab(t.workspace, t.id);
   }
 
-  // Selecting a session opens (or re-focuses) its resumed terminal. Resume spawns
-  // per agent at the session's OWN recorded cwd (sessionCwd), so a nested session
-  // resumes where it ran, not at the branch-unit root. The checkout guard already
-  // ran at selection time, so the tree is on the right branch before we spawn.
+  // Selecting anything reveals its workspace group. A session selection then does
+  // focus-or-resume (Option A): if a tab already hosts that session, focus it (and
+  // re-issue the resume in place if the agent has since exited to its shell);
+  // otherwise spawn a fresh resume tab. A branch-only selection just reveals the
+  // group and spawns nothing. Resume runs at the session's OWN recorded cwd, but
+  // the tab groups under the branch-unit folder, not that nested cwd.
   createEffect(
     on(
       () => props.selected,
       (sel) => {
-        if (sel?.sessionId) {
-          const isPi = sel.agent === "pi";
-          const program = isPi ? "pi" : "claude";
-          const args =
-            isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sel.sessionId];
-          openOrActivate({
-            id: shellId(),
-            title: sel.sessionTitle?.slice(0, 28) || sel.sessionId.slice(0, 8),
-            cwd: sel.sessionCwd || sel.folderPath,
-            kind: "agent",
-            program,
-            args,
-            init: agentInit(program, args),
-            sessionId: sel.sessionId,
-          });
-        }
+        if (!sel?.folderPath) return;
+        setActiveWorkspace(sel.folderPath);
+        if (sel.sessionId) void focusOrResume(sel);
       },
     ),
   );
+
+  async function focusOrResume(sel: Selection) {
+    const sessionId = sel.sessionId!;
+    const existing = open().find((t) => t.sessionId === sessionId);
+    if (existing) {
+      focusTab(existing.workspace, existing.id);
+      // Agent still carrying its id in argv → visible/live, leave it. If it has
+      // exited (dropped to the shell), retype the resume so the session comes
+      // back in place. Best-effort: without shell integration we can't tell an
+      // idle prompt from a foreground program, so treat "agent gone" as idle.
+      const running = await invoke<boolean>("session_running", { id: sessionId }).catch(() => true);
+      if (!running) {
+        invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(
+          () => {},
+        );
+      }
+      return;
+    }
+    const isPi = sel.agent === "pi";
+    const program = isPi ? "pi" : "claude";
+    const args =
+      isPi && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sessionId];
+    openOrActivate({
+      id: shellId(),
+      title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
+      cwd: sel.sessionCwd || sel.folderPath,
+      workspace: sel.folderPath,
+      kind: "agent",
+      program,
+      args,
+      init: agentInit(program, args),
+      sessionId,
+    });
+  }
 
   // A new session starts in the branch-unit folder (already the right checkout).
   // claude in yolo mode skips permission prompts; pi is always yolo so it just
@@ -205,6 +261,7 @@ export default function Terminal(props: {
       id: shellId(),
       title: `${projectName} ${agent}`,
       cwd: folderPath,
+      workspace: folderPath,
       kind: "agent",
       program: agent,
       args,
@@ -220,11 +277,9 @@ export default function Terminal(props: {
 
   function closeId(id: string) {
     invoke("pty_kill", { id }).catch(() => {});
-    const remaining = open().filter((o) => o.id !== id);
-    setOpen(remaining);
-    if (active() === id) {
-      setActive(remaining.length ? remaining[remaining.length - 1].id : null);
-    }
+    setOpen(open().filter((o) => o.id !== id));
+    // No active-tab bookkeeping needed: visibleId() falls back to the workspace's
+    // first tab when its remembered id is now gone.
   }
 
   function close(id: string, e: MouseEvent) {
@@ -232,19 +287,32 @@ export default function Terminal(props: {
     closeId(id);
   }
 
+  // The bar reorders only the active workspace's tabs (the subset it was given).
+  // Splice that new order back over the same slots in the full `open[]`, keeping
+  // every object ref and other groups' positions intact (gotcha #64).
+  function mergeReorder(next: OpenTerm[]) {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    let i = 0;
+    setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t)));
+  }
+
   return (
     <div class={styles.termArea}>
       <OverflowTabBar
         class={styles.termTabs}
-        items={open()}
-        activeId={active()}
+        items={workspaceTabs()}
+        activeId={visibleId()}
         idOf={(t) => t.id}
-        onActivate={setActive}
-        onReorder={setOpen}
+        onActivate={(id) => {
+          const ws = activeWorkspace();
+          if (ws) focusTab(ws, id);
+        }}
+        onReorder={mergeReorder}
         renderTab={(t) => (
           <div
-            class={`${styles.termTab} ${active() === t.id ? styles.active : ""}`}
-            onClick={() => setActive(t.id)}
+            class={`${styles.termTab} ${visibleId() === t.id ? styles.active : ""}`}
+            onClick={() => focusTab(t.workspace, t.id)}
             title={t.cwd}
           >
             <span class="tab-label">{t.title}</span>
@@ -350,27 +418,27 @@ export default function Terminal(props: {
       />
 
       <div class={styles.termStage}>
-        <Show
-          when={open().length}
-          fallback={
-            <div class={styles.termEmpty}>
-              Select a session to resume it, or pick a branch and start a new Claude or pi session.
-            </div>
-          }
-        >
-          <For each={open()}>
-            {(t) => (
-              <TerminalView
-                id={t.id}
-                cwd={t.cwd}
-                kind={t.kind}
-                program={t.program}
-                args={t.args}
-                init={t.init}
-                active={active() === t.id}
-              />
-            )}
-          </For>
+        {/* Every tab is always mounted (CSS-hidden unless it is the visible one),
+            so switching workspaces never unmounts a group's PTYs (gotcha #64).
+            The empty message is an overlay, not a fallback that would replace
+            (and thus unmount) the tabs. */}
+        <For each={open()}>
+          {(t) => (
+            <TerminalView
+              id={t.id}
+              cwd={t.cwd}
+              kind={t.kind}
+              program={t.program}
+              args={t.args}
+              init={t.init}
+              active={visibleId() === t.id}
+            />
+          )}
+        </For>
+        <Show when={!visibleId()}>
+          <div class={styles.termEmpty}>
+            Select a session to resume it, or pick a branch and start a new Claude or pi session.
+          </div>
         </Show>
       </div>
     </div>
