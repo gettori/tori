@@ -1,0 +1,25 @@
+schema_version = 1
+id = "claude"
+label = "Claude"
+
+[launch]
+program = "claude"
+base_args = []
+yolo_args = ["--dangerously-skip-permissions"]
+resume_args = ["--resume", "{id}"]
+
+[discovery]
+dir = "~/.claude/projects"
+filename_pattern = '^(?P<id>.+)\.jsonl$'
+
+[parser]
+kind = "claude_jsonl"
+
+[running]
+# ERE for `pgrep -f`; matches a live `claude --resume <id>`/`-r <id>` process,
+# not merely any process whose command line contains the id (a `less`/`tail`
+# on the transcript file, an editor with it open).
+pattern = 'claude (--resume|-r) {id}'
+
+[capabilities]
+pty_quiet_ms = 2000

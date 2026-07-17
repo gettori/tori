@@ -20,6 +20,7 @@ import {
   type LiveTab,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
+import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import styles from "./Terminal.module.css";
 
 type TabKind = "shell" | "agent" | "command";
@@ -72,6 +73,7 @@ export default function Terminal(props: {
   selected: Selection | null;
   onOpenChange?: (tabs: LiveTab[]) => void;
 }) {
+  ensureAgentsLoaded();
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
   // Tabs are grouped by workspace (branch-unit folder). Only the active
   // workspace's tabs show in the bar/stage; every other group stays mounted and
@@ -110,10 +112,13 @@ export default function Terminal(props: {
   let menuEl: HTMLDivElement | undefined;
 
   // The agent of the focused tab drives the split button: the main action mirrors
-  // the session you're in, defaulting to claude when nothing is open.
-  const activeAgent = (): "claude" | "pi" => {
+  // the session you're in, defaulting to the first registered agent (claude)
+  // when nothing is open or the focused tab's program isn't a known adapter.
+  const activeAgentId = (): string => {
     const t = open().find((o) => o.id === visibleId());
-    return t?.program === "pi" ? "pi" : "claude";
+    const list = agents();
+    if (t && list.some((a) => a.id === t.program)) return t.program;
+    return list[0]?.id ?? "claude";
   };
 
   function toggleMenu() {
@@ -284,7 +289,8 @@ export default function Terminal(props: {
 
   async function focusOrResume(sel: Selection) {
     const sessionId = sel.sessionId!;
-    const agent = sel.agent === "pi" ? "pi" : "claude";
+    const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
+    const a = findAgent(agentId);
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
       focusTab(existing.workspace, existing.id);
@@ -292,7 +298,9 @@ export default function Terminal(props: {
       // exited (dropped to the shell), retype the resume so the session comes
       // back in place. Best-effort: without shell integration we can't tell an
       // idle prompt from a foreground program, so treat "agent gone" as idle.
-      const running = await invoke<boolean>("session_running", { id: sessionId, agent }).catch(() => true);
+      const running = await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(
+        () => true,
+      );
       if (!running) {
         invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(
           () => {},
@@ -300,35 +308,35 @@ export default function Terminal(props: {
       }
       return;
     }
-    const args =
-      agent === "pi" && sel.sessionFile ? ["--session", sel.sessionFile] : ["--resume", sessionId];
+    const args = applyTemplate(a.resume_args, { id: sessionId, file: sel.sessionFile ?? "" });
     openOrActivate({
       id: shellId(),
       title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
       cwd: sel.sessionCwd || sel.folderPath,
       workspace: sel.folderPath,
       kind: "agent",
-      program: agent,
+      program: a.program,
       args,
-      init: agentInit(agent, args),
+      init: agentInit(a.program, args),
       sessionId,
     });
   }
 
   // A new session starts in the branch-unit folder (already the right checkout).
-  // claude in yolo mode skips permission prompts; pi is always yolo so it just
-  // launches normally.
-  function spawnSession(agent: "claude" | "pi", folderPath: string, projectName: string, yolo = false) {
-    const args = agent === "claude" && yolo ? ["--dangerously-skip-permissions"] : [];
+  // Launch args come from the adapter: base args, plus its yolo args when asked
+  // (claude's skip permission prompts; pi's is empty - it launches yolo already).
+  function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
+    const a = findAgent(agentId);
+    const args = [...a.base_args, ...(yolo ? a.yolo_args : [])];
     openOrActivate({
       id: shellId(),
-      title: `${projectName} ${agent}`,
+      title: `${projectName} ${agentId}`,
       cwd: folderPath,
       workspace: folderPath,
       kind: "agent",
-      program: agent,
+      program: a.program,
       args,
-      init: agentInit(agent, args),
+      init: agentInit(a.program, args),
       // Floored to match the backend's whole-second `created_at` (epoch_secs
       // truncates): comparing a fractional spawn time against a truncated
       // creation time would spuriously reject a session created in the same
@@ -337,10 +345,10 @@ export default function Terminal(props: {
     });
   }
 
-  function newSession(agent: "claude" | "pi", yolo = false) {
+  function newSession(agentId: string, yolo = false) {
     const sel = props.selected;
     if (!sel) return;
-    spawnSession(agent, sel.folderPath, sel.projectName, yolo);
+    spawnSession(agentId, sel.folderPath, sel.projectName, yolo);
   }
 
   // A plain shell tab: the same login shell as an agent tab, just unseeded (no
@@ -429,12 +437,12 @@ export default function Terminal(props: {
               disabled={!props.selected}
               title={
                 props.selected
-                  ? `New ${activeAgent() === "pi" ? "Pi" : "Claude"} session in ${props.selected.projectName}`
+                  ? `New ${findAgent(activeAgentId()).label} session in ${props.selected.projectName}`
                   : "Select a branch first"
               }
-              onClick={() => newSession(activeAgent(), activeAgent() === "pi")}
+              onClick={() => newSession(activeAgentId(), activeAgentId() === "pi")}
             >
-              {activeAgent() === "pi" ? "+ Pi" : "+ Claude"}
+              + {findAgent(activeAgentId()).label}
             </button>
             <button
               ref={caretEl}
@@ -455,8 +463,15 @@ export default function Terminal(props: {
                   role="menu"
                   style={{ left: `${menuPos().left}px`, top: `${menuPos().top}px` }}
                 >
+                  {/* The main button already covers the active agent (plain,
+                      or yolo when it's pi); the dropdown offers what it
+                      doesn't: switching to claude when pi is active, or
+                      claude/pi's yolo variants when claude is active. This
+                      curated two-agent shape is unchanged from before the
+                      registry - generalizing it to N agents is step 7's
+                      concern (the first new agent), not this one's. */}
                   <Show
-                    when={activeAgent() === "pi"}
+                    when={activeAgentId() === "pi"}
                     fallback={
                       <>
                         <button
@@ -467,7 +482,7 @@ export default function Terminal(props: {
                             newSession("claude", true);
                           }}
                         >
-                          Claude (yolo)
+                          {findAgent("claude").label} (yolo)
                         </button>
                         <button
                           class={styles.termNewMenuItem}
@@ -477,7 +492,7 @@ export default function Terminal(props: {
                             newSession("pi", true);
                           }}
                         >
-                          Pi (yolo)
+                          {findAgent("pi").label} (yolo)
                         </button>
                       </>
                     }
@@ -490,7 +505,7 @@ export default function Terminal(props: {
                         newSession("claude");
                       }}
                     >
-                      Claude
+                      {findAgent("claude").label}
                     </button>
                     <button
                       class={styles.termNewMenuItem}
@@ -500,7 +515,7 @@ export default function Terminal(props: {
                         newSession("claude", true);
                       }}
                     >
-                      Claude (yolo)
+                      {findAgent("claude").label} (yolo)
                     </button>
                   </Show>
                 </div>
