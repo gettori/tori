@@ -39,8 +39,10 @@ function termColors() {
 export default function TerminalView(props: {
   id: string;
   cwd: string;
+  kind: "shell" | "agent" | "command";
   program: string;
   args: string[];
+  init?: string;
   active: boolean;
 }) {
   let host!: HTMLDivElement;
@@ -186,8 +188,10 @@ export default function TerminalView(props: {
       invoke("pty_write", { id: props.id, data }).catch(() => {});
     });
 
+    // Only command tabs stay visible after exit, so only they print this. A
+    // shell/agent tab is removed by Terminal.tsx on exit, so it would never show.
     unlistenExit = await listen<string>("pty://exit", (e) => {
-      if (e.payload === props.id) {
+      if (e.payload === props.id && props.kind === "command") {
         term?.writeln("\r\n\x1b[90m[process exited]\x1b[0m");
       }
     });
@@ -204,6 +208,8 @@ export default function TerminalView(props: {
       cwd: props.cwd,
       cols: term.cols,
       rows: term.rows,
+      kind: props.kind,
+      init: props.init ?? null,
       onOutput: output,
     }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
 
