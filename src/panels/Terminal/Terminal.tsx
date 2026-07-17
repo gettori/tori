@@ -275,6 +275,22 @@ export default function Terminal(props: {
     spawnSession(agent, sel.folderPath, sel.projectName, yolo);
   }
 
+  // A plain shell tab: the same login shell as an agent tab, just unseeded (no
+  // init), opened in the selected branch-unit folder.
+  function newShell() {
+    const sel = props.selected;
+    if (!sel) return;
+    openOrActivate({
+      id: shellId(),
+      title: `${sel.projectName} shell`,
+      cwd: sel.folderPath,
+      workspace: sel.folderPath,
+      kind: "shell",
+      program: "",
+      args: [],
+    });
+  }
+
   function closeId(id: string) {
     invoke("pty_kill", { id }).catch(() => {});
     setOpen(open().filter((o) => o.id !== id));
@@ -330,6 +346,15 @@ export default function Terminal(props: {
           </>
         )}
         trailing={
+          <>
+          <button
+            class={`${styles.termNew} ${styles.termNewSolo}`}
+            disabled={!props.selected}
+            title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+            onClick={newShell}
+          >
+            + Terminal
+          </button>
           <div class={styles.termNewSplit} ref={splitEl}>
             <button
               class={`${styles.termNew} ${styles.termNewMain}`}
@@ -414,6 +439,7 @@ export default function Terminal(props: {
               </Portal>
             </Show>
           </div>
+          </>
         }
       />
 

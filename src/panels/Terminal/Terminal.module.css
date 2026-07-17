@@ -77,6 +77,13 @@
   border-right: none;
 }
 
+/* A standalone launch button (no caret half): fully rounded, its own margin. */
+.termNewSolo {
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  border-radius: calc(4px * var(--ui-radius-scale));
+  margin-left: 2px;
+}
+
 .termNewCaret {
   padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
   border-radius: 0 4px 4px 0;
