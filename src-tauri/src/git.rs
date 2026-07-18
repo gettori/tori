@@ -483,6 +483,115 @@ pub fn git_fetch(
     Ok(())
 }
 
+/// Whether `branch` already tracks an upstream in `repo`, so `git_push` knows
+/// whether to pass `--set-upstream` on its first push.
+fn has_upstream(repo: &str, branch: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--abbrev-ref", "--symbolic-full-name", &format!("{branch}@{{u}}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Payload for the background-push result events.
+#[derive(Clone, Serialize)]
+pub struct PushResult {
+    repo: String,
+    ok: bool,
+    error: String,
+}
+
+/// Background `git push` through the askpass bridge, a sibling of `git_fetch`:
+/// runs on its own thread with a fresh op id, so credential prompts pop the
+/// in-app dialog. Passes `--set-upstream` when `branch` tracks nothing yet
+/// (its first push). Emits `git://push-done` on success and `git://push-error`
+/// on failure; both carry the repo path so the UI can correlate.
+#[tauri::command]
+pub fn git_push(
+    app: AppHandle,
+    state: State<AskpassState>,
+    repo: String,
+    remote: String,
+    branch: String,
+) -> Result<(), String> {
+    let inner = state.0.clone();
+    let op_id = next_op_id();
+    thread::spawn(move || {
+        let set_upstream = !has_upstream(&repo, &branch);
+        let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+        cmd.arg("push");
+        if set_upstream {
+            cmd.arg("--set-upstream");
+        }
+        cmd.arg(&remote).arg(&branch);
+        let (ok, error) = match cmd.output() {
+            Ok(o) if o.status.success() => (true, String::new()),
+            Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => (false, e.to_string()),
+        };
+        let event = if ok { "git://push-done" } else { "git://push-error" };
+        let _ = app.emit(event, PushResult { repo, ok, error });
+    });
+    Ok(())
+}
+
+/// Ahead/behind counts of the current branch against its upstream, for the
+/// Changes panel header. `has_upstream: false` (branch tracks nothing yet)
+/// renders as an "unpushed branch" state rather than 0/0.
+#[derive(Serialize)]
+pub struct AheadBehind {
+    ahead: u32,
+    behind: u32,
+    has_upstream: bool,
+}
+
+#[tauri::command]
+pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
+    // Unborn HEAD or detached: `rev-parse --abbrev-ref HEAD` reports "HEAD"
+    // itself rather than erroring, which then simply fails `has_upstream`
+    // below - reported as the same "unpushed branch" state.
+    let branch = git_capture(&project_path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    if !has_upstream(&project_path, &branch) {
+        return Ok(AheadBehind { ahead: 0, behind: 0, has_upstream: false });
+    }
+    let counts = git_capture(
+        &project_path,
+        &["rev-list", "--left-right", "--count", &format!("{branch}...{branch}@{{u}}")],
+    )?;
+    let mut parts = counts.split_whitespace();
+    let ahead = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let behind = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    Ok(AheadBehind { ahead, behind, has_upstream: true })
+}
+
+/// The PR base branch: `origin/HEAD` when set, else a probe for `origin/main`
+/// then `origin/master` (in that order), else None (no origin, or neither
+/// conventional branch exists - the UI hides "Open PR" without a base).
+#[tauri::command]
+pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, String> {
+    if let Ok(text) = git_capture(&project_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+        if let Some(b) = text.strip_prefix("refs/remotes/origin/") {
+            return Ok(Some(b.to_string()));
+        }
+    }
+    for candidate in ["main", "master"] {
+        let refname = format!("refs/remotes/origin/{candidate}");
+        if Command::new("git")
+            .arg("-C")
+            .arg(&project_path)
+            .args(["rev-parse", "--verify", "--quiet", &refname])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Ok(Some(candidate.to_string()));
+        }
+    }
+    Ok(None)
+}
+
 /// Delete a branch on its remote (`git push <remote> --delete <ref>`) through the
 /// askpass bridge, so credential prompts pop the in-app dialog. The remote and the
 /// remote-side ref are resolved from the *local* branch's tracking config, so a
@@ -593,6 +702,75 @@ diff --git a/f b/f
         git(&dir, &["commit", "-q", "-m", "init"]);
         git(&dir, &["branch", "feature"]);
         dir
+    }
+
+    /// A local repo (on `main`, one commit) with `origin` set to a bare repo,
+    /// nothing pushed yet. Returns (local, remote).
+    fn repo_with_remote() -> (PathBuf, PathBuf) {
+        let remote = empty_tmp();
+        git(&remote, &["init", "--bare", "-q"]);
+        let local = repo_with_two_branches();
+        git(&local, &["checkout", "-q", "main"]);
+        git(&local, &["remote", "add", "origin", &remote.to_string_lossy()]);
+        (local, remote)
+    }
+
+    #[test]
+    fn has_upstream_reflects_push_state() {
+        let (local, remote) = repo_with_remote();
+        let p = local.to_string_lossy().into_owned();
+        assert!(!has_upstream(&p, "main"));
+        git(&local, &["push", "-u", "origin", "main"]);
+        assert!(has_upstream(&p, "main"));
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn ahead_behind_tracks_unpushed_then_pushed_commits() {
+        let (local, remote) = repo_with_remote();
+        let p = local.to_string_lossy().into_owned();
+
+        let before = git_ahead_behind(p.clone()).unwrap();
+        assert!(!before.has_upstream);
+
+        git(&local, &["push", "-u", "origin", "main"]);
+        let synced = git_ahead_behind(p.clone()).unwrap();
+        assert!(synced.has_upstream);
+        assert_eq!((synced.ahead, synced.behind), (0, 0));
+
+        std::fs::write(local.join("f.txt"), "v2").unwrap();
+        git(&local, &["commit", "-aqm", "more"]);
+        let ahead = git_ahead_behind(p).unwrap();
+        assert_eq!((ahead.ahead, ahead.behind), (1, 0));
+
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn default_base_branch_falls_back_to_probing_origin_main() {
+        let (local, remote) = repo_with_remote();
+        let p = local.to_string_lossy().into_owned();
+        git(&local, &["push", "-u", "origin", "main"]);
+
+        // No origin/HEAD symref set yet - falls back to the origin/main probe.
+        assert_eq!(git_default_base_branch(p.clone()).unwrap().as_deref(), Some("main"));
+
+        // An explicit origin/HEAD symref is read directly.
+        git(&local, &["remote", "set-head", "origin", "main"]);
+        assert_eq!(git_default_base_branch(p).unwrap().as_deref(), Some("main"));
+
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn default_base_branch_none_without_origin() {
+        let dir = repo_with_two_branches();
+        let p = dir.to_string_lossy().into_owned();
+        assert_eq!(git_default_base_branch(p).unwrap(), None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     fn current_branch(dir: &Path) -> String {

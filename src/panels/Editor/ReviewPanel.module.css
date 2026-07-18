@@ -9,6 +9,54 @@
   user-select: none;
 }
 
+.headerBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--pane-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.branchName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.aheadBehind {
+  color: var(--text-dim);
+}
+
+.pushButton,
+.openPrButton {
+  flex: none;
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: calc(11px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.pushButton:hover:not(:disabled),
+.openPrButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.pushButton:disabled,
+.openPrButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .reviewPanel :global(.tree-empty) {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   color: var(--text-dim);
