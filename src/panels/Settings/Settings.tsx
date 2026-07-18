@@ -1,7 +1,7 @@
 import { onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import { settings, saveSettings, type Appearance, type Typography, type Layout } from "./settingsStore";
+import { settings, saveSettings, type Appearance, type Typography, type Layout, type Checkpoints } from "./settingsStore";
 import { listSelectableThemes } from "../../theme";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
@@ -20,6 +20,8 @@ export default function Settings(props: { onClose: () => void }) {
     saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
   const setLayout = (l: Partial<Layout>) =>
     saveSettings({ ...settings, layout: { ...settings.layout, ...l } });
+  const setCheckpoints = (c: Partial<Checkpoints>) =>
+    saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
 
   // Reject empty/NaN/out-of-range commits (a blank or 0 font size would blank
   // the UI); fall back to the current value so an invalid entry is a no-op.
@@ -166,6 +168,21 @@ export default function Settings(props: { onClose: () => void }) {
                   value={settings.layout.radius}
                   onChange={(e) => setLayout({ radius: clamp(e.currentTarget.value, 0, 16, settings.layout.radius) })}
                 />
+              </div>
+            </section>
+
+            <section class={styles.section}>
+              <div class={styles.sectionTitle}>Checkpoints</div>
+              <div class={styles.row}>
+                <label class={styles.label}>Snapshot on each prompt</label>
+                <input
+                  type="checkbox"
+                  checked={settings.checkpoints.enabled}
+                  onChange={(e) => setCheckpoints({ enabled: e.currentTarget.checked })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt.
               </div>
             </section>
           </div>

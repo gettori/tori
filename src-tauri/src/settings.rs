@@ -85,6 +85,20 @@ impl Default for Layout {
     }
 }
 
+/// Turn-level checkpoints (Finding E): on by default, a global escape hatch
+/// for a user who doesn't want a scratch-index snapshot taken per prompt.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Checkpoints {
+    pub enabled: bool,
+}
+
+impl Default for Checkpoints {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -94,6 +108,8 @@ pub struct Settings {
     pub typography: Typography,
     #[serde(default)]
     pub layout: Layout,
+    #[serde(default)]
+    pub checkpoints: Checkpoints,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -189,6 +205,12 @@ mod tests {
         assert_eq!(s.appearance, Appearance::default());
         assert_eq!(s.layout, Layout::default());
         std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn checkpoints_default_to_enabled() {
+        assert!(Settings::default().checkpoints.enabled);
+        assert!(Checkpoints::default().enabled);
     }
 
     #[test]
