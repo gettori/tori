@@ -1299,6 +1299,58 @@ pub fn session_transcript(
     Ok(TranscriptPage { turns, next_cursor })
 }
 
+// --- Needs-you floor: transcript-tail state (Finding A, Tier 3 floor) ---
+//
+// Joined with PTY quiet (pty.rs's Activity) in the frontend (phase 2 task 4):
+// quiet + BlockedCandidate -> needs-you; quiet + Done -> idle; an active PTY
+// reads as Working regardless of tail state. This command answers only "what
+// does the transcript's tail look like", agent-agnostic (reuses
+// `parse_transcript_turns`, so it inherits both agents' parsers for free).
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TailState {
+    #[serde(rename = "working")]
+    Working,
+    #[serde(rename = "done")]
+    Done,
+    #[serde(rename = "blocked-candidate")]
+    BlockedCandidate,
+}
+
+/// Classify the last turn's shape: a trailing pending tool call (no result
+/// turn after it) is a blocked-candidate; a trailing final assistant text is
+/// done; anything else (no turns yet, a fresh human prompt, thinking cut
+/// short, or a tool result awaiting the agent's next reply) is working - the
+/// agent hasn't reached a resting state either way.
+fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
+    let Some(last) = turns.last() else { return TailState::Working };
+    if last.role != "assistant" {
+        return TailState::Working;
+    }
+    match last.blocks.last().map(|b| b.kind.as_str()) {
+        Some("tool_call") => TailState::BlockedCandidate,
+        Some("text") => TailState::Done,
+        _ => TailState::Working,
+    }
+}
+
+/// `working` | `done` | `blocked-candidate` from the transcript tail,
+/// capability-gated per adapter: an agent whose `needs_you` capability is off
+/// (its blocked-quiet join was never verified, e.g. pi - see ADAPTERS.md)
+/// never reports `blocked-candidate`, collapsing to `working` instead, so its
+/// dot caps at working rather than risking a false amber.
+#[tauri::command]
+pub fn session_tail_state(path: String, agent: String) -> Result<TailState, String> {
+    let turns = parse_transcript_turns(&path, &agent);
+    let tail = classify_tail(&turns);
+    let needs_you_capable = agents::find(&agent).map(|a| a.needs_you).unwrap_or(true);
+    if tail == TailState::BlockedCandidate && !needs_you_capable {
+        Ok(TailState::Working)
+    } else {
+        Ok(tail)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1692,6 +1744,67 @@ mod tests {
         assert_eq!(turns[2].blocks[0].tool_name.as_deref(), Some("write"));
         assert_eq!(turns[2].blocks[0].text.as_deref(), Some("ok"));
 
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_claude_pending_tool_use_is_blocked_candidate() {
+        let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"run the tests"}}
+{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"text","text":"On it."},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}
+"#;
+        let p = tmp_file("claude_tail_pending.jsonl", body);
+        // claude's needs_you capability is on, so the join surfaces directly.
+        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_claude_final_text_is_done() {
+        let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"what does main.rs do?"}}
+{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/Users/x/proj/main.rs"}}]}}
+{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:06.000Z","isMeta":false,"message":{"content":[{"type":"tool_result","content":"fn main() {}","is_error":false}]}}
+{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"text","text":"It's an empty entry point."}]}}
+"#;
+        let p = tmp_file("claude_tail_done.jsonl", body);
+        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_pi_pending_tool_use_is_capability_gated_to_working() {
+        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-18T10:00:00.000Z"}
+{"type":"message","timestamp":"2026-07-18T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"run the tests"}]}}
+{"type":"message","timestamp":"2026-07-18T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"On it."},{"type":"toolCall","id":"1","name":"bash","arguments":{"command":"npm test"}}]}}
+"#;
+        let p = tmp_file("pi_tail_pending.jsonl", body);
+        // The raw transcript shape is identical to claude's blocked-candidate case,
+        // but pi's needs_you capability is off (findings.md: pi's built-in tools
+        // never observably block), so the join collapses to working instead of
+        // risking a false amber.
+        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Working);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_pi_final_text_is_done() {
+        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-18T10:00:00.000Z"}
+{"type":"message","timestamp":"2026-07-18T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"what does main.rs do?"}]}}
+{"type":"message","timestamp":"2026-07-18T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"read","arguments":{"path":"/Users/y/proj/main.rs"}}]}}
+{"type":"message","timestamp":"2026-07-18T10:00:06.000Z","message":{"role":"toolResult","toolCallId":"1","toolName":"read","content":"fn main() {}","isError":false}}
+{"type":"message","timestamp":"2026-07-18T10:00:08.000Z","message":{"role":"assistant","content":[{"type":"text","text":"It's an empty entry point."}]}}
+"#;
+        let p = tmp_file("pi_tail_done.jsonl", body);
+        // Done doesn't depend on the needs_you capability at all.
+        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Done);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_fresh_prompt_with_no_reply_yet_is_working() {
+        let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"hello"}}
+"#;
+        let p = tmp_file("claude_tail_fresh.jsonl", body);
+        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 

@@ -22,4 +22,10 @@ kind = "claude_jsonl"
 pattern = 'claude (--resume|-r) {id}'
 
 [capabilities]
+# Empirically confirmed (2026-07-18, phase 2 capture): a real permission
+# prompt (`--permission-mode plan`, "Would you like to proceed?") leaves the
+# PTY fully silent for 9s+ while waiting; a 20s Bash tool run stays noisy
+# throughout (spinner redraws every <=0.62s). 2000ms sits well above the
+# noisy-phase gaps and far below the observed blocked-silence duration.
 pty_quiet_ms = 2000
+needs_you = true

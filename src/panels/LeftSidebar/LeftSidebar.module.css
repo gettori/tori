@@ -351,7 +351,10 @@
 
 /* Session-row running indicator: solid = a live tab AND the probe confirms the
    agent running; hollow = confirmed running with no open tab (resumed
-   elsewhere). Leading, before the agent icon; unmounted entirely otherwise. */
+   elsewhere, capped here - working/needs-you both need a live PTY to
+   observe). working = active PTY, pulsing. needsYou = quiet PTY + a pending
+   tool_use in the transcript tail (Finding A floor). Leading, before the
+   agent icon; unmounted entirely otherwise. */
 .sessionDot {
   flex: none;
   width: calc(6px * var(--ui-scale));
@@ -364,6 +367,19 @@
 .sessionDot.hollow {
   background: transparent;
   border: 1px solid var(--status-live);
+}
+.sessionDot.working {
+  background: var(--status-live);
+  /* prefers-reduced-motion is handled globally (src/styles/base.css collapses
+     every animation-duration/iteration-count app-wide), not re-implemented here. */
+  animation: sessionDotPulse 1.4s ease-in-out infinite;
+}
+.sessionDot.needsYou {
+  background: var(--status-needs-you);
+}
+@keyframes sessionDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .row.session .when {

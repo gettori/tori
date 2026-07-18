@@ -54,7 +54,32 @@ pattern = '...'   # required; ERE template (for `pgrep -f`) with an `{id}` place
 
 [capabilities]
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
+needs_you = true      # optional, default true; whether quiet+pending-tool_use is trusted as "needs you" - see below
 ```
+
+### `capabilities.needs_you`
+
+The needs-you dot state is a join: a trailing `tool_use` with no matching
+result yet, **and** a PTY that's been quiet longer than `pty_quiet_ms`. That
+join only means "waiting on you" for an agent that actually stops and blocks
+on a permission prompt. Set `needs_you = false` for an agent whose tools
+auto-execute (no observable blocked-and-quiet state to verify the join
+against) - its dot then caps at working instead of showing a possibly-false
+amber.
+
+Empirically measured for the bundled adapters (2026-07-18, real PTY capture,
+not guessed):
+
+- **claude**: a genuine permission prompt (`--permission-mode plan`, "Would
+  you like to proceed?") leaves the PTY silent for 9s+ while waiting; a 20s
+  Bash tool run stays noisy throughout (spinner redraws every <=0.62s).
+  `needs_you = true`.
+- **pi**: its built-in bash/write/edit tools never block on a permission
+  prompt at all (confirmed - a Bash command ran immediately, no gate), so
+  there's nothing to verify the "blocked is quiet" half of the join against.
+  A trailing tool_use plus a quiet PTY for pi means "still running" or
+  "hung", not "waiting on you". `needs_you = false` until pi grows a
+  permission-gated mode.
 
 ### `{id}` / `{file}` placeholders
 

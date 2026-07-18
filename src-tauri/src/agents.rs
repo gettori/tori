@@ -54,6 +54,9 @@ pub struct AgentAdapter {
     /// ERE template (for `pgrep -f`) with an `{id}` placeholder.
     pub running_pattern: String,
     pub pty_quiet_ms: u64,
+    /// Whether the quiet-PTY x pending-tool_use join is trusted as a "needs
+    /// you" signal for this agent (see `CapabilitiesToml::needs_you`).
+    pub needs_you: bool,
 }
 
 // --- raw TOML shape (kept separate from `AgentAdapter`: a `Regex` isn't
@@ -103,16 +106,26 @@ struct RunningToml {
 struct CapabilitiesToml {
     #[serde(default = "default_quiet_ms")]
     pty_quiet_ms: u64,
+    /// Whether the quiet-PTY x pending-tool_use join is trusted as a
+    /// "needs you" signal for this agent. False when the agent has no
+    /// observable permission-block state to be quiet during - see
+    /// ADAPTERS.md's Capabilities section.
+    #[serde(default = "default_needs_you")]
+    needs_you: bool,
 }
 
 impl Default for CapabilitiesToml {
     fn default() -> Self {
-        Self { pty_quiet_ms: default_quiet_ms() }
+        Self { pty_quiet_ms: default_quiet_ms(), needs_you: default_needs_you() }
     }
 }
 
 fn default_quiet_ms() -> u64 {
     2000
+}
+
+fn default_needs_you() -> bool {
+    true
 }
 
 fn expand_tilde(path: &str) -> PathBuf {
@@ -187,6 +200,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         parser_kind,
         running_pattern: raw.running.pattern,
         pty_quiet_ms: raw.capabilities.pty_quiet_ms,
+        needs_you: raw.capabilities.needs_you,
     })
 }
 
@@ -328,11 +342,18 @@ pattern = 'x --resume {id}'
         assert_eq!(claude.program, "claude");
         assert_eq!(claude.parser_kind, ParserKind::ClaudeJsonl);
         assert_eq!(claude.yolo_args, vec!["--dangerously-skip-permissions"]);
+        // Empirically confirmed (phase 2): claude genuinely blocks-and-goes-quiet
+        // on a permission prompt, so needs-you ships enabled.
+        assert!(claude.needs_you);
 
         let pi = load_adapter_str(BUILTIN_PI, "bundled:pi").expect("pi parses");
         assert_eq!(pi.id, "pi");
         assert_eq!(pi.program, "pi");
         assert_eq!(pi.parser_kind, ParserKind::PiJsonl);
+        // Empirically confirmed (phase 2): pi's built-in tools never block on
+        // permission, so there is no genuine blocked-quiet state to verify the
+        // join against; needs-you stays off per the plan's contingency.
+        assert!(!pi.needs_you);
     }
 
     #[test]
