@@ -8,6 +8,7 @@ mod git;
 mod launch;
 mod lsp;
 mod model;
+mod opencode;
 mod presence;
 mod pty;
 mod sessions;
