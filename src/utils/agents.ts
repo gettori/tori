@@ -5,7 +5,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
-export type ParserKind = "claude_jsonl" | "pi_jsonl";
+export type ParserKind = "claude_jsonl" | "pi_jsonl" | "opencode_sqlite";
 
 export type Agent = {
   id: string;
@@ -20,9 +20,10 @@ export type Agent = {
   pty_quiet_ms: number;
 };
 
-// Matches the bundled claude/pi TOML (src-tauri/agents/*.toml) so the first
-// paint - before `list_agents` resolves - looks identical to the pre-registry
-// hardcoded behavior, and so a failed `invoke` degrades to that same shape.
+// Matches the bundled claude/pi/opencode TOML (src-tauri/agents/*.toml) so
+// the first paint - before `list_agents` resolves - looks identical to the
+// pre-registry hardcoded behavior, and so a failed `invoke` degrades to that
+// same shape.
 const FALLBACK_AGENTS: Agent[] = [
   {
     id: "claude",
@@ -44,6 +45,17 @@ const FALLBACK_AGENTS: Agent[] = [
     resume_args: ["--session", "{file}"],
     parser_kind: "pi_jsonl",
     running_pattern: "pi --session .*{id}",
+    pty_quiet_ms: 2000,
+  },
+  {
+    id: "opencode",
+    label: "opencode",
+    program: "opencode",
+    base_args: [],
+    yolo_args: ["--auto"],
+    resume_args: ["--session", "{id}"],
+    parser_kind: "opencode_sqlite",
+    running_pattern: "opencode.*--session {id}",
     pty_quiet_ms: 2000,
   },
 ];

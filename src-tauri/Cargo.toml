@@ -31,6 +31,7 @@ portable-pty = "0.8"
 json5 = "0.4"
 ureq = { version = "2", features = ["json"] }
 regex = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

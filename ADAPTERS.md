@@ -1,18 +1,35 @@
 # Agent adapters
 
-Sway drives every CLI coding agent (Claude, pi, and anything you add) through
-one abstraction: the **agent adapter**. An adapter describes how to launch an
-agent, where its session transcripts live, how to tell a live process apart
-from a stray `less` on the same file, and which built-in parser turns its
-transcript into Sway's session model.
+Sway drives every CLI coding agent (Claude, pi, opencode, and anything you
+add) through one abstraction: the **agent adapter**. An adapter describes how
+to launch an agent, where its session transcripts live, how to tell a live
+process apart from a stray `less` on the same file, and which built-in parser
+turns its transcript into Sway's session model.
 
-Two adapters ship bundled (`claude`, `pi`). You can add your own, or
-whole-replace a bundled one, by dropping a TOML file into
+Three adapters ship bundled (`claude`, `pi`, `opencode`). You can add your
+own, or whole-replace a bundled one, by dropping a TOML file into
 `~/.config/sway/agents/`.
 
-> **Schema stability: unstable.** This format may change without a deprecation
-> period until the first third-party adapter (a real, non-Claude/pi agent)
-> lands and exercises it end to end. Pin nothing long-term yet.
+> **Schema stability: v1 (stable).** Validated end to end by three real
+> agents with genuinely different transcript conventions (claude/pi: one
+> jsonl file per session; opencode: every session's messages/parts live as
+> rows in one shared SQLite DB). Breaking changes now go through a
+> deprecation period rather than landing silently.
+
+## Supported agents
+
+- **claude**, **pi**, **opencode** ship bundled and are fully wired (list,
+  launch, resume, the working/needs-you dot, touched files, the transcript
+  viewer).
+- **codex and gemini are not supported** as of this writing - not because
+  their conventions are unusual, but because verifying them against real,
+  freshly-generated sessions was blocked by CLI auth on the machine that
+  wrote this adapter set (codex had no stored login; gemini-cli's free-tier
+  OAuth for "Gemini Code Assist for individuals" is currently rejected
+  server-side by Google, a backend policy change, not a local config issue).
+  Nothing in the schema below rules them out - a `schema_version = 1` TOML in
+  `~/.config/sway/agents/` can add either today, following the same pattern
+  `opencode.toml` used. Revisit in a future release once auth is sorted out.
 
 ## File location and loading
 
@@ -35,6 +52,7 @@ whole-replace a bundled one, by dropping a TOML file into
 schema_version = 1   # required; must be 1 - the only version implemented today
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
+verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
 
 [launch]
 program = "..."        # required; the executable to seed into the tab's shell
@@ -43,8 +61,10 @@ yolo_args = []           # optional, default []; extra args for "skip permission
 resume_args = []        # required; template for resuming a session - see placeholders below
 
 [discovery]
-dir = "..."                     # required; session-transcript root (~ expands to $HOME)
-filename_pattern = '...'        # required; regex with a named `id` capture group
+backend = "file"                # optional, default "file"; "file" or "sqlite" - see below
+dir = "..."                     # required when backend = "file"; session-transcript root (~ expands to $HOME)
+filename_pattern = '...'        # required when backend = "file"; regex with a named `id` capture group
+db_path = "..."                 # required when backend = "sqlite"; path to the shared session DB (~ expands to $HOME)
 
 [parser]
 kind = "..."     # required; must be one of the implemented kinds below
@@ -80,6 +100,15 @@ not guessed):
   A trailing tool_use plus a quiet PTY for pi means "still running" or
   "hung", not "waiting on you". `needs_you = false` until pi grows a
   permission-gated mode.
+- **opencode**: verified against a real interactive TUI session (a scripted
+  pty, not headless `opencode run`) driving its default `build` agent through
+  a bash tool call. No permission prompt ever rendered (grepping the full
+  captured byte stream for approval-dialog language found zero matches), and
+  the TUI redraws a spinner continuously (~0.04-0.05s cadence) for the entire
+  turn - never silent while working, so there's no blocked-and-quiet state to
+  join against either. `needs_you = false`. Caveat: only `bash` was
+  exercised; a stricter permission profile or a different opencode agent
+  config could behave differently.
 
 ### `{id}` / `{file}` placeholders
 
@@ -92,25 +121,41 @@ not guessed):
 ### Parser kinds
 
 `parser.kind` selects which built-in transcript parser turns this agent's
-`.jsonl` lines into Sway's session model (prompt/turn/tool counts, touched
+session data into Sway's session model (prompt/turn/tool counts, touched
 files, the transcript viewer). Parser kinds are implemented in Sway itself,
 not user-authorable - a user adapter can only *reference* one of:
 
 - `claude_jsonl` - Claude Code's transcript shape (`type: "user"/"assistant"`
-  at the top level).
+  at the top level of each `.jsonl` line).
 - `pi_jsonl` - pi's transcript shape (`type: "message"`, `message.role` of
-  `user`/`assistant`/`toolResult`).
+  `user`/`assistant`/`toolResult`, one `.jsonl` line per turn).
+- `opencode_sqlite` - opencode's shape: no per-session file at all. Every
+  session's turns are `message` rows (`data.role: "user"/"assistant"`) joined
+  to their `part` rows (`data.type: "text"/"tool"/...`) in one shared SQLite
+  DB (see `discovery.backend = "sqlite"` below). Only pairs with that backend.
 
 Adding a new parser kind (for an agent with a genuinely different transcript
 shape) requires a Sway code change, not just a TOML file.
 
-### `discovery.filename_pattern`
+### `discovery.backend`
 
-Matched against each file's *name* (not its full path) inside every
-immediate subdirectory of `discovery.dir` (Sway's own layout is
-`<dir>/<encoded-cwd>/<session-file>`, mirroring both bundled agents). Must
-contain a named capture group called `id`, used as a fallback session id
-when the transcript's own content doesn't yield one.
+Two backends, chosen per adapter:
+
+- **`"file"`** (default): the agent writes one file per session under a
+  directory tree. `dir` is the session-transcript root; `filename_pattern` is
+  matched against each file's *name* (not its full path) inside every
+  immediate subdirectory of `dir` (Sway's own layout is
+  `<dir>/<encoded-cwd>/<session-file>`, mirroring claude/pi). Must contain a
+  named capture group called `id`, used as a fallback session id when the
+  transcript's own content doesn't yield one.
+- **`"sqlite"`**: the agent keeps every session (across every project on the
+  machine) as rows in one shared SQLite DB - `db_path` points at it. There is
+  no per-session file and no filename pattern; the session id lives in a DB
+  column instead. Sway opens this DB strictly read-only and never writes to
+  it - deleting an adapter's session goes through the agent's own CLI (e.g.
+  `opencode session delete <id>`), never a raw SQL statement. Only pairs with
+  `parser.kind = "opencode_sqlite"` today, but the backend itself is generic:
+  a future DB-backed agent can reuse it once it gets its own parser kind.
 
 ## Example: a from-scratch third-party adapter
 
@@ -144,7 +189,7 @@ pty_quiet_ms = 2000
 ```
 
 Save this as `~/.config/sway/agents/gemini.toml` and restart Sway; a "+
-Gemini" launch option appears alongside Claude and pi.
+Gemini" launch option appears alongside Claude, pi, and opencode.
 
 ## Whole-replacing a bundled adapter
 
