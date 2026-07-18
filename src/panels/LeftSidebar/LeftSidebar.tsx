@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
+import { createSignal, createMemo, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -34,6 +34,18 @@ import {
   type OpenTranscript,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import {
+  notePresence,
+  markSessionAttended,
+  liveCounts,
+  unattendedNeedsYouCount,
+  shouldSuppressNotification,
+  notifyNeedsYou,
+  onNeedsYouNotificationClick,
+  lastTransition,
+  attended,
+  type LiveSessionDot,
+} from "../../utils/presence";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
@@ -464,15 +476,123 @@ export default function LeftSidebar(props: {
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
   // needs-you both need a real PTY to observe, which only a live tab has.
-  function sessionDot(s: SessionMeta): "solid" | "hollow" | "working" | "needsYou" | "none" {
-    const tab = (props.liveTabs ?? []).find((t) => t.sessionId === s.id);
-    const running = probes()[s.id]?.running === true;
+  function sessionDot(id: string): "solid" | "hollow" | "working" | "needsYou" | "none" {
+    const tab = (props.liveTabs ?? []).find((t) => t.sessionId === id);
+    const running = probes()[id]?.running === true;
     if (!tab) return running ? "hollow" : "none";
     if (!running) return "none";
     const activity = ptyActivity()[tab.id];
     if (activity === "active") return "working";
-    if (activity === "quiet" && tailStates()[s.id] === "blocked-candidate") return "needsYou";
+    if (activity === "quiet" && tailStates()[id] === "blocked-candidate") return "needsYou";
     return "solid";
+  }
+
+  // Reverse-lookup: which space/project owns a branch-unit's `folderPath`,
+  // for presence display metadata (notification/tray text).
+  function projectForFolder(folderPath: string): { spaceName: string; projectName: string } | null {
+    for (const g of config()?.spaces ?? []) {
+      for (const p of g.projects) {
+        if (p.branchUnits.some((u) => u.folderPath === folderPath)) {
+          return { spaceName: g.name, projectName: p.name };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Presence (phase 3): every live agent session's composed dot state +
+  // display metadata, recomputed whenever any of its inputs change. Shared by
+  // the tracker (notePresence), the tray, and the dock badge below, so they
+  // can't drift by rebuilding this list independently three times.
+  const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
+    const allSessions = Object.values(sessions()).flat();
+    const live: LiveSessionDot[] = [];
+    for (const t of props.liveTabs ?? []) {
+      if (t.kind !== "agent" || !t.sessionId) continue;
+      const meta = allSessions.find((s) => s.id === t.sessionId);
+      const proj = projectForFolder(t.workspace);
+      live.push({
+        sessionId: t.sessionId,
+        dot: sessionDot(t.sessionId),
+        sessionName: meta?.name || meta?.title || t.sessionId,
+        projectName: proj?.projectName ?? "",
+        folderPath: t.workspace,
+        tabId: t.id,
+      });
+    }
+    return live;
+  });
+
+  // Feed the tracker on every relevant change, so the OS notification/tray/
+  // badge (all outside this component) share one source of truth instead of
+  // re-deriving it independently.
+  createEffect(() => notePresence(liveSessionDots()));
+
+  const [windowFocused, setWindowFocused] = createSignal(true);
+  // A session reads as attended once it's both the sidebar's current
+  // selection and the window has focus - the same "you're looking at it"
+  // signal focusOrResume already uses to bring a tab to the front.
+  createEffect(() => {
+    const sel = props.selected;
+    if (sel?.sessionId && windowFocused()) markSessionAttended(sel.sessionId);
+  });
+
+  // OS notification on the needs-you rising edge, suppressed if you're
+  // already looking at that exact session when it blocks.
+  createEffect(
+    on(lastTransition, (event) => {
+      if (!event) return;
+      if (shouldSuppressNotification(event, props.selected?.sessionId, windowFocused())) return;
+      void notifyNeedsYou(event);
+    }),
+  );
+
+  // Tray + dock badge, recomputed from the same live-session list. Both are
+  // cheap, infrequent (agent state transitions, not PTY bytes), so a plain
+  // rebuild-on-change is simpler than an incremental update.
+  createEffect(() => {
+    const live = liveSessionDots();
+    const { running, needsYou } = liveCounts(live);
+    const entries = live
+      .filter((l) => l.dot !== "none")
+      .sort((a, b) => (a.dot === "needsYou" ? -1 : b.dot === "needsYou" ? 1 : 0))
+      .map((l) => ({
+        id: l.sessionId,
+        label: `${l.dot === "needsYou" ? "⚠ " : ""}${l.sessionName}${l.projectName ? ` (${l.projectName})` : ""}`,
+      }));
+    invoke("update_tray", { running, needsYou, entries }).catch(() => {});
+  });
+  createEffect(() => {
+    invoke("set_badge_count", { count: unattendedNeedsYouCount(liveSessionDots(), attended()) }).catch(
+      () => {},
+    );
+  });
+
+  // Reverse-lookup a session id to its (space, project, unit, session) tuple
+  // and select it exactly as clicking its sidebar row would - the notification
+  // click handler and the tray's per-session menu entries both focus this way.
+  function selectSessionById(sessionId: string) {
+    // Raw sessions()[folderPath], not the search-filtered unitSessions(p, u) -
+    // a notification/tray click must still focus a session the sidebar's
+    // current search query happens to be hiding.
+    let hit: { folderPath: string; s: SessionMeta } | undefined;
+    for (const [folderPath, list] of Object.entries(sessions())) {
+      const s = list.find((s) => s.id === sessionId);
+      if (s) {
+        hit = { folderPath, s };
+        break;
+      }
+    }
+    if (!hit) return;
+    for (const g of config()?.spaces ?? []) {
+      for (const p of g.projects) {
+        const u = p.branchUnits.find((u) => u.folderPath === hit!.folderPath);
+        if (u) {
+          void selectSession(g, p, u, hit!.s);
+          return;
+        }
+      }
+    }
   }
 
   // Re-probe every session whose dot could currently be non-"none": every live
@@ -1566,16 +1686,16 @@ export default function LeftSidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, s.path)}
                 >
-                  <Show when={sessionDot(s) !== "none"}>
+                  <Show when={sessionDot(s.id) !== "none"}>
                     <span
-                      class={`${styles.sessionDot} ${styles[sessionDot(s)]}`}
+                      class={`${styles.sessionDot} ${styles[sessionDot(s.id)]}`}
                       title={
                         {
                           solid: "Agent running",
                           hollow: "Running elsewhere (no open tab)",
                           working: "Working",
                           needsYou: "Needs you",
-                        }[sessionDot(s) as "solid" | "hollow" | "working" | "needsYou"]
+                        }[sessionDot(s.id) as "solid" | "hollow" | "working" | "needsYou"]
                       }
                       aria-hidden="true"
                     />
@@ -1682,6 +1802,7 @@ export default function LeftSidebar(props: {
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenActivity: UnlistenFn | undefined;
+  let unlistenTrayFocus: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offSearch: (() => void) | undefined;
@@ -1703,10 +1824,15 @@ export default function LeftSidebar(props: {
       "pty://activity",
       (e) => setPtyActivity((m) => ({ ...m, [e.payload.id]: e.payload.state })),
     );
+    // Presence surfaces (phase 3): the tray's per-session menu entries and a
+    // needs-you notification both focus the same way a sidebar row click does.
+    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) => selectSessionById(e.payload));
+    onNeedsYouNotificationClick((sessionId) => selectSessionById(sessionId));
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
     // transcript write, if any, may already have been debounced away).
     offFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      setWindowFocused(focused);
       if (focused) probeActive();
     });
     // Attach-flow background fetch: fold remote-only branches into the open
@@ -1755,6 +1881,7 @@ export default function LeftSidebar(props: {
     unlistenConfig?.();
     unlistenSessions?.();
     unlistenActivity?.();
+    unlistenTrayFocus?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
     offSearch?.();

@@ -7,6 +7,7 @@ mod git;
 mod launch;
 mod lsp;
 mod model;
+mod presence;
 mod pty;
 mod sessions;
 mod settings;
@@ -17,9 +18,31 @@ use config::{ConfigWatch, ProjectIndex, RootWatch};
 use fs::FsWatch;
 use settings::SettingsWatch;
 use lsp::LspState;
+use presence::TrayState;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch, TouchedIndex};
+use std::sync::Mutex;
+use tauri::menu::Menu;
+use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{Emitter, Manager};
+
+/// Builds the menu-bar tray icon. Split out of `.setup()` so its failure path
+/// can be handled the same non-fatal way as the askpass bridge, without a
+/// panic-on-missing-icon or a `?` that would abort the whole app.
+fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
+    let icon = app.default_window_icon().cloned().ok_or("no default window icon configured")?;
+    let empty_menu = Menu::new(app)?;
+    let tray_app = app.handle().clone();
+    let tray = TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&empty_menu)
+        .tooltip("Sway")
+        .on_menu_event(move |_tray, event| {
+            presence::handle_tray_menu_event(&tray_app, event.id.as_ref());
+        })
+        .build(app)?;
+    Ok(tray)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,6 +56,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Hide the native macOS traffic-light buttons so we can draw our own
             // (smaller, centered, gray-until-hover) in the web layer. Keeping the
@@ -74,6 +98,21 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("sway: askpass bridge failed to start: {e}"),
             }
+
+            // Menu-bar tray (Finding F3/presence): starts empty (no sessions
+            // yet at launch) - the frontend calls `update_tray` once presence
+            // state exists. Menu-item clicks (a session's own id) fan out as
+            // `tray://focus-session` for the frontend to focus that tab.
+            // Non-fatal like the askpass bridge above: a tray is a presence
+            // nice-to-have, not something a startup failure should take the
+            // whole app down over.
+            match build_tray(app) {
+                Ok(tray) => {
+                    app.manage(TrayState(Mutex::new(tray)));
+                }
+                Err(e) => eprintln!("sway: tray icon failed to start: {e}"),
+            }
+
             Ok(())
         })
         .manage(PtyState::default())
@@ -157,6 +196,8 @@ pub fn run() {
             sessions::session_touched_files,
             sessions::session_transcript,
             sessions::session_tail_state,
+            presence::update_tray,
+            presence::set_badge_count,
             model::model_context_caps,
             launch::open_in_vscode,
             launch::open_in_ghostty,
