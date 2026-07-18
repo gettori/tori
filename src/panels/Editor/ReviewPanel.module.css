@@ -14,6 +14,16 @@
   color: var(--text-dim);
 }
 
+.sectionHeader {
+  margin: calc(4px * var(--ui-density)) calc(4px * var(--ui-density)) 0;
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
 .reviewRow {
   display: flex;
   align-items: center;
@@ -28,6 +38,26 @@
 
 .reviewRow:hover {
   background: var(--hover);
+}
+
+.stageToggle {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--text-dim);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  cursor: pointer;
+}
+
+.stageToggle:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .reviewStatus {
@@ -82,4 +112,64 @@
 }
 .reviewDiff .diffLine.meta {
   color: var(--text-dim);
+}
+
+.commitBox {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--pane-bg);
+  border-top: 1px solid var(--border);
+}
+
+.commitInput {
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  color: var(--text);
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.commitActions {
+  display: flex;
+  gap: calc(6px * var(--ui-density));
+}
+
+.draftButton,
+.commitButton {
+  flex: 1;
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: calc(12px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.draftButton:hover:not(:disabled),
+.commitButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.draftButton:disabled,
+.commitButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.commitButton {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--pane-bg);
+}
+
+.commitButton:disabled {
+  background: var(--bg);
+  color: var(--text-dim);
+  border-color: var(--border);
 }
