@@ -20,6 +20,11 @@ pub struct GitFileStatus {
     /// Porcelain XY status code, e.g. " M", "??", "A ", "MM".
     status: String,
     path: String,
+    /// X (index) column is neither ' ' nor '?': this file has staged changes.
+    staged: bool,
+    /// Y (worktree) column is not ' ', or the file is untracked ("??"):
+    /// this file has unstaged changes. A file can be both (e.g. "MM").
+    unstaged: bool,
 }
 
 #[tauri::command]
@@ -45,12 +50,52 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
         if line.len() < 4 {
             continue;
         }
+        let code = &line[..2];
+        let mut chars = code.chars();
+        let x = chars.next().unwrap_or(' ');
+        let y = chars.next().unwrap_or(' ');
         files.push(GitFileStatus {
-            status: line[..2].to_string(),
+            status: code.to_string(),
             path: line[3..].to_string(),
+            staged: x != ' ' && x != '?',
+            unstaged: y != ' ',
         });
     }
     files
+}
+
+/// Stage `paths` (`git add --`). A no-op on an empty list.
+#[tauri::command]
+pub fn git_stage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut args: Vec<&str> = vec!["add", "--"];
+    args.extend(paths.iter().map(String::as_str));
+    git_run(&project_path, &args)
+}
+
+/// Unstage `paths` back to the working tree (`git restore --staged --`),
+/// leaving worktree edits untouched. A no-op on an empty list.
+#[tauri::command]
+pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut args: Vec<&str> = vec!["restore", "--staged", "--"];
+    args.extend(paths.iter().map(String::as_str));
+    git_run(&project_path, &args)
+}
+
+/// Commit whatever is currently staged with `message`. Refuses an empty
+/// message locally rather than letting git reject it (clearer error text).
+#[tauri::command]
+pub fn git_commit(project_path: String, message: String) -> Result<(), String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Commit message is empty".into());
+    }
+    git_run(&project_path, &["commit", "-m", message])
 }
 
 #[derive(Serialize)]
@@ -558,6 +603,129 @@ diff --git a/f b/f
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn status_reports_staged_and_unstaged_flags() {
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("f.txt"), "v2").unwrap(); // unstaged edit
+        std::fs::write(dir.join("new.txt"), "x").unwrap(); // untracked
+        let p = dir.to_string_lossy().into_owned();
+        let files = git_status(p).unwrap();
+
+        let f = files.iter().find(|f| f.path == "f.txt").unwrap();
+        assert!(!f.staged && f.unstaged);
+        let n = files.iter().find(|f| f.path == "new.txt").unwrap();
+        assert!(!n.staged && n.unstaged);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn partially_staged_file_reports_both_flags() {
+        // Stage an edit, then edit again on top: git's "MM" - staged AND
+        // unstaged at once, the case the Staged/Changes sections must both
+        // list this file for.
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("f.txt"), "v2").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        git_stage(p.clone(), vec!["f.txt".into()]).unwrap();
+        std::fs::write(dir.join("f.txt"), "v3").unwrap();
+
+        let files = git_status(p).unwrap();
+        let f = files.iter().find(|f| f.path == "f.txt").unwrap();
+        assert!(f.staged && f.unstaged);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_without_identity_surfaces_stderr() {
+        // No local `user.name`/`user.email` configured, and this repo's
+        // ambient env carries none either (git() only sets it per-invocation
+        // via process env, not persisted to config): the commit fails and
+        // git's stderr is surfaced rather than a blank error.
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&p)
+            .args(["config", "--local", "--unset-all", "user.name"])
+            .output();
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&p)
+            .args(["config", "--local", "--unset-all", "user.email"])
+            .output();
+
+        if has_git_identity(&p) {
+            // Ambient global identity is configured on this machine/CI - the
+            // no-identity case can't be exercised without touching global
+            // config, so skip rather than assert a false failure.
+            std::fs::remove_dir_all(&dir).ok();
+            return;
+        }
+        let err = git_commit(p, "won't work".into()).expect_err("commit without identity must fail");
+        assert!(!err.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stage_then_unstage_flips_the_split() {
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+
+        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+        let staged = git_status(p.clone()).unwrap();
+        let f = staged.iter().find(|f| f.path == "new.txt").unwrap();
+        assert!(f.staged && !f.unstaged);
+
+        git_unstage(p.clone(), vec!["new.txt".into()]).unwrap();
+        let unstaged = git_status(p.clone()).unwrap();
+        let f = unstaged.iter().find(|f| f.path == "new.txt").unwrap();
+        assert!(!f.staged && f.unstaged);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stage_accepts_a_dash_prefixed_filename() {
+        // `--` before paths (D4): a filename starting with '-' must not be
+        // parsed as a git flag.
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("-weird.txt"), "x").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+
+        git_stage(p.clone(), vec!["-weird.txt".into()]).unwrap();
+        let files = git_status(p).unwrap();
+        let f = files.iter().find(|f| f.path == "-weird.txt").unwrap();
+        assert!(f.staged);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_requires_a_message_and_clears_the_stage() {
+        let dir = repo_with_two_branches();
+        git(&dir, &["config", "user.name", "t"]);
+        git(&dir, &["config", "user.email", "t@t.test"]);
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+
+        let err = git_commit(p.clone(), "   ".into()).expect_err("empty message must be refused");
+        assert!(!err.is_empty());
+
+        git_commit(p.clone(), "add new.txt".into()).unwrap();
+        let files = git_status(p).unwrap();
+        assert!(files.iter().all(|f| f.path != "new.txt"));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
