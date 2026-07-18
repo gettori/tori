@@ -33,7 +33,14 @@ import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
 type FileTab = { kind: "file"; path: string; name: string };
-type TranscriptTab = { kind: "transcript"; id: string; sessionPath: string; agent: "claude" | "pi"; name: string };
+type TranscriptTab = {
+  kind: "transcript";
+  id: string;
+  sessionPath: string;
+  agent: "claude" | "pi";
+  name: string;
+  cwd: string;
+};
 type Tab = FileTab | TranscriptTab;
 
 function tabId(t: Tab): string {
@@ -149,9 +156,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
 
   // Opened from the sidebar's session context menu (see OPEN_TRANSCRIPT below).
   // Read-only, so there is never a dirty prompt on close.
-  function openTranscript(id: string, sessionPath: string, agent: "claude" | "pi", name: string) {
+  function openTranscript(id: string, sessionPath: string, agent: "claude" | "pi", name: string, cwd: string) {
     if (!tabs().some((t) => t.kind === "transcript" && t.id === id)) {
-      setTabs([...tabs(), { kind: "transcript", id, sessionPath, agent, name }]);
+      setTabs([...tabs(), { kind: "transcript", id, sessionPath, agent, name, cwd }]);
     }
     setActiveId(`transcript:${id}`);
   }
@@ -219,7 +226,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     });
     offTranscript = onWith<OpenTranscript>(OPEN_TRANSCRIPT, (d) => {
       if (!d?.id || !d.sessionPath) return;
-      openTranscript(d.id, d.sessionPath, d.agent, d.name);
+      openTranscript(d.id, d.sessionPath, d.agent, d.name, d.cwd);
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Follow mode: auto-open the most-recently-changed project file. The watcher
@@ -343,7 +350,14 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         </Show>
         <Show when={activeTranscript()}>
           {(t) => (
-            <TranscriptViewer class={styles.transcriptOverlay} sessionPath={t().sessionPath} agent={t().agent} />
+            <TranscriptViewer
+              class={styles.transcriptOverlay}
+              sessionPath={t().sessionPath}
+              agent={t().agent}
+              sessionId={t().id}
+              repoPath={t().cwd}
+              liveTabs={props.liveTabs ?? []}
+            />
           )}
         </Show>
       </div>

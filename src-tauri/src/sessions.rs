@@ -1351,6 +1351,65 @@ pub fn session_tail_state(path: String, agent: String) -> Result<TailState, Stri
     }
 }
 
+// --- Checkpoint prompt-boundary detection (Finding E) ---
+//
+// Genuine human prompts only (reuses `is_human_prompt`, the same filter
+// `session_detail`'s prompt_count uses), agent-agnostic via the same
+// claude/pi branch other transcript readers use. The count lets a caller
+// detect a rising edge (a *new* prompt arrived) without re-deriving it from
+// raw turns; `last_ts` is the transcript timestamp a checkpoint snapshot is
+// keyed by.
+
+#[derive(Serialize)]
+pub struct PromptTail {
+    pub count: u32,
+    pub last_ts: u64,
+}
+
+/// Count of genuine human prompts and the transcript timestamp of the most
+/// recent one, agent-agnostic. Checkpoint boundaries are keyed by `last_ts`
+/// (see checkpoint.rs); `count` lets a caller detect a new prompt without
+/// tracking timestamps itself.
+#[tauri::command]
+pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, String> {
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let kind = agents::parser_kind_for(&agent);
+    let mut count = 0u32;
+    let mut last_ts = 0u64;
+
+    for line in reader.lines().map_while(Result::ok) {
+        let v: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let ts = v
+            .get("timestamp")
+            .and_then(|t| t.as_str())
+            .and_then(parse_rfc3339_secs)
+            .unwrap_or(0);
+
+        let content = if kind == agents::ParserKind::PiJsonl {
+            (v.get("type").and_then(|t| t.as_str()) == Some("message")
+                && v.get("message").and_then(|m| m.get("role")).and_then(|r| r.as_str()) == Some("user"))
+            .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
+            .flatten()
+        } else {
+            (v.get("type").and_then(|t| t.as_str()) == Some("user")
+                && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true))
+            .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
+            .flatten()
+        };
+
+        if content.map(|c| is_human_prompt(&c)).unwrap_or(false) {
+            count += 1;
+            last_ts = ts;
+        }
+    }
+
+    Ok(PromptTail { count, last_ts })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1837,6 +1896,36 @@ mod tests {
         assert_eq!(page2.turns[1].blocks[0].text.as_deref(), Some("turn 0"));
         assert_eq!(page2.next_cursor, None);
 
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn prompt_tail_counts_only_genuine_human_text_claude() {
+        let body = r#"{"type":"user","cwd":"/p","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"first prompt"}}
+{"type":"assistant","cwd":"/p","timestamp":"2026-07-18T10:00:02.000Z","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"user","cwd":"/p","timestamp":"2026-07-18T10:00:03.000Z","isMeta":false,"message":{"content":[{"type":"tool_result","content":"a.txt","is_error":false}]}}
+{"type":"user","cwd":"/p","timestamp":"2026-07-18T10:00:04.000Z","message":{"content":"[Context] file:///p/a.txt"}}
+{"type":"user","cwd":"/p","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":"second prompt"}}
+"#;
+        let p = tmp_file("prompt_tail_claude.jsonl", body);
+        let tail = session_prompt_tail(p.to_str().unwrap().to_string(), "claude".into()).unwrap();
+        // A tool_result envelope and a [Context] block are not human prompts.
+        assert_eq!(tail.count, 2);
+        assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:05.000Z").unwrap());
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn prompt_tail_counts_only_genuine_human_text_pi() {
+        let body = r#"{"type":"message","timestamp":"2026-07-18T10:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"first prompt"}]}}
+{"type":"message","timestamp":"2026-07-18T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"read","arguments":{"path":"/p/a.txt"}}]}}
+{"type":"message","timestamp":"2026-07-18T10:00:03.000Z","message":{"role":"toolResult","toolCallId":"1","toolName":"read","content":"a","isError":false}}
+{"type":"message","timestamp":"2026-07-18T10:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"second prompt"}]}}
+"#;
+        let p = tmp_file("prompt_tail_pi.jsonl", body);
+        let tail = session_prompt_tail(p.to_str().unwrap().to_string(), "pi".into()).unwrap();
+        assert_eq!(tail.count, 2);
+        assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:04.000Z").unwrap());
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 }

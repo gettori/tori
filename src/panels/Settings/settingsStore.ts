@@ -17,7 +17,8 @@ export type Typography = {
   lineHeight: number;
 };
 export type Layout = { density: "comfortable" | "compact"; radius: number };
-export type Settings = { appearance: Appearance; typography: Typography; layout: Layout };
+export type Checkpoints = { enabled: boolean };
+export type Settings = { appearance: Appearance; typography: Typography; layout: Layout; checkpoints: Checkpoints };
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "dark-plus", importPath: null },
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
     lineHeight: 1.5,
   },
   layout: { density: "comfortable", radius: 5 },
+  checkpoints: { enabled: true },
 };
 
 const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
