@@ -1,0 +1,67 @@
+/* Shared by ReviewPanel and SessionPanel's hunk-comment affordance. */
+.hunkHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(6px * var(--ui-density));
+}
+
+.commentToggle {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+  cursor: pointer;
+  padding: 0 calc(4px * var(--ui-density));
+  border-radius: var(--sway-radius-sm);
+}
+
+.commentToggle:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.commentToggle:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.commentBox {
+  display: flex;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--pane-bg);
+}
+
+.commentInput {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: calc(11px * var(--ui-scale));
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
+}
+
+.commentSend {
+  flex: none;
+  font-size: calc(11px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+}
+
+.commentSend:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.commentSend:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

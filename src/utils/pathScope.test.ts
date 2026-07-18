@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isUnderPath, countRunningUnder, sameCwd } from "./pathScope";
+import { isUnderPath, countRunningUnder, sameCwd, mentionPath } from "./pathScope";
 
 describe("isUnderPath", () => {
   it("matches self and descendants, not siblings or prefixes", () => {
@@ -44,5 +44,25 @@ describe("sameCwd", () => {
     expect(sameCwd("/r/personal/proj/", "/r/personal/proj")).toBe(true);
     expect(sameCwd("/r/personal/proj/sub", "/r/personal/proj")).toBe(false); // nested, not exact
     expect(sameCwd("/r/personal/proj-old", "/r/personal/proj")).toBe(false);
+  });
+});
+
+describe("mentionPath", () => {
+  it("relativizes a path inside the cwd", () => {
+    expect(mentionPath("/r/personal/proj/src/foo.ts", "/r/personal/proj")).toBe("src/foo.ts");
+  });
+
+  it("leaves a path outside the cwd absolute (e.g. a Docs-tree file)", () => {
+    expect(mentionPath("/r/grimoire/docs/personal/proj/notes.md", "/r/personal/proj")).toBe(
+      "/r/grimoire/docs/personal/proj/notes.md",
+    );
+  });
+
+  it("does not treat a sibling with a shared prefix as inside the cwd", () => {
+    expect(mentionPath("/r/personal/proj-old/foo.ts", "/r/personal/proj")).toBe("/r/personal/proj-old/foo.ts");
+  });
+
+  it("normalizes a trailing slash on cwd", () => {
+    expect(mentionPath("/r/personal/proj/src/foo.ts", "/r/personal/proj/")).toBe("src/foo.ts");
   });
 });

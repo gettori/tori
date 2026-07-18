@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, type LiveTab } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { parseDiffHunks } from "../../utils/diffHunks";
+import type { SessionTarget } from "../../utils/safeSend";
+import { findAgent } from "../../utils/agents";
+import HunkCommentInput from "./HunkCommentInput";
+import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./SessionPanel.module.css";
 
 type TouchOp = "read" | "create" | "edit" | "delete";
@@ -133,6 +138,27 @@ export default function SessionPanel(props: {
     return path;
   }
 
+  // This panel is always scoped to one session (props.selfSessionId), so a
+  // hunk comment here always routes back to that same session.
+  function target(): SessionTarget | null {
+    if (!props.selfSessionId || !props.projectRoot) return null;
+    return {
+      sessionId: props.selfSessionId,
+      agent: props.agent,
+      folderPath: props.projectRoot,
+      sessionCwd: props.cwd ?? undefined,
+      sessionPath: props.path ?? undefined,
+    };
+  }
+
+  // Capability gate: this panel only ever exists for a selected session, so
+  // the sole remaining gate is whether that session's adapter can be resumed
+  // (empty resume_args - ADAPTERS.md).
+  function disabledReason(): string | null {
+    if (!target()) return "Select a session first";
+    return findAgent(props.agent).resume_args.length === 0 ? "This agent's sessions can't be resumed" : null;
+  }
+
   createEffect(
     on(
       () => [props.path, props.agent] as const,
@@ -201,8 +227,24 @@ export default function SessionPanel(props: {
         </div>
         <Show when={expanded().has(f.path)}>
           <div class={styles.touchDiff}>
-            <For each={(diffs()[f.path] ?? "").split("\n")}>
-              {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+            <For each={parseDiffHunks(diffs()[f.path] ?? "")}>
+              {(hunk) => (
+                <div>
+                  <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                    <span>{hunk.header}</span>
+                    <HunkCommentInput
+                      target={target()}
+                      disabledReason={disabledReason()}
+                      filePath={f.path}
+                      startLine={hunk.startLine}
+                      endLine={hunk.endLine}
+                    />
+                  </div>
+                  <For each={hunk.lines}>
+                    {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+                  </For>
+                </div>
+              )}
             </For>
           </div>
         </Show>

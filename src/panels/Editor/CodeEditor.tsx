@@ -12,6 +12,10 @@ import { json } from "@codemirror/lang-json";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
 import { lspPluginFor } from "./lspClient";
+import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
+import { findAgent } from "../../utils/agents";
+import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
 import styles from "./CodeEditor.module.css";
 
@@ -76,6 +80,11 @@ export default function CodeEditor(props: {
   projectRoot: string | null;
   goto: { path: string; line: number; col?: number; nonce: number } | null;
   onDirty: (path: string, dirty: boolean) => void;
+  // The sidebar's selected session, for the selection-mention keybinding
+  // (safe-send target). Null disables the binding (toasts instead of a
+  // silent no-op) the same way a missing session disables the hunk-comment
+  // button.
+  selected: Selection | null;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -203,6 +212,50 @@ export default function CodeEditor(props: {
     }
   }
 
+  function target(): SessionTarget | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return null;
+    return {
+      sessionId: sel.sessionId,
+      agent: sel.agent ?? "claude",
+      folderPath: sel.folderPath,
+      sessionCwd: sel.sessionCwd,
+      sessionPath: sel.sessionPath,
+      sessionTitle: sel.sessionTitle,
+      sessionFile: sel.sessionFile,
+    };
+  }
+
+  function disabledReason(): string | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return "Select a session first";
+    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    return null;
+  }
+
+  // Selection mention (safe-send, no trailing Enter): inserts `@<file>#Lx-Ly`
+  // for the active buffer's current selection at the selected session's
+  // prompt. Same relativity rule as the hunk-comment affordance (mentionPath
+  // via composeSelectionMention) - inside the session's cwd, relative;
+  // outside it (a Shared-tree buffer), absolute.
+  async function sendSelectionMention() {
+    if (!view || !shown) return true;
+    const reason = disabledReason();
+    if (reason) {
+      emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" });
+      return true;
+    }
+    const t = target();
+    if (!t) return true;
+    const sel = view.state.selection.main;
+    const doc = view.state.doc;
+    const startLine = doc.lineAt(sel.from).number;
+    const endLine = doc.lineAt(sel.to).number;
+    const mention = composeSelectionMention(t, shown, startLine, endLine);
+    await requestSend({ ...t, text: mention });
+    return true;
+  }
+
   const commonExtensions: Extension[] = [
     lineNumbers(),
     highlightActiveLine(),
@@ -223,6 +276,14 @@ export default function CodeEditor(props: {
         preventDefault: true,
         run: () => {
           void saveActive();
+          return true;
+        },
+      },
+      {
+        key: "Mod-Shift-m",
+        preventDefault: true,
+        run: () => {
+          void sendSelectionMention();
           return true;
         },
       },

@@ -16,6 +16,14 @@ export function sameCwd(a: string, b: string): boolean {
   return a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 }
 
+// Relativize an absolute path to `cwd` for an `@path` mention, matching the
+// terminal drag-drop convention (TerminalView.tsx handleDrop): inside cwd,
+// relative; outside it (e.g. a Docs-tree file), left absolute.
+export function mentionPath(absPath: string, cwd: string): string {
+  const base = cwd.replace(/\/+$/, "");
+  return absPath === base || absPath.startsWith(`${base}/`) ? absPath.slice(base.length + 1) || "." : absPath;
+}
+
 // Count sessions that are BOTH running (id present in `runningIds`) and rooted
 // under `spacePath`. The prefix match (not the rendered tree nodes) is what lets
 // an agent in a project subfolder be counted, matching the worktree-removal guard.
