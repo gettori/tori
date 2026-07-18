@@ -87,7 +87,7 @@ fn extract_text(content: &serde_json::Value) -> Option<String> {
 /// tool-result and tool-use-only turns, whose content carries no text block,
 /// are excluded) and isn't a slash-command/tag envelope (`<...>`) or pi's
 /// `[Context]` block. Used to count prompts, not raw transcript turns.
-fn is_human_prompt(content: &serde_json::Value) -> bool {
+pub(crate) fn is_human_prompt(content: &serde_json::Value) -> bool {
     match extract_text(content) {
         Some(t) => {
             let t = t.trim();
@@ -97,7 +97,7 @@ fn is_human_prompt(content: &serde_json::Value) -> bool {
     }
 }
 
-fn clean_title(raw: &str) -> String {
+pub(crate) fn clean_title(raw: &str) -> String {
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
         let truncated: String = one_line.chars().take(90).collect();
@@ -182,6 +182,11 @@ fn parse_by_adapter(
     match adapter.parser_kind {
         agents::ParserKind::ClaudeJsonl => parse_session(path, mtime, created, &adapter.id),
         agents::ParserKind::PiJsonl => parse_pi_session(path, mtime, created, &adapter.id),
+        // Never actually reached: a `Discovery::Sqlite` adapter's sessions
+        // are enumerated straight from the DB in `ensure_index`, not via a
+        // file-tree walk that would call this function. Kept only so the
+        // match stays exhaustive for a hypothetical direct caller.
+        agents::ParserKind::OpencodeSqlite => None,
     }
 }
 
@@ -197,44 +202,64 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     let mut seen: Vec<PathBuf> = Vec::new();
 
     for adapter in agents::registry() {
-        let root = &adapter.discovery_dir;
-        if let Ok(dirs) = std::fs::read_dir(root) {
-            for dir in dirs.flatten() {
-                let p = dir.path();
-                if !p.is_dir() {
-                    continue;
-                }
-                if let Ok(files) = std::fs::read_dir(&p) {
-                    for f in files.flatten() {
-                        let fp = f.path();
-                        let matches_pattern = fp
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|n| adapter.filename_regex.is_match(n))
-                            .unwrap_or(false);
-                        if !matches_pattern {
+        match &adapter.discovery {
+            agents::Discovery::File { dir, filename_regex } => {
+                if let Ok(dirs) = std::fs::read_dir(dir) {
+                    for dir in dirs.flatten() {
+                        let p = dir.path();
+                        if !p.is_dir() {
                             continue;
                         }
-                        let metadata = f.metadata().ok();
-                        let mtime = metadata
-                            .as_ref()
-                            .and_then(|m| m.modified().ok())
-                            .unwrap_or(SystemTime::UNIX_EPOCH);
-                        let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
-                        seen.push(fp.clone());
+                        if let Ok(files) = std::fs::read_dir(&p) {
+                            for f in files.flatten() {
+                                let fp = f.path();
+                                let matches_pattern = fp
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .map(|n| filename_regex.is_match(n))
+                                    .unwrap_or(false);
+                                if !matches_pattern {
+                                    continue;
+                                }
+                                let metadata = f.metadata().ok();
+                                let mtime = metadata
+                                    .as_ref()
+                                    .and_then(|m| m.modified().ok())
+                                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                                let created =
+                                    metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
+                                seen.push(fp.clone());
 
-                        let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
-                        if !fresh {
-                            let meta = parse_by_adapter(adapter, &fp, mtime, created);
-                            cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                                let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
+                                if !fresh {
+                                    let meta = parse_by_adapter(adapter, &fp, mtime, created);
+                                    cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                                }
+                            }
                         }
+                    }
+                }
+            }
+            agents::Discovery::Sqlite { db_path } => {
+                // One shared DB across every project - list every session,
+                // not a directory tree, and filter by cwd at the caller
+                // (`filter_sort`) the same way file-backed adapters already do.
+                for row in crate::opencode::list_sessions(db_path) {
+                    let key = PathBuf::from(crate::opencode::make_locator(db_path, &row.id));
+                    let mtime = crate::opencode::epoch_ms_to_system_time(row.time_updated);
+                    seen.push(key.clone());
+
+                    let fresh = cache.get(&key).map(|e| e.mtime == mtime).unwrap_or(false);
+                    if !fresh {
+                        let meta = Some(crate::opencode::to_session_meta(&row, &adapter.id, db_path));
+                        cache.insert(key, CacheEntry { mtime, meta });
                     }
                 }
             }
         }
     }
 
-    // Drop entries whose files disappeared.
+    // Drop entries whose files (or opencode rows) disappeared.
     cache.retain(|k, _| seen.contains(k));
 
     cache.values().filter_map(|e| e.meta.clone()).collect()
@@ -540,6 +565,14 @@ pub fn set_session_archived(id: String, archived: bool) -> Result<(), String> {
 /// frontend confirms first.
 #[tauri::command]
 pub fn delete_session(path: String) -> Result<(), String> {
+    if let Some((_db_path, session_id)) = crate::opencode::parse_locator(&path) {
+        // Shells out to opencode's own `session delete`, mirroring
+        // `session_running`'s pgrep approach - never writes to the shared
+        // DB directly, so opencode's own cascade/consistency rules apply.
+        let program =
+            agents::find("opencode").map(|a| a.program.clone()).unwrap_or_else(|| "opencode".to_string());
+        return crate::opencode::delete_session_via_cli(&program, session_id);
+    }
     std::fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
@@ -590,6 +623,9 @@ pub fn session_detail(
     path: String,
     agent: String,
 ) -> Result<SessionDetail, String> {
+    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
+        return Ok(crate::opencode::session_counts(&db_path, session_id));
+    }
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
 
@@ -728,12 +764,12 @@ pub struct TouchedFile {
     pub count: u32,
 }
 
-struct TouchAcc {
-    op: TouchOp,
-    has_write: bool,
-    first_ts: u64,
-    last_ts: u64,
-    count: u32,
+pub(crate) struct TouchAcc {
+    pub(crate) op: TouchOp,
+    pub(crate) has_write: bool,
+    pub(crate) first_ts: u64,
+    pub(crate) last_ts: u64,
+    pub(crate) count: u32,
 }
 
 /// Resolve a tool-reported path against the session's cwd: an absolute path
@@ -741,7 +777,7 @@ struct TouchAcc {
 /// joined onto cwd after stripping a leading `./`. No `..`/canonicalization is
 /// attempted beyond that (best-effort, matching the Bash inference it mostly
 /// serves).
-fn normalize_touch_path(path: &str, cwd: &str) -> String {
+pub(crate) fn normalize_touch_path(path: &str, cwd: &str) -> String {
     let p = path.trim();
     if p.starts_with('/') {
         p.to_string()
@@ -751,7 +787,7 @@ fn normalize_touch_path(path: &str, cwd: &str) -> String {
     }
 }
 
-fn record_touch(acc: &mut HashMap<String, TouchAcc>, path: String, op: TouchOp, ts: u64) {
+pub(crate) fn record_touch(acc: &mut HashMap<String, TouchAcc>, path: String, op: TouchOp, ts: u64) {
     acc.entry(path)
         .and_modify(|e| {
             // A later write-class touch replaces the shown op; a later Read
@@ -781,7 +817,7 @@ fn strip_quotes(s: &str) -> &str {
 /// (edit, the last token), a trailing `>`/`>>` redirect (create/edit, the
 /// token right after it), `rm` (delete, the last non-flag token). Only covers
 /// the common spaced-token forms; anything else yields None.
-fn infer_bash_touch(cmd: &str) -> Option<(String, TouchOp)> {
+pub(crate) fn infer_bash_touch(cmd: &str) -> Option<(String, TouchOp)> {
     let tokens: Vec<&str> = cmd.split_whitespace().collect();
     let first = *tokens.first()?;
 
@@ -883,6 +919,9 @@ fn parse_rfc3339_secs(s: &str) -> Option<u64> {
 /// list (not an error) when the file can't be opened - touched data is
 /// supplementary, so a session that vanished mid-read just shows nothing.
 fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
+    if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
+        return crate::opencode::touched_files(&db_path, session_id);
+    }
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
@@ -979,9 +1018,14 @@ pub struct TouchedIndex(Mutex<HashMap<PathBuf, TouchedCacheEntry>>);
 /// touched panel (phase 3) already warmed the cache, or vice versa.
 fn touched_files_cached(index: &TouchedIndex, path: &str, agent: &str) -> Vec<TouchedFile> {
     let p = PathBuf::from(path);
-    let mtime = std::fs::metadata(&p)
-        .and_then(|m| m.modified())
-        .unwrap_or(SystemTime::UNIX_EPOCH);
+    // A sqlite locator isn't a real file - `std::fs::metadata` would always
+    // fail and freeze the cache at UNIX_EPOCH, never invalidating. Use the
+    // session's own `time_updated` instead.
+    let mtime = if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
+        crate::opencode::mtime_for(&db_path, session_id)
+    } else {
+        std::fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
+    };
 
     let mut cache = match index.0.lock() {
         Ok(c) => c,
@@ -1016,7 +1060,18 @@ pub fn session_touched_files(
 /// discovery dir, so a newly added agent's transcripts also fire
 /// `sessions://changed` with no watcher-side wiring of its own.
 fn watch_dirs() -> Vec<PathBuf> {
-    agents::registry().iter().map(|a| a.discovery_dir.clone()).collect()
+    agents::registry()
+        .iter()
+        .map(|a| match &a.discovery {
+            agents::Discovery::File { dir, .. } => dir.clone(),
+            // No per-session file to watch - watch the DB's parent dir, so a
+            // write to `opencode.db`/`opencode.db-wal` still fires the
+            // debounced `sessions://changed` refetch.
+            agents::Discovery::Sqlite { db_path } => {
+                db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| db_path.clone())
+            }
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -1096,15 +1151,15 @@ pub struct TranscriptPage {
     pub next_cursor: Option<usize>,
 }
 
-fn text_block(kind: &str, text: String) -> TranscriptBlock {
+pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
     TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None }
 }
 
-fn tool_call_block(name: String, input: serde_json::Value) -> TranscriptBlock {
+pub(crate) fn tool_call_block(name: String, input: serde_json::Value) -> TranscriptBlock {
     TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None }
 }
 
-fn tool_result_block(name: Option<String>, text: String, is_error: bool) -> TranscriptBlock {
+pub(crate) fn tool_result_block(name: Option<String>, text: String, is_error: bool) -> TranscriptBlock {
     TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error) }
 }
 
@@ -1137,6 +1192,9 @@ fn stringify_content(content: &serde_json::Value) -> String {
 /// `isError`, `toolName`), not nested in the next turn - mapped to its own
 /// `"tool"`-role turn here.
 fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
+    if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
+        return crate::opencode::transcript_turns(&db_path, session_id);
+    }
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
@@ -1372,6 +1430,9 @@ pub struct PromptTail {
 /// tracking timestamps itself.
 #[tauri::command]
 pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, String> {
+    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
+        return Ok(crate::opencode::prompt_tail(&db_path, session_id));
+    }
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
     let kind = agents::parser_kind_for(&agent);

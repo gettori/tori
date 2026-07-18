@@ -1,8 +1,9 @@
 // Agent adapter registry: what used to be "claude"/"pi" string branches
-// scattered through sessions.rs is now data. Two adapters ship bundled
-// (agents/claude.toml, agents/pi.toml, embedded at compile time); a user can
-// add or whole-replace an adapter by dropping a `schema_version = 1` TOML
-// file into `~/.config/sway/agents/`. See ADAPTERS.md for the schema.
+// scattered through sessions.rs is now data. Three adapters ship bundled
+// (agents/claude.toml, agents/pi.toml, agents/opencode.toml, embedded at
+// compile time); a user can add or whole-replace an adapter by dropping a
+// `schema_version = 1` TOML file into `~/.config/sway/agents/`. See
+// ADAPTERS.md for the schema.
 //
 // Parser kinds stay code (an enum, not a config string): a config-driven
 // launch/discovery/running-pattern description is enough to make an agent
@@ -23,6 +24,10 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub enum ParserKind {
     ClaudeJsonl,
     PiJsonl,
+    /// opencode's transcript isn't a file at all: every session's messages
+    /// live as rows in one shared SQLite DB (`discovery.backend = "sqlite"`).
+    /// See `crate::opencode` for the query layer.
+    OpencodeSqlite,
 }
 
 impl ParserKind {
@@ -30,9 +35,20 @@ impl ParserKind {
         match s {
             "claude_jsonl" => Some(Self::ClaudeJsonl),
             "pi_jsonl" => Some(Self::PiJsonl),
+            "opencode_sqlite" => Some(Self::OpencodeSqlite),
             _ => None,
         }
     }
+}
+
+/// Where an adapter's sessions live and how to find them. Every bundled/user
+/// adapter today is `File` (claude, pi); `Sqlite` exists because opencode has
+/// no per-session file - every session's messages/parts are rows in one
+/// shared DB covering every project on the machine (see ADAPTERS.md).
+#[derive(Debug, Clone)]
+pub enum Discovery {
+    File { dir: PathBuf, filename_regex: Regex },
+    Sqlite { db_path: PathBuf },
 }
 
 /// A resolved, validated adapter. The frontend gets a mirrored subset of this
@@ -47,9 +63,7 @@ pub struct AgentAdapter {
     /// `{id}`/`{file}` placeholder template; `apply_template` substitutes.
     pub resume_args: Vec<String>,
     #[serde(skip)]
-    pub discovery_dir: PathBuf,
-    #[serde(skip)]
-    pub filename_regex: Regex,
+    pub discovery: Discovery,
     pub parser_kind: ParserKind,
     /// ERE template (for `pgrep -f`) with an `{id}` placeholder.
     pub running_pattern: String,
@@ -57,6 +71,10 @@ pub struct AgentAdapter {
     /// Whether the quiet-PTY x pending-tool_use join is trusted as a "needs
     /// you" signal for this agent (see `CapabilitiesToml::needs_you`).
     pub needs_you: bool,
+    /// The agent CLI version this adapter's conventions were empirically
+    /// captured against (e.g. `"opencode 1.18.3"`), echoed in ADAPTERS.md.
+    /// Optional: not every adapter carries one.
+    pub verified_against: Option<String>,
 }
 
 // --- raw TOML shape (kept separate from `AgentAdapter`: a `Regex` isn't
@@ -74,6 +92,8 @@ struct AdapterToml {
     running: RunningToml,
     #[serde(default)]
     capabilities: CapabilitiesToml,
+    #[serde(default)]
+    verified_against: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,8 +108,18 @@ struct LaunchToml {
 
 #[derive(Debug, Deserialize)]
 struct DiscoveryToml {
-    dir: String,
-    filename_pattern: String,
+    #[serde(default = "default_backend")]
+    backend: String,
+    /// Required when `backend = "file"` (the default).
+    dir: Option<String>,
+    /// Required when `backend = "file"`.
+    filename_pattern: Option<String>,
+    /// Required when `backend = "sqlite"`.
+    db_path: Option<String>,
+}
+
+fn default_backend() -> String {
+    "file".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,8 +169,17 @@ fn expand_tilde(path: &str) -> PathBuf {
 
 const REQUIRED_TOP_LEVEL: [&str; 7] =
     ["schema_version", "id", "label", "launch", "discovery", "parser", "running"];
-const KNOWN_TOP_LEVEL: [&str; 8] =
-    ["schema_version", "id", "label", "launch", "discovery", "parser", "running", "capabilities"];
+const KNOWN_TOP_LEVEL: [&str; 9] = [
+    "schema_version",
+    "id",
+    "label",
+    "launch",
+    "discovery",
+    "parser",
+    "running",
+    "capabilities",
+    "verified_against",
+];
 
 /// Parse + validate one adapter TOML source. `source` labels the origin for
 /// error messages/warnings (a file path, or a fixed name for a built-in).
@@ -175,18 +214,40 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 
     let parser_kind = ParserKind::from_str(&raw.parser.kind).ok_or_else(|| {
         format!(
-            "{source}: unknown parser kind `{}` (expected claude_jsonl or pi_jsonl)",
+            "{source}: unknown parser kind `{}` (expected claude_jsonl, pi_jsonl, or opencode_sqlite)",
             raw.parser.kind
         )
     })?;
 
-    let filename_regex = Regex::new(&raw.discovery.filename_pattern)
-        .map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
-    if filename_regex.capture_names().flatten().all(|n| n != "id") {
-        return Err(format!(
-            "{source}: discovery.filename_pattern must have a named `id` capture group"
-        ));
-    }
+    let discovery = match raw.discovery.backend.as_str() {
+        "file" => {
+            let dir = raw.discovery.dir.ok_or_else(|| {
+                format!("{source}: discovery.dir is required for backend = \"file\"")
+            })?;
+            let pattern = raw.discovery.filename_pattern.ok_or_else(|| {
+                format!("{source}: discovery.filename_pattern is required for backend = \"file\"")
+            })?;
+            let filename_regex = Regex::new(&pattern)
+                .map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
+            if filename_regex.capture_names().flatten().all(|n| n != "id") {
+                return Err(format!(
+                    "{source}: discovery.filename_pattern must have a named `id` capture group"
+                ));
+            }
+            Discovery::File { dir: expand_tilde(&dir), filename_regex }
+        }
+        "sqlite" => {
+            let db_path = raw.discovery.db_path.ok_or_else(|| {
+                format!("{source}: discovery.db_path is required for backend = \"sqlite\"")
+            })?;
+            Discovery::Sqlite { db_path: expand_tilde(&db_path) }
+        }
+        other => {
+            return Err(format!(
+                "{source}: unknown discovery.backend `{other}` (expected file or sqlite)"
+            ))
+        }
+    };
 
     Ok(AgentAdapter {
         id: raw.id,
@@ -195,17 +256,18 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         base_args: raw.launch.base_args,
         yolo_args: raw.launch.yolo_args,
         resume_args: raw.launch.resume_args,
-        discovery_dir: expand_tilde(&raw.discovery.dir),
-        filename_regex,
+        discovery,
         parser_kind,
         running_pattern: raw.running.pattern,
         pty_quiet_ms: raw.capabilities.pty_quiet_ms,
         needs_you: raw.capabilities.needs_you,
+        verified_against: raw.verified_against,
     })
 }
 
 const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
 const BUILTIN_PI: &str = include_str!("../agents/pi.toml");
+const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
 
 fn user_agents_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/sway/agents")
@@ -220,7 +282,11 @@ fn user_agents_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
 
-    for (source, text) in [("bundled:claude", BUILTIN_CLAUDE), ("bundled:pi", BUILTIN_PI)] {
+    for (source, text) in [
+        ("bundled:claude", BUILTIN_CLAUDE),
+        ("bundled:pi", BUILTIN_PI),
+        ("bundled:opencode", BUILTIN_OPENCODE),
+    ] {
         match load_adapter_str(text, source) {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
@@ -354,6 +420,16 @@ pattern = 'x --resume {id}'
         // permission, so there is no genuine blocked-quiet state to verify the
         // join against; needs-you stays off per the plan's contingency.
         assert!(!pi.needs_you);
+
+        let opencode = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
+        assert_eq!(opencode.id, "opencode");
+        assert_eq!(opencode.parser_kind, ParserKind::OpencodeSqlite);
+        assert!(matches!(opencode.discovery, Discovery::Sqlite { .. }));
+        // Empirically confirmed (phase 2, real pty capture): no permission
+        // prompt gates opencode's default agent, and the TUI never goes
+        // quiet while working - no blocked-quiet state to verify against.
+        assert!(!opencode.needs_you);
+        assert_eq!(opencode.verified_against.as_deref(), Some("opencode 1.18.3"));
     }
 
     #[test]
@@ -361,7 +437,45 @@ pattern = 'x --resume {id}'
         let a = load_adapter_str(VALID_MINIMAL, "test").expect("valid user adapter parses");
         assert_eq!(a.id, "x");
         assert_eq!(a.resume_args, vec!["--resume", "{id}"]);
-        assert!(a.filename_regex.is_match("abc.jsonl"));
+        match &a.discovery {
+            Discovery::File { filename_regex, .. } => assert!(filename_regex.is_match("abc.jsonl")),
+            Discovery::Sqlite { .. } => panic!("expected a file-backed discovery"),
+        }
+    }
+
+    #[test]
+    fn sqlite_backend_requires_db_path() {
+        const TOML: &str = r#"
+schema_version = 1
+id = "x"
+label = "X"
+
+[launch]
+program = "x"
+resume_args = ["--session", "{id}"]
+
+[discovery]
+backend = "sqlite"
+
+[parser]
+kind = "opencode_sqlite"
+
+[running]
+pattern = 'x --session {id}'
+"#;
+        let err = load_adapter_str(TOML, "test").unwrap_err();
+        assert!(err.contains("db_path"), "error should mention db_path: {err}");
+    }
+
+    #[test]
+    fn unknown_discovery_backend_is_rejected() {
+        let text = VALID_MINIMAL.replacen(
+            "[discovery]",
+            "[discovery]\nbackend = \"made_up_backend\"",
+            1,
+        );
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("made_up_backend"), "error should name the bad backend: {err}");
     }
 
     #[test]
