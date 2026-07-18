@@ -10,18 +10,34 @@ import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
   onWith,
+  emitWith,
   CLOSE_TAB,
   OPEN_TERMINAL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
+  SEND_TO_SESSION,
+  SEND_TO_SESSION_RESULT,
+  TOAST,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
   type LiveTab,
+  type SendToSession,
+  type SendToSessionResult,
+  type ToastEvent,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
+import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import styles from "./Terminal.module.css";
+
+// Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
+type TailState = "working" | "done" | "blocked-candidate";
+
+// The subset of Selection focusOrResume actually reads - narrowed so
+// safe-send's resume-into-tab path can call it without fabricating a full
+// Selection (spaceName, projectKind, ... it never touches).
+type ResumeTarget = Pick<Selection, "sessionId" | "agent" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath">;
 
 type TabKind = "shell" | "agent" | "command";
 
@@ -206,6 +222,12 @@ export default function Terminal(props: {
     unlistenSessions = await listen("sessions://changed", () => void backfillFreshSessions());
   });
 
+  // Safe-send (src/utils/safeSend.ts `requestSend`): the sole consumer of
+  // SEND_TO_SESSION, since this component owns pty_write and tab/session
+  // state. Answers every request with a matching SEND_TO_SESSION_RESULT.
+  const offSendToSession = onWith<SendToSession>(SEND_TO_SESSION, (req) => void handleSendToSession(req));
+  onCleanup(offSendToSession);
+
   // Close the launch dropdown on any click outside the split button or its
   // portalled menu.
   const onDocPointerDown = (e: PointerEvent) => {
@@ -287,7 +309,15 @@ export default function Terminal(props: {
     ),
   );
 
-  async function focusOrResume(sel: Selection) {
+  // Extra launch args a Sway-launched session gets that an externally-typed
+  // `claude`/`pi`/`opencode` invocation never would (Phase 3): today just
+  // claude's injected `--settings <json>` (crate::hooks), which scopes
+  // hook-driven status to sessions this function actually spawned/resumed.
+  async function hookArgs(agentId: string): Promise<string[]> {
+    return invoke<string[]>("agent_hook_launch_args", { agentId }).catch(() => []);
+  }
+
+  async function focusOrResume(sel: ResumeTarget) {
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
     const a = findAgent(agentId);
@@ -308,7 +338,10 @@ export default function Terminal(props: {
       }
       return;
     }
-    const args = applyTemplate(a.resume_args, { id: sessionId, file: sel.sessionFile ?? "" });
+    const args = [
+      ...applyTemplate(a.resume_args, { id: sessionId, file: sel.sessionFile ?? "" }),
+      ...(await hookArgs(agentId)),
+    ];
     openOrActivate({
       id: shellId(),
       title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
@@ -322,12 +355,65 @@ export default function Terminal(props: {
     });
   }
 
+  // Liveness for the safe-send probe-gate: not-ready until the AGENT process
+  // itself is confirmed running (never just the hosting shell, so a queued
+  // send never lands in a bare shell), then blocked when the transcript tail
+  // shows a needs-you prompt (refuse rather than queue behind it), else ready.
+  async function probeSessionState(req: SendToSession): Promise<ProbeState> {
+    if (!open().some((t) => t.sessionId === req.sessionId)) return "not-ready";
+    const running = await invoke<boolean>("session_running", { id: req.sessionId, agent: req.agent }).catch(
+      () => false,
+    );
+    if (!running) return "not-ready";
+    if (req.sessionPath) {
+      const tail = await invoke<TailState>("session_tail_state", {
+        id: req.sessionId,
+        path: req.sessionPath,
+        agent: req.agent,
+      }).catch(() => null);
+      if (tail === "blocked-candidate") return "blocked";
+    }
+    return "ready";
+  }
+
+  async function handleSendToSession(req: SendToSession) {
+    const text = sanitizeForSend(req.text);
+    if (!text) return;
+    if (!open().some((t) => t.sessionId === req.sessionId)) {
+      await focusOrResume({
+        sessionId: req.sessionId,
+        agent: req.agent,
+        sessionFile: req.sessionFile,
+        sessionTitle: req.sessionTitle,
+        sessionCwd: req.sessionCwd,
+        folderPath: req.folderPath,
+      });
+    }
+    const result = await sendWithProbeGate(text, {
+      probe: () => probeSessionState(req),
+      write: async (t) => {
+        const tab = open().find((o) => o.sessionId === req.sessionId);
+        if (!tab) throw new Error("session tab closed mid-send");
+        await invoke("pty_write", { id: tab.id, data: bracketedPaste(t) });
+      },
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    }).catch((): { kind: "timeout" } => ({ kind: "timeout" }));
+    if (result.kind === "blocked") {
+      emitWith<ToastEvent>(TOAST, { message: "Session is waiting for permission, answer it first.", kind: "error" });
+    } else if (result.kind === "timeout") {
+      emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session in time, try again.", kind: "error" });
+    }
+    emitWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: result.kind });
+  }
+
   // A new session starts in the branch-unit folder (already the right checkout).
   // Launch args come from the adapter: base args, plus its yolo args when asked
-  // (claude's skip permission prompts; pi's is empty - it launches yolo already).
-  function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
+  // (claude's skip permission prompts; pi's is empty - it launches yolo already),
+  // plus any Sway-launched-only hook args (Phase 3).
+  async function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
     const a = findAgent(agentId);
-    const args = [...a.base_args, ...(yolo ? a.yolo_args : [])];
+    const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
     openOrActivate({
       id: shellId(),
       title: `${projectName} ${agentId}`,
