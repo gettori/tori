@@ -2,6 +2,12 @@ import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "s
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
+import { parseDiffHunks } from "../../utils/diffHunks";
+import type { SessionTarget } from "../../utils/safeSend";
+import { findAgent } from "../../utils/agents";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
+import HunkCommentInput from "./HunkCommentInput";
+import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
 type FileStatus = { status: string; path: string };
@@ -24,11 +30,37 @@ function diffLineClass(line: string): string {
 }
 
 /** Review surface: the uncommitted changed-file list (git_status) with a
- *  per-file inline diff toggle (git_diff_text). Clicking a name opens the file. */
-export default function ReviewPanel(props: { root: string | null }) {
+ *  per-file inline diff toggle (git_diff_text). Clicking a name opens the file.
+ *  Each hunk carries a "Comment" affordance (safe-send) routed to the sidebar's
+ *  currently selected session. */
+export default function ReviewPanel(props: { root: string | null; selected: Selection | null }) {
   const [files, setFiles] = createSignal<FileStatus[]>([]);
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
+
+  function target(): SessionTarget | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return null;
+    return {
+      sessionId: sel.sessionId,
+      agent: sel.agent ?? "claude",
+      folderPath: sel.folderPath,
+      sessionCwd: sel.sessionCwd,
+      sessionPath: sel.sessionPath,
+      sessionTitle: sel.sessionTitle,
+      sessionFile: sel.sessionFile,
+    };
+  }
+
+  // Capability gate: no session selected, or the selected adapter can't be
+  // resumed (empty resume_args - ADAPTERS.md), so safe-send has nowhere to
+  // land a queued comment.
+  function disabledReason(): string | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return "Select a session first";
+    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    return null;
+  }
 
   async function refresh() {
     const root = props.root;
@@ -101,8 +133,24 @@ export default function ReviewPanel(props: { root: string | null }) {
               </div>
               <Show when={expanded() === f.path}>
                 <div class={styles.reviewDiff}>
-                  <For each={diff().split("\n")}>
-                    {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+                  <For each={parseDiffHunks(diff())}>
+                    {(hunk) => (
+                      <div>
+                        <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                          <span>{hunk.header}</span>
+                          <HunkCommentInput
+                            target={target()}
+                            disabledReason={disabledReason()}
+                            filePath={props.root ? `${props.root}/${f.path}` : f.path}
+                            startLine={hunk.startLine}
+                            endLine={hunk.endLine}
+                          />
+                        </div>
+                        <For each={hunk.lines}>
+                          {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+                        </For>
+                      </div>
+                    )}
                   </For>
                 </div>
               </Show>

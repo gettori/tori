@@ -65,6 +65,33 @@ export type PurgeUnderPath = { path: string };
 export const TOAST = "sway:toast";
 export type ToastEvent = { message: string; kind?: "error" | "info" };
 
+// Payload-carrying event pair: the safe-send primitive (src/utils/safeSend.ts
+// `requestSend`). Any panel can ask to insert text at a session's prompt;
+// Terminal.tsx is the sole consumer (it owns pty_write + tab/session state)
+// and answers with the result, matched by `requestId`. Never call `pty_write`
+// directly for a composed message - route through `requestSend` so the
+// probe-gate and insert-only guarantee apply uniformly.
+export const SEND_TO_SESSION = "sway:send-to-session";
+export type SendToSession = {
+  requestId: string;
+  sessionId: string;
+  text: string;
+  agent: string;
+  // The subset of Selection needed to resume the session into a tab if none
+  // is open yet (mirrors what Terminal.tsx's focusOrResume reads).
+  sessionFile?: string;
+  sessionCwd?: string;
+  sessionTitle?: string;
+  folderPath: string;
+  // Transcript path, used to probe the blocked-candidate (needs-you) state
+  // via `session_tail_state`; omitted, the probe falls back to plain
+  // liveness (`session_running`) with no blocked-refusal.
+  sessionPath?: string;
+};
+
+export const SEND_TO_SESSION_RESULT = "sway:send-to-session-result";
+export type SendToSessionResult = { requestId: string; result: "sent" | "blocked" | "timeout" };
+
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
 export const DRAG_PATH_MIME = "application/x-sway-path";

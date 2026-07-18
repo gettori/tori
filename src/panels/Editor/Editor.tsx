@@ -346,6 +346,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             projectRoot={root()}
             goto={gotoTarget()}
             onDirty={handleDirty}
+            selected={props.selected}
           />
         </Show>
         <Show when={activeTranscript()}>
@@ -410,7 +411,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             <FileTree root={root()} />
           </Match>
           <Match when={rightMode() === "changes"}>
-            <ReviewPanel root={root()} />
+            <ReviewPanel root={root()} selected={props.selected} />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel
