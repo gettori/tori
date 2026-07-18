@@ -5,12 +5,15 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/ev
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
+import { comparePrUrl } from "../../utils/prUrl";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
 type FileStatus = { status: string; path: string; staged: boolean; unstaged: boolean };
+type BranchInfo = { name: string; current: boolean };
+type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
@@ -41,6 +44,12 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
   const [commitMsg, setCommitMsg] = createSignal("");
   const [committing, setCommitting] = createSignal(false);
   const [drafting, setDrafting] = createSignal(false);
+  const [branch, setBranch] = createSignal<string | null>(null);
+  const [aheadBehind, setAheadBehind] = createSignal<AheadBehind | null>(null);
+  const [origin, setOrigin] = createSignal<string | null>(null);
+  const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
+  const [pushing, setPushing] = createSignal(false);
+  const [openingPr, setOpeningPr] = createSignal(false);
 
   const staged = () => files().filter((f) => f.staged);
   const unstaged = () => files().filter((f) => f.unstaged);
@@ -82,6 +91,45 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
     }
   }
 
+  // Header state (current branch, ahead/behind, origin, PR base branch) -
+  // kept separate from the file list since it has its own set of backend
+  // calls; refreshed alongside `refresh()` at every trigger point.
+  async function refreshHeader() {
+    const root = props.root;
+    if (!root) {
+      setBranch(null);
+      setAheadBehind(null);
+      setOrigin(null);
+      setBaseBranch(null);
+      return;
+    }
+    try {
+      const branches = await invoke<BranchInfo[]>("list_branches", { path: root });
+      setBranch(branches.find((b) => b.current)?.name ?? null);
+    } catch {
+      setBranch(null);
+    }
+    try {
+      setAheadBehind(await invoke<AheadBehind>("git_ahead_behind", { projectPath: root }));
+    } catch {
+      setAheadBehind(null);
+    }
+    try {
+      setOrigin(await invoke<string | null>("git_origin", { projectPath: root }));
+    } catch {
+      setOrigin(null);
+    }
+    try {
+      setBaseBranch(await invoke<string | null>("git_default_base_branch", { projectPath: root }));
+    } catch {
+      setBaseBranch(null);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([refresh(), refreshHeader()]);
+  }
+
   function toastError(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
   }
@@ -116,7 +164,7 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
     try {
       await invoke("git_commit", { projectPath: root, message });
       setCommitMsg("");
-      await refresh();
+      await refreshAll();
     } catch (e) {
       toastError(e);
     } finally {
@@ -168,28 +216,99 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
       () => props.root,
       () => {
         setExpanded(null);
-        refresh();
+        refreshAll();
       },
     ),
   );
+
+  // Resolves once `git://push-done|error` fires for `repo`, so a caller can
+  // await a push before proceeding (e.g. "Open PR" pushing first). One-shot:
+  // both listeners are torn down as soon as either fires.
+  function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let unDone: UnlistenFn | undefined;
+      let unError: UnlistenFn | undefined;
+      const finish = (result: { ok: boolean; error: string }) => {
+        if (settled) return;
+        settled = true;
+        unDone?.();
+        unError?.();
+        resolve(result);
+      };
+      listen<{ repo: string }>("git://push-done", (e) => {
+        if (e.payload.repo === repo) finish({ ok: true, error: "" });
+      }).then((un) => (settled ? un() : (unDone = un)));
+      listen<{ repo: string; error: string }>("git://push-error", (e) => {
+        if (e.payload.repo === repo) finish({ ok: false, error: e.payload.error });
+      }).then((un) => (settled ? un() : (unError = un)));
+    });
+  }
+
+  // Pushes `branch` to origin and waits for the result, toasting on failure
+  // and refreshing the header (ahead/behind, upstream) on success.
+  async function pushBranch(root: string, branchName: string): Promise<boolean> {
+    if (pushing()) return false;
+    setPushing(true);
+    const result = waitForPush(root);
+    try {
+      await invoke("git_push", { repo: root, remote: "origin", branch: branchName });
+    } catch (e) {
+      setPushing(false);
+      toastError(e);
+      return false;
+    }
+    const { ok, error } = await result;
+    setPushing(false);
+    if (!ok) {
+      toastError(error || "Push failed");
+      return false;
+    }
+    await refreshHeader();
+    return true;
+  }
+
+  // "Open PR" (task 3): push first if the branch is unpushed or ahead, then
+  // open the provider's compare/new-MR/new-PR page for branch -> base.
+  async function openPr() {
+    const root = props.root;
+    const branchName = branch();
+    const org = origin();
+    const base = baseBranch();
+    if (!root || !branchName || !org || !base || openingPr()) return;
+    const url = comparePrUrl(org, base, branchName);
+    if (!url) {
+      toastError("This origin isn't a recognized GitHub/GitLab/Bitbucket host.");
+      return;
+    }
+    setOpeningPr(true);
+    const ab = aheadBehind();
+    const needsPush = !ab || !ab.has_upstream || ab.ahead > 0;
+    if (needsPush && !(await pushBranch(root, branchName))) {
+      setOpeningPr(false);
+      return;
+    }
+    setOpeningPr(false);
+    window.open(url, "_blank");
+  }
 
   let unlistenFs: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
     unlistenFs = await listen("fs://changed", () => refresh());
-    // .git is watcher-filtered (gotchas), so a terminal-side commit/stage
-    // emits no fs://changed - window focus and the askpass-bridge git
-    // events (git_fetch today, git_push in phase 3) pick up the slack.
-    unlistenFetchDone = await listen("git://fetch-done", () => refresh());
-    unlistenFetchError = await listen("git://fetch-error", () => refresh());
-    window.addEventListener("focus", refresh);
+    // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
+    // emits no fs://changed - window focus and the askpass-bridge git events
+    // (fetch here, push above) pick up the slack.
+    unlistenFetchDone = await listen("git://fetch-done", () => refreshAll());
+    unlistenFetchError = await listen("git://fetch-error", () => refreshAll());
+    window.addEventListener("focus", refreshAll);
   });
   onCleanup(() => {
     unlistenFs?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
-    window.removeEventListener("focus", refresh);
+    window.removeEventListener("focus", refreshAll);
   });
 
   function row(f: FileStatus, opts: { staged: boolean }) {
@@ -248,6 +367,42 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
 
   return (
     <div class={styles.reviewPanel}>
+      <Show when={props.root && branch()}>
+        <div class={styles.headerBar}>
+          <span class={styles.branchName} title={branch() ?? ""}>
+            {branch()}
+          </span>
+          <Show
+            when={aheadBehind()}
+            fallback={<span class={styles.aheadBehind}>-</span>}
+          >
+            {(ab) => (
+              <button
+                type="button"
+                class={styles.pushButton}
+                disabled={pushing() || (ab().has_upstream && ab().ahead === 0)}
+                title={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+                onClick={() => {
+                  const root = props.root;
+                  const branchName = branch();
+                  if (root && branchName) void pushBranch(root, branchName);
+                }}
+              >
+                {pushing()
+                  ? "Pushing…"
+                  : ab().has_upstream
+                    ? `↑${ab().ahead} ↓${ab().behind}`
+                    : "Unpushed branch"}
+              </button>
+            )}
+          </Show>
+          <Show when={origin() && baseBranch()}>
+            <button type="button" class={styles.openPrButton} disabled={openingPr()} onClick={openPr}>
+              {openingPr() ? "Opening…" : "Open PR"}
+            </button>
+          </Show>
+        </div>
+      </Show>
       <Show when={files().length} fallback={<div class="tree-empty">No changes</div>}>
         <Show when={staged().length}>
           <div class={styles.sectionHeader}>Staged Changes</div>
