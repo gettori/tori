@@ -349,37 +349,92 @@
   margin-left: auto;
 }
 
-/* Session-row running indicator: solid = a live tab AND the probe confirms the
-   agent running; hollow = confirmed running with no open tab (resumed
-   elsewhere, capped here - working/needs-you both need a live PTY to
-   observe). working = active PTY, pulsing. needsYou = quiet PTY + a pending
-   tool_use in the transcript tail (Finding A floor). Leading, before the
-   agent icon; unmounted entirely otherwise. */
-.sessionDot {
+/* Antigravity-style per-state status indicator (Phase 1): sits in the trailing
+   time slot (see .row.session .when below), replacing ago(last_active) for any
+   session with a detectable live status; a dead session keeps the ago time.
+   The icon (.statusIcon, via Icon's default size) never shrinks; .statusLabel
+   is the part that truncates first at narrow widths, title carries the label
+   regardless. executing = active PTY (spinning); waitingForApproval = quiet
+   PTY + a pending tool_use in the transcript tail (Finding A floor); idle = a
+   live tab with a confirmed-running, quiet agent; running = confirmed running
+   with no open tab (resumed elsewhere). */
+.statusIndicator {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-density));
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: calc(10px * var(--ui-scale));
+}
+.statusIndicator :global(svg) {
   flex: none;
-  width: calc(6px * var(--ui-scale));
-  height: calc(6px * var(--ui-scale));
-  border-radius: 50%;
 }
-.sessionDot.solid {
-  background: var(--status-live);
+.statusLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.sessionDot.hollow {
-  background: transparent;
-  border: 1px solid var(--status-live);
+.statusIndicator.executing {
+  color: var(--status-live);
 }
-.sessionDot.working {
-  background: var(--status-live);
-  /* prefers-reduced-motion is handled globally (src/styles/base.css collapses
-     every animation-duration/iteration-count app-wide), not re-implemented here. */
-  animation: sessionDotPulse 1.4s ease-in-out infinite;
+.statusIndicator.waitingForApproval {
+  color: var(--status-needs-you);
 }
-.sessionDot.needsYou {
-  background: var(--status-needs-you);
+.statusIndicator.idle {
+  color: var(--status-live);
+  opacity: 0.75;
 }
-@keyframes sessionDotPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+.statusIndicator.running {
+  color: var(--text-dim);
+}
+
+/* prefers-reduced-motion is handled globally (src/styles/base.css collapses
+   every animation-duration/iteration-count app-wide), not re-implemented here. */
+.statusSpin {
+  animation: statusSpin 1s linear infinite;
+}
+@keyframes statusSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
+   space's nearest rendered ancestor (Waiting-for-approval + Executing only;
+   Idle/Running stay row-local so an expanded parent never wears a stale
+   badge). Waiting always renders first. */
+.statusBubble {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.statusBubbleItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: calc(9px * var(--ui-scale));
+  font-variant-numeric: tabular-nums;
+}
+.statusBubbleItem.waitingForApproval {
+  color: var(--status-needs-you);
+}
+.statusBubbleItem.executing {
+  color: var(--status-live);
+}
+
+/* Space-tile badge: corner-pinned rollup for sessions hidden inside a
+   non-active space (or a search-filtered-out project of the active space). */
+.spaceBubble {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--bg);
+  border-radius: var(--sway-radius-sm, 4px);
+  padding: 1px 2px;
 }
 
 .row.session .when {
@@ -473,6 +528,7 @@
 /* A space tile: a rounded square showing the space's initial. Dim by default;
    the active space is marked with the gold brand. */
 .space {
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
