@@ -46,6 +46,8 @@ import {
   attended,
   type LiveSessionDot,
 } from "../../utils/presence";
+import { noteCheckpointTicks } from "../../utils/checkpoints";
+import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Chevron from "../../components/Chevron/Chevron";
@@ -473,6 +475,35 @@ export default function LeftSidebar(props: {
     if (Object.keys(updates).length) setTailStates((m) => ({ ...m, ...updates }));
   }
   createEffect(on(() => props.liveTabs, () => void refreshTailStates()));
+
+  // Turn-level checkpoints (Finding E): snapshot the working tree at each new
+  // human prompt, live-tab sessions only, gated by the checkpoints setting.
+  // Reuses the same live-tab x sessions() join as refreshTailStates above;
+  // the actual rising-edge detection lives in checkpoints.ts so it can be
+  // unit-tested off this component.
+  async function refreshCheckpointTicks() {
+    if (!appSettings.checkpoints.enabled) return;
+    const live = (props.liveTabs ?? []).filter((t) => t.kind === "agent" && t.sessionId);
+    if (!live.length) return;
+    const allSessions = Object.values(sessions()).flat();
+    const ticks = (
+      await Promise.all(
+        live.map(async (t) => {
+          const meta = allSessions.find((s) => s.id === t.sessionId);
+          if (!meta) return null;
+          const agent = meta.agent === "pi" ? "pi" : "claude";
+          const tail = await invoke<{ count: number; last_ts: number }>("session_prompt_tail", {
+            path: meta.path,
+            agent,
+          }).catch(() => null);
+          if (!tail) return null;
+          return { sessionId: t.sessionId!, repoPath: meta.cwd, promptCount: tail.count, lastPromptTs: tail.last_ts };
+        }),
+      )
+    ).filter((t): t is NonNullable<typeof t> => t != null);
+    if (ticks.length) await noteCheckpointTicks(ticks);
+  }
+  createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshCheckpointTicks()));
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
   // needs-you both need a real PTY to observe, which only a live tab has.
@@ -1337,8 +1368,12 @@ export default function LeftSidebar(props: {
   }
 
   async function archiveSession(s: SessionMeta) {
+    const archiving = !s.archived;
     try {
-      await invoke("set_session_archived", { id: s.id, archived: !s.archived });
+      await invoke("set_session_archived", { id: s.id, archived: archiving });
+      // Prune this session's checkpoint refs + scratch index on archive (not
+      // on un-archive - a restored session has nothing left to prune anyway).
+      if (archiving) await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
       await refreshSessions();
     } catch (e) {
       setError(String(e));
@@ -1355,6 +1390,7 @@ export default function LeftSidebar(props: {
     if (!ok) return;
     try {
       await invoke("delete_session", { path: s.path });
+      await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
       await refreshSessions();
     } catch (e) {
       setError(String(e));
@@ -1470,6 +1506,7 @@ export default function LeftSidebar(props: {
       sessionPath: s.path,
       agent: s.agent === "pi" ? "pi" : "claude",
       name: s.name || s.title,
+      cwd: s.cwd,
     });
   }
 

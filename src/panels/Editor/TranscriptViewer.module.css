@@ -119,3 +119,105 @@
   color: var(--text);
   background: var(--hover);
 }
+
+/* Turn-level checkpoints (Finding E): a per-turn "Changes this turn" row on
+   user turns, expandable into a file list + per-file diff + revert. */
+.checkpoint {
+  margin-top: calc(6px * var(--ui-density));
+  padding-top: calc(4px * var(--ui-density));
+  border-top: 1px dashed var(--border);
+}
+
+.checkpointToggle {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+  cursor: pointer;
+  user-select: none;
+}
+.checkpointToggle:hover {
+  color: var(--text);
+}
+
+.checkpointEmpty {
+  padding: calc(2px * var(--ui-density)) calc(4px * var(--ui-density));
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.checkpointRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(2px * var(--ui-density)) calc(4px * var(--ui-density));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.opBadge {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  border-radius: var(--sway-radius-sm);
+  font-weight: 600;
+}
+.opBadge.added {
+  color: #2ea043;
+}
+.opBadge.modified {
+  color: #d29922;
+}
+.opBadge.deleted {
+  color: #f85149;
+}
+
+.checkpointPath {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.revertButton {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-density));
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  color: var(--text-dim);
+  font-size: calc(10px * var(--ui-scale));
+  cursor: pointer;
+}
+.revertButton:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.checkpointDiff {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
+  background: var(--bg);
+}
+
+.diffLine {
+  white-space: pre;
+  padding: 0 calc(8px * var(--ui-density));
+}
+.diffLine.add {
+  color: #2ea043;
+}
+.diffLine.del {
+  color: #f85149;
+}
+.diffLine.hunk {
+  color: var(--accent);
+}
+.diffLine.meta {
+  color: var(--text-dim);
+}

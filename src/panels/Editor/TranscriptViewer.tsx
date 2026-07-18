@@ -1,6 +1,8 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
+import type { LiveTab } from "../../utils/events";
 import styles from "./TranscriptViewer.module.css";
 
 type TranscriptBlock = {
@@ -13,20 +15,142 @@ type TranscriptBlock = {
 type TranscriptTurn = { role: "user" | "assistant" | "tool"; ts: number; blocks: TranscriptBlock[] };
 type TranscriptPage = { turns: TranscriptTurn[]; next_cursor: number | null };
 
+type CheckpointFile = { path: string; status: "added" | "modified" | "deleted" };
+
 function fmtTime(epochSecs: number): string {
   return epochSecs ? new Date(epochSecs * 1000).toLocaleString() : "";
 }
+
+function diffLineClass(line: string): string {
+  if (line.startsWith("@@")) return "hunk";
+  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index "))
+    return "meta";
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
+  return "";
+}
+
+const REVERT_MESSAGE: Record<CheckpointFile["status"], (path: string) => string> = {
+  added: (path) => `"${path}" was created during this turn. Reverting deletes it.`,
+  deleted: (path) => `"${path}" was deleted during this turn. Reverting recreates it as it was before.`,
+  modified: (path) => `"${path}" was edited during this turn. Reverting restores its content from before this turn.`,
+};
 
 /** Read-only transcript viewer: the turn list tail-first (newest at top), tool
  *  calls/results collapsed to a one-line summary. Live-refreshes on
  *  sessions://changed while at the tail (no older page loaded yet); once
  *  "Load older" is used the view is a frozen historical scroll. */
-export default function TranscriptViewer(props: { sessionPath: string; agent: "claude" | "pi"; class?: string }) {
+export default function TranscriptViewer(props: {
+  sessionPath: string;
+  agent: "claude" | "pi";
+  sessionId: string;
+  repoPath: string;
+  liveTabs: LiveTab[];
+  class?: string;
+}) {
   const [turns, setTurns] = createSignal<TranscriptTurn[]>([]);
   const [nextCursor, setNextCursor] = createSignal<number | null>(null);
   const [atTail, setAtTail] = createSignal(true);
   const [loadingMore, setLoadingMore] = createSignal(false);
   const [openBlocks, setOpenBlocks] = createSignal<Set<string>>(new Set());
+
+  // Per-turn checkpoint diffs (Finding E): keyed by the user turn's own `ts`,
+  // which is also the checkpoint's prompt boundary (see checkpoint.rs). Lazy:
+  // fetched only once a turn's "Changes this turn" row is expanded.
+  const [checkpointOpen, setCheckpointOpen] = createSignal<Set<number>>(new Set());
+  const [checkpointFiles, setCheckpointFiles] = createSignal<Record<number, CheckpointFile[]>>({});
+  const [expandedFiles, setExpandedFiles] = createSignal<Set<string>>(new Set());
+  const [fileDiffs, setFileDiffs] = createSignal<Record<string, string>>({});
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+
+  function askConfirm(opts: ConfirmOpts): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+  function resolveConfirm(v: boolean) {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(v);
+  }
+
+  function fileKey(ts: number, path: string): string {
+    return `${ts}:${path}`;
+  }
+
+  async function loadCheckpointFiles(ts: number) {
+    const files = await invoke<CheckpointFile[]>("checkpoint_turn_files", {
+      repoPath: props.repoPath,
+      sessionId: props.sessionId,
+      promptTs: ts,
+    }).catch(() => [] as CheckpointFile[]);
+    setCheckpointFiles((m) => ({ ...m, [ts]: files }));
+  }
+
+  function toggleCheckpoint(ts: number) {
+    const next = new Set(checkpointOpen());
+    if (next.has(ts)) {
+      next.delete(ts);
+    } else {
+      next.add(ts);
+      if (!checkpointFiles()[ts]) void loadCheckpointFiles(ts);
+    }
+    setCheckpointOpen(next);
+  }
+
+  async function loadFileDiff(ts: number, path: string) {
+    const key = fileKey(ts, path);
+    const text = await invoke<string>("checkpoint_diff_file", {
+      repoPath: props.repoPath,
+      sessionId: props.sessionId,
+      promptTs: ts,
+      file: path,
+    }).catch(() => "");
+    setFileDiffs((d) => ({ ...d, [key]: text }));
+  }
+
+  function toggleFileDiff(ts: number, path: string) {
+    const key = fileKey(ts, path);
+    const next = new Set(expandedFiles());
+    if (next.has(key)) {
+      next.delete(key);
+      setExpandedFiles(next);
+      return;
+    }
+    next.add(key);
+    setExpandedFiles(next);
+    void loadFileDiff(ts, path);
+  }
+
+  async function revertFile(ts: number, file: CheckpointFile) {
+    const ok = await askConfirm({
+      title: `Revert ${file.path.split("/").pop()}?`,
+      message: REVERT_MESSAGE[file.status](file.path),
+      confirmLabel: "Revert",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await invoke("checkpoint_revert_file", {
+        repoPath: props.repoPath,
+        sessionId: props.sessionId,
+        promptTs: ts,
+        file: file.path,
+      });
+      await loadCheckpointFiles(ts);
+      const key = fileKey(ts, file.path);
+      setFileDiffs((d) => {
+        const next = { ...d };
+        delete next[key];
+        return next;
+      });
+    } catch {
+      // Best-effort: the file row simply won't refresh; the user can retry.
+    }
+  }
+
+  // More than one live agent tab rooted at this session's repo: the turn's
+  // diff may include another session's edits too, so its label says so.
+  const sharesWorkspace = () =>
+    props.liveTabs.filter((t) => t.kind === "agent" && t.workspace === props.repoPath).length > 1;
   // Guards against an out-of-order response: switching between two transcript
   // tabs before a slower fetch resolves must not overwrite the newly-active
   // tab's turns with the previous tab's data (same race class as SessionPanel).
@@ -80,6 +204,10 @@ export default function TranscriptViewer(props: { sessionPath: string; agent: "c
   onMount(async () => {
     unlisten = await listen("sessions://changed", () => {
       if (atTail()) void loadLatest();
+      // A live turn's checkpoint diff (against a live snapshot until the next
+      // prompt lands) can change on every transcript write, so re-fetch any
+      // already-open turn rather than waiting for the user to re-toggle.
+      for (const ts of checkpointOpen()) void loadCheckpointFiles(ts);
     });
   });
   onCleanup(() => unlisten?.());
@@ -129,6 +257,52 @@ export default function TranscriptViewer(props: { sessionPath: string; agent: "c
                 );
               }}
             </For>
+            <Show when={turn.role === "user" && props.repoPath}>
+              <div class={styles.checkpoint}>
+                <div class={styles.checkpointToggle} onClick={() => toggleCheckpoint(turn.ts)}>
+                  <span class={styles.chevron} classList={{ [styles.open]: checkpointOpen().has(turn.ts) }}>
+                    ▸
+                  </span>
+                  <span>{sharesWorkspace() ? "Changes in this workspace during this turn" : "Changes this turn"}</span>
+                </div>
+                <Show when={checkpointOpen().has(turn.ts)}>
+                  <Show
+                    when={(checkpointFiles()[turn.ts] ?? []).length}
+                    fallback={<div class={styles.checkpointEmpty}>No changes</div>}
+                  >
+                    <For each={checkpointFiles()[turn.ts]}>
+                      {(file) => {
+                        const key = () => fileKey(turn.ts, file.path);
+                        return (
+                          <div>
+                            <div class={styles.checkpointRow}>
+                              <span class={`${styles.opBadge} ${styles[file.status]}`}>{file.status[0].toUpperCase()}</span>
+                              <span class={styles.checkpointPath} onClick={() => toggleFileDiff(turn.ts, file.path)}>
+                                {file.path}
+                              </span>
+                              <button class={styles.revertButton} onClick={() => revertFile(turn.ts, file)}>
+                                Revert
+                              </button>
+                            </div>
+                            <Show when={expandedFiles().has(key())}>
+                              <div class={styles.checkpointDiff}>
+                                <For each={(fileDiffs()[key()] ?? "").split("\n")}>
+                                  {(line) => (
+                                    <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>
+                                      {line || " "}
+                                    </div>
+                                  )}
+                                </For>
+                              </div>
+                            </Show>
+                          </div>
+                        );
+                      }}
+                    </For>
+                  </Show>
+                </Show>
+              </div>
+            </Show>
           </div>
         )}
       </For>
@@ -139,6 +313,16 @@ export default function TranscriptViewer(props: { sessionPath: string; agent: "c
       </Show>
       <Show when={!turns().length}>
         <div class="tree-empty">No transcript turns</div>
+      </Show>
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => resolveConfirm(true)}
+          onCancel={() => resolveConfirm(false)}
+        />
       </Show>
     </div>
   );

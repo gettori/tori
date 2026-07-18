@@ -1,5 +1,6 @@
 mod agents;
 mod askpass;
+mod checkpoint;
 mod config;
 mod env;
 mod fs;
@@ -196,6 +197,12 @@ pub fn run() {
             sessions::session_touched_files,
             sessions::session_transcript,
             sessions::session_tail_state,
+            sessions::session_prompt_tail,
+            checkpoint::checkpoint_snapshot,
+            checkpoint::checkpoint_turn_files,
+            checkpoint::checkpoint_diff_file,
+            checkpoint::checkpoint_revert_file,
+            checkpoint::checkpoint_prune,
             presence::update_tray,
             presence::set_badge_count,
             model::model_context_caps,
