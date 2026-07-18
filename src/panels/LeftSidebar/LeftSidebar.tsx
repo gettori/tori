@@ -47,6 +47,15 @@ import {
   type LiveSessionDot,
 } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
+import {
+  statusFromDot,
+  setLiveStatuses,
+  rollupStatuses,
+  STATUS_LABEL,
+  type SessionStatus,
+  type LiveSessionStatus,
+  type Rollup,
+} from "../../utils/sessionStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -64,6 +73,10 @@ import {
   GitFork,
   ChevronDown,
   Plus,
+  LoaderCircle,
+  CircleAlert,
+  Check,
+  Circle,
 } from "lucide-solid";
 import type { LucideIcon } from "lucide-solid";
 import styles from "./LeftSidebar.module.css";
@@ -519,7 +532,7 @@ export default function LeftSidebar(props: {
   }
 
   // Reverse-lookup: which space/project owns a branch-unit's `folderPath`,
-  // for presence display metadata (notification/tray text).
+  // for presence display metadata (notification/tray text) and status rollup.
   function projectForFolder(folderPath: string): { spaceName: string; projectName: string } | null {
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
@@ -529,6 +542,12 @@ export default function LeftSidebar(props: {
       }
     }
     return null;
+  }
+
+  // Antigravity-style status vocabulary layered onto the existing dot
+  // composition (Phase 1): a pure remap, no new inputs.
+  function sessionStatus(id: string): SessionStatus {
+    return statusFromDot(sessionDot(id));
   }
 
   // Presence (phase 3): every live agent session's composed dot state +
@@ -554,10 +573,103 @@ export default function LeftSidebar(props: {
     return live;
   });
 
+  // Same join, in the Antigravity status vocabulary, covering every live-tab
+  // session across every space (not just the active one) - the shared store
+  // future consumers (palette, next-waiting hotkey) and this row's bubbling
+  // rollup both read from here.
+  const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
+    const allSessions = Object.values(sessions()).flat();
+    const live: LiveSessionStatus[] = [];
+    for (const t of props.liveTabs ?? []) {
+      if (t.kind !== "agent" || !t.sessionId) continue;
+      const meta = allSessions.find((s) => s.id === t.sessionId);
+      const proj = projectForFolder(t.workspace);
+      live.push({
+        sessionId: t.sessionId,
+        status: sessionStatus(t.sessionId),
+        sessionName: meta?.name || meta?.title || t.sessionId,
+        spaceName: proj?.spaceName ?? "",
+        projectName: proj?.projectName ?? "",
+        folderPath: t.workspace,
+        tabId: t.id,
+      });
+    }
+    return live;
+  });
+
   // Feed the tracker on every relevant change, so the OS notification/tray/
   // badge (all outside this component) share one source of truth instead of
   // re-deriving it independently.
   createEffect(() => notePresence(liveSessionDots()));
+  createEffect(() => setLiveStatuses(liveSessionStatuses()));
+
+  // Rollup helper: the bubbling-state counts among every live session that
+  // matches `pred`, for a collapsed branch/project row or a non-active space
+  // tile's badge (Waiting-for-approval + Executing only; Idle/Running stay
+  // row-local, so an expanded parent never wears a stale badge).
+  function bubbleFor(pred: (s: LiveSessionStatus) => boolean) {
+    return rollupStatuses(liveSessionStatuses().filter(pred));
+  }
+
+  // Branch/project-row rollup: `sessionIds` is the exact set unitSessionsAll
+  // (or a union of it) computed for that row, so a plain project's sibling
+  // branch units - which share one `folderPath` and are told apart only by
+  // recorded branch - never cross-attribute a session to the wrong row.
+  function bubbleForIds(sessionIds: Set<string>) {
+    return bubbleFor((s) => sessionIds.has(s.sessionId));
+  }
+
+  // Per-state icon for a session row (Antigravity 2.0 style): the icon always
+  // renders, the label sits alongside it and is the part that truncates first
+  // at narrow widths (title carries the full label regardless).
+  function statusGlyph(status: SessionStatus) {
+    switch (status) {
+      case "executing":
+        return <Icon icon={LoaderCircle} size={12} class={styles.statusSpin} />;
+      case "waitingForApproval":
+        return <Icon icon={CircleAlert} size={12} />;
+      case "idle":
+        return <Icon icon={Check} size={12} />;
+      case "running":
+        return <Icon icon={Circle} size={12} />;
+    }
+  }
+
+  // Session-row status indicator: sits in the trailing time slot, replacing
+  // ago(last_active) for any session with a detectable live status. A dead
+  // session (status "none") keeps the plain ago time instead.
+  function statusIndicator(status: SessionStatus) {
+    if (status === "none") return null;
+    return (
+      <span class={`${styles.statusIndicator} ${styles[status]}`} title={STATUS_LABEL[status]}>
+        {statusGlyph(status)}
+        <span class={styles.statusLabel}>{STATUS_LABEL[status]}</span>
+      </span>
+    );
+  }
+
+  // Collapsed/hidden-ancestor rollup badge: Waiting first (it always wins the
+  // row), then Executing, each with an xN count when more than one session
+  // shares the state. Renders nothing when neither count is present.
+  function statusBubble(r: Rollup) {
+    if (!r.waitingForApproval && !r.executing) return null;
+    return (
+      <span class={styles.statusBubble}>
+        <Show when={r.waitingForApproval}>
+          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title="Waiting for approval">
+            <Icon icon={CircleAlert} size={11} />
+            <Show when={r.waitingForApproval > 1}>x{r.waitingForApproval}</Show>
+          </span>
+        </Show>
+        <Show when={r.executing}>
+          <span class={`${styles.statusBubbleItem} ${styles.executing}`} title="Executing">
+            <Icon icon={LoaderCircle} size={11} class={styles.statusSpin} />
+            <Show when={r.executing > 1}>x{r.executing}</Show>
+          </span>
+        </Show>
+      </span>
+    );
+  }
 
   const [windowFocused, setWindowFocused] = createSignal(true);
   // A session reads as attended once it's both the sidebar's current
@@ -580,16 +692,19 @@ export default function LeftSidebar(props: {
 
   // Tray + dock badge, recomputed from the same live-session list. Both are
   // cheap, infrequent (agent state transitions, not PTY bytes), so a plain
-  // rebuild-on-change is simpler than an incremental update.
+  // rebuild-on-change is simpler than an incremental update. The tray reads
+  // the same status vocabulary and Waiting-first ordering as the sidebar
+  // (adversary F5), not a re-derived dot scheme.
   createEffect(() => {
     const live = liveSessionDots();
     const { running, needsYou } = liveCounts(live);
-    const entries = live
-      .filter((l) => l.dot !== "none")
-      .sort((a, b) => (a.dot === "needsYou" ? -1 : b.dot === "needsYou" ? 1 : 0))
+    const statuses = liveSessionStatuses();
+    const entries = statuses
+      .filter((l) => l.status !== "none")
+      .sort((a, b) => (a.status === "waitingForApproval" ? -1 : b.status === "waitingForApproval" ? 1 : 0))
       .map((l) => ({
         id: l.sessionId,
-        label: `${l.dot === "needsYou" ? "⚠ " : ""}${l.sessionName}${l.projectName ? ` (${l.projectName})` : ""}`,
+        label: `${l.status === "waitingForApproval" ? "⚠ " : ""}${l.sessionName}${l.projectName ? ` (${l.projectName})` : ""}`,
       }));
     invoke("update_tray", { running, needsYou, entries }).catch(() => {});
   });
@@ -1723,20 +1838,6 @@ export default function LeftSidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, s.path)}
                 >
-                  <Show when={sessionDot(s.id) !== "none"}>
-                    <span
-                      class={`${styles.sessionDot} ${styles[sessionDot(s.id)]}`}
-                      title={
-                        {
-                          solid: "Agent running",
-                          hollow: "Running elsewhere (no open tab)",
-                          working: "Working",
-                          needsYou: "Needs you",
-                        }[sessionDot(s.id) as "solid" | "hollow" | "working" | "needsYou"]
-                      }
-                      aria-hidden="true"
-                    />
-                  </Show>
                   <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
                     <PiIcon />
                   </Show>
@@ -1758,7 +1859,9 @@ export default function LeftSidebar(props: {
                       {touchedCount()}
                     </span>
                   </Show>
-                  <span class={styles.when}>{ago(s.last_active)}</span>
+                  <Show when={statusIndicator(sessionStatus(s.id))} fallback={<span class={styles.when}>{ago(s.last_active)}</span>}>
+                    {statusIndicator(sessionStatus(s.id))}
+                  </Show>
                 </div>
               );
             }}
@@ -1789,10 +1892,13 @@ export default function LeftSidebar(props: {
   // branch. A session whose recorded branch has no visible unit (detached or
   // deleted) is an orphan: it re-homes onto the fallback unit so history is never
   // lost. Branchless (pi) sessions likewise park on the fallback (the checkout).
-  function unitSessions(p: Project, u: BranchUnit): SessionMeta[] {
-    const all = (sessions()[u.folderPath] ?? [])
-      .filter((s) => !s.archived)
-      .filter(sessionVisible);
+  // Query-unfiltered core: a plain project's branch units all share one
+  // `folderPath`, so this is the only place that actually knows which of
+  // several sibling branch rows a session belongs to. Also used by the
+  // status-bubble rollup below, which needs the sessions a search filter
+  // hides too (unitSessions layers that filter on top for rendering).
+  function unitSessionsAll(p: Project, u: BranchUnit): SessionMeta[] {
+    const all = (sessions()[u.folderPath] ?? []).filter((s) => !s.archived);
     if (u.kind !== "plain") return all;
     const visible = new Set(
       p.branchUnits.filter((x) => x.kind === "plain" && x.branch).map((x) => x.branch),
@@ -1805,6 +1911,10 @@ export default function LeftSidebar(props: {
       if (b && visible.has(b)) return (u.branch || "") === b;
       return isHome; // orphaned recorded branch (or branchless claude): re-home
     });
+  }
+
+  function unitSessions(p: Project, u: BranchUnit): SessionMeta[] {
+    return unitSessionsAll(p, u).filter(sessionVisible);
   }
 
   // Per-session flag: a Claude session recorded on a branch other than the
@@ -1957,8 +2067,29 @@ export default function LeftSidebar(props: {
       <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
         {(glyph) => <Icon icon={glyph()} size={18} />}
       </Show>
+      {spaceBubble(g)}
     </button>
   );
+
+  // A space tile's own rollup badge: for the inactive spaces, their whole tree
+  // is structurally hidden (Arc-style, only the active space renders), so
+  // every one of their live sessions bubbles here. For the active space, its
+  // own rendered project rows already carry their own bubble when collapsed -
+  // only a project the search filter hid entirely (never rendered, so no row
+  // to bubble to) still needs to surface on the tile.
+  function spaceBubble(g: Space) {
+    const isActive = activeSpace()?.name === g.name;
+    const r = isActive
+      ? bubbleFor((s) => {
+          if (s.spaceName !== g.name) return false;
+          const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
+          return p != null && !projectVisible(p);
+        })
+      : bubbleFor((s) => s.spaceName === g.name);
+    const badge = statusBubble(r);
+    if (!badge) return null;
+    return <span class={styles.spaceBubble}>{badge}</span>;
+  }
 
   return (
     <div class={styles.tree}>
@@ -2001,6 +2132,18 @@ export default function LeftSidebar(props: {
                 >
                   <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} size={14} /></span>
                   <span class={styles.label}>{p.name}</span>
+                  {statusBubble(
+                    bubbleForIds(
+                      new Set(
+                        (!popen()
+                          ? p.branchUnits.flatMap((u) => unitSessionsAll(p, u))
+                          : plainDir()
+                            ? unitSessionsAll(p, folderUnit()).filter((s) => !sessionVisible(s))
+                            : []
+                        ).map((s) => s.id),
+                      ),
+                    ),
+                  )}
                   <RowChevron open={popen()} />
                 </div>
                 <Show when={popen()}>
@@ -2038,6 +2181,16 @@ export default function LeftSidebar(props: {
                             <Show when={u.isCurrent}>
                               <span class={styles.dot} title="current checkout">●</span>
                             </Show>
+                            {statusBubble(
+                              bubbleForIds(
+                                new Set(
+                                  (!uopen()
+                                    ? unitSessionsAll(p, u)
+                                    : unitSessionsAll(p, u).filter((s) => !sessionVisible(s))
+                                  ).map((s) => s.id),
+                                ),
+                              ),
+                            )}
                             <RowChevron open={uopen()} />
                           </div>
                           <Show when={uopen()}>
