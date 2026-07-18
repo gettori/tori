@@ -156,6 +156,7 @@ pub fn run() {
             sessions::session_detail,
             sessions::session_touched_files,
             sessions::session_transcript,
+            sessions::session_tail_state,
             model::model_context_caps,
             launch::open_in_vscode,
             launch::open_in_ghostty,

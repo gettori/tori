@@ -143,6 +143,7 @@
        theme-following --accent, and unmapped in vscodeMap.ts) so an imported
        VS Code theme can never repaint the running indicator. */
     --status-live: #3fb950;
+    --status-needs-you: #d19a66;
 
     /* Brand (champagne gold), dark. A fixed identity that theme-import does NOT
        repaint (it maps onto --accent/--sel/--bg, never --brand-*). Chrome uses
@@ -182,6 +183,7 @@
     /* Session status dot, light. Same fixed identity as dark - see the dark
        block's comment. */
     --status-live: #1a7f37;
+    --status-needs-you: #9a6700;
 
     /* Brand (champagne gold), light. Darker ramp stops so the gold stays legible
        on light chrome (theme-import can repaint chrome light today), and a softer
