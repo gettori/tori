@@ -1,0 +1,32 @@
+// Groups a raw unified-diff string (as returned by `git_diff_text`) into
+// per-hunk blocks, so the review/session diff panels can hang a "comment on
+// this hunk" affordance off each `@@` header instead of rendering one flat
+// list of CSS-classed lines.
+export type DiffHunk = {
+  header: string;
+  // 1-based new-file line range this hunk covers (the "+" side of the
+  // header), matching the coordinates the editor/gutter already use.
+  startLine: number;
+  endLine: number;
+  // The hunk's own lines, header excluded.
+  lines: string[];
+};
+
+const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+export function parseDiffHunks(diffText: string): DiffHunk[] {
+  const hunks: DiffHunk[] = [];
+  let current: DiffHunk | null = null;
+  for (const line of diffText.split("\n")) {
+    const m = HUNK_HEADER_RE.exec(line);
+    if (m) {
+      const start = parseInt(m[1], 10);
+      const count = m[2] !== undefined ? parseInt(m[2], 10) : 1;
+      current = { header: line, startLine: start, endLine: count > 0 ? start + count - 1 : start, lines: [] };
+      hunks.push(current);
+      continue;
+    }
+    current?.lines.push(line);
+  }
+  return hunks;
+}
