@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -132,6 +132,9 @@ type SessionMeta = {
   archived: boolean;
   agent?: string;
 };
+
+// Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
+type TailState = "working" | "done" | "blocked-candidate";
 
 export type Selection = {
   spaceName: string;
@@ -429,12 +432,47 @@ export default function LeftSidebar(props: {
     setProbes((m) => ({ ...m, [id]: { agent, running } }));
   }
 
-  function sessionDot(s: SessionMeta): "solid" | "hollow" | "none" {
-    const hasTab = (props.liveTabs ?? []).some((t) => t.sessionId === s.id);
+  // Working/needs-you pulse (Finding A floor), live-tab sessions only. PTY
+  // activity is keyed by the *tab* id (pty_spawn's id), not the session id -
+  // `pty://activity` fires per hosted shell, so it's cross-referenced via
+  // liveTabs below. Transcript-tail state is keyed by session id and comes
+  // from `session_tail_state`, refreshed on sessions://changed and whenever
+  // the set of live tabs changes (a freshly resumed session may already be
+  // mid-tool-call before any new transcript write happens).
+  const [ptyActivity, setPtyActivity] = createSignal<Record<string, "active" | "quiet">>({});
+  const [tailStates, setTailStates] = createSignal<Record<string, TailState>>({});
+
+  async function refreshTailStates() {
+    const live = (props.liveTabs ?? []).filter((t) => t.kind === "agent" && t.sessionId);
+    if (!live.length) return;
+    const allSessions = Object.values(sessions()).flat();
+    const updates: Record<string, TailState> = {};
+    await Promise.all(
+      live.map(async (t) => {
+        const meta = allSessions.find((s) => s.id === t.sessionId);
+        if (!meta) return;
+        const agent = meta.agent === "pi" ? "pi" : "claude";
+        const state = await invoke<TailState>("session_tail_state", { path: meta.path, agent }).catch(
+          () => null,
+        );
+        if (state) updates[t.sessionId!] = state;
+      }),
+    );
+    if (Object.keys(updates).length) setTailStates((m) => ({ ...m, ...updates }));
+  }
+  createEffect(on(() => props.liveTabs, () => void refreshTailStates()));
+
+  // Detached sessions (no live tab) cap at the hollow running dot - working/
+  // needs-you both need a real PTY to observe, which only a live tab has.
+  function sessionDot(s: SessionMeta): "solid" | "hollow" | "working" | "needsYou" | "none" {
+    const tab = (props.liveTabs ?? []).find((t) => t.sessionId === s.id);
     const running = probes()[s.id]?.running === true;
-    if (hasTab && running) return "solid";
-    if (!hasTab && running) return "hollow";
-    return "none";
+    if (!tab) return running ? "hollow" : "none";
+    if (!running) return "none";
+    const activity = ptyActivity()[tab.id];
+    if (activity === "active") return "working";
+    if (activity === "quiet" && tailStates()[s.id] === "blocked-candidate") return "needsYou";
+    return "solid";
   }
 
   // Re-probe every session whose dot could currently be non-"none": every live
@@ -1531,7 +1569,14 @@ export default function LeftSidebar(props: {
                   <Show when={sessionDot(s) !== "none"}>
                     <span
                       class={`${styles.sessionDot} ${styles[sessionDot(s)]}`}
-                      title={sessionDot(s) === "solid" ? "Agent running" : "Running elsewhere (no open tab)"}
+                      title={
+                        {
+                          solid: "Agent running",
+                          hollow: "Running elsewhere (no open tab)",
+                          working: "Working",
+                          needsYou: "Needs you",
+                        }[sessionDot(s) as "solid" | "hollow" | "working" | "needsYou"]
+                      }
                       aria-hidden="true"
                     />
                   </Show>
@@ -1636,6 +1681,7 @@ export default function LeftSidebar(props: {
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
+  let unlistenActivity: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offSearch: (() => void) | undefined;
@@ -1650,9 +1696,13 @@ export default function LeftSidebar(props: {
     if (cfg) await restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => {
-      refreshSessions();
+      refreshSessions().then(() => refreshTailStates());
       probeActive();
     });
+    unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
+      "pty://activity",
+      (e) => setPtyActivity((m) => ({ ...m, [e.payload.id]: e.payload.state })),
+    );
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
     // transcript write, if any, may already have been debounced away).
@@ -1704,6 +1754,7 @@ export default function LeftSidebar(props: {
   onCleanup(() => {
     unlistenConfig?.();
     unlistenSessions?.();
+    unlistenActivity?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
     offSearch?.();

@@ -10,6 +10,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
+import { findAgent } from "../../utils/agents";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
@@ -201,6 +202,11 @@ export default function TerminalView(props: {
     const output = new Channel<ArrayBuffer | Uint8Array | number[]>();
     output.onmessage = (msg) => term?.write(toBytes(msg));
 
+    // Agent tabs use their adapter's own (empirically measured) quiet
+    // threshold for the pty://activity working/needs-you pulse; shell/command
+    // tabs fall back to the backend's default.
+    const quietMs = props.kind === "agent" ? findAgent(props.program).pty_quiet_ms : null;
+
     await invoke("pty_spawn", {
       id: props.id,
       program: props.program,
@@ -210,6 +216,7 @@ export default function TerminalView(props: {
       rows: term.rows,
       kind: props.kind,
       init: props.init ?? null,
+      quietMs,
       onOutput: output,
     }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
 

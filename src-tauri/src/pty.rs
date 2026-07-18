@@ -7,11 +7,12 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::env::{augmented_path, login_shell};
 
@@ -19,6 +20,16 @@ use crate::env::{augmented_path, login_shell};
 // shell has produced no output yet. A shell that prints a prompt/banner trips
 // the first-chunk path well before this; the timer only covers a silent shell.
 const INIT_TIMEOUT_MS: u64 = 1000;
+
+// Fallback quiet threshold for a session with no adapter-supplied one (a
+// plain shell/command tab). Agent tabs pass their adapter's own
+// `pty_quiet_ms` (see agents.rs), empirically measured per agent.
+const DEFAULT_QUIET_MS: u64 = 2000;
+
+// How often the activity watcher re-checks a session's last-output time
+// against its quiet threshold. Small relative to any real threshold (2s+),
+// so the active->quiet transition is detected promptly without busy-looping.
+const ACTIVITY_POLL_MS: u64 = 200;
 
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
@@ -36,6 +47,52 @@ pub struct Session {
     writer: SharedWriter,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     sink: Sink,
+}
+
+/// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
+/// the reader thread stamps `last_output_at` on every chunk and flips to
+/// `active` on a quiet->active transition; a separate watcher thread flips
+/// back to quiet once `last_output_at` is older than the session's threshold.
+/// Two threads, one lock - kept this simple rather than adding a timeout to
+/// the (blocking, OS-level) PTY reader itself.
+struct Activity {
+    last_output_at: Instant,
+    active: bool,
+}
+type SharedActivity = Arc<Mutex<Activity>>;
+
+#[derive(Clone, Serialize)]
+struct ActivityEvent {
+    id: String,
+    /// "active" | "quiet"
+    state: &'static str,
+}
+
+/// Called on every PTY read. Stamps `last_output_at` unconditionally, but only
+/// returns `Some("active")` on a quiet->active transition (or the first-ever
+/// chunk) - a burst of reads while already active (a redrawing spinner)
+/// returns `None` each time, which is what keeps `pty://activity` from
+/// spamming one event per chunk.
+fn note_output(act: &mut Activity) -> Option<&'static str> {
+    act.last_output_at = Instant::now();
+    if act.active {
+        None
+    } else {
+        act.active = true;
+        Some("active")
+    }
+}
+
+/// Called by the watcher's poll loop. Returns `Some("quiet")` exactly once,
+/// on the active->quiet transition (`last_output_at` older than `threshold`);
+/// `None` otherwise, including every subsequent poll while already quiet.
+fn check_quiet(act: &mut Activity, threshold: Duration) -> Option<&'static str> {
+    if act.active && act.last_output_at.elapsed() >= threshold {
+        act.active = false;
+        Some("quiet")
+    } else {
+        None
+    }
 }
 
 // Write the seeded `init` command to the shell exactly once. Both the reader's
@@ -74,6 +131,10 @@ pub fn pty_spawn(
     // Agent tabs: the command line to type into the shell once, after it is
     // ready (e.g. "claude --resume <id>\n"). Delivered backend-once.
     init: Option<String>,
+    // Quiet threshold (ms) for this session's pty://activity transitions; an
+    // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
+    // omits it and gets `DEFAULT_QUIET_MS`.
+    quiet_ms: Option<u64>,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     // If a session with this id already exists, rewire its output to the new
@@ -147,6 +208,12 @@ pub fn pty_spawn(
     let reader_init = init.clone();
     let app_handle = app.clone();
     let emit_id = id.clone();
+
+    let activity: SharedActivity = Arc::new(Mutex::new(Activity { last_output_at: Instant::now(), active: false }));
+    let reader_activity = activity.clone();
+    let reader_activity_app = app.clone();
+    let reader_activity_id = id.clone();
+
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -166,12 +233,47 @@ pub fn pty_spawn(
                     if let Some(init_cmd) = &reader_init {
                         deliver_init(&reader_writer, &reader_initialized, init_cmd);
                     }
+                    if let Ok(mut act) = reader_activity.lock() {
+                        if let Some(state) = note_output(&mut act) {
+                            let _ = reader_activity_app
+                                .emit("pty://activity", ActivityEvent { id: reader_activity_id.clone(), state });
+                        }
+                    }
                 }
                 Err(_) => break,
             }
         }
         let _ = app_handle.emit("pty://exit", emit_id.clone());
     });
+
+    // Watcher: no read-timeout exists on a blocking PTY reader, so a separate
+    // thread polls `last_output_at` to detect the active->quiet transition
+    // even when no further byte ever arrives (exactly the needs-you case).
+    // Stops once the session is gone from PtyState (killed, or the reader
+    // above already exited and the session was removed).
+    {
+        let watch_activity = activity.clone();
+        let watch_app = app.clone();
+        let watch_id = id.clone();
+        let threshold = Duration::from_millis(quiet_ms.unwrap_or(DEFAULT_QUIET_MS));
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_millis(ACTIVITY_POLL_MS));
+            let still_live = watch_app
+                .state::<PtyState>()
+                .0
+                .lock()
+                .map(|g| g.contains_key(&watch_id))
+                .unwrap_or(false);
+            if !still_live {
+                break;
+            }
+            if let Ok(mut act) = watch_activity.lock() {
+                if let Some(state) = check_quiet(&mut act, threshold) {
+                    let _ = watch_app.emit("pty://activity", ActivityEvent { id: watch_id.clone(), state });
+                }
+            }
+        });
+    }
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     guard.insert(
@@ -226,4 +328,66 @@ pub fn pty_kill(state: State<PtyState>, id: String) -> Result<(), String> {
         let _ = session.child.kill();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh() -> Activity {
+        Activity { last_output_at: Instant::now(), active: false }
+    }
+
+    /// "running a command in a shell tab emits active then quiet": the first
+    /// chunk transitions quiet->active; once the process has been silent
+    /// longer than the threshold, the watcher's check transitions back.
+    #[test]
+    fn transitions_active_then_quiet_after_threshold() {
+        let mut act = fresh();
+        assert_eq!(note_output(&mut act), Some("active"));
+        assert!(act.active);
+
+        let threshold = Duration::from_millis(50);
+        // Not yet quiet: last_output_at was just stamped.
+        assert_eq!(check_quiet(&mut act, threshold), None);
+        assert!(act.active);
+
+        thread::sleep(threshold + Duration::from_millis(20));
+        assert_eq!(check_quiet(&mut act, threshold), Some("quiet"));
+        assert!(!act.active);
+    }
+
+    /// "no event spam during a spinner redraw": a burst of reads while
+    /// already active must fire the transition at most once.
+    #[test]
+    fn no_spam_while_already_active() {
+        let mut act = fresh();
+        assert_eq!(note_output(&mut act), Some("active"));
+        for _ in 0..50 {
+            assert_eq!(note_output(&mut act), None, "a redraw burst must not re-fire 'active'");
+        }
+    }
+
+    /// A watcher poll while already quiet must not re-fire "quiet" (it only
+    /// reports the transition, not the steady state).
+    #[test]
+    fn no_spam_while_already_quiet() {
+        let mut act = fresh();
+        let threshold = Duration::from_millis(30);
+        note_output(&mut act);
+        thread::sleep(threshold + Duration::from_millis(20));
+        assert_eq!(check_quiet(&mut act, threshold), Some("quiet"));
+        for _ in 0..5 {
+            assert_eq!(check_quiet(&mut act, threshold), None, "steady quiet must not re-fire");
+        }
+    }
+
+    /// A fresh, never-active session (e.g. a command tab that failed to
+    /// spawn any output at all) must not spuriously report "quiet" - there
+    /// was no "active" transition to reverse.
+    #[test]
+    fn never_active_never_reports_quiet() {
+        let mut act = fresh();
+        assert_eq!(check_quiet(&mut act, Duration::from_millis(1)), None);
+    }
 }
