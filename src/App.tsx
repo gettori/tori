@@ -1,4 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
@@ -79,6 +80,12 @@ function App() {
   const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [paletteOpen, setPaletteOpen] = createSignal(false);
+  // First run: Settings opens on the Agents cards with a welcome note. The
+  // backend decides (it scans every adapter's sessions dir and checks a
+  // persisted flag), so there is nothing here to race against the sidebar's
+  // own async load. Cleared as soon as the panel closes, so reopening Settings
+  // by hand is the ordinary panel.
+  const [welcome, setWelcome] = createSignal(false);
 
   createEffect(() => {
     const s = selected();
@@ -139,6 +146,19 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
     initSettings();
+    // Mark shown on display, not on dismiss: a user who quits mid-welcome has
+    // still seen it, and showing it again every launch would be the nag this
+    // flag exists to prevent.
+    invoke<boolean>("onboarding_should_show")
+      .then((show) => {
+        if (!show) return;
+        setWelcome(true);
+        setSettingsOpen(true);
+        return invoke("onboarding_mark_shown");
+      })
+      .catch(() => {
+        // A failed check just means no onboarding; never block startup on it.
+      });
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
@@ -197,7 +217,10 @@ function App() {
       </Show>
 
       <Show when={settingsOpen()}>
-        <Settings onClose={() => setSettingsOpen(false)} />
+        <Settings
+          welcome={welcome()}
+          onClose={() => (setSettingsOpen(false), setWelcome(false))}
+        />
       </Show>
 
       <AskpassDialog />

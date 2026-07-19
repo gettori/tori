@@ -5,10 +5,12 @@ mod config;
 mod env;
 mod fs;
 mod git;
+mod health;
 mod hooks;
 mod launch;
 mod lsp;
 mod model;
+mod onboarding;
 mod opencode;
 mod presence;
 mod pty;
@@ -201,6 +203,9 @@ pub fn run() {
             lsp::lsp_send,
             lsp::lsp_stop,
             agents::list_agents,
+            health::agent_health,
+            onboarding::onboarding_should_show,
+            onboarding::onboarding_mark_shown,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,
