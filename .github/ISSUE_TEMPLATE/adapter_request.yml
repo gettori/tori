@@ -1,0 +1,67 @@
+name: Adapter request
+description: Ask for support for an agent CLI Sway does not know about
+labels: ["adapter"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **You may not need this issue.** Agents are data, not code: a
+        `schema_version = 1` TOML in `~/.config/sway/agents/` can add one
+        yourself, and the schema is stable at v1. See
+        [ADAPTERS.md](../../ADAPTERS.md).
+
+        Open this issue if you tried that and the agent's transcript format
+        does not fit any implemented parser kind, or if you want your working
+        adapter bundled for everyone.
+
+  - type: input
+    id: agent
+    attributes:
+      label: Which agent
+      description: Name and a link to its CLI.
+      placeholder: "codex - https://github.com/openai/codex"
+    validations:
+      required: true
+
+  - type: input
+    id: launch
+    attributes:
+      label: How you launch and resume it
+      description: The command to start a session, and the flag to resume one by id.
+      placeholder: "codex, resume with: codex resume <id>"
+    validations:
+      required: false
+
+  - type: input
+    id: transcripts
+    attributes:
+      label: Where its session transcripts live
+      description: >
+        A directory of per-session files, or a shared database. Sway supports
+        both (`file` and `sqlite` discovery backends).
+      placeholder: "~/.codex/sessions, one .jsonl per session"
+    validations:
+      required: false
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: A sample transcript
+      description: >
+        The single most useful thing you can attach. It is what decides whether
+        an existing parser kind fits or a new one is needed. Redact anything
+        private first - transcripts contain your prompts and code.
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: attempt
+    attributes:
+      label: What you tried
+      description: >
+        If you already wrote an adapter TOML, paste it and say where it fell
+        short.
+      render: toml
+    validations:
+      required: false

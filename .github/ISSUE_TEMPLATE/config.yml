@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Installing Sway (Gatekeeper, "Apple could not verify")
+    url: https://github.com/skarif2/sway/blob/main/docs/INSTALL.md
+    about: >
+      macOS blocking the first launch is expected - Sway v0.1 is unsigned. The
+      install doc has the two ways past it.
+  - name: Adding an agent yourself
+    url: https://github.com/skarif2/sway/blob/main/ADAPTERS.md
+    about: >
+      Agents are TOML files, not code. This is the full schema, with a
+      from-scratch example.
