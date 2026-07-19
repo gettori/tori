@@ -1,0 +1,104 @@
+# Draft a GitHub Release from a `v*` tag: build the universal macOS bundle,
+# prove it really is universal, and attach the DMG.
+#
+# No secrets are needed - v0.1 ships unsigned, so there is no certificate to
+# inject. The release is left as a *draft* on purpose: an unsigned build needs
+# the Gatekeeper note in docs/INSTALL.md alongside it, and that is a human's
+# call to publish.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Only to create the release; nothing here pushes commits.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive the version from the tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # A tag that disagrees with the app's own version would ship a build
+      # that reports the wrong version in its update check, and would look for
+      # a changelog section that describes something else.
+      - name: Check the tag matches the app version
+        run: |
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          want="${{ steps.version.outputs.version }}"
+          if [ "$conf" != "$want" ]; then
+            echo "tag $GITHUB_REF_NAME implies version $want, but tauri.conf.json says $conf" >&2
+            exit 1
+          fi
+
+      # Done before the long build: a missing changelog section should fail in
+      # seconds, not after a full universal compile.
+      - name: Extract the release notes
+        run: |
+          .github/scripts/changelog-section.sh "${{ steps.version.outputs.version }}" \
+            > release-notes.md
+          echo "--- release body ---"
+          cat release-notes.md
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both halves of the universal binary.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # Runs beforeBuildCommand, which installs the bundled LSP resources.
+      - name: Build the universal bundle
+        run: pnpm tauri build --target universal-apple-darwin
+
+      - name: Report the main binary's architectures
+        run: lipo -archs "src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app/Contents/MacOS/Sway"
+
+      - name: Verify every bundled Mach-O is universal
+        run: |
+          .github/scripts/check-universal.sh \
+            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app"
+
+      # Resolved explicitly rather than passing a glob to `gh`: an unmatched
+      # glob reaches it as a literal path and the failure reads as a mangled
+      # filename instead of "the build produced no DMG".
+      - name: Locate the DMG
+        id: dmg
+        run: |
+          shopt -s nullglob
+          dmgs=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            echo "no DMG in src-tauri/target/universal-apple-darwin/release/bundle/dmg/" >&2
+            exit 1
+          fi
+          if [ ${#dmgs[@]} -gt 1 ]; then
+            echo "expected one DMG, found ${#dmgs[@]}: ${dmgs[*]}" >&2
+            exit 1
+          fi
+          echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "Sway $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            "${{ steps.dmg.outputs.path }}"
