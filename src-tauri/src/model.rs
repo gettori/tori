@@ -20,6 +20,7 @@ fn cache_path() -> Option<PathBuf> {
 /// Pull `id -> context_length` from OpenRouter's public model list.
 fn fetch_caps() -> Result<HashMap<String, u64>, String> {
     let body = ureq::get(MODELS_URL)
+        .timeout(std::time::Duration::from_secs(10))
         .call()
         .map_err(|e| e.to_string())?
         .into_string()
@@ -62,8 +63,14 @@ fn cache_is_fresh(path: &PathBuf) -> bool {
 /// otherwise refreshed from OpenRouter (falling back to a stale cache, then an
 /// empty map, so a network failure never blocks the UI; the frontend applies
 /// its own defaults for anything missing).
+///
+/// `async` is load-bearing: a Tauri command without it runs on the **main
+/// thread**, so the cold-cache fetch below would freeze the window while the
+/// toolbar mounts. Same reason `check_for_update` is async, and like that one
+/// the request itself is blocking, so it carries an explicit timeout rather
+/// than relying on the caller to give up.
 #[tauri::command]
-pub fn model_context_caps() -> Result<HashMap<String, u64>, String> {
+pub async fn model_context_caps() -> Result<HashMap<String, u64>, String> {
     let path = match cache_path() {
         Some(p) => p,
         None => return fetch_caps().or_else(|_| Ok(HashMap::new())),
