@@ -28,10 +28,37 @@ function toBytes(msg: ArrayBuffer | Uint8Array | number[]): Uint8Array {
   return new Uint8Array(msg);
 }
 
+// xterm's ITheme, read entirely from the token layer. The 16 ANSI slots cannot
+// be derived from --bg/--text (a program picks the slot, not us), so they are
+// tokens too - see the --term-* ramps in styles/tokens.css. Re-read on
+// THEME_APPLIED, which fires after <html>'s data-theme/inline props are set, so
+// getComputedStyle already reflects the new theme.
 function termColors() {
   const cs = getComputedStyle(document.documentElement);
-  const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb;
-  return { background: v("--bg", "#1e1e1e"), foreground: v("--text", "#d4d4d4") };
+  const v = (name: string) => cs.getPropertyValue(name).trim() || undefined;
+  return {
+    background: v("--bg"),
+    foreground: v("--text"),
+    cursor: v("--term-cursor"),
+    cursorAccent: v("--bg"),
+    selectionBackground: v("--term-selection"),
+    black: v("--term-black"),
+    red: v("--term-red"),
+    green: v("--term-green"),
+    yellow: v("--term-yellow"),
+    blue: v("--term-blue"),
+    magenta: v("--term-magenta"),
+    cyan: v("--term-cyan"),
+    white: v("--term-white"),
+    brightBlack: v("--term-bright-black"),
+    brightRed: v("--term-bright-red"),
+    brightGreen: v("--term-bright-green"),
+    brightYellow: v("--term-bright-yellow"),
+    brightBlue: v("--term-bright-blue"),
+    brightMagenta: v("--term-bright-magenta"),
+    brightCyan: v("--term-bright-cyan"),
+    brightWhite: v("--term-bright-white"),
+  };
 }
 
 /**

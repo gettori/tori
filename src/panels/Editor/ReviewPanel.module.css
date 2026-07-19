@@ -117,13 +117,13 @@
 }
 
 .reviewStatus.added {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .reviewStatus.modified {
-  color: #d29922;
+  color: var(--diff-modified);
 }
 .reviewStatus.deleted {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 .reviewStatus.untracked {
   color: var(--text-dim);
@@ -150,10 +150,10 @@
 }
 
 .reviewDiff .diffLine.add {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .reviewDiff .diffLine.del {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 .reviewDiff .diffLine.hunk {
   color: var(--accent);

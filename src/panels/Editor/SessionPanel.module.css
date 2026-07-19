@@ -70,13 +70,13 @@
 }
 
 .opBadge.create {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .opBadge.edit {
-  color: #d29922;
+  color: var(--diff-modified);
 }
 .opBadge.delete {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 .opBadge.read {
   color: var(--text-dim);
@@ -114,10 +114,10 @@
 }
 
 .touchDiff .diffLine.add {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .touchDiff .diffLine.del {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 .touchDiff .diffLine.hunk {
   color: var(--accent);

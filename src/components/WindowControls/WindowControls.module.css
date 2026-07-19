@@ -20,11 +20,11 @@
 }
 
 .winControls:hover .winDot.close {
-  background: #ff5f57;
+  background: var(--sway-traffic-close);
 }
 .winControls:hover .winDot.min {
-  background: #febc2e;
+  background: var(--sway-traffic-min);
 }
 .winControls:hover .winDot.zoom {
-  background: #28c840;
+  background: var(--sway-traffic-zoom);
 }

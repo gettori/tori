@@ -23,7 +23,7 @@ export function listThemes(): BundledTheme[] {
   return THEMES;
 }
 
-/** Themes the picker may offer (light gated off during the migration). */
+/** Themes the picker may offer. */
 export function listSelectableThemes(): BundledTheme[] {
   return THEMES.filter((t) => t.selectable);
 }

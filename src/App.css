@@ -23,13 +23,13 @@
 /* Claude session mark (sidebar): brand orange, regardless of row text/selection
    color. The inline SVG fills with currentColor. */
 .claude-icon {
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 /* Pi session mark (sidebar): a distinct tint so the two agents read apart at a
    glance. The inline SVG fills with currentColor. */
 .pi-icon {
-  color: #6cb6ff;
+  color: var(--agent-pi);
 }
 
 /* Design tokens (the 10 chrome vars + font-family) moved to src/styles/tokens.css
@@ -399,14 +399,14 @@ body.dragging {
 }
 
 .cm-diff-gutter .cm-gutterElement.cm-diff-added {
-  background: #2ea043;
+  background: var(--diff-added);
 }
 
 .cm-diff-gutter .cm-gutterElement.cm-diff-modified {
-  background: #d29922;
+  background: var(--diff-modified);
 }
 
 .cm-diff-gutter .cm-gutterElement.cm-diff-deleted {
-  background: #f85149;
+  background: var(--diff-deleted);
 }
 

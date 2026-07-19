@@ -24,10 +24,10 @@
   background: var(--hover);
 }
 .ctxItem.danger {
-  color: var(--danger, #e06c75);
+  color: var(--danger);
 }
 .ctxItem.warn {
-  color: var(--warn, #d19a66);
+  color: var(--warn);
 }
 .ctxItem.disabled {
   color: var(--text-dim);

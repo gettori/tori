@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--scrim);
 }
 .modal {
   width: min(420px, calc(100vw - 48px));
@@ -30,13 +30,13 @@
 }
 .modalNote {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
   margin-bottom: 8px;
   word-break: break-all;
 }
 .modalMsg {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
   margin-bottom: 12px;
   white-space: pre-wrap;
 }
@@ -63,7 +63,7 @@
 }
 .modalHint {
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim, #8a8a8a);
+  color: var(--text-dim);
   margin-top: 8px;
   line-height: 1.4;
 }
@@ -134,12 +134,12 @@
 }
 .modalWarn {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--danger, #e06c75);
+  color: var(--danger);
   margin-bottom: 10px;
 }
 .modalLabel {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
   margin: 12px 0 6px;
 }
 .modalInput:disabled {
@@ -166,7 +166,7 @@
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--sway-radius-md);
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
   cursor: pointer;
   transition:
     border-color var(--sway-duration-fast) ease,
@@ -190,7 +190,7 @@
   justify-content: space-between;
   gap: calc(12px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
   margin-bottom: 8px;
 }
 .delEntries {
@@ -203,7 +203,7 @@
 .delEmpty {
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
 }
 .delEntry {
   display: flex;
@@ -234,11 +234,11 @@
   border: 1px solid var(--border);
 }
 .delTag.muted {
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
 }
 .delTag.warn {
-  color: var(--danger, #e06c75);
-  border-color: var(--danger, #e06c75);
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* ---- Worktree / branch remove dialogs ---- */
@@ -259,7 +259,7 @@
 .wtDetailKey {
   flex-shrink: 0;
   width: 56px;
-  color: var(--text-dim, #9aa0aa);
+  color: var(--text-dim);
 }
 .wtDetailVal {
   color: var(--text);
