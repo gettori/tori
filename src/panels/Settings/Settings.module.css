@@ -151,9 +151,6 @@
   .dotWarn {
     background: var(--warn);
   }
-  .dotNeutral {
-    background: var(--text-dim);
-  }
   /* Not installed is absence, not failure: an outline, not a red light. */
   .dotOff {
     background: transparent;

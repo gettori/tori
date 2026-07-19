@@ -29,12 +29,15 @@ export type AgentHealth = {
   overridePath: string | null;
 };
 
-// Maps a status to the dot's semantic tone. `versionUnknown` shares the
-// neutral tone with "installed and matching" on purpose: we know the agent is
-// there, we just could not read its version, which is not the user's problem.
+// The dot answers one question - is this agent installed and usable? - and
+// nothing else. `versionUnknown` is therefore green, not gray: an adapter
+// carrying no `verified_against` (claude and pi today) says nothing about the
+// user's install, and dimming two of three healthy agents over Sway's own
+// missing bookkeeping reads as "these are worse off" when they are fine.
+// Version detail belongs in the status text below, where it can be explained.
 const TONE: Record<BinaryStatus, string> = {
   versionMatch: styles.dotOk,
-  versionUnknown: styles.dotNeutral,
+  versionUnknown: styles.dotOk,
   versionDrift: styles.dotWarn,
   notFound: styles.dotOff,
 };
