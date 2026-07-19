@@ -268,7 +268,7 @@ export default function TranscriptViewer(props: {
                 <Show when={checkpointOpen().has(turn.ts)}>
                   <Show
                     when={(checkpointFiles()[turn.ts] ?? []).length}
-                    fallback={<div class={styles.checkpointEmpty}>No changes</div>}
+                    fallback={<div class={styles.checkpointEmpty}>This turn changed no files.</div>}
                   >
                     <For each={checkpointFiles()[turn.ts]}>
                       {(file) => {
@@ -312,7 +312,9 @@ export default function TranscriptViewer(props: {
         </button>
       </Show>
       <Show when={!turns().length}>
-        <div class="tree-empty">No transcript turns</div>
+        <div class="tree-empty">
+          <p>No turns yet. Prompt the agent in the terminal (⌘J) and the conversation appears here.</p>
+        </div>
       </Show>
       <Show when={confirmReq()}>
         <ConfirmDialog
