@@ -50,6 +50,22 @@ type TranscriptTab = {
 };
 type Tab = FileTab | TranscriptTab;
 
+// The right pane's modes. Tab descriptors are module-level singletons so the
+// filtered list hands OverflowTabBar the same object references on every read:
+// its `<For>` is referentially keyed, and fresh literals would tear down and
+// rebuild every tab's DOM on any unrelated signal change
+// (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
+type RightMode = "files" | "changes" | "shared" | "docs" | "session" | "search";
+type ModeTab = { mode: RightMode; label: string };
+const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
+  files: { mode: "files", label: "Files" },
+  changes: { mode: "changes", label: "Changes" },
+  search: { mode: "search", label: "Search" },
+  session: { mode: "session", label: "Session" },
+  shared: { mode: "shared", label: "Shared" },
+  docs: { mode: "docs", label: "Docs" },
+};
+
 function tabId(t: Tab): string {
   return t.kind === "file" ? t.path : `transcript:${t.id}`;
 }
@@ -65,9 +81,34 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
-  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs" | "session" | "search">(
+  const [rightMode, setRightMode] = createSignal<RightMode>("files");
+  // The mode strip runs through the shared OverflowTabBar, so it collapses into
+  // a +N menu on a narrow pane instead of squeezing every label. The bar can
+  // reorder tabs when one is picked out of the overflow menu, so the canonical
+  // order lives in a signal; availability (session/shared/docs) still filters it
+  // on every render.
+  const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
-  );
+    "changes",
+    "search",
+    "session",
+    "shared",
+    "docs",
+  ]);
+  // Files/Changes/Search are always offered; the rest need their target to exist.
+  function modeAvailable(m: RightMode): boolean {
+    switch (m) {
+      case "session":
+        return !!props.selected?.sessionId;
+      case "shared":
+        return !!sharedPath();
+      case "docs":
+        return !!docsPath();
+      default:
+        return true;
+    }
+  }
+  const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
   // Markdown preview toggle, per tab id (so switching tabs remembers each
   // .md file's own source-vs-preview choice).
@@ -437,56 +478,24 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         </Show>
       </div>
       <div class={styles.rightPanel}>
-        <div class={styles.rightTabs}>
-          <button
-            class={styles.rightTab}
-            classList={{ [styles.active]: rightMode() === "files" }}
-            onClick={() => setRightMode("files")}
-          >
-            Files
-          </button>
-          <button
-            class={styles.rightTab}
-            classList={{ [styles.active]: rightMode() === "changes" }}
-            onClick={() => setRightMode("changes")}
-          >
-            Changes
-          </button>
-          <button
-            class={styles.rightTab}
-            classList={{ [styles.active]: rightMode() === "search" }}
-            onClick={() => setRightMode("search")}
-          >
-            Search
-          </button>
-          <Show when={props.selected?.sessionId}>
+        <OverflowTabBar
+          class={styles.rightTabs}
+          items={rightTabs()}
+          activeId={rightMode()}
+          idOf={(t) => t.mode}
+          onActivate={(id) => setRightMode(id as RightMode)}
+          onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
+          renderTab={(t) => (
             <button
               class={styles.rightTab}
-              classList={{ [styles.active]: rightMode() === "session" }}
-              onClick={() => setRightMode("session")}
+              classList={{ [styles.active]: rightMode() === t.mode }}
+              onClick={() => setRightMode(t.mode)}
             >
-              Session
+              {t.label}
             </button>
-          </Show>
-          <Show when={sharedPath()}>
-            <button
-              class={styles.rightTab}
-              classList={{ [styles.active]: rightMode() === "shared" }}
-              onClick={() => setRightMode("shared")}
-            >
-              Shared
-            </button>
-          </Show>
-          <Show when={docsPath()}>
-            <button
-              class={styles.rightTab}
-              classList={{ [styles.active]: rightMode() === "docs" }}
-              onClick={() => setRightMode("docs")}
-            >
-              Docs
-            </button>
-          </Show>
-        </div>
+          )}
+          renderMenuItem={(t) => <span>{t.label}</span>}
+        />
         <Switch>
           <Match when={rightMode() === "files"}>
             <FileTree root={root()} />

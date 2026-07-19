@@ -138,12 +138,16 @@
   height: 34px;
   display: flex;
   flex: none;
+  overflow: hidden;
   background: var(--pane-head-bg);
   border-bottom: 1px solid var(--border);
 }
 
+/* Content-width, not `flex: 1`: OverflowTabBar measures each tab's true width
+   off the ghost row to decide what fits, so a stretching tab would measure as
+   whatever the flex line handed it rather than as its own label. */
 .rightTab {
-  flex: 1;
+  flex: 0 0 auto;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
