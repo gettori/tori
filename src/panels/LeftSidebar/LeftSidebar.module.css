@@ -443,6 +443,9 @@
   font-size: calc(10px * var(--ui-scale));
   color: var(--text-dim);
   flex: 0 0 auto;
+  /* The ago() column ticks in place ("9m" -> "10m"), so proportional figures
+     would shift the whole right edge of the row on every refresh. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* Mismatch flag: a session/branch whose recorded branch is not the working
@@ -477,6 +480,26 @@
   margin-left: 6px;
 }
 .row .touchedCount + .when {
+  margin-left: 6px;
+}
+
+/* Unseen-changes dot: this session has been active since you last looked at it.
+   Deliberately a bare filled circle, so it does not read as a member of the
+   status vocabulary (glyph + label, see .statusIndicator) and never joins the
+   collapsed-ancestor rollup. Never rendered on the selected row. Same trailing
+   -cluster push-right convention as .badge/.touchedCount. */
+.row .unseenDot {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--brand);
+}
+.row .badge + .unseenDot {
+  margin-left: 6px;
+}
+.row .unseenDot + .when {
   margin-left: 6px;
 }
 

@@ -34,6 +34,7 @@ import {
   type OpenTranscript,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { loadStamps, saveStamps, reconcileScan, markViewed, isUnseen, type Stamps } from "../../utils/unseen";
 import {
   notePresence,
   markSessionAttended,
@@ -47,7 +48,8 @@ import {
   type LiveSessionDot,
 } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
-import { findAgent, resolveContextWindow } from "../../utils/agents";
+import { findAgent, resolveContextWindow, resumeCommand } from "../../utils/agents";
+import { copyText } from "../../utils/clipboard";
 import {
   statusFromDot,
   setLiveStatuses,
@@ -244,6 +246,8 @@ export default function LeftSidebar(props: {
   // Per-folder "historical" flag: sessions predating a recreated folder, hidden
   // under a collapsed "Historical" section until adopted.
   const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
+  // "Last viewed" stamps behind the unseen-changes dot (see utils/unseen.ts).
+  const [viewStamps, setViewStamps] = createSignal<Stamps>(loadStamps());
   // Per-project "has an origin remote" flag: gates whether Attach Existing
   // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
   // Keyed by project path.
@@ -1668,14 +1672,31 @@ export default function LeftSidebar(props: {
     });
   }
 
-  const sessionMenu = (g: Space, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => [
-    { label: "New session", onClick: () => startSession(g, p, u) },
-    { separator: true },
-    { label: "Open transcript", onClick: () => openTranscript(s) },
-    { label: "Rename…", onClick: () => renameSession(s) },
-    { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
-    { label: "Delete", danger: true, onClick: () => deleteSession(s) },
-  ];
+  // Copy to the clipboard and say so, since a copy has no other visible effect.
+  async function copyAndToast(what: string, text: string) {
+    if (await copyText(text)) setError(`Copied ${what}`, "info");
+    else setError(`Could not copy ${what} to the clipboard`);
+  }
+
+  const sessionMenu = (g: Space, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => {
+    // Resume-less adapters get no resume item at all rather than a disabled one:
+    // there is no command to copy (see ADAPTERS.md, empty `resume_args`).
+    const resume = resumeCommand(findAgent(s.agent ?? "claude"), { id: s.id, file: s.path });
+    return [
+      { label: "New session", onClick: () => startSession(g, p, u) },
+      { separator: true },
+      { label: "Open transcript", onClick: () => openTranscript(s) },
+      { label: "Rename…", onClick: () => renameSession(s) },
+      { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
+      { separator: true },
+      ...(resume ? [{ label: "Copy resume command", onClick: () => void copyAndToast("resume command", resume) }] : []),
+      { label: "Copy session id", onClick: () => void copyAndToast("session id", s.id) },
+      { label: "Copy working directory", onClick: () => void copyAndToast("working directory", s.cwd) },
+      { label: "Copy transcript path", onClick: () => void copyAndToast("transcript path", s.path) },
+      { separator: true },
+      { label: "Delete", danger: true, onClick: () => deleteSession(s) },
+    ];
+  };
 
   function toggle(key: string) {
     const next = new Set(expanded());
@@ -1684,9 +1705,23 @@ export default function LeftSidebar(props: {
     setExpanded(next);
   }
 
+  // Fold one or more folder scans into the unseen stamps: stamp-on-first-sight,
+  // then prune within each scanned folder only. Persisted so a relaunch never
+  // resurrects a badge the user already cleared. Takes the whole batch at once
+  // because refreshSessions rescans every folder, and a per-folder write would
+  // re-serialize the entire map once per workspace on every sessions://changed.
+  function noteScans(scans: readonly { folder: string; list: SessionMeta[] }[]) {
+    const now = Math.floor(Date.now() / 1000);
+    let next = viewStamps();
+    for (const { folder, list } of scans) next = reconcileScan(next, folder, list, now);
+    setViewStamps(next);
+    saveStamps(next);
+  }
+
   async function fetchSessions(folderPath: string) {
     try {
       const s = await invoke<SessionMeta[]>("list_sessions", { folder: folderPath });
+      noteScans([{ folder: folderPath, list: s }]);
       setSessions({ ...sessions(), [folderPath]: s });
       // Flag a recreated folder whose sessions predate it (auto-adopts otherwise).
       const hist = await invoke<boolean>("folder_historical", { folder: folderPath });
@@ -1709,13 +1744,18 @@ export default function LeftSidebar(props: {
 
   async function refreshSessions() {
     const updated: Record<string, SessionMeta[]> = { ...sessions() };
+    // Only folders that actually rescanned may prune; a failed scan keeps its
+    // stale list and must not be read as "these sessions are gone".
+    const scanned: { folder: string; list: SessionMeta[] }[] = [];
     for (const folder of Object.keys(updated)) {
       try {
         updated[folder] = await invoke<SessionMeta[]>("list_sessions", { folder });
+        scanned.push({ folder, list: updated[folder] });
       } catch {
         /* keep stale */
       }
     }
+    noteScans(scanned);
     setSessions(updated);
   }
 
@@ -1830,6 +1870,31 @@ export default function LeftSidebar(props: {
     void loadTouchedCount(s);
   }
 
+  // Stamp the selection as viewed both when it opens and when it closes. The
+  // closing stamp is the load-bearing one: it covers the turns that landed while
+  // the row was open (which never badged, since the selected row never badges),
+  // so switching away leaves the row clean rather than instantly unseen.
+  let lastStamped: { id: string; agent: string; cwd: string } | null = null;
+  createEffect(
+    on(
+      () => props.selected?.sessionId,
+      () => {
+        const now = Math.floor(Date.now() / 1000);
+        const sel = props.selected;
+        const cur =
+          sel?.sessionId && sel.sessionCwd
+            ? { id: sel.sessionId, agent: sel.agent ?? "claude", cwd: sel.sessionCwd }
+            : null;
+        let next = viewStamps();
+        if (lastStamped) next = markViewed(next, lastStamped, now);
+        if (cur) next = markViewed(next, cur, now);
+        lastStamped = cur;
+        setViewStamps(next);
+        saveStamps(next);
+      },
+    ),
+  );
+
   // A branch-unit reads as selected when it is the direct selection OR when a
   // session under it is (its sessions carry the unit's folderPath + label), so
   // the branch stays highlighted as the context while a session is open.
@@ -1903,6 +1968,9 @@ export default function LeftSidebar(props: {
                     </span>
                   </Show>
                   <Show when={props.selected?.sessionId === s.id}>{contextMeter()}</Show>
+                  <Show when={isUnseen(viewStamps(), s, props.selected?.sessionId)}>
+                    <span class={styles.unseenDot} title="New activity since you last looked" />
+                  </Show>
                   <Show when={statusIndicator(sessionStatus(s.id))} fallback={<span class={styles.when}>{ago(s.last_active)}</span>}>
                     {statusIndicator(sessionStatus(s.id))}
                   </Show>
