@@ -11,6 +11,7 @@ mod model;
 mod opencode;
 mod presence;
 mod pty;
+mod search;
 mod sessions;
 mod settings;
 mod theme;
@@ -169,6 +170,7 @@ pub fn run() {
             fs::fs_rename,
             fs::list_project_files,
             fs::fs_watch_start,
+            search::grep_project,
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,

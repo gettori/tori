@@ -7,6 +7,7 @@ import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
+import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
 import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
@@ -16,11 +17,13 @@ import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
 import { X } from "lucide-solid";
 import {
+  on as onEvent,
   onWith,
   OPEN_IN_EDITOR,
   OPEN_TRANSCRIPT,
   PURGE_UNDER_PATH,
   DRAG_PATH_MIME,
+  FOCUS_PROJECT_SEARCH,
   type OpenInEditor,
   type OpenTranscript,
   type PurgeUnderPath,
@@ -58,7 +61,10 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
-  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs" | "session">("files");
+  const [rightMode, setRightMode] = createSignal<"files" | "changes" | "shared" | "docs" | "session" | "search">(
+    "files",
+  );
+  const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
@@ -217,6 +223,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   let offPurge: (() => void) | undefined;
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
+  let offProjectSearch: (() => void) | undefined;
 
   onMount(async () => {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
@@ -229,6 +236,12 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
       openTranscript(d.id, d.sessionPath, d.agent, d.name, d.cwd);
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
+    // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
+    // refocuses its input even when the mode is already active.
+    offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
+      setRightMode("search");
+      setSearchFocusNonce((n) => n + 1);
+    });
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
@@ -259,6 +272,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     offPurge?.();
     offClose?.();
     offFollow?.();
+    offProjectSearch?.();
   });
 
   return (
@@ -378,6 +392,13 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           >
             Changes
           </button>
+          <button
+            class={styles.rightTab}
+            classList={{ [styles.active]: rightMode() === "search" }}
+            onClick={() => setRightMode("search")}
+          >
+            Search
+          </button>
           <Show when={props.selected?.sessionId}>
             <button
               class={styles.rightTab}
@@ -412,6 +433,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} selected={props.selected} />
+          </Match>
+          <Match when={rightMode() === "search"}>
+            <SearchPanel root={root()} focusNonce={searchFocusNonce()} />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel

@@ -1,0 +1,106 @@
+/* Search panel (project-wide grep results), hash-scoped. The shared
+   `.tree-empty` empty-state stays global (via :global), same as ReviewPanel. */
+.searchPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pane-bg);
+  font-size: calc(13px * var(--ui-scale));
+}
+
+.searchPanel :global(.tree-empty) {
+  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  color: var(--text-dim);
+}
+
+.inputBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--pane-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.searchInput {
+  width: 100%;
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  color: var(--text);
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.truncatedNotice {
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.results {
+  flex: 1;
+  overflow: auto;
+  padding: calc(4px * var(--ui-density)) 0;
+  user-select: none;
+}
+
+.fileGroup {
+  margin-bottom: calc(4px * var(--ui-density));
+}
+
+.fileHeader {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.filePath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matchCount {
+  flex: none;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.matchRow {
+  display: flex;
+  gap: calc(8px * var(--ui-density));
+  margin: 0 calc(4px * var(--ui-density));
+  padding: calc(1px * var(--ui-density)) calc(8px * var(--ui-density));
+  border-radius: var(--sway-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+.matchRow:hover {
+  background: var(--hover);
+}
+
+.matchLine {
+  flex: none;
+  width: 32px;
+  text-align: right;
+  color: var(--text-dim);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.matchText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: calc(11px * var(--ui-scale));
+}
