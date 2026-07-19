@@ -107,4 +107,97 @@
     color: var(--text-dim);
     margin-top: var(--sway-space-2);
   }
+
+  /* --- Agents cards --- */
+
+  .card {
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-md);
+    padding: var(--sway-space-4);
+    margin-bottom: var(--sway-space-3);
+  }
+  .card:last-child {
+    margin-bottom: 0;
+  }
+
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-3);
+  }
+
+  .cardTitle {
+    font-size: var(--sway-text-md);
+    font-weight: 600;
+  }
+
+  .cardProgram,
+  .cardMeta code,
+  .cardStatus code {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--text-dim);
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .dotOk {
+    background: var(--success);
+  }
+  .dotWarn {
+    background: var(--warn);
+  }
+  .dotNeutral {
+    background: var(--text-dim);
+  }
+  /* Not installed is absence, not failure: an outline, not a red light. */
+  .dotOff {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--text-dim);
+  }
+
+  .cardStatus {
+    font-size: var(--sway-text-sm);
+    color: var(--text);
+    margin-top: var(--sway-space-3);
+  }
+
+  .cardMeta {
+    font-size: var(--sway-text-xs);
+    color: var(--text-dim);
+    margin-top: var(--sway-space-2);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sway-space-2);
+    margin-top: var(--sway-space-3);
+  }
+  .chips:empty {
+    display: none;
+  }
+
+  .chip {
+    font-size: var(--sway-text-xs);
+    color: var(--text-dim);
+    background: var(--input-bg);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-sm);
+    padding: 1px var(--sway-space-2);
+  }
+
+  .welcome {
+    font-size: var(--sway-text-sm);
+    color: var(--text);
+    background: var(--input-bg);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-md);
+    padding: var(--sway-space-4);
+    margin-bottom: var(--sway-space-5);
+  }
 }
