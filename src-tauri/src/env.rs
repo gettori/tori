@@ -33,6 +33,48 @@ pub fn login_shell() -> String {
 const SENTINEL_BEGIN: &str = "<<<";
 const SENTINEL_END: &str = ">>>";
 
+/// Every probe here runs a third-party binary we know nothing about. One that
+/// blocks (an agent CLI prompting for auth on `--version`, an rc file waiting
+/// on a lock) must not become an unbounded wait: `agent_health` memoizes its
+/// sweep, so a single hang would strand every later caller on the same
+/// in-flight compute. Generous enough that a slow-but-working shell still
+/// makes it.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Run `cmd`, giving up (and killing the child) after `timeout`.
+///
+/// The wait happens on a worker thread rather than a `try_wait` poll loop, so
+/// the child's stdout is drained continuously: a process that outruns the pipe
+/// buffer blocks on write, and a poll loop that never reads would deadlock
+/// exactly the verbose-banner case this guards. On timeout we kill by pid,
+/// which also unblocks that thread.
+pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::process::Output> {
+    use std::process::Stdio;
+
+    let child = cmd
+        // No stdin: a prompt should hit EOF and exit, not wait on a terminal
+        // that this process can never give it.
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let pid = child.id();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+
+    match rx.recv_timeout(PROBE_TIMEOUT) {
+        Ok(result) => result.ok(),
+        Err(_) => {
+            let _ = std::process::Command::new("kill").arg("-9").arg(pid.to_string()).status();
+            None
+        }
+    }
+}
+
 /// Extract the sentinel-delimited value from a login shell's stdout. Pure, so
 /// the noise cases (banner before, motd after, markers missing, empty value)
 /// are unit-testable without spawning a shell.
@@ -45,10 +87,10 @@ fn extract_sentinel(stdout: &str) -> Option<String> {
 }
 
 fn capture_login_path() -> Option<String> {
-    let out = std::process::Command::new(login_shell())
-        .args(["-lic", &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\"")])
-        .output()
-        .ok()?;
+    let out = output_with_timeout(std::process::Command::new(login_shell()).args([
+        "-lic",
+        &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\""),
+    ]))?;
     extract_sentinel(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -76,10 +118,10 @@ fn probe_binary(program: &str) -> Option<PathBuf> {
     // Single-quote the program and escape any embedded quote, so an adapter's
     // `launch.program` can never break out into the probe command.
     let quoted = format!("'{}'", program.replace('\'', r"'\''"));
-    let out = std::process::Command::new(login_shell())
-        .args(["-lic", &format!("command -v -- {quoted}")])
-        .output()
-        .ok()?;
+    let out = output_with_timeout(
+        std::process::Command::new(login_shell())
+            .args(["-lic", &format!("command -v -- {quoted}")]),
+    )?;
     let line = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
     let path = PathBuf::from(line);
     path.is_absolute().then_some(path).filter(|p| is_executable(p))
@@ -174,6 +216,34 @@ mod tests {
         assert_eq!(resolve_in_path("some-agent-cli", "/usr/bin:/bin"), None);
 
         std::fs::remove_dir_all(nvm_like.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn a_hanging_child_is_killed_rather_than_waited_on_forever() {
+        let start = std::time::Instant::now();
+        // `sleep 60` far outlives PROBE_TIMEOUT: the call must give up early.
+        let out = output_with_timeout(std::process::Command::new("/bin/sleep").arg("60"));
+        assert!(out.is_none(), "a timed-out probe yields no output");
+        assert!(
+            start.elapsed() < PROBE_TIMEOUT * 2,
+            "should return around the timeout, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_prompt_reading_stdin_sees_eof_instead_of_hanging() {
+        // stdin is /dev/null, so a child that reads it terminates on its own.
+        let out = output_with_timeout(&mut std::process::Command::new("/bin/cat"))
+            .expect("cat should exit at EOF, well inside the timeout");
+        assert!(out.stdout.is_empty());
+    }
+
+    #[test]
+    fn output_with_timeout_returns_a_fast_child_normally() {
+        let out = output_with_timeout(std::process::Command::new("/bin/echo").arg("hi"))
+            .expect("echo succeeds");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
     }
 
     #[test]
