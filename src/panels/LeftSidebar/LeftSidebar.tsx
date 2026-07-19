@@ -480,7 +480,7 @@ export default function LeftSidebar(props: {
         const meta = allSessions.find((s) => s.id === t.sessionId);
         if (!meta) return;
         const agent = meta.agent === "pi" ? "pi" : "claude";
-        const state = await invoke<TailState>("session_tail_state", { path: meta.path, agent }).catch(
+        const state = await invoke<TailState>("session_tail_state", { id: meta.id, path: meta.path, agent }).catch(
           () => null,
         );
         if (state) updates[t.sessionId!] = state;
@@ -1523,9 +1523,14 @@ export default function LeftSidebar(props: {
     const archiving = !s.archived;
     try {
       await invoke("set_session_archived", { id: s.id, archived: archiving });
-      // Prune this session's checkpoint refs + scratch index on archive (not
-      // on un-archive - a restored session has nothing left to prune anyway).
-      if (archiving) await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
+      // Prune this session's checkpoint refs + scratch index, and its claude
+      // hook status file (Phase 3, a no-op for a non-claude session), on
+      // archive (not on un-archive - a restored session has nothing left to
+      // prune anyway).
+      if (archiving) {
+        await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
+        await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
+      }
       await refreshSessions();
     } catch (e) {
       setError(String(e));
@@ -1543,6 +1548,7 @@ export default function LeftSidebar(props: {
     try {
       await invoke("delete_session", { path: s.path });
       await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
+      await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
       await refreshSessions();
     } catch (e) {
       setError(String(e));
