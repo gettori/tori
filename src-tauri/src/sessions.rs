@@ -355,6 +355,13 @@ fn filter_sort(all: Vec<SessionMeta>, folder: &str) -> Vec<SessionMeta> {
     v
 }
 
+/// Every session across every registered agent, unfiltered by folder.
+/// `crate::hooks::prune_stale`'s only caller - not a `#[tauri::command]`,
+/// the frontend has no use for an unscoped list.
+pub(crate) fn all_sessions(index: &SessionIndex) -> Vec<SessionMeta> {
+    ensure_index(index)
+}
+
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
 /// newest first.
 #[tauri::command]
@@ -1392,13 +1399,24 @@ fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
     }
 }
 
-/// `working` | `done` | `blocked-candidate` from the transcript tail,
-/// capability-gated per adapter: an agent whose `needs_you` capability is off
-/// (its blocked-quiet join was never verified, e.g. pi - see ADAPTERS.md)
-/// never reports `blocked-candidate`, collapsing to `working` instead, so its
-/// dot caps at working rather than risking a false amber.
+/// `working` | `done` | `blocked-candidate`, capability-gated per adapter.
+/// An agent whose `hooks` capability is on (claude - see `crate::hooks`)
+/// gets its status from the injected hook's status file when one exists,
+/// overriding the transcript-tail guess with claude's own ground-truth
+/// signal; falls back to the tail join when no hook file exists yet (a
+/// session just launched) or names an event with no mapped status.
+/// Otherwise, an agent whose `needs_you` capability is off (its
+/// blocked-quiet join was never verified, e.g. pi - see ADAPTERS.md) never
+/// reports `blocked-candidate` from the tail join, collapsing to `working`
+/// instead, so its dot caps at working rather than risking a false amber.
 #[tauri::command]
-pub fn session_tail_state(path: String, agent: String) -> Result<TailState, String> {
+pub fn session_tail_state(id: String, path: String, agent: String) -> Result<TailState, String> {
+    let hooks_capable = agents::find(&agent).map(|a| a.hooks).unwrap_or(false);
+    if hooks_capable {
+        if let Some(state) = crate::hooks::status_for(&id) {
+            return Ok(state);
+        }
+    }
     let turns = parse_transcript_turns(&path, &agent);
     let tail = classify_tail(&turns);
     let needs_you_capable = agents::find(&agent).map(|a| a.needs_you).unwrap_or(true);
@@ -1874,7 +1892,9 @@ mod tests {
 "#;
         let p = tmp_file("claude_tail_pending.jsonl", body);
         // claude's needs_you capability is on, so the join surfaces directly.
-        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
+        // No hook status file exists for this id, so the hooks capability
+        // falls through to the tail join too.
+        assert_eq!(session_tail_state("no-hook-file-1".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -1886,7 +1906,7 @@ mod tests {
 {"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"text","text":"It's an empty entry point."}]}}
 "#;
         let p = tmp_file("claude_tail_done.jsonl", body);
-        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
+        assert_eq!(session_tail_state("no-hook-file-2".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -1901,7 +1921,7 @@ mod tests {
         // but pi's needs_you capability is off (findings.md: pi's built-in tools
         // never observably block), so the join collapses to working instead of
         // risking a false amber.
-        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Working);
+        assert_eq!(session_tail_state("no-hook-file-3".into(), p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Working);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -1915,7 +1935,7 @@ mod tests {
 "#;
         let p = tmp_file("pi_tail_done.jsonl", body);
         // Done doesn't depend on the needs_you capability at all.
-        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Done);
+        assert_eq!(session_tail_state("no-hook-file-4".into(), p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Done);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -1924,7 +1944,36 @@ mod tests {
         let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"hello"}}
 "#;
         let p = tmp_file("claude_tail_fresh.jsonl", body);
-        assert_eq!(session_tail_state(p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
+        assert_eq!(session_tail_state("no-hook-file-5".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_claude_hook_file_overrides_the_tail_join() {
+        // A transcript tail that would classify as Done...
+        let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"go"}}
+{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"text","text":"Done."}]}}
+"#;
+        let p = tmp_file("claude_tail_hook_override.jsonl", body);
+        let id = "sess-hook-override-test";
+        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/sway/hooks-status")).unwrap();
+        std::fs::write(
+            dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json")),
+            r#"{"event":"Notification","at":1}"#,
+        )
+        .unwrap();
+
+        // ...but claude's `hooks` capability makes the injected Notification
+        // event authoritative instead: BlockedCandidate, not Done.
+        assert_eq!(
+            session_tail_state(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
+            TailState::BlockedCandidate
+        );
+        // pi has no `hooks` capability: the same hook file (if one somehow
+        // existed under pi's id) would never be consulted, it stays on the
+        // tail join - covered already by the pi tests above.
+
+        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 

@@ -5,6 +5,7 @@ mod config;
 mod env;
 mod fs;
 mod git;
+mod hooks;
 mod launch;
 mod lsp;
 mod model;
@@ -116,6 +117,13 @@ pub fn run() {
                 Err(e) => eprintln!("sway: tray icon failed to start: {e}"),
             }
 
+            // Sweep leftover claude hook-status files (Phase 3): a stale
+            // marker from a crashed or hook-less-resumed session must not
+            // pin a dot at a status that no longer reflects reality. Cheap
+            // no-op when hooks-status is empty/missing.
+            let session_index = app.state::<SessionIndex>();
+            hooks::prune_stale(|| sessions::all_sessions(&session_index));
+
             Ok(())
         })
         .manage(PtyState::default())
@@ -212,6 +220,8 @@ pub fn run() {
             checkpoint::checkpoint_diff_file,
             checkpoint::checkpoint_revert_file,
             checkpoint::checkpoint_prune,
+            hooks::agent_hook_launch_args,
+            hooks::hooks_status_prune,
             presence::update_tray,
             presence::set_badge_count,
             model::model_context_caps,
