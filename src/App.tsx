@@ -12,9 +12,10 @@ import UpdatePill from "./components/UpdatePill/UpdatePill";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
-import { on as onEvent, OPEN_PALETTE, type LiveTab } from "./utils/events";
-import { dispatchHotkey } from "./utils/hotkeys";
+import { on as onEvent, OPEN_PALETTE, OPEN_QUICK_OPEN, TOGGLE_SHORTCUTS, type LiveTab } from "./utils/events";
+import { dispatchWindowHotkey } from "./utils/hotkeys";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
+import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
 import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
@@ -81,6 +82,7 @@ function App() {
   const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [paletteOpen, setPaletteOpen] = createSignal(false);
+  const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   // First run: Settings opens on the Agents cards with a welcome note. The
   // backend decides (it scans every adapter's sessions dir and checks a
   // persisted flag), so there is nothing here to race against the sidebar's
@@ -131,21 +133,22 @@ function App() {
     document.body.classList.add("dragging");
   }
 
+  // Every binding now comes from the canonical table in utils/hotkeys.ts,
+  // including Cmd+P: the table marks it `window` scope so it still does not
+  // fire while a terminal has focus, which is what the old special case here
+  // achieved by living outside dispatchHotkey.
   function onKeyDown(e: KeyboardEvent) {
-    if (dispatchHotkey(e)) {
-      e.preventDefault();
-      return;
-    }
-    if (e.metaKey && e.key === "p") {
-      e.preventDefault();
-      setQuickOpen(true);
-    }
+    if (dispatchWindowHotkey(e)) e.preventDefault();
   }
 
   let offPalette: (() => void) | undefined;
+  let offQuickOpen: (() => void) | undefined;
+  let offShortcuts: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
+    offQuickOpen = onEvent(OPEN_QUICK_OPEN, () => setQuickOpen(true));
+    offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => setShortcutsOpen((open) => !open));
     initSettings();
     // Mark shown on display, not on dismiss: a user who quits mid-welcome has
     // still seen it, and showing it again every launch would be the nag this
@@ -164,6 +167,8 @@ function App() {
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
     offPalette?.();
+    offQuickOpen?.();
+    offShortcuts?.();
     document.body.classList.remove("dragging");
   });
 
@@ -226,6 +231,10 @@ function App() {
           welcome={welcome()}
           onClose={() => (setSettingsOpen(false), setWelcome(false))}
         />
+      </Show>
+
+      <Show when={shortcutsOpen()}>
+        <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
       </Show>
 
       <AskpassDialog />
