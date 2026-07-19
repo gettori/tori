@@ -440,6 +440,11 @@ pub fn parser_kind_for(agent: &str) -> ParserKind {
     find(agent).map(|a| a.parser_kind).unwrap_or(ParserKind::ClaudeJsonl)
 }
 
+#[tauri::command]
+pub fn list_agents() -> Vec<AgentAdapter> {
+    registry().to_vec()
+}
+
 #[cfg(test)]
 const VALID_MINIMAL: &str = r#"
 schema_version = 1
@@ -467,11 +472,6 @@ pattern = 'x --resume {id}'
 pub fn test_adapter(program: &str) -> AgentAdapter {
     let text = VALID_MINIMAL.replace("program = \"x\"", &format!("program = \"{program}\""));
     load_adapter_str(&text, "bundled:test").expect("test adapter parses")
-}
-
-#[tauri::command]
-pub fn list_agents() -> Vec<AgentAdapter> {
-    registry().to_vec()
 }
 
 #[cfg(test)]
