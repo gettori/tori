@@ -259,7 +259,17 @@ export default function SessionPanel(props: {
         Show reads
       </label>
       <div class={styles.touchList}>
-        <Show when={visible().length} fallback={<div class="tree-empty">No touched files</div>}>
+        <Show
+          when={visible().length}
+          fallback={
+            <div class="tree-empty">
+              <p>
+                Nothing edited yet. Files this session creates or changes show up here.
+                {!showReads() && " Turn on Show reads to include files it only looked at."}
+              </p>
+            </div>
+          }
+        >
           <For each={inProject()}>{row}</For>
           <Show when={outsideProject().length}>
             <div class={styles.bucketHeader}>Outside project</div>

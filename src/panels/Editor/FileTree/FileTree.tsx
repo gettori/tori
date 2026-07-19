@@ -233,7 +233,10 @@ export default function FileTree(props: {
           </div>
         )}
       </Show>
-      <Show when={roots().length} fallback={<div class={styles.empty}>No files</div>}>
+      <Show
+        when={roots().length}
+        fallback={<div class={styles.empty}>This folder is empty. Use New File above to add one.</div>}
+      >
         <For each={roots()}>
           {(e) => <TreeNode entry={e} depth={0} ctx={ctx()} reloadParent={reloadRoots} />}
         </For>
