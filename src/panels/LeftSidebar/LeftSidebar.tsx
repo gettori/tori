@@ -47,6 +47,7 @@ import {
   type LiveSessionDot,
 } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
+import { findAgent, resolveContextWindow } from "../../utils/agents";
 import {
   statusFromDot,
   setLiveStatuses,
@@ -766,6 +767,10 @@ export default function LeftSidebar(props: {
   // component fetches what it needs). null until the fetch resolves, so a
   // stale count from the previously-selected session never flashes on the row.
   const [touchedCount, setTouchedCount] = createSignal<number | null>(null);
+  // Context meter (Phase 3): context_tokens + model come from the same
+  // session_detail call as touchedCount, so no extra fetch is added.
+  const [contextTokens, setContextTokens] = createSignal<number | null>(null);
+  const [sessionModel, setSessionModel] = createSignal<string | null>(null);
   // Guards against an out-of-order response: a slower fetch for a
   // previously-selected (larger) session resolving after a newer, faster one
   // must not overwrite the count with stale data.
@@ -774,12 +779,44 @@ export default function LeftSidebar(props: {
   async function loadTouchedCount(s: SessionMeta) {
     touchedCountFor = s.id;
     setTouchedCount(null);
+    setContextTokens(null);
+    setSessionModel(null);
     const agent = s.agent === "pi" ? "pi" : "claude";
-    const detail = await invoke<{ touched_count: number }>("session_detail", { path: s.path, agent }).catch(
-      () => null,
-    );
+    const detail = await invoke<{ touched_count: number; context_tokens: number; model: string | null }>(
+      "session_detail",
+      { path: s.path, agent },
+    ).catch(() => null);
     if (touchedCountFor !== s.id) return; // a newer selection already started its own fetch
     setTouchedCount(detail?.touched_count ?? null);
+    setContextTokens(detail?.context_tokens ?? null);
+    setSessionModel(detail?.model ?? null);
+  }
+
+  // Context meter (Phase 3): a fill bar for the selected session row, sourced
+  // from the launching adapter's own declared context_window (ADAPTERS.md),
+  // not Toolbar's separate OpenRouter-backed gauge. Hidden entirely when the
+  // adapter declares no window (resolveContextWindow returns null) - never a
+  // guessed capacity.
+  function contextMeter() {
+    const tokens = contextTokens();
+    if (tokens === null) return null;
+    const sel = props.selected;
+    const agentId = sel?.agent === "pi" ? "pi" : "claude";
+    const ctxWindow = resolveContextWindow(findAgent(agentId), sessionModel());
+    if (!ctxWindow) return null;
+    const pct = Math.max(0, Math.min(100, (tokens / ctxWindow) * 100));
+    return (
+      <span
+        class={styles.contextMeter}
+        title={`Context: ${Math.round(pct)}% of ${ctxWindow.toLocaleString()}`}
+      >
+        <span
+          class={styles.contextMeterFill}
+          classList={{ [styles.contextMeterAmber]: pct >= 80 }}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+    );
   }
 
   function openDeleteSpace(g: Space) {
@@ -1859,6 +1896,7 @@ export default function LeftSidebar(props: {
                       {touchedCount()}
                     </span>
                   </Show>
+                  <Show when={props.selected?.sessionId === s.id}>{contextMeter()}</Show>
                   <Show when={statusIndicator(sessionStatus(s.id))} fallback={<span class={styles.when}>{ago(s.last_active)}</span>}>
                     {statusIndicator(sessionStatus(s.id))}
                   </Show>

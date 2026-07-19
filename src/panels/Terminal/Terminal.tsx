@@ -18,6 +18,10 @@ import {
   SEND_TO_SESSION,
   SEND_TO_SESSION_RESULT,
   TOAST,
+  TAB_JUMP,
+  TAB_CYCLE,
+  NEXT_WAITING_SESSION,
+  FOCUS_SESSION_TAB,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
@@ -25,10 +29,13 @@ import {
   type SendToSession,
   type SendToSessionResult,
   type ToastEvent,
+  type TabJump,
+  type FocusSessionTab,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
+import { liveStatuses } from "../../utils/sessionStatus";
 import styles from "./Terminal.module.css";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -169,6 +176,49 @@ export default function Terminal(props: {
     if (id) closeId(id);
   });
   onCleanup(offClose);
+
+  // Cmd+1..9: jump to tab N (0-indexed) of the active workspace's visible bar.
+  // `tabsIn(ws)` is canonical order, already reflecting any drag-reorder the
+  // bar applied via `mergeReorder`.
+  const offTabJump = onWith<TabJump>(TAB_JUMP, ({ index }) => {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const tab = tabsIn(ws)[index];
+    if (tab) focusTab(ws, tab.id);
+  });
+  onCleanup(offTabJump);
+
+  // Ctrl+Tab: cycle to the next tab in the active workspace, wrapping around.
+  const offTabCycle = onEvent(TAB_CYCLE, () => {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const tabs = tabsIn(ws);
+    if (!tabs.length) return;
+    const idx = tabs.findIndex((t) => t.id === visibleId());
+    focusTab(ws, tabs[(idx + 1) % tabs.length].id);
+  });
+  onCleanup(offTabCycle);
+
+  // Cmd+Shift+A: focus the next live session whose status is "Waiting for
+  // approval" (Phase 1's shared status store), across every workspace/space,
+  // cycling from whichever waiting session (if any) is currently focused.
+  const offNextWaiting = onEvent(NEXT_WAITING_SESSION, () => {
+    const waiting = liveStatuses().filter((s) => s.status === "waitingForApproval");
+    if (!waiting.length) return;
+    const idx = waiting.findIndex((w) => w.tabId === visibleId());
+    const next = waiting[(idx + 1) % waiting.length];
+    const tab = open().find((t) => t.id === next.tabId);
+    if (tab) focusTab(tab.workspace, tab.id);
+  });
+  onCleanup(offNextWaiting);
+
+  // Command palette "focus session" action: the session is already open in a
+  // tab, so just reveal it (no resume needed).
+  const offFocusSessionTab = onWith<FocusSessionTab>(FOCUS_SESSION_TAB, ({ tabId }) => {
+    const tab = open().find((t) => t.id === tabId);
+    if (tab) focusTab(tab.workspace, tab.id);
+  });
+  onCleanup(offFocusSessionTab);
 
   // A space is being deleted: kill + close every terminal tab whose cwd is rooted
   // under it, so no agent keeps running in a folder that is about to vanish.

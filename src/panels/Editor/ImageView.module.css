@@ -1,0 +1,16 @@
+.imageView {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--bg);
+  padding: calc(16px * var(--ui-density));
+}
+
+.image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--sway-radius-sm);
+}

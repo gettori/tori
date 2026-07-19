@@ -51,6 +51,30 @@ pub enum Discovery {
     Sqlite { db_path: PathBuf },
 }
 
+/// A declared context window (Phase 3): either one number shared by every
+/// model this adapter launches, or a per-model table. The table form uses a
+/// reserved `"default"` key as the fallback when the session's own model
+/// isn't listed (`resolve`) - e.g. `{ default = 200000, "claude-opus-4" =
+/// 300000 }`. Additive/optional: an adapter with no `context_window` field
+/// simply has `None` here, and the frontend hides the meter entirely.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ContextWindow {
+    Fixed(u64),
+    PerModel(HashMap<String, u64>),
+}
+
+impl ContextWindow {
+    pub fn resolve(&self, model: Option<&str>) -> Option<u64> {
+        match self {
+            ContextWindow::Fixed(n) => Some(*n),
+            ContextWindow::PerModel(map) => {
+                model.and_then(|m| map.get(m)).or_else(|| map.get("default")).copied()
+            }
+        }
+    }
+}
+
 /// A resolved, validated adapter. The frontend gets a mirrored subset of this
 /// via `list_agents` (the regex/path fields stay backend-only).
 #[derive(Debug, Clone, Serialize)]
@@ -71,10 +95,21 @@ pub struct AgentAdapter {
     /// Whether the quiet-PTY x pending-tool_use join is trusted as a "needs
     /// you" signal for this agent (see `CapabilitiesToml::needs_you`).
     pub needs_you: bool,
+    /// Whether this agent has a verified hook-driven status mechanism
+    /// (`crate::hooks`) that overrides the transcript-tail join as the
+    /// authoritative working/needs-you source. Only claude ships one today
+    /// (phase 1's `--settings` injection spike); every other adapter stays
+    /// on the tail-join floor.
+    pub hooks: bool,
     /// The agent CLI version this adapter's conventions were empirically
     /// captured against (e.g. `"opencode 1.18.3"`), echoed in ADAPTERS.md.
     /// Optional: not every adapter carries one.
     pub verified_against: Option<String>,
+    /// Declared context window (Phase 3's sidebar meter), see `ContextWindow`.
+    /// `None` when the adapter doesn't declare one (limitation noted in
+    /// ADAPTERS.md: sway has no independent source of truth for this number,
+    /// so an adapter without it just goes without a meter, not a guess).
+    pub context_window: Option<ContextWindow>,
 }
 
 // --- raw TOML shape (kept separate from `AgentAdapter`: a `Regex` isn't
@@ -142,11 +177,26 @@ struct CapabilitiesToml {
     /// ADAPTERS.md's Capabilities section.
     #[serde(default = "default_needs_you")]
     needs_you: bool,
+    /// Whether a verified hook-driven status mechanism exists for this
+    /// agent (see `AgentAdapter::hooks`). False for every adapter unless a
+    /// TOML explicitly opts in - there is no generic injection mechanism,
+    /// each one is agent-specific code in `crate::hooks`.
+    #[serde(default)]
+    hooks: bool,
+    /// See `ContextWindow`. Additive/optional - omitted entirely for an
+    /// adapter that doesn't declare one.
+    #[serde(default)]
+    context_window: Option<ContextWindow>,
 }
 
 impl Default for CapabilitiesToml {
     fn default() -> Self {
-        Self { pty_quiet_ms: default_quiet_ms(), needs_you: default_needs_you() }
+        Self {
+            pty_quiet_ms: default_quiet_ms(),
+            needs_you: default_needs_you(),
+            hooks: false,
+            context_window: None,
+        }
     }
 }
 
@@ -261,7 +311,9 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         running_pattern: raw.running.pattern,
         pty_quiet_ms: raw.capabilities.pty_quiet_ms,
         needs_you: raw.capabilities.needs_you,
+        hooks: raw.capabilities.hooks,
         verified_against: raw.verified_against,
+        context_window: raw.capabilities.context_window,
     })
 }
 
@@ -411,6 +463,14 @@ pattern = 'x --resume {id}'
         // Empirically confirmed (phase 2): claude genuinely blocks-and-goes-quiet
         // on a permission prompt, so needs-you ships enabled.
         assert!(claude.needs_you);
+        // Phase 3: claude's hook-driven status mechanism is verified and wired.
+        assert!(claude.hooks);
+        // Phase 3: claude declares a per-model context_window (default 200k,
+        // Sonnet 4.5's 1M beta override); resolved via `ContextWindow::resolve`.
+        let claude_cw = claude.context_window.as_ref().expect("claude declares a context_window");
+        assert_eq!(claude_cw.resolve(Some("claude-opus-4-1")), Some(200_000));
+        assert_eq!(claude_cw.resolve(Some("claude-sonnet-4-5")), Some(1_000_000));
+        assert_eq!(claude_cw.resolve(None), Some(200_000));
 
         let pi = load_adapter_str(BUILTIN_PI, "bundled:pi").expect("pi parses");
         assert_eq!(pi.id, "pi");
@@ -420,6 +480,9 @@ pattern = 'x --resume {id}'
         // permission, so there is no genuine blocked-quiet state to verify the
         // join against; needs-you stays off per the plan's contingency.
         assert!(!pi.needs_you);
+        // pi/opencode declare no context_window (no verified figure to show):
+        // the frontend meter must simply not render for these, not guess.
+        assert!(pi.context_window.is_none());
 
         let opencode = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
         assert_eq!(opencode.id, "opencode");
@@ -430,6 +493,25 @@ pattern = 'x --resume {id}'
         // quiet while working - no blocked-quiet state to verify against.
         assert!(!opencode.needs_you);
         assert_eq!(opencode.verified_against.as_deref(), Some("opencode 1.18.3"));
+        assert!(opencode.context_window.is_none());
+    }
+
+    #[test]
+    fn context_window_resolve_fixed_and_per_model() {
+        let fixed = ContextWindow::Fixed(128_000);
+        assert_eq!(fixed.resolve(Some("anything")), Some(128_000));
+        assert_eq!(fixed.resolve(None), Some(128_000));
+
+        let mut map = HashMap::new();
+        map.insert("default".to_string(), 100_000u64);
+        map.insert("big-model".to_string(), 500_000u64);
+        let per_model = ContextWindow::PerModel(map);
+        assert_eq!(per_model.resolve(Some("big-model")), Some(500_000));
+        assert_eq!(per_model.resolve(Some("unknown-model")), Some(100_000));
+        assert_eq!(per_model.resolve(None), Some(100_000));
+
+        let no_default = ContextWindow::PerModel(HashMap::new());
+        assert_eq!(no_default.resolve(Some("anything")), None);
     }
 
     #[test]

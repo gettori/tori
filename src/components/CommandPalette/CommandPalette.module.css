@@ -1,0 +1,12 @@
+/* Extends Dialogs.module.css's .pickerItem with a label + secondary-text
+   layout (PickerModal's item is a single string, unstructured). */
+.itemLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemSub {
+  margin-left: calc(8px * var(--ui-density));
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+}

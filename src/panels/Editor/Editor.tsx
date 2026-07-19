@@ -9,6 +9,8 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import ReviewPanel from "./ReviewPanel";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
+import MarkdownPreview from "./MarkdownPreview";
+import ImageView, { isImagePath } from "./ImageView";
 import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import FileIcon from "../../seti/FileIcon";
@@ -24,10 +26,12 @@ import {
   PURGE_UNDER_PATH,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
+  SET_RIGHT_MODE,
   type OpenInEditor,
   type OpenTranscript,
   type PurgeUnderPath,
   type LiveTab,
+  type SetRightMode,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { isSelfWrite } from "../../utils/selfWrites";
@@ -65,6 +69,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     "files",
   );
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
+  // Markdown preview toggle, per tab id (so switching tabs remembers each
+  // .md file's own source-vs-preview choice).
+  const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
@@ -73,6 +80,25 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
 
   const filePaths = () => tabs().filter((t): t is FileTab => t.kind === "file").map((t) => t.path);
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
+  const isImageTab = () => {
+    const t = activeTab();
+    return t?.kind === "file" && isImagePath(t.path);
+  };
+  const isMarkdownTab = () => {
+    const t = activeTab();
+    return t?.kind === "file" && t.path.toLowerCase().endsWith(".md");
+  };
+  const showingPreview = () => isMarkdownTab() && previewOn().has(activeId() ?? "");
+  function togglePreview() {
+    const id = activeId();
+    if (!id) return;
+    setPreviewOn((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const activeTranscript = () => {
     const t = activeTab();
     return t && t.kind === "transcript" ? t : null;
@@ -189,6 +215,12 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         delete next[tab.path];
         return next;
       });
+      setPreviewOn((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
     if (activeId() === id) {
       setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
@@ -224,6 +256,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
+  let offSetRightMode: (() => void) | undefined;
 
   onMount(async () => {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
@@ -241,6 +274,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
       setRightMode("search");
       setSearchFocusNonce((n) => n + 1);
+    });
+    offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
+      if (d?.mode) setRightMode(d.mode);
     });
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
@@ -273,6 +309,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     offClose?.();
     offFollow?.();
     offProjectSearch?.();
+    offSetRightMode?.();
   });
 
   return (
@@ -340,14 +377,26 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             </>
           )}
           trailing={
-            <button
-              class={styles.followToggle}
-              classList={{ [styles.active]: follow() }}
-              onClick={() => setFollow(!follow())}
-              title="Follow: auto-open the most-recently-changed file"
-            >
-              Follow
-            </button>
+            <>
+              <Show when={isMarkdownTab()}>
+                <button
+                  class={styles.followToggle}
+                  classList={{ [styles.active]: showingPreview() }}
+                  onClick={togglePreview}
+                  title="Toggle Markdown preview"
+                >
+                  Preview
+                </button>
+              </Show>
+              <button
+                class={styles.followToggle}
+                classList={{ [styles.active]: follow() }}
+                onClick={() => setFollow(!follow())}
+                title="Follow: auto-open the most-recently-changed file"
+              >
+                Follow
+              </button>
+            </>
           }
         />
         <Show
@@ -355,13 +404,20 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           fallback={<div class={styles.editorEmpty}>Open a file from the tree to start editing.</div>}
         >
           <CodeEditor
-            activePath={activeTab()?.kind === "file" ? activeId() : null}
+            activePath={activeTab()?.kind === "file" && !isImageTab() && !showingPreview() ? activeId() : null}
             openPaths={filePaths()}
             projectRoot={root()}
             goto={gotoTarget()}
             onDirty={handleDirty}
             selected={props.selected}
+            hidden={isImageTab() || showingPreview()}
           />
+          <Show when={isImageTab()}>
+            <ImageView path={activeId()!} />
+          </Show>
+          <Show when={showingPreview()}>
+            <MarkdownPreview path={activeId()!} />
+          </Show>
         </Show>
         <Show when={activeTranscript()}>
           {(t) => (
