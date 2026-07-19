@@ -200,4 +200,9 @@
     padding: var(--sway-space-4);
     margin-bottom: var(--sway-space-5);
   }
+  /* On first run the note, not a section, is the panel's first child, so the
+     Agents section would stack its own top margin under the note's bottom one. */
+  .welcome + .section {
+    margin-top: 0;
+  }
 }
