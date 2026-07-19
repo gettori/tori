@@ -7,7 +7,7 @@ expected, and getting past it takes about ten seconds.
 > Sway is unsigned because it has no Apple Developer certificate yet. Signing
 > and notarization are planned; until then the steps below are the cost of
 > installing it. If that trade is not one you want to make, building from
-> source is always an option (see `CONTRIBUTING.md`).
+> source is always an option (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ## 1. Install
 
@@ -51,10 +51,12 @@ files; it is what the **Open Anyway** button does under the hood.
 
 ## Requirements
 
-- **macOS 12 (Monterey) or later.** The Gatekeeper steps above are written for
-  macOS 15 and later; on older versions the **Open Anyway** button lives in
-  System Settings (or System Preferences) under Privacy & Security too, and the
-  right-click-Open trick still works there.
+- **macOS.** Sway is developed and tested on macOS 15, and the bundle sets no
+  minimum version, so older releases are untested rather than blocked. The
+  Gatekeeper steps above are written for macOS 15 and later; on older versions
+  the **Open Anyway** button lives in System Settings (or System Preferences)
+  under Privacy & Security too, and the right-click-Open trick still works
+  there.
 - **Apple Silicon or Intel.** The DMG carries a universal binary.
 - **At least one agent CLI installed**, such as Claude Code, pi, or opencode.
   Sway drives the agents you already have; it does not bundle one. After first
@@ -82,5 +84,7 @@ under a single directory, `~/.config/sway/`:
 - `checkpoint-index/` - per-turn checkpoint snapshots
 - `state.json`, `hooks-status/` - first-run flag and live session status
 
-Deleting `~/.config/sway/` removes every trace. Sway never touches your agent
+One cache lives outside it: `~/Library/Caches/sway/`, holding the published
+model list the context meter reads. Deleting both directories removes every
+trace. Sway never touches your agent
 CLIs' own session data, so your Claude/pi/opencode transcripts are unaffected.

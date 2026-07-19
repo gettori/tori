@@ -44,13 +44,13 @@ First public release. macOS only, unsigned (see
 
 ### Interface
 
-- Command palette (`Cmd+K`), quick open (`Cmd+P`), and remappable hotkeys.
+- Command palette (`Cmd+K`), quick open (`Cmd+P`), a shortcut sheet (`Cmd+/`),
+  and remappable hotkeys.
 - Menu-bar tray, OS notifications, and a dock badge for sessions needing you.
-- Themeable, with VS Code theme file import.
+- Dark and light themes, both fully supported, with VS Code theme file import.
 
 ### Known limitations
 
 - macOS only; unsigned, so first launch needs the steps in
   [docs/INSTALL.md](docs/INSTALL.md).
 - Update checking is a notice only; Sway never installs an update for you.
-- Light mode is not yet selectable.
