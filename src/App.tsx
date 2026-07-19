@@ -8,6 +8,7 @@ import WindowControls from "./components/WindowControls/WindowControls";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import Settings from "./panels/Settings/Settings";
+import UpdatePill from "./components/UpdatePill/UpdatePill";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
@@ -171,6 +172,10 @@ function App() {
       <header class="topbar" data-tauri-drag-region>
         <WindowControls />
         <Toolbar selected={selected()} />
+        {/* Suppressed during first-run onboarding: someone meeting Sway for the
+            first time should not be handed a version notice about an app they
+            have not used yet. */}
+        <UpdatePill suppressed={welcome()} />
         <Button
           class="topbar-gear"
           variant="ghost"

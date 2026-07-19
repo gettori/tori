@@ -18,6 +18,7 @@ mod search;
 mod sessions;
 mod settings;
 mod theme;
+mod update;
 mod worktree;
 
 use config::{ConfigWatch, ProjectIndex, RootWatch};
@@ -206,6 +207,8 @@ pub fn run() {
             health::agent_health,
             onboarding::onboarding_should_show,
             onboarding::onboarding_mark_shown,
+            update::check_for_update,
+            update::open_releases_page,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,
