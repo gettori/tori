@@ -480,6 +480,25 @@
   margin-left: 6px;
 }
 
+.row .contextMeter {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 28px;
+  height: 4px;
+  margin-left: 6px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.row .contextMeterFill {
+  display: block;
+  height: 100%;
+  background: var(--text-dim);
+}
+.row .contextMeterFill.contextMeterAmber {
+  background: #d29922;
+}
+
 .row .badge.hint {
   color: var(--text-dim);
   background: rgba(128, 128, 128, 0.12);

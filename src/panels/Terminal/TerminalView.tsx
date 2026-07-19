@@ -10,6 +10,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
+import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
@@ -173,11 +174,28 @@ export default function TerminalView(props: {
       },
     });
 
-    // ⌘F opens the in-terminal search (return false so xterm/browser ignore it).
+    // ⌘F opens the in-terminal search; the global remap (Cmd+1..9, Ctrl+Tab,
+    // Cmd+Shift+A/E/F, Cmd+J/K) is re-dispatched here too, since an xterm
+    // textarea's keydown never reaches the window listener via xterm's own
+    // handling once it has focus (adversary E3). Both branches call
+    // stopPropagation(), not just preventDefault(): xterm's custom-key-handler
+    // return value only tells xterm itself to ignore the key, it doesn't stop
+    // the native event from continuing to bubble up to window - without this,
+    // App.tsx's own keydown listener would fire a second time on the same
+    // keystroke (e.g. Cmd+Shift+A would skip two waiting sessions, not one).
+    // ⌘Shift+F is excluded from the ⌘F branch so it falls through to
+    // dispatchHotkey's project-search binding instead.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.metaKey && e.key === "f" && e.type === "keydown") {
+      if (e.type !== "keydown") return true;
+      if (e.metaKey && !e.shiftKey && e.key === "f") {
         e.preventDefault();
+        e.stopPropagation();
         openSearch();
+        return false;
+      }
+      if (dispatchHotkey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
         return false;
       }
       return true;

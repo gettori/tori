@@ -85,6 +85,10 @@ export default function CodeEditor(props: {
   // silent no-op) the same way a missing session disables the hunk-comment
   // button.
   selected: Selection | null;
+  // CSS-hidden (not unmounted) while an image/markdown-preview overlay is
+  // showing for the active tab, so background buffers/undo history survive
+  // the swap the same way TerminalView keeps inactive PTYs alive.
+  hidden?: boolean;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -392,7 +396,7 @@ export default function CodeEditor(props: {
   });
 
   return (
-    <div class={styles.codeEditorWrap}>
+    <div class={styles.codeEditorWrap} style={{ display: props.hidden ? "none" : undefined }}>
       <Show when={conflict()}>
         <div class={styles.reloadBanner}>
           <span>This file changed on disk while you had unsaved edits.</span>

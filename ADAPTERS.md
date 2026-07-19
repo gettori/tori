@@ -75,7 +75,72 @@ pattern = '...'   # required; ERE template (for `pgrep -f`) with an `{id}` place
 [capabilities]
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
 needs_you = true      # optional, default true; whether quiet+pending-tool_use is trusted as "needs you" - see below
+hooks = false         # optional, default false; whether a verified hook-driven status mechanism overrides the tail join - see below
+# context_window is optional and additive - omit it entirely if unknown, see below.
 ```
+
+### `capabilities.context_window`
+
+Drives the sidebar's per-session context meter (a fill bar next to the
+selected session's row, amber past 80% full, comparing `session_detail`'s
+`context_tokens` against this declared window). Omitted entirely, the meter
+just doesn't render for that adapter - **sway has no independent source of
+truth for a model's context window**, so an adapter that doesn't declare one
+goes without a meter rather than showing a guess. Two shapes:
+
+```toml
+# One number, used for every model this adapter launches:
+[capabilities]
+context_window = 128000
+
+# A per-model table. "default" is the reserved fallback key, used when a
+# session's own model isn't listed:
+[capabilities.context_window]
+default = 200000
+"claude-sonnet-4-5" = 1000000
+```
+
+Only `claude` declares one today (the table form, `default = 200000` plus
+Sonnet 4.5's 1M-token beta override) - `pi`/`opencode` have no adapter-verified
+figure, so they ship without the field and show no meter. No schema version
+bump: this is a new optional leaf under the existing `[capabilities]` table,
+same additive-field precedent as `hooks`.
+
+### `capabilities.hooks`
+
+An agent whose `hooks = true` gets its working/needs-you status from its own
+CLI's hook events instead of the transcript-tail join, when one fires -
+ground truth instead of a guess. This is **not** a generic TOML-authorable
+mechanism: turning it on for a new agent needs matching Rust code in
+`crate::hooks` (an agent-specific injection + a matching status-writer), the
+same way a new `parser.kind` needs code, not just a flag. Setting `hooks =
+true` in a user TOML with no such code is inert - the field is read, but
+nothing produces a status file for that agent, so it silently stays on the
+tail-join floor.
+
+**claude** (2026-07-18, phase 3, `claude 2.1.214`) is the only adapter with
+one today: `claude --settings <path>` injects a
+`UserPromptSubmit`/`PreToolUse`/`Notification`/`Stop` hook set, verified
+non-invasive (layers on top of `~/.claude/settings.json` via claude's own
+`--settings-sources user,project,local` default; that file is never opened
+or edited) and scoped to Sway-launched sessions only - an externally-typed
+`claude` never receives the flag. The value is a **path** to a small
+Sway-written file (`~/.config/sway/claude-hooks-settings.json`), not inline
+JSON - every agent tab's launch command is typed into its login shell one
+byte at a time, and a PTY in canonical mode silently truncates a single
+line beyond the kernel's line-discipline buffer, so an inline settings blob
+(2KB+) got cut mid-string and hung the shell on an unclosed quote (caught
+live, not in review). Each hook's command greps only
+`session_id`/`hook_event_name` off the JSON payload on stdin (POSIX
+`grep`/`sed`/`printf`, no jq/node/python dependency, and prompt text/tool
+input are never written to disk) and writes a small
+`~/.config/sway/hooks-status/<session id>.json` marker. `Notification` -
+claude's own signal that it is waiting on the user (a permission prompt or an
+idle nudge) - maps to `blocked-candidate`; `UserPromptSubmit`/`PreToolUse`
+map to `working`; `Stop` maps to `done`. Verified empirically against a real
+`claude -p` run: the settings JSON is accepted, the status file lands at the
+right session id, and `~/.claude/settings.json`'s md5 is unchanged
+before/after.
 
 ### `capabilities.needs_you`
 
