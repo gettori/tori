@@ -63,23 +63,23 @@
 }
 
 .success {
-  background: var(--success, #2ea043);
-  border-color: var(--success, #2ea043);
-  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--on-solid);
   font-weight: 600;
 }
 
 .warn {
   /* Darker than the --warn text color so white label text stays legible. */
-  background: var(--warn-strong, #b56319);
-  border-color: var(--warn-strong, #b56319);
-  color: #fff;
+  background: var(--warn-strong);
+  border-color: var(--warn-strong);
+  color: var(--on-solid);
 }
 
 .danger {
-  background: var(--danger, #e06c75);
-  border-color: var(--danger, #e06c75);
-  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-solid);
 }
 
 .ghost {

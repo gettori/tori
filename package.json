@@ -10,9 +10,10 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "lsp:install": "npm --prefix src-tauri/resources/lsp install",
-    "test": "vitest run"
+    "test": "node scripts/check-tokens.mjs && vitest run",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-javascript": "^6.2.5",

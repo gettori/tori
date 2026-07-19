@@ -89,7 +89,7 @@
 }
 
 .errorBadge {
-  color: #f85149;
+  color: var(--danger);
   font-size: calc(10px * var(--ui-scale));
 }
 
@@ -164,13 +164,13 @@
   font-weight: 600;
 }
 .opBadge.added {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .opBadge.modified {
-  color: #d29922;
+  color: var(--diff-modified);
 }
 .opBadge.deleted {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 
 .checkpointPath {
@@ -210,10 +210,10 @@
   padding: 0 calc(8px * var(--ui-density));
 }
 .diffLine.add {
-  color: #2ea043;
+  color: var(--diff-added);
 }
 .diffLine.del {
-  color: #f85149;
+  color: var(--diff-deleted);
 }
 .diffLine.hunk {
   color: var(--accent);

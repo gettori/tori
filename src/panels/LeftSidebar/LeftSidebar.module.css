@@ -114,7 +114,7 @@
   background: var(--hover);
 }
 .gearItem.danger {
-  color: var(--danger, #e06c75);
+  color: var(--danger);
 }
 .gearDivider {
   height: 1px;
@@ -344,7 +344,7 @@
 }
 
 .dot {
-  color: #4ec9b0;
+  color: var(--info);
   font-size: calc(8px * var(--ui-scale));
   margin-left: auto;
 }
@@ -454,8 +454,8 @@
   font-size: calc(9px * var(--ui-scale));
   padding: 0 calc(4px * var(--ui-density));
   border-radius: calc(3px * var(--ui-radius-scale));
-  color: #e0a458;
-  background: rgba(224, 164, 88, 0.13);
+  color: var(--brand);
+  background: var(--brand-subtle);
 }
 
 .row .badge + .when {
@@ -496,12 +496,12 @@
   background: var(--text-dim);
 }
 .row .contextMeterFill.contextMeterAmber {
-  background: #d29922;
+  background: var(--warn);
 }
 
 .row .badge.hint {
   color: var(--text-dim);
-  background: rgba(128, 128, 128, 0.12);
+  background: var(--fill-subtle);
 }
 
 /* "Historical" sub-section: sessions predating a recreated folder, with an inline

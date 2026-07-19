@@ -29,6 +29,13 @@
     --sway-fg-dark: #d4d4d4;
     --sway-fg-light: #1e1e1e;
 
+    /* macOS traffic-light colors. Primitives, not semantic tokens: these mimic
+       the system window buttons, which look identical in light and dark, so
+       they must NOT follow the theme. */
+    --sway-traffic-close: #ff5f57;
+    --sway-traffic-min: #febc2e;
+    --sway-traffic-zoom: #28c840;
+
     /* ---- Cool navy surface ramp (dark theme) ----
        The dark chrome palette, a deep cool navy rather than a neutral charcoal.
        Sampled from the premium reference; the dark semantic tokens below select
@@ -131,13 +138,36 @@
     --sel: var(--sway-blue-900);
     --hover: var(--sway-navy-800);
     --input-bg: var(--sway-navy-850);
-    /* Status accents. These are the values App.css already assumes as var()
-       fallbacks (e.g. var(--danger, #e06c75)); defining them makes those
-       theme-aware. Dark values equal the fallbacks, so dark is unchanged. */
+    /* Status accents. Dark values equal the literals the CSS modules used
+       before the token migration, so dark rendering is unchanged. */
     --danger: #e06c75;
     --warn: #d19a66;
     --warn-strong: #b56319;
     --success: #2ea043;
+    --info: #4ec9b0; /* neutral "this is the current one" marker (checkout dot) */
+    --on-solid: var(--sway-white); /* text/icon on a filled status surface */
+
+    /* VCS/diff status. A family of its own rather than a reuse of
+       --success/--warn/--danger: those are UI feedback (a button, a toast),
+       these label added/modified/deleted content, and the two drifted to
+       different hues long before this token layer existed. Collapsing them
+       would silently restyle every diff view. */
+    --diff-added: #2ea043;
+    --diff-modified: #d29922;
+    --diff-deleted: #f85149;
+
+    /* Agent marks. Third-party brand colors, so they stay recognisable rather
+       than following the theme; only lightness is adjusted per theme so each
+       stays legible against the row background. */
+    --agent-claude: #d97757;
+    --agent-pi: #6cb6ff;
+
+    /* Overlay scrims behind modal chrome. --scrim-soft is the lighter one used
+       where the surface below should stay readable (quick-open). */
+    --scrim: rgba(0, 0, 0, 0.45);
+    --scrim-soft: rgba(0, 0, 0, 0.35);
+    /* Neutral low-contrast fill for non-status badges. */
+    --fill-subtle: rgba(128, 128, 128, 0.12);
 
     /* Session status dot, dark. Its own semantic family (not --brand-*, not the
        theme-following --accent, and unmapped in vscodeMap.ts) so an imported
@@ -156,14 +186,37 @@
     --brand-ring: rgba(201, 150, 83, 0.5); /* focus ring */
     --brand-on: var(--sway-gold-900); /* text/icon on a filled --brand surface */
 
+    /* ---- Terminal ANSI ramp, dark (VS Code Dark+ terminal palette) ----
+       xterm needs 16 ANSI slots plus cursor/selection, and a program's output
+       picks the slot - so unlike the rest of the chrome these cannot be derived
+       from --text/--bg. They live here rather than in TerminalView so the whole
+       palette stays inside the token layer and swaps with the theme. */
+    --term-cursor: var(--sway-fg-navy);
+    --term-selection: rgba(70, 110, 160, 0.4);
+    --term-black: #000000;
+    --term-red: #cd3131;
+    --term-green: #0dbc79;
+    --term-yellow: #e5e510;
+    --term-blue: #2472c8;
+    --term-magenta: #bc3fbc;
+    --term-cyan: #11a8cd;
+    --term-white: #e5e5e5;
+    --term-bright-black: #666666;
+    --term-bright-red: #f14c4c;
+    --term-bright-green: #23d18b;
+    --term-bright-yellow: #f5f543;
+    --term-bright-blue: #3b8eea;
+    --term-bright-magenta: #d670d6;
+    --term-bright-cyan: #29b8db;
+    --term-bright-white: #ffffff;
+
     /* Elevation, dark: deeper/opaquer so floating chrome reads off the dark bg. */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
   }
 
-  /* ---- Semantic tokens, light (not user-selectable until the CSS migration
-     completes; defined now so the token layer is provably two-theme) ---- */
+  /* ---- Semantic tokens, light ---- */
   :root[data-theme="light"] {
     --bg: var(--sway-white);
     --pane-bg: var(--sway-gray-50);
@@ -179,6 +232,37 @@
     --warn: #9a6700;
     --warn-strong: #bc4c00;
     --success: #1a7f37;
+    --info: #157a6e; /* darkened teal: the dark #4ec9b0 is unreadable on white */
+    --on-solid: var(--sway-white);
+
+    /* VCS/diff status, light. Darker stops than dark's, since these are text
+       colors on a white surface. See the dark block for why this family exists. */
+    --diff-added: #1a7f37;
+    --diff-modified: #9a6700;
+    --diff-deleted: #cf222e;
+
+    /* Agent marks, light. Same hues, darkened for contrast on light rows. */
+    --agent-claude: #c2562f;
+    --agent-pi: #0969da;
+
+    /* Scrims, light: a dark veil still reads correctly over a bright UI, but at
+       lower opacity so the dimmed surface stays legible rather than muddy. */
+    --scrim: rgba(23, 23, 23, 0.3);
+    --scrim-soft: rgba(23, 23, 23, 0.22);
+    --fill-subtle: rgba(23, 23, 23, 0.06);
+
+    /* Syntax (CM6), light. The token layer must be provably two-theme on its
+       own: an imported theme paints --syn-* as inline props on <html>, but a
+       first boot with no cached theme has none, and the :root defaults are
+       Dark+ - which would render as dark-theme syntax on a white editor.
+       Values mirror themes/light-plus.json's tokenColors. */
+    --syn-keyword: #0000ff;
+    --syn-string: #a31515;
+    --syn-comment: #008000;
+    --syn-number: #098658;
+    --syn-function: #795e26;
+    --syn-type: #267f99;
+    --syn-variable: #001080;
 
     /* Session status dot, light. Same fixed identity as dark - see the dark
        block's comment. */
@@ -187,13 +271,48 @@
 
     /* Brand (champagne gold), light. Darker ramp stops so the gold stays legible
        on light chrome (theme-import can repaint chrome light today), and a softer
-       subtle-fill/ring since it sits on a bright surface. */
-    --brand: var(--sway-gold-600);
-    --brand-strong: var(--sway-gold-700);
-    --brand-subtle: rgba(169, 127, 66, 0.14); /* gold-600 @ low alpha: pill fill */
-    --brand-bar: var(--sway-gold-500);
-    --brand-ring: rgba(169, 127, 66, 0.4);
+       subtle-fill/ring since it sits on a bright surface.
+       gold-700 rather than the gold-600 this started at: gold-600 measured 2.95
+       against --pane-head-bg and 2.76 against --sel, under the 3.0 a graphic
+       element needs, so active icons and the accent bar washed out on exactly
+       the surfaces that mark the selected row. gold-700 clears 3.9 everywhere. */
+    --brand: var(--sway-gold-700);
+    --brand-strong: var(--sway-gold-800);
+    --brand-subtle: rgba(138, 103, 51, 0.14); /* gold-700 @ low alpha: pill fill */
+    --brand-bar: var(--sway-gold-700);
+    --brand-ring: rgba(138, 103, 51, 0.4);
     --brand-on: var(--sway-white); /* text/icon on a filled --brand surface */
+
+    /* ---- Terminal ANSI ramp, light (VS Code Light+ terminal palette) ----
+       The bright variants are deliberately NOT brighter here: on a white
+       background "bright yellow" as #f5f543 is invisible, so the light ramp
+       darkens rather than lightens them. See the dark block for why the ramp
+       is tokenized at all.
+
+       The greens/yellows are darker than Light+'s own: measured on white,
+       Light+ renders green at 2.56 and bright-green/bright-yellow at ~2.1,
+       under the 3.0 floor - and green is not a decorative slot, it is what
+       every test runner prints PASS in. Hue is preserved, lightness is not. */
+    --term-cursor: var(--sway-fg-light);
+    --term-selection: rgba(0, 95, 184, 0.25);
+    --term-black: #000000;
+    --term-red: #cd3131;
+    --term-green: #008a00;
+    --term-yellow: #7d8000;
+    --term-blue: #0451a5;
+    --term-magenta: #bc05bc;
+    --term-cyan: #0598bc;
+    --term-white: #555555;
+    --term-bright-black: #666666;
+    --term-bright-red: #cd3131;
+    --term-bright-green: #0f9d0f;
+    --term-bright-yellow: #8a8d00;
+    --term-bright-blue: #0451a5;
+    --term-bright-magenta: #bc05bc;
+    --term-bright-cyan: #0598bc;
+    /* The lightest slot by definition; kept as the dimmest readable gray
+       rather than a true white, which would be invisible here. */
+    --term-bright-white: #8c8c8c;
 
     /* Elevation, light: soft/low-opacity so it reads on a bright surface. */
     --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.08);
