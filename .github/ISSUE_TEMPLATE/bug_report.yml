@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in Sway behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The version fields matter more than usual here:
+        Sway reads each agent CLI's own transcript format, so a CLI update can
+        change behaviour without Sway changing at all.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Opened a Claude session in a worktree
+        2. The row stayed on "working" after the agent finished
+        3. Expected it to flip to "done"
+    validations:
+      required: true
+
+  - type: input
+    id: sway-version
+    attributes:
+      label: Sway version
+      description: >
+        Sway does not display its own version yet. Take it from the DMG
+        filename or the release you downloaded, or say "built from source" plus
+        the commit.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version and chip
+      placeholder: "15.2, Apple Silicon"
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: Agent CLI and version
+      description: Which agent the session was running, and the version it reports.
+      placeholder: "claude 2.1.215"
+    validations:
+      required: false
+
+  - type: textarea
+    id: agents-settings
+    attributes:
+      label: What Settings > Agents shows
+      description: >
+        Relevant when the problem involves an agent being missing, misdetected,
+        or stuck. Paste or describe the card for that agent.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Console output, screenshots, or a related issue.
+    validations:
+      required: false
