@@ -1,0 +1,54 @@
+/* Topbar update notice. Sits between the toolbar and the settings gear, and
+   stays quiet: this is information, not a call to action competing with the
+   user's actual work. */
+@layer components {
+  .pill {
+    flex: 0 0 auto;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-1);
+    height: 20px;
+    padding: 0 var(--sway-space-1) 0 var(--sway-space-3);
+    margin-right: var(--sway-space-3);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-pill);
+    background: var(--brand-subtle);
+  }
+
+  .link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: var(--sway-text-xs);
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .link:hover {
+    color: var(--brand-strong);
+  }
+
+  .dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: var(--sway-radius-sm);
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .dismiss:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  .dismiss svg {
+    width: 12px;
+    height: 12px;
+  }
+}
