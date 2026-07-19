@@ -29,3 +29,17 @@ pattern = 'claude (--resume|-r) {id}'
 # noisy-phase gaps and far below the observed blocked-silence duration.
 pty_quiet_ms = 2000
 needs_you = true
+# Verified (2026-07-18, phase 3 spike + capture): `--settings <inline JSON>`
+# injects a `Notification`/`UserPromptSubmit`/`PreToolUse`/`Stop` hook set
+# without touching ~/.claude/settings.json (see crate::hooks); Notification
+# fires when claude itself decides it needs the user (a permission prompt or
+# an idle nudge), replacing the quiet-PTY x pending-tool_use guess with a
+# ground-truth signal for Sway-launched sessions only.
+hooks = true
+
+# Sidebar context meter (Phase 3): 200k is Claude's standard context window;
+# Sonnet 4.5 ships a 1M-token beta window, hence the per-model override. The
+# "default" key is the fallback when a session's own model isn't listed here.
+[capabilities.context_window]
+default = 200000
+"claude-sonnet-4-5" = 1000000

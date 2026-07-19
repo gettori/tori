@@ -21,6 +21,35 @@ export const FOCUS_TERMINAL = "sway:focus-terminal";
 // focuses its input (Cmd+Shift+F). Distinct from FOCUS_SEARCH, which focuses
 // the left sidebar's own filter box.
 export const FOCUS_PROJECT_SEARCH = "sway:focus-project-search";
+
+// Payload-carrying event: jump to tab N (0-indexed) of the current
+// workspace's visible terminal bar (Cmd+1..9). Consumed by Terminal.tsx.
+export const TAB_JUMP = "sway:tab-jump";
+export type TabJump = { index: number };
+
+// Cycle to the next tab in the current workspace's visible terminal bar
+// (Ctrl+Tab). Consumed by Terminal.tsx.
+export const TAB_CYCLE = "sway:tab-cycle";
+
+// Focus the next session (across all live tabs) whose status is "Waiting for
+// approval" (Cmd+Shift+A). Consumed by Terminal.tsx.
+export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
+
+// Opens the Cmd+K command palette. Consumed by App.tsx.
+export const OPEN_PALETTE = "sway:open-palette";
+
+// Payload-carrying event: switch the editor's right panel to a named mode
+// (the command palette's "toggle right-panel mode" actions). Editor.tsx's
+// existing fallback-to-files effect handles a mode the current selection
+// can't show, so no availability gating is needed here.
+export const SET_RIGHT_MODE = "sway:set-right-mode";
+export type SetRightMode = { mode: "files" | "changes" | "search" | "session" | "shared" | "docs" };
+
+// Payload-carrying event: focus a specific live terminal tab by id (the
+// command palette's "focus session" action, when the session is already
+// open). Consumed by Terminal.tsx.
+export const FOCUS_SESSION_TAB = "sway:focus-session-tab";
+export type FocusSessionTab = { tabId: string };
 export const CLOSE_TAB = "sway:close-tab";
 export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";
@@ -54,7 +83,11 @@ export type OpenTerminal = {
 // Emitted by the sidebar's "New session" menu item; the terminal area owns the
 // spawn (id/title/yolo conventions), so the sidebar only names the target.
 export const NEW_SESSION = "sway:new-session";
-export type NewSession = { folderPath: string; projectName: string; agent?: "claude" | "pi" };
+// `agent` is any registered adapter id (Terminal.tsx's spawnSession treats it
+// as opaque, looking it up via findAgent), not just the original claude/pi
+// pair - the command palette's "new session per registered agent" needs the
+// full registry, e.g. opencode or a user-added adapter.
+export type NewSession = { folderPath: string; projectName: string; agent?: string };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under

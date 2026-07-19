@@ -10,7 +10,9 @@ import Settings from "./panels/Settings/Settings";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
-import { emit, FOCUS_SEARCH, FOCUS_PROJECT_SEARCH, FOCUS_TERMINAL, type LiveTab } from "./utils/events";
+import { on as onEvent, OPEN_PALETTE, type LiveTab } from "./utils/events";
+import { dispatchHotkey } from "./utils/hotkeys";
+import CommandPalette from "./components/CommandPalette/CommandPalette";
 import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
@@ -76,6 +78,7 @@ function App() {
   const [liveTabs, setLiveTabs] = createSignal<LiveTab[]>([]);
   const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [paletteOpen, setPaletteOpen] = createSignal(false);
 
   createEffect(() => {
     const s = selected();
@@ -121,28 +124,25 @@ function App() {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (!e.metaKey) return;
-    if (e.shiftKey && e.key.toLowerCase() === "f") {
+    if (dispatchHotkey(e)) {
       e.preventDefault();
-      emit(FOCUS_PROJECT_SEARCH);
-    } else if (e.key === "p") {
+      return;
+    }
+    if (e.metaKey && e.key === "p") {
       e.preventDefault();
       setQuickOpen(true);
-    } else if (e.key === "1") {
-      e.preventDefault();
-      emit(FOCUS_SEARCH);
-    } else if (e.key === "2") {
-      e.preventDefault();
-      emit(FOCUS_TERMINAL);
     }
   }
 
+  let offPalette: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
+    offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
     initSettings();
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
+    offPalette?.();
     document.body.classList.remove("dragging");
   });
 
@@ -185,6 +185,15 @@ function App() {
 
       <Show when={quickOpen()}>
         <QuickOpen root={selected()?.folderPath ?? null} onClose={() => setQuickOpen(false)} />
+      </Show>
+
+      <Show when={paletteOpen()}>
+        <CommandPalette
+          selected={selected()}
+          onSelect={setSelected}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onClose={() => setPaletteOpen(false)}
+        />
       </Show>
 
       <Show when={settingsOpen()}>
