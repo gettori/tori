@@ -1,6 +1,14 @@
-# Sway
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/logo-light.svg">
+    <img alt="Sway" src="docs/images/logo-light.svg" width="96" height="96">
+  </picture>
+</p>
 
-A cockpit for the coding agents you already run.
+<h1 align="center">Sway</h1>
+
+<p align="center">A cockpit for the coding agents you already run.</p>
 
 Sway is a macOS app that puts every agent session you have going into one
 window: a tree of sessions grouped by project and branch, a real terminal per
@@ -8,12 +16,6 @@ session, an editor with LSP, and a review panel that stages and commits what
 the agent wrote. It does not bundle an agent and it is not tied to one. Claude,
 pi, and opencode ship supported out of the box, and any other CLI agent is a
 TOML file away.
-
-<!-- Screenshots go here. Add the files under docs/images/, then paste:
-
-![Sway](docs/images/overview.png)
-
--->
 
 ## Why
 
