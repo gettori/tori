@@ -17,6 +17,10 @@ export type LiveTab = {
 
 export const FOCUS_SEARCH = "sway:focus-search";
 export const FOCUS_TERMINAL = "sway:focus-terminal";
+// Switches the editor's right panel to the project-wide Search mode and
+// focuses its input (Cmd+Shift+F). Distinct from FOCUS_SEARCH, which focuses
+// the left sidebar's own filter box.
+export const FOCUS_PROJECT_SEARCH = "sway:focus-project-search";
 export const CLOSE_TAB = "sway:close-tab";
 export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";

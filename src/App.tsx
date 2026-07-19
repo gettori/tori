@@ -10,7 +10,7 @@ import Settings from "./panels/Settings/Settings";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
-import { emit, FOCUS_SEARCH, FOCUS_TERMINAL, type LiveTab } from "./utils/events";
+import { emit, FOCUS_SEARCH, FOCUS_PROJECT_SEARCH, FOCUS_TERMINAL, type LiveTab } from "./utils/events";
 import { initSettings } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
@@ -122,7 +122,10 @@ function App() {
 
   function onKeyDown(e: KeyboardEvent) {
     if (!e.metaKey) return;
-    if (e.key === "p") {
+    if (e.shiftKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      emit(FOCUS_PROJECT_SEARCH);
+    } else if (e.key === "p") {
       e.preventDefault();
       setQuickOpen(true);
     } else if (e.key === "1") {
