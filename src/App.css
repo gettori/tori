@@ -345,6 +345,7 @@ body.dragging {
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   transition:
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;

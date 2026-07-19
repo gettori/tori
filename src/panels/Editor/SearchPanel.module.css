@@ -70,6 +70,7 @@
   flex: none;
   color: var(--text-dim);
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .matchRow {
