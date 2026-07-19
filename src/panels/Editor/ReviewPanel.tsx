@@ -403,7 +403,14 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
           </Show>
         </div>
       </Show>
-      <Show when={files().length} fallback={<div class="tree-empty">No changes</div>}>
+      <Show
+        when={files().length}
+        fallback={
+          <div class="tree-empty">
+            <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
+          </div>
+        }
+      >
         <Show when={staged().length}>
           <div class={styles.sectionHeader}>Staged Changes</div>
           <For each={staged()}>{(f) => row(f, { staged: true })}</For>

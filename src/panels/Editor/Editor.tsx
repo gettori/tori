@@ -401,7 +401,11 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         />
         <Show
           when={filePaths().length}
-          fallback={<div class={styles.editorEmpty}>Open a file from the tree to start editing.</div>}
+          fallback={
+            <div class={styles.editorEmpty}>
+              Open a file from the tree to start editing, or press ⌘P to find one by name.
+            </div>
+          }
         >
           <CodeEditor
             activePath={activeTab()?.kind === "file" && !isImageTab() && !showingPreview() ? activeId() : null}
