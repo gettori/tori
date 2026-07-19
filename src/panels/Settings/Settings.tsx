@@ -1,6 +1,7 @@
 import { onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
+import AgentsSection from "./AgentsSection";
 import { settings, saveSettings, type Appearance, type Typography, type Layout, type Checkpoints } from "./settingsStore";
 import { listSelectableThemes } from "../../theme";
 import Button from "../../components/Button/Button";
@@ -10,7 +11,7 @@ import styles from "./Settings.module.css";
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled overlay like the other modals: Escape / backdrop click closes, the
 // first control takes focus on open.
-export default function Settings(props: { onClose: () => void }) {
+export default function Settings(props: { onClose: () => void; welcome?: boolean }) {
   let firstControl: HTMLSelectElement | undefined;
   onMount(() => requestAnimationFrame(() => firstControl?.focus()));
 
@@ -55,6 +56,17 @@ export default function Settings(props: { onClose: () => void }) {
           </div>
 
           <div class={styles.body}>
+            {/* Agents leads the panel: it is the section first-run opens onto,
+                and the one answering "will this work with my setup?". */}
+            <Show when={props.welcome}>
+              <div class={styles.welcome}>
+                Welcome to Sway. It drives the agent CLIs you already have, so start by
+                checking which ones it found below, then open a folder in the sidebar to
+                begin a session.
+              </div>
+            </Show>
+            <AgentsSection />
+
             <section class={styles.section}>
               <div class={styles.sectionTitle}>Appearance</div>
               <div class={styles.row}>

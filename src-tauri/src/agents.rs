@@ -105,6 +105,11 @@ pub struct AgentAdapter {
     /// captured against (e.g. `"opencode 1.18.3"`), echoed in ADAPTERS.md.
     /// Optional: not every adapter carries one.
     pub verified_against: Option<String>,
+    /// Where this adapter was loaded from: `"bundled:<id>"` for a built-in, or
+    /// the absolute path of the user TOML that defined (or whole-replaced) it.
+    /// The Agents cards show the path so a user who forgot about an override
+    /// can see which file is actually in effect.
+    pub source: String,
     /// Declared context window (Phase 3's sidebar meter), see `ContextWindow`.
     /// `None` when the adapter doesn't declare one (limitation noted in
     /// ADAPTERS.md: sway has no independent source of truth for this number,
@@ -313,6 +318,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         needs_you: raw.capabilities.needs_you,
         hooks: raw.capabilities.hooks,
         verified_against: raw.verified_against,
+        source: source.to_string(),
         context_window: raw.capabilities.context_window,
     })
 }
@@ -390,6 +396,24 @@ pub fn registry() -> &'static [AgentAdapter] {
     REGISTRY.get_or_init(build_registry)
 }
 
+impl AgentAdapter {
+    /// The on-disk location this adapter discovers sessions from: a directory
+    /// for the `File` backend, the DB file for `Sqlite`. The health cards
+    /// report whether it exists, which is the difference between "the agent is
+    /// installed but you have never run it" and "something is misconfigured".
+    pub fn discovery_path(&self) -> &Path {
+        match &self.discovery {
+            Discovery::File { dir, .. } => dir,
+            Discovery::Sqlite { db_path } => db_path,
+        }
+    }
+
+    /// True when this adapter came from a user TOML rather than a built-in.
+    pub fn is_override(&self) -> bool {
+        !self.source.starts_with("bundled:")
+    }
+}
+
 pub fn find(id: &str) -> Option<&'static AgentAdapter> {
     registry().iter().find(|a| a.id == id)
 }
@@ -416,24 +440,8 @@ pub fn parser_kind_for(agent: &str) -> ParserKind {
     find(agent).map(|a| a.parser_kind).unwrap_or(ParserKind::ClaudeJsonl)
 }
 
-#[tauri::command]
-pub fn list_agents() -> Vec<AgentAdapter> {
-    registry().to_vec()
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn tmp_dir() -> PathBuf {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_agents_test_{n}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    const VALID_MINIMAL: &str = r#"
+const VALID_MINIMAL: &str = r#"
 schema_version = 1
 id = "x"
 label = "X"
@@ -452,6 +460,31 @@ kind = "claude_jsonl"
 [running]
 pattern = 'x --resume {id}'
 "#;
+
+/// A minimal adapter launching `program`, for tests in other modules that need
+/// an adapter but not a whole TOML (see `crate::health`).
+#[cfg(test)]
+pub fn test_adapter(program: &str) -> AgentAdapter {
+    let text = VALID_MINIMAL.replace("program = \"x\"", &format!("program = \"{program}\""));
+    load_adapter_str(&text, "bundled:test").expect("test adapter parses")
+}
+
+#[tauri::command]
+pub fn list_agents() -> Vec<AgentAdapter> {
+    registry().to_vec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn tmp_dir() -> PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_agents_test_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn bundled_adapters_load_and_validate() {
