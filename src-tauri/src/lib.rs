@@ -64,6 +64,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             // Hide the native macOS traffic-light buttons so we can draw our own
             // (smaller, centered, gray-until-hover) in the web layer. Keeping the

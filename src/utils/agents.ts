@@ -86,6 +86,20 @@ export function applyTemplate(template: string[], vars: { id?: string; file?: st
   return template.map((a) => a.replace("{id}", vars.id ?? "").replace("{file}", vars.file ?? ""));
 }
 
+// Single-quote an argument for a POSIX shell. The copied resume command is
+// pasted into a real shell, which re-parses it, so a session file path with a
+// space (or any other metacharacter) has to survive that round trip. Embedded
+// single quotes close and reopen the quoting the usual way.
+const shQuote = (a: string) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
+
+// The shell command that resumes a session outside Sway: the adapter's launch
+// binary plus its resume template, filled and quoted. Null for a resume-less
+// adapter (empty `resume_args`), whose sessions cannot be resumed at all.
+export function resumeCommand(agent: Agent, vars: { id: string; file: string }): string | null {
+  if (agent.resume_args.length === 0) return null;
+  return [agent.program, ...applyTemplate(agent.resume_args, vars)].map(shQuote).join(" ");
+}
+
 // Resolve an agent's declared context window for a session's model (mirrors
 // the backend's `ContextWindow::resolve`): a plain number applies to every
 // model; a per-model table falls back to its "default" key. Null when the
