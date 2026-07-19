@@ -38,6 +38,15 @@ export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
 // Opens the Cmd+K command palette. Consumed by App.tsx.
 export const OPEN_PALETTE = "sway:open-palette";
 
+// Opens the Cmd+P quick-open file finder. Consumed by App.tsx. Emitted only
+// from the window-level listener, never from a focused terminal - see the
+// `window` scope in utils/hotkeys.ts.
+export const OPEN_QUICK_OPEN = "sway:open-quick-open";
+
+// Toggles the Cmd+/ shortcut sheet. Consumed by App.tsx. A toggle rather than
+// an open, so the same key that summons it dismisses it.
+export const TOGGLE_SHORTCUTS = "sway:toggle-shortcuts";
+
 // Payload-carrying event: switch the editor's right panel to a named mode
 // (the command palette's "toggle right-panel mode" actions). Editor.tsx's
 // existing fallback-to-files effect handles a mode the current selection

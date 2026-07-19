@@ -1,0 +1,107 @@
+/* Cmd+/ shortcut sheet. Chrome surface, so it follows the spacious side of the
+   two-tier density convention: generous padding, section rhythm, soft elevation. */
+@layer components {
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--scrim);
+  }
+
+  .sheet {
+    width: min(680px, calc(100vw - 64px));
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+    background: var(--pane-bg);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+  /* Focused programmatically on open (see ShortcutSheet.tsx), so suppress the
+     ring: it would outline the whole sheet rather than indicate a target. */
+  .sheet:focus {
+    outline: none;
+  }
+
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sway-space-5);
+    padding: calc(16px * var(--ui-density)) calc(20px * var(--ui-density));
+    border-bottom: var(--sway-border-thin) solid var(--border);
+  }
+  .title {
+    margin: 0;
+    font-size: calc(14px * var(--ui-scale));
+    font-weight: 600;
+    color: var(--text);
+  }
+  .hint {
+    font-size: calc(11px * var(--ui-scale));
+    color: var(--text-dim);
+  }
+
+  /* Two columns on a roomy sheet, one when the window is narrow. The groups are
+     independent, so they reflow without losing meaning. */
+  .groups {
+    overflow-y: auto;
+    padding: calc(8px * var(--ui-density)) calc(20px * var(--ui-density))
+      calc(16px * var(--ui-density));
+    columns: 2;
+    column-gap: calc(28px * var(--ui-density));
+  }
+  @media (max-width: 620px) {
+    .groups {
+      columns: 1;
+    }
+  }
+
+  .group {
+    /* Keep a heading with its rows when the columns break. */
+    break-inside: avoid;
+    margin-top: calc(14px * var(--ui-density));
+  }
+  .groupTitle {
+    margin: 0 0 calc(4px * var(--ui-density));
+    font-size: calc(10px * var(--ui-scale));
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(12px * var(--ui-density));
+    padding: calc(4px * var(--ui-density)) 0;
+  }
+  .label {
+    font-size: calc(12px * var(--ui-scale));
+    color: var(--text);
+  }
+
+  .keys {
+    display: flex;
+    gap: var(--sway-space-1);
+    flex: 0 0 auto;
+  }
+  .key {
+    min-width: 18px;
+    padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
+    font-family: var(--sway-font-ui);
+    font-size: calc(11px * var(--ui-scale));
+    line-height: 1.5;
+    text-align: center;
+    color: var(--text-dim);
+    background: var(--input-bg);
+    border: var(--sway-border-thin) solid var(--border);
+    border-radius: var(--sway-radius-sm);
+  }
+}
