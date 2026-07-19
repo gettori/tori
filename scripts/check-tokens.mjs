@@ -1,5 +1,15 @@
 #!/usr/bin/env node
-// Guard the token layer: no color literal may live in a component.
+// Guard the token layer. Two checks:
+//
+//   1. No color literal may live in a component (they render identically in
+//      both themes, which is how a "light mode" ships half-dark).
+//   2. tokens.css must be structurally two-theme: every semantic token dark
+//      defines needs a light value, light needs its own syntax ramp, and both
+//      need the full 16-slot terminal ANSI ramp.
+//
+// Check 2 lives here rather than in vitest because vitest stubs CSS imports to
+// the empty string, and this script already reads files and already gates
+// `pnpm test`.
 //
 // Light mode is only as complete as the CSS is token-driven. A single stray
 // `#2ea043` renders identically in both themes, which is exactly the bug that
@@ -95,4 +105,72 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`Token check passed: no color literals outside tokens.css and ${ALLOWLIST.size} allowlisted files.`);
+// ---- Check 2: tokens.css is structurally two-theme ----
+//
+// A token defined for dark alone does not fail loudly. It silently keeps its
+// dark value in light mode, which is exactly how a light UI ends up with dark
+// remnants - so the absence has to be an error, not a thing to notice.
+
+const TOKENS_CSS = readFileSync(join(SRC, "styles/tokens.css"), "utf8");
+const DARK_BLOCK = "---- Semantic tokens, dark";
+const LIGHT_BLOCK = "---- Semantic tokens, light";
+
+/** Custom-property names declared in the brace-balanced block after `marker`. */
+function declaredIn(marker) {
+  const start = TOKENS_CSS.indexOf(marker);
+  if (start < 0) {
+    console.error(`tokens.css no longer contains the marker "${marker}".`);
+    console.error("This script locates the theme blocks by that comment; restore it or update the marker here.");
+    process.exit(1);
+  }
+  const open = TOKENS_CSS.indexOf("{", start);
+  let depth = 0;
+  let i = open;
+  for (; i < TOKENS_CSS.length; i++) {
+    if (TOKENS_CSS[i] === "{") depth++;
+    else if (TOKENS_CSS[i] === "}" && --depth === 0) break;
+  }
+  const body = TOKENS_CSS.slice(open + 1, i);
+  return new Set([...body.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]));
+}
+
+const darkTokens = declaredIn(DARK_BLOCK);
+const lightTokens = declaredIn(LIGHT_BLOCK);
+const structural = [];
+
+for (const token of darkTokens) {
+  if (!lightTokens.has(token)) structural.push(`${token} has a dark value but no light one`);
+}
+
+// The :root defaults are Dark+; without a light override, a first boot with no
+// cached theme paints dark-theme syntax onto a white editor.
+for (const category of ["keyword", "string", "comment", "number", "function", "type", "variable"]) {
+  if (!lightTokens.has(`--syn-${category}`)) {
+    structural.push(`--syn-${category} has no light override (light would inherit the Dark+ default)`);
+  }
+}
+
+const ANSI_SLOTS = [
+  "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+  "bright-black", "bright-red", "bright-green", "bright-yellow",
+  "bright-blue", "bright-magenta", "bright-cyan", "bright-white",
+];
+for (const [themeName, tokens] of [["dark", darkTokens], ["light", lightTokens]]) {
+  for (const slot of ANSI_SLOTS) {
+    if (!tokens.has(`--term-${slot}`)) {
+      structural.push(`--term-${slot} is missing from the ${themeName} ANSI ramp`);
+    }
+  }
+}
+
+if (structural.length > 0) {
+  console.error(`${structural.length} token-layer gap(s) in src/styles/tokens.css:\n`);
+  for (const problem of structural) console.error(`  ${problem}`);
+  console.error("\nEvery semantic token needs a value in BOTH theme blocks, or light silently inherits dark.");
+  process.exit(1);
+}
+
+console.log(
+  `Token check passed: no color literals outside tokens.css (${ALLOWLIST.size} allowlisted files), ` +
+    `and all ${darkTokens.size} dark tokens have light values.`,
+);
