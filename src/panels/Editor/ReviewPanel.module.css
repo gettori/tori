@@ -162,6 +162,94 @@
   color: var(--text-dim);
 }
 
+/* Intra-line highlight: the token that actually changed inside a paired
+   -/+ line. Rounded so adjacent highlighted tokens read as one span. */
+.reviewDiff .diffLine.add .wordChanged {
+  background: var(--diff-added-word);
+  border-radius: 2px;
+}
+.reviewDiff .diffLine.del .wordChanged {
+  background: var(--diff-deleted-word);
+  border-radius: 2px;
+}
+
+/* Collapsed unchanged region. Clickable, and dim so it reads as chrome
+   between the real diff lines rather than as content. */
+.reviewDiff .diffGap {
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  background: var(--pane-bg);
+  border-block: 1px solid var(--border);
+}
+.reviewDiff .diffGap:hover {
+  color: var(--text);
+}
+
+/* Side-by-side. Both columns live in one grid row inside a single scroll
+   container, so they stay aligned and scroll together without a sync handler. */
+.sideBySide {
+  min-width: min-content;
+}
+.sideRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.sideRow > .diffLine {
+  overflow: hidden;
+}
+.sideRow > .diffLine:first-child {
+  border-right: 1px solid var(--border);
+}
+/* A cell with no counterpart on this side: present but visibly not a line. */
+.reviewDiff .diffLine.sideEmpty {
+  background: var(--pane-bg);
+}
+
+.rowAction {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-density));
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--ui-scale));
+  cursor: pointer;
+  opacity: 0;
+}
+/* Revealed on keyboard focus too, not hover alone, so tabbing to it doesn't
+   land on an invisible control. */
+.reviewRow:hover .rowAction,
+.rowAction:focus-visible {
+  opacity: 1;
+}
+.rowAction:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.viewToggle {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-density));
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--ui-scale));
+  cursor: pointer;
+}
+.viewToggle:hover:not(:disabled) {
+  color: var(--text);
+}
+.viewToggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.viewToggleOn {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .commitBox {
   position: sticky;
   bottom: 0;
