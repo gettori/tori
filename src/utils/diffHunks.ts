@@ -17,7 +17,13 @@ const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 export function parseDiffHunks(diffText: string): DiffHunk[] {
   const hunks: DiffHunk[] = [];
   let current: DiffHunk | null = null;
-  for (const line of diffText.split("\n")) {
+  // Drop the empty element a trailing newline leaves behind, so a hunk's body
+  // matches Rust's `str::lines()` exactly. The backend re-derives each hunk's
+  // fingerprint with that parser before staging it, so an extra phantom line
+  // here would make every *last* hunk fail to stage, and only the last one.
+  const lines = diffText.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  for (const line of lines) {
     const m = HUNK_HEADER_RE.exec(line);
     if (m) {
       const start = parseInt(m[1], 10);

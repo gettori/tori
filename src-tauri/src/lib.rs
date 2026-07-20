@@ -12,6 +12,7 @@ mod lsp;
 mod model;
 mod onboarding;
 mod opencode;
+mod patch;
 mod presence;
 mod pty;
 mod search;
@@ -186,6 +187,8 @@ pub fn run() {
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,
+            git::git_apply_hunks,
+            git::git_file_slice,
             git::git_stage,
             git::git_unstage,
             git::git_commit,

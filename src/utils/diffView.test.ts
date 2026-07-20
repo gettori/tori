@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRows, collapseRows, pairRun, toSideBySide, wordSegs, similarity, type DiffRow } from "./diffView";
+import { buildRows, hunkGaps, pairRun, toSideBySide, wordSegs, similarity } from "./diffView";
 
 const changed = (segs: { text: string; changed: boolean }[] | undefined) =>
   (segs ?? []).filter((s) => s.changed).map((s) => s.text);
@@ -109,36 +109,52 @@ describe("buildRows", () => {
   });
 });
 
-describe("collapseRows", () => {
-  const ctx = (n: number): DiffRow[] => Array.from({ length: n }, (_, i) => ({ kind: "context", text: ` c${i}` }));
+describe("hunkGaps", () => {
+  const h = (startLine: number, endLine: number) => ({ startLine, endLine });
 
-  it("collapses a large untouched middle to one gap", () => {
-    const rows: DiffRow[] = [{ kind: "del", text: "-a" }, ...ctx(20), { kind: "add", text: "+b" }];
-    const out = collapseRows(rows, 3);
-    const gaps = out.filter((r) => r.kind === "gap");
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0].kind === "gap" && gaps[0].hidden).toHaveLength(14);
-    // Three context lines survive on each side of the gap.
-    expect(out.filter((r) => r.kind === "context")).toHaveLength(6);
+  it("reports the untouched stretch between two hunks", () => {
+    // Hunk 1 covers 1-6, hunk 2 covers 40-45: lines 7-39 are simply absent
+    // from the diff at default context.
+    expect(hunkGaps([h(1, 6), h(40, 45)])).toEqual([{ afterHunk: 0, start: 7, end: 39 }]);
   });
 
-  it("leaves a short run alone", () => {
-    const rows: DiffRow[] = [{ kind: "del", text: "-a" }, ...ctx(4), { kind: "add", text: "+b" }];
-    expect(collapseRows(rows, 3).some((r) => r.kind === "gap")).toBe(false);
+  it("reports the stretch before the first hunk", () => {
+    expect(hunkGaps([h(20, 25)])).toEqual([{ afterHunk: -1, start: 1, end: 19 }]);
   });
 
-  it("keeps context only on the inner side of an edge run", () => {
-    const rows: DiffRow[] = [...ctx(20), { kind: "del", text: "-a" }];
-    const out = collapseRows(rows, 3);
-    expect(out[0].kind).toBe("gap");
-    expect(out.filter((r) => r.kind === "context")).toHaveLength(3);
+  it("reports nothing when a hunk starts at line 1", () => {
+    expect(hunkGaps([h(1, 5)])).toEqual([]);
   });
 
-  it("expanding a gap recovers every hidden line in order", () => {
-    const rows: DiffRow[] = [{ kind: "del", text: "-a" }, ...ctx(20), { kind: "add", text: "+b" }];
-    const gap = collapseRows(rows, 3).find((r) => r.kind === "gap");
-    const hidden = gap?.kind === "gap" ? gap.hidden : [];
-    expect(hidden.map((r) => ("text" in r ? r.text : ""))).toEqual(ctx(20).slice(3, 17).map((r) => ("text" in r ? r.text : "")));
+  it("reports nothing between adjacent hunks", () => {
+    expect(hunkGaps([h(1, 6), h(7, 9)])).toEqual([]);
+  });
+
+  it("never reports a gap after the last hunk", () => {
+    // The diff does not say how long the file is, so a trailing count would be
+    // a guess. Nothing is claimed rather than something wrong.
+    const gaps = hunkGaps([h(1, 6), h(40, 45)]);
+    expect(gaps.every((g) => g.afterHunk < 1)).toBe(true);
+  });
+
+  it("handles a pure deletion that does not advance the new side", () => {
+    // A deletion hunk has endLine == startLine with nothing on the new side, so
+    // the next hunk can start at or before it; that must not yield a backwards
+    // or zero-length range.
+    // Only the between-hunk gaps matter here (a first hunk at line 10 still
+    // has a legitimate leading gap of 1-9).
+    const between = (hs: { startLine: number; endLine: number }[]) => hunkGaps(hs).filter((g) => g.afterHunk >= 0);
+    expect(between([h(10, 10), h(10, 12)])).toEqual([]);
+    expect(between([h(10, 10), h(11, 12)])).toEqual([]);
+    expect(between([h(10, 10), h(20, 22)])).toEqual([{ afterHunk: 0, start: 11, end: 19 }]);
+  });
+
+  it("chains several gaps across many hunks", () => {
+    expect(hunkGaps([h(5, 8), h(20, 22), h(50, 51)])).toEqual([
+      { afterHunk: -1, start: 1, end: 4 },
+      { afterHunk: 0, start: 9, end: 19 },
+      { afterHunk: 1, start: 23, end: 49 },
+    ]);
   });
 });
 

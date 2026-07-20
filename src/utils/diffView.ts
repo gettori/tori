@@ -1,7 +1,13 @@
 // Turns a hunk's raw unified-diff lines into rows ready to render: paired -/+
 // lines carry word-level segments so a one-token edit highlights that token
-// instead of the whole line, long unchanged runs collapse to a single
-// expandable gap, and the same rows lay out either inline or side-by-side.
+// instead of the whole line, and the same rows lay out either inline or
+// side-by-side.
+//
+// Unchanged regions are *not* handled here. The diff is taken at git's default
+// context so that a hunk is the same unit `git add -p` would stage, which means
+// the file's untouched stretches are absent from it rather than present and
+// collapsible. `hunkGaps` (below) reports those stretches; the panel reads them
+// back from the file when the user expands one.
 //
 // Pairing is deliberately conservative. A hunk with 3 removals and 5 additions
 // has no correct one-to-one reading, and highlighting every token of every line
@@ -14,8 +20,7 @@ export type Seg = { text: string; changed: boolean };
 export type DiffRow =
   | { kind: "context" | "meta"; text: string }
   // `pair` links a del to the add it was matched with (side-by-side alignment).
-  | { kind: "del" | "add"; text: string; segs?: Seg[]; pair?: number }
-  | { kind: "gap"; hidden: DiffRow[] };
+  | { kind: "del" | "add"; text: string; segs?: Seg[]; pair?: number };
 
 // Words, runs of whitespace, and single punctuation chars. Identifier chars
 // include `_`/`$` so `fooBar_baz` is one token rather than three.
@@ -168,34 +173,6 @@ export function buildRows(lines: string[]): DiffRow[] {
   return rows;
 }
 
-/** Replace long unchanged runs with a single gap row holding the hidden rows,
- *  keeping `context` lines of breathing room next to each change. */
-export function collapseRows(rows: DiffRow[], context = 3): DiffRow[] {
-  const out: DiffRow[] = [];
-  let i = 0;
-  while (i < rows.length) {
-    if (rows[i].kind !== "context") {
-      out.push(rows[i++]);
-      continue;
-    }
-    const start = i;
-    while (i < rows.length && rows[i].kind === "context") i++;
-    const run = rows.slice(start, i);
-    // A run touching an edge only needs context on its inner side.
-    const keepHead = start === 0 ? 0 : context;
-    const keepTail = i === rows.length ? 0 : context;
-    const hidden = run.slice(keepHead, run.length - keepTail);
-    // Collapsing one line to a "1 unchanged line" row saves nothing and costs a
-    // click, so leave short runs alone.
-    if (hidden.length <= 1) {
-      out.push(...run);
-      continue;
-    }
-    out.push(...run.slice(0, keepHead), { kind: "gap", hidden }, ...run.slice(run.length - keepTail));
-  }
-  return out;
-}
-
 export type SideRow = { left: DiffRow | null; right: DiffRow | null };
 
 /** Lay rows into two columns: context spans both, a matched -/+ pair shares a
@@ -214,7 +191,7 @@ export function toSideBySide(rows: DiffRow[]): SideRow[] {
 
   rows.forEach((row, idx) => {
     if (placed.has(idx)) return;
-    if (row.kind === "context" || row.kind === "meta" || row.kind === "gap") {
+    if (row.kind === "context" || row.kind === "meta") {
       out.push({ left: row, right: row });
       return;
     }
@@ -229,5 +206,36 @@ export function toSideBySide(rows: DiffRow[]): SideRow[] {
     out.push(row.kind === "del" ? { left: row, right: null } : { left: null, right: row });
   });
 
+  return out;
+}
+
+/** An unchanged stretch of the file that the diff does not show, between two
+ *  hunks (or before the first). Line numbers are 1-based, on the diff's "new"
+ *  side, and inclusive. */
+export type Gap = { afterHunk: number; start: number; end: number };
+
+/** The unchanged regions between a file's hunks.
+ *
+ *  At git's default context a hunk carries only three lines either side, so
+ *  everything else about the file is simply absent from the diff. These are the
+ *  ranges the panel offers to expand, read back from the file itself.
+ *
+ *  `afterHunk` is the index of the hunk the gap follows, or -1 for the stretch
+ *  before the first hunk. The region after the last hunk is deliberately not
+ *  reported: the diff does not say how long the file is, and guessing would
+ *  mean showing a count that could be wrong.
+ */
+export function hunkGaps(hunks: { startLine: number; endLine: number }[]): Gap[] {
+  const out: Gap[] = [];
+  hunks.forEach((h, i) => {
+    if (i === 0) {
+      if (h.startLine > 1) out.push({ afterHunk: -1, start: 1, end: h.startLine - 1 });
+      return;
+    }
+    const prevEnd = hunks[i - 1].endLine;
+    // A pure deletion has no new-side lines, so a hunk can start at or before
+    // where the previous one ended; only a real forward span is a gap.
+    if (h.startLine > prevEnd + 1) out.push({ afterHunk: i - 1, start: prevEnd + 1, end: h.startLine - 1 });
+  });
   return out;
 }
