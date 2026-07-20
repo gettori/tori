@@ -9,6 +9,7 @@ import { FilePlus, FolderPlus } from "lucide-solid";
 import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
+import { isEditingNow } from "../../../utils/editingNow";
 import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };
@@ -180,12 +181,21 @@ function TreeNode(props: {
             // Only files carry the marker: a dir's tint would have to mean
             // "something below me changed", which is a different claim.
             [styles.touched]: !props.entry.is_dir && isTouched(props.entry.path),
+            // The live indicator is a strict subset of touched: a file being
+            // written right now is by definition one this session wrote.
+            [styles.editing]: !props.entry.is_dir && isEditingNow(props.entry.path),
           }}
         >
           {props.entry.name}
         </span>
-        <Show when={!props.entry.is_dir && isTouched(props.entry.path)}>
-          <span class={styles.touchedDot} title="Changed by the selected session">
+        <Show when={!props.entry.is_dir && (isTouched(props.entry.path) || isEditingNow(props.entry.path))}>
+          <span
+            class={styles.touchedDot}
+            classList={{ [styles.editingDot]: isEditingNow(props.entry.path) }}
+            title={
+              isEditingNow(props.entry.path) ? "Being edited right now" : "Changed by the selected session"
+            }
+          >
             ●
           </span>
         </Show>

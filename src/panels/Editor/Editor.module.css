@@ -116,6 +116,25 @@
   line-height: 1;
 }
 
+/* Live "editing now" on a tab. Dimming lives only in the keyframes, so the
+   global reduced-motion rule stills this to a steady highlight - see the fuller
+   explanation on .editingDot in FileTree.module.css.
+   Not nested under .editorTabs for the same portal reason as .tabTouched. */
+@keyframes tabEditingPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.tabTouched.tabEditing {
+  color: var(--brand);
+  animation: tabEditingPulse 1.2s ease-in-out infinite;
+}
+
 .editorTabs :global(.tab-close) {
   display: inline-flex;
   align-items: center;

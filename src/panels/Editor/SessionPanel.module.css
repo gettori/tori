@@ -8,6 +8,41 @@
   background: var(--pane-bg);
 }
 
+/* Live "editing now" banner. Same pulse as the tree row and the tab dot, with
+   the dimming confined to the keyframes so the global reduced-motion rule
+   stills it to a steady highlight - see .editingDot in FileTree.module.css. */
+.editingNow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--brand);
+  border-bottom: 1px solid var(--border);
+}
+
+.editingNow code {
+  font-family: var(--font-mono);
+}
+
+@keyframes sessionEditingPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.editingDot {
+  flex: none;
+  font-size: calc(8px * var(--ui-scale));
+  line-height: 1;
+  animation: sessionEditingPulse 1.2s ease-in-out infinite;
+}
+
 .readsToggle {
   flex: none;
   display: flex;

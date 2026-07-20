@@ -6,9 +6,14 @@ import { isUnderPath } from "../../utils/pathScope";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
+import { editingNow } from "../../utils/editingNow";
 import HunkCommentInput from "./HunkCommentInput";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./SessionPanel.module.css";
+
+function basename(path: string): string {
+  return path.split("/").pop() || path;
+}
 
 type TouchOp = "read" | "create" | "edit" | "delete";
 type TouchedFile = { path: string; op: TouchOp; first_ts: number; last_ts: number; count: number };
@@ -254,6 +259,22 @@ export default function SessionPanel(props: {
 
   return (
     <div class={styles.sessionPanel}>
+      {/* Live "editing now". Composed in Editor, which owns both the transcript
+          fetch and the fs watcher; this panel only renders it. The file-less
+          variant is not a degraded bug but the honest reading: another agent is
+          live in this folder, so the changed file cannot be attributed. */}
+      <Show when={editingNow()}>
+        {(e) => (
+          <div class={styles.editingNow}>
+            <span class={styles.editingDot}>●</span>
+            <Show when={e().kind === "file"} fallback={<span>editing…</span>}>
+              <span>
+                editing <code>{basename((e() as { kind: "file"; path: string }).path)}</code>
+              </span>
+            </Show>
+          </div>
+        )}
+      </Show>
       <label class={styles.readsToggle}>
         <input type="checkbox" checked={showReads()} onChange={(e) => setShowReads(e.currentTarget.checked)} />
         Show reads
