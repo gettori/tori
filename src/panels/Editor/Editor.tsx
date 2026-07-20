@@ -7,6 +7,7 @@ import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
+import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
@@ -268,6 +269,38 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     }
   }
 
+  // A tree revert just rewrote/removed files on disk. The fs watcher would
+  // deliver these too, but a revert is a deliberate, destructive action whose
+  // buffer consequences must not depend on watcher timing or coalescing, so
+  // the affected paths go straight to CodeEditor, which runs its normal
+  // external-change resolution (clean reload, dirty conflict, deleted
+  // conflict) over exactly that set.
+  const [reverted, setReverted] = createSignal<{ paths: string[]; nonce: number } | null>(null);
+  let revertNonce = 0;
+  function handleReverted(outcome: RevertOutcome) {
+    const r = root();
+    if (!r) return;
+    const paths = [...outcome.restored, ...outcome.deleted].map((p) => `${r}/${p}`);
+    if (paths.length) setReverted({ paths, nonce: ++revertNonce });
+  }
+
+  // Close one file tab with no dirty prompt: the caller has already resolved
+  // the question (the deleted-file conflict's "take disk" choice), so a
+  // discard prompt here would ask the same thing twice.
+  function forceCloseFile(path: string) {
+    if (!tabs().some((t) => t.kind === "file" && t.path === path)) return;
+    const remaining = tabs().filter((t) => !(t.kind === "file" && t.path === path));
+    setTabs(remaining);
+    setDirty((d) => {
+      const next = { ...d };
+      delete next[path];
+      return next;
+    });
+    if (activeId() === path) {
+      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
+    }
+  }
+
   function handleDirty(path: string, isDirty: boolean) {
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
   }
@@ -454,6 +487,8 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             projectRoot={root()}
             goto={gotoTarget()}
             onDirty={handleDirty}
+            onCloseFile={forceCloseFile}
+            reverted={reverted()}
             selected={props.selected}
             hidden={isImageTab() || showingPreview()}
           />
@@ -501,7 +536,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             <FileTree root={root()} />
           </Match>
           <Match when={rightMode() === "changes"}>
-            <ReviewPanel root={root()} selected={props.selected} />
+            <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />
           </Match>
           <Match when={rightMode() === "search"}>
             <SearchPanel root={root()} focusNonce={searchFocusNonce()} />

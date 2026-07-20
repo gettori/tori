@@ -67,8 +67,17 @@ function langForPath(path: string): Extension {
   return [];
 }
 
-type Buffer = { state: EditorState; savedText: string; pendingExternal?: string };
-type Conflict = { path: string; external: string };
+// `pendingKind` (not a truthy `pendingExternal`) is what marks a deferred
+// conflict: a deleted file's stashed text is the empty string, which would
+// read as "no conflict" and silently drop the banner on tab activation.
+type Buffer = { state: EditorState; savedText: string; pendingExternal?: string; pendingKind?: ConflictKind };
+// "changed": the file still exists but its contents moved under unsaved edits.
+// "deleted": the file is gone from disk (a checkpoint tree revert removes the
+// files a later checkpoint had added). The deleted case raises the banner even
+// for a clean buffer, because a clean buffer can still be saved, and that save
+// would silently recreate the file and undo the revert.
+type ConflictKind = "changed" | "deleted";
+type Conflict = { path: string; external: string; kind: ConflictKind };
 
 /** Multi-buffer CM6 editor: one EditorView, one EditorState per open file (so
  *  cursor, selection and undo history are preserved per tab). The active file is
@@ -80,6 +89,13 @@ export default function CodeEditor(props: {
   projectRoot: string | null;
   goto: { path: string; line: number; col?: number; nonce: number } | null;
   onDirty: (path: string, dirty: boolean) => void;
+  // Close a tab from inside the editor: the "take disk" choice on a
+  // deleted-file conflict has no buffer left to show.
+  onCloseFile?: (path: string) => void;
+  // Absolute paths a checkpoint tree revert just rewrote or removed, with a
+  // nonce so a repeat revert of the same files retriggers. Resolved through the
+  // same path as any external change, rather than waiting on the fs watcher.
+  reverted?: { paths: string[]; nonce: number } | null;
   // The sidebar's selected session, for the selection-mention keybinding
   // (safe-send target). Null disables the binding (toasts instead of a
   // silent no-op) the same way a missing session disables the hunk-comment
@@ -143,6 +159,17 @@ export default function CodeEditor(props: {
     try {
       text = await invoke<string>("fs_read_file", { path });
     } catch {
+      // Unreadable: either the file is gone (a tree revert removing a
+      // later-added file), or the read failed transiently. Only a confirmed
+      // absence raises the deleted conflict, so a flaky read never closes a tab.
+      const gone = await invoke<boolean>("file_exists", { path })
+        .then((exists) => !exists)
+        .catch(() => false);
+      const deletedBuf = gone ? buffers.get(path) : undefined;
+      if (!deletedBuf) return;
+      deletedBuf.pendingExternal = "";
+      deletedBuf.pendingKind = "deleted";
+      if (path === shown) setConflict({ path, external: "", kind: "deleted" });
       return;
     }
     const buf = buffers.get(path);
@@ -161,26 +188,48 @@ export default function CodeEditor(props: {
       if (path === shown) refreshDiff();
     } else {
       buf.pendingExternal = text;
-      if (path === shown) setConflict({ path, external: text });
+      buf.pendingKind = "changed";
+      if (path === shown) setConflict({ path, external: text, kind: "changed" });
     }
   }
 
+  // "Take disk": for a changed file, adopt the on-disk text. For a deleted one
+  // there is nothing to adopt, so the tab closes - keeping it open would leave
+  // a buffer whose only possible save recreates the file the revert removed.
   function reloadConflict() {
     const c = conflict();
     const buf = c && buffers.get(c.path);
     if (!c || !buf) return setConflict(null);
+    delete buf.pendingExternal;
+    delete buf.pendingKind;
+    if (c.kind === "deleted") {
+      buf.savedText = buf.state.doc.toString(); // clean, so the close carries no discard prompt
+      props.onDirty(c.path, false);
+      setConflict(null);
+      props.onCloseFile?.(c.path);
+      return;
+    }
     buf.savedText = c.external;
     setBufferText(c.path, c.external);
-    delete buf.pendingExternal;
     props.onDirty(c.path, false);
     if (c.path === shown) refreshDiff();
     setConflict(null);
   }
 
+  // "Keep mine": for a changed file, keep the buffer as it is. For a deleted
+  // one the buffer becomes dirty against an empty baseline, so the file comes
+  // back only when the user explicitly saves, never as a silent side effect.
   function keepMine() {
     const c = conflict();
     const buf = c && buffers.get(c.path);
-    if (buf) delete buf.pendingExternal;
+    if (buf) {
+      delete buf.pendingExternal;
+      delete buf.pendingKind;
+      if (c.kind === "deleted") {
+        buf.savedText = "";
+        props.onDirty(c.path, true);
+      }
+    }
     setConflict(null);
   }
 
@@ -347,7 +396,7 @@ export default function CodeEditor(props: {
     props.onDirty(path, buf.state.doc.toString() !== buf.savedText);
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
-    setConflict(buf.pendingExternal ? { path, external: buf.pendingExternal } : null);
+    setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
     refreshDiff();
     applyGoto();
   }
@@ -390,6 +439,19 @@ export default function CodeEditor(props: {
     ),
   );
 
+  // A tree revert's files, resolved through the same external-change path the
+  // watcher would use, so the outcome never depends on watcher timing.
+  createEffect(
+    on(
+      () => props.reverted,
+      (r) => {
+        if (!r) return;
+        for (const p of r.paths) if (buffers.has(p)) void handleExternalChange(p);
+      },
+      { defer: true },
+    ),
+  );
+
   onCleanup(() => {
     unlistenFs?.();
     view?.destroy();
@@ -398,11 +460,18 @@ export default function CodeEditor(props: {
   return (
     <div class={styles.codeEditorWrap} style={{ display: props.hidden ? "none" : undefined }}>
       <Show when={conflict()}>
-        <div class={styles.reloadBanner}>
-          <span>This file changed on disk while you had unsaved edits.</span>
-          <Button size="sm" onClick={reloadConflict}>Reload</Button>
-          <Button size="sm" onClick={keepMine}>Keep mine</Button>
-        </div>
+        {(c) => (
+          <div class={styles.reloadBanner}>
+            <Show
+              when={c().kind === "deleted"}
+              fallback={<span>This file changed on disk while you had unsaved edits.</span>}
+            >
+              <span>This file was deleted on disk, so saving would bring it back.</span>
+            </Show>
+            <Button size="sm" onClick={reloadConflict}>{c().kind === "deleted" ? "Close file" : "Reload"}</Button>
+            <Button size="sm" onClick={keepMine}>Keep mine</Button>
+          </div>
+        )}
       </Show>
       <div class={styles.codeEditor} ref={host} />
     </div>

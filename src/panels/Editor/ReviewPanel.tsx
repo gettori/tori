@@ -8,6 +8,7 @@ import { findAgent } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
+import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
@@ -37,7 +38,11 @@ function diffLineClass(line: string): string {
  *  and an "ask agent to draft" button routed through safe-send. Each file's
  *  inline diff toggle (git_diff_text) still carries the per-hunk "Comment"
  *  affordance from phase 1, routed to the sidebar's selected session. */
-export default function ReviewPanel(props: { root: string | null; selected: Selection | null }) {
+export default function ReviewPanel(props: {
+  root: string | null;
+  selected: Selection | null;
+  onReverted?: (outcome: RevertOutcome) => void;
+}) {
   const [files, setFiles] = createSignal<FileStatus[]>([]);
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
@@ -403,6 +408,15 @@ export default function ReviewPanel(props: { root: string | null; selected: Sele
           </Show>
         </div>
       </Show>
+      <CheckpointTimeline
+        root={props.root}
+        sessionId={props.selected?.sessionId ?? null}
+        folderPath={props.selected?.folderPath ?? null}
+        onReverted={(outcome) => {
+          props.onReverted?.(outcome);
+          void refreshAll();
+        }}
+      />
       <Show
         when={files().length}
         fallback={
