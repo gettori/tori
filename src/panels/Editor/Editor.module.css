@@ -106,6 +106,16 @@
   color: var(--brand);
 }
 
+/* Agent-touched dot on a file tab. Deliberately NOT nested under .editorTabs:
+   the same renderer feeds OverflowTabBar's overflow menu, which portals outside
+   this subtree (the reason .tab-dirty next door has to be a :global class). */
+.tabTouched {
+  flex: none;
+  color: var(--accent);
+  font-size: calc(8px * var(--ui-scale));
+  line-height: 1;
+}
+
 .editorTabs :global(.tab-close) {
   display: inline-flex;
   align-items: center;

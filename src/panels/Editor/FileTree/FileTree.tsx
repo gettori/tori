@@ -8,6 +8,7 @@ import Icon from "../../../components/Icon/Icon";
 import { FilePlus, FolderPlus } from "lucide-solid";
 import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
+import { isTouched } from "../../../utils/touchedFiles";
 import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean };
@@ -172,9 +173,22 @@ function TreeNode(props: {
         ) : (
           <FileIcon name={props.entry.name} />
         )}
-        <span class={styles.treeName} classList={{ [styles.isDir]: props.entry.is_dir }}>
+        <span
+          class={styles.treeName}
+          classList={{
+            [styles.isDir]: props.entry.is_dir,
+            // Only files carry the marker: a dir's tint would have to mean
+            // "something below me changed", which is a different claim.
+            [styles.touched]: !props.entry.is_dir && isTouched(props.entry.path),
+          }}
+        >
           {props.entry.name}
         </span>
+        <Show when={!props.entry.is_dir && isTouched(props.entry.path)}>
+          <span class={styles.touchedDot} title="Changed by the selected session">
+            ●
+          </span>
+        </Show>
       </div>
       <Show when={open() && children()}>
         <For each={children()!}>

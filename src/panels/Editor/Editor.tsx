@@ -35,6 +35,7 @@ import {
   type SetRightMode,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import { isSelfWrite } from "../../utils/selfWrites";
 import { ensureLsp } from "./lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -269,6 +270,45 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     }
   }
 
+  // Agent-touched markers: the selected session's written files, refreshed on
+  // turn end. `sessions://changed` already covers every registered adapter's
+  // discovery dir (sessions.rs `watch_dirs`), so it is the only trigger needed.
+  // Cost is capped at one fetch per trigger, and the backend's mtime cache
+  // makes a repeat fetch for an unchanged transcript free.
+  //
+  // An adapter whose transcript shape `extract_touched_files` cannot parse
+  // simply yields an empty set, so the markers no-op rather than misreport.
+  async function refreshTouched() {
+    const sel = props.selected;
+    if (!sel?.sessionPath) {
+      setTouchedPaths(new Set());
+      return;
+    }
+    const path = sel.sessionPath;
+    touchedFor = path;
+    const files = await invoke<{ path: string; op: TouchOp }[]>("session_touched_files", {
+      path,
+      agent: sel.agent ?? "claude",
+    }).catch(() => []);
+    // Same out-of-order guard SessionPanel uses: a slower fetch for the
+    // previously-selected session must not overwrite the current one's set.
+    if (touchedFor !== path) return;
+    setTouchedPaths(writtenPaths(files));
+  }
+  let touchedFor: string | null = null;
+
+  // Clear first, so switching sessions never leaves the previous session's
+  // markers on screen while the new fetch is in flight.
+  createEffect(
+    on(
+      () => [props.selected?.sessionPath, props.selected?.agent],
+      () => {
+        setTouchedPaths(new Set());
+        void refreshTouched();
+      },
+    ),
+  );
+
   // A tree revert just rewrote/removed files on disk. The fs watcher would
   // deliver these too, but a revert is a deliberate, destructive action whose
   // buffer consequences must not depend on watcher timing or coalescing, so
@@ -324,6 +364,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     }
   }
 
+  let offTouched: UnlistenFn | undefined;
   let offOpen: (() => void) | undefined;
   let offTranscript: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
@@ -333,6 +374,8 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   let offSetRightMode: (() => void) | undefined;
 
   onMount(async () => {
+    // Turn end for every adapter: the transcript watcher's debounced signal.
+    offTouched = await listen("sessions://changed", () => void refreshTouched());
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (!d?.path) return;
       openFile(d.path);
@@ -377,6 +420,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     });
   });
   onCleanup(() => {
+    offTouched?.();
     offOpen?.();
     offTranscript?.();
     offPurge?.();
@@ -414,6 +458,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
                 <FileIcon name={t.name} />
               </Show>
               <span class="tab-name">{t.name}</span>
+              <Show when={t.kind === "file" && isTouched(t.path)}>
+                <span class={styles.tabTouched} title="Changed by the selected session">●</span>
+              </Show>
               <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
               </Show>
@@ -435,6 +482,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
                 <FileIcon name={t.name} />
               </Show>
               <span class="tab-name">{t.name}</span>
+              <Show when={t.kind === "file" && isTouched(t.path)}>
+                <span class={styles.tabTouched} title="Changed by the selected session">●</span>
+              </Show>
               <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
               </Show>

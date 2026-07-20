@@ -46,6 +46,22 @@
   color: var(--text);
 }
 
+/* Agent-touched marker: a file the *selected* session wrote this run. Kept
+   deliberately quiet (a tint plus a small dot) so it reads as an annotation on
+   the tree rather than competing with selection or the git gutter's meaning. */
+.treeName.touched {
+  color: var(--accent);
+}
+
+.touchedDot {
+  flex: none;
+  margin-left: auto;
+  padding-left: calc(4px * var(--ui-density));
+  color: var(--accent);
+  font-size: calc(8px * var(--ui-scale));
+  line-height: 1;
+}
+
 .empty {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   color: var(--text-dim);
