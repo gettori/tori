@@ -3,7 +3,9 @@ import { stripAnsi, tailLines, registerPeek, peekTab } from "./termPeek";
 
 describe("stripAnsi", () => {
   it("removes SGR colour sequences", () => {
-    expect(stripAnsi("\x1b[31mred\x1b[0m")).toBe("red");
+    // The payload deliberately avoids CSS colour words: scripts/check-tokens.mjs
+    // scans string literals and would read one as an un-tokenized colour.
+    expect(stripAnsi("\x1b[31mfailed\x1b[0m")).toBe("failed");
   });
 
   it("removes cursor-positioning sequences", () => {
