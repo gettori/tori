@@ -203,7 +203,7 @@ function App() {
         <div class="workspace">
           <div class="work-split">
             <main class="pane terminal">
-              <Terminal selected={selected()} onOpenChange={setLiveTabs} />
+              <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
             </main>
             <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
