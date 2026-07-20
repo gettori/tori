@@ -175,9 +175,18 @@ pub fn settings_watch_start(app: AppHandle, state: State<SettingsWatch>) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// A path unique to each *call*, not just to the process. Every test in one
+    /// `cargo test` run shares a pid, so keying on that alone had the tests in
+    /// this module racing over a single file: they write, read, and delete the
+    /// same path concurrently, so each passed alone and failed together.
     fn tmp_file() -> PathBuf {
-        std::env::temp_dir().join(format!("sway-settings-test-{}.json", std::process::id()))
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("sway-settings-test-{n}-{seq}.json"))
     }
 
     #[test]
