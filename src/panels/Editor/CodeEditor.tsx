@@ -12,6 +12,8 @@ import { json } from "@codemirror/lang-json";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
 import { lspPluginFor } from "./lspClient";
+import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
+import { publishDiagnostics, dropDiagnostics, problemsFromState } from "../../utils/diagnostics";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
@@ -346,7 +348,19 @@ export default function CodeEditor(props: {
       ...foldKeymap,
       indentWithTab,
     ]),
+    // Severity markers beside the line numbers. lsp-client's serverDiagnostics
+    // already self-installs the lint state field when it publishes, but the
+    // gutter is a separate extension and has to be asked for.
+    lintGutter(),
   ];
+
+  // Mirror a buffer's lint state into the Problems store. Only files with a
+  // live buffer ever reach here, which is what keeps a monorepo's server-wide
+  // publishes from accumulating: the store never learns about a file the user
+  // has not opened.
+  function publishFrom(path: string, state: EditorState) {
+    publishDiagnostics(path, problemsFromState(state));
+  }
 
   function makeState(path: string, text: string): EditorState {
     return EditorState.create({
@@ -355,6 +369,13 @@ export default function CodeEditor(props: {
         ...commonExtensions,
         langForPath(path),
         lspPluginFor(path),
+        EditorView.updateListener.of((u) => {
+          // Diagnostics arrive as a transaction effect from the LSP client, so
+          // republish only when one actually lands rather than on every keypress.
+          if (u.transactions.some((t) => t.effects.some((e) => e.is(setDiagnosticsEffect)))) {
+            publishFrom(path, u.state);
+          }
+        }),
         EditorView.updateListener.of((u) => {
           if (!u.docChanged) return;
           const buf = buffers.get(path);
@@ -404,7 +425,11 @@ export default function CodeEditor(props: {
   function evictClosed(openPaths: string[]) {
     const live = new Set(openPaths);
     for (const key of buffers.keys()) {
-      if (!live.has(key)) buffers.delete(key);
+      if (!live.has(key)) {
+        buffers.delete(key);
+        // The tab is gone, so its diagnostics leave the Problems list with it.
+        dropDiagnostics(key);
+      }
     }
   }
 

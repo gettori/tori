@@ -8,6 +8,7 @@ import {
   QUEUE_TIMEOUT_MS,
   type ProbeState,
   type SessionTarget,
+  composeDiagnostic,
 } from "./safeSend";
 
 describe("sanitizeForSend", () => {
@@ -136,5 +137,33 @@ describe("sendWithProbeGate", () => {
     // The fake clock advanced by real sleep durations, so it should have
     // crossed the queue timeout before giving up.
     expect(deps.now()).toBeGreaterThanOrEqual(QUEUE_TIMEOUT_MS);
+  });
+});
+
+describe("composeDiagnostic", () => {
+  const target = { sessionCwd: "/repo", folderPath: "/repo" } as Parameters<typeof composeDiagnostic>[0];
+
+  it("puts the mention before the complaint", () => {
+    expect(composeDiagnostic(target, "/repo/src/a.ts", 12, 12, "error", "Type 'x' is not assignable")).toBe(
+      "@src/a.ts#L12-L12 error: Type 'x' is not assignable",
+    );
+  });
+
+  it("flattens a multi-line server message", () => {
+    // A raw newline would submit the prompt on some agents, breaking the
+    // insert-only contract safe-send exists to keep.
+    const composed = composeDiagnostic(target, "/repo/a.ts", 1, 1, "error", "Line one.\n  Line two.\n\tLine three.");
+    expect(composed).not.toMatch(/[\n\r]/);
+    expect(composed).toBe("@a.ts#L1-L1 error: Line one. Line two. Line three.");
+  });
+
+  it("uses an absolute path outside the session cwd", () => {
+    expect(composeDiagnostic(target, "/elsewhere/b.ts", 3, 4, "warning", "hm")).toBe(
+      "@/elsewhere/b.ts#L3-L4 warning: hm",
+    );
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(composeDiagnostic(target, "/repo/a.ts", 1, 1, "info", "  padded  ")).toBe("@a.ts#L1-L1 info: padded");
   });
 });
