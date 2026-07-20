@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, on, onCleanup, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -18,6 +18,7 @@ import {
   SEND_TO_SESSION,
   SEND_TO_SESSION_RESULT,
   TOAST,
+  OPEN_TRANSCRIPT,
   TAB_JUMP,
   TAB_CYCLE,
   NEXT_WAITING_SESSION,
@@ -31,11 +32,15 @@ import {
   type ToastEvent,
   type TabJump,
   type FocusSessionTab,
+  type OpenTranscript,
 } from "../../utils/events";
+import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { liveStatuses } from "../../utils/sessionStatus";
+import { peekTab } from "../../utils/termPeek";
+import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import styles from "./Terminal.module.css";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -76,6 +81,10 @@ type OpenTerm = {
 // Minimal shape of `list_sessions`' return, just what the backfill needs.
 type BackfillSession = { id: string; cwd: string; agent?: string; created_at: number };
 
+// The extra fields restore needs to hand a stored session back to focus-or-resume
+// (or to the transcript viewer, for a resume-less adapter).
+type RestoreSession = BackfillSession & { path: string; title: string; name?: string };
+
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
 function shellId(): string {
@@ -95,6 +104,8 @@ function agentInit(program: string, args: string[]): string {
 export default function Terminal(props: {
   selected: Selection | null;
   onOpenChange?: (tabs: LiveTab[]) => void;
+  // First-run onboarding is open: suppress the restore offer until it closes.
+  onboarding?: boolean;
 }) {
   ensureAgentsLoaded();
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
@@ -104,6 +115,16 @@ export default function Terminal(props: {
   // group on screen; `activeByWorkspace` remembers the focused tab per group.
   const [activeWorkspace, setActiveWorkspace] = createSignal<string | null>(null);
   const [activeByWorkspace, setActiveByWorkspace] = createSignal<Record<string, string>>({});
+
+  // Last run's tab strip, read ONCE here during setup. This read must happen
+  // before the persist effect below runs (effects run after the component body,
+  // so it does): that effect writes the store from the live open set, which is
+  // empty at startup, and would otherwise erase last run's tabs before anyone
+  // could be offered them.
+  const restorable = loadTabs(Date.now());
+  // Workspaces already offered a restore this run, so the offer is one-shot per
+  // workspace whether it was accepted or declined.
+  const [offered, setOffered] = createSignal<Set<string>>(new Set());
 
   const tabsIn = (ws: string) => open().filter((t) => t.workspace === ws);
   const workspaceTabs = (): OpenTerm[] => {
@@ -124,6 +145,155 @@ export default function Terminal(props: {
     setActiveWorkspace(ws);
     setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
   }
+
+  // Restore offer: per workspace, on first visit each run. Never automatic, so a
+  // relaunch never silently spawns agent processes. Suppressed while first-run
+  // onboarding is open (and re-evaluated when it closes, since the effect reads
+  // the flag), so someone meeting Sway is not handed a restore prompt first.
+  // Derived, not accumulated: every path assigns, so the banner belongs to the
+  // workspace on screen and disappears with it. An early `return` here would
+  // leave the previous workspace's banner up while you look at another one.
+  const restoreOffer = createMemo((): { ws: string; count: number } | null => {
+    if (props.onboarding) return null;
+    const ws = activeWorkspace();
+    if (!ws || offered().has(ws)) return null;
+    // Only offer into an empty group: if this workspace already has live tabs,
+    // the stored set is about to be overwritten by current truth anyway.
+    if (tabsIn(ws).length) return null;
+    const entry = restorable[ws];
+    return entry?.tabs.length ? { ws, count: entry.tabs.length } : null;
+  });
+
+  // Both answers close the offer for the rest of the run (the memo above reads
+  // `offered`, so marking the workspace is what dismisses the banner). Declining
+  // deliberately leaves the stored tabs alone: they survive until this
+  // workspace's open set next changes, at which point the persist effect
+  // overwrites them.
+  function markOffered(ws: string) {
+    setOffered(new Set(offered()).add(ws));
+  }
+
+  async function acceptRestore(ws: string) {
+    markOffered(ws);
+    const entry = restorable[ws];
+    if (!entry) return;
+    // One scan for the whole workspace: every stored session is checked against
+    // it, so a session deleted since last run is skipped rather than resumed
+    // into a dead id.
+    const sessions = await invoke<RestoreSession[]>("list_sessions", { folder: ws }).catch(
+      () => [] as RestoreSession[],
+    );
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    let missingSessions = 0;
+    let relocated = 0;
+    let home: string | null = null;
+    const cwdFor = async (cwd: string): Promise<string> => {
+      if (await invoke<boolean>("file_exists", { path: cwd }).catch(() => true)) return cwd;
+      // A deleted folder must yield a usable shell at home, never a tab whose
+      // spawn fails and leaves a dead pane.
+      relocated++;
+      home ??= await homeDir().catch(() => "/");
+      return home;
+    };
+
+    // The tab each stored entry produced, by its stored index. Sparse on
+    // purpose: a skipped session or a transcript-only reopen leaves a hole, so
+    // the stored active index still resolves to the right tab (or to nothing)
+    // instead of being read positionally against a shorter live list.
+    const producedId: (string | undefined)[] = [];
+
+    for (const [i, d] of entry.tabs.entries()) {
+      if (d.kind === "agent" && d.sessionId) {
+        const s = byId.get(d.sessionId);
+        if (!s) {
+          missingSessions++;
+          continue;
+        }
+        const agentId = s.agent ?? "claude";
+        if (findAgent(agentId).resume_args.length === 0) {
+          // Resume-less adapter: the transcript is the only way back to it.
+          emitWith<OpenTranscript>(OPEN_TRANSCRIPT, {
+            id: s.id,
+            sessionPath: s.path,
+            agent: agentId === "pi" ? "pi" : "claude",
+            name: s.name || s.title,
+            cwd: s.cwd,
+          });
+          continue;
+        }
+        // focusOrResume already focuses an existing tab rather than spawning a
+        // second one, so an already-live session never double-spawns.
+        await focusOrResume({
+          sessionId: s.id,
+          agent: agentId,
+          sessionFile: s.path,
+          sessionTitle: s.name || s.title,
+          sessionCwd: s.cwd,
+          folderPath: ws,
+        });
+        producedId[i] = open().find((t) => t.sessionId === s.id)?.id;
+        continue;
+      }
+      // A plain shell, or an agent tab whose session was never attributed: come
+      // back as the same shell-hosted tab, seeded again if it had an init.
+      const cwd = await cwdFor(d.cwd);
+      const id = shellId();
+      openOrActivate({
+        id,
+        title: d.title,
+        cwd,
+        workspace: ws,
+        kind: d.kind,
+        program: d.program,
+        args: d.args,
+        ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
+      });
+      producedId[i] = id;
+    }
+
+    // Refocus whatever the stored active index actually produced. Restoring in
+    // order leaves the last tab focused otherwise, which is rarely the one that
+    // was in front.
+    const targetId = producedId[entry.active];
+    if (targetId) focusTab(ws, targetId);
+
+    const notices: string[] = [];
+    if (missingSessions) notices.push(`${missingSessions} session${missingSessions > 1 ? "s" : ""} no longer exist`);
+    if (relocated) notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
+    if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
+  }
+
+  // Hover peek: after a dwell, a background tab shows its last few buffer lines
+  // in a portalled popover. Never on the active tab (its output is already on
+  // screen) and never mid-drag (the bar reorders on drag, and a popover chasing
+  // the pointer would fight it). `lines: null` means the tab has no mounted
+  // buffer yet, which renders as a defined empty state rather than a blank box.
+  const PEEK_DELAY_MS = 400;
+  const PEEK_LINES = 10;
+  const [peek, setPeek] = createSignal<{ id: string; left: number; top: number; lines: string[] | null } | null>(null);
+  let peekTimer: number | undefined;
+
+  function cancelPeek() {
+    if (peekTimer !== undefined) clearTimeout(peekTimer);
+    peekTimer = undefined;
+    setPeek(null);
+  }
+  function schedulePeek(t: OpenTerm, el: HTMLElement) {
+    cancelPeek();
+    if (t.id === visibleId()) return;
+    peekTimer = window.setTimeout(() => {
+      // Re-check on fire: the tab may have become active, or a pane drag may
+      // have started, during the dwell. (`body.dragging` is the splitter drag;
+      // this bar has no tab dragging of its own, reordering goes through the
+      // overflow menu.)
+      if (t.id === visibleId() || document.body.classList.contains("dragging")) return;
+      // Measured now rather than at hover: the bar can reflow during the dwell
+      // (a tab opening or closing), which would leave the popover misplaced.
+      const r = el.getBoundingClientRect();
+      setPeek({ id: t.id, left: r.left, top: r.bottom + 4, lines: peekTab(t.id, PEEK_LINES) });
+    }, PEEK_DELAY_MS);
+  }
+  onCleanup(cancelPeek);
 
   // The "+ Claude ›" split button's dropdown of yolo-mode launchers. The menu is
   // portalled to <body> and anchored to the caret because the tab bar clips
@@ -170,6 +340,24 @@ export default function Terminal(props: {
       })),
     ),
   );
+
+  // Persist the tab strip so the next run can offer to restore it. Depends on
+  // the open set, its order, AND the per-workspace active tab together:
+  // recording only on open/close would freeze the order as it was at open time,
+  // so a drag-reorder or a tab switch would never survive.
+  //
+  // Merged, never replaced: `toStore` only sees workspaces with tabs open right
+  // now, so a plain write would erase every other workspace's stored tabs (at
+  // startup it would erase all of them, since nothing is open yet). `touched`
+  // records the workspaces this run actually opened tabs in; only those may be
+  // erased by going empty, which is what lets current truth overwrite a
+  // declined restore offer.
+  const touched = new Set<string>();
+  createEffect(() => {
+    const live = toStore(open(), activeByWorkspace(), Date.now());
+    for (const ws of Object.keys(live)) touched.add(ws);
+    saveTabs(mergeStore(restorable, live, touched));
+  });
 
   const offClose = onEvent(CLOSE_TAB, () => {
     const id = visibleId();
@@ -540,7 +728,12 @@ export default function Terminal(props: {
         renderTab={(t) => (
           <div
             class={`${styles.termTab} ${visibleId() === t.id ? styles.active : ""}`}
-            onClick={() => focusTab(t.workspace, t.id)}
+            onClick={() => {
+              cancelPeek();
+              focusTab(t.workspace, t.id);
+            }}
+            onMouseEnter={(e) => schedulePeek(t, e.currentTarget)}
+            onMouseLeave={cancelPeek}
             title={t.cwd}
           >
             <span class="tab-label">{t.title}</span>
@@ -685,7 +878,42 @@ export default function Terminal(props: {
             Select a session to resume it, or pick a branch and start a new Claude or pi session.
           </div>
         </Show>
+        {/* Overlay, never a fallback: gating the always-mounted <For> on this
+            would unmount every group's TerminalView and kill their PTYs
+            (gotcha #64). */}
+        <Show when={restoreOffer()}>
+          <div class={styles.termRestore}>
+            <span class={styles.termRestoreText}>
+              {restoreOffer()!.count} terminal tab{restoreOffer()!.count > 1 ? "s" : ""} from last time
+            </span>
+            <button class={styles.termRestoreAccept} onClick={() => void acceptRestore(restoreOffer()!.ws)}>
+              Restore
+            </button>
+            <button class={styles.termRestoreDismiss} onClick={() => markOffered(restoreOffer()!.ws)}>
+              Dismiss
+            </button>
+          </div>
+        </Show>
       </div>
+
+      {/* Portalled for the same reason as the launch menu: the tab bar clips
+          overflow, so a popover rendered inside it would be cut off. */}
+      <Show when={peek()}>
+        <Portal>
+          <div class={styles.termPeek} style={{ left: `${peek()!.left}px`, top: `${peek()!.top}px` }}>
+            <Show
+              when={peek()!.lines?.length}
+              fallback={
+                <div class={styles.termPeekEmpty}>
+                  {peek()!.lines === null ? "Not started yet" : "No output yet"}
+                </div>
+              }
+            >
+              <For each={peek()!.lines}>{(line) => <div class={styles.termPeekLine}>{line}</div>}</For>
+            </Show>
+          </div>
+        </Portal>
+      </Show>
     </div>
   );
 }
