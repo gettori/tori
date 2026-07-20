@@ -138,12 +138,20 @@ pub fn git_diff_file(project_path: String, file: String) -> Result<Vec<DiffHunk>
 /// Raw unified diff text vs HEAD for a single file, for the inline review view.
 /// Untracked files have no diff vs HEAD, so fall back to showing the whole file
 /// as additions (`git diff --no-index /dev/null <file>`).
+///
+/// `context` sets `-U<n>`; the review panel asks for more than git's default 3
+/// so its "n unchanged lines" collapse has something real to hide and to reveal
+/// on expand. Omitted means git's default.
 #[tauri::command]
-pub fn git_diff_text(project_path: String, file: String) -> Result<String, String> {
+pub fn git_diff_text(project_path: String, file: String, context: Option<u32>) -> Result<String, String> {
+    let unified: Vec<String> = context.map(|n| format!("-U{}", n)).into_iter().collect();
+
     let output = Command::new("git")
         .arg("-C")
         .arg(&project_path)
-        .args(["diff", "HEAD", "--no-color", "--", &file])
+        .args(["diff", "HEAD", "--no-color"])
+        .args(&unified)
+        .args(["--", &file])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -156,7 +164,9 @@ pub fn git_diff_text(project_path: String, file: String) -> Result<String, Strin
     let untracked = Command::new("git")
         .arg("-C")
         .arg(&project_path)
-        .args(["diff", "--no-color", "--no-index", "--", "/dev/null", &file])
+        .args(["diff", "--no-color", "--no-index"])
+        .args(&unified)
+        .args(["--", "/dev/null", &file])
         .output()
         .map_err(|e| e.to_string())?;
     Ok(String::from_utf8_lossy(&untracked.stdout).into_owned())

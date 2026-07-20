@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import { parseDiffHunks } from "../../utils/diffHunks";
+import { buildRows, collapseRows, toSideBySide, type DiffRow } from "../../utils/diffView";
+import { copyText } from "../../utils/clipboard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
@@ -24,12 +26,19 @@ function statusClass(status: string): string {
   return "modified";
 }
 
-function diffLineClass(line: string): string {
-  if (line.startsWith("@@")) return "hunk";
-  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index "))
-    return "meta";
-  if (line.startsWith("+")) return "add";
-  if (line.startsWith("-")) return "del";
+// Extra context asked of `git_diff_text` (git's own default is 3). The panel
+// collapses anything beyond a few lines back down, so this is what "expand"
+// has left to show; without it there is no unchanged region to reveal.
+const DIFF_CONTEXT = 24;
+// Below this the two columns are too narrow to read, so side-by-side falls
+// back to inline regardless of the persisted preference.
+const SIDE_BY_SIDE_MIN_WIDTH = 640;
+const SIDE_BY_SIDE_KEY = "sway.review.sideBySide";
+
+function rowClass(row: DiffRow): string {
+  if (row.kind === "add") return "add";
+  if (row.kind === "del") return "del";
+  if (row.kind === "meta") return "meta";
   return "";
 }
 
@@ -55,6 +64,28 @@ export default function ReviewPanel(props: {
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
   const [pushing, setPushing] = createSignal(false);
   const [openingPr, setOpeningPr] = createSignal(false);
+  const [sideBySide, setSideBySide] = createSignal(localStorage.getItem(SIDE_BY_SIDE_KEY) === "1");
+  const [panelWidth, setPanelWidth] = createSignal(Infinity);
+  // Which collapsed regions the user opened, keyed hunk:row. Cleared whenever a
+  // different file expands, so collapse state never leaks between files.
+  const [openGaps, setOpenGaps] = createSignal<Set<string>>(new Set());
+
+  // The persisted preference only applies when there is room for two columns.
+  const twoColumn = () => sideBySide() && panelWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
+
+  function toggleSideBySide() {
+    const next = !sideBySide();
+    setSideBySide(next);
+    localStorage.setItem(SIDE_BY_SIDE_KEY, next ? "1" : "0");
+  }
+
+  function toggleGap(key: string) {
+    setOpenGaps((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   const staged = () => files().filter((f) => f.staged);
   const unstaged = () => files().filter((f) => f.unstaged);
@@ -203,12 +234,34 @@ export default function ReviewPanel(props: {
     }
     const root = props.root;
     if (!root) return;
-    try {
-      setDiff(await invoke<string>("git_diff_text", { projectPath: root, file: path }));
-    } catch {
-      setDiff("");
-    }
+    setOpenGaps(new Set<string>());
+    setDiff(await fileDiff(root, path));
     setExpanded(key);
+  }
+
+  async function fileDiff(root: string, path: string): Promise<string> {
+    try {
+      return await invoke<string>("git_diff_text", { projectPath: root, file: path, context: DIFF_CONTEXT });
+    } catch {
+      return "";
+    }
+  }
+
+  // Copies the file's unified patch. Fetched fresh rather than read off the
+  // expanded diff, so the action works from a collapsed row too.
+  async function copyDiff(path: string) {
+    const root = props.root;
+    if (!root) return;
+    const text = await fileDiff(root, path);
+    if (!text) {
+      emitWith<ToastEvent>(TOAST, { message: "No diff to copy.", kind: "error" });
+      return;
+    }
+    const ok = await copyText(text);
+    emitWith<ToastEvent>(TOAST, {
+      message: ok ? `Copied diff for ${path}` : "Couldn't copy to the clipboard.",
+      kind: ok ? "info" : "error",
+    });
   }
 
   function openFile(path: string) {
@@ -221,6 +274,7 @@ export default function ReviewPanel(props: {
       () => props.root,
       () => {
         setExpanded(null);
+        setOpenGaps(new Set<string>());
         refreshAll();
       },
     ),
@@ -316,6 +370,84 @@ export default function ReviewPanel(props: {
     window.removeEventListener("focus", refreshAll);
   });
 
+  // A line's text, with the changed tokens wrapped when the row was paired.
+  function lineContent(r: DiffRow) {
+    const segs = (r.kind === "del" || r.kind === "add") && r.segs;
+    if (!segs) return "text" in r ? r.text || " " : " ";
+    return (
+      <For each={segs}>{(s) => (s.changed ? <span class={styles.wordChanged}>{s.text}</span> : <>{s.text}</>)}</For>
+    );
+  }
+
+  function gapRow(r: Extract<DiffRow, { kind: "gap" }>, gapKey: string, span: boolean) {
+    return (
+      <Show
+        when={openGaps().has(gapKey)}
+        fallback={
+          <div class={`${styles.diffLine} ${styles.diffGap}`} onClick={() => toggleGap(gapKey)}>
+            {`⋯ ${r.hidden.length} unchanged lines`}
+          </div>
+        }
+      >
+        <For each={r.hidden}>
+          {(hidden) =>
+            span ? (
+              <div class={styles.sideRow}>
+                <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
+                <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
+              </div>
+            ) : (
+              <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
+            )
+          }
+        </For>
+      </Show>
+    );
+  }
+
+  function renderHunkBody(rows: DiffRow[], hunkKey: string) {
+    return (
+      <Show
+        when={twoColumn()}
+        fallback={
+          <For each={rows}>
+            {(r, ri) =>
+              r.kind === "gap" ? (
+                gapRow(r, `${hunkKey}:${ri()}`, false)
+              ) : (
+                <div class={`${styles.diffLine} ${styles[rowClass(r)] ?? ""}`}>{lineContent(r)}</div>
+              )
+            }
+          </For>
+        }
+      >
+        {/* Side-by-side: one scroll container holding both columns, so the two
+            sides scroll together by construction rather than by syncing. */}
+        <div class={styles.sideBySide}>
+          <For each={toSideBySide(rows)}>
+            {(side, ri) => {
+              const gap = side.left?.kind === "gap" ? side.left : null;
+              return gap ? (
+                gapRow(gap, `${hunkKey}:${ri()}`, true)
+              ) : (
+                <div class={styles.sideRow}>
+                  <div class={`${styles.diffLine} ${side.left ? (styles[rowClass(side.left)] ?? "") : styles.sideEmpty}`}>
+                    {side.left ? lineContent(side.left) : " "}
+                  </div>
+                  <div
+                    class={`${styles.diffLine} ${side.right ? (styles[rowClass(side.right)] ?? "") : styles.sideEmpty}`}
+                  >
+                    {side.right ? lineContent(side.right) : " "}
+                  </div>
+                </div>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+    );
+  }
+
   function row(f: FileStatus, opts: { staged: boolean }) {
     const key = `${opts.staged ? "staged" : "unstaged"}:${f.path}`;
     return (
@@ -342,12 +474,26 @@ export default function ReviewPanel(props: {
           >
             {f.path}
           </span>
+          <button
+            type="button"
+            class={styles.rowAction}
+            title="Copy diff"
+            onClick={(e) => {
+              e.stopPropagation();
+              void copyDiff(f.path);
+            }}
+          >
+            Copy
+          </button>
         </div>
         <Show when={expanded() === key}>
           <div class={styles.reviewDiff}>
             <For each={parseDiffHunks(diff())}>
-              {(hunk) => (
+              {(hunk, hi) => (
                 <div>
+                  {/* The hunk header is the shared control anchor: it renders
+                      identically inline and side-by-side, so per-hunk actions
+                      land in one place in both modes. */}
                   <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span>{hunk.header}</span>
                     <HunkCommentInput
@@ -358,9 +504,7 @@ export default function ReviewPanel(props: {
                       endLine={hunk.endLine}
                     />
                   </div>
-                  <For each={hunk.lines}>
-                    {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
-                  </For>
+                  {renderHunkBody(collapseRows(buildRows(hunk.lines)), `${key}:${hi()}`)}
                 </div>
               )}
             </For>
@@ -370,13 +514,37 @@ export default function ReviewPanel(props: {
     );
   }
 
+  let panelRef: HTMLDivElement | undefined;
+  onMount(() => {
+    if (!panelRef) return;
+    const ro = new ResizeObserver(([entry]) => setPanelWidth(entry.contentRect.width));
+    ro.observe(panelRef);
+    onCleanup(() => ro.disconnect());
+  });
+
   return (
-    <div class={styles.reviewPanel}>
+    <div class={styles.reviewPanel} ref={panelRef}>
       <Show when={props.root && branch()}>
         <div class={styles.headerBar}>
           <span class={styles.branchName} title={branch() ?? ""}>
             {branch()}
           </span>
+          <button
+            type="button"
+            class={styles.viewToggle}
+            classList={{ [styles.viewToggleOn]: twoColumn() }}
+            disabled={panelWidth() < SIDE_BY_SIDE_MIN_WIDTH}
+            title={
+              panelWidth() < SIDE_BY_SIDE_MIN_WIDTH
+                ? "Side-by-side needs a wider panel"
+                : twoColumn()
+                  ? "Switch to inline diff"
+                  : "Switch to side-by-side diff"
+            }
+            onClick={toggleSideBySide}
+          >
+            ⇹
+          </button>
           <Show
             when={aheadBehind()}
             fallback={<span class={styles.aheadBehind}>-</span>}
