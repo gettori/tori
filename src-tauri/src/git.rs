@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::askpass::{AskpassState, ENV_OP, ENV_SOCK, ENV_TOKEN};
@@ -87,6 +87,167 @@ pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<(), Strin
     git_run(&project_path, &args)
 }
 
+/// The 1-based line range `start..=end` of a file, as the given diff mode's
+/// "new" side sees it. Backs the review panel's "n unchanged lines" expander:
+/// the diff itself carries only a few lines of context, so revealing the gap
+/// between two hunks means reading the file.
+///
+/// The mode matters. A partially-staged file's Staged section compares
+/// index-vs-HEAD, so its unchanged lines are the *index's*, not the working
+/// tree's; reading the worktree there would show lines the user has not staged.
+#[tauri::command]
+pub fn git_file_slice(
+    project_path: String,
+    file: String,
+    mode: Option<DiffMode>,
+    start: usize,
+    end: usize,
+) -> Result<Vec<String>, String> {
+    if start == 0 || end < start {
+        return Ok(vec![]);
+    }
+
+    let content = if mode.unwrap_or_default() == DiffMode::Staged {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&project_path)
+            .args(["show", &format!(":{}", file)])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Ok(vec![]);
+        }
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    } else {
+        let full = Path::new(&project_path).join(&file);
+        std::fs::read_to_string(full).map_err(|e| e.to_string())?
+    };
+
+    // Clamp rather than error: the file can legitimately be shorter than the
+    // range the panel computed if it changed since the diff was taken.
+    Ok(content
+        .lines()
+        .skip(start - 1)
+        .take(end - start + 1)
+        .map(str::to_string)
+        .collect())
+}
+
+/// Stage or unstage a subset of a file's hunks, never touching the working
+/// tree (`git apply --cached`).
+///
+/// The two directions read different diffs and must never mix: staging takes
+/// hunks from worktree-vs-index and applies forward, unstaging takes them from
+/// index-vs-HEAD and applies in reverse. `reverse` picks both at once so a
+/// caller cannot pair the wrong source with the wrong direction.
+///
+/// `fingerprints` is the content hash the UI rendered for each selected hunk.
+/// The diff is re-read here and every fingerprint re-checked before anything is
+/// applied, because indices alone are not stable: an agent writing to the file
+/// between render and click renumbers the hunks, and a positional apply would
+/// then stage the wrong one. A mismatch applies nothing and says so.
+///
+/// `context` must be the `-U<n>` the UI rendered with: hunk boundaries (and so
+/// fingerprints) depend on it, since a wider context merges nearby changes into
+/// one hunk.
+#[tauri::command]
+pub fn git_apply_hunks(
+    project_path: String,
+    file: String,
+    hunk_indices: Vec<usize>,
+    fingerprints: Vec<String>,
+    reverse: bool,
+    context: Option<u32>,
+) -> Result<(), String> {
+    if hunk_indices.len() != fingerprints.len() {
+        return Err("Hunk selection is malformed".into());
+    }
+    if hunk_indices.is_empty() {
+        return Ok(());
+    }
+
+    // An untracked file has no index entry, so worktree-vs-index shows nothing
+    // to build a patch from. Intent-to-add creates the empty entry; the hunk
+    // header and body come out identical to the --no-index diff the panel
+    // displayed, so the fingerprints still match.
+    if reverse {
+        // Unstaging only ever touches files already in the index.
+    } else if is_untracked(&project_path, &file)? {
+        git_run(&project_path, &["add", "-N", "--", &file])?;
+    }
+
+    let mode = if reverse { DiffMode::Staged } else { DiffMode::Unstaged };
+    let text = git_diff_text(project_path.clone(), file.clone(), context, Some(mode))?;
+    let parsed = crate::patch::parse_patch(&text);
+
+    for (&i, expected) in hunk_indices.iter().zip(&fingerprints) {
+        let actual = parsed
+            .hunks
+            .get(i)
+            .ok_or_else(|| "The diff changed, refreshed. Nothing was staged.".to_string())?;
+        if &actual.fingerprint != expected {
+            return Err("The diff changed, refreshed. Nothing was staged.".into());
+        }
+    }
+
+    let patch = crate::patch::build_patch(&parsed, &hunk_indices, reverse)?;
+    apply_cached(&project_path, &patch, reverse)
+}
+
+/// True when git does not track `file` at all (no index entry).
+fn is_untracked(project_path: &str, file: &str) -> Result<bool, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["ls-files", "--", file])
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().is_empty())
+}
+
+/// Feed `patch` to `git apply --cached` on stdin. Index-only: `--cached`
+/// deliberately leaves the working tree alone, so a failed apply can never
+/// leave the user's edits half-rewritten.
+fn apply_cached(project_path: &str, patch: &str, reverse: bool) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut cmd = Command::new("git");
+    // No --unidiff-zero: the panel always diffs with real context, and that
+    // flag exists to disable the context checks a zero-context patch cannot
+    // satisfy. Keeping them on means a patch that no longer fits is rejected
+    // rather than applied somewhere plausible-looking.
+    cmd.arg("-C").arg(project_path).args(["apply", "--cached"]);
+    if reverse {
+        cmd.arg("--reverse");
+    }
+    let mut child = cmd
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    child
+        .stdin
+        .as_mut()
+        .ok_or("Could not write the patch to git")?
+        .write_all(patch.as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if err.is_empty() {
+        "git could not apply the selected hunks; nothing was staged.".into()
+    } else {
+        err
+    })
+}
+
 /// Commit whatever is currently staged with `message`. Refuses an empty
 /// message locally rather than letting git reject it (clearer error text).
 #[tauri::command]
@@ -96,6 +257,42 @@ pub fn git_commit(project_path: String, message: String) -> Result<(), String> {
         return Err("Commit message is empty".into());
     }
     git_run(&project_path, &["commit", "-m", message])
+}
+
+/// Which two trees a diff compares. A partially-staged ("MM") file has a row in
+/// both the Staged and Changes sections, and one comparison cannot describe
+/// both: the Staged row needs index-vs-HEAD, the Changes row worktree-vs-index.
+#[derive(Deserialize, Default, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum DiffMode {
+    /// Worktree vs HEAD: all uncommitted work, staged or not. The default,
+    /// because it is what the gutter and the session diff both want (see the
+    /// module header) - staging a file must not blank its gutter marks.
+    #[default]
+    Head,
+    /// Index vs HEAD: exactly what a commit would contain right now.
+    Staged,
+    /// Worktree vs index: what is still unstaged.
+    Unstaged,
+}
+
+impl DiffMode {
+    /// The revision selector for this comparison. Everything else about the
+    /// command (paths, --no-color, -U) is shared.
+    fn args(self) -> &'static [&'static str] {
+        match self {
+            DiffMode::Head => &["HEAD"],
+            DiffMode::Staged => &["--cached", "HEAD"],
+            DiffMode::Unstaged => &[],
+        }
+    }
+
+    /// Whether an empty result should fall back to showing an untracked file as
+    /// all-additions. Meaningless for `Staged`: an untracked file is by
+    /// definition absent from the index, so "nothing staged" is the true answer.
+    fn shows_untracked(self) -> bool {
+        self != DiffMode::Staged
+    }
 }
 
 #[derive(Serialize)]
@@ -118,12 +315,15 @@ fn parse_range(s: &str) -> (u32, u32) {
 }
 
 #[tauri::command]
-pub fn git_diff_file(project_path: String, file: String) -> Result<Vec<DiffHunk>, String> {
+pub fn git_diff_file(project_path: String, file: String, mode: Option<DiffMode>) -> Result<Vec<DiffHunk>, String> {
+    let mode = mode.unwrap_or_default();
     // -U0: hunk headers carry exact ranges, no surrounding context to walk.
     let output = Command::new("git")
         .arg("-C")
         .arg(&project_path)
-        .args(["diff", "HEAD", "--no-color", "-U0", "--", &file])
+        .args(["diff"])
+        .args(mode.args())
+        .args(["--no-color", "-U0", "--", &file])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -135,28 +335,37 @@ pub fn git_diff_file(project_path: String, file: String) -> Result<Vec<DiffHunk>
     Ok(parse_hunks(&String::from_utf8_lossy(&output.stdout)))
 }
 
-/// Raw unified diff text vs HEAD for a single file, for the inline review view.
-/// Untracked files have no diff vs HEAD, so fall back to showing the whole file
-/// as additions (`git diff --no-index /dev/null <file>`).
+/// Raw unified diff text for a single file, for the inline review view.
+/// Untracked files have no diff against a tree, so fall back to showing the
+/// whole file as additions (`git diff --no-index /dev/null <file>`).
 ///
 /// `context` sets `-U<n>`; the review panel asks for more than git's default 3
 /// so its "n unchanged lines" collapse has something real to hide and to reveal
-/// on expand. Omitted means git's default.
+/// on expand. Omitted means git's default. `mode` picks which two trees are
+/// compared, defaulting to worktree-vs-HEAD.
 #[tauri::command]
-pub fn git_diff_text(project_path: String, file: String, context: Option<u32>) -> Result<String, String> {
+pub fn git_diff_text(
+    project_path: String,
+    file: String,
+    context: Option<u32>,
+    mode: Option<DiffMode>,
+) -> Result<String, String> {
+    let mode = mode.unwrap_or_default();
     let unified: Vec<String> = context.map(|n| format!("-U{}", n)).into_iter().collect();
 
     let output = Command::new("git")
         .arg("-C")
         .arg(&project_path)
-        .args(["diff", "HEAD", "--no-color"])
+        .args(["diff"])
+        .args(mode.args())
+        .args(["--no-color"])
         .args(&unified)
         .args(["--", &file])
         .output()
         .map_err(|e| e.to_string())?;
 
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
-    if output.status.success() && !text.trim().is_empty() {
+    if (output.status.success() && !text.trim().is_empty()) || !mode.shows_untracked() {
         return Ok(text);
     }
 
@@ -1105,6 +1314,389 @@ diff --git a/f b/f
         assert_eq!(git_origin(p.clone()).unwrap(), None);
         git(&dir, &["remote", "add", "origin", "https://example.com/x.git"]);
         assert_eq!(git_origin(p).unwrap().as_deref(), Some("https://example.com/x.git"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- hunk-level staging (git_apply_hunks) ----------------------------
+    //
+    // These drive real `git apply --cached`. The patch offset maths and the
+    // apply direction are the two things that corrupt an index silently rather
+    // than failing, so they are checked against git itself, not just asserted
+    // about in isolation (patch.rs covers the pure rebuild).
+
+    /// A repo whose committed f.txt has 20 numbered lines, with line 2 and
+    /// line 19 edited in the worktree: far enough apart to stay two hunks at
+    /// -U3, so "stage one of two" is meaningful.
+    fn repo_with_two_hunks() -> PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_hunk_test_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]);
+        git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        let base: Vec<String> = (1..=20).map(|i| format!("line {i}")).collect();
+        std::fs::write(dir.join("f.txt"), base.join("\n") + "\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+
+        let mut edited = base.clone();
+        edited[1] = "line 2 EDITED".into();
+        edited[18] = "line 19 EDITED".into();
+        std::fs::write(dir.join("f.txt"), edited.join("\n") + "\n").unwrap();
+        dir
+    }
+
+    fn status_of(dir: &Path, file: &str) -> String {
+        let out = Command::new("git")
+            .arg("-C").arg(dir)
+            .args(["status", "--porcelain", "--", file])
+            .output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim_end().to_string()
+    }
+
+    /// The file's content as currently staged in the index.
+    fn indexed(dir: &Path, file: &str) -> String {
+        let out = Command::new("git")
+            .arg("-C").arg(dir)
+            .args(["show", &format!(":{file}")])
+            .output().unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    fn hunks_of(p: &str, file: &str, mode: DiffMode) -> crate::patch::FilePatch {
+        let text = git_diff_text(p.into(), file.into(), Some(3), Some(mode)).unwrap();
+        crate::patch::parse_patch(&text)
+    }
+
+    #[test]
+    fn stages_one_hunk_of_two_leaving_the_file_partially_staged() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 2, "expected two separate hunks at -U3");
+
+        // Stage only the second hunk (line 19).
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![1], vec![parsed.hunks[1].fingerprint.clone()], false, Some(3)).unwrap();
+
+        assert_eq!(status_of(&dir, "f.txt"), "MM f.txt");
+        let staged = indexed(&dir, "f.txt");
+        assert!(staged.contains("line 19 EDITED"), "the selected hunk should be staged");
+        assert!(!staged.contains("line 2 EDITED"), "the unselected hunk must not be staged");
+        // The working tree keeps both edits: --cached never touches it.
+        let worktree = std::fs::read_to_string(dir.join("f.txt")).unwrap();
+        assert!(worktree.contains("line 2 EDITED") && worktree.contains("line 19 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stages_the_first_hunk_at_the_right_offset() {
+        // The first hunk is the one whose *new*-side offset shifts when the
+        // second is dropped, so a naive rebuild misplaces it.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        let staged = indexed(&dir, "f.txt");
+        assert!(staged.contains("line 2 EDITED"));
+        assert!(!staged.contains("line 19 EDITED"));
+        // Nothing else moved: still 20 lines, line 19 still original.
+        assert_eq!(staged.lines().count(), 20);
+        assert!(staged.lines().nth(18).unwrap().contains("line 19"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn walks_the_file_from_unstaged_to_fully_staged_one_hunk_at_a_time() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+
+        let first = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![first.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        assert_eq!(status_of(&dir, "f.txt"), "MM f.txt");
+
+        // Re-read: staging renumbered the remaining unstaged hunks.
+        let rest = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        assert_eq!(rest.hunks.len(), 1);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![rest.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        assert_eq!(status_of(&dir, "f.txt"), "M  f.txt", "fully staged, nothing left unstaged");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unstaging_a_hunk_reverses_exactly_that_hunk() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["add", "f.txt"]);
+        assert_eq!(status_of(&dir, "f.txt"), "M  f.txt");
+
+        // Now unstage only the line-19 hunk, from the index-vs-HEAD diff.
+        let staged_hunks = hunks_of(&p, "f.txt", DiffMode::Staged);
+        assert_eq!(staged_hunks.hunks.len(), 2);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![1], vec![staged_hunks.hunks[1].fingerprint.clone()], true, Some(3)).unwrap();
+
+        let staged = indexed(&dir, "f.txt");
+        assert!(staged.contains("line 2 EDITED"), "the untouched hunk stays staged");
+        assert!(!staged.contains("line 19 EDITED"), "the reversed hunk left the index");
+        assert_eq!(staged.lines().count(), 20);
+        // The worktree still has both edits.
+        let worktree = std::fs::read_to_string(dir.join("f.txt")).unwrap();
+        assert!(worktree.contains("line 19 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_two_sections_of_a_partially_staged_file_do_not_cross_contaminate() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![unstaged.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        // "MM": one hunk in each section, and each section sees only its own.
+        let staged = hunks_of(&p, "f.txt", DiffMode::Staged);
+        let remaining = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        assert_eq!(staged.hunks.len(), 1);
+        assert_eq!(remaining.hunks.len(), 1);
+        assert!(staged.hunks[0].body.iter().any(|l| l.contains("line 2 EDITED")));
+        assert!(remaining.hunks[0].body.iter().any(|l| l.contains("line 19 EDITED")));
+        // Different content, so different fingerprints: an index reused across
+        // the two sections could never silently match.
+        assert_ne!(staged.hunks[0].fingerprint, remaining.hunks[0].fingerprint);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stale_fingerprint_refuses_and_stages_nothing() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let err = git_apply_hunks(
+            p.clone(), "f.txt".into(), vec![1], vec!["deadbeef".into()], false, Some(3),
+        ).unwrap_err();
+        assert!(err.contains("diff changed"), "got: {err}");
+        assert_eq!(status_of(&dir, "f.txt"), " M f.txt", "nothing may be staged");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_out_of_range_index_refuses_rather_than_panicking() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let err = git_apply_hunks(
+            p.clone(), "f.txt".into(), vec![9], vec!["deadbeef".into()], false, Some(3),
+        ).unwrap_err();
+        assert!(err.contains("diff changed"), "got: {err}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_malformed_selection_refuses() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        // Indices and fingerprints must correspond one-to-one.
+        assert!(git_apply_hunks(p, "f.txt".into(), vec![0, 1], vec!["x".into()], false, Some(3)).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stages_one_hunk_of_an_untracked_file_via_intent_to_add() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let lines: Vec<String> = (1..=20).map(|i| format!("new {i}")).collect();
+        std::fs::write(dir.join("n.txt"), lines.join("\n") + "\n").unwrap();
+        assert_eq!(status_of(&dir, "n.txt"), "?? n.txt");
+
+        // An untracked file is one all-additions hunk; staging it is the whole
+        // file, but it must go through intent-to-add rather than failing.
+        let parsed = hunks_of(&p, "n.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 1);
+        git_apply_hunks(p.clone(), "n.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        assert!(indexed(&dir, "n.txt").contains("new 20"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_untracked_fallback_and_intent_to_add_agree_on_the_fingerprint() {
+        // The panel renders an untracked file from the --no-index fallback, but
+        // staging re-diffs it after `git add -N`. The preambles differ; the
+        // hunk header and body must not, or every untracked stage would be
+        // refused as stale.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("n.txt"), "alpha\nbeta\n").unwrap();
+
+        let displayed = hunks_of(&p, "n.txt", DiffMode::Unstaged);
+        git(&dir, &["add", "-N", "--", "n.txt"]);
+        let after_add_n = hunks_of(&p, "n.txt", DiffMode::Unstaged);
+        assert_eq!(displayed.hunks[0].fingerprint, after_add_n.hunks[0].fingerprint);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn diff_modes_describe_different_trees_for_a_partially_staged_file() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        let head = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Head)).unwrap();
+        let staged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Staged)).unwrap();
+        let unstaged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Unstaged)).unwrap();
+
+        // vs HEAD sees both edits; each of the other two sees exactly one.
+        assert!(head.contains("line 2 EDITED") && head.contains("line 19 EDITED"));
+        assert!(staged.contains("line 2 EDITED") && !staged.contains("line 19 EDITED"));
+        assert!(unstaged.contains("line 19 EDITED") && !unstaged.contains("line 2 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn omitting_the_mode_keeps_the_vs_head_behaviour_existing_callers_rely_on() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["add", "f.txt"]);
+        // Staged, so worktree-vs-index is empty but vs-HEAD is not. The gutter
+        // and the session diff both depend on still seeing the change here.
+        let default = git_diff_text(p.clone(), "f.txt".into(), None, None).unwrap();
+        assert!(default.contains("line 2 EDITED"), "default mode must stay vs HEAD");
+        assert!(!git_diff_file(p, "f.txt".into(), None).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_slice_returns_the_requested_1_based_inclusive_range() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let lines = git_file_slice(p, "f.txt".into(), Some(DiffMode::Unstaged), 5, 7).unwrap();
+        assert_eq!(lines, vec!["line 5", "line 6", "line 7"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_slice_reads_the_index_in_staged_mode_not_the_worktree() {
+        // The distinction that matters for a partially-staged file: the Staged
+        // section's unchanged lines are the index's, and showing the worktree's
+        // there would display lines the user has not staged.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+
+        // Line 19 is edited in the worktree but not in the index.
+        let staged = git_file_slice(p.clone(), "f.txt".into(), Some(DiffMode::Staged), 19, 19).unwrap();
+        let worktree = git_file_slice(p, "f.txt".into(), Some(DiffMode::Unstaged), 19, 19).unwrap();
+        assert_eq!(staged, vec!["line 19"]);
+        assert_eq!(worktree, vec!["line 19 EDITED"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_slice_clamps_a_range_past_the_end_of_the_file() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let lines = git_file_slice(p, "f.txt".into(), Some(DiffMode::Unstaged), 18, 900).unwrap();
+        assert_eq!(lines.len(), 3, "20-line file, so 18..20");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_slice_rejects_a_degenerate_range_rather_than_panicking() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        assert!(git_file_slice(p.clone(), "f.txt".into(), None, 0, 5).unwrap().is_empty());
+        assert!(git_file_slice(p, "f.txt".into(), None, 9, 3).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A repo whose committed g.txt has 60 lines, with lines 10, 30 and 50
+    /// edited: three hunks at default context, far enough apart that skipping
+    /// the middle one exercises the offset accumulation.
+    fn repo_with_three_hunks() -> PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_hunk3_test_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]);
+        git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        let base: Vec<String> = (1..=60).map(|i| format!("line {i}")).collect();
+        std::fs::write(dir.join("g.txt"), base.join("\n") + "\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+
+        let mut edited = base.clone();
+        for i in [9usize, 29, 49] {
+            edited[i] = format!("line {} EDITED", i + 1);
+        }
+        std::fs::write(dir.join("g.txt"), edited.join("\n") + "\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn stages_two_hunks_skipping_the_one_between_them() {
+        // The case the offset accumulation exists for: hunk 1 is dropped, so
+        // hunk 2's new-side start must shift by hunk 0's drift alone. Get this
+        // wrong and git applies the right lines in the wrong place.
+        let dir = repo_with_three_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "g.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 3);
+
+        git_apply_hunks(
+            p.clone(), "g.txt".into(), vec![0, 2],
+            vec![parsed.hunks[0].fingerprint.clone(), parsed.hunks[2].fingerprint.clone()],
+            false, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "g.txt");
+        assert_eq!(staged.lines().count(), 60, "no lines gained or lost");
+        assert_eq!(staged.lines().nth(9).unwrap(), "line 10 EDITED");
+        assert_eq!(staged.lines().nth(29).unwrap(), "line 30", "the skipped hunk stays unstaged");
+        assert_eq!(staged.lines().nth(49).unwrap(), "line 50 EDITED");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unstages_two_hunks_skipping_the_one_between_them() {
+        // Same, in reverse: the new side is the source here, so the *old* side
+        // is what accumulates drift.
+        let dir = repo_with_three_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["add", "g.txt"]);
+
+        let parsed = hunks_of(&p, "g.txt", DiffMode::Staged);
+        assert_eq!(parsed.hunks.len(), 3);
+        git_apply_hunks(
+            p.clone(), "g.txt".into(), vec![0, 2],
+            vec![parsed.hunks[0].fingerprint.clone(), parsed.hunks[2].fingerprint.clone()],
+            true, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "g.txt");
+        assert_eq!(staged.lines().count(), 60);
+        assert_eq!(staged.lines().nth(9).unwrap(), "line 10", "reversed out of the index");
+        assert_eq!(staged.lines().nth(29).unwrap(), "line 30 EDITED", "the skipped hunk stays staged");
+        assert_eq!(staged.lines().nth(49).unwrap(), "line 50");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn staging_hunks_that_change_the_line_count_keeps_later_hunks_aligned() {
+        // Insertions and deletions of different sizes, so the running delta is
+        // non-zero and unequal between hunks.
+        let dir = repo_with_three_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let mut lines: Vec<String> = (1..=60).map(|i| format!("line {i}")).collect();
+        // Hunk A: insert two lines after line 10. Hunk B (later): delete line 50.
+        lines.remove(49);
+        lines.splice(10..10, ["inserted a".to_string(), "inserted b".to_string()]);
+        std::fs::write(dir.join("g.txt"), lines.join("\n") + "\n").unwrap();
+
+        let parsed = hunks_of(&p, "g.txt", DiffMode::Unstaged);
+        let all: Vec<usize> = (0..parsed.hunks.len()).collect();
+        let fps: Vec<String> = parsed.hunks.iter().map(|h| h.fingerprint.clone()).collect();
+        git_apply_hunks(p.clone(), "g.txt".into(), all, fps, false, Some(3)).unwrap();
+
+        // Staging every hunk must reproduce the worktree exactly.
+        assert_eq!(indexed(&dir, "g.txt"), std::fs::read_to_string(dir.join("g.txt")).unwrap());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

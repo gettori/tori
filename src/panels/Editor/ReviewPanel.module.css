@@ -228,6 +228,28 @@
   color: var(--text);
 }
 
+/* Per-hunk stage/unstage, anchored in the hunk header so it sits in the same
+   place in both view modes. */
+.hunkStage {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-density));
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: calc(10px * var(--ui-scale));
+  cursor: pointer;
+}
+.hunkStage:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.hunkStage:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .viewToggle {
   flex: none;
   padding: 0 calc(6px * var(--ui-density));

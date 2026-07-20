@@ -1,9 +1,10 @@
-import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import { parseDiffHunks } from "../../utils/diffHunks";
-import { buildRows, collapseRows, toSideBySide, type DiffRow } from "../../utils/diffView";
+import { buildRows, hunkGaps, toSideBySide, type DiffRow, type Gap } from "../../utils/diffView";
+import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
@@ -15,6 +16,10 @@ import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
 type FileStatus = { status: string; path: string; staged: boolean; unstaged: boolean };
+// Mirrors DiffMode in src-tauri/src/git.rs. "head" (the backend default) is
+// worktree-vs-HEAD; the panel always asks for one of the other two, since a
+// partially-staged file's two rows describe different comparisons.
+type DiffMode = "staged" | "unstaged";
 type BranchInfo = { name: string; current: boolean };
 type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 
@@ -26,10 +31,12 @@ function statusClass(status: string): string {
   return "modified";
 }
 
-// Extra context asked of `git_diff_text` (git's own default is 3). The panel
-// collapses anything beyond a few lines back down, so this is what "expand"
-// has left to show; without it there is no unchanged region to reveal.
-const DIFF_CONTEXT = 24;
+// Git's default context, and deliberately not more. Context width decides hunk
+// boundaries: at -U24 three edits 20 lines apart merge into one un-splittable
+// hunk, which would make hunk staging useless on real code. So the diff stays
+// at the granularity `git add -p` uses, and the untouched stretches it omits
+// are recovered separately (see `hunkGaps` / `expandGap`).
+const DIFF_CONTEXT = 3;
 // Below this the two columns are too narrow to read, so side-by-side falls
 // back to inline regardless of the persisted preference.
 const SIDE_BY_SIDE_MIN_WIDTH = 640;
@@ -65,10 +72,21 @@ export default function ReviewPanel(props: {
   const [pushing, setPushing] = createSignal(false);
   const [openingPr, setOpeningPr] = createSignal(false);
   const [sideBySide, setSideBySide] = createSignal(localStorage.getItem(SIDE_BY_SIDE_KEY) === "1");
+  // Which file the expanded diff belongs to, and which of its two sections:
+  // needed to refetch the right diff after a hunk apply or a disk change.
+  const [openDiff, setOpenDiff] = createSignal<{ path: string; staged: boolean } | null>(null);
+  const [applying, setApplying] = createSignal(false);
   const [panelWidth, setPanelWidth] = createSignal(Infinity);
   // Which collapsed regions the user opened, keyed hunk:row. Cleared whenever a
   // different file expands, so collapse state never leaks between files.
   const [openGaps, setOpenGaps] = createSignal<Set<string>>(new Set());
+  // Fetched contents of expanded gaps, keyed the same way.
+  const [gapLines, setGapLines] = createSignal<Record<string, string[]>>({});
+
+  // One parse per diff change, shared by every consumer below: the hunk list,
+  // the gaps between them, and the per-hunk fingerprints.
+  const hunks = createMemo(() => parseDiffHunks(diff()));
+  const gaps = createMemo(() => hunkGaps(hunks()));
 
   // The persisted preference only applies when there is room for two columns.
   const twoColumn = () => sideBySide() && panelWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -79,12 +97,39 @@ export default function ReviewPanel(props: {
     localStorage.setItem(SIDE_BY_SIDE_KEY, next ? "1" : "0");
   }
 
-  function toggleGap(key: string) {
-    setOpenGaps((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  // Fetch (once) and reveal the file lines behind a collapsed gap. Clicking an
+  // open gap closes it again; the fetched lines stay cached so reopening is
+  // instant.
+  async function expandGap(key: string, path: string, staged: boolean, gap: Gap) {
+    if (openGaps().has(key)) {
+      setOpenGaps((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+    const root = props.root;
+    if (!root) return;
+    if (!gapLines()[key]) {
+      try {
+        const lines = await invoke<string[]>("git_file_slice", {
+          projectPath: root,
+          file: path,
+          mode: staged ? "staged" : "unstaged",
+          start: gap.start,
+          end: gap.end,
+        });
+        // Rendered as context lines, so they carry the leading space a diff
+        // context line would have.
+        setGapLines((prev) => ({ ...prev, [key]: lines.map((l) => ` ${l}`) }));
+      } catch (e) {
+        // Say so rather than leaving a click that visibly does nothing.
+        toastError(e);
+        return;
+      }
+    }
+    setOpenGaps((prev) => new Set(prev).add(key));
   }
 
   const staged = () => files().filter((f) => f.staged);
@@ -226,24 +271,74 @@ export default function ReviewPanel(props: {
 
   // Keyed by section+path (not path alone): a partially-staged file ("MM")
   // has a row in both the Staged and Changes sections, and each must expand
-  // independently rather than sharing one toggle.
-  async function toggleDiff(key: string, path: string) {
+  // independently rather than sharing one toggle. The two rows also show
+  // different diffs, hence the mode carried alongside.
+  async function toggleDiff(key: string, path: string, staged: boolean) {
     if (expanded() === key) {
       setExpanded(null);
+      setOpenDiff(null);
       return;
     }
     const root = props.root;
     if (!root) return;
     setOpenGaps(new Set<string>());
-    setDiff(await fileDiff(root, path));
+    setGapLines({});
+    setOpenDiff({ path, staged });
+    setDiff(await fileDiff(root, path, staged ? "staged" : "unstaged"));
     setExpanded(key);
   }
 
-  async function fileDiff(root: string, path: string): Promise<string> {
+  async function fileDiff(root: string, path: string, mode?: DiffMode): Promise<string> {
     try {
-      return await invoke<string>("git_diff_text", { projectPath: root, file: path, context: DIFF_CONTEXT });
+      return await invoke<string>("git_diff_text", {
+        projectPath: root,
+        file: path,
+        context: DIFF_CONTEXT,
+        mode,
+      });
     } catch {
       return "";
+    }
+  }
+
+  // Re-fetch whatever diff is currently expanded. Called after a hunk apply and
+  // whenever the open file changes on disk, so the rendered hunks (and the
+  // fingerprints derived from them) never lag the file.
+  async function refreshExpandedDiff() {
+    const root = props.root;
+    const open = openDiff();
+    if (!root || !open) return;
+    setDiff(await fileDiff(root, open.path, open.staged ? "staged" : "unstaged"));
+    // The hunks just moved, so the cached gap contents no longer line up with
+    // the ranges they were fetched for.
+    setOpenGaps(new Set<string>());
+    setGapLines({});
+  }
+
+  // Stage (or unstage) a single hunk. The fingerprint is the one derived from
+  // the hunk as rendered; the backend re-reads the diff and refuses if it no
+  // longer matches, so a stale view can never apply the wrong hunk. On any
+  // failure the diff is refetched before the error surfaces, so the user is
+  // never left looking at hunks that have already moved.
+  async function applyHunk(path: string, staged: boolean, index: number, fingerprint: string) {
+    const root = props.root;
+    if (!root || applying()) return;
+    setApplying(true);
+    try {
+      await invoke("git_apply_hunks", {
+        projectPath: root,
+        file: path,
+        hunkIndices: [index],
+        fingerprints: [fingerprint],
+        reverse: staged,
+        context: DIFF_CONTEXT,
+      });
+      await Promise.all([refresh(), refreshExpandedDiff()]);
+    } catch (e) {
+      await refreshExpandedDiff();
+      toastError(e);
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -274,7 +369,9 @@ export default function ReviewPanel(props: {
       () => props.root,
       () => {
         setExpanded(null);
+        setOpenDiff(null);
         setOpenGaps(new Set<string>());
+        setGapLines({});
         refreshAll();
       },
     ),
@@ -355,7 +452,15 @@ export default function ReviewPanel(props: {
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", () => refresh());
+    unlistenFs = await listen("fs://changed", (e) => {
+      void refresh();
+      // An agent writing the open file renumbers its hunks, so the expanded
+      // diff must refetch or the next stage click would carry a stale
+      // fingerprint (which the backend would refuse).
+      const changed = (e.payload as { path?: string } | null)?.path;
+      const open = openDiff();
+      if (!open || !changed || changed.endsWith(open.path)) void refreshExpandedDiff();
+    });
     // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
     // emits no fs://changed - window focus and the askpass-bridge git events
     // (fetch here, push above) pick up the slack.
@@ -379,25 +484,33 @@ export default function ReviewPanel(props: {
     );
   }
 
-  function gapRow(r: Extract<DiffRow, { kind: "gap" }>, gapKey: string, span: boolean) {
+  // An unchanged stretch between two hunks. Collapsed it is a single clickable
+  // row; expanded it shows the real file lines, fetched on demand because the
+  // diff (taken at git's default context so a hunk stays a stageable unit)
+  // simply does not contain them.
+  function gapRow(gap: Gap, gapKey: string, path: string, staged: boolean) {
+    const count = gap.end - gap.start + 1;
     return (
       <Show
         when={openGaps().has(gapKey)}
         fallback={
-          <div class={`${styles.diffLine} ${styles.diffGap}`} onClick={() => toggleGap(gapKey)}>
-            {`⋯ ${r.hidden.length} unchanged lines`}
+          <div
+            class={`${styles.diffLine} ${styles.diffGap}`}
+            onClick={() => void expandGap(gapKey, path, staged, gap)}
+          >
+            {`\u22ef ${count} unchanged line${count === 1 ? "" : "s"}`}
           </div>
         }
       >
-        <For each={r.hidden}>
-          {(hidden) =>
-            span ? (
+        <For each={gapLines()[gapKey] ?? []}>
+          {(text) =>
+            twoColumn() ? (
               <div class={styles.sideRow}>
-                <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
-                <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
+                <div class={styles.diffLine}>{text || " "}</div>
+                <div class={styles.diffLine}>{text || " "}</div>
               </div>
             ) : (
-              <div class={styles.diffLine}>{"text" in hidden ? hidden.text || " " : " "}</div>
+              <div class={styles.diffLine}>{text || " "}</div>
             )
           }
         </For>
@@ -405,19 +518,13 @@ export default function ReviewPanel(props: {
     );
   }
 
-  function renderHunkBody(rows: DiffRow[], hunkKey: string) {
+  function renderHunkBody(rows: DiffRow[]) {
     return (
       <Show
         when={twoColumn()}
         fallback={
           <For each={rows}>
-            {(r, ri) =>
-              r.kind === "gap" ? (
-                gapRow(r, `${hunkKey}:${ri()}`, false)
-              ) : (
-                <div class={`${styles.diffLine} ${styles[rowClass(r)] ?? ""}`}>{lineContent(r)}</div>
-              )
-            }
+            {(r) => <div class={`${styles.diffLine} ${styles[rowClass(r)] ?? ""}`}>{lineContent(r)}</div>}
           </For>
         }
       >
@@ -425,23 +532,16 @@ export default function ReviewPanel(props: {
             sides scroll together by construction rather than by syncing. */}
         <div class={styles.sideBySide}>
           <For each={toSideBySide(rows)}>
-            {(side, ri) => {
-              const gap = side.left?.kind === "gap" ? side.left : null;
-              return gap ? (
-                gapRow(gap, `${hunkKey}:${ri()}`, true)
-              ) : (
-                <div class={styles.sideRow}>
-                  <div class={`${styles.diffLine} ${side.left ? (styles[rowClass(side.left)] ?? "") : styles.sideEmpty}`}>
-                    {side.left ? lineContent(side.left) : " "}
-                  </div>
-                  <div
-                    class={`${styles.diffLine} ${side.right ? (styles[rowClass(side.right)] ?? "") : styles.sideEmpty}`}
-                  >
-                    {side.right ? lineContent(side.right) : " "}
-                  </div>
+            {(side) => (
+              <div class={styles.sideRow}>
+                <div class={`${styles.diffLine} ${side.left ? (styles[rowClass(side.left)] ?? "") : styles.sideEmpty}`}>
+                  {side.left ? lineContent(side.left) : " "}
                 </div>
-              );
-            }}
+                <div class={`${styles.diffLine} ${side.right ? (styles[rowClass(side.right)] ?? "") : styles.sideEmpty}`}>
+                  {side.right ? lineContent(side.right) : " "}
+                </div>
+              </div>
+            )}
           </For>
         </div>
       </Show>
@@ -452,7 +552,7 @@ export default function ReviewPanel(props: {
     const key = `${opts.staged ? "staged" : "unstaged"}:${f.path}`;
     return (
       <div>
-        <div class={styles.reviewRow} onClick={() => toggleDiff(key, f.path)} title={f.path}>
+        <div class={styles.reviewRow} onClick={() => toggleDiff(key, f.path, opts.staged)} title={f.path}>
           <button
             type="button"
             class={styles.stageToggle}
@@ -488,7 +588,13 @@ export default function ReviewPanel(props: {
         </div>
         <Show when={expanded() === key}>
           <div class={styles.reviewDiff}>
-            <For each={parseDiffHunks(diff())}>
+            {/* Gaps are keyed by the hunk they follow (-1 = before the first),
+                so they interleave with the hunks rather than living inside
+                one. */}
+            <For each={gaps().filter((g) => g.afterHunk === -1)}>
+              {(gap) => gapRow(gap, `${key}:gap-1`, f.path, opts.staged)}
+            </For>
+            <For each={hunks()}>
               {(hunk, hi) => (
                 <div>
                   {/* The hunk header is the shared control anchor: it renders
@@ -496,6 +602,21 @@ export default function ReviewPanel(props: {
                       land in one place in both modes. */}
                   <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span>{hunk.header}</span>
+                    <button
+                      type="button"
+                      class={styles.hunkStage}
+                      disabled={applying()}
+                      title={opts.staged ? "Unstage this hunk" : "Stage this hunk"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // The fingerprint is derived from the hunk exactly as
+                        // rendered, so the backend can prove it is still the
+                        // same hunk before applying it.
+                        void applyHunk(f.path, opts.staged, hi(), hunkFingerprint(hunk.header, hunk.lines));
+                      }}
+                    >
+                      {opts.staged ? "Unstage hunk" : "Stage hunk"}
+                    </button>
                     <HunkCommentInput
                       target={target()}
                       disabledReason={disabledReason()}
@@ -504,7 +625,10 @@ export default function ReviewPanel(props: {
                       endLine={hunk.endLine}
                     />
                   </div>
-                  {renderHunkBody(collapseRows(buildRows(hunk.lines)), `${key}:${hi()}`)}
+                  {renderHunkBody(buildRows(hunk.lines))}
+                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
+                    {(gap) => gapRow(gap, `${key}:gap${hi()}`, f.path, opts.staged)}
+                  </For>
                 </div>
               )}
             </For>
