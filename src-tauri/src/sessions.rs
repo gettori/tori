@@ -1063,6 +1063,38 @@ pub fn session_touched_files(
     Ok(touched_files_cached(&index, &path, &agent))
 }
 
+/// The most recently *written* file in a touched set, ignoring reads. Reads are
+/// excluded for the same reason the tree markers exclude them: an agent reads
+/// far more than it writes, so the newest read says nothing about what it is
+/// changing. Does not assume `extract_touched_files`' sort order - it picks the
+/// max explicitly, so a caller that filtered or reordered still gets the right
+/// answer.
+fn latest_written(files: &[TouchedFile]) -> Option<&TouchedFile> {
+    files
+        .iter()
+        .filter(|f| f.op != TouchOp::Read)
+        .max_by_key(|f| f.last_ts)
+}
+
+/// The file this session wrote most recently, for the live "editing now"
+/// indicator. Attribution only: this answers "which file did the transcript
+/// last name", never "is the session busy" - liveness is composed in the
+/// frontend (PTY activity + tail state), which the backend cannot see.
+///
+/// Rides the same mtime cache as `session_touched_files`, so polling it while a
+/// turn runs costs a full parse only when the transcript actually grew. An
+/// adapter whose transcript shape `extract_touched_files` cannot parse yields
+/// `None`, so the indicator no-ops rather than misreporting.
+#[tauri::command]
+pub fn session_editing_now(
+    index: State<TouchedIndex>,
+    path: String,
+    agent: String,
+) -> Result<Option<TouchedFile>, String> {
+    let files = touched_files_cached(&index, &path, &agent);
+    Ok(latest_written(&files).cloned())
+}
+
 /// Directories the session watcher covers - every registered adapter's
 /// discovery dir, so a newly added agent's transcripts also fire
 /// `sessions://changed` with no watcher-side wiring of its own.
@@ -1741,6 +1773,51 @@ mod tests {
         assert_eq!(files.iter().filter(|f| f.op != TouchOp::Read).count(), 2);
 
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    fn touched(path: &str, op: TouchOp, last_ts: u64) -> TouchedFile {
+        TouchedFile {
+            path: path.into(),
+            op,
+            first_ts: last_ts,
+            last_ts,
+            count: 1,
+        }
+    }
+
+    #[test]
+    fn latest_written_picks_the_newest_write_and_ignores_a_newer_read() {
+        // The read is the newest touch overall, but the indicator must name the
+        // file being *changed*, not the one being looked at.
+        let files = vec![
+            touched("/p/old.rs", TouchOp::Edit, 100),
+            touched("/p/new.rs", TouchOp::Create, 200),
+            touched("/p/looked-at.rs", TouchOp::Read, 300),
+        ];
+        assert_eq!(latest_written(&files).unwrap().path, "/p/new.rs");
+    }
+
+    #[test]
+    fn latest_written_is_none_when_the_session_only_read() {
+        let files = vec![
+            touched("/p/a.rs", TouchOp::Read, 100),
+            touched("/p/b.rs", TouchOp::Read, 200),
+        ];
+        assert!(latest_written(&files).is_none());
+        assert!(latest_written(&[]).is_none());
+    }
+
+    #[test]
+    fn latest_written_does_not_depend_on_input_order() {
+        // extract_touched_files sorts newest-first, but the helper must not rely
+        // on that - a caller that filtered or reordered still gets the max.
+        let files = vec![
+            touched("/p/newest.rs", TouchOp::Edit, 300),
+            touched("/p/mid.rs", TouchOp::Delete, 200),
+        ];
+        let reversed: Vec<TouchedFile> = files.iter().rev().cloned().collect();
+        assert_eq!(latest_written(&files).unwrap().path, "/p/newest.rs");
+        assert_eq!(latest_written(&reversed).unwrap().path, "/p/newest.rs");
     }
 
     #[test]

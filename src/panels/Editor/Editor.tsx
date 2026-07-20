@@ -36,6 +36,17 @@ import {
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
+import {
+  setEditingNow,
+  editingIndication,
+  isSoleLiveActor,
+  isEditingNow,
+  EDITING_QUIET_MS,
+  type EditingIndication,
+} from "../../utils/editingNow";
+import { folderActors } from "../../utils/folderActors";
+import { liveStatuses } from "../../utils/sessionStatus";
+import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite } from "../../utils/selfWrites";
 import { ensureLsp } from "./lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -305,8 +316,105 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
       () => {
         setTouchedPaths(new Set());
         void refreshTouched();
+        clearEditing();
+        actors = null;
+        void refreshActors();
       },
     ),
+  );
+
+  // --- Live "editing now" ---------------------------------------------------
+  //
+  // Composed here because Editor already owns both inputs: the transcript-side
+  // fetch (`sessions://changed`) and the `fs://changed` listener. The two are
+  // not equal evidence - see editingNow.ts - so the parser path is preferred
+  // and the fs path only names a file when the folder has no other actor.
+  //
+  // The actor set is refreshed on the same cadence as the touched fetch, never
+  // per fs event: the detached tier costs a `session_running` probe per off-tab
+  // session, which is fine once a turn and far too much per file write.
+  const selectedExecuting = () => {
+    const id = props.selected?.sessionId;
+    return !!id && liveStatuses().some((s) => s.sessionId === id && s.status === "executing");
+  };
+
+  // null until the probe lands: gathering is async, so there is a window after a
+  // selection change where we do not know who else is live here. isSoleLiveActor
+  // treats null as not-sole, so during that window an fs event degrades to the
+  // anonymous pulse instead of naming a file on no evidence.
+  let actors: RevertCandidate[] | null = null;
+  let lastParserPath: string | null = null;
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearEditing() {
+    clearTimeout(quietTimer);
+    quietTimer = undefined;
+    lastParserPath = null;
+    setEditingNow(null);
+  }
+
+  // Every indication is provisional: it expires unless a fresh signal renews
+  // it, so a turn that dies without a closing event cannot leave a file
+  // pulsing forever.
+  function publishEditing(indication: EditingIndication) {
+    setEditingNow(indication);
+    clearTimeout(quietTimer);
+    if (indication) quietTimer = setTimeout(() => setEditingNow(null), EDITING_QUIET_MS);
+  }
+
+  async function refreshActors() {
+    const folder = props.selected?.folderPath;
+    if (!folder) {
+      actors = null;
+      return;
+    }
+    // A failed probe leaves the set null (unknown), not empty - same reason as
+    // the in-flight window above.
+    const found = await folderActors(folder).catch(() => null);
+    if (props.selected?.folderPath !== folder) return;
+    actors = found;
+  }
+
+  // Transcript side: the last file the session itself said it wrote. Fires on
+  // `sessions://changed`, which the watcher emits as the transcript grows
+  // mid-turn, not only at turn end - that is what makes an edit burst pulse
+  // live rather than after the fact.
+  async function refreshEditing() {
+    const sel = props.selected;
+    if (!sel?.sessionPath || !selectedExecuting()) {
+      clearEditing();
+      return;
+    }
+    const path = sel.sessionPath;
+    const file = await invoke<{ path: string } | null>("session_editing_now", {
+      path,
+      agent: sel.agent ?? "claude",
+    }).catch(() => null);
+    // Same out-of-order guard as refreshTouched: a slow fetch for the previous
+    // session must not attribute its file to the current one.
+    if (props.selected?.sessionPath !== path) return;
+    lastParserPath = file?.path ?? null;
+    // A parser that named nothing is silence, not a denial. For an adapter whose
+    // transcript shape we cannot read this fires on every `sessions://changed`,
+    // and publishing the empty result would stamp out a perfectly good fs-derived
+    // indication a moment after it appeared. Leave the existing one to expire on
+    // its own quiet timer instead.
+    if (!lastParserPath) return;
+    publishEditing(
+      editingIndication({
+        executing: true,
+        parserPath: lastParserPath,
+        soleLiveActor: isSoleLiveActor(actors, sel.sessionId, sel.folderPath),
+      }),
+    );
+  }
+
+  // Turn end clears the label immediately rather than waiting out the quiet
+  // timer: "Executing" dropping is a definite end-of-turn signal.
+  createEffect(
+    on(selectedExecuting, (executing) => {
+      if (!executing) clearEditing();
+    }),
   );
 
   // A tree revert just rewrote/removed files on disk. The fs watcher would
@@ -375,7 +483,10 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
 
   onMount(async () => {
     // Turn end for every adapter: the transcript watcher's debounced signal.
-    offTouched = await listen("sessions://changed", () => void refreshTouched());
+    offTouched = await listen("sessions://changed", () => {
+      void refreshTouched();
+      void refreshActors().then(refreshEditing);
+    });
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (!d?.path) return;
       openFile(d.path);
@@ -399,8 +510,26 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
     offFollow = await listen<{ paths: string[] }>("fs://changed", (e) => {
-      if (!follow()) return;
       const external = e.payload.paths.filter((p) => !isSelfWrite(p));
+      // The fs fallback for the live indicator: only consulted when the
+      // session's own parser named nothing, so an adapter Sway can read is
+      // never second-guessed by a weaker signal. Sway's own saves are already
+      // out (isSelfWrite), so the editor can never make a session look busy.
+      const sel = props.selected;
+      if (sel && !lastParserPath && selectedExecuting() && external.length) {
+        const inFolder = external.filter((p) => isUnderPath(p, sel.folderPath));
+        if (inFolder.length) {
+          publishEditing(
+            editingIndication({
+              executing: true,
+              parserPath: null,
+              fsPath: inFolder[inFolder.length - 1],
+              soleLiveActor: isSoleLiveActor(actors, sel.sessionId, sel.folderPath),
+            }),
+          );
+        }
+      }
+      if (!follow()) return;
       if (external.length) openFile(external[external.length - 1]);
     });
     // Unsaved-buffer guard on app close. window.confirm can't run here, so always
@@ -420,6 +549,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     });
   });
   onCleanup(() => {
+    clearTimeout(quietTimer);
     offTouched?.();
     offOpen?.();
     offTranscript?.();
@@ -458,8 +588,14 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
                 <FileIcon name={t.name} />
               </Show>
               <span class="tab-name">{t.name}</span>
-              <Show when={t.kind === "file" && isTouched(t.path)}>
-                <span class={styles.tabTouched} title="Changed by the selected session">●</span>
+              <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
+                <span
+                  class={styles.tabTouched}
+                  classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
+                  title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                >
+                  ●
+                </span>
               </Show>
               <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
@@ -482,8 +618,14 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
                 <FileIcon name={t.name} />
               </Show>
               <span class="tab-name">{t.name}</span>
-              <Show when={t.kind === "file" && isTouched(t.path)}>
-                <span class={styles.tabTouched} title="Changed by the selected session">●</span>
+              <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
+                <span
+                  class={styles.tabTouched}
+                  classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
+                  title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                >
+                  ●
+                </span>
               </Show>
               <Show when={t.kind === "file" && dirty()[t.path]}>
                 <span class="tab-dirty">●</span>

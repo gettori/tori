@@ -62,6 +62,36 @@
   line-height: 1;
 }
 
+/* Live "editing now": the file the selected session is writing this instant.
+   A step up from the touched tint (brand, not accent) because it is a
+   different claim - "changing right now" rather than "changed at some point". */
+.treeName.editing {
+  color: var(--brand);
+}
+
+/* Reduced motion is handled globally (src/styles/base.css), so there is no
+   media query here - but that only stills the pulse *correctly* because of how
+   the rule works. base.css sets animation-duration: 0.01ms AND
+   animation-iteration-count: 1, and with the default animation-fill-mode: none
+   the element then settles back on its own base style, not on any keyframe.
+   So the invariant is: the base style must be the lit steady highlight, and
+   the dimming must live only inside the keyframes. Never move the low opacity
+   onto .editingDot itself - that would still to an invisible dot. */
+@keyframes editingPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.touchedDot.editingDot {
+  color: var(--brand);
+  animation: editingPulse 1.2s ease-in-out infinite;
+}
+
 .empty {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
   color: var(--text-dim);

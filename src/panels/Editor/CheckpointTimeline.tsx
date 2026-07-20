@@ -4,7 +4,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { liveStatuses } from "../../utils/sessionStatus";
-import { revertGuard, type RevertCandidate, type RevertBlocker } from "../../utils/revertGuard";
+import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
+import { folderActors } from "../../utils/folderActors";
 import { isUnderPath } from "../../utils/pathScope";
 import styles from "./CheckpointTimeline.module.css";
 
@@ -20,14 +21,6 @@ export type RevertOutcome = {
   restored: string[];
   deleted: string[];
 };
-type SessionMeta = {
-  id: string;
-  cwd: string;
-  agent: string;
-  title: string;
-  name: string | null;
-};
-
 // Checkpoint timestamps are epoch *seconds* (parse_rfc3339_secs in
 // sessions.rs), which Date() would otherwise read as milliseconds and render
 // as 1970.
@@ -160,35 +153,6 @@ export default function CheckpointTimeline(props: {
     setExpanded(path);
   }
 
-  // Every session rooted in this folder that Sway cannot see inside: found by
-  // list_sessions, absent from the live-tab set, and confirmed alive by the
-  // pgrep probe. Only run when a revert is actually requested.
-  async function detachedCandidates(folder: string): Promise<RevertCandidate[]> {
-    const sessions = await invoke<SessionMeta[]>("list_sessions", {
-      folder,
-    }).catch(() => [] as SessionMeta[]);
-    const liveIds = new Set(liveStatuses().map((s) => s.sessionId));
-    const offTab = sessions.filter((s) => !liveIds.has(s.id));
-    const probes = await Promise.all(
-      offTab.map(async (s) => ({
-        session: s,
-        running: await invoke<boolean>("session_running", {
-          id: s.id,
-          agent: s.agent,
-        }).catch(() => false),
-      })),
-    );
-    return probes
-      .filter((p) => p.running)
-      .map((p) => ({
-        sessionId: p.session.id,
-        sessionName: p.session.name || p.session.title || p.session.id.slice(0, 8),
-        folderPath: p.session.cwd,
-        status: "running" as const,
-        hasLiveTab: false,
-      }));
-  }
-
   async function revertToPicked() {
     const root = props.root;
     const sessionId = props.sessionId;
@@ -196,14 +160,9 @@ export default function CheckpointTimeline(props: {
     const ts = picked();
     if (!root || !sessionId || !folder || ts === null || reverting()) return;
 
-    const liveCandidates: RevertCandidate[] = liveStatuses().map((s) => ({
-      sessionId: s.sessionId,
-      sessionName: s.sessionName,
-      folderPath: s.folderPath,
-      status: s.status,
-      hasLiveTab: true,
-    }));
-    const candidates = [...liveCandidates, ...(await detachedCandidates(folder))];
+    // The detached probe is deliberate work, so it runs only here, when a
+    // revert is actually requested.
+    const candidates = await folderActors(folder);
 
     let verdict = revertGuard(candidates, { folderPath: folder });
     if (!verdict.allow && !verdict.overridable) {
