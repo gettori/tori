@@ -1,0 +1,126 @@
+.problemsPanel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  height: 100%;
+  background: var(--pane-bg);
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.empty {
+  padding: calc(12px * var(--ui-density));
+  color: var(--text-dim);
+}
+
+.fileGroup {
+  border-bottom: 1px solid var(--border);
+}
+
+.fileHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  background: var(--pane-head-bg);
+  color: var(--text);
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-density));
+  border-radius: var(--sway-radius-pill);
+  background: var(--fill-subtle);
+  font-size: calc(10px * var(--ui-scale));
+}
+
+.problemRow {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6px * var(--ui-density));
+  padding: calc(3px * var(--ui-density)) calc(8px * var(--ui-density));
+  cursor: pointer;
+}
+.problemRow:hover {
+  background: var(--hover);
+}
+
+/* Severity is carried by a coloured dot rather than by the message colour, so a
+   long message stays readable at the panel's normal contrast. */
+.dot {
+  flex: none;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.loc {
+  flex: none;
+  color: var(--text-dim);
+  font-family: var(--sway-font-mono);
+  font-size: calc(10px * var(--ui-scale));
+}
+
+.message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sendButton {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-density));
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: calc(10px * var(--ui-scale));
+  cursor: pointer;
+  opacity: 0;
+}
+.problemRow:hover .sendButton,
+.sendButton:focus-visible {
+  opacity: 1;
+}
+.sendButton:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.error {
+  background: var(--diag-error);
+  color: var(--diag-error);
+}
+.warning {
+  background: var(--diag-warning);
+  color: var(--diag-warning);
+}
+.info {
+  background: var(--diag-info);
+  color: var(--diag-info);
+}
+.hint {
+  background: var(--diag-hint);
+  color: var(--diag-hint);
+}
+
+/* The count pills reuse the severity classes for their text colour only; the
+   dot above wants the same value as a background. */
+.count.error,
+.count.warning,
+.count.info,
+.count.hint {
+  background: var(--fill-subtle);
+}

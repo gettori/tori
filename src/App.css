@@ -411,3 +411,59 @@ body.dragging {
   background: var(--diff-deleted);
 }
 
+
+/* LSP diagnostics. @codemirror/lint ships hardcoded colours in its base theme
+   (they live in node_modules, so the token guard cannot see them); these
+   overrides put severity back on the token layer so it follows the theme.
+   The severity family is deliberately its own: reusing the session-status
+   colours would make a type warning read as "waiting for approval". */
+.cm-lintRange-error {
+  background: none;
+  text-decoration: underline wavy var(--diag-error);
+  text-underline-offset: 3px;
+}
+.cm-lintRange-warning {
+  background: none;
+  text-decoration: underline wavy var(--diag-warning);
+  text-underline-offset: 3px;
+}
+.cm-lintRange-info {
+  background: none;
+  text-decoration: underline wavy var(--diag-info);
+  text-underline-offset: 3px;
+}
+.cm-lintRange-hint {
+  background: none;
+  text-decoration: underline wavy var(--diag-hint);
+  text-underline-offset: 3px;
+}
+
+.cm-lint-marker-error {
+  color: var(--diag-error);
+}
+.cm-lint-marker-warning {
+  color: var(--diag-warning);
+}
+.cm-lint-marker-info {
+  color: var(--diag-info);
+}
+
+.cm-tooltip.cm-tooltip-lint {
+  background: var(--pane-head-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-sm);
+  color: var(--text);
+}
+.cm-tooltip .cm-diagnostic {
+  border-left-width: 3px;
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+}
+.cm-tooltip .cm-diagnostic-error {
+  border-left-color: var(--diag-error);
+}
+.cm-tooltip .cm-diagnostic-warning {
+  border-left-color: var(--diag-warning);
+}
+.cm-tooltip .cm-diagnostic-info {
+  border-left-color: var(--diag-info);
+}

@@ -7,6 +7,8 @@ import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
+import ProblemsPanel from "./ProblemsPanel";
+import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
@@ -68,11 +70,12 @@ type Tab = FileTab | TranscriptTab;
 // its `<For>` is referentially keyed, and fresh literals would tear down and
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
-type RightMode = "files" | "changes" | "shared" | "docs" | "session" | "search";
+type RightMode = "files" | "changes" | "problems" | "shared" | "docs" | "session" | "search";
 type ModeTab = { mode: RightMode; label: string };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files" },
   changes: { mode: "changes", label: "Changes" },
+  problems: { mode: "problems", label: "Problems" },
   search: { mode: "search", label: "Search" },
   session: { mode: "session", label: "Session" },
   shared: { mode: "shared", label: "Shared" },
@@ -103,6 +106,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
     "changes",
+    "problems",
     "search",
     "session",
     "shared",
@@ -117,6 +121,10 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         return !!sharedPath();
       case "docs":
         return !!docsPath();
+      // Only worth a tab when something is actually wrong; an always-present
+      // "Problems (0)" is noise on a clean tree.
+      case "problems":
+        return Object.keys(diagnostics()).length > 0;
       default:
         return true;
     }
@@ -221,6 +229,8 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
     if (rightMode() === "docs" && !docsPath()) setRightMode("files");
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
+    // The Problems tab disappears once the last diagnostic clears.
+    if (rightMode() === "problems" && !Object.keys(diagnostics()).length) setRightMode("files");
   });
 
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
@@ -229,6 +239,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     on(root, (r) => {
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
+      // A new project means a new language server; diagnostics from the old one
+      // describe files that are no longer open here.
+      clearDiagnostics();
       ensureLsp(r); // start the TS/JS language server for this project
     }),
   );
@@ -726,6 +739,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
         <Switch>
           <Match when={rightMode() === "files"}>
             <FileTree root={root()} />
+          </Match>
+          <Match when={rightMode() === "problems"}>
+            <ProblemsPanel selected={props.selected} />
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />

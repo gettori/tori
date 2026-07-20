@@ -163,6 +163,17 @@
     --diff-added-word: rgba(46, 160, 67, 0.32);
     --diff-deleted-word: rgba(248, 81, 73, 0.32);
 
+    /* Diagnostic severity. Its own family rather than a reuse of
+       --danger/--warn/--info: those are UI feedback, and the status family
+       (Executing / Waiting / Idle / Running) carries session meaning - its
+       amber already reads as "waiting for approval", which a type warning is
+       not. Borrowing either would make a diagnostic look like a session
+       state. */
+    --diag-error: #f85149;
+    --diag-warning: #d29922;
+    --diag-info: #4ec9b0;
+    --diag-hint: #8b949e;
+
     /* Agent marks. Third-party brand colors, so they stay recognisable rather
        than following the theme; only lightness is adjusted per theme so each
        stays legible against the row background. */
@@ -252,6 +263,13 @@
        white would be invisible. See the dark block for why these exist. */
     --diff-added-word: rgba(26, 127, 55, 0.24);
     --diff-deleted-word: rgba(207, 34, 46, 0.22);
+
+    /* Severity, light. Darkened for contrast on a white editor background;
+       see the dark block for why this family is separate. */
+    --diag-error: #cf222e;
+    --diag-warning: #9a6700;
+    --diag-info: #157a6e;
+    --diag-hint: #6e7781;
 
     /* Agent marks, light. Same hues, darkened for contrast on light rows. */
     --agent-claude: #c2562f;

@@ -32,6 +32,27 @@ export function composeSelectionMention(target: SessionTarget, filePath: string,
   return `@${mention}#L${startLine}-L${endLine}`;
 }
 
+// `@<file>#L<start>-L<end> <severity>: <message>`, the diagnostic wire format
+// (plan phase 3, task 3). Same relativity rule as the composers above. The
+// mention comes first so the agent reads the location before the complaint,
+// matching composeSelectionMention's shape rather than inventing a third one.
+// Multi-line server messages (TypeScript loves these) are flattened: a raw
+// newline would submit the prompt on some agents, which would break the
+// insert-only contract this whole module exists to keep.
+export function composeDiagnostic(
+  target: SessionTarget,
+  filePath: string,
+  startLine: number,
+  endLine: number,
+  severity: string,
+  message: string,
+): string {
+  const cwd = target.sessionCwd || target.folderPath;
+  const mention = mentionPath(filePath, cwd);
+  const flat = message.replace(/\s*\n\s*/g, " ").trim();
+  return `@${mention}#L${startLine}-L${endLine} ${severity}: ${flat}`;
+}
+
 // A resumed-but-not-yet-interactive session (mid-boot) probes "not-ready" and
 // gets queued; a session waiting on a permission prompt probes "blocked" and
 // is refused outright (the user must answer that prompt first, not queue
