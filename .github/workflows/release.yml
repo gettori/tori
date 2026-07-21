@@ -10,6 +10,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Rehearsal trigger. A tag is immutable in practice once the repo is public,
+  # so the first real tag should not also be the first time this workflow runs.
+  # Dispatched from a branch it does everything a tag run does - build, arch
+  # sweep, DMG - but uploads the DMG as an artifact instead of drafting a
+  # release, so nothing is published and no throwaway tag is left behind.
+  workflow_dispatch:
 
 # Only to create the release; nothing here pushes commits.
 permissions:
@@ -21,14 +27,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Derive the version from the tag
+      # On a tag run the tag is the source of truth, and the next step proves
+      # the app agrees with it. A rehearsal has no tag to read, so it takes the
+      # app's own version instead - which is the value the eventual tag has to
+      # match anyway, so the rehearsal exercises the real release notes.
+      - name: Derive the version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+            echo "rehearsal run: using the app's own version, $version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # A tag that disagrees with the app's own version would ship a build
       # that reports the wrong version in its update check, and would look for
       # a changelog section that describes something else.
       - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
         run: |
           conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
           want="${{ steps.version.outputs.version }}"
@@ -94,6 +112,7 @@ jobs:
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Draft the release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -102,3 +121,14 @@ jobs:
             --title "Sway $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             "${{ steps.dmg.outputs.path }}"
+
+      # The rehearsal's payoff: a real DMG to install and check by hand before
+      # any tag exists, so the Gatekeeper steps in docs/INSTALL.md are verified
+      # against an actual artifact rather than assumed.
+      - name: Upload the rehearsal DMG
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sway-rehearsal-dmg
+          path: ${{ steps.dmg.outputs.path }}
+          if-no-files-found: error
