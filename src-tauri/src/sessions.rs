@@ -1123,22 +1123,26 @@ pub fn sessions_watch_start(
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
 
-    let app_handle = app.clone();
-    let last_emit = std::sync::Arc::new(Mutex::new(Instant::now()));
-    let debounce = last_emit.clone();
+    // Trailing-edge debounce. The watcher callback only records WHEN the last
+    // filesystem event landed; a background thread emits `sessions://changed`
+    // once the burst has settled. A brand-new session is written as a burst of
+    // lines, and the `cwd` that anchors it to its folder usually lands after the
+    // first line - so the old leading-edge throttle emitted against the pre-cwd
+    // state (folder unmatched, nothing shown) and then swallowed the settling
+    // write, so the session never surfaced until some later, unrelated change.
+    // Trailing debounce fires on the complete file; a max-wait heartbeat keeps a
+    // long, continuously-streaming session updating rather than starving.
+    let pending: std::sync::Arc<Mutex<Option<Instant>>> =
+        std::sync::Arc::new(Mutex::new(None));
 
+    let cb_pending = pending.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if res.is_err() {
             return;
         }
-        // Coalesce bursts: Claude writes a session line on every turn.
-        if let Ok(mut last) = debounce.lock() {
-            if last.elapsed().as_millis() < 600 {
-                return;
-            }
-            *last = Instant::now();
+        if let Ok(mut p) = cb_pending.lock() {
+            *p = Some(Instant::now());
         }
-        let _ = app_handle.emit("sessions://changed", ());
     })
     .map_err(|e| e.to_string())?;
 
@@ -1147,6 +1151,35 @@ pub fn sessions_watch_start(
             .watch(dir, RecursiveMode::Recursive)
             .map_err(|e| e.to_string())?;
     }
+
+    let app_handle = app.clone();
+    let emit_pending = pending.clone();
+    std::thread::spawn(move || {
+        const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
+        const MAX_WAIT: std::time::Duration = std::time::Duration::from_millis(1000);
+        let mut last_emit = Instant::now();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let should_emit = match emit_pending.lock() {
+                Ok(mut p) => match *p {
+                    // Burst settled: emit the final, complete state.
+                    Some(t) if t.elapsed() >= SETTLE => {
+                        *p = None;
+                        true
+                    }
+                    // Still active but nothing emitted in a while: heartbeat, so a
+                    // long stream keeps the listing fresh instead of starving.
+                    Some(_) if last_emit.elapsed() >= MAX_WAIT => true,
+                    _ => false,
+                },
+                Err(_) => false,
+            };
+            if should_emit {
+                last_emit = Instant::now();
+                let _ = app_handle.emit("sessions://changed", ());
+            }
+        }
+    });
 
     *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
