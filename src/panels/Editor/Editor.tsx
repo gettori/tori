@@ -20,7 +20,7 @@ import FileIcon from "../../seti/FileIcon";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
-import { X, Bot } from "lucide-solid";
+import { X, Bot, FileCodeCorner, FileTypeCorner } from "lucide-solid";
 import {
   on as onEvent,
   onWith,
@@ -659,12 +659,16 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             <>
               <Show when={isMarkdownTab()}>
                 <button
-                  class={styles.followToggle}
-                  classList={{ [styles.active]: showingPreview() }}
+                  class={`${styles.followToggle} ${styles.iconToggle}`}
                   onClick={togglePreview}
-                  title="Toggle Markdown preview"
+                  aria-pressed={showingPreview()}
+                  title={
+                    showingPreview()
+                      ? "Showing rendered Markdown. Click to edit the source."
+                      : "Preview: render this Markdown file instead of editing its source."
+                  }
                 >
-                  Preview
+                  <Icon icon={showingPreview() ? FileCodeCorner : FileTypeCorner} size={15} />
                 </button>
               </Show>
               <button
