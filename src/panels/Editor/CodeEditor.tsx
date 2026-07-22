@@ -42,7 +42,7 @@ const swayHighlight = HighlightStyle.define([
 
 const swayTheme = EditorView.theme(
   {
-    "&": { backgroundColor: "var(--bg)", color: "var(--text)", height: "100%" },
+    "&": { backgroundColor: "var(--pane-bg)", color: "var(--text)", height: "100%" },
     ".cm-content": {
       caretColor: "var(--text)",
       fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',
@@ -52,7 +52,7 @@ const swayTheme = EditorView.theme(
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
       backgroundColor: "var(--sel)",
     },
-    ".cm-gutters": { backgroundColor: "var(--bg)", color: "var(--text-dim)", border: "none" },
+    ".cm-gutters": { backgroundColor: "var(--pane-bg)", color: "var(--text-dim)", border: "none" },
     ".cm-activeLine": { backgroundColor: "transparent" },
     ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
   },
