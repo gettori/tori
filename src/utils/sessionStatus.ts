@@ -42,19 +42,25 @@ export type LiveSessionStatus = {
   tabId: string;
 };
 
-export type Rollup = { waitingForApproval: number; executing: number };
+export type Rollup = {
+  waitingForApproval: number;
+  executing: number;
+  idle: number;
+  running: number;
+};
 
-// Pure: aggregate counts of the two bubbling states across a set of sessions
+// Pure: aggregate counts of every detectable state across a set of sessions
 // (a branch unit's, a project's, or a space's), for a collapsed/hidden ancestor
 // row's badge.
 export function rollupStatuses(sessions: { status: SessionStatus }[]): Rollup {
-  let waitingForApproval = 0;
-  let executing = 0;
+  const r: Rollup = { waitingForApproval: 0, executing: 0, idle: 0, running: 0 };
   for (const s of sessions) {
-    if (s.status === "waitingForApproval") waitingForApproval++;
-    else if (s.status === "executing") executing++;
+    if (s.status === "waitingForApproval") r.waitingForApproval++;
+    else if (s.status === "executing") r.executing++;
+    else if (s.status === "idle") r.idle++;
+    else if (s.status === "running") r.running++;
   }
-  return { waitingForApproval, executing };
+  return r;
 }
 
 const [liveStatuses, setLiveStatusesSignal] = createSignal<LiveSessionStatus[]>([]);
