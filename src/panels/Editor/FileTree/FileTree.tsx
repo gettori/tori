@@ -12,7 +12,7 @@ import { isTouched } from "../../../utils/touchedFiles";
 import { isEditingNow } from "../../../utils/editingNow";
 import styles from "./FileTree.module.css";
 
-type Entry = { name: string; path: string; is_dir: boolean };
+type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
 
 // Hidden from the tree (the watcher already ignores these too).
 const HIDDEN = new Set([".git", "node_modules"]);
@@ -159,6 +159,7 @@ function TreeNode(props: {
     <div>
       <div
         class={styles.treeRow}
+        classList={{ [styles.ignored]: props.entry.ignored }}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
         onContextMenu={onContextMenu}
