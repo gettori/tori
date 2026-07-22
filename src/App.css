@@ -76,8 +76,8 @@ body.dragging {
 .topbar {
   flex: 0 0 auto;
   display: flex;
-  align-items: stretch;
-  min-height: 38px;
+  align-items: center;
+  height: 44px;
   background: transparent;
 }
 
@@ -178,7 +178,6 @@ body.dragging {
 
 /* ---- Sidebar tree ---- */
 .tree-body {
-  padding: 0;
   overflow: hidden;
   display: flex;
 }
@@ -308,7 +307,7 @@ body.dragging {
   min-width: 0;
   /* Breathing room around the raised card. The left gap is the outer splitter,
      so no padding-left here. */
-  padding: 6px 10px 10px 0;
+  padding: 0 10px 10px 0;
 }
 
 /* The raised work-card: terminal + editor read as one elevated block floating

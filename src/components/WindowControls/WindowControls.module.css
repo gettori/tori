@@ -14,17 +14,15 @@
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: var(--border);
   cursor: default;
-  transition: background var(--sway-duration-fast) ease;
 }
 
-.winControls:hover .winDot.close {
+.winControls .winDot.close {
   background: var(--sway-traffic-close);
 }
-.winControls:hover .winDot.min {
+.winControls .winDot.min {
   background: var(--sway-traffic-min);
 }
-.winControls:hover .winDot.zoom {
+.winControls .winDot.zoom {
   background: var(--sway-traffic-zoom);
 }
