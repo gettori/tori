@@ -10,6 +10,7 @@
   background: var(--pane-bg);
   padding: calc(4px * var(--ui-density)) 0;
   font-size: calc(13px * var(--ui-scale));
+  -webkit-user-select: none;
   user-select: none;
 }
 
