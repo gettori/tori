@@ -1,4 +1,5 @@
 import { splitProps } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { LucideIcon, LucideProps } from "lucide-solid";
 
 export interface IconProps extends LucideProps {
@@ -12,9 +13,11 @@ export interface IconProps extends LucideProps {
  *  inherits `currentColor`, so callers tint via CSS `color`. */
 export default function Icon(props: IconProps) {
   const [local, rest] = splitProps(props, ["icon", "size", "strokeWidth"]);
-  const Glyph = local.icon;
+  // Dynamic (not `const Glyph = local.icon`) so a changing `icon` prop swaps the
+  // glyph reactively - e.g. a toggle button that flips between two icons.
   return (
-    <Glyph
+    <Dynamic
+      component={local.icon}
       size={local.size ?? 16}
       strokeWidth={local.strokeWidth ?? 1.75}
       {...rest}
