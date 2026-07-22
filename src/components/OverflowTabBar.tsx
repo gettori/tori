@@ -8,8 +8,8 @@ import {
   Show,
   type JSX,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
+import Menu, { MenuRow } from "./Menu/Menu";
 
 // A tab bar that never scrolls: it renders only the tabs that fully fit, plus a
 // `+N` button whose dropdown lists the rest. Generic over the tab item type T;
@@ -33,7 +33,6 @@ export default function OverflowTabBar<T>(props: {
   let countSample: HTMLButtonElement | undefined;
   let countBtn: HTMLButtonElement | undefined;
   let trailingEl: HTMLDivElement | undefined;
-  let menuEl: HTMLDivElement | undefined;
 
   const [visibleCount, setVisibleCount] = createSignal(props.items.length);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -111,24 +110,6 @@ export default function OverflowTabBar<T>(props: {
     setMenuOpen(false);
   }
 
-  function onDocMouseDown(e: MouseEvent) {
-    if (!menuOpen()) return;
-    const t = e.target as Node;
-    if (menuEl?.contains(t) || countBtn?.contains(t)) return;
-    setMenuOpen(false);
-  }
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape" && menuOpen()) setMenuOpen(false);
-  }
-  onMount(() => {
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-  });
-  onCleanup(() => {
-    document.removeEventListener("mousedown", onDocMouseDown);
-    document.removeEventListener("keydown", onKeyDown);
-  });
-
   return (
     <div class={props.class} ref={bar} style={{ position: "relative" }}>
       {/* Inert ghost row: every tab in canonical order + a count sample, used
@@ -159,21 +140,16 @@ export default function OverflowTabBar<T>(props: {
       </div>
 
       <Show when={menuOpen()}>
-        <Portal>
-          <div
-            class="tab-overflow-menu"
-            ref={menuEl}
-            style={{ left: `${menuPos().left}px`, top: `${menuPos().top}px` }}
-          >
-            <For each={overflow()}>
-              {(t) => (
-                <div class="tab-overflow-item" onClick={() => pickOverflow(props.idOf(t))}>
-                  {props.renderMenuItem(t)}
-                </div>
-              )}
-            </For>
-          </div>
-        </Portal>
+        <Menu
+          x={menuPos().left}
+          y={menuPos().top}
+          anchorEl={countBtn}
+          onClose={() => setMenuOpen(false)}
+        >
+          <For each={overflow()}>
+            {(t) => <MenuRow onClick={() => pickOverflow(props.idOf(t))}>{props.renderMenuItem(t)}</MenuRow>}
+          </For>
+        </Menu>
       </Show>
     </div>
   );

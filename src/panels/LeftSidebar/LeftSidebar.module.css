@@ -8,6 +8,7 @@
   display: flex;
   flex-direction: column;
   font-size: calc(13px * var(--ui-scale));
+  -webkit-user-select: none;
   user-select: none;
   min-height: 0;
   min-width: 0;
@@ -166,7 +167,10 @@
   transition: background var(--sway-duration-fast) ease;
 }
 
-.row:hover {
+/* .menuActive mirrors :hover: it persists on the row a context menu belongs to,
+   so it stays highlighted while the menu is open (toggled from LeftSidebar.tsx). */
+.row:hover,
+.row.menuActive {
   background: var(--hover);
 }
 
@@ -223,10 +227,12 @@
   border-radius: var(--sway-radius-md);
   background: transparent;
 }
-.row.session:hover {
+.row.session:hover,
+.row.session.menuActive {
   background: transparent;
 }
-.row.session:hover::before {
+.row.session:hover::before,
+.row.session.menuActive::before {
   background: var(--hover);
 }
 .row.session.sel::before {
@@ -297,10 +303,12 @@
   border-radius: var(--sway-radius-md);
   background: transparent;
 }
-.row.branch:hover {
+.row.branch:hover,
+.row.branch.menuActive {
   background: transparent;
 }
-.row.branch:hover::before {
+.row.branch:hover::before,
+.row.branch.menuActive::before {
   background: var(--hover);
 }
 
@@ -637,7 +645,8 @@
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
 }
-.space:hover {
+.space:hover,
+.space.menuActive {
   color: var(--text);
   border-color: var(--brand);
 }

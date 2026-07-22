@@ -6,7 +6,7 @@ import Chevron from "../../../components/Chevron/Chevron";
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import { FilePlus, FolderPlus } from "lucide-solid";
-import ContextMenu, { type MenuItem, type MenuState } from "../../../components/ContextMenu/ContextMenu";
+import Menu, { type MenuItem, type MenuState } from "../../../components/Menu/Menu";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
 import { isEditingNow } from "../../../utils/editingNow";
@@ -266,7 +266,7 @@ export default function FileTree(props: {
         </For>
       </Show>
       <Show when={menu()}>
-        <ContextMenu menu={menu()!} onClose={() => setMenu(null)} />
+        <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={() => setMenu(null)} />
       </Show>
     </div>
   );
