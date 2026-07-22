@@ -181,39 +181,6 @@
   background: var(--hover);
 }
 
-/* Hover peek on a background tab: the tail of its buffer, monospace so the
-   output lines up the way it does in the terminal itself. Pointer-events off,
-   so the popover can never sit between the pointer and the tab it describes
-   (which would fire mouseleave and flicker it). */
-.termPeek {
-  position: fixed;
-  z-index: 200;
-  pointer-events: none;
-  max-width: 520px;
-  max-height: 220px;
-  overflow: hidden;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--sway-radius-md);
-  box-shadow: var(--shadow-md);
-}
-
-.termPeekLine {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
-  line-height: 1.45;
-  color: var(--text);
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.termPeekEmpty {
-  font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
-}
-
 .termNewMenuItem {
   text-align: left;
   background: transparent;

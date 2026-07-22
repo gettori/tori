@@ -5,14 +5,12 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
-import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
-import { registerPeek } from "../../utils/termPeek";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
@@ -85,7 +83,6 @@ export default function TerminalView(props: {
   let ro: ResizeObserver | undefined;
   let offFocus: (() => void) | undefined;
   let offTheme: (() => void) | undefined;
-  let unregisterPeek: (() => void) | undefined;
   const [showSearch, setShowSearch] = createSignal(false);
   const [query, setQuery] = createSignal("");
 
@@ -157,12 +154,6 @@ export default function TerminalView(props: {
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
     term.loadAddon(new ClipboardAddon());
-    const serialize = new SerializeAddon();
-    term.loadAddon(serialize);
-    // Expose a buffer reader for the tab strip's hover peek. Only the visible
-    // screen is serialized (no scrollback): the peek shows the last few lines,
-    // and serializing a full scrollback on every hover would be wasted work.
-    unregisterPeek = registerPeek(props.id, () => serialize.serialize({ scrollback: 0 }));
     term.open(host);
 
     // WebGL renderer, with a one-time fallback to the DOM renderer if the GL
@@ -300,7 +291,6 @@ export default function TerminalView(props: {
     ro?.disconnect();
     offFocus?.();
     offTheme?.();
-    unregisterPeek?.();
     invoke("pty_kill", { id: props.id }).catch(() => {});
     term?.dispose();
   });

@@ -39,7 +39,6 @@ import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { liveStatuses } from "../../utils/sessionStatus";
-import { peekTab } from "../../utils/termPeek";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import styles from "./Terminal.module.css";
 
@@ -262,38 +261,6 @@ export default function Terminal(props: {
     if (relocated) notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
-
-  // Hover peek: after a dwell, a background tab shows its last few buffer lines
-  // in a portalled popover. Never on the active tab (its output is already on
-  // screen) and never mid-drag (the bar reorders on drag, and a popover chasing
-  // the pointer would fight it). `lines: null` means the tab has no mounted
-  // buffer yet, which renders as a defined empty state rather than a blank box.
-  const PEEK_DELAY_MS = 400;
-  const PEEK_LINES = 10;
-  const [peek, setPeek] = createSignal<{ id: string; left: number; top: number; lines: string[] | null } | null>(null);
-  let peekTimer: number | undefined;
-
-  function cancelPeek() {
-    if (peekTimer !== undefined) clearTimeout(peekTimer);
-    peekTimer = undefined;
-    setPeek(null);
-  }
-  function schedulePeek(t: OpenTerm, el: HTMLElement) {
-    cancelPeek();
-    if (t.id === visibleId()) return;
-    peekTimer = window.setTimeout(() => {
-      // Re-check on fire: the tab may have become active, or a pane drag may
-      // have started, during the dwell. (`body.dragging` is the splitter drag;
-      // this bar has no tab dragging of its own, reordering goes through the
-      // overflow menu.)
-      if (t.id === visibleId() || document.body.classList.contains("dragging")) return;
-      // Measured now rather than at hover: the bar can reflow during the dwell
-      // (a tab opening or closing), which would leave the popover misplaced.
-      const r = el.getBoundingClientRect();
-      setPeek({ id: t.id, left: r.left, top: r.bottom + 4, lines: peekTab(t.id, PEEK_LINES) });
-    }, PEEK_DELAY_MS);
-  }
-  onCleanup(cancelPeek);
 
   // The "+ Claude ›" split button's dropdown of yolo-mode launchers. The menu is
   // portalled to <body> and anchored to the caret because the tab bar clips
@@ -728,12 +695,7 @@ export default function Terminal(props: {
         renderTab={(t) => (
           <div
             class={`${styles.termTab} ${visibleId() === t.id ? styles.active : ""}`}
-            onClick={() => {
-              cancelPeek();
-              focusTab(t.workspace, t.id);
-            }}
-            onMouseEnter={(e) => schedulePeek(t, e.currentTarget)}
-            onMouseLeave={cancelPeek}
+            onClick={() => focusTab(t.workspace, t.id)}
             title={t.cwd}
           >
             <span class="tab-label">{t.title}</span>
@@ -895,25 +857,6 @@ export default function Terminal(props: {
           </div>
         </Show>
       </div>
-
-      {/* Portalled for the same reason as the launch menu: the tab bar clips
-          overflow, so a popover rendered inside it would be cut off. */}
-      <Show when={peek()}>
-        <Portal>
-          <div class={styles.termPeek} style={{ left: `${peek()!.left}px`, top: `${peek()!.top}px` }}>
-            <Show
-              when={peek()!.lines?.length}
-              fallback={
-                <div class={styles.termPeekEmpty}>
-                  {peek()!.lines === null ? "Not started yet" : "No output yet"}
-                </div>
-              }
-            >
-              <For each={peek()!.lines}>{(line) => <div class={styles.termPeekLine}>{line}</div>}</For>
-            </Show>
-          </div>
-        </Portal>
-      </Show>
     </div>
   );
 }
