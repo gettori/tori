@@ -25,6 +25,7 @@ import {
   Bot,
   FileCodeCorner,
   FileTypeCorner,
+  FileHeart,
   Files,
   GitCompare,
   TriangleAlert,
@@ -144,8 +145,8 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   }
   const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
-  // Markdown preview toggle, per tab id (so switching tabs remembers each
-  // .md file's own source-vs-preview choice).
+  // Source-vs-render preview toggle, per tab id (so switching tabs remembers
+  // each previewable file's own choice: .md renders to HTML, .svg to its image).
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
@@ -163,7 +164,14 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
     const t = activeTab();
     return t?.kind === "file" && t.path.toLowerCase().endsWith(".md");
   };
-  const showingPreview = () => isMarkdownTab() && previewOn().has(activeId() ?? "");
+  const isSvgTab = () => {
+    const t = activeTab();
+    return t?.kind === "file" && t.path.toLowerCase().endsWith(".svg");
+  };
+  // Tabs that carry a source-vs-render toggle: Markdown renders to HTML, SVG
+  // renders to its image. Everything else edits in place with no toggle.
+  const isPreviewableTab = () => isMarkdownTab() || isSvgTab();
+  const showingPreview = () => isPreviewableTab() && previewOn().has(activeId() ?? "");
   function togglePreview() {
     const id = activeId();
     if (!id) return;
@@ -670,18 +678,21 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           )}
           trailing={
             <>
-              <Show when={isMarkdownTab()}>
+              <Show when={isPreviewableTab()}>
                 <button
                   class={`${styles.followToggle} ${styles.iconToggle}`}
                   onClick={togglePreview}
                   aria-pressed={showingPreview()}
                   title={
                     showingPreview()
-                      ? "Showing rendered Markdown. Click to edit the source."
-                      : "Preview: render this Markdown file instead of editing its source."
+                      ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
+                      : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
                   }
                 >
-                  <Icon icon={showingPreview() ? FileCodeCorner : FileTypeCorner} size={15} />
+                  <Icon
+                    icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner}
+                    size={15}
+                  />
                 </button>
               </Show>
               <button
@@ -723,7 +734,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
             <ImageView path={activeId()!} />
           </Show>
           <Show when={showingPreview()}>
-            <MarkdownPreview path={activeId()!} />
+            <Show when={isSvgTab()} fallback={<MarkdownPreview path={activeId()!} />}>
+              <ImageView path={activeId()!} />
+            </Show>
           </Show>
         </Show>
         <Show when={activeTranscript()}>
