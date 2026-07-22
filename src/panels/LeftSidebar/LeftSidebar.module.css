@@ -281,6 +281,23 @@
   height: 10px;
 }
 
+/* Selected unit: gild the whole node rail (the full-height ::before), so the
+   highlight runs down past every session in the branch, not just the branch row.
+   The branch row's own gold segment (.row.branch.sel::before) sits on the same x
+   and just overlaps the top of this. */
+.branchNode.railSel::before {
+  width: 2px;
+  background: var(--brand-bar);
+}
+
+/* The last branch normally truncates its rail to the elbow. When it is selected
+   AND expanded, its sessions need the rail beside them, so let the rail span the
+   node again (down to the last session); a collapsed last branch keeps the stub. */
+.branchNode.railSel.railOpen:last-child::before {
+  bottom: 0;
+  height: auto;
+}
+
 /* Branch hover: an inset fill that hugs the branch name with the standard 8px of
    left padding (it starts 8px before the name, just past the elbow, so the text
    is never jammed against the pill edge) and never reaches the far left. Sits

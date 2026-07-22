@@ -2356,7 +2356,15 @@ export default function LeftSidebar(props: {
                     {(u) => {
                       const uopen = () => expanded().has(ukey(g, p, u));
                       return (
-                        <div class={`node ${styles.branchNode}`}>
+                        <div
+                          class={`node ${styles.branchNode}`}
+                          classList={{
+                            // Gild the whole node rail (branch + its sessions), not
+                            // just the branch row, while this unit is selected.
+                            [styles.railSel]: unitSelected(u),
+                            [styles.railOpen]: uopen(),
+                          }}
+                        >
                           <div
                             class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
                             onClick={() => {
