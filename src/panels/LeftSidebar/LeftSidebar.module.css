@@ -429,8 +429,11 @@
   display: inline-flex;
   align-items: center;
   gap: calc(3px * var(--ui-density));
-  flex: 0 1 auto;
-  min-width: 0;
+  /* Never shrink: it is icon-only (fixed-size glyph), so letting it shrink would
+     squeeze its box below the glyph and the row's overflow:hidden would clip the
+     icon off the right edge. Like .when/.badge, it holds its width and the label
+     ellipsizes instead. */
+  flex: 0 0 auto;
   font-size: calc(10px * var(--ui-scale));
 }
 .statusIndicator :global(svg) {
@@ -464,7 +467,9 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: calc(9px * var(--ui-scale));
+  /* Sizes the count only (the glyph is a fixed-size `size` prop), now shown as a
+     bare number with no "x" prefix, so a touch larger to stay legible on its own. */
+  font-size: calc(11px * var(--ui-scale));
   font-variant-numeric: tabular-nums;
 }
 .statusBubbleItem.waitingForApproval {
@@ -538,6 +543,16 @@
   margin-left: 6px;
 }
 .row .touchedCount + .when {
+  margin-left: 6px;
+}
+
+/* The live-status glyph shares the trailing cluster's push-right convention:
+   margin-left:auto only when it leads, a fixed gap once a badge / touched-count /
+   unseen-dot already claimed the auto and pushed the cluster right. Without this
+   two auto margins would split the free space and drift the pair apart. */
+.row .badge + .statusIndicator,
+.row .touchedCount + .statusIndicator,
+.row .unseenDot + .statusIndicator {
   margin-left: 6px;
 }
 
