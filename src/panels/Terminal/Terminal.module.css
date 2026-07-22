@@ -205,7 +205,7 @@
   /* Slightly over 1 cell wider than the visible area; the extra lands in the
      overhang that .termHostWrap clips, absorbing xterm's sub-cell fit remainder
      on the right. (Only covers < 1 cell; a larger gap means a stale fit.) */
-  margin-right: calc(-12px * var(--ui-density));
+  margin-right: calc(-8px * var(--ui-density));
   background: var(--pane-bg);
 }
 
@@ -253,7 +253,7 @@
      padding when computing rows/cols, so the bottom row isn't clipped. Padding
      on the host wrapper is NOT accounted for and causes the cut. */
   height: 100%;
-  padding: 0 0 calc(6px * var(--ui-density)) calc(6px * var(--ui-density));
+  padding: 0 0 calc(10px * var(--ui-density)) calc(10px * var(--ui-density));
   background: var(--pane-bg);
 }
 
