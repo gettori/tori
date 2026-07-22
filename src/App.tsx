@@ -12,11 +12,21 @@ import UpdatePill from "./components/UpdatePill/UpdatePill";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
-import { on as onEvent, OPEN_PALETTE, OPEN_QUICK_OPEN, TOGGLE_SHORTCUTS, type LiveTab } from "./utils/events";
+import {
+  on as onEvent,
+  OPEN_PALETTE,
+  OPEN_QUICK_OPEN,
+  TOGGLE_SHORTCUTS,
+  ZOOM_IN,
+  ZOOM_OUT,
+  ZOOM_RESET,
+  RELOAD_APP,
+  type LiveTab,
+} from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
-import { initSettings } from "./panels/Settings/settingsStore";
+import { initSettings, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -144,11 +154,19 @@ function App() {
   let offPalette: (() => void) | undefined;
   let offQuickOpen: (() => void) | undefined;
   let offShortcuts: (() => void) | undefined;
+  let offZoomIn: (() => void) | undefined;
+  let offZoomOut: (() => void) | undefined;
+  let offZoomReset: (() => void) | undefined;
+  let offReload: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
     offQuickOpen = onEvent(OPEN_QUICK_OPEN, () => setQuickOpen(true));
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => setShortcutsOpen((open) => !open));
+    offZoomIn = onEvent(ZOOM_IN, zoomIn);
+    offZoomOut = onEvent(ZOOM_OUT, zoomOut);
+    offZoomReset = onEvent(ZOOM_RESET, resetZoom);
+    offReload = onEvent(RELOAD_APP, () => location.reload());
     initSettings();
     // Mark shown on display, not on dismiss: a user who quits mid-welcome has
     // still seen it, and showing it again every launch would be the nag this
@@ -169,6 +187,10 @@ function App() {
     offPalette?.();
     offQuickOpen?.();
     offShortcuts?.();
+    offZoomIn?.();
+    offZoomOut?.();
+    offZoomReset?.();
+    offReload?.();
     document.body.classList.remove("dragging");
   });
 

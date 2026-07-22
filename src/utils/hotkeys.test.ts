@@ -45,10 +45,14 @@ describe("the canonical binding table", () => {
         "next-waiting",
         "project-search",
         "quick-open",
+        "reload",
         "shortcut-sheet",
         "tab-cycle",
         "tab-jump",
         "terminal-search",
+        "zoom-in",
+        "zoom-out",
+        "zoom-reset",
       ].sort(),
     );
   });
@@ -86,6 +90,12 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchHotkey(key("e", { meta: true, shift: true }))).toBe(true);
     expect(dispatchHotkey(key("Tab", { ctrl: true }))).toBe(true);
     expect(dispatchHotkey(key("3", { meta: true }))).toBe(true);
+    // Zoom: ⌘= and ⌘⇧+ both zoom in; ⌘- / ⌘_ zoom out; ⌘0 resets.
+    expect(dispatchHotkey(key("=", { meta: true }))).toBe(true);
+    expect(dispatchHotkey(key("+", { meta: true, shift: true }))).toBe(true);
+    expect(dispatchHotkey(key("-", { meta: true }))).toBe(true);
+    expect(dispatchHotkey(key("0", { meta: true }))).toBe(true);
+    expect(dispatchHotkey(key("r", { meta: true }))).toBe(true);
   });
 
   it("does NOT steal Cmd+P from a focused terminal", () => {
@@ -104,7 +114,8 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchHotkey(key("k"))).toBe(false);
     expect(dispatchHotkey(key("j", { meta: true, shift: true }))).toBe(false);
     expect(dispatchHotkey(key("Tab", { ctrl: true, shift: true }))).toBe(false);
-    expect(dispatchHotkey(key("0", { meta: true }))).toBe(false);
+    // ⌘0 resets zoom, but ⌘⇧0 is deliberately unbound.
+    expect(dispatchHotkey(key("0", { meta: true, shift: true }))).toBe(false);
   });
 
   it("carries the tab index on Cmd+1..9", () => {
