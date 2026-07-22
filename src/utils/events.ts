@@ -69,6 +69,16 @@ export type SetRightMode = { mode: "files" | "changes" | "search" | "session" | 
 // open). Consumed by Terminal.tsx.
 export const FOCUS_SESSION_TAB = "sway:focus-session-tab";
 export type FocusSessionTab = { tabId: string };
+
+// Payload-carrying event: the user clicked a terminal tab, so move the sidebar
+// selection to match it (the reverse of props.selected -> focusOrResume).
+// `sessionId` present -> select that session row; absent (a shell tab) -> select
+// the branch-unit at `folderPath`. Emitted ONLY on a user click, never from the
+// programmatic focus that a sidebar selection already drives, so the two can't
+// feed back into each other. Consumed by LeftSidebar.tsx. Command tabs (clone/
+// bootstrap) don't emit it.
+export const TERMINAL_TAB_FOCUSED = "sway:terminal-tab-focused";
+export type TerminalTabFocused = { folderPath: string; sessionId?: string };
 export const CLOSE_TAB = "sway:close-tab";
 export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";
