@@ -14,8 +14,9 @@ import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
 
-// Hidden from the tree (the watcher already ignores these too).
-const HIDDEN = new Set([".git", "node_modules"]);
+// Hidden from the tree. Only VCS internals stay fully out; gitignored dirs like
+// node_modules are shown (dimmed) rather than hidden, matching VS Code.
+const HIDDEN = new Set([".git"]);
 
 // When editable, the tree can create/rename/delete under a single containment
 // root (`.shared`). `root` is the boundary every fs mutation is scoped to; the
