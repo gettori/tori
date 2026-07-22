@@ -47,6 +47,16 @@ export const OPEN_QUICK_OPEN = "sway:open-quick-open";
 // an open, so the same key that summons it dismisses it.
 export const TOGGLE_SHORTCUTS = "sway:toggle-shortcuts";
 
+// Global UI zoom (Cmd+ / Cmd- / Cmd0), consumed by App.tsx, which drives the
+// zoom multiplier in settingsStore. Scales chrome, editor, and terminal together.
+export const ZOOM_IN = "sway:zoom-in";
+export const ZOOM_OUT = "sway:zoom-out";
+export const ZOOM_RESET = "sway:zoom-reset";
+
+// Reload the webview (Cmd+R), consumed by App.tsx. Reloads the frontend only,
+// not the Rust backend (that needs a full restart).
+export const RELOAD_APP = "sway:reload-app";
+
 // Payload-carrying event: switch the editor's right panel to a named mode
 // (the command palette's "toggle right-panel mode" actions). Editor.tsx's
 // existing fallback-to-files effect handles a mode the current selection

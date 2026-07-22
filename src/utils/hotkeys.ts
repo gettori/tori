@@ -10,13 +10,18 @@ import {
   OPEN_PALETTE,
   OPEN_QUICK_OPEN,
   TOGGLE_SHORTCUTS,
+  ZOOM_IN,
+  ZOOM_OUT,
+  ZOOM_RESET,
+  RELOAD_APP,
 } from "./events";
 
 /** Where a binding is listed in the Cmd+/ sheet. */
-export type BindingGroup = "navigate" | "search" | "terminal" | "session" | "help";
+export type BindingGroup = "navigate" | "view" | "search" | "terminal" | "session" | "help";
 
 export const GROUP_LABELS: Record<BindingGroup, string> = {
   navigate: "Navigate",
+  view: "View",
   search: "Search",
   terminal: "Terminal",
   session: "Sessions",
@@ -99,6 +104,46 @@ export const BINDINGS: Binding[] = [
     scope: "global",
     match: cmd("/"),
     run: () => emit(TOGGLE_SHORTCUTS),
+  },
+  {
+    id: "zoom-in",
+    keys: ["⌘", "+"],
+    label: "Increase font size",
+    group: "view",
+    scope: "global",
+    // Accept both ⌘= and ⌘⇧+ (same physical key): e.key is "=" unshifted, "+"
+    // shifted, so a user pressing either way zooms in.
+    match: (e) =>
+      e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "=" || e.key === "+"),
+    run: () => emit(ZOOM_IN),
+  },
+  {
+    id: "zoom-out",
+    keys: ["⌘", "−"],
+    label: "Decrease font size",
+    group: "view",
+    scope: "global",
+    match: (e) =>
+      e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "-" || e.key === "_"),
+    run: () => emit(ZOOM_OUT),
+  },
+  {
+    id: "zoom-reset",
+    keys: ["⌘", "0"],
+    label: "Reset font size",
+    group: "view",
+    scope: "global",
+    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "0",
+    run: () => emit(ZOOM_RESET),
+  },
+  {
+    id: "reload",
+    keys: ["⌘", "R"],
+    label: "Reload the app (frontend only)",
+    group: "view",
+    scope: "global",
+    match: cmd("r"),
+    run: () => emit(RELOAD_APP),
   },
   {
     id: "project-search",
