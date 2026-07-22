@@ -55,6 +55,12 @@ body.dragging {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  /* Tinted desk: the amber space wash bled into the top-left over the flat shell
+     fill. The transparent sidebar and topbar sit on this gradient; the raised
+     work-card floats above it. */
+  background:
+    radial-gradient(900px 600px at -10% -10%, var(--shell-glow), transparent 55%),
+    var(--bg);
 }
 
 .body {
@@ -64,14 +70,15 @@ body.dragging {
   width: 100%;
 }
 
-/* Full-width top bar living in the overlay title-bar strip */
+/* Full-width top bar living in the overlay title-bar strip. Transparent now, so
+   it reads as part of the shell rather than a distinct bar: the breadcrumb and
+   window controls float on the gradient above the raised work-card. */
 .topbar {
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
   min-height: 38px;
-  background: var(--pane-head-bg);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 
 .topbar > .toolbar {
@@ -113,6 +120,10 @@ body.dragging {
 
 .pane.sidebar {
   flex: 0 0 auto;
+  /* Blend into the shell rather than reading as a raised panel: the session
+     tree lives on the same gradient as the topbar, and only the terminal/editor
+     work-card is elevated. */
+  background: transparent;
 }
 
 .pane.detail-pane {
@@ -133,6 +144,18 @@ body.dragging {
 }
 
 .splitter:hover {
+  background: var(--brand);
+}
+
+/* Outer splitter (sidebar <-> work-card): a transparent gutter that forms the
+   left gap around the raised card. Only the hover accent hints it is draggable;
+   at rest it is part of the shell. */
+.body > .splitter {
+  flex-basis: 8px;
+  background: transparent;
+}
+
+.body > .splitter:hover {
   background: var(--brand);
 }
 
@@ -266,21 +289,55 @@ body.dragging {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Breathing room around the raised card. The left gap is the outer splitter,
+     so no padding-left here. */
+  padding: 6px 10px 10px 0;
 }
 
+/* The raised work-card: terminal + editor read as one elevated block floating
+   above the shell. Rounded, bordered, and dropped with a soft shadow; overflow
+   is clipped so the inner panes honour the rounded corners. */
 .work-split {
   flex: 1;
   display: flex;
   min-height: 0;
+  background: var(--pane-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--work-card-shadow);
+  overflow: hidden;
 }
 
+/* Inner panes are transparent so the card's single surface shows through; only
+   the divider between them separates terminal from editor. */
 .pane.terminal {
   flex: 1 1 auto;
   min-width: 0;
+  background: transparent;
 }
 
 .pane.editor {
   flex: 0 0 auto;
+  background: transparent;
+}
+
+/* Terminal <-> editor divider: a centered hairline inside the card rather than
+   a chunky bar, kept over a wider transparent hit area so it stays grabbable.
+   Brightens to the brand accent on hover. */
+.work-split > .splitter {
+  flex-basis: 5px;
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      var(--border) calc(50% - 0.5px),
+      var(--border) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+}
+
+.work-split > .splitter:hover {
+  background: var(--brand);
 }
 
 /* Shared tab-bar content (terminal + editor tabs) */

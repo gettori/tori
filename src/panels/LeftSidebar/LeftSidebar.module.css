@@ -21,15 +21,17 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(8px * var(--ui-density));
-  border-bottom: 1px solid var(--border);
 }
 
 .searchInput {
   flex: 1;
   min-width: 0;
-  background: var(--input-bg);
+  background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
+  /* Keep the caret visible on the transparent field: without this it inherits
+     and can wash out against the desk. */
+  caret-color: var(--brand);
   border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
@@ -39,9 +41,14 @@
     box-shadow var(--sway-duration-fast) ease;
 }
 
+/* Placeholder reads as a faint hint, not real content. */
+.searchInput::placeholder {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
 .searchInput:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
@@ -50,14 +57,18 @@
   flex: none;
 }
 
+/* Bottom-bar buttons (this gear, the space tiles, the new-space +) all share one
+   bare-icon variant: transparent fill and border so only the glyph shows at rest,
+   hover reveals the brand border (unchanged from before), and the selected/active
+   one drops to just a brand-tinted icon with no border or fill. */
 .gearBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 30px;
   height: 30px;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-dim);
   border-radius: var(--sway-radius-md);
   cursor: pointer;
@@ -65,10 +76,14 @@
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
 }
-.gearBtn:hover,
-.gearBtn.active {
+.gearBtn:hover {
   color: var(--text);
   border-color: var(--brand);
+}
+/* Active (menu open): brand-tinted icon only. Border stays transparent, so a
+   hover over the open gear still gets today's brand border on top. */
+.gearBtn.active {
+  color: var(--brand);
 }
 
 /* Opens upward + left-aligned: the gear now lives at the bottom of the sidebar
@@ -125,7 +140,12 @@
 .treeScroll {
   flex: 1;
   overflow: auto;
-  padding: calc(10px * var(--ui-density)) 0;
+  /* Reserve the scrollbar gutter permanently (transparent at rest, thumb only
+     on hover) so the row width - and the whole list - never shifts when the bar
+     appears. Modern WebKit dropped `overflow: overlay`, so a genuinely floating
+     custom bar isn't available; a stable gutter is the reliable no-jump fix. */
+  scrollbar-gutter: stable;
+  padding: 0 0 calc(10px * var(--ui-density));
   min-height: 0;
 }
 
@@ -135,7 +155,9 @@
   align-items: center;
   gap: calc(4px * var(--ui-density));
   height: 30px;
-  margin: 0 calc(6px * var(--ui-density));
+  /* Left inset kept; right inset dropped so rows run flush toward the reserved
+     scrollbar gutter instead of doubling the right-hand gap. */
+  margin: 0 0 0 calc(6px * var(--ui-density));
   padding: 0 calc(8px * var(--ui-density));
   border-radius: var(--sway-radius-md);
   cursor: pointer;
@@ -146,6 +168,39 @@
 
 .row:hover {
   background: var(--hover);
+}
+
+/* ---- Sticky group headers (VS Code-style "sticky scroll") ----
+   As the tree scrolls, each project/branch header pins to the top so the
+   ancestor context of the topmost visible row stays on screen, and they stack
+   (project above branch). Pure CSS: every header is `position: sticky` within
+   its OWN node - the project row within `.node`, the branch row within
+   `.branchNode` - so a header unpins exactly when its subtree has scrolled past,
+   and the next sibling's header takes over. The branch offset equals one row
+   height (`.row` is a fixed 30px) so it lands just under the project header.
+
+   Headers carry the opaque desk bg so rows scrolling beneath them do not bleed
+   through; the tree already sits on `--bg`, so at rest they read the same as the
+   surrounding rows. `.node`/`.branchNode` are static and their only overflow is
+   the scroll container itself, so nothing clips the stickiness. */
+.row.project {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg);
+}
+.row.branch {
+  position: sticky;
+  top: 30px;
+  /* Opaque only from the label inward; the strip to the left of the label (where
+     the branch-graph rail lives) stays transparent so the rail shows through and
+     branches stay connected, even while this header is pinned. Scrolling session
+     content is indented past the label, so the opaque half still hides it. */
+  background: linear-gradient(
+    to right,
+    transparent var(--branch-label-x),
+    var(--bg) var(--branch-label-x)
+  );
 }
 
 /* Session hover + selection share one inset fill slot that begins where the
@@ -210,23 +265,26 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--border);
+  background: var(--graph-rail);
 }
 
 /* The last branch terminates the rail at its own elbow (row centre), so nothing
    dangles below the final item, even when it is expanded. */
 .branchNode:last-child::before {
   bottom: auto;
-  height: 15px;
+  height: 10px;
 }
 
 /* Branch hover: an inset fill that hugs the branch name with the standard 8px of
    left padding (it starts 8px before the name, just past the elbow, so the text
    is never jammed against the pill edge) and never reaches the far left. Sits
    behind the content; the row owns a stacking context for the z-index -1 fill.
-   The selected state repurposes this same ::before as the gold rail segment. */
+   The selected state repurposes this same ::before as the gold rail segment.
+   z-index (2) also lifts the sticky branch header above the session rows that
+   scroll beneath it, and still gives the z-index:-1 ::before its stacking
+   context. */
 .row.branch {
-  z-index: 0;
+  z-index: 2;
 }
 .row.branch::before {
   content: "";
@@ -255,8 +313,8 @@
   top: 0;
   width: calc(9px * var(--ui-density));
   height: 15px;
-  border-left: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--graph-rail);
+  border-bottom: 1px solid var(--graph-rail);
   border-bottom-left-radius: calc(8px * var(--ui-density));
 }
 
@@ -352,9 +410,9 @@
 /* Antigravity-style per-state status indicator (Phase 1): sits in the trailing
    time slot (see .row.session .when below), replacing ago(last_active) for any
    session with a detectable live status; a dead session keeps the ago time.
-   The icon (.statusIcon, via Icon's default size) never shrinks; .statusLabel
-   is the part that truncates first at narrow widths, title carries the label
-   regardless. executing = active PTY (spinning); waitingForApproval = quiet
+   Icon-only now (no text label) - the title still carries the human label, and
+   each state gets its own playful hue (see the --status-* tokens) so the four
+   glyphs read at a glance. executing = active PTY; waitingForApproval = quiet
    PTY + a pending tool_use in the transcript tail (Finding A floor); idle = a
    live tab with a confirmed-running, quiet agent; running = confirmed running
    with no open tab (resumed elsewhere). */
@@ -370,38 +428,23 @@
 .statusIndicator :global(svg) {
   flex: none;
 }
-.statusLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .statusIndicator.executing {
-  color: var(--status-live);
+  color: var(--status-progress);
 }
 .statusIndicator.waitingForApproval {
   color: var(--status-needs-you);
 }
 .statusIndicator.idle {
-  color: var(--status-live);
-  opacity: 0.75;
+  color: var(--status-idle);
 }
 .statusIndicator.running {
-  color: var(--text-dim);
-}
-
-/* prefers-reduced-motion is handled globally (src/styles/base.css collapses
-   every animation-duration/iteration-count app-wide), not re-implemented here. */
-.statusSpin {
-  animation: statusSpin 1s linear infinite;
-}
-@keyframes statusSpin {
-  to { transform: rotate(360deg); }
+  color: var(--status-running);
+  opacity: 0.8;
 }
 
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
-   space's nearest rendered ancestor (Waiting-for-approval + Executing only;
-   Idle/Running stay row-local so an expanded parent never wears a stale
-   badge). Waiting always renders first. */
+   space's nearest rendered ancestor. Shows all four states, each with its own
+   glyph + hue, in priority order: waiting, executing, idle, running. */
 .statusBubble {
   display: inline-flex;
   align-items: center;
@@ -420,7 +463,14 @@
   color: var(--status-needs-you);
 }
 .statusBubbleItem.executing {
-  color: var(--status-live);
+  color: var(--status-progress);
+}
+.statusBubbleItem.idle {
+  color: var(--status-idle);
+}
+.statusBubbleItem.running {
+  color: var(--status-running);
+  opacity: 0.8;
 }
 
 /* Space-tile badge: corner-pinned rollup for sessions hidden inside a
@@ -503,25 +553,6 @@
   margin-left: 6px;
 }
 
-.row .contextMeter {
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 28px;
-  height: 4px;
-  margin-left: 6px;
-  border-radius: 2px;
-  background: var(--border);
-  overflow: hidden;
-}
-.row .contextMeterFill {
-  display: block;
-  height: 100%;
-  background: var(--text-dim);
-}
-.row .contextMeterFill.contextMeterAmber {
-  background: var(--warn);
-}
-
 .row .badge.hint {
   color: var(--text-dim);
   background: var(--fill-subtle);
@@ -539,10 +570,28 @@
    tile per space; the tree above renders only the active space's projects). The
    bar itself does not clip, so the gear menu can open upward past its top edge. */
 .spaceBar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
-  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density))
+    calc(16px * var(--ui-density));
+}
+
+/* Divider from the tree above, inset 8px from each edge so it does not run into
+   the sidebar's corners. A pseudo-element rather than border-top, which a padded
+   box cannot inset. */
+.spaceBar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(8px * var(--ui-density));
+  right: calc(8px * var(--ui-density));
+  height: 1px;
+  background: var(--border);
+  /* Half the --border weight: this one divider reads a touch softer than the
+     rest of the hairlines. */
+  opacity: 0.5;
 }
 
 /* The centered, scrollable middle region holding the space tiles. Grows to fill
@@ -554,7 +603,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(3px * var(--ui-density));
   overflow-x: auto;
 }
 
@@ -577,8 +626,8 @@
   justify-content: center;
   width: 30px;
   height: 30px;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--sway-radius-md);
   color: var(--text-dim);
   font-size: calc(13px * var(--ui-scale));
@@ -586,17 +635,16 @@
   cursor: pointer;
   transition:
     color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+    border-color var(--sway-duration-fast) ease;
 }
 .space:hover {
   color: var(--text);
   border-color: var(--brand);
 }
+/* Active space: brand-tinted icon only, no border or fill. Colour only, so a
+   hover on the active tile still layers today's brand border on top. */
 .space.active {
   color: var(--brand);
-  border-color: var(--brand);
-  background: var(--brand-subtle);
 }
 /* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
    bar on the side of the tile the drop would land against. */
@@ -611,6 +659,8 @@
 }
 
 /* The "new space" tile, pinned to the trailing edge of the bar. */
+/* The new-space + keeps its dashed-outline affordance (it reads as "add a slot"),
+   unlike the fill-less gear/space tiles above. */
 .spaceAdd {
   flex: none;
   display: inline-flex;

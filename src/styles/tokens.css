@@ -40,11 +40,19 @@
        The dark chrome palette, a deep cool navy rather than a neutral charcoal.
        Sampled from the premium reference; the dark semantic tokens below select
        these instead of the neutral grays. Light theme keeps the gray ramp. */
-    --sway-navy-950: #0e141b; /* app root bg (behind panes) */
-    --sway-navy-900: #111720; /* pane bg */
+    --sway-navy-950: #15171c; /* window / desk bg (the tinted shell behind everything) */
+    --sway-navy-900: #1b1e25; /* card: the raised terminal/editor content panel */
     --sway-navy-850: #1b232e; /* raised head / input field */
-    --sway-navy-800: #212b37; /* hover / active row */
-    --sway-navy-700: #232c38; /* border */
+    --sway-navy-800: #252a34; /* card2: raised chips / active tabs, hover / active row */
+    --sway-navy-700: #232c38; /* legacy solid border (superseded by --sway-navy-line for chrome dividers) */
+    /* Cool blue-white hairline: the single divider treatment across the flat UI
+       (panel border, terminal<->editor split, tree/header rules). Depth comes
+       from the one floating card, not from stacking borders. */
+    --sway-navy-line: rgba(200, 215, 255, 0.08);
+    /* A slightly stronger stop of the same cool hairline, for structural lines
+       that must stay legible but still read as quiet (the branch/worktree graph
+       rail). Kept well under the placeholder's weight so it never shouts. */
+    --sway-navy-line-strong: rgba(200, 215, 255, 0.13);
     --sway-fg-navy: #e6e9f0; /* primary text (cool near-white) */
     --sway-fg-navy-dim: #8b929e; /* dim text (cool grey) */
 
@@ -92,8 +100,9 @@
 
     /* ---- Radii ---- */
     --sway-radius-sm: calc(3px * var(--ui-radius-scale));
-    --sway-radius-md: calc(5px * var(--ui-radius-scale));
-    --sway-radius-lg: calc(8px * var(--ui-radius-scale));
+    --sway-radius-md: calc(8px * var(--ui-radius-scale));
+    --sway-radius-lg: calc(10px * var(--ui-radius-scale));
+    --sway-radius-xl: calc(12px * var(--ui-radius-scale)); /* the floating work-card */
     --sway-radius-pill: 999px;
 
     /* ---- Border widths ---- */
@@ -131,7 +140,17 @@
     --bg: var(--sway-navy-950);
     --pane-bg: var(--sway-navy-900);
     --pane-head-bg: var(--sway-navy-850);
-    --border: var(--sway-navy-700);
+    --border: var(--sway-navy-line);
+    --border-strong: var(--sway-navy-line-strong);
+    /* Branch/worktree graph rail. OPAQUE, not the translucent hairline: the rail
+       and each row's elbow share the same pixels for the elbow's vertical run, so
+       a translucent stroke would double its alpha there and render that segment
+       brighter. This is the flat composite of the dim hairline over the desk, so
+       overlapping strokes stay one consistent colour. */
+    --graph-rail: #2c313b;
+    /* App-wide scrollbar thumb: dim and off the face, brightening only on hover. */
+    --scrollbar-thumb: rgba(200, 215, 255, 0.11);
+    --scrollbar-thumb-hover: rgba(200, 215, 255, 0.2);
     --text: var(--sway-fg-navy);
     --text-dim: var(--sway-fg-navy-dim);
     --accent: var(--sway-blue-500);
@@ -187,11 +206,15 @@
     /* Neutral low-contrast fill for non-status badges. */
     --fill-subtle: rgba(128, 128, 128, 0.12);
 
-    /* Session status dot, dark. Its own semantic family (not --brand-*, not the
+    /* Session status indicators, dark. A playful, well-separated hue per state
+       (violet / rose / sky / green) so the four glyphs read at a glance without
+       a text label. Its own semantic family (not --brand-*, not the
        theme-following --accent, and unmapped in vscodeMap.ts) so an imported
        VS Code theme can never repaint the running indicator. */
-    --status-live: #3fb950;
-    --status-needs-you: #d19a66;
+    --status-progress: #c084fc; /* violet: agent actively working */
+    --status-needs-you: #fb7185; /* rose: blocked, waiting on you */
+    --status-idle: #2dd4bf; /* teal: live tab, quiet and ready */
+    --status-running: #7d8ba1; /* faded blue-gray: detached, in the background */
 
     /* Brand (champagne gold), dark. A fixed identity that theme-import does NOT
        repaint (it maps onto --accent/--sel/--bg, never --brand-*). Chrome uses
@@ -232,6 +255,15 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+    /* Space tint, dark: the amber accent washed into the top-left of the desk so
+       the transparent sidebar/topbar sit on a warm gradient rather than a flat
+       fill. Swap the RGB per project to re-tint the space. Consumed only by the
+       .app background gradient. */
+    --shell-glow: rgba(217, 164, 104, 0.14);
+    /* Drop shadow for the single floating work-card. The whole UI is otherwise
+       flat (hairline dividers, no stacked shadows): this is where the depth is. */
+    --work-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   }
 
   /* ---- Semantic tokens, light ---- */
@@ -240,6 +272,13 @@
     --pane-bg: var(--sway-gray-50);
     --pane-head-bg: var(--sway-gray-150);
     --border: var(--sway-gray-200);
+    --border-strong: rgba(23, 23, 23, 0.13);
+    /* Graph rail, light: opaque composite of the dim hairline over white, so the
+       rail/elbow overlap never doubles alpha. See the dark block. */
+    --graph-rail: #dcdcdc;
+    /* App-wide scrollbar thumb, light: dim neutral, off the face. */
+    --scrollbar-thumb: rgba(23, 23, 23, 0.14);
+    --scrollbar-thumb-hover: rgba(23, 23, 23, 0.26);
     --text: var(--sway-fg-light);
     --text-dim: var(--sway-gray-500);
     --accent: var(--sway-blue-600);
@@ -294,10 +333,12 @@
     --syn-type: #267f99;
     --syn-variable: #001080;
 
-    /* Session status dot, light. Same fixed identity as dark - see the dark
-       block's comment. */
-    --status-live: #1a7f37;
-    --status-needs-you: #9a6700;
+    /* Session status indicators, light. Darker stops of the same four playful
+       hues so they stay legible on a bright surface - see the dark block. */
+    --status-progress: #7c3aed; /* violet */
+    --status-needs-you: #e11d48; /* rose */
+    --status-idle: #0d9488; /* teal */
+    --status-running: #64748b; /* faded blue-gray */
 
     /* Brand (champagne gold), light. Darker ramp stops so the gold stays legible
        on light chrome (theme-import can repaint chrome light today), and a softer
@@ -348,6 +389,13 @@
     --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.08);
     --shadow-md: 0 4px 12px rgba(23, 23, 23, 0.12);
     --shadow-lg: 0 12px 32px rgba(23, 23, 23, 0.18);
+
+    /* Shell glow, light: a faint warm-neutral lift from the top of the app root.
+       Kept very subtle so the bright shell stays clean. */
+    --shell-glow: rgba(23, 23, 23, 0.04);
+    /* Card elevation, light: a soft low drop so the work-card reads as raised
+       without the heavy dark ring the dark theme needs. */
+    --work-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
   }
 
   /* ---- Spacing conventions (two-tier density) ----

@@ -48,7 +48,7 @@ import {
   type LiveSessionDot,
 } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
-import { findAgent, resolveContextWindow, resumeCommand } from "../../utils/agents";
+import { findAgent, resumeCommand } from "../../utils/agents";
 import { copyText } from "../../utils/clipboard";
 import {
   statusFromDot,
@@ -66,7 +66,7 @@ import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import {
-  Settings,
+  FolderCog,
   FolderPlus,
   Pin,
   FolderOpen,
@@ -76,10 +76,10 @@ import {
   GitFork,
   ChevronDown,
   Plus,
-  LoaderCircle,
-  CircleAlert,
+  ChevronsLeftRightEllipsis,
+  MessageCircleQuestion,
   Check,
-  Circle,
+  CircleDashed,
 } from "lucide-solid";
 import type { LucideIcon } from "lucide-solid";
 import styles from "./LeftSidebar.module.css";
@@ -494,6 +494,28 @@ export default function LeftSidebar(props: {
   }
   createEffect(on(() => props.liveTabs, () => void refreshTailStates()));
 
+  // Re-read one session's tail state on demand. Used off a PTY liveness edge:
+  // the hooks-status file carrying claude's ground-truth status isn't
+  // file-watched, so without this the UI only refreshes on a transcript write
+  // (now trailing-debounced), leaving a stale `blocked-candidate` pinned after
+  // the user answers - which flaps the dot needsYou<->working on every TUI
+  // redraw and re-fires the notification each time.
+  async function refreshTailStateForSession(sessionId: string) {
+    const t = (props.liveTabs ?? []).find((t) => t.kind === "agent" && t.sessionId === sessionId);
+    if (!t) return;
+    const meta = Object.values(sessions())
+      .flat()
+      .find((s) => s.id === sessionId);
+    if (!meta) return;
+    const agent = meta.agent === "pi" ? "pi" : "claude";
+    const state = await invoke<TailState>("session_tail_state", {
+      id: meta.id,
+      path: meta.path,
+      agent,
+    }).catch(() => null);
+    if (state) setTailStates((m) => ({ ...m, [sessionId]: state }));
+  }
+
   // Turn-level checkpoints (Finding E): snapshot the working tree at each new
   // human prompt, live-tab sessions only, gated by the checkpoints setting.
   // Reuses the same live-tab x sessions() join as refreshTailStates above;
@@ -608,10 +630,10 @@ export default function LeftSidebar(props: {
   createEffect(() => notePresence(liveSessionDots()));
   createEffect(() => setLiveStatuses(liveSessionStatuses()));
 
-  // Rollup helper: the bubbling-state counts among every live session that
-  // matches `pred`, for a collapsed branch/project row or a non-active space
-  // tile's badge (Waiting-for-approval + Executing only; Idle/Running stay
-  // row-local, so an expanded parent never wears a stale badge).
+  // Rollup helper: the per-state counts among every live session that matches
+  // `pred`, for a collapsed branch/project row or a non-active space tile's
+  // badge (all four states - waiting, executing, idle, running - each with its
+  // own glyph + hue).
   function bubbleFor(pred: (s: LiveSessionStatus) => boolean) {
     return rollupStatuses(liveSessionStatuses().filter(pred));
   }
@@ -630,13 +652,13 @@ export default function LeftSidebar(props: {
   function statusGlyph(status: SessionStatus) {
     switch (status) {
       case "executing":
-        return <Icon icon={LoaderCircle} size={12} class={styles.statusSpin} />;
+        return <Icon icon={ChevronsLeftRightEllipsis} size={14} />;
       case "waitingForApproval":
-        return <Icon icon={CircleAlert} size={12} />;
+        return <Icon icon={MessageCircleQuestion} size={14} />;
       case "idle":
-        return <Icon icon={Check} size={12} />;
+        return <Icon icon={Check} size={14} />;
       case "running":
-        return <Icon icon={Circle} size={12} />;
+        return <Icon icon={CircleDashed} size={14} />;
     }
   }
 
@@ -648,7 +670,6 @@ export default function LeftSidebar(props: {
     return (
       <span class={`${styles.statusIndicator} ${styles[status]}`} title={STATUS_LABEL[status]}>
         {statusGlyph(status)}
-        <span class={styles.statusLabel}>{STATUS_LABEL[status]}</span>
       </span>
     );
   }
@@ -657,19 +678,31 @@ export default function LeftSidebar(props: {
   // row), then Executing, each with an xN count when more than one session
   // shares the state. Renders nothing when neither count is present.
   function statusBubble(r: Rollup) {
-    if (!r.waitingForApproval && !r.executing) return null;
+    if (!r.waitingForApproval && !r.executing && !r.idle && !r.running) return null;
     return (
       <span class={styles.statusBubble}>
         <Show when={r.waitingForApproval}>
           <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title="Waiting for approval">
-            <Icon icon={CircleAlert} size={11} />
+            <Icon icon={MessageCircleQuestion} size={14} />
             <Show when={r.waitingForApproval > 1}>x{r.waitingForApproval}</Show>
           </span>
         </Show>
         <Show when={r.executing}>
           <span class={`${styles.statusBubbleItem} ${styles.executing}`} title="Executing">
-            <Icon icon={LoaderCircle} size={11} class={styles.statusSpin} />
+            <Icon icon={ChevronsLeftRightEllipsis} size={14} />
             <Show when={r.executing > 1}>x{r.executing}</Show>
+          </span>
+        </Show>
+        <Show when={r.idle}>
+          <span class={`${styles.statusBubbleItem} ${styles.idle}`} title="Idle">
+            <Icon icon={Check} size={14} />
+            <Show when={r.idle > 1}>x{r.idle}</Show>
+          </span>
+        </Show>
+        <Show when={r.running}>
+          <span class={`${styles.statusBubbleItem} ${styles.running}`} title="Running">
+            <Icon icon={CircleDashed} size={14} />
+            <Show when={r.running > 1}>x{r.running}</Show>
           </span>
         </Show>
       </span>
@@ -771,10 +804,6 @@ export default function LeftSidebar(props: {
   // component fetches what it needs). null until the fetch resolves, so a
   // stale count from the previously-selected session never flashes on the row.
   const [touchedCount, setTouchedCount] = createSignal<number | null>(null);
-  // Context meter (Phase 3): context_tokens + model come from the same
-  // session_detail call as touchedCount, so no extra fetch is added.
-  const [contextTokens, setContextTokens] = createSignal<number | null>(null);
-  const [sessionModel, setSessionModel] = createSignal<string | null>(null);
   // Guards against an out-of-order response: a slower fetch for a
   // previously-selected (larger) session resolving after a newer, faster one
   // must not overwrite the count with stale data.
@@ -783,44 +812,13 @@ export default function LeftSidebar(props: {
   async function loadTouchedCount(s: SessionMeta) {
     touchedCountFor = s.id;
     setTouchedCount(null);
-    setContextTokens(null);
-    setSessionModel(null);
     const agent = s.agent === "pi" ? "pi" : "claude";
-    const detail = await invoke<{ touched_count: number; context_tokens: number; model: string | null }>(
+    const detail = await invoke<{ touched_count: number }>(
       "session_detail",
       { path: s.path, agent },
     ).catch(() => null);
     if (touchedCountFor !== s.id) return; // a newer selection already started its own fetch
     setTouchedCount(detail?.touched_count ?? null);
-    setContextTokens(detail?.context_tokens ?? null);
-    setSessionModel(detail?.model ?? null);
-  }
-
-  // Context meter (Phase 3): a fill bar for the selected session row, sourced
-  // from the launching adapter's own declared context_window (ADAPTERS.md),
-  // not Toolbar's separate OpenRouter-backed gauge. Hidden entirely when the
-  // adapter declares no window (resolveContextWindow returns null) - never a
-  // guessed capacity.
-  function contextMeter() {
-    const tokens = contextTokens();
-    if (tokens === null) return null;
-    const sel = props.selected;
-    const agentId = sel?.agent === "pi" ? "pi" : "claude";
-    const ctxWindow = resolveContextWindow(findAgent(agentId), sessionModel());
-    if (!ctxWindow) return null;
-    const pct = Math.max(0, Math.min(100, (tokens / ctxWindow) * 100));
-    return (
-      <span
-        class={styles.contextMeter}
-        title={`Context: ${Math.round(pct)}% of ${ctxWindow.toLocaleString()}`}
-      >
-        <span
-          class={styles.contextMeterFill}
-          classList={{ [styles.contextMeterAmber]: pct >= 80 }}
-          style={{ width: `${pct}%` }}
-        />
-      </span>
-    );
   }
 
   function openDeleteSpace(g: Space) {
@@ -1967,7 +1965,6 @@ export default function LeftSidebar(props: {
                       {touchedCount()}
                     </span>
                   </Show>
-                  <Show when={props.selected?.sessionId === s.id}>{contextMeter()}</Show>
                   <Show when={isUnseen(viewStamps(), s, props.selected?.sessionId)}>
                     <span class={styles.unseenDot} title="New activity since you last looked" />
                   </Show>
@@ -2081,7 +2078,17 @@ export default function LeftSidebar(props: {
     });
     unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
       "pty://activity",
-      (e) => setPtyActivity((m) => ({ ...m, [e.payload.id]: e.payload.state })),
+      (e) => {
+        const prev = ptyActivity()[e.payload.id];
+        setPtyActivity((m) => ({ ...m, [e.payload.id]: e.payload.state }));
+        // A liveness edge is exactly when the agent's status can flip, and the
+        // hooks-status file that carries claude's truth isn't file-watched, so
+        // this edge is our refresh trigger (see refreshTailStateForSession).
+        if (prev !== e.payload.state) {
+          const tab = (props.liveTabs ?? []).find((t) => t.id === e.payload.id);
+          if (tab?.sessionId) void refreshTailStateForSession(tab.sessionId);
+        }
+      },
     );
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
@@ -2353,7 +2360,7 @@ export default function LeftSidebar(props: {
               title="Sidebar actions"
               onClick={() => setGearOpen(!gearOpen())}
             >
-              <Icon icon={Settings} />
+              <Icon icon={FolderCog} />
             </button>
             <Show when={gearOpen()}>
               <div class={styles.gearMenu}>
