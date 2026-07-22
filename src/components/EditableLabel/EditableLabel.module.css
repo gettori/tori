@@ -1,0 +1,17 @@
+/* Inline rename field. Inherits the label's font/flex slot (the caller passes
+   its own class alongside this one) and resets the native input chrome so it
+   reads as the label turning editable in place, not a form control. */
+.input {
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--brand);
+  border-radius: var(--sway-radius-sm);
+  padding: 0 calc(3px * var(--ui-density));
+  margin: 0;
+  outline: none;
+  /* Sit in the same box as the label it replaces without nudging row height. */
+  height: calc(18px * var(--ui-scale));
+  line-height: calc(18px * var(--ui-scale));
+}

@@ -14,6 +14,7 @@ import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import Toasts, { type Toast } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
+import EditableLabel from "../../components/EditableLabel/EditableLabel";
 import {
   on as onEvent,
   onWith,
@@ -26,12 +27,14 @@ import {
   PURGE_UNDER_PATH,
   TOAST,
   OPEN_TRANSCRIPT,
+  TERMINAL_TAB_FOCUSED,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
   type LiveTab,
   type OpenTranscript,
+  type TerminalTabFocused,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { loadStamps, saveStamps, reconcileScan, markViewed, isUnseen, type Stamps } from "../../utils/unseen";
@@ -755,7 +758,7 @@ export default function LeftSidebar(props: {
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
   // and select it exactly as clicking its sidebar row would - the notification
   // click handler and the tray's per-session menu entries both focus this way.
-  function selectSessionById(sessionId: string) {
+  function selectSessionById(sessionId: string): boolean {
     // Raw sessions()[folderPath], not the search-filtered unitSessions(p, u) -
     // a notification/tray click must still focus a session the sidebar's
     // current search query happens to be hiding.
@@ -767,16 +770,45 @@ export default function LeftSidebar(props: {
         break;
       }
     }
-    if (!hit) return;
+    if (!hit) return false;
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
         const u = p.branchUnits.find((u) => u.folderPath === hit!.folderPath);
         if (u) {
           void selectSession(g, p, u, hit!.s);
-          return;
+          return true;
         }
       }
     }
+    return false;
+  }
+
+  // Select the branch-unit that owns `folderPath` (a shell tab's home), the way
+  // clicking its branch row would. Used as the tab -> sidebar sync for a tab with
+  // no session, and as the fallback when a session tab's session isn't resolvable.
+  function selectBranchByFolder(folderPath: string): boolean {
+    for (const g of config()?.spaces ?? []) {
+      for (const p of g.projects) {
+        const u = p.branchUnits.find((u) => u.folderPath === folderPath);
+        if (u) {
+          void selectUnit(g, p, u);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // The reverse of a sidebar selection driving the terminal: the user clicked a
+  // terminal tab, so move our selection to match. Load the owning folder's
+  // sessions first (a collapsed branch may not have them yet), then select the
+  // session; fall back to selecting the branch if it can't be resolved.
+  async function focusFromTerminalTab(d: TerminalTabFocused) {
+    if (d.sessionId) {
+      await fetchSessions(d.folderPath);
+      if (selectSessionById(d.sessionId)) return;
+    }
+    selectBranchByFolder(d.folderPath);
   }
 
   // Re-probe every session whose dot could currently be non-"none": every live
@@ -1520,16 +1552,27 @@ export default function LeftSidebar(props: {
 
   // --- session overlay actions (rename/archive/delete) ---
 
-  async function renameSession(s: SessionMeta) {
-    const name = await askText("Rename session:", s.name ?? s.title);
-    if (name === null) return; // cancelled
+  // Which session row is being inline-renamed (double-click), if any. The row
+  // suspends its drag while editing so text selection in the field works.
+  const [editingSessionId, setEditingSessionId] = createSignal<string | null>(null);
+
+  // Persist a session name (null clears it, reverting to the title). set_session_name
+  // now emits sessions://changed, so the terminal tab + any other listener refresh
+  // too; the explicit refreshSessions keeps this pane instant rather than waiting
+  // for the round-trip.
+  async function applySessionName(s: SessionMeta, name: string | null) {
     try {
-      // Empty clears the name (Rust folds "" → None, reverting to the title).
-      await invoke("set_session_name", { id: s.id, name: name.trim() || null });
+      await invoke("set_session_name", { id: s.id, name: name?.trim() || null });
       await refreshSessions();
     } catch (e) {
       setError(String(e));
     }
+  }
+
+  async function renameSession(s: SessionMeta) {
+    const name = await askText("Rename session:", s.name ?? s.title);
+    if (name === null) return; // cancelled
+    await applySessionName(s, name);
   }
 
   async function archiveSession(s: SessionMeta) {
@@ -1952,13 +1995,24 @@ export default function LeftSidebar(props: {
                   onClick={() => selectSession(g, p, u, s)}
                   onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
                   title={s.name || s.title}
-                  draggable={true}
+                  draggable={editingSessionId() !== s.id}
                   onDragStart={(e) => startAbsDrag(e, s.path)}
                 >
                   <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
                     <PiIcon />
                   </Show>
-                  <span class={styles.label}>{s.name || s.title}</span>
+                  <EditableLabel
+                    class={styles.label}
+                    value={s.name || s.title}
+                    title={s.name || s.title}
+                    editing={editingSessionId() === s.id}
+                    onEdit={() => setEditingSessionId(s.id)}
+                    onCommit={(next) => {
+                      setEditingSessionId(null);
+                      void applySessionName(s, next);
+                    }}
+                    onCancel={() => setEditingSessionId(null)}
+                  />
                   <Show when={badge}>
                     <span
                       class={`${styles.badge} ${badge!.hint ? styles.hint : ""}`}
@@ -2075,6 +2129,7 @@ export default function LeftSidebar(props: {
   let offSearch: (() => void) | undefined;
   let offRefresh: (() => void) | undefined;
   let offToast: (() => void) | undefined;
+  let offTabFocus: (() => void) | undefined;
   let offFocus: (() => void) | undefined;
   onMount(async () => {
     await invoke("config_watch_start").catch(() => {});
@@ -2160,6 +2215,7 @@ export default function LeftSidebar(props: {
     offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
     offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
     offToast = onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error"));
+    offTabFocus = onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d));
   });
   onCleanup(() => {
     unlistenConfig?.();
@@ -2171,6 +2227,7 @@ export default function LeftSidebar(props: {
     offSearch?.();
     offRefresh?.();
     offToast?.();
+    offTabFocus?.();
     offFocus?.();
   });
 
