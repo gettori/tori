@@ -51,17 +51,34 @@ pub struct Typography {
     pub ui_font_size: u16,
     pub editor_font_family: String,
     pub editor_font_size: u16,
+    // Serde defaults so settings files written before terminal typography existed
+    // still parse (they fall back to the default family/size).
+    #[serde(default = "default_terminal_font_family")]
+    pub terminal_font_family: String,
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: u16,
     pub line_height: f32,
+}
+
+fn default_terminal_font_family() -> String {
+    "\"SF Mono\", Menlo, Monaco, monospace".into()
+}
+
+fn default_terminal_font_size() -> u16 {
+    15
 }
 
 impl Default for Typography {
     fn default() -> Self {
         Self {
-            ui_font_family: "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif"
-                .into(),
-            ui_font_size: 13,
+            ui_font_family:
+                "\"Inter\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif"
+                    .into(),
+            ui_font_size: 15,
             editor_font_family: "\"SF Mono\", Menlo, Monaco, monospace".into(),
-            editor_font_size: 13,
+            editor_font_size: 15,
+            terminal_font_family: default_terminal_font_family(),
+            terminal_font_size: 15,
             line_height: 1.5,
         }
     }
