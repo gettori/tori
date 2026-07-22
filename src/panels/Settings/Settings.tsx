@@ -7,6 +7,30 @@ import { listSelectableThemes } from "../../theme";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
 
+// Font inputs show only the primary family; the app's fallback stack is kept
+// out of the field and re-attached on save, so a user types "JetBrains Mono"
+// rather than editing a whole CSS list (and never accidentally drops the
+// system fallbacks). One stack per surface.
+const UI_FONT_FALLBACK = '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif';
+const EDITOR_FONT_FALLBACK = "Menlo, Monaco, monospace";
+const TERMINAL_FONT_FALLBACK = "Menlo, Monaco, monospace";
+
+/** The first family in a CSS font stack, unquoted, for display in the input. */
+function primaryFamily(stack: string): string {
+  const first = stack.split(",")[0]?.trim() ?? "";
+  return first.replace(/^["']|["']$/g, "");
+}
+
+/** Rebuild a full stack from a user-entered primary name plus the surface's
+ *  fallbacks. A blank entry falls back to the stack alone (no leading comma).
+ *  Names with spaces are quoted so the CSS value stays valid. */
+function withFallback(primary: string, fallback: string): string {
+  const name = primary.trim();
+  if (!name) return fallback;
+  const quoted = /\s/.test(name) ? `"${name}"` : name;
+  return `${quoted}, ${fallback}`;
+}
+
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled overlay like the other modals: Escape / backdrop click closes, the
@@ -101,8 +125,10 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 <label class={styles.label}>UI font family</label>
                 <input
                   class={`${styles.input} ${styles.text}`}
-                  value={settings.typography.uiFontFamily}
-                  onChange={(e) => setTypography({ uiFontFamily: e.currentTarget.value })}
+                  value={primaryFamily(settings.typography.uiFontFamily)}
+                  onChange={(e) =>
+                    setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })
+                  }
                 />
               </div>
               <div class={styles.row}>
@@ -122,8 +148,10 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 <label class={styles.label}>Editor font family</label>
                 <input
                   class={`${styles.input} ${styles.text}`}
-                  value={settings.typography.editorFontFamily}
-                  onChange={(e) => setTypography({ editorFontFamily: e.currentTarget.value })}
+                  value={primaryFamily(settings.typography.editorFontFamily)}
+                  onChange={(e) =>
+                    setTypography({ editorFontFamily: withFallback(e.currentTarget.value, EDITOR_FONT_FALLBACK) })
+                  }
                 />
               </div>
               <div class={styles.row}>
@@ -136,6 +164,31 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                   value={settings.typography.editorFontSize}
                   onChange={(e) =>
                     setTypography({ editorFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.editorFontSize) })
+                  }
+                />
+              </div>
+              <div class={styles.row}>
+                <label class={styles.label}>Terminal font family</label>
+                <input
+                  class={`${styles.input} ${styles.text}`}
+                  value={primaryFamily(settings.typography.terminalFontFamily)}
+                  onChange={(e) =>
+                    setTypography({
+                      terminalFontFamily: withFallback(e.currentTarget.value, TERMINAL_FONT_FALLBACK),
+                    })
+                  }
+                />
+              </div>
+              <div class={styles.row}>
+                <label class={styles.label}>Terminal font size</label>
+                <input
+                  type="number"
+                  min="9"
+                  max="24"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.typography.terminalFontSize}
+                  onChange={(e) =>
+                    setTypography({ terminalFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.terminalFontSize) })
                   }
                 />
               </div>

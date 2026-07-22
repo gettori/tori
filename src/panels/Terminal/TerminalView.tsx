@@ -11,6 +11,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
+import { settings, terminalFontSize } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
@@ -144,8 +145,8 @@ export default function TerminalView(props: {
 
   onMount(async () => {
     term = new Terminal({
-      fontFamily: 'Menlo, Monaco, "SF Mono", monospace',
-      fontSize: 13,
+      fontFamily: settings.typography.terminalFontFamily,
+      fontSize: terminalFontSize(),
       theme: termColors(),
       cursorBlink: true,
       allowProposedApi: true,
@@ -277,6 +278,21 @@ export default function TerminalView(props: {
     offTheme = onEvent(THEME_APPLIED, () => {
       if (term) term.options.theme = termColors();
     });
+  });
+
+  // Live font: xterm is canvas/WebGL, so CSS can't reach it - push the effective
+  // size (base setting × global zoom) and the terminal font family through its
+  // API, then refit so the cell grid and pty dimensions follow. Runs once term
+  // exists and again on every zoom/font change; initial values are set at
+  // construction above.
+  createEffect(() => {
+    const size = terminalFontSize();
+    const family = settings.typography.terminalFontFamily;
+    if (term && (term.options.fontSize !== size || term.options.fontFamily !== family)) {
+      term.options.fontSize = size;
+      term.options.fontFamily = family;
+      fitNow();
+    }
   });
 
   // Fit + focus whenever this view becomes the active tab.
