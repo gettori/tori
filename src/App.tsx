@@ -199,9 +199,6 @@ function App() {
       <header class="topbar" data-tauri-drag-region>
         <WindowControls />
         <Toolbar selected={selected()} />
-        {/* Suppressed during first-run onboarding: someone meeting Sway for the
-            first time should not be handed a version notice about an app they
-            have not used yet. */}
         <UpdatePill suppressed={welcome()} />
         <Button
           class="topbar-gear"
