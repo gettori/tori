@@ -194,32 +194,41 @@
   border-bottom: 1px solid var(--border);
 }
 
-/* Icon-only mode tabs (Files / Changes / …): a centered glyph in a rounded pill,
-   dim at rest, subtle --card2 fill when active. Content-width, not `flex: 1`:
-   OverflowTabBar measures each tab's true width off the ghost row to decide what
-   fits, so a stretching tab would mismeasure. */
+/* Icon-only mode tabs (Files / Changes / …): a full-height centered glyph, dim
+   at rest and brightening on hover/active, with a VS Code-style brand underline
+   under the active one (no fill). Content-width, not `flex: 1`: OverflowTabBar
+   measures each tab's true width off the ghost row to decide what fits, so a
+   stretching tab would mismeasure. */
 .rightTab {
   flex: 0 0 auto;
+  align-self: stretch;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: calc(6px * var(--ui-density));
+  padding: 0 calc(6px * var(--ui-density));
   color: var(--text-dim);
   background: none;
   border: none;
-  border-radius: var(--sway-radius-md);
   cursor: pointer;
-  transition:
-    color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+  transition: color var(--sway-duration-fast) ease;
 }
 
-.rightTab:hover:not(.active) {
+.rightTab:hover {
   color: var(--text);
-  background: var(--hover);
 }
 
 .rightTab.active {
   color: var(--text);
-  background: var(--hover);
+}
+
+.rightTab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brand);
 }
