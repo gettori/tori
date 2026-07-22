@@ -684,25 +684,25 @@ export default function LeftSidebar(props: {
         <Show when={r.waitingForApproval}>
           <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title="Waiting for approval">
             <Icon icon={MessageCircleQuestion} size={14} />
-            <Show when={r.waitingForApproval > 1}>x{r.waitingForApproval}</Show>
+            <Show when={r.waitingForApproval > 1}>{r.waitingForApproval}</Show>
           </span>
         </Show>
         <Show when={r.executing}>
           <span class={`${styles.statusBubbleItem} ${styles.executing}`} title="Executing">
             <Icon icon={ChevronsLeftRightEllipsis} size={14} />
-            <Show when={r.executing > 1}>x{r.executing}</Show>
+            <Show when={r.executing > 1}>{r.executing}</Show>
           </span>
         </Show>
         <Show when={r.idle}>
           <span class={`${styles.statusBubbleItem} ${styles.idle}`} title="Idle">
             <Icon icon={Check} size={14} />
-            <Show when={r.idle > 1}>x{r.idle}</Show>
+            <Show when={r.idle > 1}>{r.idle}</Show>
           </span>
         </Show>
         <Show when={r.running}>
           <span class={`${styles.statusBubbleItem} ${styles.running}`} title="Running">
             <Icon icon={CircleDashed} size={14} />
-            <Show when={r.running > 1}>x{r.running}</Show>
+            <Show when={r.running > 1}>{r.running}</Show>
           </span>
         </Show>
       </span>
