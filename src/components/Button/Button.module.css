@@ -13,7 +13,7 @@
   background: var(--hover);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: calc(5px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
   font-family: inherit;
   font-size: calc(12px * var(--ui-scale));

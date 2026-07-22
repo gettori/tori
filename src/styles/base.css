@@ -17,6 +17,50 @@
   }
 }
 
+/* App-wide scrollbars: thin, off-the-face, and dim like the placeholder, so a
+   long tree/terminal/editor scrolls without the chunky default bar. Kept outside
+   @layer and global so every scroll surface inherits it; components can still
+   opt out by re-styling their own ::-webkit-scrollbar. Firefox reads the
+   scrollbar-* shorthands, WKWebView/Chromium read the ::-webkit- pseudos.
+
+   The thumb is hidden at rest and only appears while its scroll area is hovered:
+   styling ::-webkit-scrollbar opts out of macOS's auto-hiding overlay bar, so we
+   recreate the reveal-on-hover behaviour ourselves. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  /* The transparent border + padding-box clip insets the thumb, so it reads as a
+     slim pill floating in the gutter rather than filling it edge to edge. A 3px
+     inset over a 9px track leaves a ~3px visible pill. Transparent until the
+     scroll area is hovered. */
+  background: transparent;
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  transition: background var(--sway-duration-med) ease;
+}
+:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
 /* Respect the OS "reduce motion" setting: neutralise the design system's
    hover/active/focus transitions and any animations app-wide. Outside @layer
    with !important so it overrides every component rule regardless of cascade. */
