@@ -36,10 +36,14 @@ function termColors() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string) => cs.getPropertyValue(name).trim() || undefined;
   return {
-    background: v("--bg"),
+    // Track the content-card surface (--pane-bg) rather than the desk (--bg), so
+    // the terminal reads as part of the card and recolouring the card token needs
+    // no terminal change. (True transparency is avoided: the WebGL renderer
+    // paints opaque black instead of compositing over the DOM behind it.)
+    background: v("--pane-bg"),
     foreground: v("--text"),
     cursor: v("--term-cursor"),
-    cursorAccent: v("--bg"),
+    cursorAccent: v("--pane-bg"),
     selectionBackground: v("--term-selection"),
     black: v("--term-black"),
     red: v("--term-red"),

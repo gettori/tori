@@ -5,7 +5,7 @@
   flex: 1;
   display: flex;
   min-height: 0;
-  background: var(--bg);
+  background: var(--pane-bg);
 }
 
 .editorMain {
@@ -61,12 +61,19 @@
   border-color: var(--brand);
 }
 
-/* Editor tab bar */
+/* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
+   the terminal strip): transparent at rest, a subtle --card2 fill when active or
+   hovered. No folder dividers or accent bar. */
 .editorTabs {
   display: flex;
   flex: none;
-  min-height: 34px;
-  background: var(--pane-head-bg);
+  align-items: center;
+  gap: calc(4px * var(--ui-density));
+  min-height: 40px;
+  padding: 0 calc(6px * var(--ui-density));
+  -webkit-user-select: none;
+  user-select: none;
+  background: var(--pane-bg);
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
@@ -75,13 +82,16 @@
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
-  padding: 0 calc(8px * var(--ui-density)) 0 calc(12px * var(--ui-density));
+  padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   color: var(--text-dim);
-  background: var(--pane-head-bg);
-  border-right: 1px solid var(--border);
+  background: transparent;
+  border-radius: var(--sway-radius-md);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease;
 }
 
 .editorTabs .tab:hover:not(.active) {
@@ -91,8 +101,7 @@
 
 .editorTabs .tab.active {
   color: var(--text);
-  background: var(--bg);
-  box-shadow: inset 0 2px 0 var(--brand-bar);
+  background: var(--hover);
 }
 
 .editorTabs :global(.tab-name) {
@@ -168,7 +177,7 @@
   display: flex;
   flex: none;
   overflow: hidden;
-  background: var(--pane-head-bg);
+  background: var(--pane-bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -187,5 +196,5 @@
 
 .rightTab.active {
   color: var(--text);
-  background: var(--pane-bg);
+  background: var(--hover);
 }
