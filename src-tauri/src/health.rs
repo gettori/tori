@@ -61,7 +61,6 @@ pub struct AgentHealth {
     /// Capability flags, rendered as chips.
     pub hooks: bool,
     pub needs_you: bool,
-    pub context_window: bool,
     /// Path of the user TOML overriding this adapter, when one is loaded.
     pub override_path: Option<String>,
 }
@@ -141,7 +140,6 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         sessions_dir_exists: sessions_dir.exists(),
         hooks: adapter.hooks,
         needs_you: adapter.needs_you,
-        context_window: adapter.context_window.is_some(),
         override_path: adapter.is_override().then(|| adapter.source.clone()),
     }
 }
