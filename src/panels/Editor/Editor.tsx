@@ -20,7 +20,7 @@ import FileIcon from "../../seti/FileIcon";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
-import { X } from "lucide-solid";
+import { X, Bot } from "lucide-solid";
 import {
   on as onEvent,
   onWith,
@@ -668,12 +668,17 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
                 </button>
               </Show>
               <button
-                class={styles.followToggle}
+                class={`${styles.followToggle} ${styles.iconToggle}`}
                 classList={{ [styles.active]: follow() }}
                 onClick={() => setFollow(!follow())}
-                title="Follow: auto-open the most-recently-changed file"
+                aria-pressed={follow()}
+                title={
+                  follow()
+                    ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
+                    : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
+                }
               >
-                Follow
+                <Icon icon={Bot} size={15} />
               </button>
             </>
           }

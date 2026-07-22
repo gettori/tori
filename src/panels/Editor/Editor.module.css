@@ -49,7 +49,7 @@
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);
-  border-radius: calc(3px * var(--ui-radius-scale));
+  border-radius: var(--sway-radius-md);
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   margin-right: 6px;
   cursor: pointer;
@@ -59,6 +59,16 @@
   color: var(--brand-on);
   background: var(--brand);
   border-color: var(--brand);
+}
+
+/* Icon-only variant of the toggle: center the glyph instead of the text
+   padding. Same Bot glyph both ways; the on/off signal is the fill (dim +
+   border when off, --brand fill when on; see .followToggle.active). */
+.iconToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(4px * var(--ui-density));
 }
 
 /* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
