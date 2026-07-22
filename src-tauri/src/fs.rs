@@ -20,6 +20,10 @@ pub struct DirEntry {
     name: String,
     path: String,
     is_dir: bool,
+    // Matched by the repo's .gitignore (nested rules, negations and the global
+    // gitignore included). The tree dims these, VS Code-style. False when the
+    // directory is not inside a git repo.
+    ignored: bool,
 }
 
 #[tauri::command]
@@ -32,6 +36,7 @@ pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
             name: entry.file_name().to_string_lossy().into_owned(),
             path: entry.path().to_string_lossy().into_owned(),
             is_dir: file_type.is_dir(),
+            ignored: false,
         });
     }
     // Dirs first, then case-insensitive name — typical file-tree ordering.
@@ -40,7 +45,54 @@ pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
             .cmp(&a.is_dir)
             .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
+    let ignored = gitignored_paths(&path, &entries);
+    for e in entries.iter_mut() {
+        e.ignored = ignored.contains(&e.path);
+    }
     Ok(entries)
+}
+
+// Ask git which of these entries are gitignore-matched, in one batch. Uses
+// `git check-ignore --stdin` from within `dir`, so the repo's full ignore rules
+// apply (already-tracked files are correctly not reported). Any failure (not a
+// repo, git missing) yields an empty set, so nothing is dimmed.
+fn gitignored_paths(dir: &str, entries: &[DirEntry]) -> std::collections::HashSet<String> {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut set = std::collections::HashSet::new();
+    if entries.is_empty() {
+        return set;
+    }
+    let mut child = match Command::new("git")
+        .current_dir(dir)
+        .args(["check-ignore", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return set,
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        for e in entries {
+            let _ = writeln!(stdin, "{}", e.path);
+        }
+        // stdin dropped here -> EOF, so git finishes and we can read stdout
+        // without deadlocking on a full pipe.
+    }
+    let output = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(_) => return set,
+    };
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let p = line.trim();
+        if !p.is_empty() {
+            set.insert(p.to_string());
+        }
+    }
+    set
 }
 
 #[tauri::command]

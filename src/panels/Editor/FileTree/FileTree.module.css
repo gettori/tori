@@ -43,6 +43,16 @@
   background: var(--hover);
 }
 
+/* Gitignored entries read as present-but-inactive: the whole row drops to the
+   faint text color (matching other quiet chrome), name and icon alike. The seti
+   icon sets its type colour inline, so !important is needed to override it. */
+.treeRow.ignored .treeName {
+  color: var(--text-faint);
+}
+.treeRow.ignored :global(.seti-icon) {
+  color: var(--text-faint) !important;
+}
+
 .treeName.isDir {
   color: var(--text);
 }
