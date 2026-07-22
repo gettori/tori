@@ -20,7 +20,20 @@ import FileIcon from "../../seti/FileIcon";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
-import { X, Bot, FileCodeCorner, FileTypeCorner } from "lucide-solid";
+import {
+  X,
+  Bot,
+  FileCodeCorner,
+  FileTypeCorner,
+  Files,
+  GitCompare,
+  TriangleAlert,
+  Search,
+  MessagesSquare,
+  Share2,
+  BookOpen,
+  type LucideIcon,
+} from "lucide-solid";
 import {
   on as onEvent,
   onWith,
@@ -71,15 +84,15 @@ type Tab = FileTab | TranscriptTab;
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
 type RightMode = "files" | "changes" | "problems" | "shared" | "docs" | "session" | "search";
-type ModeTab = { mode: RightMode; label: string };
+type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
-  files: { mode: "files", label: "Files" },
-  changes: { mode: "changes", label: "Changes" },
-  problems: { mode: "problems", label: "Problems" },
-  search: { mode: "search", label: "Search" },
-  session: { mode: "session", label: "Session" },
-  shared: { mode: "shared", label: "Shared" },
-  docs: { mode: "docs", label: "Docs" },
+  files: { mode: "files", label: "Files", icon: Files },
+  changes: { mode: "changes", label: "Changes", icon: GitCompare },
+  problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
+  search: { mode: "search", label: "Search", icon: Search },
+  session: { mode: "session", label: "Session", icon: MessagesSquare },
+  shared: { mode: "shared", label: "Shared", icon: Share2 },
+  docs: { mode: "docs", label: "Docs", icon: BookOpen },
 };
 
 function tabId(t: Tab): string {
@@ -739,11 +752,18 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
               class={styles.rightTab}
               classList={{ [styles.active]: rightMode() === t.mode }}
               onClick={() => setRightMode(t.mode)}
+              title={t.label}
+              aria-label={t.label}
             >
-              {t.label}
+              <Icon icon={t.icon} size={16} />
             </button>
           )}
-          renderMenuItem={(t) => <span>{t.label}</span>}
+          renderMenuItem={(t) => (
+            <>
+              <Icon icon={t.icon} size={16} />
+              <span class="tab-name">{t.label}</span>
+            </>
+          )}
         />
         <Switch>
           <Match when={rightMode() === "files"}>

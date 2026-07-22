@@ -183,25 +183,40 @@
 }
 
 .rightTabs {
-  height: 34px;
+  min-height: 40px;
   display: flex;
   flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-density));
+  padding: 0 calc(6px * var(--ui-density));
   overflow: hidden;
   background: var(--pane-bg);
   border-bottom: 1px solid var(--border);
 }
 
-/* Content-width, not `flex: 1`: OverflowTabBar measures each tab's true width
-   off the ghost row to decide what fits, so a stretching tab would measure as
-   whatever the flex line handed it rather than as its own label. */
+/* Icon-only mode tabs (Files / Changes / …): a centered glyph in a rounded pill,
+   dim at rest, subtle --card2 fill when active. Content-width, not `flex: 1`:
+   OverflowTabBar measures each tab's true width off the ghost row to decide what
+   fits, so a stretching tab would mismeasure. */
 .rightTab {
   flex: 0 0 auto;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(6px * var(--ui-density));
   color: var(--text-dim);
   background: none;
   border: none;
+  border-radius: var(--sway-radius-md);
   cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease;
+}
+
+.rightTab:hover:not(.active) {
+  color: var(--text);
+  background: var(--hover);
 }
 
 .rightTab.active {
