@@ -44,8 +44,8 @@
 
 /* Placeholder reads as a faint hint, not real content. */
 .searchInput::placeholder {
-  color: var(--text-dim);
-  opacity: 0.55;
+  color: var(--text-faint);
+  opacity: 1;
 }
 
 .searchInput:focus {
@@ -70,7 +70,7 @@
   height: 30px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-dim);
+  color: var(--text-faint);
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   transition:
@@ -402,7 +402,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   transition: transform var(--sway-duration-fast) ease;
 }
 .rowChevron.open {

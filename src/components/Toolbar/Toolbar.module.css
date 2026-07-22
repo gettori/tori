@@ -101,7 +101,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
 .tbCrumb .crumb.leaf {
@@ -124,7 +124,7 @@
 .tbCrumb .crumbSep {
   font-size: calc(12px * var(--ui-scale));
   flex: 0 0 auto;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
 .tbActions {
@@ -143,8 +143,8 @@
   padding: 0 4px;
   aspect-ratio: auto;
   gap: calc(4px * var(--ui-density));
-  /* Rest at the dimmed icon color (like the space tiles), brighten on hover. */
-  color: var(--text-dim);
+  /* Rest at the faint icon color (quiet chrome), brighten on hover. */
+  color: var(--text-faint);
 }
 .tbRow .tbActions button:hover {
   color: var(--text);
