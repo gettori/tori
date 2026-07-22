@@ -2,7 +2,7 @@ import { createSignal, createMemo, For, Show, onMount, onCleanup, createEffect, 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import ContextMenu, { type MenuItem, type MenuState } from "../../components/ContextMenu/ContextMenu";
+import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
@@ -904,11 +904,22 @@ export default function LeftSidebar(props: {
     }
   }
 
+  // The row whose context menu is open, kept highlighted (styles.menuActive)
+  // until the menu closes so it's clear which item the menu belongs to.
+  let menuActiveEl: HTMLElement | undefined;
   function openMenu(e: MouseEvent, items: MenuItem[]) {
     e.preventDefault();
     e.stopPropagation();
     if (!items.length) return; // a node with no actions yet opens nothing
+    menuActiveEl?.classList.remove(styles.menuActive);
+    menuActiveEl = e.currentTarget as HTMLElement;
+    menuActiveEl.classList.add(styles.menuActive);
     setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+  function closeMenu() {
+    menuActiveEl?.classList.remove(styles.menuActive);
+    menuActiveEl = undefined;
+    setMenu(null);
   }
 
   // Persist expansion state so the tree reopens where you left it.
@@ -2402,7 +2413,7 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={menu()}>
-        <ContextMenu menu={menu()!} onClose={() => setMenu(null)} />
+        <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={closeMenu} />
       </Show>
 
       <Show when={promptReq()}>

@@ -1,11 +1,11 @@
 import { createSignal, createEffect, createMemo, on, onCleanup, onMount, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import OverflowTabBar from "../../components/OverflowTabBar";
+import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
-import { X, ChevronDown } from "lucide-solid";
+import { X, ChevronDown, SquareTerminal } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -269,17 +269,6 @@ export default function Terminal(props: {
   const [menuPos, setMenuPos] = createSignal({ left: 0, top: 0 });
   let splitEl: HTMLDivElement | undefined;
   let caretEl: HTMLButtonElement | undefined;
-  let menuEl: HTMLDivElement | undefined;
-
-  // The agent of the focused tab drives the split button: the main action mirrors
-  // the session you're in, defaulting to the first registered agent (claude)
-  // when nothing is open or the focused tab's program isn't a known adapter.
-  const activeAgentId = (): string => {
-    const t = open().find((o) => o.id === visibleId());
-    const list = agents();
-    if (t && list.some((a) => a.id === t.program)) return t.program;
-    return list[0]?.id ?? "claude";
-  };
 
   function toggleMenu() {
     if (menuOpen()) {
@@ -432,17 +421,6 @@ export default function Terminal(props: {
   // state. Answers every request with a matching SEND_TO_SESSION_RESULT.
   const offSendToSession = onWith<SendToSession>(SEND_TO_SESSION, (req) => void handleSendToSession(req));
   onCleanup(offSendToSession);
-
-  // Close the launch dropdown on any click outside the split button or its
-  // portalled menu.
-  const onDocPointerDown = (e: PointerEvent) => {
-    if (!menuOpen()) return;
-    const t = e.target as Node;
-    if (splitEl?.contains(t) || menuEl?.contains(t)) return;
-    setMenuOpen(false);
-  };
-  document.addEventListener("pointerdown", onDocPointerDown);
-  onCleanup(() => document.removeEventListener("pointerdown", onDocPointerDown));
 
   onCleanup(() => {
     offOpenTerminal?.();
@@ -713,33 +691,22 @@ export default function Terminal(props: {
           </>
         )}
         trailing={
-          <>
-          <button
-            class={`${styles.termNew} ${styles.termNewSolo}`}
-            disabled={!props.selected}
-            title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
-            onClick={newShell}
-          >
-            + Terminal
-          </button>
           <div class={styles.termNewSplit} ref={splitEl}>
+            {/* Main half: quick new shell (terminal icon). Caret half: launch an
+                agent session from a fixed three-option menu. */}
             <button
               class={`${styles.termNew} ${styles.termNewMain}`}
               disabled={!props.selected}
-              title={
-                props.selected
-                  ? `New ${findAgent(activeAgentId()).label} session in ${props.selected.projectName}`
-                  : "Select a branch first"
-              }
-              onClick={() => newSession(activeAgentId(), activeAgentId() === "pi")}
+              title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+              onClick={newShell}
             >
-              + {findAgent(activeAgentId()).label}
+              <Icon icon={SquareTerminal} size={16} />
             </button>
             <button
               ref={caretEl}
               class={`${styles.termNew} ${styles.termNewCaret}`}
               disabled={!props.selected}
-              title="More launch options"
+              title="Launch an agent session"
               aria-haspopup="menu"
               aria-expanded={menuOpen()}
               onClick={toggleMenu}
@@ -747,73 +714,19 @@ export default function Terminal(props: {
               <Icon icon={ChevronDown} size={14} class={styles.termNewChevron} />
             </button>
             <Show when={menuOpen()}>
-              <Portal>
-                <div
-                  ref={menuEl}
-                  class={styles.termNewMenu}
-                  role="menu"
-                  style={{ left: `${menuPos().left}px`, top: `${menuPos().top}px` }}
-                >
-                  {/* The main button already covers the active agent (plain,
-                      or yolo when it's pi); the dropdown offers what it
-                      doesn't: switching to claude when pi is active, or
-                      claude/pi's yolo variants when claude is active. This
-                      curated two-agent shape is unchanged from before the
-                      registry - generalizing it to N agents is step 7's
-                      concern (the first new agent), not this one's. */}
-                  <Show
-                    when={activeAgentId() === "pi"}
-                    fallback={
-                      <>
-                        <button
-                          class={styles.termNewMenuItem}
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            newSession("claude", true);
-                          }}
-                        >
-                          {findAgent("claude").label} (yolo)
-                        </button>
-                        <button
-                          class={styles.termNewMenuItem}
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            newSession("pi", true);
-                          }}
-                        >
-                          {findAgent("pi").label} (yolo)
-                        </button>
-                      </>
-                    }
-                  >
-                    <button
-                      class={styles.termNewMenuItem}
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        newSession("claude");
-                      }}
-                    >
-                      {findAgent("claude").label}
-                    </button>
-                    <button
-                      class={styles.termNewMenuItem}
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        newSession("claude", true);
-                      }}
-                    >
-                      {findAgent("claude").label} (yolo)
-                    </button>
-                  </Show>
-                </div>
-              </Portal>
+              <Menu
+                x={menuPos().left}
+                y={menuPos().top}
+                anchorEl={splitEl}
+                onClose={() => setMenuOpen(false)}
+                items={[
+                  { label: findAgent("claude").label, onClick: () => newSession("claude") },
+                  { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+                  { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
+                ]}
+              />
             </Show>
           </div>
-          </>
         }
       />
 
