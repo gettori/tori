@@ -52,7 +52,7 @@ const swayTheme = EditorView.theme(
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
       backgroundColor: "var(--sel)",
     },
-    ".cm-gutters": { backgroundColor: "var(--pane-bg)", color: "var(--text-dim)", border: "none" },
+    ".cm-gutters": { backgroundColor: "var(--pane-bg)", color: "var(--text-faint)", border: "none" },
     ".cm-activeLine": { backgroundColor: "transparent" },
     ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
   },

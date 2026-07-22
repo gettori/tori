@@ -53,8 +53,9 @@
        that must stay legible but still read as quiet (the branch/worktree graph
        rail). Kept well under the placeholder's weight so it never shouts. */
     --sway-navy-line-strong: rgba(200, 215, 255, 0.13);
-    --sway-fg-navy: #e6e9f0; /* primary text (cool near-white) */
-    --sway-fg-navy-dim: #8b929e; /* dim text (cool grey) */
+    --sway-fg-navy: #e4e8f0; /* primary text (cool near-white) */
+    --sway-fg-navy-dim: #98a0b0; /* dim text (muted slate) */
+    --sway-fg-navy-faint: #666e7e; /* faint text (dim slate): quiet icons, placeholders, meta */
 
     /* Accent (blue) */
     --sway-blue-100: #cfe3fb;
@@ -70,7 +71,7 @@
     --sway-gold-100: #f1e3c4;
     --sway-gold-200: #e6cf9d;
     --sway-gold-300: #d9bd85;
-    --sway-gold-400: #cda868;
+    --sway-gold-400: #d9a468;
     --sway-gold-500: #c19653;
     --sway-gold-600: #a97f42;
     --sway-gold-700: #8a6733;
@@ -153,6 +154,7 @@
     --scrollbar-thumb-hover: rgba(200, 215, 255, 0.2);
     --text: var(--sway-fg-navy);
     --text-dim: var(--sway-fg-navy-dim);
+    --text-faint: var(--sway-fg-navy-faint);
     --accent: var(--sway-blue-500);
     --sel: var(--sway-blue-900);
     --hover: var(--sway-navy-800);
@@ -281,6 +283,7 @@
     --scrollbar-thumb-hover: rgba(23, 23, 23, 0.26);
     --text: var(--sway-fg-light);
     --text-dim: var(--sway-gray-500);
+    --text-faint: var(--sway-gray-600);
     --accent: var(--sway-blue-600);
     --sel: var(--sway-blue-100);
     --hover: var(--sway-gray-100);

@@ -99,8 +99,8 @@ body.dragging {
   padding: 0;
   aspect-ratio: auto;
   margin-right: calc(6px * var(--ui-density));
-  /* Rest at the dimmed icon color (like the space tiles), brighten on hover. */
-  color: var(--text-dim);
+  /* Rest at the faint icon color (quiet chrome), brighten on hover. */
+  color: var(--text-faint);
 }
 .topbar .topbar-gear:hover {
   color: var(--text);
