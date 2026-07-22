@@ -21,7 +21,9 @@
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
-  padding: calc(8px * var(--ui-density));
+  min-height: 40px;
+  padding-inline: calc(14px * var(--ui-density)) calc(8px * var(--ui-density));
+  margin-bottom: calc(4px * var(--ui-density));
 }
 
 .searchInput {
@@ -30,12 +32,10 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
-  /* Keep the caret visible on the transparent field: without this it inherits
-     and can wash out against the desk. */
   caret-color: var(--brand);
   border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
   outline: none;
   transition:
     border-color var(--sway-duration-fast) ease,
