@@ -18,10 +18,6 @@ export type Agent = {
   parser_kind: ParserKind;
   running_pattern: string;
   pty_quiet_ms: number;
-  // Sidebar context meter (Phase 3): either one number for every model, or a
-  // per-model table with a reserved "default" fallback key. Undefined when
-  // the adapter declares no window - see ADAPTERS.md.
-  context_window?: number | Record<string, number>;
 };
 
 // Matches the bundled claude/pi/opencode TOML (src-tauri/agents/*.toml) so
@@ -100,14 +96,3 @@ export function resumeCommand(agent: Agent, vars: { id: string; file: string }):
   return [agent.program, ...applyTemplate(agent.resume_args, vars)].map(shQuote).join(" ");
 }
 
-// Resolve an agent's declared context window for a session's model (mirrors
-// the backend's `ContextWindow::resolve`): a plain number applies to every
-// model; a per-model table falls back to its "default" key. Null when the
-// adapter declares no window at all - the meter must not render then.
-export function resolveContextWindow(agent: Agent, model: string | null): number | null {
-  const cw = agent.context_window;
-  if (cw === undefined) return null;
-  if (typeof cw === "number") return cw;
-  if (model && cw[model] !== undefined) return cw[model];
-  return cw["default"] ?? null;
-}

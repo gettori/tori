@@ -25,7 +25,6 @@ export type AgentHealth = {
   sessionsDirExists: boolean;
   hooks: boolean;
   needsYou: boolean;
-  contextWindow: boolean;
   overridePath: string | null;
 };
 
@@ -92,11 +91,6 @@ function AgentCard(props: { agent: AgentHealth }) {
         <Show when={a().needsYou}>
           <span class={styles.chip} title="Sway can detect when this agent is waiting on you">
             needs-you
-          </span>
-        </Show>
-        <Show when={a().contextWindow}>
-          <span class={styles.chip} title="This adapter declares a context window size">
-            context meter
           </span>
         </Show>
       </div>

@@ -76,35 +76,7 @@ pattern = '...'   # required; ERE template (for `pgrep -f`) with an `{id}` place
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
 needs_you = true      # optional, default true; whether quiet+pending-tool_use is trusted as "needs you" - see below
 hooks = false         # optional, default false; whether a verified hook-driven status mechanism overrides the tail join - see below
-# context_window is optional and additive - omit it entirely if unknown, see below.
 ```
-
-### `capabilities.context_window`
-
-Drives the sidebar's per-session context meter (a fill bar next to the
-selected session's row, amber past 80% full, comparing `session_detail`'s
-`context_tokens` against this declared window). Omitted entirely, the meter
-just doesn't render for that adapter - **sway has no independent source of
-truth for a model's context window**, so an adapter that doesn't declare one
-goes without a meter rather than showing a guess. Two shapes:
-
-```toml
-# One number, used for every model this adapter launches:
-[capabilities]
-context_window = 128000
-
-# A per-model table. "default" is the reserved fallback key, used when a
-# session's own model isn't listed:
-[capabilities.context_window]
-default = 200000
-"claude-sonnet-4-5" = 1000000
-```
-
-Only `claude` declares one today (the table form, `default = 200000` plus
-Sonnet 4.5's 1M-token beta override) - `pi`/`opencode` have no adapter-verified
-figure, so they ship without the field and show no meter. No schema version
-bump: this is a new optional leaf under the existing `[capabilities]` table,
-same additive-field precedent as `hooks`.
 
 ### `capabilities.hooks`
 
