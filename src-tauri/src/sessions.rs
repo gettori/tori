@@ -555,17 +555,25 @@ fn save_overlay(map: &HashMap<String, Overlay>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn set_session_name(id: String, name: Option<String>) -> Result<(), String> {
+pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Result<(), String> {
     let mut map = load_overlay();
     map.entry(id).or_default().name = name.filter(|n| !n.trim().is_empty());
-    save_overlay(&map)
+    save_overlay(&map)?;
+    // The overlay file lives outside the watched transcript dirs, so writing it
+    // fires no filesystem event. Notify explicitly so every listener refreshes,
+    // not just the caller: the sidebar tree AND the terminal tab titles, which
+    // otherwise keep the name they were created with (an un-refreshed rename).
+    let _ = app.emit("sessions://changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub fn set_session_archived(id: String, archived: bool) -> Result<(), String> {
+pub fn set_session_archived(app: AppHandle, id: String, archived: bool) -> Result<(), String> {
     let mut map = load_overlay();
     map.entry(id).or_default().archived = archived;
-    save_overlay(&map)
+    save_overlay(&map)?;
+    let _ = app.emit("sessions://changed", ());
+    Ok(())
 }
 
 /// Delete a session's transcript. Destructive (removes Claude history); the

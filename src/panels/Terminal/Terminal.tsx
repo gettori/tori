@@ -23,6 +23,7 @@ import {
   TAB_CYCLE,
   NEXT_WAITING_SESSION,
   FOCUS_SESSION_TAB,
+  TERMINAL_TAB_FOCUSED,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
@@ -32,6 +33,7 @@ import {
   type ToastEvent,
   type TabJump,
   type FocusSessionTab,
+  type TerminalTabFocused,
   type OpenTranscript,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
@@ -108,6 +110,16 @@ export default function Terminal(props: {
 }) {
   ensureAgentsLoaded();
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
+  // Live tab labels that can change after a tab is created (a session rename),
+  // keyed by tab id and overriding OpenTerm.title when present. Kept in a signal
+  // rather than mutated onto the tab object because the tab bar keys tabs by
+  // identity (gotcha #64) and never re-runs renderTab for a still-mounted tab,
+  // so a plain-property title read would not repaint; a signal read does.
+  const [tabTitles, setTabTitles] = createSignal<Record<string, string>>({});
+  const tabTitle = (t: OpenTerm) => tabTitles()[t.id] ?? t.title;
+  // A session-backed (agent) tab: its label tracks the session name (renamed
+  // from the sidebar), and clicking it moves the sidebar selection to its session.
+  const isSessionTab = (t: OpenTerm) => t.kind === "agent" && !!t.sessionId;
   // Tabs are grouped by workspace (branch-unit folder). Only the active
   // workspace's tabs show in the bar/stage; every other group stays mounted and
   // CSS-hidden so its PTYs keep running (gotcha #64). `activeWorkspace` is the
@@ -143,6 +155,21 @@ export default function Terminal(props: {
   function focusTab(ws: string, id: string) {
     setActiveWorkspace(ws);
     setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
+  }
+
+  // A user click on a tab: focus it AND move the sidebar selection to match (the
+  // reverse of a sidebar selection driving focusOrResume). Deliberately NOT in
+  // focusTab, which is also called programmatically from focusOrResume - routing
+  // the emit through the user gesture only is what keeps the two from looping.
+  // A session tab selects its session; a shell tab selects its branch-unit; a
+  // command tab (clone/bootstrap) has no branch home, so it changes nothing.
+  function selectTab(t: OpenTerm) {
+    focusTab(t.workspace, t.id);
+    if (t.kind === "command") return;
+    emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, {
+      folderPath: t.workspace,
+      sessionId: isSessionTab(t) ? t.sessionId : undefined,
+    });
   }
 
   // Restore offer: per workspace, on first visit each run. Never automatic, so a
@@ -413,7 +440,9 @@ export default function Terminal(props: {
     });
     // A transcript just appeared: try to attribute it to a fresh tab (see
     // `backfillFreshSessions`) so the sidebar can focus it in place.
-    unlistenSessions = await listen("sessions://changed", () => void backfillFreshSessions());
+    unlistenSessions = await listen("sessions://changed", () => {
+      void backfillFreshSessions().then(() => syncTabTitles());
+    });
   });
 
   // Safe-send (src/utils/safeSend.ts `requestSend`): the sole consumer of
@@ -473,6 +502,38 @@ export default function Terminal(props: {
         setOpen([...open()]);
       }
     }
+  }
+
+  // Re-sync every session-backed tab's label to its session's current name, so
+  // a rename in the sidebar reflects on the terminal tab (the title is captured
+  // at tab creation and would otherwise never change). Runs on sessions://changed
+  // alongside the backfill; one list_sessions per distinct workspace.
+  async function syncTabTitles() {
+    const byWorkspace = new Map<string, OpenTerm[]>();
+    for (const t of open()) {
+      if (t.kind === "agent" && t.sessionId) {
+        byWorkspace.set(t.workspace, [...(byWorkspace.get(t.workspace) ?? []), t]);
+      }
+    }
+    if (!byWorkspace.size) return;
+    const updates: Record<string, string> = {};
+    await Promise.all(
+      [...byWorkspace].map(async ([workspace, tabs]) => {
+        const sessions = await invoke<RestoreSession[]>("list_sessions", { folder: workspace }).catch(
+          () => [] as RestoreSession[],
+        );
+        const byId = new Map(sessions.map((s) => [s.id, s]));
+        for (const t of tabs) {
+          const s = byId.get(t.sessionId!);
+          if (!s) continue;
+          // Mirror focusOrResume's title derivation: session name, else title,
+          // else a short id, capped at 28 chars.
+          const label = (s.name || s.title || t.sessionId!).slice(0, 28);
+          if (label !== tabTitle(t)) updates[t.id] = label;
+        }
+      }),
+    );
+    if (Object.keys(updates).length) setTabTitles((m) => ({ ...m, ...updates }));
   }
 
   // Selecting anything reveals its workspace group. A session selection then does
@@ -666,17 +727,17 @@ export default function Terminal(props: {
         activeId={visibleId()}
         idOf={(t) => t.id}
         onActivate={(id) => {
-          const ws = activeWorkspace();
-          if (ws) focusTab(ws, id);
+          const t = open().find((o) => o.id === id);
+          if (t) selectTab(t);
         }}
         onReorder={mergeReorder}
         renderTab={(t) => (
           <div
             class={`${styles.termTab} ${visibleId() === t.id ? styles.active : ""}`}
-            onClick={() => focusTab(t.workspace, t.id)}
+            onClick={() => selectTab(t)}
             title={t.cwd}
           >
-            <span class="tab-label">{t.title}</span>
+            <span class="tab-label">{tabTitle(t)}</span>
             <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
               <Icon icon={X} size={14} />
             </span>
@@ -684,7 +745,7 @@ export default function Terminal(props: {
         )}
         renderMenuItem={(t) => (
           <>
-            <span class="tab-label">{t.title}</span>
+            <span class="tab-label">{tabTitle(t)}</span>
             <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
               <Icon icon={X} size={14} />
             </span>
