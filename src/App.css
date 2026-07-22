@@ -148,15 +148,32 @@ body.dragging {
 }
 
 /* Outer splitter (sidebar <-> work-card): a transparent gutter that forms the
-   left gap around the raised card. Only the hover accent hints it is draggable;
-   at rest it is part of the shell. */
+   left gap around the raised card. The wide flex-basis stays the drag hit area,
+   but at rest it is invisible; on hover a thin centered line glows, so the
+   affordance reads as a modern hairline rather than a fat filled bar. */
 .body > .splitter {
   flex-basis: 8px;
   background: transparent;
+  position: relative;
 }
 
-.body > .splitter:hover {
+.body > .splitter::after {
+  content: "";
+  position: absolute;
+  top: calc(20px * var(--ui-density));
+  bottom: calc(20px * var(--ui-density));
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
   background: var(--brand);
+  opacity: 0;
+  box-shadow: 0 0 6px var(--brand), 0 0 2px var(--brand);
+  transition: opacity var(--sway-duration-fast) var(--sway-ease);
+}
+
+.body > .splitter:hover::after {
+  opacity: 0.9;
 }
 
 /* ---- Sidebar tree ---- */
@@ -351,6 +368,11 @@ body.dragging {
   align-items: center;
   justify-content: center;
   line-height: 1;
+  /* Reset the native <button> chrome (the editor tabs + overflow menu render it
+     as a real button; without this it shows the platform grey box). */
+  background: none;
+  border: none;
+  font: inherit;
   color: var(--text-dim);
   border-radius: var(--sway-radius-sm);
   padding: calc(2px * var(--ui-density));
@@ -413,42 +435,8 @@ body.dragging {
   border-color: var(--brand);
 }
 
-/* The dropdown listing the overflow tabs (portaled to <body>, so the bar's
-   overflow:hidden cannot clip it). Positioned via inline left/top. */
-.tab-overflow-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 180px;
-  max-width: 320px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: calc(4px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--sway-radius-md);
-  box-shadow: var(--shadow-md);
-}
-
-.tab-overflow-item {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
-  border-radius: var(--sway-radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.tab-overflow-item:hover {
-  background: var(--hover);
-}
-.tab-overflow-item .tab-label,
-.tab-overflow-item .tab-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* The overflow-tab dropdown (+N) renders through the shared <Menu> component;
+   its container/row styling lives in Menu.module.css. */
 
 /* Git diff gutter */
 .cm-diff-gutter {
