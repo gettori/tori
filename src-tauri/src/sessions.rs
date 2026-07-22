@@ -1476,14 +1476,25 @@ fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
 /// instead, so its dot caps at working rather than risking a false amber.
 #[tauri::command]
 pub fn session_tail_state(id: String, path: String, agent: String) -> Result<TailState, String> {
+    let tail = classify_tail(&parse_transcript_turns(&path, &agent));
     let hooks_capable = agents::find(&agent).map(|a| a.hooks).unwrap_or(false);
     if hooks_capable {
         if let Some(state) = crate::hooks::status_for(&id) {
+            // A hook-reported block is authoritative only while it still matches
+            // reality. The status file advances only on wired events (and is
+            // absent entirely on a resume that dropped `--settings`), so a
+            // `Notification` can freeze after the user answers and pin the dot
+            // amber forever. Cross-check a block against the transcript: once the
+            // tail no longer shows a pending tool call (the turn finished, or a
+            // tool result arrived), the block was resolved, so trust the
+            // transcript instead of the stale file. Only ever downgrades a
+            // block; Working/Done from the hook still win (they clear the dot).
+            if state == TailState::BlockedCandidate && tail != TailState::BlockedCandidate {
+                return Ok(tail);
+            }
             return Ok(state);
         }
     }
-    let turns = parse_transcript_turns(&path, &agent);
-    let tail = classify_tail(&turns);
     let needs_you_capable = agents::find(&agent).map(|a| a.needs_you).unwrap_or(true);
     if tail == TailState::BlockedCandidate && !needs_you_capable {
         Ok(TailState::Working)
@@ -2059,13 +2070,16 @@ mod tests {
     }
 
     #[test]
-    fn session_tail_state_claude_hook_file_overrides_the_tail_join() {
-        // A transcript tail that would classify as Done...
+    fn session_tail_state_stale_block_yields_to_a_finished_transcript() {
+        // A `Notification` hook file that was never overwritten (the user
+        // answered, but no later wired event fired) sits over a transcript
+        // whose tail has moved on to a final assistant text (Done). The stale
+        // block must NOT pin the dot amber: the transcript is the tiebreaker.
         let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"go"}}
 {"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"text","text":"Done."}]}}
 "#;
-        let p = tmp_file("claude_tail_hook_override.jsonl", body);
-        let id = "sess-hook-override-test";
+        let p = tmp_file("claude_stale_block_done.jsonl", body);
+        let id = "sess-stale-block-done";
         std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/sway/hooks-status")).unwrap();
         std::fs::write(
             dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json")),
@@ -2073,15 +2087,37 @@ mod tests {
         )
         .unwrap();
 
-        // ...but claude's `hooks` capability makes the injected Notification
-        // event authoritative instead: BlockedCandidate, not Done.
+        assert_eq!(
+            session_tail_state(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
+            TailState::Done
+        );
+
+        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json"))).ok();
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn session_tail_state_hook_block_holds_while_transcript_still_pending() {
+        // A genuine block: the `Notification` hook agrees with a transcript
+        // whose tail is a pending tool call (no result turn after it). The dot
+        // must stay BlockedCandidate - the override only downgrades a block the
+        // transcript shows is already resolved, never a live one.
+        let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"go"}}
+{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}
+"#;
+        let p = tmp_file("claude_live_block_pending.jsonl", body);
+        let id = "sess-live-block-pending";
+        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/sway/hooks-status")).unwrap();
+        std::fs::write(
+            dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json")),
+            r#"{"event":"Notification","at":1}"#,
+        )
+        .unwrap();
+
         assert_eq!(
             session_tail_state(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
             TailState::BlockedCandidate
         );
-        // pi has no `hooks` capability: the same hook file (if one somehow
-        // existed under pi's id) would never be consulted, it stays on the
-        // tail join - covered already by the pi tests above.
 
         std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();

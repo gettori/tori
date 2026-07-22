@@ -2110,7 +2110,14 @@ export default function LeftSidebar(props: {
     // transcript write, if any, may already have been debounced away).
     offFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       setWindowFocused(focused);
-      if (focused) probeActive();
+      if (focused) {
+        probeActive();
+        // Re-read tail state too, not just liveness: a finished session emits no
+        // more transcript writes or PTY edges, so a stale `blocked-candidate`
+        // (e.g. a frozen hook Notification) would otherwise never be re-queried.
+        // Refocusing the window re-syncs it, clearing a wrongly-pinned amber dot.
+        void refreshTailStates();
+      }
     });
     // Attach-flow background fetch: fold remote-only branches into the open
     // picker live. Guarded by attachCtx (right repo) AND an open picker, so a
