@@ -1,7 +1,9 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import styles from "./ImageView.module.css";
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]);
+// SVG is deliberately absent: it is XML text, so it opens as an editable source
+// tab (with a render toggle, like Markdown) rather than this read-only view.
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
 
 export function isImagePath(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
