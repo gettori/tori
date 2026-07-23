@@ -71,6 +71,30 @@
   padding: calc(4px * var(--ui-density));
 }
 
+/* File-tree toggle: matches the topbar pane toggles. Hover brightens the glyph
+   and turns the border brand; while the tree is hidden (.toggleOff) the icon is
+   accented (glyph only, border keeps its token), held through hover. Scoped to
+   this class so the sibling follow/preview buttons keep their plain look. */
+.paneToggle {
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
+}
+
+.paneToggle:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+.paneToggle.toggleOff,
+.paneToggle.toggleOff:hover {
+  color: var(--brand);
+}
+
+.paneToggle.toggleOff:hover {
+  border-color: var(--brand);
+}
+
 /* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
    the terminal strip): transparent at rest, a subtle --card2 fill when active or
    hovered. No folder dividers or accent bar. */
