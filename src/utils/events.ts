@@ -57,6 +57,20 @@ export const ZOOM_RESET = "sway:zoom-reset";
 // not the Rust backend (that needs a full restart).
 export const RELOAD_APP = "sway:reload-app";
 
+// Show/hide toggles for the four major panes. Consumed by App.tsx, which owns
+// the visibility flags; TOGGLE_FILETREE also reaches the editor (App reveals the
+// editor when the filetree is shown). Emitted by the topbar cluster, the view
+// hotkeys, and the command palette so all three drive one path.
+export const TOGGLE_SIDEBAR = "sway:toggle-sidebar";
+export const TOGGLE_TERMINAL = "sway:toggle-terminal";
+export const TOGGLE_EDITOR = "sway:toggle-editor";
+export const TOGGLE_FILETREE = "sway:toggle-filetree";
+
+// Fired by App.tsx after a pane transitions hidden -> shown, so the terminal
+// refits its cell grid and CodeMirror re-measures without waiting on a
+// ResizeObserver tick. Consumed by TerminalView and CodeEditor.
+export const REFIT_PANES = "sway:refit-panes";
+
 // Payload-carrying event: switch the editor's right panel to a named mode
 // (the command palette's "toggle right-panel mode" actions). Editor.tsx's
 // existing fallback-to-files effect handles a mode the current selection

@@ -1,0 +1,80 @@
+/* Topbar pane toggles. Two shapes borrowed from elsewhere in the UI: the
+   sidebar toggle mirrors the editor's file-tree toggle (a standalone bordered
+   icon button), and the terminal + editor toggles mirror the terminal tab bar's
+   new-split button (a joined segmented pair sharing one border). */
+.cluster {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-density));
+}
+
+/* Sidebar toggle: standalone bordered icon button (the file-tree toggle look). */
+.solo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(4px * var(--ui-density));
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--sway-radius-md);
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
+}
+
+.solo:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+/* Terminal + editor: a joined two-button pair (the terminal new-split look).
+   align-items: stretch keeps both halves the same height. */
+.split {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.seg {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
+}
+
+.segLeft {
+  border-radius: var(--sway-radius-md) 0 0 var(--sway-radius-md);
+  border-right: none;
+}
+
+.segRight {
+  border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
+}
+
+.seg:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+/* Keep the shared divider crisp when only the left half is hovered. */
+.segLeft:hover:not(:disabled) + .segRight:not(:hover) {
+  border-left-color: var(--brand);
+}
+
+.seg:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

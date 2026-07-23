@@ -182,6 +182,12 @@
   min-width: 0;
 }
 
+/* Hidden by the file-tree toggle: display:none keeps FileTree/Search/Review
+   panel state alive (never unmount) while the code area reclaims the width. */
+.rightPanel.hidden {
+  display: none;
+}
+
 .rightTabs {
   min-height: 40px;
   display: flex;

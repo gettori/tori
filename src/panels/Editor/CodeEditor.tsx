@@ -16,7 +16,7 @@ import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics, problemsFromState } from "../../utils/diagnostics";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
-import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { on as onEvent, emitWith, REFIT_PANES, TOAST, type ToastEvent } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
 import styles from "./CodeEditor.module.css";
@@ -111,6 +111,7 @@ export default function CodeEditor(props: {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
   let unlistenFs: UnlistenFn | undefined;
+  let offRefit: (() => void) | undefined;
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
   let swapToken = 0;
@@ -447,6 +448,9 @@ export default function CodeEditor(props: {
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
       }
     });
+    // Re-measure when a pane is revealed: an editor that laid out while
+    // display:none has a stale viewport until CodeMirror re-reads its geometry.
+    offRefit = onEvent(REFIT_PANES, () => view?.requestMeasure());
   });
 
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
@@ -479,6 +483,7 @@ export default function CodeEditor(props: {
 
   onCleanup(() => {
     unlistenFs?.();
+    offRefit?.();
     view?.destroy();
   });
 

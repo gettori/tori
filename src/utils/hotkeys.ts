@@ -14,6 +14,10 @@ import {
   ZOOM_OUT,
   ZOOM_RESET,
   RELOAD_APP,
+  TOGGLE_SIDEBAR,
+  TOGGLE_TERMINAL,
+  TOGGLE_EDITOR,
+  TOGGLE_FILETREE,
 } from "./events";
 
 /** Where a binding is listed in the Cmd+/ sheet. */
@@ -60,6 +64,12 @@ const cmd = (key: string) => (e: KeyboardEvent) =>
 
 const cmdShift = (key: string) => (e: KeyboardEvent) =>
   e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === key;
+
+// Cmd+Option chords match on `e.code` (physical key), never `e.key`: macOS
+// rewrites `e.key` to the Option glyph while Option is held (Opt+J -> "∆"), so a
+// key-based match would silently never fire.
+const cmdOpt = (code: string) => (e: KeyboardEvent) =>
+  e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey && e.code === code;
 
 /**
  * The one canonical binding table. `dispatchHotkey` and the Cmd+/ sheet both
@@ -144,6 +154,42 @@ export const BINDINGS: Binding[] = [
     scope: "global",
     match: cmd("r"),
     run: () => emit(RELOAD_APP),
+  },
+  {
+    id: "toggle-sidebar",
+    keys: ["⌘", "B"],
+    label: "Show or hide the sidebar",
+    group: "view",
+    scope: "global",
+    match: cmd("b"),
+    run: () => emit(TOGGLE_SIDEBAR),
+  },
+  {
+    id: "toggle-terminal",
+    keys: ["⌘", "⌥", "J"],
+    label: "Show or hide the terminal",
+    group: "view",
+    scope: "global",
+    match: cmdOpt("KeyJ"),
+    run: () => emit(TOGGLE_TERMINAL),
+  },
+  {
+    id: "toggle-editor",
+    keys: ["⌘", "⌥", "E"],
+    label: "Show or hide the editor",
+    group: "view",
+    scope: "global",
+    match: cmdOpt("KeyE"),
+    run: () => emit(TOGGLE_EDITOR),
+  },
+  {
+    id: "toggle-filetree",
+    keys: ["⌘", "⌥", "B"],
+    label: "Show or hide the file tree",
+    group: "view",
+    scope: "global",
+    match: cmdOpt("KeyB"),
+    run: () => emit(TOGGLE_FILETREE),
   },
   {
     id: "project-search",
