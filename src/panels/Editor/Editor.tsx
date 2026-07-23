@@ -34,6 +34,7 @@ import {
   MessagesSquare,
   Share2,
   BookOpen,
+  PanelRight,
   type LucideIcon,
 } from "lucide-solid";
 import {
@@ -117,7 +118,26 @@ function loadRightW(): number {
 // Same-origin CM6 editor pane: ⟨ tabs + code │ file tree ⟩. Owns the
 // open-editors model (tabs, active file, per-file dirty state); CodeEditor holds
 // the per-file buffers and FileTree drives opens via OPEN_IN_EDITOR.
-export default function Editor(props: { selected: Selection | null; liveTabs?: LiveTab[] }) {
+export default function Editor(props: {
+  selected: Selection | null;
+  liveTabs?: LiveTab[];
+  showFiletree?: boolean;
+  onToggleFiletree?: () => void;
+}) {
+  const filetreeOn = () => props.showFiletree ?? true;
+  // The file-tree show/hide button lives where the tree currently is: in the
+  // right panel's own tab strip (right-aligned) while the tree is shown, and in
+  // the editor tab bar (its only remaining home) once the tree is hidden.
+  const filetreeToggleBtn = (shown: boolean) => (
+    <button
+      class={`${styles.followToggle} ${styles.iconToggle}`}
+      onClick={() => props.onToggleFiletree?.()}
+      aria-pressed={shown}
+      title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
+    >
+      <Icon icon={PanelRight} size={15} />
+    </button>
+  );
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
@@ -728,6 +748,9 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
               >
                 <Icon icon={Bot} size={15} />
               </button>
+              <Show when={props.onToggleFiletree && !filetreeOn()}>
+                {filetreeToggleBtn(false)}
+              </Show>
             </>
           }
         />
@@ -772,16 +795,22 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           )}
         </Show>
       </div>
-      <Resizer
-        side="after"
-        variant="hairline"
-        value={rightW()}
-        min={RIGHT_W_MIN}
-        max={RIGHT_W_MAX}
-        onInput={setRightW}
-        onCommit={persistRightW}
-      />
-      <div class={styles.rightPanel} style={{ width: `${rightW()}px` }}>
+      <Show when={filetreeOn()}>
+        <Resizer
+          side="after"
+          variant="hairline"
+          value={rightW()}
+          min={RIGHT_W_MIN}
+          max={RIGHT_W_MAX}
+          onInput={setRightW}
+          onCommit={persistRightW}
+        />
+      </Show>
+      <div
+        class={styles.rightPanel}
+        classList={{ [styles.hidden]: !filetreeOn() }}
+        style={{ width: `${rightW()}px` }}
+      >
         <OverflowTabBar
           class={styles.rightTabs}
           items={rightTabs()}
@@ -789,6 +818,7 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           idOf={(t) => t.mode}
           onActivate={(id) => setRightMode(id as RightMode)}
           onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
+          trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
           renderTab={(t) => (
             <button
               class={styles.rightTab}

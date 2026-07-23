@@ -302,6 +302,27 @@ body.dragging {
   background: transparent;
 }
 
+/* When the terminal is hidden, the editor fills the whole work-card (its inline
+   width is dropped in that state, so flex governs). */
+.pane.editor.fill {
+  flex: 1 1 auto;
+}
+
+/* Show/hide: panes drop out of flow with display:none rather than unmounting, so
+   PTYs, CodeMirror buffers, and panel state survive a hide/show cycle. The extra
+   class specificity beats the base `.pane { display: flex }` rule. */
+.pane.sidebar.hidden,
+.pane.terminal.hidden,
+.pane.editor.hidden {
+  display: none;
+}
+
+/* With the sidebar hidden its Resizer gutter is gone too, so restore the
+   card's left breathing room the gutter normally provided. */
+.workspace.no-sidebar {
+  padding-left: 10px;
+}
+
 /* Shared tab-bar content (terminal + editor tabs) */
 .tab-label {
   overflow: hidden;

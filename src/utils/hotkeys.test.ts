@@ -50,6 +50,10 @@ describe("the canonical binding table", () => {
         "tab-cycle",
         "tab-jump",
         "terminal-search",
+        "toggle-editor",
+        "toggle-filetree",
+        "toggle-sidebar",
+        "toggle-terminal",
         "zoom-in",
         "zoom-out",
         "zoom-reset",
@@ -96,6 +100,21 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchHotkey(key("-", { meta: true }))).toBe(true);
     expect(dispatchHotkey(key("0", { meta: true }))).toBe(true);
     expect(dispatchHotkey(key("r", { meta: true }))).toBe(true);
+  });
+
+  it("matches Option chords on e.code, not the rewritten glyph", () => {
+    // macOS rewrites e.key to the Option glyph while Option is held (Opt+J is
+    // "∆"), so the view toggles must match e.code. A code-bearing event fires;
+    // one carrying only the glyph must not.
+    const withCode = (code: string, glyph: string) =>
+      ({ key: glyph, code, metaKey: true, altKey: true, shiftKey: false, ctrlKey: false }) as KeyboardEvent;
+    expect(dispatchHotkey(withCode("KeyJ", "∆"))).toBe(true);
+    expect(dispatchHotkey(withCode("KeyE", "´"))).toBe(true);
+    expect(dispatchHotkey(withCode("KeyB", "∫"))).toBe(true);
+    // Cmd+B (no Option) toggles the sidebar and is unaffected.
+    expect(dispatchHotkey(key("b", { meta: true }))).toBe(true);
+    // Cmd+Opt+B (filetree) and Cmd+B (sidebar) do not collide.
+    expect(dispatchHotkey(key("b", { meta: true, alt: true }))).toBe(false);
   });
 
   it("does NOT steal Cmd+P from a focused terminal", () => {

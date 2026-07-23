@@ -2212,7 +2212,10 @@ export default function LeftSidebar(props: {
         }
       },
     );
-    offSearch = onEvent(FOCUS_SEARCH, () => searchEl?.focus());
+    // Deferred to the next frame so focus lands after the sidebar is revealed
+    // (App un-hides it on the same event; a synchronous focus would hit a
+    // display:none element and be dropped).
+    offSearch = onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus()));
     offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
     offToast = onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error"));
     offTabFocus = onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d));

@@ -5,11 +5,16 @@ import { fuzzyScore } from "../../utils/fuzzy";
 import { agents, findAgent } from "../../utils/agents";
 import { liveStatuses } from "../../utils/sessionStatus";
 import {
+  emit,
   emitWith,
   FOCUS_SESSION_TAB,
   SET_RIGHT_MODE,
   NEW_SESSION,
   OPEN_TRANSCRIPT,
+  TOGGLE_SIDEBAR,
+  TOGGLE_TERMINAL,
+  TOGGLE_EDITOR,
+  TOGGLE_FILETREE,
   type NewSession,
   type OpenTranscript,
   type SetRightMode,
@@ -50,6 +55,13 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "session", label: "Session" },
   { mode: "shared", label: "Shared" },
   { mode: "docs", label: "Docs" },
+];
+
+const VIEW_TOGGLES: { event: string; label: string }[] = [
+  { event: TOGGLE_SIDEBAR, label: "Sidebar" },
+  { event: TOGGLE_TERMINAL, label: "Terminal" },
+  { event: TOGGLE_EDITOR, label: "Editor" },
+  { event: TOGGLE_FILETREE, label: "Filetree" },
 ];
 
 /** Cmd+K command palette: fuzzy-filters a combined list of live sessions
@@ -129,6 +141,14 @@ export default function CommandPalette(props: {
         id: `mode:${m.mode}`,
         label: `Show ${m.label}`,
         run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode }),
+      });
+    }
+    for (const v of VIEW_TOGGLES) {
+      actionItems.push({
+        kind: "action",
+        id: `view:${v.event}`,
+        label: `View: Toggle ${v.label}`,
+        run: () => emit(v.event),
       });
     }
     actionItems.push({
