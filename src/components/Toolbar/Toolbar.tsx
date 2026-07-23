@@ -1,11 +1,12 @@
-import { createSignal, createEffect, on, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
-import { Brain, Pencil, RefreshCw, Wrench, ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
+import { Brain, Pencil, RefreshCw, Wrench, ChevronRight, SquareTerminal, Code2, ArrowUpRight, FoldVertical, ArrowDown } from "lucide-solid";
 import styles from "./Toolbar.module.css";
 
 type SessionDetail = {
@@ -15,6 +16,8 @@ type SessionDetail = {
   output_tokens: number;
   context_tokens: number;
   model: string | null;
+  compaction_count: number;
+  compaction_reclaimed: number;
   touched_count: number;
 };
 function fmt(n: number): string {
@@ -97,6 +100,12 @@ function TurnIcon() {
 function ToolIcon() {
   return <Icon icon={Wrench} class={styles.statIco} />;
 }
+function CompactIcon() {
+  return <Icon icon={FoldVertical} class={styles.statIco} />;
+}
+function ReclaimedIcon() {
+  return <Icon icon={ArrowDown} class={styles.statIco} />;
+}
 // Context as a pie gauge that fills with actual usage (top, clockwise).
 function CtxGauge(props: { pct: number }) {
   const p = () => Math.max(0, Math.min(1, props.pct / 100));
@@ -128,6 +137,22 @@ export default function Toolbar(props: { selected: Selection | null }) {
   const sel = () => props.selected;
   const isSession = () => !!sel()?.sessionId;
 
+  // Load the currently-selected session's detail, guarding against a stale
+  // selection: `session_detail` is a full-file read, so a slow load for a
+  // just-deselected session must not overwrite the current one's stats. We
+  // capture the selection at call time and drop the result if it changed.
+  function loadDetail() {
+    const s = sel();
+    if (!s?.sessionId || !s.sessionPath) return;
+    const forId = s.sessionId;
+    const agent = s.agent === "pi" ? "pi" : "claude";
+    invoke<SessionDetail>("session_detail", { path: s.sessionPath, agent })
+      .then((d) => {
+        if (sel()?.sessionId === forId) setDetail(d);
+      })
+      .catch(() => {});
+  }
+
   createEffect(
     on(
       () => sel()?.sessionId,
@@ -136,27 +161,21 @@ export default function Toolbar(props: { selected: Selection | null }) {
         setErr("");
         const s = sel();
         setDisplayName(s?.sessionName || s?.sessionTitle || "");
-        if (id && s?.sessionPath) {
-          const path = s.sessionPath;
-          const agent = s?.agent === "pi" ? "pi" : "claude";
-          const loadDetail = () =>
-            invoke<SessionDetail>("session_detail", { path, agent }).then(setDetail).catch(() => {});
-          loadDetail();
-          // While the agent is live it keeps appending to the transcript, so
-          // poll: re-check running each tick and re-read the file only while it
-          // is. Idle sessions cost one running-check and nothing more.
-          const timer = setInterval(() => {
-            invoke<boolean>("session_running", { id, agent })
-              .then((r) => {
-                if (r) loadDetail();
-              })
-              .catch(() => {});
-          }, 4000);
-          onCleanup(() => clearInterval(timer));
-        }
+        if (id && s?.sessionPath) loadDetail();
       },
     ),
   );
+
+  // Refresh on transcript changes instead of a fixed poll: the backend already
+  // emits `sessions://changed` (debounced on transcript growth). One subscription
+  // for the component's life; the handler reloads the current selection and
+  // no-ops when nothing is selected. loadDetail's guard drops stale results.
+  onMount(() => {
+    const un = listen("sessions://changed", () => loadDetail());
+    onCleanup(() => {
+      un.then((f) => f()).catch(() => {});
+    });
+  });
 
   async function openGhostty(resume: boolean) {
     const s = sel();
@@ -213,6 +232,22 @@ export default function Toolbar(props: { selected: Selection | null }) {
                   <ToolIcon />{detail()!.tool_count}
                 </span>
                 <span class={styles.statSep}>·</span>
+                <Show when={detail()!.compaction_count > 0}>
+                  <span
+                    class={styles.stat}
+                    title={
+                      detail()!.compaction_reclaimed > 0
+                        ? `${detail()!.compaction_count} compactions, ~${fmt(detail()!.compaction_reclaimed)} tokens reclaimed`
+                        : `${detail()!.compaction_count} compactions`
+                    }
+                  >
+                    <CompactIcon />{detail()!.compaction_count}
+                    <Show when={detail()!.compaction_reclaimed > 0}>
+                      <ReclaimedIcon />{fmt(detail()!.compaction_reclaimed)}
+                    </Show>
+                  </span>
+                  <span class={styles.statSep}>·</span>
+                </Show>
                 <span
                   class={styles.stat}
                   title={`Context: ${Math.round((detail()!.context_tokens / contextWindow(detail()!.model)) * 100)}% of ${fmt(contextWindow(detail()!.model))}`}

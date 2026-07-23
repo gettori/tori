@@ -208,6 +208,8 @@ pub fn session_counts(db_path: &Path, session_id: &str) -> SessionDetail {
         output_tokens: 0,
         context_tokens: 0,
         model: None,
+        compaction_count: 0,
+        compaction_reclaimed: 0,
         touched_count: 0,
     };
     let Some(conn) = open_ro(db_path) else { return empty() };
@@ -254,7 +256,8 @@ pub fn session_counts(db_path: &Path, session_id: &str) -> SessionDetail {
     drop(rows);
     let touched_count = touched_files(db_path, session_id).iter().filter(|f| f.op != TouchOp::Read).count() as u32;
 
-    SessionDetail { prompt_count, turn_count, tool_count, output_tokens, context_tokens, model, touched_count }
+    // opencode has no compaction concept, so it reports 0 (unknown reclaimed).
+    SessionDetail { prompt_count, turn_count, tool_count, output_tokens, context_tokens, model, compaction_count: 0, compaction_reclaimed: 0, touched_count }
 }
 
 // --- touched files ---
