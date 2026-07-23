@@ -29,18 +29,36 @@ fn settings_path() -> PathBuf {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Appearance {
-    /// Bundled theme id (e.g. "dark-plus") or "import" when a file is loaded.
+    /// Bundled theme id, e.g. "sway-dark".
     pub theme: String,
-    /// Absolute path of the imported theme file, when `theme == "import"`.
-    pub import_path: Option<String>,
+    /// The VS Code-era `importPath`, read so the migration can name the file it
+    /// dropped in a one-time notice. `skip_serializing` is what actually drops
+    /// the key from settings.json: the next save writes the field out of
+    /// existence, and nothing in the app can set it again.
+    #[serde(rename = "importPath", default, skip_serializing)]
+    pub legacy_import_path: Option<String>,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         Self {
-            theme: "dark-plus".into(),
-            import_path: None,
+            theme: "sway-dark".into(),
+            legacy_import_path: None,
         }
+    }
+}
+
+/// Ids persisted by the VS Code-theme era, mapped on read so an install keeps
+/// the theme it chose. `"import"` has no equivalent - the import path is gone -
+/// so it lands on the default rather than on a name nothing resolves.
+///
+/// Mapping on read rather than rewriting the file means a user who never opens
+/// Settings is still migrated, and the rewrite happens whenever they next save.
+fn migrate_theme_id(id: &str) -> Option<&'static str> {
+    match id {
+        "dark-plus" | "import" => Some("sway-dark"),
+        "light-plus" => Some("sway-light"),
+        _ => None,
     }
 }
 
@@ -134,10 +152,14 @@ pub struct Settings {
 /// Read settings from `path`. A missing or unparseable file yields defaults; a
 /// partial file fills the missing sections from defaults (`#[serde(default)]`).
 fn load_from(path: &Path) -> Settings {
-    std::fs::read_to_string(path)
+    let mut settings: Settings = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| json5::from_str::<Settings>(&t).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Some(id) = migrate_theme_id(&settings.appearance.theme) {
+        settings.appearance.theme = id.into();
+    }
+    settings
 }
 
 fn save_to(path: &Path, settings: &Settings) -> Result<(), String> {
@@ -146,6 +168,19 @@ fn save_to(path: &Path, settings: &Settings) -> Result<(), String> {
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// The dropped import path, if it has not been reported yet, marking `state` as
+/// reported when it returns one. Settings with no import path leave the flag
+/// alone, so the notice is never burned on an install that never had a theme
+/// to lose.
+fn take_notice_with(settings: &Settings, state: &mut crate::onboarding::State) -> Option<String> {
+    let path = settings.appearance.legacy_import_path.clone()?;
+    if state.theme_import_notice_shown {
+        return None;
+    }
+    state.theme_import_notice_shown = true;
+    Some(path)
 }
 
 // --- thin wrappers over the real path ---
@@ -160,6 +195,25 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     Ok(settings)
+}
+
+/// The VS Code theme file this install lost, returned exactly once.
+///
+/// Sway no longer imports VS Code themes, so an install that had one is
+/// silently switched to a bundled palette. Silently is the problem: the user
+/// picked that file, so they are told once, by name, that it is gone. The flag
+/// lives in state.json rather than settings.json for the same reason
+/// `onboarding_shown` does - "have we said this yet" is app state, not a
+/// preference the user should find in their hand-editable config.
+#[tauri::command]
+pub fn take_theme_import_notice() -> Option<String> {
+    let settings = load_from(&settings_path());
+    let mut state = crate::onboarding::load_state();
+    let path = take_notice_with(&settings, &mut state)?;
+    // A failed write means the notice may repeat on the next launch. Preferred
+    // over swallowing it here, which would lose it permanently.
+    let _ = crate::onboarding::save_state(&state);
+    Some(path)
 }
 
 /// Watch the settings file's directory; emit `settings://changed` on any write
@@ -244,9 +298,72 @@ mod tests {
         let p = tmp_file();
         let mut s = Settings::default();
         s.layout.radius = 12;
-        s.appearance.theme = "light-plus".into();
+        s.appearance.theme = "sway-light".into();
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
+        std::fs::remove_file(&p).ok();
+    }
+
+    /// Every id the VS Code-theme era could persist lands on a named Sway
+    /// theme. A Light+ install must land on Sway *Light*: mapping it to the
+    /// default would silently flip an existing user to dark.
+    #[test]
+    fn legacy_theme_ids_migrate_on_read() {
+        for (old, expected) in [
+            ("dark-plus", "sway-dark"),
+            ("light-plus", "sway-light"),
+            ("import", "sway-dark"),
+        ] {
+            let p = tmp_file();
+            std::fs::write(
+                &p,
+                format!("{{ \"appearance\": {{ \"theme\": \"{old}\", \"importPath\": \"/x/t.json\" }} }}"),
+            )
+            .unwrap();
+            let s = load_from(&p);
+            assert_eq!(s.appearance.theme, expected, "{old} should migrate to {expected}");
+            std::fs::remove_file(&p).ok();
+        }
+    }
+
+    /// The notice names the dropped file exactly once, and a restart (a fresh
+    /// read of the same still-unmigrated settings file) does not repeat it.
+    #[test]
+    fn import_notice_fires_once_and_never_again() {
+        let p = tmp_file();
+        std::fs::write(&p, "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }").unwrap();
+        let settings = load_from(&p);
+        let mut state = crate::onboarding::State::default();
+
+        assert_eq!(take_notice_with(&settings, &mut state).as_deref(), Some("/x/t.json"));
+        assert!(state.theme_import_notice_shown);
+        // Second launch: settings.json is untouched, so only the flag stops it.
+        assert_eq!(take_notice_with(&load_from(&p), &mut state), None);
+        std::fs::remove_file(&p).ok();
+    }
+
+    /// An install that never imported a theme must not burn the flag, or a
+    /// later hand-edit naming an import path would be silently swallowed.
+    #[test]
+    fn no_import_path_leaves_the_flag_untouched() {
+        let mut state = crate::onboarding::State::default();
+        assert_eq!(take_notice_with(&Settings::default(), &mut state), None);
+        assert!(!state.theme_import_notice_shown);
+    }
+
+    /// The import path survives the read (the one-time notice needs to name it)
+    /// but never survives a write.
+    #[test]
+    fn import_path_is_read_but_never_written_back() {
+        let p = tmp_file();
+        std::fs::write(&p, "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }").unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.appearance.legacy_import_path.as_deref(), Some("/x/t.json"));
+
+        save_to(&p, &s).unwrap();
+        let written = std::fs::read_to_string(&p).unwrap();
+        assert!(!written.contains("importPath"), "importPath must be dropped on save: {written}");
+        assert!(load_from(&p).appearance.legacy_import_path.is_none());
         std::fs::remove_file(&p).ok();
     }
 }

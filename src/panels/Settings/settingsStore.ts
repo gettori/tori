@@ -7,9 +7,9 @@ import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, SETTINGS_CHANGED } from "../../utils/events";
-import { setTheme, importThemeFromPath } from "../../theme";
+import { setTheme } from "../../theme";
 
-export type Appearance = { theme: string; importPath: string | null };
+export type Appearance = { theme: string };
 export type Typography = {
   uiFontFamily: string;
   uiFontSize: number;
@@ -24,7 +24,7 @@ export type Checkpoints = { enabled: boolean };
 export type Settings = { appearance: Appearance; typography: Typography; layout: Layout; checkpoints: Checkpoints };
 
 export const DEFAULT_SETTINGS: Settings = {
-  appearance: { theme: "dark-plus", importPath: null },
+  appearance: { theme: "sway-dark" },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,
@@ -108,25 +108,11 @@ export function applySettings(s: Settings) {
   st.setProperty("--ui-density", s.layout.density === "compact" ? "0.85" : "1");
 }
 
-/** Drive the theme module from settings.appearance (the source of truth). */
-async function applyAppearanceTheme(a: Appearance) {
-  if (a.theme === "import" && a.importPath) {
-    try {
-      await importThemeFromPath(a.importPath);
-      return;
-    } catch {
-      // imported file gone/unreadable: fall back to the default theme
-    }
-    setTheme("dark-plus");
-    return;
-  }
-  setTheme(a.theme);
-}
-
-/** Apply tokens synchronously, then the theme. */
-async function applyAll(s: Settings) {
+/** Apply tokens, then the theme named by settings.appearance (the source of
+ *  truth). An unknown id falls back to the default inside the registry. */
+function applyAll(s: Settings) {
   applySettings(s);
-  await applyAppearanceTheme(s.appearance);
+  setTheme(s.appearance.theme);
 }
 
 /** Read settings from disk into the store and apply them. */
@@ -134,7 +120,7 @@ export async function loadSettings() {
   try {
     const s = await invoke<Settings>("get_settings");
     setSettings(s);
-    await applyAll(s);
+    applyAll(s);
   } catch {
     // keep current store / defaults
   }
@@ -144,7 +130,7 @@ export async function loadSettings() {
 export async function saveSettings(next: Settings): Promise<void> {
   const saved = await invoke<Settings>("set_settings", { settings: next });
   setSettings(saved);
-  await applyAll(saved);
+  applyAll(saved);
   emit(SETTINGS_CHANGED);
 }
 

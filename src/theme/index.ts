@@ -1,20 +1,19 @@
-// Public theme API. Sway ships bundled themes and can import any VS Code theme
-// file; it no longer mirrors an installed VS Code on window focus. The active
-// theme is resolved to CSS custom properties and painted onto <html>.
-import { invoke } from "@tauri-apps/api/core";
+// Public theme API. A theme is a palette of primitives; roles.ts expands it into
+// the semantic role set, which is painted onto <html> as inline custom
+// properties. The token layer (styles/tokens.css) is the pre-theme fallback.
 import { emit, THEME_APPLIED } from "../utils/events";
-import { type ThemeColors } from "./vscodeMap";
-import { distillVsCodeTheme } from "./distill";
-import { resolveTheme, applyResolved } from "./resolver";
+import { applyResolved } from "./resolver";
+import { buildRoles } from "./roles";
+import type { Appearance } from "./schema";
 import { DEFAULT_THEME_ID, getBundledTheme } from "./bundled";
 
-export { listSelectableThemes, listThemes } from "./bundled";
+export { listSelectableThemes, listThemes, DEFAULT_THEME_ID } from "./bundled";
 export type { BundledTheme } from "./bundled";
 
 const LS_TOKENS = "sway.theme.v1"; // resolved { --var: value }, for FOUC-free boot
 const LS_SELECTED = "sway.theme.selected.v1";
 
-type Selected = { kind: "light" | "dark" | null; bundledId?: string; importPath?: string };
+type Selected = { kind: Appearance | null; bundledId?: string };
 
 function readSelected(): Selected | null {
   try {
@@ -33,10 +32,9 @@ function persist(sel: Selected, resolved: Record<string, string>) {
   }
 }
 
-function apply(tc: ThemeColors, sel: Selected) {
-  const resolved = resolveTheme(tc);
-  applyResolved(resolved, tc.kind);
-  persist({ ...sel, kind: (tc.kind as Selected["kind"]) ?? sel.kind }, resolved);
+function apply(resolved: Record<string, string>, appearance: Appearance | null, sel: Selected) {
+  applyResolved(resolved, appearance);
+  persist({ ...sel, kind: appearance ?? sel.kind }, resolved);
   emit(THEME_APPLIED);
 }
 
@@ -64,11 +62,5 @@ export function applyCachedTheme() {
 export function setTheme(id: string) {
   const theme = getBundledTheme(id) ?? getBundledTheme(DEFAULT_THEME_ID);
   if (!theme) return;
-  apply(distillVsCodeTheme(theme.raw), { kind: theme.kind, bundledId: theme.id });
-}
-
-/** Import and apply a VS Code theme file (parsed natively for json5/`include`). */
-export async function importThemeFromPath(path: string) {
-  const tc = await invoke<ThemeColors>("get_theme_colors_from_path", { path });
-  apply(tc, { kind: (tc.kind as Selected["kind"]) ?? null, importPath: path });
+  apply(buildRoles(theme.palette), theme.appearance, { kind: theme.appearance, bundledId: theme.id });
 }

@@ -12,13 +12,13 @@ mod lsp;
 mod model;
 mod onboarding;
 mod opencode;
+pub mod palette;
 mod patch;
 mod presence;
 mod pty;
 mod search;
 mod sessions;
 mod settings;
-mod theme;
 mod update;
 mod worktree;
 
@@ -249,12 +249,10 @@ pub fn run() {
             worktree::branch_status,
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
-            theme::get_theme_colors,
-            theme::get_theme_colors_from_path,
-            theme::pick_theme_file,
             settings::get_settings,
             settings::set_settings,
             settings::settings_watch_start,
+            settings::take_theme_import_notice,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
