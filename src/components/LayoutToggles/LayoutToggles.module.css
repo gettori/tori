@@ -32,6 +32,17 @@
   border-color: var(--brand);
 }
 
+/* Pane hidden: accent the icon (only the glyph, the border keeps its token) as a
+   cue that clicking brings the pane back. Held through hover. */
+.solo.off,
+.solo.off:hover {
+  color: var(--brand);
+}
+
+.solo.off:hover {
+  border-color: var(--brand);
+}
+
 /* Terminal + editor: a joined two-button pair (the terminal new-split look).
    align-items: stretch keeps both halves the same height. */
 .split {
@@ -66,6 +77,16 @@
 
 .seg:hover:not(:disabled) {
   color: var(--text);
+  border-color: var(--brand);
+}
+
+/* Pane hidden: accent the icon, held through hover (see .solo.off). */
+.seg.off,
+.seg.off:hover:not(:disabled) {
+  color: var(--brand);
+}
+
+.seg.off:hover:not(:disabled) {
   border-color: var(--brand);
 }
 
