@@ -23,6 +23,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROLES, ROLE_BY_CSS_VAR, buildRoles } from "../src/theme/roles.ts";
+import { validatePalette } from "../src/theme/schema.ts";
+import { tokensCss } from "./gen-tokens.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const SRC = join(ROOT, "src");
@@ -97,7 +100,11 @@ function walk(dir, out = []) {
 // flagging prose would train everyone to ignore this check.
 function stripComments(source) {
   return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // A block comment collapses to its own newlines rather than to "", so every
+    // line after it keeps its number. Deleting them outright shifts every
+    // subsequent report, and a guard that names the wrong line is one people
+    // learn to distrust.
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ""))
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
@@ -141,73 +148,189 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-// ---- Check 2: tokens.css is structurally two-theme ----
+// ---- Check 2: every palette produces every role, and tokens.css agrees ----
 //
-// A token defined for dark alone does not fail loudly. It silently keeps its
-// dark value in light mode, which is exactly how a light UI ends up with dark
-// remnants - so the absence has to be an error, not a thing to notice.
+// This used to ask whether each token declared for dark also had a light value.
+// The generator answers that upstream now: one palette in, one key set out, so
+// a light-only gap is no longer expressible. What IS still expressible is a
+// palette missing a primitive, a derivation that yields nothing, and a hand-edit
+// to the generated region of tokens.css - which would put the boot fallback and
+// the runtime theme at odds, visible only as a flash of the wrong colour.
 
-const TOKENS_CSS = readFileSync(join(SRC, "styles/tokens.css"), "utf8");
-const DARK_BLOCK = "---- Semantic tokens, dark";
-const LIGHT_BLOCK = "---- Semantic tokens, light";
+const PALETTE_DIR = join(SRC, "theme/palettes");
+const palettes = readdirSync(PALETTE_DIR)
+  .filter((f) => f.endsWith(".json"))
+  .map((f) => [f.replace(/\.json$/, ""), JSON.parse(readFileSync(join(PALETTE_DIR, f), "utf8"))]);
 
-/** Custom-property names declared in the brace-balanced block after `marker`. */
-function declaredIn(marker) {
-  const start = TOKENS_CSS.indexOf(marker);
-  if (start < 0) {
-    console.error(`tokens.css no longer contains the marker "${marker}".`);
-    console.error("This script locates the theme blocks by that comment; restore it or update the marker here.");
-    process.exit(1);
-  }
-  const open = TOKENS_CSS.indexOf("{", start);
-  let depth = 0;
-  let i = open;
-  for (; i < TOKENS_CSS.length; i++) {
-    if (TOKENS_CSS[i] === "{") depth++;
-    else if (TOKENS_CSS[i] === "}" && --depth === 0) break;
-  }
-  const body = TOKENS_CSS.slice(open + 1, i);
-  return new Set([...body.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]));
-}
-
-const darkTokens = declaredIn(DARK_BLOCK);
-const lightTokens = declaredIn(LIGHT_BLOCK);
 const structural = [];
+if (palettes.length === 0) structural.push(`no palettes found in ${relative(ROOT, PALETTE_DIR)}`);
 
-for (const token of darkTokens) {
-  if (!lightTokens.has(token)) structural.push(`${token} has a dark value but no light one`);
-}
+for (const [id, palette] of palettes) {
+  for (const problem of validatePalette(palette)) structural.push(`${id}: ${problem}`);
 
-// The :root defaults are Dark+; without a light override, a first boot with no
-// cached theme paints dark-theme syntax onto a white editor.
-for (const category of ["keyword", "string", "comment", "number", "function", "type", "variable"]) {
-  if (!lightTokens.has(`--syn-${category}`)) {
-    structural.push(`--syn-${category} has no light override (light would inherit the Dark+ default)`);
+  let values;
+  try {
+    values = buildRoles(palette);
+  } catch (e) {
+    structural.push(`${id}: roles.ts threw building the role set: ${e.message}`);
+    continue;
   }
-}
-
-const ANSI_SLOTS = [
-  "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-  "bright-black", "bright-red", "bright-green", "bright-yellow",
-  "bright-blue", "bright-magenta", "bright-cyan", "bright-white",
-];
-for (const [themeName, tokens] of [["dark", darkTokens], ["light", lightTokens]]) {
-  for (const slot of ANSI_SLOTS) {
-    if (!tokens.has(`--term-${slot}`)) {
-      structural.push(`--term-${slot} is missing from the ${themeName} ANSI ramp`);
+  for (const role of ROLES) {
+    const value = values[role.cssVar];
+    if (!value) structural.push(`${id}: role ${role.id} (${role.cssVar}) has no value`);
+    // A derivation reading a key the palette lacks produces a *string* holding
+    // "undefined" or "NaN" rather than throwing, which CSS then silently drops.
+    else if (/undefined|NaN|var\(/.test(value)) {
+      structural.push(`${id}: role ${role.id} (${role.cssVar}) resolved to "${value}"`);
     }
   }
+  const undeclared = Object.keys(values).filter((k) => !ROLE_BY_CSS_VAR.has(k));
+  if (undeclared.length > 0) {
+    structural.push(`${id}: emits ${undeclared.length} key(s) absent from ROLES: ${undeclared.join(", ")}`);
+  }
+}
+
+try {
+  const { current, next } = tokensCss();
+  if (current !== next) {
+    structural.push(
+      "the generated region of src/styles/tokens.css does not match the palettes (run: node scripts/gen-tokens.mjs)",
+    );
+  }
+} catch (e) {
+  structural.push(e.message);
 }
 
 if (structural.length > 0) {
-  console.error(`${structural.length} token-layer gap(s) in src/styles/tokens.css:\n`);
+  console.error(`${structural.length} problem(s) in the palette-to-role layer:\n`);
   for (const problem of structural) console.error(`  ${problem}`);
-  console.error("\nEvery semantic token needs a value in BOTH theme blocks, or light silently inherits dark.");
+  console.error("\nEvery bundled palette must produce a concrete value for every role in ROLES,");
+  console.error("and the boot fallback in tokens.css must be what the generator would write.");
+  process.exit(1);
+}
+
+// ---- Check 3: every var(--x) in src/ resolves to something declared ----
+//
+// A var() naming a property nobody declares does not fail, warn, or fall back:
+// the declaration is simply dropped and the element renders with whatever it
+// inherited. That is how `var(--hover-bg)` sat in ReviewPanel unnoticed. The
+// name is only meaningful if something declares it, so an unresolvable one is
+// an error rather than a thing to spot in review.
+
+/** Custom properties declared in `text`, by CSS declaration, by an inline style
+ *  object key, or by a runtime setProperty call. */
+function declarationsIn(text) {
+  const names = new Set();
+  for (const m of text.matchAll(/(--[\w-]+)\s*:/g)) names.add(m[1]);
+  for (const m of text.matchAll(/setProperty\(\s*["'`](--[\w-]+)/g)) names.add(m[1]);
+  return names;
+}
+
+// var() names built at runtime, which no static scan can resolve. Named one by
+// one rather than skipping every interpolated var(), so a new dynamic token has
+// to be declared here instead of quietly joining the set.
+const DYNAMIC_VARS = new Map([
+  [
+    "src/dev/Styleguide.tsx",
+    {
+      prefixes: ["--shadow-", "--sway-text-", "--sway-space-", "--sway-radius-"],
+      reason: "the gallery renders each scale over its own list of stop names, e.g. var(--shadow-${s})",
+    },
+  ],
+]);
+
+// Comments are stripped for the same reason check 1 strips them: prose talks
+// about tokens constantly ("superseded by var(--hover)"), and a comment naming a
+// token that has since been removed would fail the build for documenting
+// history accurately.
+const scanned = walk(SRC).filter((f) => /\.(css|tsx?)$/.test(f));
+const sources = new Map(scanned.map((f) => [relative(ROOT, f), stripComments(readFileSync(f, "utf8"))]));
+
+// Global scope: the token layer, every role the generator emits, and anything a
+// module writes onto an element at runtime (settingsStore's --ui-*, the
+// resolver's roles). A property declared in one CSS module is NOT global - it
+// only reaches descendants of that rule - so those stay per-file below.
+const globalNames = new Set(ROLES.map((r) => r.cssVar));
+for (const name of declarationsIn(sources.get("src/styles/tokens.css") ?? "")) globalNames.add(name);
+for (const [rel, text] of sources) {
+  if (!rel.endsWith(".css")) for (const m of text.matchAll(/setProperty\(\s*["'`](--[\w-]+)/g)) globalNames.add(m[1]);
+}
+
+// tokens.css is scanned like every other file, not skipped. It is the boot
+// fallback, so a var() naming nothing there paints wrong *before* any script
+// runs and nothing downstream can correct it. Its own declarations are already
+// in globalNames, so its internal references resolve against themselves.
+const unresolved = [];
+for (const [rel, text] of sources) {
+  const local = declarationsIn(text);
+  const dynamic = DYNAMIC_VARS.get(rel);
+  const lines = text.split("\n");
+  for (const m of text.matchAll(/var\(\s*(--[\w-]+)\s*(.?)/g)) {
+    const [name, next] = [m[1], m[2]];
+    const line = text.slice(0, m.index).split("\n").length;
+    // An interpolation immediately after the name means the real name is built
+    // at runtime and `name` is only its literal prefix.
+    if (next === "$" && text[m.index + m[0].length] === "{") {
+      if (dynamic?.prefixes.some((p) => name.startsWith(p) || p.startsWith(name))) continue;
+      unresolved.push({ rel, line, name: `${name}\${...}`, text: lines[line - 1].trim() });
+      continue;
+    }
+    // `var(--x, <fallback>)` handles its own absence by construction: the
+    // fallback IS the declaration. That is how an optional per-call-site knob
+    // like --btn-icon-size is meant to read, so requiring a declaration would
+    // force a dummy one and defeat the point.
+    if (next === ",") continue;
+    if (globalNames.has(name) || local.has(name)) continue;
+    unresolved.push({ rel, line, name, text: lines[line - 1].trim() });
+  }
+}
+
+if (unresolved.length > 0) {
+  console.error(`${unresolved.length} var() reference(s) that resolve to nothing:\n`);
+  for (const u of unresolved) {
+    console.error(`  ${u.rel}:${u.line}  ${u.name}`);
+    console.error(`    ${u.text}`);
+  }
+  console.error("\nA var() naming an undeclared property is dropped silently and the element inherits instead.");
+  console.error("Use a role cssVar from src/theme/roles.ts, a --sway-* primitive, or declare it locally.");
+  console.error("A name built at runtime needs an entry in DYNAMIC_VARS in this script, with a reason.");
+  process.exit(1);
+}
+
+// ---- Check 4: the terminal reads names that exist ----
+//
+// TerminalView pulls its 20 colours through getComputedStyle, as TypeScript
+// string literals. No CSS tooling can see them, check 3 cannot either, and a
+// missed name yields `undefined` - which xterm takes as "use my own default",
+// so the terminal quietly stops following the theme instead of breaking.
+
+const TERMINAL_VIEW = "src/panels/Terminal/TerminalView.tsx";
+const termSource = sources.get(TERMINAL_VIEW);
+const termBody = termSource && /function termColors\(\)\s*\{[\s\S]*?\n\}/.exec(termSource);
+const termNames = termBody ? [...termBody[0].matchAll(/\bv\(\s*"(--[\w-]+)"\s*\)/g)].map((m) => m[1]) : [];
+
+const termProblems = [];
+if (!termBody) {
+  termProblems.push(`could not find termColors() in ${TERMINAL_VIEW}; this check locates it by that name`);
+} else if (termNames.length === 0) {
+  termProblems.push(`termColors() in ${TERMINAL_VIEW} read no --tokens; the v("--x") form this check scans for changed`);
+}
+for (const name of termNames) {
+  if (!ROLE_BY_CSS_VAR.has(name)) {
+    termProblems.push(`termColors() reads ${name}, which is not a role cssVar in src/theme/roles.ts`);
+  }
+}
+
+if (termProblems.length > 0) {
+  console.error(`${termProblems.length} problem(s) in the terminal's theme read:\n`);
+  for (const problem of termProblems) console.error(`  ${problem}`);
+  console.error("\nEvery name termColors() reads must be a role, or the terminal silently keeps xterm's defaults.");
   process.exit(1);
 }
 
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
-    `and all ${darkTokens.size} dark tokens have light values.`,
+    `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
+    `every var() in src/ resolving, and all ${termNames.length} terminal reads mapped.`,
 );

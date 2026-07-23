@@ -224,7 +224,7 @@
   opacity: 1;
 }
 .rowAction:hover {
-  background: var(--hover-bg);
+  background: var(--hover);
   color: var(--text);
 }
 

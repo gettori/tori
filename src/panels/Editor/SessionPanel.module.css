@@ -23,7 +23,7 @@
 }
 
 .editingNow code {
-  font-family: var(--font-mono);
+  font-family: var(--sway-font-mono);
 }
 
 @keyframes sessionEditingPulse {
