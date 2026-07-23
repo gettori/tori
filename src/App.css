@@ -141,46 +141,6 @@ body.dragging {
   min-height: 0;
 }
 
-.splitter {
-  flex: 0 0 4px;
-  cursor: col-resize;
-  background: var(--border);
-  transition: background var(--sway-duration-fast) var(--sway-ease);
-}
-
-.splitter:hover {
-  background: var(--brand);
-}
-
-/* Outer splitter (sidebar <-> work-card): a transparent gutter that forms the
-   left gap around the raised card. The wide flex-basis stays the drag hit area,
-   but at rest it is invisible; on hover a thin centered line glows, so the
-   affordance reads as a modern hairline rather than a fat filled bar. */
-.body > .splitter {
-  flex-basis: 8px;
-  background: transparent;
-  position: relative;
-}
-
-.body > .splitter::after {
-  content: "";
-  position: absolute;
-  top: calc(20px * var(--ui-density));
-  bottom: calc(20px * var(--ui-density));
-  left: 50%;
-  width: 2px;
-  transform: translateX(-50%);
-  border-radius: 1px;
-  background: var(--brand);
-  opacity: 0;
-  box-shadow: 0 0 6px var(--brand), 0 0 2px var(--brand);
-  transition: opacity var(--sway-duration-fast) var(--sway-ease);
-}
-
-.body > .splitter:hover::after {
-  opacity: 0.9;
-}
-
 /* ---- Sidebar tree ---- */
 .tree-body {
   overflow: hidden;
@@ -340,25 +300,6 @@ body.dragging {
 .pane.editor {
   flex: 0 0 auto;
   background: transparent;
-}
-
-/* Terminal <-> editor divider: a centered hairline inside the card rather than
-   a chunky bar, kept over a wider transparent hit area so it stays grabbable.
-   Brightens to the brand accent on hover. */
-.work-split > .splitter {
-  flex-basis: 5px;
-  background:
-    linear-gradient(
-      to right,
-      transparent calc(50% - 0.5px),
-      var(--border) calc(50% - 0.5px),
-      var(--border) calc(50% + 0.5px),
-      transparent calc(50% + 0.5px)
-    );
-}
-
-.work-split > .splitter:hover {
-  background: var(--brand);
 }
 
 /* Shared tab-bar content (terminal + editor tabs) */

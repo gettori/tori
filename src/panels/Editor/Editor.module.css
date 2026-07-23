@@ -174,11 +174,11 @@
 
 /* Right panel: Files / Changes toggle + the active panel */
 .rightPanel {
-  width: 240px;
+  /* Width is set inline from a drag-resized signal; the Resizer to its left
+     provides the seam (its hairline) so no border-left here. */
   flex: none;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border);
   min-width: 0;
 }
 

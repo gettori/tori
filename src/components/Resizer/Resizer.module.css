@@ -1,0 +1,83 @@
+/* Shared drag handle for every pane divider. A wide, mostly transparent hit area
+   with a short brand line that glows on hover/drag (the sidebar-gutter look).
+   `.hairline` adds a faint full-length line at rest so dividers inside a single
+   card still read as a seam. Works on both axes for the future split panes. */
+.resizer {
+  flex: 0 0 8px;
+  align-self: stretch;
+  position: relative;
+  background: transparent;
+  z-index: 1;
+}
+
+.x {
+  cursor: col-resize;
+}
+
+.y {
+  cursor: row-resize;
+}
+
+/* Rest-state seam for intra-card dividers. Fades out as the hover glow takes
+   over so the two never stack. */
+.hairline::before {
+  content: "";
+  position: absolute;
+  background: var(--border);
+  transition: opacity var(--sway-duration-fast) var(--sway-ease);
+}
+
+.hairline.x::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.hairline.y::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.hairline:hover::before,
+.hairline.dragging::before {
+  opacity: 0;
+}
+
+/* The hover glow: a short brand line, inset from the ends, lit on hover/drag. */
+.resizer::after {
+  content: "";
+  position: absolute;
+  border-radius: 1px;
+  background: var(--brand);
+  opacity: 0;
+  box-shadow:
+    0 0 6px var(--brand),
+    0 0 2px var(--brand);
+  transition: opacity var(--sway-duration-fast) var(--sway-ease);
+}
+
+.x::after {
+  top: calc(96px * var(--ui-density));
+  bottom: calc(96px * var(--ui-density));
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.y::after {
+  left: calc(96px * var(--ui-density));
+  right: calc(96px * var(--ui-density));
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.resizer:hover::after,
+.resizer.dragging::after {
+  opacity: 0.9;
+}
