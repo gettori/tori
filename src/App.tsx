@@ -197,7 +197,9 @@ function App() {
   return (
     <div class="app">
       <header class="topbar" data-tauri-drag-region>
-        <WindowControls />
+        <div class="topbar-rail" style={{ width: `${sidebar()}px` }}>
+          <WindowControls />
+        </div>
         <Toolbar selected={selected()} />
         <UpdatePill suppressed={welcome()} />
         <Button
