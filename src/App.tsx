@@ -5,6 +5,7 @@ import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
+import Resizer from "./components/Resizer/Resizer";
 import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import Settings from "./panels/Settings/Settings";
@@ -118,31 +119,6 @@ function App() {
     }
   }
 
-  function startDrag(
-    e: PointerEvent,
-    get: () => number,
-    set: (n: number) => void,
-    edge: "left" | "right",
-  ) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startVal = get();
-    function onMove(ev: PointerEvent) {
-      const dx = ev.clientX - startX;
-      const next = edge === "left" ? startVal + dx : startVal - dx;
-      set(Math.max(180, Math.min(1000, next)));
-    }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      document.body.classList.remove("dragging");
-      persistLayout();
-    }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    document.body.classList.add("dragging");
-  }
-
   // Every binding now comes from the canonical table in utils/hotkeys.ts,
   // including Cmd+P: the table marks it `window` scope so it still does not
   // fire while a terminal has focus, which is what the old special case here
@@ -219,14 +195,29 @@ function App() {
           </div>
         </aside>
 
-        <div class="splitter" onPointerDown={(e) => startDrag(e, sidebar, setSidebar, "left")} />
+        <Resizer
+          side="before"
+          value={sidebar()}
+          min={180}
+          max={1000}
+          onInput={setSidebar}
+          onCommit={persistLayout}
+        />
 
         <div class="workspace">
           <div class="work-split">
             <main class="pane terminal">
               <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
             </main>
-            <div class="splitter" onPointerDown={(e) => startDrag(e, editor, setEditor, "right")} />
+            <Resizer
+              side="after"
+              variant="hairline"
+              value={editor()}
+              min={180}
+              max={1000}
+              onInput={setEditor}
+              onCommit={persistLayout}
+            />
             <section class="pane editor" style={{ width: `${editor()}px` }}>
               <Editor selected={selected()} liveTabs={liveTabs()} />
             </section>

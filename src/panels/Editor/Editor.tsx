@@ -16,6 +16,7 @@ import MarkdownPreview from "./MarkdownPreview";
 import ImageView, { isImagePath } from "./ImageView";
 import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
+import Resizer from "../../components/Resizer/Resizer";
 import FileIcon from "../../seti/FileIcon";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -104,6 +105,15 @@ function basename(path: string): string {
   return path.split("/").pop() || path;
 }
 
+const LS_RIGHT_W = "sway.editor.rightw.v1";
+const RIGHT_W_MIN = 160;
+const RIGHT_W_MAX = 600;
+
+function loadRightW(): number {
+  const n = Number(localStorage.getItem(LS_RIGHT_W));
+  return Number.isFinite(n) && n >= RIGHT_W_MIN ? Math.min(n, RIGHT_W_MAX) : 240;
+}
+
 // Same-origin CM6 editor pane: ⟨ tabs + code │ file tree ⟩. Owns the
 // open-editors model (tabs, active file, per-file dirty state); CodeEditor holds
 // the per-file buffers and FileTree drives opens via OPEN_IN_EDITOR.
@@ -112,6 +122,16 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
   const [rightMode, setRightMode] = createSignal<RightMode>("files");
+  // Width of the right (file-tree/search/problems) panel, drag-resized and
+  // persisted; the code side flexes to fill the rest.
+  const [rightW, setRightW] = createSignal(loadRightW());
+  function persistRightW() {
+    try {
+      localStorage.setItem(LS_RIGHT_W, String(rightW()));
+    } catch {
+      // ignore
+    }
+  }
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
@@ -752,7 +772,16 @@ export default function Editor(props: { selected: Selection | null; liveTabs?: L
           )}
         </Show>
       </div>
-      <div class={styles.rightPanel}>
+      <Resizer
+        side="after"
+        variant="hairline"
+        value={rightW()}
+        min={RIGHT_W_MIN}
+        max={RIGHT_W_MAX}
+        onInput={setRightW}
+        onCommit={persistRightW}
+      />
+      <div class={styles.rightPanel} style={{ width: `${rightW()}px` }}>
         <OverflowTabBar
           class={styles.rightTabs}
           items={rightTabs()}

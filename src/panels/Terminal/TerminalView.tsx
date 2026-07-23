@@ -86,6 +86,7 @@ export default function TerminalView(props: {
   let linkProvider: IDisposable | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let ro: ResizeObserver | undefined;
+  let settleTimer: number | undefined;
   let offFocus: (() => void) | undefined;
   let offTheme: (() => void) | undefined;
   const [showSearch, setShowSearch] = createSignal(false);
@@ -141,6 +142,22 @@ export default function TerminalView(props: {
     invoke("pty_resize", { id: props.id, cols: term.cols, rows: term.rows }).catch(
       () => {},
     );
+  }
+
+  // A single fit + pty_resize reflows the whole xterm buffer and round-trips to
+  // the backend, so running it every frame of a splitter drag stutters. While a
+  // drag is in progress (body.dragging), coalesce to one fit after motion
+  // settles; otherwise (window resize, layout change) fit immediately.
+  function onResizeObserved() {
+    if (settleTimer) clearTimeout(settleTimer);
+    if (document.body.classList.contains("dragging")) {
+      settleTimer = window.setTimeout(() => {
+        settleTimer = undefined;
+        fitNow();
+      }, 80);
+    } else {
+      fitNow();
+    }
   }
 
   onMount(async () => {
@@ -268,7 +285,7 @@ export default function TerminalView(props: {
       onOutput: output,
     }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
 
-    ro = new ResizeObserver(() => fitNow());
+    ro = new ResizeObserver(onResizeObserved);
     ro.observe(host);
     if (props.active) term.focus();
 
@@ -309,6 +326,7 @@ export default function TerminalView(props: {
     linkProvider?.dispose();
     unlistenExit?.();
     ro?.disconnect();
+    if (settleTimer) clearTimeout(settleTimer);
     offFocus?.();
     offTheme?.();
     invoke("pty_kill", { id: props.id }).catch(() => {});
