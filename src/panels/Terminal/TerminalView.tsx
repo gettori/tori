@@ -8,7 +8,7 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
+import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
 import { settings, terminalFontSize } from "../Settings/settingsStore";
@@ -89,6 +89,7 @@ export default function TerminalView(props: {
   let settleTimer: number | undefined;
   let offFocus: (() => void) | undefined;
   let offTheme: (() => void) | undefined;
+  let offRefit: (() => void) | undefined;
   const [showSearch, setShowSearch] = createSignal(false);
   const [query, setQuery] = createSignal("");
 
@@ -295,6 +296,11 @@ export default function TerminalView(props: {
     offTheme = onEvent(THEME_APPLIED, () => {
       if (term) term.options.theme = termColors();
     });
+    // A pane was just revealed: refit now (the active view only) rather than
+    // waiting on a ResizeObserver tick a display:none -> block flip can miss.
+    offRefit = onEvent(REFIT_PANES, () => {
+      if (props.active) queueMicrotask(fitNow);
+    });
   });
 
   // Live font: xterm is canvas/WebGL, so CSS can't reach it - push the effective
@@ -329,6 +335,7 @@ export default function TerminalView(props: {
     if (settleTimer) clearTimeout(settleTimer);
     offFocus?.();
     offTheme?.();
+    offRefit?.();
     invoke("pty_kill", { id: props.id }).catch(() => {});
     term?.dispose();
   });

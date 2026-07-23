@@ -88,7 +88,10 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
     on(
       () => props.focusNonce,
       (_n, prev) => {
-        if (prev !== undefined) inputEl?.focus();
+        // Deferred to the next frame: Cmd+Shift+F can reveal the editor + right
+        // panel on the same event, and a synchronous focus would hit the panel
+        // while it is still display:none and be dropped.
+        if (prev !== undefined) requestAnimationFrame(() => inputEl?.focus());
       },
     ),
   );
