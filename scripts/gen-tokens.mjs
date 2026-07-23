@@ -65,30 +65,46 @@ function render() {
   ].join("\n");
 }
 
-const current = readFileSync(TOKENS_PATH, "utf8");
-const start = current.indexOf(BEGIN);
-const stop = current.indexOf(END);
-if (start < 0 || stop < 0) {
-  console.error(`tokens.css is missing the generated-region markers.`);
-  console.error(`Expected:\n  ${BEGIN}\n  ${END}`);
-  process.exit(1);
+/** tokens.css as it is on disk, and as the palettes say it should be.
+ *
+ *  Exported so the token guard can assert the two agree without shelling out or
+ *  re-deriving the region format, which would be a second definition of "what
+ *  generated looks like" and would drift from this one. */
+export function tokensCss() {
+  const current = readFileSync(TOKENS_PATH, "utf8");
+  const start = current.indexOf(BEGIN);
+  const stop = current.indexOf(END);
+  if (start < 0 || stop < 0) {
+    throw new Error(`tokens.css is missing the generated-region markers.\nExpected:\n  ${BEGIN}\n  ${END}`);
+  }
+
+  // Cut at the START OF THE MARKER'S LINE, not at a fixed column. The markers are
+  // indented inside @layer tokens, and assuming a width means a reindent silently
+  // eats a character or strands the old indent in a generated file.
+  const before = current.slice(0, current.lastIndexOf("\n", start) + 1);
+  const after = current.slice(stop + END.length);
+  return { current, next: `${before}${render()}${after}` };
 }
 
-// Cut at the START OF THE MARKER'S LINE, not at a fixed column. The markers are
-// indented inside @layer tokens, and assuming a width means a reindent silently
-// eats a character or strands the old indent in a generated file.
-const before = current.slice(0, current.lastIndexOf("\n", start) + 1);
-const after = current.slice(stop + END.length);
-const next = `${before}${render()}${after}`;
-
-if (process.argv.includes("--check")) {
-  if (next !== current) {
-    console.error("src/styles/tokens.css is stale: the generated region does not match the palettes.");
-    console.error("Run: node scripts/gen-tokens.mjs");
+/** Only when run directly: importing this must not rewrite the file. */
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  let current, next;
+  try {
+    ({ current, next } = tokensCss());
+  } catch (e) {
+    console.error(e.message);
     process.exit(1);
   }
-  console.log("tokens.css generated region is up to date.");
-} else {
-  writeFileSync(TOKENS_PATH, next);
-  console.log(`Wrote ${ROLES.length} roles x ${PALETTES.length} themes into the generated region of tokens.css.`);
+
+  if (process.argv.includes("--check")) {
+    if (next !== current) {
+      console.error("src/styles/tokens.css is stale: the generated region does not match the palettes.");
+      console.error("Run: node scripts/gen-tokens.mjs");
+      process.exit(1);
+    }
+    console.log("tokens.css generated region is up to date.");
+  } else {
+    writeFileSync(TOKENS_PATH, next);
+    console.log(`Wrote ${ROLES.length} roles x ${PALETTES.length} themes into the generated region of tokens.css.`);
+  }
 }
