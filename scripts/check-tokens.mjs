@@ -20,7 +20,7 @@
 // and reports anything outside tokens.css or the allowlist below.
 //
 // Run: node scripts/check-tokens.mjs
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,12 +33,27 @@ const SRC = join(ROOT, "src");
 const ALLOWLIST = new Map([
   ["src/styles/tokens.css", "the token layer itself: the one place literals are defined"],
   ["src/seti/mapping.ts", "Seti file-icon palette: data from the upstream icon theme, keyed by file type, not UI chrome"],
-  ["src/theme/vscodeMap.ts", "per-token fallbacks mirroring the VS Code Dark+ defaults, used when an imported theme omits a key"],
-  ["src/theme/themes/dark-plus.json", "a VS Code theme file: colors are its content"],
-  ["src/theme/themes/light-plus.json", "a VS Code theme file: colors are its content"],
-  ["src/theme/theme.test.ts", "test fixtures asserting the distiller maps specific colors"],
+  ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the generator reproduces the frozen baseline"],
+  ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
   ["src/dev/Styleguide.tsx", "the token gallery: it renders swatch names, and its labels are the token names themselves"],
 ]);
+
+// Directory prefixes, for families of files where every member is exempt for the
+// same reason. A prefix rather than one entry per file: a counted list of paths
+// goes stale the moment a theme is added, and the staleness is silent.
+const ALLOWLIST_PREFIXES = new Map([
+  ["src/theme/palettes/", "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them"],
+  ["src/theme/__baseline__/", "the frozen pre-migration token map: a committed snapshot of tokens.css used to prove the Phase 4 rename is purely nominal"],
+]);
+
+/** Whether `rel` is exempt from check 1, by exact path or by directory prefix. */
+function isAllowlisted(rel) {
+  if (ALLOWLIST.has(rel)) return true;
+  for (const prefix of ALLOWLIST_PREFIXES.keys()) {
+    if (rel.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 const NAMED = [
   "white", "black", "red", "green", "blue", "yellow", "orange", "purple", "gray",
@@ -52,12 +67,18 @@ const NAMED = [
 // keywords that adapt to context rather than fixed colors.
 const PATTERNS = [
   [/#[0-9a-fA-F]{3,8}\b/g, "hex color"],
-  [/\brgba?\(/g, "rgb()/rgba()"],
-  [/\bhsla?\(/g, "hsl()/hsla()"],
+  // `rgba(${...}` is a format string, not a colour: it is how the derivation
+  // helpers in theme/roles.ts emit a wash whose channels came from the palette.
+  // A literal colour never interpolates.
+  [/\brgba?\((?!\$\{)/g, "rgb()/rgba()"],
+  [/\bhsla?\((?!\$\{)/g, "hsl()/hsla()"],
   // A trailing `:` means the word is a key/property name, not a value -
   // xterm's ITheme has `black:`, `red:`, `cyan:` fields holding var() reads.
   // In CSS a named color is always a value, so it is never followed by `:`.
-  [new RegExp(`(?<![\\w-])(?:${NAMED.join("|")})(?![\\w-])(?!\\s*:)`, "g"), "CSS named color"],
+  // A leading `.` means it is a member of something rather than a value: the
+  // role ids in theme/roles.ts are dotted (`ansi.black`, `ansi.green`), and a
+  // CSS value never has a dot immediately before the colour name.
+  [new RegExp(`(?<![\\w.-])(?:${NAMED.join("|")})(?![\\w-])(?!\\s*:)`, "g"), "CSS named color"],
 ];
 
 function walk(dir, out = []) {
@@ -80,10 +101,25 @@ function stripComments(source) {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+// An allowlist entry pointing at a file that no longer exists is silent rot: it
+// reads as a considered exemption while exempting nothing, and it is exactly
+// what survives a deletion nobody swept up after. Fail on it, so removing a
+// file forces its reason to go with it.
+const stale = [
+  ...[...ALLOWLIST.keys()].filter((rel) => !existsSync(join(ROOT, rel))),
+  ...[...ALLOWLIST_PREFIXES.keys()].filter((rel) => !existsSync(join(ROOT, rel))),
+];
+if (stale.length > 0) {
+  console.error(`${stale.length} allowlist entr(ies) in this script name a path that no longer exists:\n`);
+  for (const rel of stale) console.error(`  ${rel}`);
+  console.error("\nDelete the entry along with the file it exempted.");
+  process.exit(1);
+}
+
 const violations = [];
 for (const file of walk(SRC)) {
   const rel = relative(ROOT, file);
-  if (ALLOWLIST.has(rel)) continue;
+  if (isAllowlisted(rel)) continue;
   const lines = stripComments(readFileSync(file, "utf8")).split("\n");
   lines.forEach((line, i) => {
     for (const [pattern, label] of PATTERNS) {
@@ -171,6 +207,7 @@ if (structural.length > 0) {
 }
 
 console.log(
-  `Token check passed: no color literals outside tokens.css (${ALLOWLIST.size} allowlisted files), ` +
+  `Token check passed: no color literals outside tokens.css ` +
+    `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
     `and all ${darkTokens.size} dark tokens have light values.`,
 );

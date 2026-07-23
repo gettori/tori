@@ -31,6 +31,10 @@ use crate::agents::{self, AgentAdapter, Discovery};
 pub struct State {
     #[serde(default)]
     pub onboarding_shown: bool,
+    /// Whether the "your imported VS Code theme was dropped" notice has fired.
+    /// Same reasoning as `onboarding_shown`: shown-once state, not preference.
+    #[serde(default)]
+    pub theme_import_notice_shown: bool,
 }
 
 fn state_path() -> PathBuf {
@@ -93,6 +97,17 @@ fn should_show_with(state: &State, adapters: &[AgentAdapter]) -> bool {
 }
 
 // --- thin wrappers over the real path ---
+
+/// Read state.json. Shared so other one-time notices (the dropped theme import
+/// in settings.rs) persist their flag in the same file rather than growing a
+/// second one, or worse, landing in settings.json.
+pub(crate) fn load_state() -> State {
+    load_from(&state_path())
+}
+
+pub(crate) fn save_state(state: &State) -> Result<(), String> {
+    save_to(&state_path(), state)
+}
 
 /// Whether first-run onboarding should open. Scans every adapter's discovery
 /// location, so this is safe to call at launch without racing anything.

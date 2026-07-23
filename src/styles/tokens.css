@@ -135,106 +135,94 @@
     --syn-variable: #9cdcfe;
   }
 
+  /* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; do not edit by hand. ---- */
+
+  /* Derived from src/theme/palettes/*.json by src/theme/roles.ts. Values are
+     literal because this is a fallback: it must paint correctly before any
+     script runs, so it cannot depend on the runtime that resolves palettes. */
+
   /* ---- Semantic tokens, dark (default) ---- */
   :root,
   :root[data-theme="dark"] {
-    --bg: var(--sway-navy-950);
-    --pane-bg: var(--sway-navy-900);
-    --pane-head-bg: var(--sway-navy-850);
-    --border: var(--sway-navy-line);
-    --border-strong: var(--sway-navy-line-strong);
-    /* Branch/worktree graph rail. OPAQUE, not the translucent hairline: the rail
-       and each row's elbow share the same pixels for the elbow's vertical run, so
-       a translucent stroke would double its alpha there and render that segment
-       brighter. This is the flat composite of the dim hairline over the desk, so
-       overlapping strokes stay one consistent colour. */
+    /* fg */
+    --text: #e4e8f0;
+    --text-dim: #98a0b0;
+    --text-faint: #666e7e;
+    --on-solid: #ffffff;
+
+    /* canvas */
+    --bg: #15171c;
+    --pane-bg: #1b1e25;
+    --pane-head-bg: #1b232e;
+    --input-bg: #1b232e;
+
+    /* border */
+    --border: rgba(200, 215, 255, 0.08);
+    --border-strong: rgba(200, 215, 255, 0.13);
     --graph-rail: #2c313b;
-    /* App-wide scrollbar thumb: dim and off the face, brightening only on hover. */
+
+    /* scrollbar */
     --scrollbar-thumb: rgba(200, 215, 255, 0.11);
     --scrollbar-thumb-hover: rgba(200, 215, 255, 0.2);
-    --text: var(--sway-fg-navy);
-    --text-dim: var(--sway-fg-navy-dim);
-    --text-faint: var(--sway-fg-navy-faint);
-    --accent: var(--sway-blue-500);
-    --sel: var(--sway-blue-900);
-    --hover: var(--sway-navy-800);
-    --input-bg: var(--sway-navy-850);
-    /* Status accents. Dark values equal the literals the CSS modules used
-       before the token migration, so dark rendering is unchanged. */
+
+    /* accent */
+    --accent: #4a9eff;
+    --sel: #094771;
+
+    /* neutral */
+    --hover: #252a34;
+    --fill-subtle: rgba(128, 128, 128, 0.12);
+
+    /* danger */
     --danger: #e06c75;
+
+    /* attention */
     --warn: #d19a66;
     --warn-strong: #b56319;
-    --success: #2ea043;
-    --info: #4ec9b0; /* neutral "this is the current one" marker (checkout dot) */
-    --on-solid: var(--sway-white); /* text/icon on a filled status surface */
 
-    /* VCS/diff status. A family of its own rather than a reuse of
-       --success/--warn/--danger: those are UI feedback (a button, a toast),
-       these label added/modified/deleted content, and the two drifted to
-       different hues long before this token layer existed. Collapsing them
-       would silently restyle every diff view. */
+    /* success */
+    --success: #2ea043;
+
+    /* info */
+    --info: #4ec9b0;
+
+    /* diff */
     --diff-added: #2ea043;
     --diff-modified: #d29922;
     --diff-deleted: #f85149;
-
-    /* Intra-line word highlights. Backgrounds rather than another text color:
-       the line already carries --diff-added/--diff-deleted as its text, so a
-       second hue on the same glyphs would fight it instead of locating the
-       edit. Low alpha so the token stays readable. */
     --diff-added-word: rgba(46, 160, 67, 0.32);
     --diff-deleted-word: rgba(248, 81, 73, 0.32);
 
-    /* Diagnostic severity. Its own family rather than a reuse of
-       --danger/--warn/--info: those are UI feedback, and the status family
-       (Executing / Waiting / Idle / Running) carries session meaning - its
-       amber already reads as "waiting for approval", which a type warning is
-       not. Borrowing either would make a diagnostic look like a session
-       state. */
+    /* diag */
     --diag-error: #f85149;
     --diag-warning: #d29922;
     --diag-info: #4ec9b0;
     --diag-hint: #8b949e;
 
-    /* Agent marks. Third-party brand colors, so they stay recognisable rather
-       than following the theme; only lightness is adjusted per theme so each
-       stays legible against the row background. */
+    /* agent */
     --agent-claude: #d97757;
     --agent-pi: #6cb6ff;
 
-    /* Overlay scrims behind modal chrome. --scrim-soft is the lighter one used
-       where the surface below should stay readable (quick-open). */
+    /* scrim */
     --scrim: rgba(0, 0, 0, 0.45);
     --scrim-soft: rgba(0, 0, 0, 0.35);
-    /* Neutral low-contrast fill for non-status badges. */
-    --fill-subtle: rgba(128, 128, 128, 0.12);
 
-    /* Session status indicators, dark. A playful, well-separated hue per state
-       (violet / rose / sky / green) so the four glyphs read at a glance without
-       a text label. Its own semantic family (not --brand-*, not the
-       theme-following --accent, and unmapped in vscodeMap.ts) so an imported
-       VS Code theme can never repaint the running indicator. */
-    --status-progress: #c084fc; /* violet: agent actively working */
-    --status-needs-you: #fb7185; /* rose: blocked, waiting on you */
-    --status-idle: #2dd4bf; /* teal: live tab, quiet and ready */
-    --status-running: #7d8ba1; /* faded blue-gray: detached, in the background */
+    /* status */
+    --status-progress: #c084fc;
+    --status-needs-you: #fb7185;
+    --status-idle: #2dd4bf;
+    --status-running: #7d8ba1;
 
-    /* Brand (champagne gold), dark. A fixed identity that theme-import does NOT
-       repaint (it maps onto --accent/--sel/--bg, never --brand-*). Chrome uses
-       these for selection pills, the left accent bar, focus rings, active icons;
-       editor syntax + git/diff colors stay on --accent and are untouched. */
-    --brand: var(--sway-gold-400);
-    --brand-strong: var(--sway-gold-300);
-    --brand-subtle: rgba(201, 150, 83, 0.16); /* gold-500 @ low alpha: pill fill */
-    --brand-bar: var(--sway-gold-400); /* left active-item accent bar */
-    --brand-ring: rgba(201, 150, 83, 0.5); /* focus ring */
-    --brand-on: var(--sway-gold-900); /* text/icon on a filled --brand surface */
+    /* brand */
+    --brand: #d9a468;
+    --brand-strong: #d9bd85;
+    --brand-subtle: rgba(201, 150, 83, 0.16);
+    --brand-bar: #d9a468;
+    --brand-ring: rgba(201, 150, 83, 0.5);
+    --brand-on: #4a3719;
 
-    /* ---- Terminal ANSI ramp, dark (VS Code Dark+ terminal palette) ----
-       xterm needs 16 ANSI slots plus cursor/selection, and a program's output
-       picks the slot - so unlike the rest of the chrome these cannot be derived
-       from --text/--bg. They live here rather than in TerminalView so the whole
-       palette stays inside the token layer and swaps with the theme. */
-    --term-cursor: var(--sway-fg-navy);
+    /* ansi */
+    --term-cursor: #e4e8f0;
     --term-selection: rgba(70, 110, 160, 0.4);
     --term-black: #000000;
     --term-red: #cd3131;
@@ -253,121 +241,106 @@
     --term-bright-cyan: #29b8db;
     --term-bright-white: #ffffff;
 
-    /* Elevation, dark: deeper/opaquer so floating chrome reads off the dark bg. */
+    /* shadow */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
 
-    /* Space tint, dark: the amber accent washed into the top-left of the desk so
-       the transparent sidebar/topbar sit on a warm gradient rather than a flat
-       fill. Swap the RGB per project to re-tint the space. Consumed only by the
-       .app background gradient. */
+    /* shell */
     --shell-glow: rgba(217, 164, 104, 0.14);
-    /* Drop shadow for the single floating work-card. The whole UI is otherwise
-       flat (hairline dividers, no stacked shadows): this is where the depth is. */
     --work-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+
+    /* syntax */
+    --syn-keyword: #569cd6;
+    --syn-string: #ce9178;
+    --syn-comment: #6a9955;
+    --syn-number: #b5cea8;
+    --syn-function: #dcdcaa;
+    --syn-type: #4ec9b0;
+    --syn-variable: #9cdcfe;
   }
 
   /* ---- Semantic tokens, light ---- */
   :root[data-theme="light"] {
-    --bg: var(--sway-white);
-    --pane-bg: var(--sway-gray-50);
-    --pane-head-bg: var(--sway-gray-150);
-    --border: var(--sway-gray-200);
+    /* fg */
+    --text: #1e1e1e;
+    --text-dim: #6a6a6a;
+    --text-faint: #808080;
+    --on-solid: #ffffff;
+
+    /* canvas */
+    --bg: #ffffff;
+    --pane-bg: #f3f3f3;
+    --pane-head-bg: #e8e8e8;
+    --input-bg: #ffffff;
+
+    /* border */
+    --border: #e0e0e0;
     --border-strong: rgba(23, 23, 23, 0.13);
-    /* Graph rail, light: opaque composite of the dim hairline over white, so the
-       rail/elbow overlap never doubles alpha. See the dark block. */
     --graph-rail: #dcdcdc;
-    /* App-wide scrollbar thumb, light: dim neutral, off the face. */
+
+    /* scrollbar */
     --scrollbar-thumb: rgba(23, 23, 23, 0.14);
     --scrollbar-thumb-hover: rgba(23, 23, 23, 0.26);
-    --text: var(--sway-fg-light);
-    --text-dim: var(--sway-gray-500);
-    --text-faint: var(--sway-gray-600);
-    --accent: var(--sway-blue-600);
-    --sel: var(--sway-blue-100);
-    --hover: var(--sway-gray-100);
-    --input-bg: var(--sway-white);
+
+    /* accent */
+    --accent: #005fb8;
+    --sel: #cfe3fb;
+
+    /* neutral */
+    --hover: #ededed;
+    --fill-subtle: rgba(23, 23, 23, 0.06);
+
+    /* danger */
     --danger: #cf222e;
+
+    /* attention */
     --warn: #9a6700;
     --warn-strong: #bc4c00;
-    --success: #1a7f37;
-    --info: #157a6e; /* darkened teal: the dark #4ec9b0 is unreadable on white */
-    --on-solid: var(--sway-white);
 
-    /* VCS/diff status, light. Darker stops than dark's, since these are text
-       colors on a white surface. See the dark block for why this family exists. */
+    /* success */
+    --success: #1a7f37;
+
+    /* info */
+    --info: #157a6e;
+
+    /* diff */
     --diff-added: #1a7f37;
     --diff-modified: #9a6700;
     --diff-deleted: #cf222e;
-
-    /* Word highlights, light. Higher alpha than dark's: a wash this faint over
-       white would be invisible. See the dark block for why these exist. */
     --diff-added-word: rgba(26, 127, 55, 0.24);
     --diff-deleted-word: rgba(207, 34, 46, 0.22);
 
-    /* Severity, light. Darkened for contrast on a white editor background;
-       see the dark block for why this family is separate. */
+    /* diag */
     --diag-error: #cf222e;
     --diag-warning: #9a6700;
     --diag-info: #157a6e;
     --diag-hint: #6e7781;
 
-    /* Agent marks, light. Same hues, darkened for contrast on light rows. */
+    /* agent */
     --agent-claude: #c2562f;
     --agent-pi: #0969da;
 
-    /* Scrims, light: a dark veil still reads correctly over a bright UI, but at
-       lower opacity so the dimmed surface stays legible rather than muddy. */
+    /* scrim */
     --scrim: rgba(23, 23, 23, 0.3);
     --scrim-soft: rgba(23, 23, 23, 0.22);
-    --fill-subtle: rgba(23, 23, 23, 0.06);
 
-    /* Syntax (CM6), light. The token layer must be provably two-theme on its
-       own: an imported theme paints --syn-* as inline props on <html>, but a
-       first boot with no cached theme has none, and the :root defaults are
-       Dark+ - which would render as dark-theme syntax on a white editor.
-       Values mirror themes/light-plus.json's tokenColors. */
-    --syn-keyword: #0000ff;
-    --syn-string: #a31515;
-    --syn-comment: #008000;
-    --syn-number: #098658;
-    --syn-function: #795e26;
-    --syn-type: #267f99;
-    --syn-variable: #001080;
+    /* status */
+    --status-progress: #7c3aed;
+    --status-needs-you: #e11d48;
+    --status-idle: #0d9488;
+    --status-running: #64748b;
 
-    /* Session status indicators, light. Darker stops of the same four playful
-       hues so they stay legible on a bright surface - see the dark block. */
-    --status-progress: #7c3aed; /* violet */
-    --status-needs-you: #e11d48; /* rose */
-    --status-idle: #0d9488; /* teal */
-    --status-running: #64748b; /* faded blue-gray */
-
-    /* Brand (champagne gold), light. Darker ramp stops so the gold stays legible
-       on light chrome (theme-import can repaint chrome light today), and a softer
-       subtle-fill/ring since it sits on a bright surface.
-       gold-700 rather than the gold-600 this started at: gold-600 measured 2.95
-       against --pane-head-bg and 2.76 against --sel, under the 3.0 a graphic
-       element needs, so active icons and the accent bar washed out on exactly
-       the surfaces that mark the selected row. gold-700 clears 3.9 everywhere. */
-    --brand: var(--sway-gold-700);
-    --brand-strong: var(--sway-gold-800);
-    --brand-subtle: rgba(138, 103, 51, 0.14); /* gold-700 @ low alpha: pill fill */
-    --brand-bar: var(--sway-gold-700);
+    /* brand */
+    --brand: #8a6733;
+    --brand-strong: #6b4f27;
+    --brand-subtle: rgba(138, 103, 51, 0.14);
+    --brand-bar: #8a6733;
     --brand-ring: rgba(138, 103, 51, 0.4);
-    --brand-on: var(--sway-white); /* text/icon on a filled --brand surface */
+    --brand-on: #ffffff;
 
-    /* ---- Terminal ANSI ramp, light (VS Code Light+ terminal palette) ----
-       The bright variants are deliberately NOT brighter here: on a white
-       background "bright yellow" as #f5f543 is invisible, so the light ramp
-       darkens rather than lightens them. See the dark block for why the ramp
-       is tokenized at all.
-
-       The greens/yellows are darker than Light+'s own: measured on white,
-       Light+ renders green at 2.56 and bright-green/bright-yellow at ~2.1,
-       under the 3.0 floor - and green is not a decorative slot, it is what
-       every test runner prints PASS in. Hue is preserved, lightness is not. */
-    --term-cursor: var(--sway-fg-light);
+    /* ansi */
+    --term-cursor: #1e1e1e;
     --term-selection: rgba(0, 95, 184, 0.25);
     --term-black: #000000;
     --term-red: #cd3131;
@@ -384,22 +357,28 @@
     --term-bright-blue: #0451a5;
     --term-bright-magenta: #bc05bc;
     --term-bright-cyan: #0598bc;
-    /* The lightest slot by definition; kept as the dimmest readable gray
-       rather than a true white, which would be invisible here. */
     --term-bright-white: #8c8c8c;
 
-    /* Elevation, light: soft/low-opacity so it reads on a bright surface. */
+    /* shadow */
     --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.08);
     --shadow-md: 0 4px 12px rgba(23, 23, 23, 0.12);
     --shadow-lg: 0 12px 32px rgba(23, 23, 23, 0.18);
 
-    /* Shell glow, light: a faint warm-neutral lift from the top of the app root.
-       Kept very subtle so the bright shell stays clean. */
+    /* shell */
     --shell-glow: rgba(23, 23, 23, 0.04);
-    /* Card elevation, light: a soft low drop so the work-card reads as raised
-       without the heavy dark ring the dark theme needs. */
     --work-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
+
+    /* syntax */
+    --syn-keyword: #0000ff;
+    --syn-string: #a31515;
+    --syn-comment: #008000;
+    --syn-number: #098658;
+    --syn-function: #795e26;
+    --syn-type: #267f99;
+    --syn-variable: #001080;
   }
+
+  /* ---- END GENERATED ROLE TOKENS ---- */
 
   /* ---- Spacing conventions (two-tier density) ----
      Chrome surfaces (sidebar, toolbar, dialogs, settings, menus, toasts,
