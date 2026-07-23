@@ -623,33 +623,47 @@ pub struct SessionDetail {
     pub output_tokens: u64,
     pub context_tokens: u64,
     pub model: Option<String>,
+    /// Times this session was compacted (Claude `compact_boundary` markers, pi
+    /// `type:"compaction"` events). 0 for opencode, which has no such concept.
+    pub compaction_count: u32,
+    /// Context tokens reclaimed across those compactions, where the transcript
+    /// records both pre and post sizes (Claude). 0 means unknown (pi records no
+    /// post-token), never "zero reclaimed".
+    pub compaction_reclaimed: u64,
     /// Distinct files this session wrote, created, or deleted (reads excluded).
     pub touched_count: u32,
 }
 
-/// Read the full transcript once (only on selection) for counts and tokens.
+/// Every `SessionDetail` field the transcript scan produces, except
+/// `touched_count` (which needs the touched-files cache and a Tauri `State`).
+/// Returned by the pure `scan_counts` helper so those counts are unit-testable.
+pub(crate) struct RawCounts {
+    pub prompt_count: u32,
+    pub turn_count: u32,
+    pub tool_count: u32,
+    pub output_tokens: u64,
+    pub context_tokens: u64,
+    pub model: Option<String>,
+    pub compaction_count: u32,
+    pub compaction_reclaimed: u64,
+}
+
+/// Single linear pass over a transcript, producing every non-touched count.
 /// Handles both transcript shapes: Claude tags user/assistant at the top level
 /// with a `{output,input,cache_*}_tokens` usage; pi wraps each turn in a
 /// `type:"message"` envelope with `message.role` and a `{input,output,cacheRead,
-/// cacheWrite}` usage. Each line is dispatched by shape so one pass covers both.
-#[tauri::command]
-pub fn session_detail(
-    touched: State<TouchedIndex>,
-    path: String,
-    agent: String,
-) -> Result<SessionDetail, String> {
-    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
-        return Ok(crate::opencode::session_counts(&db_path, session_id));
-    }
-    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-    let reader = BufReader::new(file);
-
+/// cacheWrite}` usage. Dispatch is by each record's `type` (Claude and pi type
+/// strings don't overlap), so no agent hint is needed. Pure - takes a reader,
+/// touches no Tauri state - so the counts are unit-testable directly.
+pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
     let mut prompt_count = 0u32;
     let mut turn_count = 0u32;
     let mut tool_count = 0u32;
     let mut output_tokens = 0u64;
     let mut context_tokens = 0u64;
     let mut model: Option<String> = None;
+    let mut compaction_count = 0u32;
+    let mut compaction_reclaimed = 0u64;
 
     for line in reader.lines().map_while(Result::ok) {
         let v: serde_json::Value = match serde_json::from_str(&line) {
@@ -729,9 +743,57 @@ pub fn session_detail(
                     model = Some(m.to_string());
                 }
             }
+            // Claude: a compaction boundary. Skip sidechain (subagent) records so
+            // only top-level compactions count, matching ccstatusline. Reclaimed
+            // is summed only when both pre and post token sizes are present.
+            Some("system") => {
+                if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
+                    && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true)
+                {
+                    compaction_count += 1;
+                    if let Some(m) = v.get("compactMetadata") {
+                        let get = |k: &str| m.get(k).and_then(|n| n.as_u64());
+                        if let (Some(pre), Some(post)) = (get("preTokens"), get("postTokens")) {
+                            compaction_reclaimed += pre.saturating_sub(post);
+                        }
+                    }
+                }
+            }
+            // pi: a compaction event. Records tokens before but no post size, so
+            // it lifts the count without contributing to reclaimed.
+            Some("compaction") => {
+                compaction_count += 1;
+            }
             _ => {}
         }
     }
+
+    RawCounts {
+        prompt_count,
+        turn_count,
+        tool_count,
+        output_tokens,
+        context_tokens,
+        model,
+        compaction_count,
+        compaction_reclaimed,
+    }
+}
+
+/// Read the full transcript once (only on selection) for counts and tokens,
+/// then attach the touched-file count (which rides its own cache). opencode
+/// splits off to a SQLite path. The per-line scan lives in `scan_counts`.
+#[tauri::command]
+pub fn session_detail(
+    touched: State<TouchedIndex>,
+    path: String,
+    agent: String,
+) -> Result<SessionDetail, String> {
+    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
+        return Ok(crate::opencode::session_counts(&db_path, session_id));
+    }
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let raw = scan_counts(BufReader::new(file));
 
     let touched_count = touched_files_cached(&touched, &path, &agent)
         .iter()
@@ -739,12 +801,14 @@ pub fn session_detail(
         .count() as u32;
 
     Ok(SessionDetail {
-        prompt_count,
-        turn_count,
-        tool_count,
-        output_tokens,
-        context_tokens,
-        model,
+        prompt_count: raw.prompt_count,
+        turn_count: raw.turn_count,
+        tool_count: raw.tool_count,
+        output_tokens: raw.output_tokens,
+        context_tokens: raw.context_tokens,
+        model: raw.model,
+        compaction_count: raw.compaction_count,
+        compaction_reclaimed: raw.compaction_reclaimed,
         touched_count,
     })
 }
@@ -1603,6 +1667,40 @@ mod tests {
             archived: false,
             agent: agent.into(),
         }
+    }
+
+    #[test]
+    fn scan_counts_claude_counts_compactions_excluding_sidechain() {
+        let body = r#"{"type":"user","message":{"content":[{"type":"text","text":"Fix the bug"}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","content":[{"type":"tool_use","name":"Edit"}],"usage":{"output_tokens":10,"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":1000,"postTokens":200}}
+{"type":"system","subtype":"compact_boundary","isSidechain":true,"compactMetadata":{"trigger":"auto","preTokens":500,"postTokens":100}}
+"#;
+        let r = scan_counts(std::io::Cursor::new(body));
+        // One sidechain marker is ignored: count 1, reclaimed 1000-200.
+        assert_eq!(r.compaction_count, 1);
+        assert_eq!(r.compaction_reclaimed, 800);
+        // Existing counts unchanged by the refactor.
+        assert_eq!(r.prompt_count, 1);
+        assert_eq!(r.turn_count, 1);
+        assert_eq!(r.tool_count, 1);
+        assert_eq!(r.model.as_deref(), Some("claude-opus-4-8"));
+    }
+
+    #[test]
+    fn scan_counts_pi_counts_compaction_without_reclaimed() {
+        let body = r#"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"Fix the bug"}]}}
+{"type":"message","message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"output":10,"input":5,"cacheRead":0,"cacheWrite":0}}}
+{"type":"message","message":{"role":"toolResult","content":[]}}
+{"type":"compaction","id":"c1","tokensBefore":900,"fromHook":false}
+"#;
+        let r = scan_counts(std::io::Cursor::new(body));
+        // pi records no post-token, so count lifts but reclaimed stays 0 (unknown).
+        assert_eq!(r.compaction_count, 1);
+        assert_eq!(r.compaction_reclaimed, 0);
+        assert_eq!(r.prompt_count, 1);
+        assert_eq!(r.turn_count, 1);
+        assert_eq!(r.tool_count, 1);
     }
 
     #[test]
