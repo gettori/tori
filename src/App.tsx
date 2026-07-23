@@ -16,6 +16,9 @@ import { Settings as SettingsIcon } from "lucide-solid";
 import {
   on as onEvent,
   emit,
+  emitWith,
+  TOAST,
+  type ToastEvent,
   OPEN_PALETTE,
   OPEN_QUICK_OPEN,
   TOGGLE_SHORTCUTS,
@@ -303,6 +306,22 @@ function App() {
       setRailFallback(Math.ceil(content + padX));
     }
     initSettings();
+    // Sway no longer imports VS Code themes. An install that had one has been
+    // migrated to a bundled palette, so say so once, naming the file, rather
+    // than letting the user discover their theme changed on its own. The
+    // backend owns the once-ness (a state.json flag), so a repeated call is a
+    // no-op and this never becomes a launch nag.
+    invoke<string | null>("take_theme_import_notice")
+      .then((path) => {
+        if (!path) return;
+        emitWith<ToastEvent>(TOAST, {
+          message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Sway now ships named themes; pick one in Settings.`,
+          kind: "info",
+        });
+      })
+      .catch(() => {
+        // Never block startup on a notice.
+      });
     // Mark shown on display, not on dismiss: a user who quits mid-welcome has
     // still seen it, and showing it again every launch would be the nag this
     // flag exists to prevent.

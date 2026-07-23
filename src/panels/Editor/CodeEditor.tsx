@@ -26,7 +26,7 @@ function relTo(root: string, abs: string): string {
 }
 
 // Syntax colors read live from the --syn-* CSS vars set by the theme module
-// (src/theme, which distills them from the active theme's tokenColors). Because
+// (src/theme, which derives them from the active palette). Because
 // the values are var() references, re-theming on THEME_APPLIED is automatic: the
 // theme module rewrites the vars and the browser re-resolves them on the next
 // paint, so the editor never needs to reconfigure for a theme change.

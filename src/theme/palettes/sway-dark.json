@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "sway-dark",
+  "label": "Sway Dark",
+  "appearance": "dark",
+  "colors": {
+    "canvas": "#15171c",
+    "card": "#1b1e25",
+    "head": "#1b232e",
+    "input": "#1b232e",
+    "hover": "#252a34",
+
+    "borderTint": "#c8d7ff",
+    "lineTint": "#c8d7ff",
+    "rail": "#2c313b",
+
+    "text": "#e4e8f0",
+    "textMuted": "#98a0b0",
+    "textSubtle": "#666e7e",
+    "textOnEmphasis": "#ffffff",
+
+    "accent": "#4a9eff",
+    "accentSubtle": "#094771",
+
+    "danger": "#e06c75",
+    "attention": "#d19a66",
+    "attentionStrong": "#b56319",
+    "success": "#2ea043",
+    "info": "#4ec9b0",
+    "fillTint": "#808080",
+
+    "diffAdded": "#2ea043",
+    "diffModified": "#d29922",
+    "diffDeleted": "#f85149",
+
+    "diagError": "#f85149",
+    "diagWarning": "#d29922",
+    "diagInfo": "#4ec9b0",
+    "diagHint": "#8b949e",
+
+    "agentClaude": "#d97757",
+    "agentPi": "#6cb6ff",
+
+    "scrimTint": "#000000",
+    "shadowTint": "#000000",
+    "glowTint": "#d9a468",
+
+    "statusProgress": "#c084fc",
+    "statusNeedsYou": "#fb7185",
+    "statusIdle": "#2dd4bf",
+    "statusRunning": "#7d8ba1",
+
+    "brand": "#d9a468",
+    "brandStrong": "#d9bd85",
+    "brandTint": "#c99653",
+    "brandOn": "#4a3719",
+
+    "ansiCursor": "#e4e8f0",
+    "ansiSelectionTint": "#466ea0",
+    "ansiBlack": "#000000",
+    "ansiRed": "#cd3131",
+    "ansiGreen": "#0dbc79",
+    "ansiYellow": "#e5e510",
+    "ansiBlue": "#2472c8",
+    "ansiMagenta": "#bc3fbc",
+    "ansiCyan": "#11a8cd",
+    "ansiWhite": "#e5e5e5",
+    "ansiBrightBlack": "#666666",
+    "ansiBrightRed": "#f14c4c",
+    "ansiBrightGreen": "#23d18b",
+    "ansiBrightYellow": "#f5f543",
+    "ansiBrightBlue": "#3b8eea",
+    "ansiBrightMagenta": "#d670d6",
+    "ansiBrightCyan": "#29b8db",
+    "ansiBrightWhite": "#ffffff",
+
+    "synKeyword": "#569cd6",
+    "synString": "#ce9178",
+    "synComment": "#6a9955",
+    "synNumber": "#b5cea8",
+    "synFunction": "#dcdcaa",
+    "synType": "#4ec9b0",
+    "synVariable": "#9cdcfe"
+  }
+}

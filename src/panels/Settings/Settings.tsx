@@ -1,9 +1,8 @@
 import { onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { settings, saveSettings, type Appearance, type Typography, type Layout, type Checkpoints } from "./settingsStore";
-import { listSelectableThemes } from "../../theme";
+import { listSelectableThemes, DEFAULT_THEME_ID } from "../../theme";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
 
@@ -56,13 +55,14 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     return Math.min(max, Math.max(min, n));
   };
 
-  async function importTheme() {
-    const path = await invoke<string | null>("pick_theme_file").catch(() => null);
-    if (path) setAppearance({ theme: "import", importPath: path });
-  }
-
+  // The registry falls back to the default for an id it does not know, so the
+  // picker has to show what is actually painted. Binding the stored id directly
+  // renders the select *blank* whenever settings.json names a theme that no
+  // longer exists, which reads as "no theme" rather than "that one is gone".
   const currentTheme = () =>
-    settings.appearance.theme === "import" ? "import" : settings.appearance.theme;
+    listSelectableThemes().some((t) => t.id === settings.appearance.theme)
+      ? settings.appearance.theme
+      : DEFAULT_THEME_ID;
 
   return (
     <Portal>
@@ -100,23 +100,14 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                     ref={firstControl}
                     class={styles.select}
                     value={currentTheme()}
-                    onChange={(e) => setAppearance({ theme: e.currentTarget.value, importPath: null })}
+                    onChange={(e) => setAppearance({ theme: e.currentTarget.value })}
                   >
                     <For each={listSelectableThemes()}>
                       {(t) => <option value={t.id}>{t.label}</option>}
                     </For>
-                    <Show when={settings.appearance.theme === "import"}>
-                      <option value="import">Imported</option>
-                    </Show>
                   </select>
-                  <Button variant="ghost" size="sm" onClick={importTheme}>
-                    Import theme…
-                  </Button>
                 </div>
               </div>
-              <Show when={settings.appearance.theme === "import" && settings.appearance.importPath}>
-                <div class={styles.hint}>Imported: {settings.appearance.importPath}</div>
-              </Show>
             </section>
 
             <section class={styles.section}>

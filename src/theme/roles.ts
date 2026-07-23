@@ -1,0 +1,318 @@
+// The role generator: one palette of primitives in, the full semantic role set
+// out. This is the only place colour derivation lives.
+//
+// Every role carries a stable `id` (the taxonomy, e.g. `canvas.card`) and a
+// `cssVar` (what CSS actually reads, e.g. `--pane-bg`). The two are independent
+// on purpose. Through Phases 1 to 3 `cssVar` holds the CURRENT token names, so
+// this generator can go live and every guard can pass before a single CSS module
+// is touched; the rename flips only the `cssVar` column, in one commit, against
+// the frozen baseline in __baseline__/tokens-baseline.json.
+//
+// See adr_theme_palette_roles for the taxonomy and the <html> key-ownership
+// contract this generator's consumers must honour.
+import type { Appearance, Palette, PaletteColors } from "./schema";
+
+// ---- Derivation helpers ----
+
+/** Parse `#rgb` / `#rrggbb` / `#rrggbbaa` to channels. */
+function channels(hex: string): [number, number, number, number] {
+  let body = hex.replace("#", "");
+  if (body.length === 3) body = body.split("").map((c) => c + c).join("");
+  const r = parseInt(body.slice(0, 2), 16);
+  const g = parseInt(body.slice(2, 4), 16);
+  const b = parseInt(body.slice(4, 6), 16);
+  const a = body.length === 8 ? parseInt(body.slice(6, 8), 16) / 255 : 1;
+  return [r, g, b, a];
+}
+
+/**
+ * Wash `hex` to opacity `a`.
+ *
+ * At `a === 1` this returns the hex unchanged rather than an opaque `rgba()`.
+ * That matters: it lets one role read `alpha(tint, x)` across every theme while
+ * a light theme opts out of the wash entirely (its primary divider is a solid
+ * gray, because an 8%-alpha hairline over white is nothing at all).
+ */
+export function alpha(hex: string, a: number): string {
+  if (a >= 1) return hex;
+  const [r, g, b] = channels(hex);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+/**
+ * Blend `amount` of `top` over `bottom`, returning an opaque hex.
+ *
+ * Used for roles that must be flat rather than translucent: anything where two
+ * strokes overlap would otherwise double its alpha and render that segment
+ * brighter than the rest. (The graph rail is exactly that shape but is NOT
+ * derived here: measured against the current values, no single blend amount
+ * reproduces its dark stop on all three channels, so it stays an authored
+ * primitive. The derived tree and tab families in the next phase use this.)
+ */
+export function mix(bottom: string, top: string, amount: number): string {
+  const [br, bg, bb] = channels(bottom);
+  const [tr, tg, tb] = channels(top);
+  const ch = (x: number, y: number) => Math.round(x + (y - x) * amount);
+  const hex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${hex(ch(br, tr))}${hex(ch(bg, tg))}${hex(ch(bb, tb))}`;
+}
+
+/** Pick a per-appearance value. The escape hatch for roles whose two themes
+ *  genuinely differ in kind, not just in stop: light shadows are softer, light
+ *  scrims are thinner, light borders are solid. */
+export function variants(appearance: Appearance) {
+  return <T,>(choices: { dark: T; light: T }): T => choices[appearance];
+}
+
+// ---- The role table ----
+
+export type Role = {
+  /** Stable taxonomy name. Never changes. */
+  id: string;
+  /** The custom property CSS reads. Flips to the new namespace in Phase 4. */
+  cssVar: string;
+  /** Family, for grouping in the styleguide and in the contrast gate. */
+  group: string;
+};
+
+/** Declared once, in taxonomy order. `buildRoles` is checked against this, so a
+ *  role that is declared but never produced (or vice versa) is a hard error. */
+export const ROLES: Role[] = [
+  { id: "fg.default", cssVar: "--text", group: "fg" },
+  { id: "fg.muted", cssVar: "--text-dim", group: "fg" },
+  { id: "fg.subtle", cssVar: "--text-faint", group: "fg" },
+  { id: "fg.onEmphasis", cssVar: "--on-solid", group: "fg" },
+
+  { id: "canvas.default", cssVar: "--bg", group: "canvas" },
+  { id: "canvas.card", cssVar: "--pane-bg", group: "canvas" },
+  { id: "canvas.head", cssVar: "--pane-head-bg", group: "canvas" },
+  { id: "canvas.input", cssVar: "--input-bg", group: "canvas" },
+
+  { id: "border.default", cssVar: "--border", group: "border" },
+  { id: "border.strong", cssVar: "--border-strong", group: "border" },
+  { id: "border.rail", cssVar: "--graph-rail", group: "border" },
+
+  { id: "scrollbar.thumb", cssVar: "--scrollbar-thumb", group: "scrollbar" },
+  { id: "scrollbar.thumbHover", cssVar: "--scrollbar-thumb-hover", group: "scrollbar" },
+
+  { id: "accent.fg", cssVar: "--accent", group: "accent" },
+  { id: "accent.subtle", cssVar: "--sel", group: "accent" },
+
+  { id: "neutral.hover", cssVar: "--hover", group: "neutral" },
+  { id: "neutral.subtle", cssVar: "--fill-subtle", group: "neutral" },
+
+  { id: "danger.fg", cssVar: "--danger", group: "danger" },
+  { id: "attention.fg", cssVar: "--warn", group: "attention" },
+  { id: "attention.emphasis", cssVar: "--warn-strong", group: "attention" },
+  { id: "success.fg", cssVar: "--success", group: "success" },
+  { id: "info.fg", cssVar: "--info", group: "info" },
+
+  { id: "diff.added", cssVar: "--diff-added", group: "diff" },
+  { id: "diff.modified", cssVar: "--diff-modified", group: "diff" },
+  { id: "diff.deleted", cssVar: "--diff-deleted", group: "diff" },
+  { id: "diff.addedWord", cssVar: "--diff-added-word", group: "diff" },
+  { id: "diff.deletedWord", cssVar: "--diff-deleted-word", group: "diff" },
+
+  { id: "diag.error", cssVar: "--diag-error", group: "diag" },
+  { id: "diag.warning", cssVar: "--diag-warning", group: "diag" },
+  { id: "diag.info", cssVar: "--diag-info", group: "diag" },
+  { id: "diag.hint", cssVar: "--diag-hint", group: "diag" },
+
+  { id: "agent.claude", cssVar: "--agent-claude", group: "agent" },
+  { id: "agent.pi", cssVar: "--agent-pi", group: "agent" },
+
+  { id: "scrim.default", cssVar: "--scrim", group: "scrim" },
+  { id: "scrim.soft", cssVar: "--scrim-soft", group: "scrim" },
+
+  { id: "status.progress", cssVar: "--status-progress", group: "status" },
+  { id: "status.needsYou", cssVar: "--status-needs-you", group: "status" },
+  { id: "status.idle", cssVar: "--status-idle", group: "status" },
+  { id: "status.running", cssVar: "--status-running", group: "status" },
+
+  { id: "brand.default", cssVar: "--brand", group: "brand" },
+  { id: "brand.strong", cssVar: "--brand-strong", group: "brand" },
+  { id: "brand.subtle", cssVar: "--brand-subtle", group: "brand" },
+  { id: "brand.bar", cssVar: "--brand-bar", group: "brand" },
+  { id: "brand.ring", cssVar: "--brand-ring", group: "brand" },
+  { id: "brand.on", cssVar: "--brand-on", group: "brand" },
+
+  { id: "ansi.cursor", cssVar: "--term-cursor", group: "ansi" },
+  { id: "ansi.selection", cssVar: "--term-selection", group: "ansi" },
+  { id: "ansi.black", cssVar: "--term-black", group: "ansi" },
+  { id: "ansi.red", cssVar: "--term-red", group: "ansi" },
+  { id: "ansi.green", cssVar: "--term-green", group: "ansi" },
+  { id: "ansi.yellow", cssVar: "--term-yellow", group: "ansi" },
+  { id: "ansi.blue", cssVar: "--term-blue", group: "ansi" },
+  { id: "ansi.magenta", cssVar: "--term-magenta", group: "ansi" },
+  { id: "ansi.cyan", cssVar: "--term-cyan", group: "ansi" },
+  { id: "ansi.white", cssVar: "--term-white", group: "ansi" },
+  { id: "ansi.brightBlack", cssVar: "--term-bright-black", group: "ansi" },
+  { id: "ansi.brightRed", cssVar: "--term-bright-red", group: "ansi" },
+  { id: "ansi.brightGreen", cssVar: "--term-bright-green", group: "ansi" },
+  { id: "ansi.brightYellow", cssVar: "--term-bright-yellow", group: "ansi" },
+  { id: "ansi.brightBlue", cssVar: "--term-bright-blue", group: "ansi" },
+  { id: "ansi.brightMagenta", cssVar: "--term-bright-magenta", group: "ansi" },
+  { id: "ansi.brightCyan", cssVar: "--term-bright-cyan", group: "ansi" },
+  { id: "ansi.brightWhite", cssVar: "--term-bright-white", group: "ansi" },
+
+  { id: "shadow.sm", cssVar: "--shadow-sm", group: "shadow" },
+  { id: "shadow.md", cssVar: "--shadow-md", group: "shadow" },
+  { id: "shadow.lg", cssVar: "--shadow-lg", group: "shadow" },
+
+  { id: "shell.glow", cssVar: "--shell-glow", group: "shell" },
+  { id: "shell.cardShadow", cssVar: "--work-card-shadow", group: "shell" },
+
+  { id: "syntax.keyword", cssVar: "--syn-keyword", group: "syntax" },
+  { id: "syntax.string", cssVar: "--syn-string", group: "syntax" },
+  { id: "syntax.comment", cssVar: "--syn-comment", group: "syntax" },
+  { id: "syntax.number", cssVar: "--syn-number", group: "syntax" },
+  { id: "syntax.function", cssVar: "--syn-function", group: "syntax" },
+  { id: "syntax.type", cssVar: "--syn-type", group: "syntax" },
+  { id: "syntax.variable", cssVar: "--syn-variable", group: "syntax" },
+];
+
+export const ROLE_BY_ID = new Map(ROLES.map((r) => [r.id, r]));
+export const ROLE_BY_CSS_VAR = new Map(ROLES.map((r) => [r.cssVar, r]));
+
+// ---- Generation ----
+
+/** Expand a palette into `{ roleId: value }`. */
+export function buildRoleValues(palette: Palette): Record<string, string> {
+  const p: PaletteColors = palette.colors;
+  const v = variants(palette.appearance);
+
+  return {
+    "fg.default": p.text,
+    "fg.muted": p.textMuted,
+    "fg.subtle": p.textSubtle,
+    "fg.onEmphasis": p.textOnEmphasis,
+
+    "canvas.default": p.canvas,
+    "canvas.card": p.card,
+    "canvas.head": p.head,
+    "canvas.input": p.input,
+
+    // Dark washes its hairline to 8%; light uses the stop solid.
+    "border.default": alpha(p.borderTint, v({ dark: 0.08, light: 1 })),
+    "border.strong": alpha(p.lineTint, 0.13),
+    "border.rail": p.rail,
+
+    "scrollbar.thumb": alpha(p.lineTint, v({ dark: 0.11, light: 0.14 })),
+    "scrollbar.thumbHover": alpha(p.lineTint, v({ dark: 0.2, light: 0.26 })),
+
+    "accent.fg": p.accent,
+    "accent.subtle": p.accentSubtle,
+
+    "neutral.hover": p.hover,
+    "neutral.subtle": alpha(p.fillTint, v({ dark: 0.12, light: 0.06 })),
+
+    "danger.fg": p.danger,
+    "attention.fg": p.attention,
+    "attention.emphasis": p.attentionStrong,
+    "success.fg": p.success,
+    "info.fg": p.info,
+
+    "diff.added": p.diffAdded,
+    "diff.modified": p.diffModified,
+    "diff.deleted": p.diffDeleted,
+    // Word highlights are washes of the line colour they sit on, so the two can
+    // never drift apart. Light needs a heavier wash: this faint over white is
+    // invisible.
+    "diff.addedWord": alpha(p.diffAdded, v({ dark: 0.32, light: 0.24 })),
+    "diff.deletedWord": alpha(p.diffDeleted, v({ dark: 0.32, light: 0.22 })),
+
+    "diag.error": p.diagError,
+    "diag.warning": p.diagWarning,
+    "diag.info": p.diagInfo,
+    "diag.hint": p.diagHint,
+
+    "agent.claude": p.agentClaude,
+    "agent.pi": p.agentPi,
+
+    "scrim.default": alpha(p.scrimTint, v({ dark: 0.45, light: 0.3 })),
+    "scrim.soft": alpha(p.scrimTint, v({ dark: 0.35, light: 0.22 })),
+
+    "status.progress": p.statusProgress,
+    "status.needsYou": p.statusNeedsYou,
+    "status.idle": p.statusIdle,
+    "status.running": p.statusRunning,
+
+    "brand.default": p.brand,
+    "brand.strong": p.brandStrong,
+    // brandTint is its own primitive rather than a reuse of the brand stop, and
+    // in Sway Dark it is deliberately NOT --sway-gold-500: the wash it replaces
+    // was rgba(201, 150, 83, ...) while gold-500 is #c19653, i.e. 193. That
+    // 8-point gap in red predates this migration and is preserved on purpose, so
+    // the pill fill and focus ring render exactly as before. Change it only as a
+    // deliberate design call, not as a "fix" to make it match gold-500.
+    "brand.subtle": alpha(p.brandTint, v({ dark: 0.16, light: 0.14 })),
+    "brand.bar": p.brand,
+    "brand.ring": alpha(p.brandTint, v({ dark: 0.5, light: 0.4 })),
+    "brand.on": p.brandOn,
+
+    "ansi.cursor": p.ansiCursor,
+    "ansi.selection": alpha(p.ansiSelectionTint, v({ dark: 0.4, light: 0.25 })),
+    "ansi.black": p.ansiBlack,
+    "ansi.red": p.ansiRed,
+    "ansi.green": p.ansiGreen,
+    "ansi.yellow": p.ansiYellow,
+    "ansi.blue": p.ansiBlue,
+    "ansi.magenta": p.ansiMagenta,
+    "ansi.cyan": p.ansiCyan,
+    "ansi.white": p.ansiWhite,
+    "ansi.brightBlack": p.ansiBrightBlack,
+    "ansi.brightRed": p.ansiBrightRed,
+    "ansi.brightGreen": p.ansiBrightGreen,
+    "ansi.brightYellow": p.ansiBrightYellow,
+    "ansi.brightBlue": p.ansiBrightBlue,
+    "ansi.brightMagenta": p.ansiBrightMagenta,
+    "ansi.brightCyan": p.ansiBrightCyan,
+    "ansi.brightWhite": p.ansiBrightWhite,
+
+    // Light elevation is softer AND thinner: a dark ring reads as grime on a
+    // bright surface.
+    "shadow.sm": `0 1px 2px ${alpha(p.shadowTint, v({ dark: 0.4, light: 0.08 }))}`,
+    "shadow.md": `0 4px 12px ${alpha(p.shadowTint, v({ dark: 0.45, light: 0.12 }))}`,
+    "shadow.lg": `0 12px 32px ${alpha(p.shadowTint, v({ dark: 0.55, light: 0.18 }))}`,
+
+    "shell.glow": alpha(p.glowTint, v({ dark: 0.14, light: 0.04 })),
+    // The one floating work-card. Dark carries the depth in opacity, light in
+    // spread, so the geometry differs and not just the stop.
+    "shell.cardShadow": v({
+      dark: `0 4px 24px ${alpha(p.shadowTint, 0.4)}`,
+      light: `0 12px 32px ${alpha(p.shadowTint, 0.12)}`,
+    }),
+
+    "syntax.keyword": p.synKeyword,
+    "syntax.string": p.synString,
+    "syntax.comment": p.synComment,
+    "syntax.number": p.synNumber,
+    "syntax.function": p.synFunction,
+    "syntax.type": p.synType,
+    "syntax.variable": p.synVariable,
+  };
+}
+
+/** Expand a palette into `{ cssVar: value }`, ready to paint onto <html> or to
+ *  emit into the token layer. Throws if the role table and the generator have
+ *  drifted apart, because a silently missing role is a token that keeps its
+ *  previous theme's value. */
+export function buildRoles(palette: Palette): Record<string, string> {
+  const values = buildRoleValues(palette);
+  const out: Record<string, string> = {};
+  const missing: string[] = [];
+  for (const role of ROLES) {
+    const value = values[role.id];
+    if (typeof value !== "string" || value.length === 0) missing.push(role.id);
+    else out[role.cssVar] = value;
+  }
+  const extra = Object.keys(values).filter((id) => !ROLE_BY_ID.has(id));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `roles.ts is inconsistent for "${palette.id}": ` +
+        `${missing.length} declared but not produced (${missing.join(", ")}), ` +
+        `${extra.length} produced but not declared (${extra.join(", ")})`,
+    );
+  }
+  return out;
+}
