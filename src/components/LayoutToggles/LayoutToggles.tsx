@@ -20,6 +20,7 @@ export default function LayoutToggles(props: {
     <div class={styles.cluster}>
       <button
         class={styles.solo}
+        classList={{ [styles.off]: !props.showSidebar }}
         aria-pressed={props.showSidebar}
         title="Show or hide the sidebar (⌘B)"
         onClick={() => emit(TOGGLE_SIDEBAR)}
@@ -29,6 +30,7 @@ export default function LayoutToggles(props: {
       <div class={styles.split}>
         <button
           class={`${styles.seg} ${styles.segLeft}`}
+          classList={{ [styles.off]: !props.showTerminal }}
           aria-pressed={props.showTerminal}
           disabled={termLast()}
           title={termLast() ? "Can't hide the terminal while the editor is hidden" : "Show or hide the terminal (⌘⌥J)"}
@@ -38,6 +40,7 @@ export default function LayoutToggles(props: {
         </button>
         <button
           class={`${styles.seg} ${styles.segRight}`}
+          classList={{ [styles.off]: !props.showEditor }}
           aria-pressed={props.showEditor}
           disabled={editorLast()}
           title={editorLast() ? "Can't hide the editor while the terminal is hidden" : "Show or hide the editor (⌘⌥E)"}

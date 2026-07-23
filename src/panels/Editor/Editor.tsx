@@ -130,7 +130,8 @@ export default function Editor(props: {
   // the editor tab bar (its only remaining home) once the tree is hidden.
   const filetreeToggleBtn = (shown: boolean) => (
     <button
-      class={`${styles.followToggle} ${styles.iconToggle}`}
+      class={`${styles.followToggle} ${styles.iconToggle} ${styles.paneToggle}`}
+      classList={{ [styles.toggleOff]: !shown }}
       onClick={() => props.onToggleFiletree?.()}
       aria-pressed={shown}
       title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
