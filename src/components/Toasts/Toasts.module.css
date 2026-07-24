@@ -16,20 +16,20 @@
   padding: calc(9px * var(--ui-density)) calc(10px * var(--ui-density)) calc(9px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   line-height: 1.4;
-  color: var(--text);
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
+  color: var(--fg-default);
+  background: var(--canvas-head);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
   animation: toast-in 140ms ease-out;
 }
 .toast.error {
-  border-left-color: var(--danger);
+  border-left-color: var(--danger-fg);
 }
 .toast.info {
-  border-left-color: var(--brand);
+  border-left-color: var(--brand-default);
 }
 .toastMsg {
   flex: 1;

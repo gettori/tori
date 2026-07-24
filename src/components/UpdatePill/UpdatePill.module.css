@@ -11,7 +11,7 @@
     height: 20px;
     padding: 0 var(--sway-space-1) 0 var(--sway-space-3);
     margin-right: var(--sway-space-3);
-    border: var(--sway-border-thin) solid var(--border);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-pill);
     background: var(--brand-subtle);
   }
@@ -22,7 +22,7 @@
     padding: 0;
     font: inherit;
     font-size: var(--sway-text-xs);
-    color: var(--text);
+    color: var(--fg-default);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -40,12 +40,12 @@
     background: none;
     border: none;
     border-radius: var(--sway-radius-sm);
-    color: var(--text-dim);
+    color: var(--fg-muted);
     cursor: pointer;
   }
   .dismiss:hover {
-    color: var(--text);
-    background: var(--hover);
+    color: var(--fg-default);
+    background: var(--neutral-hover);
   }
   .dismiss svg {
     width: 12px;

@@ -23,7 +23,7 @@
 .hairline::before {
   content: "";
   position: absolute;
-  background: var(--border);
+  background: var(--border-default);
   transition: opacity var(--sway-duration-fast) var(--sway-ease);
 }
 
@@ -53,11 +53,11 @@
   content: "";
   position: absolute;
   border-radius: 1px;
-  background: var(--brand);
+  background: var(--brand-default);
   opacity: 0;
   box-shadow:
-    0 0 6px var(--brand),
-    0 0 2px var(--brand);
+    0 0 6px var(--brand-default),
+    0 0 2px var(--brand-default);
   transition: opacity var(--sway-duration-fast) var(--sway-ease);
 }
 

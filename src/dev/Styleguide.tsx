@@ -13,29 +13,29 @@ import patterns from "../styles/patterns.module.css";
  *  density/scale/radius. */
 
 const BRAND = [
-  ["--brand", "primary gold: icons, active text"],
+  ["--brand-default", "primary gold: icons, active text"],
   ["--brand-strong", "hover / emphasis"],
   ["--brand-subtle", "pill fill (translucent)"],
   ["--brand-bar", "left active-item accent bar"],
   ["--brand-ring", "focus ring (translucent)"],
-  ["--brand-on", "text/icon on a filled --brand surface"],
+  ["--brand-on", "text/icon on a filled --brand-default surface"],
 ] as const;
 
 const SEMANTIC = [
-  "--bg",
-  "--pane-bg",
-  "--pane-head-bg",
-  "--border",
-  "--text",
-  "--text-dim",
-  "--accent",
-  "--sel",
-  "--hover",
-  "--input-bg",
-  "--danger",
-  "--warn",
-  "--warn-strong",
-  "--success",
+  "--canvas-default",
+  "--canvas-card",
+  "--canvas-head",
+  "--border-default",
+  "--fg-default",
+  "--fg-muted",
+  "--accent-fg",
+  "--accent-subtle",
+  "--neutral-hover",
+  "--canvas-input",
+  "--danger-fg",
+  "--attention-fg",
+  "--attention-emphasis",
+  "--success-fg",
 ] as const;
 
 const SPACE = ["1", "2", "3", "4", "5", "6", "7", "8"] as const;

@@ -8,10 +8,10 @@
 .input {
   display: block;
   width: 100%;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  color: var(--text);
+  color: var(--fg-default);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-family: inherit;
   font-size: calc(12px * var(--ui-scale));
@@ -22,14 +22,14 @@
     box-shadow var(--sway-duration-fast) ease;
 }
 .input:focus {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* Floating menu / dropdown surface (context menu, gear menu, overflow menu). */
 .menuSurface {
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
   padding: calc(4px * var(--ui-density));
@@ -41,7 +41,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   background: var(--brand-subtle);
-  color: var(--text);
+  color: var(--fg-default);
   border-radius: var(--sway-radius-pill);
   padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
@@ -49,8 +49,8 @@
 
 /* Spacious content card: rounded container with soft elevation. */
 .card {
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-sm);
   padding: calc(16px * var(--ui-density));

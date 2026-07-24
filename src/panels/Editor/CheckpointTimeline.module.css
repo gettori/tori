@@ -2,7 +2,7 @@
    density/scale multipliers match ReviewPanel's so the two read as one surface.
    prefers-reduced-motion is handled globally (src/styles/base.css). */
 .timeline {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
 }
 
@@ -15,7 +15,7 @@
 
 .timelineTitle {
   flex: 1;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
 }
@@ -39,7 +39,7 @@
 }
 
 .strip:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--accent-fg);
   outline-offset: -1px;
 }
 
@@ -51,21 +51,21 @@
   gap: 1px;
   min-width: calc(44px * var(--ui-density));
   padding: calc(3px * var(--ui-density)) calc(5px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  background: var(--bg);
-  color: var(--text-dim);
+  background: var(--canvas-default);
+  color: var(--fg-muted);
   font-size: calc(10px * var(--ui-scale));
   cursor: pointer;
 }
 
 .turnChip:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .turnChipActive {
-  border-color: var(--accent);
-  color: var(--text);
+  border-color: var(--accent-fg);
+  color: var(--fg-default);
 }
 
 /* A backstop is a pre-revert safety snapshot, not a turn the agent ran. */
@@ -78,12 +78,12 @@
 }
 
 .turnCount {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .scopeHint {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density)) calc(4px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   line-height: 1.4;
 }
@@ -94,16 +94,16 @@
 
 .revertButton {
   padding: calc(3px * var(--ui-density)) calc(8px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas-default);
+  color: var(--fg-default);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
 }
 
 .revertButton:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .revertButton:disabled {
@@ -113,7 +113,7 @@
 
 .timelineEmpty {
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
 }
 
@@ -126,7 +126,7 @@
 }
 
 .timelineRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .timelineStatus {
@@ -151,7 +151,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .timelineDiff {
@@ -160,7 +160,7 @@
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0;
-  background: var(--bg);
+  background: var(--canvas-default);
 }
 
 .diffLine {
@@ -175,8 +175,8 @@
   color: var(--diff-deleted);
 }
 .diffLine.hunk {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 .diffLine.meta {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }

@@ -11,59 +11,59 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--scrim);
+  background: var(--scrim-default);
 }
 .modal {
   width: min(420px, calc(100vw - 48px));
   padding: calc(20px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-lg);
 }
 .modalTitle {
   font-size: calc(14px * var(--ui-scale));
   font-weight: 600;
-  color: var(--text);
+  color: var(--fg-default);
   margin-bottom: 12px;
   white-space: pre-wrap;
 }
 .modalNote {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin-bottom: 8px;
   word-break: break-all;
 }
 .modalMsg {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin-bottom: 12px;
   white-space: pre-wrap;
 }
 .modalNote strong {
-  color: var(--text);
+  color: var(--fg-default);
   font-weight: 500;
 }
 .modalInput {
   width: 100%;
   padding: calc(7px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  color: var(--text);
+  color: var(--fg-default);
   outline: none;
   transition:
     border-color var(--sway-duration-fast) ease,
     box-shadow var(--sway-duration-fast) ease;
 }
 .modalInput:focus {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .modalHint {
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin-top: 8px;
   line-height: 1.4;
 }
@@ -103,20 +103,20 @@
   min-height: 0;
   margin-top: 10px;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
 }
 .pickerItem {
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .pickerItem:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 /* Keyboard/selected row wins over hover (declared after, same specificity). */
 .pickerItem.active {
@@ -125,7 +125,7 @@
 .pickerEmpty {
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* ---- Delete-space confirmation extras (reuses the .modal chrome above). ---- */
@@ -134,12 +134,12 @@
 }
 .modalWarn {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--danger);
+  color: var(--danger-fg);
   margin-bottom: 10px;
 }
 .modalLabel {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin: 12px 0 6px;
 }
 .modalInput:disabled {
@@ -163,22 +163,22 @@
   justify-content: center;
   aspect-ratio: 1;
   padding: 0;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   cursor: pointer;
   transition:
     border-color var(--sway-duration-fast) ease,
     color var(--sway-duration-fast) ease;
 }
 .iconTile:hover {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 .iconTile.iconSelected {
-  color: var(--brand);
-  border-color: var(--brand);
+  color: var(--brand-default);
+  border-color: var(--brand-default);
   box-shadow: 0 0 0 2px var(--brand-ring);
 }
 .iconNone {
@@ -190,20 +190,20 @@
   justify-content: space-between;
   gap: calc(12px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin-bottom: 8px;
 }
 .delEntries {
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--input-bg);
+  background: var(--canvas-input);
 }
 .delEmpty {
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 .delEntry {
   display: flex;
@@ -212,10 +212,10 @@
   gap: calc(8px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
 }
 .delEntry + .delEntry {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
 }
 .delEntryName {
   overflow: hidden;
@@ -231,21 +231,21 @@
   font-size: calc(10px * var(--ui-scale));
   padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
   border-radius: calc(3px * var(--ui-radius-scale));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
 }
 .delTag.muted {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 .delTag.warn {
-  color: var(--danger);
-  border-color: var(--danger);
+  color: var(--danger-fg);
+  border-color: var(--danger-fg);
 }
 
 /* ---- Worktree / branch remove dialogs ---- */
 .wtDetail {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--input-bg);
+  background: var(--canvas-input);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   margin-bottom: 10px;
 }
@@ -259,10 +259,10 @@
 .wtDetailKey {
   flex-shrink: 0;
   width: 56px;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 .wtDetailVal {
-  color: var(--text);
+  color: var(--fg-default);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -279,7 +279,7 @@
   align-items: center;
   gap: calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
   margin: 4px 0 4px;
   cursor: pointer;
 }
@@ -295,7 +295,7 @@
 .seg {
   display: flex;
   gap: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   overflow: hidden;
   margin-bottom: 10px;
@@ -306,8 +306,8 @@
   font-size: calc(12px * var(--ui-scale));
   background: transparent;
   border: none;
-  border-left: 1px solid var(--border);
-  color: var(--text);
+  border-left: 1px solid var(--border-default);
+  color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -315,13 +315,13 @@
   border-left: none;
 }
 .segBtn:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 .segBtn.active {
-  background: var(--brand);
+  background: var(--brand-default);
   color: var(--brand-on);
 }
 .segBtn.active:hover {
   filter: brightness(1.08);
-  background: var(--brand);
+  background: var(--brand-default);
 }

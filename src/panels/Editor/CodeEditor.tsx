@@ -31,30 +31,30 @@ function relTo(root: string, abs: string): string {
 // theme module rewrites the vars and the browser re-resolves them on the next
 // paint, so the editor never needs to reconfigure for a theme change.
 const swayHighlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier], color: "var(--syn-keyword)" },
-  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syn-comment)", fontStyle: "italic" },
-  { tag: [t.number, t.bool, t.null], color: "var(--syn-number)" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syn-function)" },
-  { tag: [t.typeName, t.className, t.namespace], color: "var(--syn-type)" },
-  { tag: [t.variableName, t.propertyName, t.attributeName], color: "var(--syn-variable)" },
+  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier], color: "var(--syntax-keyword)" },
+  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syntax-string)" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syntax-comment)", fontStyle: "italic" },
+  { tag: [t.number, t.bool, t.null], color: "var(--syntax-number)" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syntax-function)" },
+  { tag: [t.typeName, t.className, t.namespace], color: "var(--syntax-type)" },
+  { tag: [t.variableName, t.propertyName, t.attributeName], color: "var(--syntax-variable)" },
 ]);
 
 const swayTheme = EditorView.theme(
   {
-    "&": { backgroundColor: "var(--pane-bg)", color: "var(--text)", height: "100%" },
+    "&": { backgroundColor: "var(--canvas-card)", color: "var(--fg-default)", height: "100%" },
     ".cm-content": {
-      caretColor: "var(--text)",
+      caretColor: "var(--fg-default)",
       fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',
       fontSize: "var(--editor-font-size, 13px)",
     },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--fg-default)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-      backgroundColor: "var(--sel)",
+      backgroundColor: "var(--accent-subtle)",
     },
-    ".cm-gutters": { backgroundColor: "var(--pane-bg)", color: "var(--text-faint)", border: "none" },
+    ".cm-gutters": { backgroundColor: "var(--canvas-card)", color: "var(--fg-subtle)", border: "none" },
     ".cm-activeLine": { backgroundColor: "transparent" },
-    ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
+    ".cm-activeLineGutter": { backgroundColor: "var(--neutral-hover)" },
   },
   { dark: true },
 );

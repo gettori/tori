@@ -8,7 +8,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--scrim);
+    background: var(--scrim-default);
   }
 
   .sheet {
@@ -16,8 +16,8 @@
     max-height: min(80vh, 720px);
     display: flex;
     flex-direction: column;
-    background: var(--pane-bg);
-    border: var(--sway-border-thin) solid var(--border);
+    background: var(--canvas-card);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-lg);
     box-shadow: var(--shadow-lg);
   }
@@ -33,17 +33,17 @@
     justify-content: space-between;
     gap: var(--sway-space-5);
     padding: calc(16px * var(--ui-density)) calc(20px * var(--ui-density));
-    border-bottom: var(--sway-border-thin) solid var(--border);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
   .title {
     margin: 0;
     font-size: calc(14px * var(--ui-scale));
     font-weight: 600;
-    color: var(--text);
+    color: var(--fg-default);
   }
   .hint {
     font-size: calc(11px * var(--ui-scale));
-    color: var(--text-dim);
+    color: var(--fg-muted);
   }
 
   /* Two columns on a roomy sheet, one when the window is narrow. The groups are
@@ -72,7 +72,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim);
+    color: var(--fg-muted);
   }
 
   .row {
@@ -84,7 +84,7 @@
   }
   .label {
     font-size: calc(12px * var(--ui-scale));
-    color: var(--text);
+    color: var(--fg-default);
   }
 
   .keys {
@@ -99,9 +99,9 @@
     font-size: calc(11px * var(--ui-scale));
     line-height: 1.5;
     text-align: center;
-    color: var(--text-dim);
-    background: var(--input-bg);
-    border: var(--sway-border-thin) solid var(--border);
+    color: var(--fg-muted);
+    background: var(--canvas-input);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-sm);
   }
 }

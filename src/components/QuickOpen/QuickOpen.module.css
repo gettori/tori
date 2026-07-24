@@ -16,8 +16,8 @@
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
@@ -27,10 +27,10 @@
   flex: none;
   padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
-  color: var(--text);
-  background: var(--input-bg);
+  color: var(--fg-default);
+  background: var(--canvas-input);
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   outline: none;
 }
 
@@ -44,7 +44,7 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -54,7 +54,7 @@
 }
 
 .qoItem:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 /* Keyboard/selected row wins over hover (declared after, same specificity). */
@@ -65,5 +65,5 @@
 .qoEmpty {
   padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }

@@ -3,7 +3,7 @@
 .reviewPanel {
   flex: 1;
   overflow: auto;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   padding: calc(4px * var(--ui-density)) 0;
   font-size: calc(13px * var(--ui-scale));
   user-select: none;
@@ -17,8 +17,8 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .branchName {
@@ -26,29 +26,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
+  color: var(--fg-default);
   font-weight: 600;
 }
 
 .aheadBehind {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .pushButton,
 .openPrButton {
   flex: none;
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas-default);
+  color: var(--fg-default);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
 }
 
 .pushButton:hover:not(:disabled),
 .openPrButton:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .pushButton:disabled,
@@ -59,7 +59,7 @@
 
 .reviewPanel :global(.tree-empty) {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .sectionHeader {
@@ -69,7 +69,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .reviewRow {
@@ -85,7 +85,7 @@
 }
 
 .reviewRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .stageToggle {
@@ -98,14 +98,14 @@
   border: none;
   background: none;
   border-radius: var(--sway-radius-sm);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   cursor: pointer;
 }
 
 .stageToggle:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
 }
 
 .reviewStatus {
@@ -126,13 +126,13 @@
   color: var(--diff-deleted);
 }
 .reviewStatus.untracked {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .reviewName {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .reviewDiff {
@@ -141,7 +141,7 @@
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
-  background: var(--bg);
+  background: var(--canvas-default);
 }
 
 .reviewDiff .diffLine {
@@ -156,10 +156,10 @@
   color: var(--diff-deleted);
 }
 .reviewDiff .diffLine.hunk {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 .reviewDiff .diffLine.meta {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* Intra-line highlight: the token that actually changed inside a paired
@@ -176,14 +176,14 @@
 /* Collapsed unchanged region. Clickable, and dim so it reads as chrome
    between the real diff lines rather than as content. */
 .reviewDiff .diffGap {
-  color: var(--text-dim);
+  color: var(--fg-muted);
   cursor: pointer;
   user-select: none;
-  background: var(--pane-bg);
-  border-block: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-block: 1px solid var(--border-default);
 }
 .reviewDiff .diffGap:hover {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 /* Side-by-side. Both columns live in one grid row inside a single scroll
@@ -199,11 +199,11 @@
   overflow: hidden;
 }
 .sideRow > .diffLine:first-child {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border-default);
 }
 /* A cell with no counterpart on this side: present but visibly not a line. */
 .reviewDiff .diffLine.sideEmpty {
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 .rowAction {
@@ -212,7 +212,7 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(10px * var(--ui-scale));
   cursor: pointer;
   opacity: 0;
@@ -224,8 +224,8 @@
   opacity: 1;
 }
 .rowAction:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
 }
 
 /* Per-hunk stage/unstage, anchored in the hunk header so it sits in the same
@@ -233,17 +233,17 @@
 .hunkStage {
   flex: none;
   padding: 0 calc(6px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: 3px;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-family: inherit;
   font-size: calc(10px * var(--ui-scale));
   cursor: pointer;
 }
 .hunkStage:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--accent);
+  color: var(--fg-default);
+  border-color: var(--accent-fg);
 }
 .hunkStage:disabled {
   opacity: 0.5;
@@ -253,23 +253,23 @@
 .viewToggle {
   flex: none;
   padding: 0 calc(6px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: 3px;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
 }
 .viewToggle:hover:not(:disabled) {
-  color: var(--text);
+  color: var(--fg-default);
 }
 .viewToggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .viewToggleOn {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent-fg);
 }
 
 .commitBox {
@@ -279,16 +279,16 @@
   flex-direction: column;
   gap: calc(4px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-bg);
-  border-top: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-top: 1px solid var(--border-default);
 }
 
 .commitInput {
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  color: var(--text);
+  color: var(--fg-default);
   font-size: calc(12px * var(--ui-scale));
 }
 
@@ -301,17 +301,17 @@
 .commitButton {
   flex: 1;
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas-default);
+  color: var(--fg-default);
   font-size: calc(12px * var(--ui-scale));
   cursor: pointer;
 }
 
 .draftButton:hover:not(:disabled),
 .commitButton:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .draftButton:disabled,
@@ -321,13 +321,13 @@
 }
 
 .commitButton {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--pane-bg);
+  background: var(--accent-fg);
+  border-color: var(--accent-fg);
+  color: var(--canvas-card);
 }
 
 .commitButton:disabled {
-  background: var(--bg);
-  color: var(--text-dim);
-  border-color: var(--border);
+  background: var(--canvas-default);
+  color: var(--fg-muted);
+  border-color: var(--border-default);
 }
