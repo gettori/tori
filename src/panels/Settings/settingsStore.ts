@@ -6,8 +6,9 @@ import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { emit, SETTINGS_CHANGED } from "../../utils/events";
-import { setTheme } from "../../theme";
+import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
+import type { ToastEvent } from "../../utils/events";
+import { getTheme, reloadUserThemes, setTheme } from "../../theme";
 
 export type Appearance = { theme: string };
 export type Typography = {
@@ -108,11 +109,31 @@ export function applySettings(s: Settings) {
   st.setProperty("--ui-density", s.layout.density === "compact" ? "0.85" : "1");
 }
 
+/** Surface theme problems as toasts. A theme that will not paint has to say so:
+ *  silently landing on a different theme than the settings file names is exactly
+ *  the "my theme changed on its own" the import notice exists to avoid.
+ *
+ *  Capped, because the contrast gate reports every failing pair and a badly
+ *  hand-edited palette can fail dozens at once. Three plus a count is a
+ *  notification; thirty is a wall the user has to dismiss one row at a time. */
+const MAX_THEME_TOASTS = 3;
+
+function reportThemeProblems(problems: string[]) {
+  for (const message of problems.slice(0, MAX_THEME_TOASTS)) {
+    emitWith<ToastEvent>(TOAST, { message, kind: "error" });
+  }
+  const rest = problems.length - MAX_THEME_TOASTS;
+  if (rest > 0) {
+    emitWith<ToastEvent>(TOAST, { message: `...and ${rest} more theme problem${rest === 1 ? "" : "s"}.`, kind: "error" });
+  }
+}
+
 /** Apply tokens, then the theme named by settings.appearance (the source of
- *  truth). An unknown id falls back to the default inside the registry. */
+ *  truth). An id nothing provides falls back to the default; a theme that fails
+ *  the contrast gate paints nothing, so the app stays where it was. */
 function applyAll(s: Settings) {
   applySettings(s);
-  setTheme(s.appearance.theme);
+  reportThemeProblems(setTheme(s.appearance.theme));
 }
 
 /** Read settings from disk into the store and apply them. */
@@ -134,9 +155,31 @@ export async function saveSettings(next: Settings): Promise<void> {
   emit(SETTINGS_CHANGED);
 }
 
-/** Load once, start the file watcher, and re-load on external changes. */
+/** Re-read the themes folder, then re-apply the active theme so an edit to the
+ *  file currently in use lands without a restart. `setTheme` is what decides
+ *  whether that repaints: a theme edited into something illegible paints
+ *  nothing, and a theme whose file was deleted falls back to the default.
+ *
+ *  Only when the active theme came from that folder, though. Re-applying a
+ *  bundled theme because some *other* file was saved repaints the whole app and
+ *  re-emits THEME_APPLIED, which has the terminal reassign its options for a
+ *  change that cannot have touched it. */
+async function refreshUserThemes() {
+  const wasUserTheme = getTheme(settings.appearance.theme)?.source !== "bundled";
+  reportThemeProblems(await reloadUserThemes());
+  const isUserTheme = getTheme(settings.appearance.theme)?.source !== "bundled";
+  if (wasUserTheme || isUserTheme) reportThemeProblems(setTheme(settings.appearance.theme));
+}
+
+/** Load once, start the file watchers, and re-load on external changes. */
 export async function initSettings() {
+  // Themes before settings: settings.json may name a user theme, and resolving
+  // it only after the first paint would flash the fallback and report a theme
+  // that in fact exists.
+  reportThemeProblems(await reloadUserThemes());
   await loadSettings();
   await invoke("settings_watch_start").catch(() => {});
   await listen("settings://changed", () => loadSettings());
+  await invoke("themes_watch_start").catch(() => {});
+  await listen("themes://changed", () => refreshUserThemes());
 }
