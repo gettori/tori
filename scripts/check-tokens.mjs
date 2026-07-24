@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the token layer. Five checks:
+// Guard the token layer. Six checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
@@ -9,15 +9,16 @@
 //      locally declared property.
 //   4. Every name TerminalView.termColors() reads is a declared role.
 //   5. Every name the styleguide galleries list is a declared role.
+//   6. Every hue the generated seti mapping emits has a scale.* role.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
 // stack can see the token layer at all. This script reads files directly and
 // already gates `pnpm test`.
 //
-// Checks 4 and 5 exist because those names are TypeScript string literals, so
-// no CSS tooling and not even check 3 can see them; a stale one degrades
-// silently rather than failing.
+// Checks 4, 5, and 6 exist because those names are TypeScript string literals or
+// are built at runtime, so no CSS tooling and not even check 3 can see them; a
+// stale one degrades silently rather than failing.
 //
 // Light mode is only as complete as the CSS is token-driven. A single stray
 // `#2ea043` renders identically in both themes, which is exactly the bug that
@@ -43,7 +44,6 @@ const SRC = join(ROOT, "src");
 // are values that are data rather than styling.
 const ALLOWLIST = new Map([
   ["src/styles/tokens.css", "the token layer itself: the one place literals are defined"],
-  ["src/seti/mapping.ts", "Seti file-icon palette: data from the upstream icon theme, keyed by file type, not UI chrome"],
   ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the generator reproduces the frozen baseline"],
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
   ["src/dev/Styleguide.tsx", "the token gallery: it renders swatch names, and its labels are the token names themselves"],
@@ -89,8 +89,49 @@ const PATTERNS = [
   // A leading `.` means it is a member of something rather than a value: the
   // role ids in theme/roles.ts are dotted (`ansi.black`, `ansi.green`), and a
   // CSS value never has a dot immediately before the colour name.
+  //
+  // The generated seti mapping stores `"hue": "green"` for 405 file types
+  // precisely so the value comes from the theme's scale.* role rather than being
+  // frozen into the file, so flagging those would be flagging the fix. That one
+  // exemption is handled by isQuotedHueName below, scoped as narrowly as it can
+  // be: eight of the eleven hue names are also real CSS colours.
   [new RegExp(`(?<![\\w.-])(?:${NAMED.join("|")})(?![\\w-])(?!\\s*:)`, "g"), "CSS named color"],
 ];
+
+/** The hue names the scale.* roles declare, e.g. `red` from `scale.red`. These
+ *  are names the token layer resolves, so a quoted one is a reference, not a
+ *  literal. Derived from ROLES so adding a hue needs no edit here. */
+const SCALE_HUES = new Set(
+  ROLES.filter((r) => r.group === "scale").map((r) => r.id.split(".")[1]),
+);
+
+/** The one file allowed to name a hue: the generated seti mapping. */
+const HUE_MAPPING = "src/seti/mapping.ts";
+
+/**
+ * Whether this match is the seti mapping's hue NAME rather than a colour value.
+ *
+ * Narrow on three axes at once - the file, the position, and the declared scale
+ * names - because `red`, `green`, `blue`, `yellow`, `orange`, `purple`, `pink`,
+ * and `silver` are all real CSS colours. An exemption keyed on quoting alone
+ * would wave through `color: "red"` in any component, blinding check 1 to
+ * exactly the literals it exists to catch.
+ *
+ * Two positions, because gen-seti.mjs emits the names twice: as `"hue": "green"`
+ * on each entry, and as `| "green"` in the SetiHue union that makes a bad hue a
+ * type error. Anywhere else in the file, including a bare `const x = "green"`,
+ * still fails.
+ */
+const HUE_POSITIONS = [/"hue":\s*$/, /\|\s*$/];
+
+function isQuotedHueName(rel, text, match, index) {
+  if (rel !== HUE_MAPPING || !SCALE_HUES.has(match)) return false;
+  const before = text[index - 1];
+  const after = text[index + match.length];
+  if (before !== '"' || after !== '"') return false;
+  const preceding = text.slice(0, index - 1);
+  return HUE_POSITIONS.some((position) => position.test(preceding));
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -138,9 +179,14 @@ for (const file of walk(SRC)) {
   const lines = stripComments(readFileSync(file, "utf8")).split("\n");
   lines.forEach((line, i) => {
     for (const [pattern, label] of PATTERNS) {
-      pattern.lastIndex = 0;
-      const match = pattern.exec(line);
-      if (match) violations.push({ rel, line: i + 1, label, text: line.trim() });
+      // Every match, not just the first: a line can carry an exempt hue name
+      // and a real literal at once, and stopping at the first would hide one
+      // behind the other.
+      for (const match of line.matchAll(pattern)) {
+        if (isQuotedHueName(rel, line, match[0], match.index)) continue;
+        violations.push({ rel, line: i + 1, label, text: line.trim() });
+        break;
+      }
     }
   });
 }
@@ -243,6 +289,15 @@ const DYNAMIC_VARS = new Map([
     {
       prefixes: ["--shadow-", "--sway-text-", "--sway-space-", "--sway-radius-"],
       reason: "the gallery renders each scale over its own list of stop names, e.g. var(--shadow-${s})",
+    },
+  ],
+  [
+    "src/seti/FileIcon.tsx",
+    {
+      prefixes: ["--scale-"],
+      reason:
+        "the icon's hue comes from the generated seti mapping, e.g. var(--scale-${icon().hue}). " +
+        "Check 6 below closes the loop by proving every hue that mapping can emit is a declared scale role",
     },
   ],
 ]);
@@ -372,10 +427,43 @@ if (guideProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 6: every seti hue is a declared scale role ----
+//
+// FileIcon builds `var(--scale-${hue})` at runtime, so check 3 can only be told
+// to trust it. This is what earns that trust: the generated mapping's hue set
+// must be exactly the scale.* roles. A hue with no role paints nothing and the
+// icon inherits the row's text colour, which looks like a theming choice rather
+// than a missing token.
+
+const MAPPING = "src/seti/mapping.ts";
+const mappingSource = sources.get(MAPPING);
+const emitted = new Set([...(mappingSource ?? "").matchAll(/"hue":\s*"([\w-]+)"/g)].map((m) => m[1]));
+const declared = new Set(ROLES.filter((r) => r.group === "scale").map((r) => r.id.split(".")[1]));
+
+const hueProblems = [];
+if (!mappingSource) {
+  hueProblems.push(`could not read ${MAPPING}; this check needs the generated seti mapping`);
+} else if (emitted.size === 0) {
+  hueProblems.push(`${MAPPING} emitted no hues; the "hue": "..." form this check scans for changed`);
+}
+for (const hue of emitted) {
+  if (!declared.has(hue)) hueProblems.push(`${MAPPING} emits hue "${hue}", which has no scale.${hue} role`);
+}
+for (const hue of declared) {
+  if (!emitted.has(hue)) hueProblems.push(`scale.${hue} is declared but no file type uses it; run scripts/gen-seti.mjs`);
+}
+
+if (hueProblems.length > 0) {
+  console.error(`${hueProblems.length} problem(s) in the file-icon hue mapping:\n`);
+  for (const problem of hueProblems) console.error(`  ${problem}`);
+  console.error("\nThe seti mapping and the scale.* roles must name the same hues.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
-    `and every styleguide gallery name a declared role.`,
+    `every styleguide gallery name a declared role, and all ${emitted.size} seti hues backed by scale roles.`,
 );
