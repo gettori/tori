@@ -44,7 +44,7 @@ const SRC = join(ROOT, "src");
 // are values that are data rather than styling.
 const ALLOWLIST = new Map([
   ["src/styles/tokens.css", "the token layer itself: the one place literals are defined"],
-  ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the generator reproduces the frozen baseline"],
+  ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the syntax ramp's categories are telling apart"],
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
   ["src/theme/contrast.test.ts", "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white"],
   ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
@@ -55,7 +55,6 @@ const ALLOWLIST = new Map([
 // goes stale the moment a theme is added, and the staleness is silent.
 const ALLOWLIST_PREFIXES = new Map([
   ["src/theme/palettes/", "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them"],
-  ["src/theme/__baseline__/", "the frozen pre-migration token map, plus the rename table that translates it: together they prove the Phase 4 rename was purely nominal, and both are keyed by the old names by construction"],
 ]);
 
 /** Whether `rel` is exempt from check 1, by exact path or by directory prefix. */
@@ -467,7 +466,8 @@ if (hueProblems.length > 0) {
 
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
-    `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
+    `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
+    `${ALLOWLIST_PREFIXES.size === 1 ? "directory" : "directories"}), ` +
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
     `every token the workbench names resolving, and all ${emitted.size} seti hues backed by scale roles.`,

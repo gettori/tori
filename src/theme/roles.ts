@@ -2,11 +2,12 @@
 // out. This is the only place colour derivation lives.
 //
 // Every role carries a stable `id` (the taxonomy, e.g. `canvas.card`) and a
-// `cssVar` (what CSS actually reads, e.g. `--canvas-card`). The two are independent
-// on purpose. Through Phases 1 to 3 `cssVar` holds the CURRENT token names, so
-// this generator can go live and every guard can pass before a single CSS module
-// is touched; the rename flips only the `cssVar` column, in one commit, against
-// the frozen baseline in __baseline__/tokens-baseline.json.
+// `cssVar` (what CSS actually reads, e.g. `--canvas-card`). The two are
+// independent on purpose: the migration that introduced this generator could
+// keep emitting the old token names while the engine went live, then flip only
+// the `cssVar` column in one commit. The split still earns its keep, because a
+// contrast rule, a palette, and the ADR all name roles by `id` and none of them
+// has to move when a CSS name does.
 //
 // See adr_theme_palette_roles for the taxonomy and the <html> key-ownership
 // contract this generator's consumers must honour.

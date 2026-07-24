@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THEME_ID, getBundledTheme, listSelectableThemes } from "./bundled";
-import { RENAME } from "./__baseline__/rename";
+import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled } from "./bundled";
 import { dropLegacy, readCache, type CacheStore } from ".";
 import { paintRoles, type StyleTarget } from "./resolver";
 import { buildRoles, ROLES } from "./roles";
@@ -17,7 +16,7 @@ function fakeStyle() {
 
 describe("bundled registry", () => {
   it("offers the two Sway themes and the three ports", () => {
-    expect(listSelectableThemes().map((t) => t.id)).toEqual([
+    expect(listSelectableBundled().map((t) => t.id)).toEqual([
       "sway-dark",
       "sway-light",
       "catppuccin-mocha",
@@ -26,7 +25,7 @@ describe("bundled registry", () => {
     ]);
     // Sway's own two lead, so the picker's first entries are the ones the app
     // was designed against.
-    expect(listSelectableThemes().slice(0, 2).map((t) => t.label)).toEqual(["Sway Dark", "Sway Light"]);
+    expect(listSelectableBundled().slice(0, 2).map((t) => t.label)).toEqual(["Sway Dark", "Sway Light"]);
   });
 
   it("defaults to Sway Dark", () => {
@@ -107,18 +106,16 @@ describe("the v1 to v2 cache handoff", () => {
     };
   }
 
-  /** The pre-rename name for a current one, looked up rather than written out.
-   *  A v1 fixture spelled literally is indistinguishable from a call site the
-   *  codemod missed, so the next run would "fix" it and leave this asserting
-   *  nothing. Deriving it means the fixture holds no old-name literal at all. */
-  const legacy = (current: string) => Object.keys(RENAME).find((old) => RENAME[old] === current)!;
-
+  // The pre-rename names, written out. They used to be derived through the
+  // rename table, so a stale fixture could not read as a missed call site while
+  // the codemod was still runnable; both the table and the codemod are retired
+  // now, so these are simply historical strings that nothing in the app emits.
   it("keeps the kind from a v1 selection and discards the v1 token map", () => {
     const store = fakeStore({
       "sway.theme.selected.v1": JSON.stringify({ kind: "light", bundledId: "light-plus" }),
       "sway.theme.v1": JSON.stringify({
-        [legacy("--fg-default")]: "#1f2328",
-        [legacy("--canvas-default")]: "#ffffff",
+        "--text": "#1f2328", // now --fg-default
+        "--bg": "#ffffff", // now --canvas-default
       }),
     });
 

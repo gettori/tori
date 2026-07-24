@@ -2,13 +2,18 @@
 // the semantic role set, which is painted onto <html> as inline custom
 // properties. The token layer (styles/tokens.css) is the pre-theme fallback.
 import { emit, THEME_APPLIED } from "../utils/events";
+import { admit } from "./admit";
+import type { AdmittedPalette } from "./admit";
 import { applyResolved } from "./resolver";
 import { buildRoles, ROLE_BY_CSS_VAR } from "./roles";
-import type { Appearance } from "./schema";
-import { DEFAULT_THEME_ID, getBundledTheme } from "./bundled";
+import type { Appearance, Palette } from "./schema";
+import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled } from "./bundled";
+import { listUserThemes } from "./userThemes";
 
-export { listSelectableThemes, listThemes, DEFAULT_THEME_ID } from "./bundled";
+export { listThemes, DEFAULT_THEME_ID } from "./bundled";
 export type { BundledTheme } from "./bundled";
+export { listUserThemes, reloadUserThemes } from "./userThemes";
+export type { UserTheme } from "./userThemes";
 
 // v2 because the cached token map is keyed by cssVar and Phase 4 renamed every
 // one of them. A v1 map is not stale data, it is data in a namespace nothing
@@ -77,7 +82,11 @@ function persist(sel: Selected, resolved: Record<string, string>) {
   }
 }
 
-function apply(resolved: Record<string, string>, appearance: Appearance | null, sel: Selected) {
+/** Paint an ADMITTED palette. The parameter type is the enforcement: `admit()`
+ *  is the only producer of an `AdmittedPalette`, so a theme that has not been
+ *  validated and gated cannot reach this function, whatever the caller intends. */
+function apply(palette: AdmittedPalette, appearance: Appearance | null, sel: Selected) {
+  const resolved = buildRoles(palette);
   applyResolved(resolved, appearance);
   persist({ ...sel, kind: appearance ?? sel.kind }, resolved);
   emit(THEME_APPLIED);
@@ -96,9 +105,79 @@ export function applyCachedTheme() {
   dropLegacy(localStorage);
 }
 
-/** Select a bundled theme by id. */
-export function setTheme(id: string) {
-  const theme = getBundledTheme(id) ?? getBundledTheme(DEFAULT_THEME_ID);
-  if (!theme) return;
-  apply(buildRoles(theme.palette), theme.appearance, { kind: theme.appearance, bundledId: theme.id });
+/** A theme the picker can offer, from either source. `source` is `"bundled"` or
+ *  the absolute path of the file that defined it. */
+export type ThemeChoice = {
+  id: string;
+  label: string;
+  appearance: Appearance;
+  palette: Palette;
+  source: string;
+};
+
+/** Every theme that may be offered: the bundled set, then the user themes that
+ *  passed the gate. A refused user theme is deliberately absent - the picker
+ *  must not offer a theme that selecting would refuse. */
+export function listSelectableThemes(): ThemeChoice[] {
+  return [
+    ...listSelectableBundled().map((t) => ({
+      id: t.id,
+      label: t.label,
+      appearance: t.appearance,
+      palette: t.palette,
+      source: "bundled",
+    })),
+    ...listUserThemes()
+      .filter((t) => t.problems.length === 0)
+      .map((t) => ({ id: t.id, label: t.label, appearance: t.appearance, palette: t.palette, source: t.source })),
+  ];
+}
+
+/** Look up a theme by id across both sources. Unlike `listSelectableThemes`
+ *  this DOES return a user theme the gate refused, so `setTheme` can say why it
+ *  will not paint it rather than the much less useful "no such theme". */
+export function getTheme(id: string): ThemeChoice | undefined {
+  const bundled = getBundledTheme(id);
+  if (bundled) {
+    return {
+      id: bundled.id,
+      label: bundled.label,
+      appearance: bundled.appearance,
+      palette: bundled.palette,
+      source: "bundled",
+    };
+  }
+  const user = listUserThemes().find((t) => t.id === id);
+  if (!user) return undefined;
+  return { id: user.id, label: user.label, appearance: user.appearance, palette: user.palette, source: user.source };
+}
+
+/** Select a theme by id, from either source. Returns the problems worth showing
+ *  the user; empty means the theme was painted.
+ *
+ *  The two failure modes are deliberately different:
+ *
+ *  - an id nothing provides (a deleted file, a typo in settings.json) falls back
+ *    to the default, because the alternative is an app with no theme at all;
+ *  - a theme that exists but fails the gate paints NOTHING, so the app stays on
+ *    whatever it was showing. Replacing a legible theme with the default over an
+ *    edit the user is still making would be a worse answer than saying so. */
+export function setTheme(id: string): string[] {
+  const choice = getTheme(id);
+  if (!choice) {
+    const fallback = getTheme(DEFAULT_THEME_ID);
+    if (!fallback) return [`theme "${id}" is not installed, and neither is the default`];
+    const admission = admit(fallback.palette, fallback.id);
+    if (!admission.ok) return admission.problems;
+    apply(admission.palette, fallback.appearance, { kind: fallback.appearance, bundledId: fallback.id });
+    return [`theme "${id}" is not installed; using ${fallback.label}`];
+  }
+
+  const admission = admit(choice.palette, choice.source === "bundled" ? choice.id : choice.source);
+  // Prefixed so this reads differently from the same refusal reported when the
+  // folder was scanned: that one says the file is unusable, this one says the
+  // theme you just asked for is the reason nothing changed.
+  if (!admission.ok) return admission.problems.map((p) => `cannot apply theme "${choice.id}": ${p}`);
+  apply(admission.palette, choice.appearance, { kind: choice.appearance, bundledId: choice.id });
+  return [];
 }

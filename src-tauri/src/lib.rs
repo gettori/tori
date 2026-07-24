@@ -19,6 +19,7 @@ mod pty;
 mod search;
 mod sessions;
 mod settings;
+mod themes;
 mod update;
 mod worktree;
 
@@ -141,6 +142,7 @@ pub fn run() {
         .manage(SessionWatch::default())
         .manage(TouchedIndex::default())
         .manage(SettingsWatch::default())
+        .manage(themes::ThemesWatch::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -253,6 +255,8 @@ pub fn run() {
             settings::set_settings,
             settings::settings_watch_start,
             settings::take_theme_import_notice,
+            themes::list_user_themes,
+            themes::themes_watch_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
