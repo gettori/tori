@@ -60,6 +60,16 @@
   color: var(--brand-default);
 }
 
+.picker {
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  font: inherit;
+  cursor: pointer;
+}
+
 .slider {
   display: inline-flex;
   align-items: center;
@@ -248,4 +258,111 @@
   align-items: center;
   gap: calc(20px * var(--ui-density));
   color: var(--brand-default);
+}
+
+/* ---- Theme workbench ---- */
+
+.gatePass {
+  margin: 0;
+  color: var(--success-fg);
+}
+.gateList {
+  margin: 0;
+  padding-left: calc(20px * var(--ui-density));
+}
+.gateFail {
+  color: var(--danger-fg);
+  font-size: calc(12px * var(--ui-scale));
+}
+.gateFail code {
+  font-family: var(--sway-font-mono);
+}
+
+/* A role the gate rejected is outlined wherever it is rendered, so a failure is
+   findable on the surface it affects and not only in the list above. */
+.failing {
+  outline: 2px dashed var(--danger-fg);
+  outline-offset: 2px;
+}
+
+.ansiRow {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: calc(8px * var(--ui-density));
+}
+.ansiCell {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-density));
+}
+.ansiCell code {
+  font-family: var(--sway-font-mono);
+  font-size: calc(10px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+.ansiChip {
+  height: 32px;
+  border-radius: var(--sway-radius-sm);
+  border: 1px solid var(--border-default);
+}
+
+.terminalSample,
+.syntaxSample {
+  margin: calc(16px * var(--ui-density)) 0 0;
+  padding: calc(12px * var(--ui-density));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-lg);
+  font-family: var(--sway-font-mono);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: calc(8px * var(--ui-density));
+}
+.iconCell {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+}
+.iconCell code {
+  font-family: var(--sway-font-mono);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+.groupHead {
+  margin: calc(16px * var(--ui-density)) 0 calc(8px * var(--ui-density));
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 600;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+}
+.roleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: calc(8px * var(--ui-density));
+}
+.roleCell {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-density));
+}
+.roleCell code {
+  font-family: var(--sway-font-mono);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roleChip {
+  flex: none;
+  width: 28px;
+  height: 20px;
+  border-radius: var(--sway-radius-sm);
+  border: 1px solid var(--border-default);
 }

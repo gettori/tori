@@ -51,9 +51,11 @@ pub struct PaletteColors {
 
     // Feedback
     pub danger: String,
+    pub danger_strong: String,
     pub attention: String,
     pub attention_strong: String,
     pub success: String,
+    pub success_strong: String,
     pub info: String,
     pub fill_tint: String,
 
@@ -213,9 +215,11 @@ impl PaletteColors {
             ("accent", &self.accent),
             ("accentSubtle", &self.accent_subtle),
             ("danger", &self.danger),
+            ("dangerStrong", &self.danger_strong),
             ("attention", &self.attention),
             ("attentionStrong", &self.attention_strong),
             ("success", &self.success),
+            ("successStrong", &self.success_strong),
             ("info", &self.info),
             ("fillTint", &self.fill_tint),
             ("diffAdded", &self.diff_added),

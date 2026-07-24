@@ -167,7 +167,7 @@
 
     /* accent */
     --accent-fg: #4a9eff;
-    --accent-subtle: #094771;
+    --accent-subtle: #09456e;
 
     /* neutral */
     --neutral-hover: #252a34;
@@ -175,13 +175,15 @@
 
     /* danger */
     --danger-fg: #e06c75;
+    --danger-emphasis: #b7585f;
 
     /* attention */
     --attention-fg: #d19a66;
-    --attention-emphasis: #b56319;
+    --attention-emphasis: #b16119;
 
     /* success */
     --success-fg: #2ea043;
+    --success-emphasis: #278739;
 
     /* info */
     --info-fg: #4ec9b0;
@@ -218,7 +220,7 @@
     --brand-strong: #d9bd85;
     --brand-subtle: rgba(201, 150, 83, 0.16);
     --brand-bar: #d9a468;
-    --brand-ring: rgba(201, 150, 83, 0.5);
+    --brand-ring: rgba(201, 150, 83, 0.6);
     --brand-on: #4a3719;
 
     /* ansi */
@@ -232,7 +234,7 @@
     --ansi-magenta: #bc3fbc;
     --ansi-cyan: #11a8cd;
     --ansi-white: #e5e5e5;
-    --ansi-bright-black: #666666;
+    --ansi-bright-black: #696969;
     --ansi-bright-red: #f14c4c;
     --ansi-bright-green: #23d18b;
     --ansi-bright-yellow: #f5f543;
@@ -252,7 +254,7 @@
 
     /* tree */
     --tree-row-hover: #252a34;
-    --tree-row-active: #094771;
+    --tree-row-active: #09456e;
 
     /* tab */
     --tab-active-bg: #252a34;
@@ -266,7 +268,7 @@
     --activity-editing: #d9a468;
 
     /* scale */
-    --scale-red: #cc3e44;
+    --scale-red: #cd4147;
     --scale-green: #8dc149;
     --scale-blue: #519aba;
     --scale-yellow: #cbcb41;
@@ -275,8 +277,8 @@
     --scale-purple: #a074c4;
     --scale-pink: #f55385;
     --scale-silver: #d4d7d6;
-    --scale-steel: #41535b;
-    --scale-graphite: #4d5a5e;
+    --scale-steel: #68767d;
+    --scale-graphite: #6a7579;
 
     /* syntax */
     --syntax-keyword: #569cd6;
@@ -305,7 +307,7 @@
   :root[data-theme="light"] {
     /* fg */
     --fg-default: #1e1e1e;
-    --fg-muted: #6a6a6a;
+    --fg-muted: #686868;
     --fg-subtle: #808080;
     --fg-on-emphasis: #ffffff;
 
@@ -333,28 +335,30 @@
     --neutral-subtle: rgba(23, 23, 23, 0.06);
 
     /* danger */
-    --danger-fg: #cf222e;
+    --danger-fg: #ca212d;
+    --danger-emphasis: #cf222e;
 
     /* attention */
-    --attention-fg: #9a6700;
+    --attention-fg: #8d5e00;
     --attention-emphasis: #bc4c00;
 
     /* success */
-    --success-fg: #1a7f37;
+    --success-fg: #197834;
+    --success-emphasis: #1a7f37;
 
     /* info */
-    --info-fg: #157a6e;
+    --info-fg: #14756a;
 
     /* diff */
     --diff-added: #1a7f37;
-    --diff-modified: #9a6700;
+    --diff-modified: #976500;
     --diff-deleted: #cf222e;
     --diff-added-word: rgba(26, 127, 55, 0.24);
     --diff-deleted-word: rgba(207, 34, 46, 0.22);
 
     /* diag */
     --diag-error: #cf222e;
-    --diag-warning: #9a6700;
+    --diag-warning: #976500;
     --diag-info: #157a6e;
     --diag-hint: #6e7781;
 
@@ -373,11 +377,11 @@
     --status-running: #64748b;
 
     /* brand */
-    --brand-default: #8a6733;
+    --brand-default: #7e5e2f;
     --brand-strong: #6b4f27;
     --brand-subtle: rgba(138, 103, 51, 0.14);
-    --brand-bar: #8a6733;
-    --brand-ring: rgba(138, 103, 51, 0.4);
+    --brand-bar: #7e5e2f;
+    --brand-ring: rgba(138, 103, 51, 0.77);
     --brand-on: #ffffff;
 
     /* ansi */
@@ -417,12 +421,12 @@
     --tab-active-bg: #ededed;
     --tab-active-fg: #1e1e1e;
     --tab-hover-bg: #ededed;
-    --tab-inactive-fg: #6a6a6a;
-    --tab-dirty: #8a6733;
+    --tab-inactive-fg: #686868;
+    --tab-dirty: #7e5e2f;
 
     /* activity */
     --activity-touched: #005fb8;
-    --activity-editing: #8a6733;
+    --activity-editing: #7e5e2f;
 
     /* scale */
     --scale-red: #b02a30;
@@ -442,21 +446,21 @@
     --syntax-control: #af00db;
     --syntax-operator: #000000;
     --syntax-string: #a31515;
-    --syntax-escape: #ee0000;
+    --syntax-escape: #e00000;
     --syntax-regexp: #811f3f;
     --syntax-comment: #008000;
-    --syntax-number: #098658;
+    --syntax-number: #097f54;
     --syntax-constant: #0070c1;
     --syntax-function: #795e26;
     --syntax-method: #795e26;
-    --syntax-type: #267f99;
+    --syntax-type: #247891;
     --syntax-class: #0f7b6c;
-    --syntax-namespace: #267f99;
+    --syntax-namespace: #247891;
     --syntax-variable: #001080;
     --syntax-property: #001080;
     --syntax-parameter: #3b6ea5;
     --syntax-tag: #800000;
-    --syntax-attribute: #e50000;
+    --syntax-attribute: #e00000;
     --syntax-punctuation: #808080;
   }
 

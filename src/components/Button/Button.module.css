@@ -63,8 +63,8 @@
 }
 
 .success {
-  background: var(--success-fg);
-  border-color: var(--success-fg);
+  background: var(--success-emphasis);
+  border-color: var(--success-emphasis);
   color: var(--fg-on-emphasis);
   font-weight: 600;
 }
@@ -77,8 +77,8 @@
 }
 
 .danger {
-  background: var(--danger-fg);
-  border-color: var(--danger-fg);
+  background: var(--danger-emphasis);
+  border-color: var(--danger-emphasis);
   color: var(--fg-on-emphasis);
 }
 

@@ -1,42 +1,80 @@
-import { createSignal, createEffect, For } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import { Settings, Search, ChevronRight, GitBranch, FileCode } from "lucide-solid";
 import Icon from "../components/Icon/Icon";
 import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";
+import FileIcon from "../seti/FileIcon";
+import { checkPalette } from "../theme/contrast";
+import { applyResolved } from "../theme/resolver";
+import { buildRoles, ROLE_BY_ID, ROLES } from "../theme/roles";
+import { DEFAULT_THEME_ID, listSelectableThemes } from "../theme";
 import styles from "./Styleguide.module.css";
 import patterns from "../styles/patterns.module.css";
 
-/** Dev-only visual QA surface for the design system. NOT a router route (sway
- *  has none): App renders it when `import.meta.env.DEV && location.hash ===
- *  "#styleguide"`. It drives the real `--ui-*` inline props and `data-theme` so
- *  every phase's tokens can be checked in both themes and at non-default
- *  density/scale/radius. */
+/** Dev-only theme workbench. NOT a router route (sway has none): App renders it
+ *  when `import.meta.env.DEV && location.hash === "#styleguide"`. It drives the
+ *  real theme registry and the real `--ui-*` inline props, so a palette can be
+ *  authored here and checked in every surface it touches, at non-default
+ *  density/scale/radius.
+ *
+ *  The role gallery is DERIVED from `ROLES` rather than curated. A hand-listed
+ *  gallery goes stale the moment a role is added, and it goes stale silently:
+ *  the missing role simply is not shown, which looks exactly like a role that
+ *  has nothing to show. */
 
-const BRAND = [
-  ["--brand-default", "primary gold: icons, active text"],
-  ["--brand-strong", "hover / emphasis"],
-  ["--brand-subtle", "pill fill (translucent)"],
-  ["--brand-bar", "left active-item accent bar"],
-  ["--brand-ring", "focus ring (translucent)"],
-  ["--brand-on", "text/icon on a filled --brand-default surface"],
-] as const;
+const BRAND_NOTES: Record<string, string> = {
+  "--brand-default": "primary gold: icons, active text",
+  "--brand-strong": "hover / emphasis",
+  "--brand-subtle": "pill fill (translucent)",
+  "--brand-bar": "left active-item accent bar",
+  "--brand-ring": "focus ring (translucent)",
+  "--brand-on": "text/icon on a filled --brand-default surface",
+};
 
-const SEMANTIC = [
-  "--canvas-default",
-  "--canvas-card",
-  "--canvas-head",
-  "--border-default",
-  "--fg-default",
-  "--fg-muted",
-  "--accent-fg",
-  "--accent-subtle",
-  "--neutral-hover",
-  "--canvas-input",
-  "--danger-fg",
-  "--attention-fg",
-  "--attention-emphasis",
-  "--success-fg",
-] as const;
+/** The 16-slot ANSI ramp, in the order a terminal indexes it. */
+const ANSI_SLOTS = ROLES.filter(
+  (r) => r.group === "ansi" && r.id !== "ansi.cursor" && r.id !== "ansi.selection",
+);
+
+/** A code sample that exercises one syntax role per span, so a ramp with two
+ *  categories accidentally equal is visible rather than merely measurable. */
+const SYNTAX_SAMPLE: [string, string][] = [
+  ["syntax.comment", "// resolve a theme"], ["", "\n"],
+  ["syntax.keyword", "export"], ["", " "],
+  ["syntax.control", "async"], ["", " "],
+  ["syntax.keyword", "function"], ["", " "],
+  ["syntax.function", "resolve"], ["syntax.punctuation", "("],
+  ["syntax.parameter", "id"], ["syntax.punctuation", ":"], ["", " "],
+  ["syntax.type", "ThemeId"], ["syntax.punctuation", ")"], ["", " "],
+  ["syntax.punctuation", "{"], ["", "\n  "],
+  ["syntax.control", "const"], ["", " "],
+  ["syntax.variable", "raw"], ["", " "],
+  ["syntax.operator", "="], ["", " "],
+  ["syntax.control", "await"], ["", " "],
+  ["syntax.namespace", "fs"], ["syntax.punctuation", "."],
+  ["syntax.method", "readFile"], ["syntax.punctuation", "("],
+  ["syntax.string", '"palette.json"'], ["syntax.punctuation", ");"], ["", "\n  "],
+  ["syntax.control", "return"], ["", " "],
+  ["syntax.class", "Palette"], ["syntax.punctuation", "."],
+  ["syntax.method", "parse"], ["syntax.punctuation", "("],
+  ["syntax.variable", "raw"], ["syntax.punctuation", ","], ["", " "],
+  ["syntax.number", "1"], ["syntax.punctuation", ","], ["", " "],
+  ["syntax.constant", "STRICT"], ["syntax.punctuation", ");"], ["", "\n"],
+  ["syntax.punctuation", "}"], ["", "\n"],
+  ["syntax.regexp", "/\\bsway-[a-z]+\\b/"], ["", "  "],
+  ["syntax.string", '"tab\\t"'], ["syntax.escape", "\\n"], ["", "\n"],
+  ["syntax.punctuation", "<"], ["syntax.tag", "button"], ["", " "],
+  ["syntax.attribute", "disabled"], ["syntax.punctuation", "/>"],
+];
+
+/** Chosen so all eleven `scale.*` hues are on screen at once: a hue with no file
+ *  in this list is a hue nobody would notice going wrong. */
+const ICON_SAMPLE = [
+  "index.ts", "readme.md", "styles.css", "main.rs", "app.py", "Cargo.toml",
+  "package.json", "logo.svg", "Dockerfile", "notes.txt", "script.sh",
+  "photo.png", "index.html", "query.sql", "vite.config.ts",
+  "Main.java", "pom.xml", ".gitconfig", ".dockerignore",
+];
 
 const SPACE = ["1", "2", "3", "4", "5", "6", "7", "8"] as const;
 const RADII = ["sm", "md", "lg", "pill"] as const;
@@ -46,15 +84,25 @@ const VARIANTS: ButtonVariant[] = ["default", "primary", "success", "warn", "dan
 const SIZES: ButtonSize[] = ["md", "sm", "xs"];
 
 export default function Styleguide() {
-  const [theme, setTheme] = createSignal<"dark" | "light">(
-    (document.documentElement.dataset.theme as "dark" | "light") || "dark",
-  );
+  const themes = listSelectableThemes();
+  const [themeId, setThemeId] = createSignal(DEFAULT_THEME_ID);
   const [density, setDensity] = createSignal(1);
   const [scale, setScale] = createSignal(1);
   const [radius, setRadius] = createSignal(1);
 
+  const active = createMemo(() => themes.find((t) => t.id === themeId()) ?? themes[0]);
+  /** The gate's verdict on the theme currently painted, recomputed on switch. */
+  const gate = createMemo(() => checkPalette(active().palette));
+  const failedVars = createMemo(() => new Set(gate().failures.map((f) => f.cssVar)));
+
+  // Paints through the real resolver, so what is on screen is exactly what a
+  // user selecting this theme would get, inline props and all - but deliberately
+  // NOT through setTheme, which also persists the selection. Clicking through
+  // five themes in a dev surface must not silently rewrite which theme the app
+  // boots into.
   createEffect(() => {
-    document.documentElement.dataset.theme = theme();
+    const theme = active();
+    applyResolved(buildRoles(theme.palette), theme.appearance);
   });
   createEffect(() => {
     const st = document.documentElement.style;
@@ -67,17 +115,16 @@ export default function Styleguide() {
     <div class={styles.page}>
       <header class={styles.bar}>
         <strong class={styles.title}>
-          <Icon icon={Settings} /> sway styleguide
+          <Icon icon={Settings} /> sway theme workbench
         </strong>
         <div class={styles.controls}>
-          <div class={styles.seg}>
-            <button classList={{ [styles.on]: theme() === "dark" }} onClick={() => setTheme("dark")}>
-              dark
-            </button>
-            <button classList={{ [styles.on]: theme() === "light" }} onClick={() => setTheme("light")}>
-              light
-            </button>
-          </div>
+          <select
+            class={styles.picker}
+            value={themeId()}
+            onChange={(e) => setThemeId(e.currentTarget.value)}
+          >
+            <For each={themes}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+          </select>
           <div class={styles.seg}>
             <button classList={{ [styles.on]: density() === 1 }} onClick={() => setDensity(1)}>
               comfortable
@@ -99,15 +146,99 @@ export default function Styleguide() {
 
       <main class={styles.body}>
         <section>
+          <h2>Contrast gate</h2>
+          <Show
+            when={gate().failures.length > 0 || gate().problems.length > 0}
+            fallback={
+              <p class={styles.gatePass}>
+                {active().label} clears every declared floor across all {ROLES.length} roles.
+              </p>
+            }
+          >
+            <ul class={styles.gateList}>
+              <For each={gate().problems}>{(p) => <li class={styles.gateFail}>{p}</li>}</For>
+              <For each={gate().failures}>
+                {(f) => (
+                  <li class={styles.gateFail}>
+                    <code>{f.cssVar}</code> on <code>{f.surface}</code> is{" "}
+                    {f.ratio.toFixed(2)}, needs {f.required.toFixed(1)} ({f.tier})
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </section>
+
+        <section>
+          <h2>Terminal (16-slot ANSI ramp)</h2>
+          <div class={styles.ansiRow}>
+            <For each={ANSI_SLOTS}>
+              {(role) => (
+                <div
+                  class={styles.ansiCell}
+                  classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
+                >
+                  <div class={styles.ansiChip} style={{ background: `var(${role.cssVar})` }} />
+                  <code>{role.id.slice("ansi.".length)}</code>
+                </div>
+              )}
+            </For>
+          </div>
+          <pre class={styles.terminalSample}>
+            <span style={{ color: "var(--ansi-green)" }}>PASS</span>
+            {"  "}
+            <span style={{ color: "var(--ansi-red)" }}>FAIL</span>
+            {"  "}
+            <span style={{ color: "var(--ansi-yellow)" }}>SKIP</span>
+            {"  "}
+            <span style={{ color: "var(--ansi-bright-black)" }}>12 skipped</span>
+          </pre>
+        </section>
+
+        <section>
+          <h2>Editor (syntax)</h2>
+          <pre class={styles.syntaxSample}>
+            <For each={SYNTAX_SAMPLE}>
+              {([id, text]) => (
+                <Show when={id ? ROLE_BY_ID.get(id) : undefined} fallback={text} keyed>
+                  {(role) => (
+                    <span
+                      style={{ color: `var(${role.cssVar})` }}
+                      classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
+                    >
+                      {text}
+                    </span>
+                  )}
+                </Show>
+              )}
+            </For>
+          </pre>
+        </section>
+
+        <section>
+          <h2>File icons (seti hues via scale.*)</h2>
+          <div class={styles.iconGrid}>
+            <For each={ICON_SAMPLE}>
+              {(name) => (
+                <span class={styles.iconCell}>
+                  <FileIcon name={name} />
+                  <code>{name}</code>
+                </span>
+              )}
+            </For>
+          </div>
+        </section>
+
+        <section>
           <h2>Brand (champagne gold)</h2>
           <div class={styles.swatches}>
-            <For each={BRAND}>
-              {([name, note]) => (
+            <For each={ROLES.filter((r) => r.group === "brand")}>
+              {(role) => (
                 <div class={styles.swatch}>
-                  <div class={styles.chip} style={{ background: `var(${name})` }} />
-                  <code>{name}</code>
-                  <span class={styles.note}>{note}</span>
-                  <p class={styles.brandText} style={{ color: `var(${name})` }}>
+                  <div class={styles.chip} style={{ background: `var(${role.cssVar})` }} />
+                  <code>{role.cssVar}</code>
+                  <span class={styles.note}>{BRAND_NOTES[role.cssVar] ?? role.id}</span>
+                  <p class={styles.brandText} style={{ color: `var(${role.cssVar})` }}>
                     The quick brown fox — legible on brand
                   </p>
                 </div>
@@ -122,17 +253,27 @@ export default function Styleguide() {
         </section>
 
         <section>
-          <h2>Semantic colors</h2>
-          <div class={styles.swatches}>
-            <For each={SEMANTIC}>
-              {(name) => (
-                <div class={styles.swatch}>
-                  <div class={styles.chip} style={{ background: `var(${name})` }} />
-                  <code>{name}</code>
+          <h2>Roles ({ROLES.length} across {new Set(ROLES.map((r) => r.group)).size} families)</h2>
+          <For each={[...new Set(ROLES.map((r) => r.group))]}>
+            {(group) => (
+              <>
+                <h3 class={styles.groupHead}>{group}</h3>
+                <div class={styles.roleGrid}>
+                  <For each={ROLES.filter((r) => r.group === group)}>
+                    {(role) => (
+                      <div
+                        class={styles.roleCell}
+                        classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
+                      >
+                        <div class={styles.roleChip} style={{ background: `var(${role.cssVar})` }} />
+                        <code>{role.cssVar}</code>
+                      </div>
+                    )}
+                  </For>
                 </div>
-              )}
-            </For>
-          </div>
+              </>
+            )}
+          </For>
         </section>
 
         <section>

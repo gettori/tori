@@ -8,7 +8,7 @@
 //   3. Every var(--x) in src/ resolves to a role, a --sway-* primitive, or a
 //      locally declared property.
 //   4. Every name TerminalView.termColors() reads is a declared role.
-//   5. Every name the styleguide galleries list is a declared role.
+//   5. Every token the theme workbench names as a literal resolves.
 //   6. Every hue the generated seti mapping emits has a scale.* role.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
@@ -46,7 +46,8 @@ const ALLOWLIST = new Map([
   ["src/styles/tokens.css", "the token layer itself: the one place literals are defined"],
   ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the generator reproduces the frozen baseline"],
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
-  ["src/dev/Styleguide.tsx", "the token gallery: it renders swatch names, and its labels are the token names themselves"],
+  ["src/theme/contrast.test.ts", "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white"],
+  ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
 ]);
 
 // Directory prefixes, for families of files where every member is exempt for the
@@ -391,39 +392,43 @@ if (termProblems.length > 0) {
   process.exit(1);
 }
 
-// ---- Check 5: the styleguide's galleries name roles that exist ----
+// ---- Check 5: every token the workbench names as a string exists ----
 //
-// Same shape of blind spot as check 4. The galleries hold their token names as
-// string literals and render them as `var(${name})`, so check 3 sees only an
-// interpolation and waves them through. A stale name there renders an empty
-// chip, which reads as "that role has no colour" rather than as a typo.
+// Same shape of blind spot as check 4. The workbench renders its swatches as
+// `var(${name})`, so check 3 sees only an interpolation and waves them through.
+// A name that resolves to nothing renders an empty chip, which reads as "that
+// role has no colour" rather than as a typo.
+//
+// The role gallery itself is derived from ROLES now and so cannot go stale, but
+// the annotations, the samples, and the `--ui-*` writes still carry names as
+// literals. So this scans every `"--x"` in the file rather than the contents of
+// two named consts: it needs no update when a const is renamed or split, and it
+// covers the parts of the workbench that are still hand-written.
 
 const STYLEGUIDE = "src/dev/Styleguide.tsx";
 const guideSource = sources.get(STYLEGUIDE);
-const GALLERIES = ["BRAND", "SEMANTIC"];
 const guideProblems = [];
 
-for (const gallery of GALLERIES) {
-  const body = guideSource && new RegExp(`const ${gallery}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\n\\]`).exec(guideSource);
-  if (!body) {
-    guideProblems.push(`could not find const ${gallery} in ${STYLEGUIDE}; this check locates it by that name`);
-    continue;
+if (!guideSource) {
+  guideProblems.push(`could not read ${STYLEGUIDE}; this check needs the workbench`);
+} else {
+  const named = [...guideSource.matchAll(/["'`](--[\w-]+)["'`]/g)].map((m) => m[1]);
+  if (named.length === 0) {
+    guideProblems.push(`${STYLEGUIDE} names no --tokens as literals; the form this check scans for changed`);
   }
-  const names = [...body[0].matchAll(/"(--[\w-]+)"/g)].map((m) => m[1]);
-  if (names.length === 0) {
-    guideProblems.push(`${gallery} in ${STYLEGUIDE} lists no --tokens; the literal form this check scans for changed`);
-  }
-  for (const name of names) {
-    if (!ROLE_BY_CSS_VAR.has(name)) {
-      guideProblems.push(`${gallery} lists ${name}, which is not a role cssVar in src/theme/roles.ts`);
+  for (const name of new Set(named)) {
+    // globalNames is the token layer plus every role plus every runtime write,
+    // i.e. exactly what a `var()` in the workbench can resolve against.
+    if (!globalNames.has(name)) {
+      guideProblems.push(`${STYLEGUIDE} names ${name}, which no role and no token declaration provides`);
     }
   }
 }
 
 if (guideProblems.length > 0) {
-  console.error(`${guideProblems.length} problem(s) in the styleguide galleries:\n`);
+  console.error(`${guideProblems.length} problem(s) in the theme workbench:\n`);
   for (const problem of guideProblems) console.error(`  ${problem}`);
-  console.error("\nA gallery name that is not a role renders an empty swatch rather than an error.");
+  console.error("\nA workbench name that resolves to nothing renders an empty swatch rather than an error.");
   process.exit(1);
 }
 
@@ -465,5 +470,5 @@ console.log(
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
-    `every styleguide gallery name a declared role, and all ${emitted.size} seti hues backed by scale roles.`,
+    `every token the workbench names resolving, and all ${emitted.size} seti hues backed by scale roles.`,
 );
