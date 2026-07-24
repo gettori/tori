@@ -3,31 +3,31 @@
 .viewer {
   flex: 1;
   overflow: auto;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   padding: calc(10px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
 }
 
 .viewer :global(.tree-empty) {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .turn {
   margin-bottom: calc(10px * var(--ui-density));
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
   border-radius: var(--sway-radius-sm);
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--border-default);
 }
 
 .turn.user {
-  border-left-color: var(--brand);
+  border-left-color: var(--brand-default);
 }
 .turn.assistant {
-  border-left-color: var(--accent);
+  border-left-color: var(--accent-fg);
 }
 .turn.tool {
-  border-left-color: var(--text-dim);
+  border-left-color: var(--fg-muted);
 }
 
 .turnHeader {
@@ -41,12 +41,12 @@
   font-size: calc(10px * var(--ui-scale));
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .turnTime {
   font-size: calc(10px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .block {
@@ -55,11 +55,11 @@
 
 .blockText {
   white-space: pre-wrap;
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .block.thinking .blockText {
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-style: italic;
 }
 
@@ -69,7 +69,7 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
   border-radius: var(--sway-radius-sm);
-  background: var(--hover);
+  background: var(--neutral-hover);
   cursor: pointer;
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: calc(11px * var(--ui-scale));
@@ -78,25 +78,25 @@
 .chevron {
   display: inline-block;
   transition: transform var(--sway-duration-fast) ease;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 .chevron.open {
   transform: rotate(90deg);
 }
 
 .toolName {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .errorBadge {
-  color: var(--danger);
+  color: var(--danger-fg);
   font-size: calc(10px * var(--ui-scale));
 }
 
 .blockDetail {
   margin: calc(4px * var(--ui-density)) 0 0;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--bg);
+  background: var(--canvas-default);
   border-radius: var(--sway-radius-sm);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: calc(11px * var(--ui-scale));
@@ -109,15 +109,15 @@
   margin: calc(8px * var(--ui-density)) auto;
   padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
 }
 .loadOlder:hover {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 /* Turn-level checkpoints (Finding E): a per-turn "Changes this turn" row on
@@ -125,25 +125,25 @@
 .checkpoint {
   margin-top: calc(6px * var(--ui-density));
   padding-top: calc(4px * var(--ui-density));
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--border-default);
 }
 
 .checkpointToggle {
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
   cursor: pointer;
   user-select: none;
 }
 .checkpointToggle:hover {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .checkpointEmpty {
   padding: calc(2px * var(--ui-density)) calc(4px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
 }
 
@@ -177,7 +177,7 @@
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  color: var(--fg-default);
   cursor: pointer;
 }
 
@@ -185,15 +185,15 @@
   flex: none;
   padding: 0 calc(6px * var(--ui-density));
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(10px * var(--ui-scale));
   cursor: pointer;
 }
 .revertButton:hover {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 .checkpointDiff {
@@ -202,7 +202,7 @@
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
-  background: var(--bg);
+  background: var(--canvas-default);
 }
 
 .diffLine {
@@ -216,8 +216,8 @@
   color: var(--diff-deleted);
 }
 .diffLine.hunk {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 .diffLine.meta {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }

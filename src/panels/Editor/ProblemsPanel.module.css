@@ -3,17 +3,17 @@
   flex-direction: column;
   overflow-y: auto;
   height: 100%;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   font-size: calc(12px * var(--ui-scale));
 }
 
 .empty {
   padding: calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .fileGroup {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .fileHead {
@@ -24,8 +24,8 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-head-bg);
-  color: var(--text);
+  background: var(--canvas-head);
+  color: var(--fg-default);
 }
 
 .fileName {
@@ -38,7 +38,7 @@
   flex: none;
   padding: 0 calc(5px * var(--ui-density));
   border-radius: var(--sway-radius-pill);
-  background: var(--fill-subtle);
+  background: var(--neutral-subtle);
   font-size: calc(10px * var(--ui-scale));
 }
 
@@ -50,7 +50,7 @@
   cursor: pointer;
 }
 .problemRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 /* Severity is carried by a coloured dot rather than by the message colour, so a
@@ -65,7 +65,7 @@
 
 .loc {
   flex: none;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-family: var(--sway-font-mono);
   font-size: calc(10px * var(--ui-scale));
 }
@@ -75,16 +75,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .sendButton {
   flex: none;
   padding: 0 calc(6px * var(--ui-density));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   background: transparent;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-family: inherit;
   font-size: calc(10px * var(--ui-scale));
   cursor: pointer;
@@ -95,8 +95,8 @@
   opacity: 1;
 }
 .sendButton:hover {
-  color: var(--text);
-  border-color: var(--accent);
+  color: var(--fg-default);
+  border-color: var(--accent-fg);
 }
 
 .error {
@@ -122,5 +122,5 @@
 .count.warning,
 .count.info,
 .count.hint {
-  background: var(--fill-subtle);
+  background: var(--neutral-subtle);
 }

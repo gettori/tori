@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 /* Live "editing now" banner. Same pulse as the tree row and the tab dot, with
@@ -18,8 +18,8 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: var(--brand);
-  border-bottom: 1px solid var(--border);
+  color: var(--brand-default);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .editingNow code {
@@ -50,8 +50,8 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border-default);
   cursor: pointer;
   user-select: none;
 }
@@ -66,7 +66,7 @@
 
 .touchList :global(.tree-empty) {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .bucketHeader {
@@ -75,7 +75,7 @@
   font-size: calc(10px * var(--ui-scale));
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .touchRow {
@@ -91,7 +91,7 @@
 }
 
 .touchRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .opBadge {
@@ -114,13 +114,13 @@
   color: var(--diff-deleted);
 }
 .opBadge.read {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .touchName {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .collisionBadge {
@@ -128,7 +128,7 @@
   flex: none;
   padding: 0 calc(5px * var(--ui-density));
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-default);
   color: var(--brand-on);
   font-size: calc(10px * var(--ui-scale));
   font-variant-numeric: tabular-nums;
@@ -140,7 +140,7 @@
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
-  background: var(--bg);
+  background: var(--canvas-default);
 }
 
 .touchDiff .diffLine {
@@ -155,8 +155,8 @@
   color: var(--diff-deleted);
 }
 .touchDiff .diffLine.hunk {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 .touchDiff .diffLine.meta {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }

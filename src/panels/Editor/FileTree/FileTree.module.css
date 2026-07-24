@@ -7,7 +7,7 @@
 .fileTree {
   flex: 1;
   overflow: auto;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   padding: calc(4px * var(--ui-density)) 0;
   font-size: calc(13px * var(--ui-scale));
   -webkit-user-select: none;
@@ -22,8 +22,8 @@
   display: flex;
   gap: calc(6px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .treeRow {
@@ -34,41 +34,41 @@
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
   border-radius: var(--sway-radius-sm);
   cursor: pointer;
-  color: var(--text);
+  color: var(--fg-default);
   white-space: nowrap;
   transition: background var(--sway-duration-fast) ease;
 }
 
 .treeRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 /* Gitignored entries read as present-but-inactive: the whole row drops to the
    faint text color (matching other quiet chrome), name and icon alike. The seti
    icon sets its type colour inline, so !important is needed to override it. */
 .treeRow.ignored .treeName {
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 .treeRow.ignored :global(.seti-icon) {
-  color: var(--text-faint) !important;
+  color: var(--fg-subtle) !important;
 }
 
 .treeName.isDir {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 /* Agent-touched marker: a file the *selected* session wrote this run. Kept
    deliberately quiet (a tint plus a small dot) so it reads as an annotation on
    the tree rather than competing with selection or the git gutter's meaning. */
 .treeName.touched {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .touchedDot {
   flex: none;
   margin-left: auto;
   padding-left: calc(4px * var(--ui-density));
-  color: var(--accent);
+  color: var(--accent-fg);
   font-size: calc(8px * var(--ui-scale));
   line-height: 1;
 }
@@ -77,7 +77,7 @@
    A step up from the touched tint (brand, not accent) because it is a
    different claim - "changing right now" rather than "changed at some point". */
 .treeName.editing {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 /* Reduced motion is handled globally (src/styles/base.css), so there is no
@@ -99,11 +99,11 @@
 }
 
 .touchedDot.editingDot {
-  color: var(--brand);
+  color: var(--brand-default);
   animation: editingPulse 1.2s ease-in-out infinite;
 }
 
 .empty {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }

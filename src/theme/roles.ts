@@ -2,7 +2,7 @@
 // out. This is the only place colour derivation lives.
 //
 // Every role carries a stable `id` (the taxonomy, e.g. `canvas.card`) and a
-// `cssVar` (what CSS actually reads, e.g. `--pane-bg`). The two are independent
+// `cssVar` (what CSS actually reads, e.g. `--canvas-card`). The two are independent
 // on purpose. Through Phases 1 to 3 `cssVar` holds the CURRENT token names, so
 // this generator can go live and every guard can pass before a single CSS module
 // is touched; the rename flips only the `cssVar` column, in one commit, against
@@ -78,34 +78,34 @@ export type Role = {
 /** Declared once, in taxonomy order. `buildRoles` is checked against this, so a
  *  role that is declared but never produced (or vice versa) is a hard error. */
 export const ROLES: Role[] = [
-  { id: "fg.default", cssVar: "--text", group: "fg" },
-  { id: "fg.muted", cssVar: "--text-dim", group: "fg" },
-  { id: "fg.subtle", cssVar: "--text-faint", group: "fg" },
-  { id: "fg.onEmphasis", cssVar: "--on-solid", group: "fg" },
+  { id: "fg.default", cssVar: "--fg-default", group: "fg" },
+  { id: "fg.muted", cssVar: "--fg-muted", group: "fg" },
+  { id: "fg.subtle", cssVar: "--fg-subtle", group: "fg" },
+  { id: "fg.onEmphasis", cssVar: "--fg-on-emphasis", group: "fg" },
 
-  { id: "canvas.default", cssVar: "--bg", group: "canvas" },
-  { id: "canvas.card", cssVar: "--pane-bg", group: "canvas" },
-  { id: "canvas.head", cssVar: "--pane-head-bg", group: "canvas" },
-  { id: "canvas.input", cssVar: "--input-bg", group: "canvas" },
+  { id: "canvas.default", cssVar: "--canvas-default", group: "canvas" },
+  { id: "canvas.card", cssVar: "--canvas-card", group: "canvas" },
+  { id: "canvas.head", cssVar: "--canvas-head", group: "canvas" },
+  { id: "canvas.input", cssVar: "--canvas-input", group: "canvas" },
 
-  { id: "border.default", cssVar: "--border", group: "border" },
+  { id: "border.default", cssVar: "--border-default", group: "border" },
   { id: "border.strong", cssVar: "--border-strong", group: "border" },
-  { id: "border.rail", cssVar: "--graph-rail", group: "border" },
+  { id: "border.rail", cssVar: "--border-rail", group: "border" },
 
   { id: "scrollbar.thumb", cssVar: "--scrollbar-thumb", group: "scrollbar" },
   { id: "scrollbar.thumbHover", cssVar: "--scrollbar-thumb-hover", group: "scrollbar" },
 
-  { id: "accent.fg", cssVar: "--accent", group: "accent" },
-  { id: "accent.subtle", cssVar: "--sel", group: "accent" },
+  { id: "accent.fg", cssVar: "--accent-fg", group: "accent" },
+  { id: "accent.subtle", cssVar: "--accent-subtle", group: "accent" },
 
-  { id: "neutral.hover", cssVar: "--hover", group: "neutral" },
-  { id: "neutral.subtle", cssVar: "--fill-subtle", group: "neutral" },
+  { id: "neutral.hover", cssVar: "--neutral-hover", group: "neutral" },
+  { id: "neutral.subtle", cssVar: "--neutral-subtle", group: "neutral" },
 
-  { id: "danger.fg", cssVar: "--danger", group: "danger" },
-  { id: "attention.fg", cssVar: "--warn", group: "attention" },
-  { id: "attention.emphasis", cssVar: "--warn-strong", group: "attention" },
-  { id: "success.fg", cssVar: "--success", group: "success" },
-  { id: "info.fg", cssVar: "--info", group: "info" },
+  { id: "danger.fg", cssVar: "--danger-fg", group: "danger" },
+  { id: "attention.fg", cssVar: "--attention-fg", group: "attention" },
+  { id: "attention.emphasis", cssVar: "--attention-emphasis", group: "attention" },
+  { id: "success.fg", cssVar: "--success-fg", group: "success" },
+  { id: "info.fg", cssVar: "--info-fg", group: "info" },
 
   { id: "diff.added", cssVar: "--diff-added", group: "diff" },
   { id: "diff.modified", cssVar: "--diff-modified", group: "diff" },
@@ -121,7 +121,7 @@ export const ROLES: Role[] = [
   { id: "agent.claude", cssVar: "--agent-claude", group: "agent" },
   { id: "agent.pi", cssVar: "--agent-pi", group: "agent" },
 
-  { id: "scrim.default", cssVar: "--scrim", group: "scrim" },
+  { id: "scrim.default", cssVar: "--scrim-default", group: "scrim" },
   { id: "scrim.soft", cssVar: "--scrim-soft", group: "scrim" },
 
   { id: "status.progress", cssVar: "--status-progress", group: "status" },
@@ -129,46 +129,46 @@ export const ROLES: Role[] = [
   { id: "status.idle", cssVar: "--status-idle", group: "status" },
   { id: "status.running", cssVar: "--status-running", group: "status" },
 
-  { id: "brand.default", cssVar: "--brand", group: "brand" },
+  { id: "brand.default", cssVar: "--brand-default", group: "brand" },
   { id: "brand.strong", cssVar: "--brand-strong", group: "brand" },
   { id: "brand.subtle", cssVar: "--brand-subtle", group: "brand" },
   { id: "brand.bar", cssVar: "--brand-bar", group: "brand" },
   { id: "brand.ring", cssVar: "--brand-ring", group: "brand" },
   { id: "brand.on", cssVar: "--brand-on", group: "brand" },
 
-  { id: "ansi.cursor", cssVar: "--term-cursor", group: "ansi" },
-  { id: "ansi.selection", cssVar: "--term-selection", group: "ansi" },
-  { id: "ansi.black", cssVar: "--term-black", group: "ansi" },
-  { id: "ansi.red", cssVar: "--term-red", group: "ansi" },
-  { id: "ansi.green", cssVar: "--term-green", group: "ansi" },
-  { id: "ansi.yellow", cssVar: "--term-yellow", group: "ansi" },
-  { id: "ansi.blue", cssVar: "--term-blue", group: "ansi" },
-  { id: "ansi.magenta", cssVar: "--term-magenta", group: "ansi" },
-  { id: "ansi.cyan", cssVar: "--term-cyan", group: "ansi" },
-  { id: "ansi.white", cssVar: "--term-white", group: "ansi" },
-  { id: "ansi.brightBlack", cssVar: "--term-bright-black", group: "ansi" },
-  { id: "ansi.brightRed", cssVar: "--term-bright-red", group: "ansi" },
-  { id: "ansi.brightGreen", cssVar: "--term-bright-green", group: "ansi" },
-  { id: "ansi.brightYellow", cssVar: "--term-bright-yellow", group: "ansi" },
-  { id: "ansi.brightBlue", cssVar: "--term-bright-blue", group: "ansi" },
-  { id: "ansi.brightMagenta", cssVar: "--term-bright-magenta", group: "ansi" },
-  { id: "ansi.brightCyan", cssVar: "--term-bright-cyan", group: "ansi" },
-  { id: "ansi.brightWhite", cssVar: "--term-bright-white", group: "ansi" },
+  { id: "ansi.cursor", cssVar: "--ansi-cursor", group: "ansi" },
+  { id: "ansi.selection", cssVar: "--ansi-selection", group: "ansi" },
+  { id: "ansi.black", cssVar: "--ansi-black", group: "ansi" },
+  { id: "ansi.red", cssVar: "--ansi-red", group: "ansi" },
+  { id: "ansi.green", cssVar: "--ansi-green", group: "ansi" },
+  { id: "ansi.yellow", cssVar: "--ansi-yellow", group: "ansi" },
+  { id: "ansi.blue", cssVar: "--ansi-blue", group: "ansi" },
+  { id: "ansi.magenta", cssVar: "--ansi-magenta", group: "ansi" },
+  { id: "ansi.cyan", cssVar: "--ansi-cyan", group: "ansi" },
+  { id: "ansi.white", cssVar: "--ansi-white", group: "ansi" },
+  { id: "ansi.brightBlack", cssVar: "--ansi-bright-black", group: "ansi" },
+  { id: "ansi.brightRed", cssVar: "--ansi-bright-red", group: "ansi" },
+  { id: "ansi.brightGreen", cssVar: "--ansi-bright-green", group: "ansi" },
+  { id: "ansi.brightYellow", cssVar: "--ansi-bright-yellow", group: "ansi" },
+  { id: "ansi.brightBlue", cssVar: "--ansi-bright-blue", group: "ansi" },
+  { id: "ansi.brightMagenta", cssVar: "--ansi-bright-magenta", group: "ansi" },
+  { id: "ansi.brightCyan", cssVar: "--ansi-bright-cyan", group: "ansi" },
+  { id: "ansi.brightWhite", cssVar: "--ansi-bright-white", group: "ansi" },
 
   { id: "shadow.sm", cssVar: "--shadow-sm", group: "shadow" },
   { id: "shadow.md", cssVar: "--shadow-md", group: "shadow" },
   { id: "shadow.lg", cssVar: "--shadow-lg", group: "shadow" },
 
   { id: "shell.glow", cssVar: "--shell-glow", group: "shell" },
-  { id: "shell.cardShadow", cssVar: "--work-card-shadow", group: "shell" },
+  { id: "shell.cardShadow", cssVar: "--shell-card-shadow", group: "shell" },
 
-  { id: "syntax.keyword", cssVar: "--syn-keyword", group: "syntax" },
-  { id: "syntax.string", cssVar: "--syn-string", group: "syntax" },
-  { id: "syntax.comment", cssVar: "--syn-comment", group: "syntax" },
-  { id: "syntax.number", cssVar: "--syn-number", group: "syntax" },
-  { id: "syntax.function", cssVar: "--syn-function", group: "syntax" },
-  { id: "syntax.type", cssVar: "--syn-type", group: "syntax" },
-  { id: "syntax.variable", cssVar: "--syn-variable", group: "syntax" },
+  { id: "syntax.keyword", cssVar: "--syntax-keyword", group: "syntax" },
+  { id: "syntax.string", cssVar: "--syntax-string", group: "syntax" },
+  { id: "syntax.comment", cssVar: "--syntax-comment", group: "syntax" },
+  { id: "syntax.number", cssVar: "--syntax-number", group: "syntax" },
+  { id: "syntax.function", cssVar: "--syntax-function", group: "syntax" },
+  { id: "syntax.type", cssVar: "--syntax-type", group: "syntax" },
+  { id: "syntax.variable", cssVar: "--syntax-variable", group: "syntax" },
 ];
 
 export const ROLE_BY_ID = new Map(ROLES.map((r) => [r.id, r]));

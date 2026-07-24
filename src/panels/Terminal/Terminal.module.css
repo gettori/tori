@@ -17,8 +17,8 @@
   padding: 0 calc(6px * var(--ui-density));
   -webkit-user-select: none;
   user-select: none;
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
   overflow: hidden;
 }
 
@@ -30,7 +30,7 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: transparent;
   border: none;
   border-radius: var(--sway-radius-md);
@@ -43,13 +43,13 @@
 }
 
 .termTab:hover:not(.active) {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 .termTab.active {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 /* Split button: "+ Claude" main action + caret that opens a launch menu.
@@ -65,8 +65,8 @@
 .termNew {
   align-self: stretch;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
+  border: 1px solid var(--border-default);
+  color: var(--fg-muted);
   font-size: calc(13px * var(--ui-scale));
   cursor: pointer;
   display: inline-flex;
@@ -105,13 +105,13 @@
 }
 
 .termNew:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 /* Keep the shared divider crisp when only one half is hovered. */
 .termNewMain:hover:not(:disabled) + .termNewCaret:not(:hover) {
-  border-left-color: var(--brand);
+  border-left-color: var(--brand-default);
 }
 
 .termNew:disabled {
@@ -135,15 +135,15 @@
   align-items: center;
   gap: calc(8px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
   font-size: calc(12px * var(--ui-scale));
 }
 
 .termRestoreText {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .termRestoreAccept,
@@ -151,18 +151,18 @@
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   background: transparent;
   cursor: pointer;
 }
 
 .termRestoreAccept {
-  color: var(--brand);
-  border-color: var(--brand);
+  color: var(--brand-default);
+  border-color: var(--brand-default);
 }
 
 .termRestoreDismiss {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .termRestoreAccept:hover {
@@ -170,8 +170,8 @@
 }
 
 .termRestoreDismiss:hover {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 .termStage {
@@ -179,7 +179,7 @@
   min-height: 0;
   position: relative;
   display: flex;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 .termHostWrap {
@@ -206,7 +206,7 @@
      overhang that .termHostWrap clips, absorbing xterm's sub-cell fit remainder
      on the right. (Only covers < 1 cell; a larger gap means a stale fit.) */
   margin-right: calc(-8px * var(--ui-density));
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 /* While a splitter drag is in progress, stop the terminal from swallowing
@@ -225,17 +225,17 @@
   align-items: center;
   gap: calc(4px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-head);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
 }
 
 .termSearchInput {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+  color: var(--fg-default);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
   outline: none;
@@ -244,7 +244,7 @@
     box-shadow var(--sway-duration-fast) ease;
 }
 .termSearchInput:focus {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
@@ -254,13 +254,13 @@
      on the host wrapper is NOT accounted for and causes the cut. */
   height: 100%;
   padding: 0 0 calc(10px * var(--ui-density)) calc(10px * var(--ui-density));
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 /* Hide the scrollbar: its viewport ignores the padding and shows a light strip
    on the right. The claude TUI manages its own screen, so the bar isn't needed. */
 .termHost :global(.xterm-viewport) {
-  background-color: var(--pane-bg) !important;
+  background-color: var(--canvas-card) !important;
   scrollbar-width: none;
 }
 
@@ -273,7 +273,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(13px * var(--ui-scale));
   text-align: center;
   padding: calc(20px * var(--ui-density));

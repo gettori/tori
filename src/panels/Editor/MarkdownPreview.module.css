@@ -1,14 +1,14 @@
 .preview {
   flex: 1;
   overflow: auto;
-  background: var(--bg);
+  background: var(--canvas-default);
   padding: calc(16px * var(--ui-density)) calc(24px * var(--ui-density));
 }
 
 .markdownBody {
   max-width: 860px;
   margin: 0 auto;
-  color: var(--text);
+  color: var(--fg-default);
   font-size: calc(14px * var(--ui-scale));
   line-height: 1.6;
 }
@@ -17,29 +17,29 @@
 .markdownBody :global(h2),
 .markdownBody :global(h3),
 .markdownBody :global(h4) {
-  color: var(--text);
+  color: var(--fg-default);
   font-weight: 600;
   margin: 1.2em 0 0.5em;
 }
 .markdownBody :global(h1) {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   padding-bottom: 0.3em;
 }
 .markdownBody :global(p) {
   margin: 0.6em 0;
 }
 .markdownBody :global(a) {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 .markdownBody :global(code) {
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: 0.9em;
-  background: var(--hover);
+  background: var(--neutral-hover);
   border-radius: var(--sway-radius-sm);
   padding: 0.1em 0.35em;
 }
 .markdownBody :global(pre) {
-  background: var(--hover);
+  background: var(--neutral-hover);
   border-radius: var(--sway-radius-md);
   padding: calc(10px * var(--ui-density));
   overflow-x: auto;
@@ -51,8 +51,8 @@
 .markdownBody :global(blockquote) {
   margin: 0.6em 0;
   padding-left: 1em;
-  border-left: 3px solid var(--border);
-  color: var(--text-dim);
+  border-left: 3px solid var(--border-default);
+  color: var(--fg-muted);
 }
 .markdownBody :global(img) {
   max-width: 100%;
@@ -64,7 +64,7 @@
 }
 .markdownBody :global(th),
 .markdownBody :global(td) {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
 }
 .markdownBody :global(ul),

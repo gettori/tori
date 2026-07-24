@@ -30,9 +30,9 @@
   flex: 1;
   min-width: 0;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
-  caret-color: var(--brand);
+  border: 1px solid var(--border-default);
+  color: var(--fg-default);
+  caret-color: var(--brand-default);
   border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(13px * var(--ui-scale));
@@ -44,12 +44,12 @@
 
 /* Placeholder reads as a faint hint, not real content. */
 .searchInput::placeholder {
-  color: var(--text-faint);
+  color: var(--fg-subtle);
   opacity: 1;
 }
 
 .searchInput:focus {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
@@ -70,7 +70,7 @@
   height: 30px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-faint);
+  color: var(--fg-subtle);
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   transition:
@@ -78,13 +78,13 @@
     border-color var(--sway-duration-fast) ease;
 }
 .gearBtn:hover {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 /* Active (menu open): brand-tinted icon only. Border stays transparent, so a
    hover over the open gear still gets today's brand border on top. */
 .gearBtn.active {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 /* Opens upward + left-aligned: the gear now lives at the bottom of the sidebar
@@ -96,8 +96,8 @@
   z-index: 1000;
   min-width: 180px;
   padding: calc(4px * var(--ui-density));
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
 }
@@ -108,7 +108,7 @@
   gap: calc(8px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
   border-radius: var(--sway-radius-sm);
   cursor: pointer;
   white-space: nowrap;
@@ -116,10 +116,10 @@
 /* Lucide affordance icon in a gear-menu item: dimmed, inherits the row colour. */
 .gearItem :global(svg) {
   flex: none;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 .gearItem:hover :global(svg) {
-  color: var(--text);
+  color: var(--fg-default);
 }
 /* The danger item tints its own text; let its icon follow (not the dim above). */
 .gearItem.danger :global(svg),
@@ -127,15 +127,15 @@
   color: inherit;
 }
 .gearItem:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 .gearItem.danger {
-  color: var(--danger);
+  color: var(--danger-fg);
 }
 .gearDivider {
   height: 1px;
   margin: 4px 6px;
-  background: var(--border);
+  background: var(--border-default);
 }
 
 .treeScroll {
@@ -171,7 +171,7 @@
    so it stays highlighted while the menu is open (toggled from LeftSidebar.tsx). */
 .row:hover,
 .row.menuActive {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 /* ---- Sticky group headers (VS Code-style "sticky scroll") ----
@@ -184,14 +184,14 @@
    height (`.row` is a fixed 30px) so it lands just under the project header.
 
    Headers carry the opaque desk bg so rows scrolling beneath them do not bleed
-   through; the tree already sits on `--bg`, so at rest they read the same as the
+   through; the tree already sits on `--canvas-default`, so at rest they read the same as the
    surrounding rows. `.node`/`.branchNode` are static and their only overflow is
    the scroll container itself, so nothing clips the stickiness. */
 .row.project {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: var(--bg);
+  background: var(--canvas-default);
 }
 .row.branch {
   position: sticky;
@@ -203,7 +203,7 @@
   background: linear-gradient(
     to right,
     transparent var(--branch-label-x),
-    var(--bg) var(--branch-label-x)
+    var(--canvas-default) var(--branch-label-x)
   );
 }
 
@@ -233,7 +233,7 @@
 }
 .row.session:hover::before,
 .row.session.menuActive::before {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 .row.session.sel::before {
   background: var(--brand-subtle);
@@ -244,7 +244,7 @@
    `.seti-icon` fill is `currentColor`, so overriding `color` recolours it; the
    `:not(.sel)` rule outranks the global `.claude-icon`/`.pi-icon` tint. */
 .row.session:not(.sel) :global(.seti-icon) {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* ---- Git-branch graph (branch/worktree level) ----
@@ -271,7 +271,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--graph-rail);
+  background: var(--border-rail);
 }
 
 /* The last branch terminates the rail at its own elbow (row centre), so nothing
@@ -326,7 +326,7 @@
 }
 .row.branch:hover::before,
 .row.branch.menuActive::before {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 /* Rounded elbow: a left+bottom bordered box in the row's top half whose
@@ -338,8 +338,8 @@
   top: 0;
   width: calc(9px * var(--ui-density));
   height: 15px;
-  border-left: 1px solid var(--graph-rail);
-  border-bottom: 1px solid var(--graph-rail);
+  border-left: 1px solid var(--border-rail);
+  border-bottom: 1px solid var(--border-rail);
   border-bottom-left-radius: calc(8px * var(--ui-density));
 }
 
@@ -361,16 +361,16 @@
 .row.project .label,
 .row.branch.sel .label,
 .row.session.sel .label {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .row.branch .label,
 .row.session .label {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .row.session.sel .label {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .row.sub1 {
@@ -381,7 +381,7 @@
 }
 
 .row.dim {
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-style: italic;
   cursor: default;
 }
@@ -406,7 +406,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
@@ -419,7 +419,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: var(--text-faint);
+  color: var(--fg-subtle);
   transition: transform var(--sway-duration-fast) ease;
 }
 .rowChevron.open {
@@ -427,7 +427,7 @@
 }
 
 .dot {
-  color: var(--info);
+  color: var(--info-fg);
   font-size: calc(8px * var(--ui-scale));
   margin-left: auto;
 }
@@ -512,7 +512,7 @@
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  background: var(--bg);
+  background: var(--canvas-default);
   border-radius: var(--sway-radius-sm, 4px);
   padding: 1px 2px;
 }
@@ -521,7 +521,7 @@
   margin-left: auto;
   padding-left: calc(8px * var(--ui-density));
   font-size: calc(10px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   flex: 0 0 auto;
   /* The ago() column ticks in place ("9m" -> "10m"), so proportional figures
      would shift the whole right edge of the row on every refresh. */
@@ -537,7 +537,7 @@
   font-size: calc(9px * var(--ui-scale));
   padding: 0 calc(4px * var(--ui-density));
   border-radius: calc(3px * var(--ui-radius-scale));
-  color: var(--brand);
+  color: var(--brand-default);
   background: var(--brand-subtle);
 }
 
@@ -553,7 +553,7 @@
   margin-left: auto;
   flex: 0 0 auto;
   font-size: calc(10px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
 .row .badge + .touchedCount {
@@ -584,7 +584,7 @@
   width: calc(6px * var(--ui-scale));
   height: calc(6px * var(--ui-scale));
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--brand-default);
 }
 .row .badge + .unseenDot {
   margin-left: 6px;
@@ -594,8 +594,8 @@
 }
 
 .row .badge.hint {
-  color: var(--text-dim);
-  background: var(--fill-subtle);
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
 }
 
 /* "Historical" sub-section: sessions predating a recreated folder, with an inline
@@ -628,8 +628,8 @@
   left: calc(8px * var(--ui-density));
   right: calc(8px * var(--ui-density));
   height: 1px;
-  background: var(--border);
-  /* Half the --border weight: this one divider reads a touch softer than the
+  background: var(--border-default);
+  /* Half the --border-default weight: this one divider reads a touch softer than the
      rest of the hairlines. */
   opacity: 0.5;
 }
@@ -653,7 +653,7 @@
   align-self: stretch;
   width: 1px;
   margin: calc(2px * var(--ui-density)) calc(2px * var(--ui-density));
-  background: var(--border);
+  background: var(--border-default);
 }
 
 /* A space tile: a rounded square showing the space's initial. Dim by default;
@@ -669,7 +669,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--sway-radius-md);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(13px * var(--ui-scale));
   font-weight: 600;
   cursor: pointer;
@@ -679,13 +679,13 @@
 }
 .space:hover,
 .space.menuActive {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 /* Active space: brand-tinted icon only, no border or fill. Colour only, so a
    hover on the active tile still layers today's brand border on top. */
 .space.active {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 /* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
    bar on the side of the tile the drop would land against. */
@@ -693,10 +693,10 @@
   opacity: 0.4;
 }
 .space.dropBefore {
-  box-shadow: inset 2px 0 0 var(--brand);
+  box-shadow: inset 2px 0 0 var(--brand-default);
 }
 .space.dropAfter {
-  box-shadow: inset -2px 0 0 var(--brand);
+  box-shadow: inset -2px 0 0 var(--brand-default);
 }
 
 /* The "new space" tile, pinned to the trailing edge of the bar. */
@@ -710,15 +710,15 @@
   width: 30px;
   height: 30px;
   background: transparent;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--border-default);
   border-radius: var(--sway-radius-md);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   cursor: pointer;
   transition:
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
 }
 .spaceAdd:hover {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }

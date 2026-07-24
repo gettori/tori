@@ -9,7 +9,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 /* Inner span wraps just the icon so the rotation pivots on the chevron itself
    (stays in place on expand). The fixed 16px slot keeps the icon from making

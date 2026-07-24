@@ -2,7 +2,7 @@
 
    Primitives (--sway-*) are raw, theme-independent values: the palette ramp,
    spacing, radii, type, motion. Semantic tokens are the roles the UI actually
-   consumes (--bg, --text, ...); they select primitives per theme, keyed on
+   consumes (--canvas-default, --fg-default, ...); they select primitives per theme, keyed on
    :root[data-theme]. The dark set maps 1:1 to the values that used to live in
    App.css :root, so dark rendering is unchanged.
 
@@ -126,13 +126,13 @@
 
     /* ---- Syntax (CM6) defaults: VS Code Dark+ palette. Theme-driven in a
        later phase; defined here so an unthemed boot still colors code. ---- */
-    --syn-keyword: #569cd6;
-    --syn-string: #ce9178;
-    --syn-comment: #6a9955;
-    --syn-number: #b5cea8;
-    --syn-function: #dcdcaa;
-    --syn-type: #4ec9b0;
-    --syn-variable: #9cdcfe;
+    --syntax-keyword: #569cd6;
+    --syntax-string: #ce9178;
+    --syntax-comment: #6a9955;
+    --syntax-number: #b5cea8;
+    --syntax-function: #dcdcaa;
+    --syntax-type: #4ec9b0;
+    --syntax-variable: #9cdcfe;
   }
 
   /* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; do not edit by hand. ---- */
@@ -145,46 +145,46 @@
   :root,
   :root[data-theme="dark"] {
     /* fg */
-    --text: #e4e8f0;
-    --text-dim: #98a0b0;
-    --text-faint: #666e7e;
-    --on-solid: #ffffff;
+    --fg-default: #e4e8f0;
+    --fg-muted: #98a0b0;
+    --fg-subtle: #666e7e;
+    --fg-on-emphasis: #ffffff;
 
     /* canvas */
-    --bg: #15171c;
-    --pane-bg: #1b1e25;
-    --pane-head-bg: #1b232e;
-    --input-bg: #1b232e;
+    --canvas-default: #15171c;
+    --canvas-card: #1b1e25;
+    --canvas-head: #1b232e;
+    --canvas-input: #1b232e;
 
     /* border */
-    --border: rgba(200, 215, 255, 0.08);
+    --border-default: rgba(200, 215, 255, 0.08);
     --border-strong: rgba(200, 215, 255, 0.13);
-    --graph-rail: #2c313b;
+    --border-rail: #2c313b;
 
     /* scrollbar */
     --scrollbar-thumb: rgba(200, 215, 255, 0.11);
     --scrollbar-thumb-hover: rgba(200, 215, 255, 0.2);
 
     /* accent */
-    --accent: #4a9eff;
-    --sel: #094771;
+    --accent-fg: #4a9eff;
+    --accent-subtle: #094771;
 
     /* neutral */
-    --hover: #252a34;
-    --fill-subtle: rgba(128, 128, 128, 0.12);
+    --neutral-hover: #252a34;
+    --neutral-subtle: rgba(128, 128, 128, 0.12);
 
     /* danger */
-    --danger: #e06c75;
+    --danger-fg: #e06c75;
 
     /* attention */
-    --warn: #d19a66;
-    --warn-strong: #b56319;
+    --attention-fg: #d19a66;
+    --attention-emphasis: #b56319;
 
     /* success */
-    --success: #2ea043;
+    --success-fg: #2ea043;
 
     /* info */
-    --info: #4ec9b0;
+    --info-fg: #4ec9b0;
 
     /* diff */
     --diff-added: #2ea043;
@@ -204,7 +204,7 @@
     --agent-pi: #6cb6ff;
 
     /* scrim */
-    --scrim: rgba(0, 0, 0, 0.45);
+    --scrim-default: rgba(0, 0, 0, 0.45);
     --scrim-soft: rgba(0, 0, 0, 0.35);
 
     /* status */
@@ -214,7 +214,7 @@
     --status-running: #7d8ba1;
 
     /* brand */
-    --brand: #d9a468;
+    --brand-default: #d9a468;
     --brand-strong: #d9bd85;
     --brand-subtle: rgba(201, 150, 83, 0.16);
     --brand-bar: #d9a468;
@@ -222,24 +222,24 @@
     --brand-on: #4a3719;
 
     /* ansi */
-    --term-cursor: #e4e8f0;
-    --term-selection: rgba(70, 110, 160, 0.4);
-    --term-black: #000000;
-    --term-red: #cd3131;
-    --term-green: #0dbc79;
-    --term-yellow: #e5e510;
-    --term-blue: #2472c8;
-    --term-magenta: #bc3fbc;
-    --term-cyan: #11a8cd;
-    --term-white: #e5e5e5;
-    --term-bright-black: #666666;
-    --term-bright-red: #f14c4c;
-    --term-bright-green: #23d18b;
-    --term-bright-yellow: #f5f543;
-    --term-bright-blue: #3b8eea;
-    --term-bright-magenta: #d670d6;
-    --term-bright-cyan: #29b8db;
-    --term-bright-white: #ffffff;
+    --ansi-cursor: #e4e8f0;
+    --ansi-selection: rgba(70, 110, 160, 0.4);
+    --ansi-black: #000000;
+    --ansi-red: #cd3131;
+    --ansi-green: #0dbc79;
+    --ansi-yellow: #e5e510;
+    --ansi-blue: #2472c8;
+    --ansi-magenta: #bc3fbc;
+    --ansi-cyan: #11a8cd;
+    --ansi-white: #e5e5e5;
+    --ansi-bright-black: #666666;
+    --ansi-bright-red: #f14c4c;
+    --ansi-bright-green: #23d18b;
+    --ansi-bright-yellow: #f5f543;
+    --ansi-bright-blue: #3b8eea;
+    --ansi-bright-magenta: #d670d6;
+    --ansi-bright-cyan: #29b8db;
+    --ansi-bright-white: #ffffff;
 
     /* shadow */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -248,61 +248,61 @@
 
     /* shell */
     --shell-glow: rgba(217, 164, 104, 0.14);
-    --work-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    --shell-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 
     /* syntax */
-    --syn-keyword: #569cd6;
-    --syn-string: #ce9178;
-    --syn-comment: #6a9955;
-    --syn-number: #b5cea8;
-    --syn-function: #dcdcaa;
-    --syn-type: #4ec9b0;
-    --syn-variable: #9cdcfe;
+    --syntax-keyword: #569cd6;
+    --syntax-string: #ce9178;
+    --syntax-comment: #6a9955;
+    --syntax-number: #b5cea8;
+    --syntax-function: #dcdcaa;
+    --syntax-type: #4ec9b0;
+    --syntax-variable: #9cdcfe;
   }
 
   /* ---- Semantic tokens, light ---- */
   :root[data-theme="light"] {
     /* fg */
-    --text: #1e1e1e;
-    --text-dim: #6a6a6a;
-    --text-faint: #808080;
-    --on-solid: #ffffff;
+    --fg-default: #1e1e1e;
+    --fg-muted: #6a6a6a;
+    --fg-subtle: #808080;
+    --fg-on-emphasis: #ffffff;
 
     /* canvas */
-    --bg: #ffffff;
-    --pane-bg: #f3f3f3;
-    --pane-head-bg: #e8e8e8;
-    --input-bg: #ffffff;
+    --canvas-default: #ffffff;
+    --canvas-card: #f3f3f3;
+    --canvas-head: #e8e8e8;
+    --canvas-input: #ffffff;
 
     /* border */
-    --border: #e0e0e0;
+    --border-default: #e0e0e0;
     --border-strong: rgba(23, 23, 23, 0.13);
-    --graph-rail: #dcdcdc;
+    --border-rail: #dcdcdc;
 
     /* scrollbar */
     --scrollbar-thumb: rgba(23, 23, 23, 0.14);
     --scrollbar-thumb-hover: rgba(23, 23, 23, 0.26);
 
     /* accent */
-    --accent: #005fb8;
-    --sel: #cfe3fb;
+    --accent-fg: #005fb8;
+    --accent-subtle: #cfe3fb;
 
     /* neutral */
-    --hover: #ededed;
-    --fill-subtle: rgba(23, 23, 23, 0.06);
+    --neutral-hover: #ededed;
+    --neutral-subtle: rgba(23, 23, 23, 0.06);
 
     /* danger */
-    --danger: #cf222e;
+    --danger-fg: #cf222e;
 
     /* attention */
-    --warn: #9a6700;
-    --warn-strong: #bc4c00;
+    --attention-fg: #9a6700;
+    --attention-emphasis: #bc4c00;
 
     /* success */
-    --success: #1a7f37;
+    --success-fg: #1a7f37;
 
     /* info */
-    --info: #157a6e;
+    --info-fg: #157a6e;
 
     /* diff */
     --diff-added: #1a7f37;
@@ -322,7 +322,7 @@
     --agent-pi: #0969da;
 
     /* scrim */
-    --scrim: rgba(23, 23, 23, 0.3);
+    --scrim-default: rgba(23, 23, 23, 0.3);
     --scrim-soft: rgba(23, 23, 23, 0.22);
 
     /* status */
@@ -332,7 +332,7 @@
     --status-running: #64748b;
 
     /* brand */
-    --brand: #8a6733;
+    --brand-default: #8a6733;
     --brand-strong: #6b4f27;
     --brand-subtle: rgba(138, 103, 51, 0.14);
     --brand-bar: #8a6733;
@@ -340,24 +340,24 @@
     --brand-on: #ffffff;
 
     /* ansi */
-    --term-cursor: #1e1e1e;
-    --term-selection: rgba(0, 95, 184, 0.25);
-    --term-black: #000000;
-    --term-red: #cd3131;
-    --term-green: #008a00;
-    --term-yellow: #7d8000;
-    --term-blue: #0451a5;
-    --term-magenta: #bc05bc;
-    --term-cyan: #0598bc;
-    --term-white: #555555;
-    --term-bright-black: #666666;
-    --term-bright-red: #cd3131;
-    --term-bright-green: #0f9d0f;
-    --term-bright-yellow: #8a8d00;
-    --term-bright-blue: #0451a5;
-    --term-bright-magenta: #bc05bc;
-    --term-bright-cyan: #0598bc;
-    --term-bright-white: #8c8c8c;
+    --ansi-cursor: #1e1e1e;
+    --ansi-selection: rgba(0, 95, 184, 0.25);
+    --ansi-black: #000000;
+    --ansi-red: #cd3131;
+    --ansi-green: #008a00;
+    --ansi-yellow: #7d8000;
+    --ansi-blue: #0451a5;
+    --ansi-magenta: #bc05bc;
+    --ansi-cyan: #0598bc;
+    --ansi-white: #555555;
+    --ansi-bright-black: #666666;
+    --ansi-bright-red: #cd3131;
+    --ansi-bright-green: #0f9d0f;
+    --ansi-bright-yellow: #8a8d00;
+    --ansi-bright-blue: #0451a5;
+    --ansi-bright-magenta: #bc05bc;
+    --ansi-bright-cyan: #0598bc;
+    --ansi-bright-white: #8c8c8c;
 
     /* shadow */
     --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.08);
@@ -366,16 +366,16 @@
 
     /* shell */
     --shell-glow: rgba(23, 23, 23, 0.04);
-    --work-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
+    --shell-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
 
     /* syntax */
-    --syn-keyword: #0000ff;
-    --syn-string: #a31515;
-    --syn-comment: #008000;
-    --syn-number: #098658;
-    --syn-function: #795e26;
-    --syn-type: #267f99;
-    --syn-variable: #001080;
+    --syntax-keyword: #0000ff;
+    --syntax-string: #a31515;
+    --syntax-comment: #008000;
+    --syntax-number: #098658;
+    --syntax-function: #795e26;
+    --syntax-type: #267f99;
+    --syntax-variable: #001080;
   }
 
   /* ---- END GENERATED ROLE TOKENS ---- */

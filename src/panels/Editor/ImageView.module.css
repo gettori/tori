@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   overflow: auto;
-  background: var(--bg);
+  background: var(--canvas-default);
   padding: calc(16px * var(--ui-density));
 }
 

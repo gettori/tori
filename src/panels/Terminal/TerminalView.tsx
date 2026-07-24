@@ -29,7 +29,7 @@ function toBytes(msg: ArrayBuffer | Uint8Array | number[]): Uint8Array {
 }
 
 // xterm's ITheme, read entirely from the token layer. The 16 ANSI slots cannot
-// be derived from --bg/--text (a program picks the slot, not us), so they are
+// be derived from --canvas-default/--fg-default (a program picks the slot, not us), so they are
 // tokens too - see the --term-* ramps in styles/tokens.css. Re-read on
 // THEME_APPLIED, which fires after <html>'s data-theme/inline props are set, so
 // getComputedStyle already reflects the new theme.
@@ -37,31 +37,31 @@ function termColors() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string) => cs.getPropertyValue(name).trim() || undefined;
   return {
-    // Track the content-card surface (--pane-bg) rather than the desk (--bg), so
+    // Track the content-card surface (--canvas-card) rather than the desk (--canvas-default), so
     // the terminal reads as part of the card and recolouring the card token needs
     // no terminal change. (True transparency is avoided: the WebGL renderer
     // paints opaque black instead of compositing over the DOM behind it.)
-    background: v("--pane-bg"),
-    foreground: v("--text"),
-    cursor: v("--term-cursor"),
-    cursorAccent: v("--pane-bg"),
-    selectionBackground: v("--term-selection"),
-    black: v("--term-black"),
-    red: v("--term-red"),
-    green: v("--term-green"),
-    yellow: v("--term-yellow"),
-    blue: v("--term-blue"),
-    magenta: v("--term-magenta"),
-    cyan: v("--term-cyan"),
-    white: v("--term-white"),
-    brightBlack: v("--term-bright-black"),
-    brightRed: v("--term-bright-red"),
-    brightGreen: v("--term-bright-green"),
-    brightYellow: v("--term-bright-yellow"),
-    brightBlue: v("--term-bright-blue"),
-    brightMagenta: v("--term-bright-magenta"),
-    brightCyan: v("--term-bright-cyan"),
-    brightWhite: v("--term-bright-white"),
+    background: v("--canvas-card"),
+    foreground: v("--fg-default"),
+    cursor: v("--ansi-cursor"),
+    cursorAccent: v("--canvas-card"),
+    selectionBackground: v("--ansi-selection"),
+    black: v("--ansi-black"),
+    red: v("--ansi-red"),
+    green: v("--ansi-green"),
+    yellow: v("--ansi-yellow"),
+    blue: v("--ansi-blue"),
+    magenta: v("--ansi-magenta"),
+    cyan: v("--ansi-cyan"),
+    white: v("--ansi-white"),
+    brightBlack: v("--ansi-bright-black"),
+    brightRed: v("--ansi-bright-red"),
+    brightGreen: v("--ansi-bright-green"),
+    brightYellow: v("--ansi-bright-yellow"),
+    brightBlue: v("--ansi-bright-blue"),
+    brightMagenta: v("--ansi-bright-magenta"),
+    brightCyan: v("--ansi-bright-cyan"),
+    brightWhite: v("--ansi-bright-white"),
   };
 }
 

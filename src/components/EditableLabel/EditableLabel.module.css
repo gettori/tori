@@ -4,9 +4,9 @@
 .input {
   min-width: 0;
   font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--brand);
+  color: var(--fg-default);
+  background: var(--canvas-default);
+  border: 1px solid var(--brand-default);
   border-radius: var(--sway-radius-sm);
   padding: 0 calc(3px * var(--ui-density));
   margin: 0;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import baseline from "./__baseline__/tokens-baseline.json";
+import { RENAME } from "./__baseline__/rename";
 import swayDark from "./palettes/sway-dark.json";
 import swayLight from "./palettes/sway-light.json";
 import { alpha, buildRoles, mix, ROLES, variants } from "./roles";
@@ -73,11 +74,20 @@ describe("role table", () => {
 // this comparison is against the old world, not against the generator's own
 // output.
 describe("generated roles reproduce the frozen token layer", () => {
-  it.each(PALETTES)("%s matches the baseline key by key", (_id, palette, expected) => {
+  // Since the Phase 4 flip the two maps no longer share key names, so the
+  // comparison goes through RENAME per pair. That is the whole proof the rename
+  // was nominal: the key set changed by exactly the table, and not one value
+  // moved. Swap two targets in the table and this fails, because each pair is
+  // checked against the baseline entry it claims to descend from rather than
+  // against a set or a multiset of values (many roles share a value, so a
+  // multiset comparison would wave a swap straight through).
+  it.each(PALETTES)("%s matches the baseline pair by pair", (_id, palette, expected) => {
     const built = buildRoles(palette);
-    expect(Object.keys(built).sort()).toEqual(Object.keys(expected).sort());
-    for (const [cssVar, want] of Object.entries(expected)) {
-      expect(built[cssVar], cssVar).toBe(want);
+    expect(Object.keys(built).sort()).toEqual(Object.values(RENAME).sort());
+    for (const [oldVar, want] of Object.entries(expected)) {
+      const newVar = RENAME[oldVar];
+      expect(newVar, `${oldVar} has no rename entry`).toBeTypeOf("string");
+      expect(built[newVar], `${oldVar} -> ${newVar}`).toBe(want);
     }
   });
 
@@ -85,5 +95,10 @@ describe("generated roles reproduce the frozen token layer", () => {
     expect(Object.keys(baseline.dark)).toHaveLength(75);
     expect(Object.keys(baseline.light)).toHaveLength(75);
     expect(ROLES).toHaveLength(75);
+  });
+
+  it("renames every baseline key exactly once, onto a distinct name", () => {
+    expect(Object.keys(RENAME).sort()).toEqual(Object.keys(baseline.dark).sort());
+    expect(new Set(Object.values(RENAME)).size).toBe(Object.keys(RENAME).length);
   });
 });
