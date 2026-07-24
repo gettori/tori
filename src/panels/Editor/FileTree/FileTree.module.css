@@ -9,7 +9,7 @@
   overflow: auto;
   background: var(--canvas-card);
   padding: calc(4px * var(--ui-density)) 0;
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -69,7 +69,7 @@
   margin-left: auto;
   padding-left: calc(4px * var(--ui-density));
   color: var(--activity-touched);
-  font-size: calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-2xs);
   line-height: 1;
 }
 

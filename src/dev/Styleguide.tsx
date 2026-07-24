@@ -79,7 +79,7 @@ const ICON_SAMPLE = [
 const SPACE = ["1", "2", "3", "4", "5", "6", "7", "8"] as const;
 const RADII = ["sm", "md", "lg", "pill"] as const;
 const SHADOWS = ["sm", "md", "lg"] as const;
-const TYPE = ["xs", "sm", "md", "lg", "xl"] as const;
+const TYPE = ["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl"] as const;
 const VARIANTS: ButtonVariant[] = ["default", "primary", "success", "warn", "danger", "ghost"];
 const SIZES: ButtonSize[] = ["md", "sm", "xs"];
 

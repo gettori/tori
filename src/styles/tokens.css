@@ -81,11 +81,19 @@
     /* ---- Type ---- */
     --sway-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     --sway-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
-    --sway-text-xs: 11px;
-    --sway-text-sm: 12px;
-    --sway-text-md: 13px;
-    --sway-text-lg: 15px;
-    --sway-text-xl: 18px;
+    /* Type ramp. Every step folds --ui-scale, so the whole chrome type system
+       tracks the UI font size (and Cmd +/- zoom) from one multiplier. Each base
+       is the px that step renders at the default UI size (--ui-scale = 1); the
+       ramp carries enough steps to keep the dense 10-13px cluster distinct. */
+    --sway-text-2xs: calc(10px * var(--ui-scale));
+    --sway-text-xs: calc(11px * var(--ui-scale));
+    --sway-text-sm: calc(12px * var(--ui-scale));
+    --sway-text-md: calc(13px * var(--ui-scale));
+    --sway-text-lg: calc(14px * var(--ui-scale));
+    --sway-text-xl: calc(15px * var(--ui-scale));
+    --sway-text-2xl: calc(16px * var(--ui-scale));
+    --sway-text-3xl: calc(18px * var(--ui-scale));
+    --sway-text-4xl: calc(21px * var(--ui-scale));
     --sway-line-tight: 1.2;
     --sway-line-normal: 1.5;
 
@@ -117,7 +125,7 @@
 
     /* ---- Settings-driven tokens (overridden by the settings store as inline
        props on <html>; defaults here match the pre-settings look). ---- */
-    --ui-scale: 1; /* chrome font-size multiplier; = uiFontSize / 13 */
+    --ui-scale: 1; /* chrome sizing multiplier; = uiFontSize / 15 × zoom */
     --ui-line-height: var(--sway-line-normal);
     --ui-radius-scale: 1; /* border-radius multiplier; = radius / 5 */
     --ui-density: 1; /* padding/gap multiplier; compact = 0.85 */

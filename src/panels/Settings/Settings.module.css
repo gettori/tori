@@ -33,7 +33,7 @@
   }
 
   .title {
-    font-size: var(--sway-text-lg);
+    font-size: var(--sway-text-xl);
     font-weight: 600;
   }
 

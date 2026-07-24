@@ -38,7 +38,7 @@
   align-items: center;
   gap: calc(10px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   background: var(--canvas-head);
   border-bottom: 1px solid var(--brand-default);

@@ -14,7 +14,7 @@
   align-items: flex-start;
   gap: calc(8px * var(--ui-density));
   padding: calc(9px * var(--ui-density)) calc(10px * var(--ui-density)) calc(9px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   line-height: 1.4;
   color: var(--fg-default);
   background: var(--canvas-head);

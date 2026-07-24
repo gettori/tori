@@ -17,7 +17,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--brand-default);
   border-bottom: 1px solid var(--border-default);
 }
@@ -38,7 +38,7 @@
 
 .editingDot {
   flex: none;
-  font-size: calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-2xs);
   line-height: 1;
   animation: sessionEditingPulse 1.2s ease-in-out infinite;
 }
@@ -49,7 +49,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
   border-bottom: 1px solid var(--border-default);
   cursor: pointer;
@@ -60,7 +60,7 @@
   flex: 1;
   overflow: auto;
   padding: calc(4px * var(--ui-density)) 0;
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   user-select: none;
 }
 
@@ -72,7 +72,7 @@
 .bucketHeader {
   margin: calc(4px * var(--ui-density)) calc(4px * var(--ui-density)) 0;
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-muted);
@@ -100,7 +100,7 @@
   text-align: center;
   border-radius: var(--sway-radius-sm);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   font-weight: 600;
 }
 
@@ -130,13 +130,13 @@
   border-radius: 999px;
   background: var(--brand-default);
   color: var(--brand-on);
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
 .touchDiff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));

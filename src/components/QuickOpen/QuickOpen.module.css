@@ -26,7 +26,7 @@
 .qoInput {
   flex: none;
   padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   color: var(--fg-default);
   background: var(--canvas-input);
   border: none;
@@ -43,7 +43,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
@@ -64,6 +64,6 @@
 
 .qoEmpty {
   padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }

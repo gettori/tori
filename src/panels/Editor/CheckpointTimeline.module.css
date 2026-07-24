@@ -16,7 +16,7 @@
 .timelineTitle {
   flex: 1;
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -26,7 +26,7 @@
   align-items: center;
   gap: calc(4px * var(--ui-density));
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   cursor: pointer;
 }
 
@@ -55,7 +55,7 @@
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-default);
   color: var(--fg-muted);
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   cursor: pointer;
 }
 
@@ -84,7 +84,7 @@
 .scopeHint {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density)) calc(4px * var(--ui-density));
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   line-height: 1.4;
 }
 
@@ -98,7 +98,7 @@
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-default);
   color: var(--fg-default);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   cursor: pointer;
 }
 
@@ -114,7 +114,7 @@
 .timelineEmpty {
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .timelineRow {
@@ -134,7 +134,7 @@
   width: 14px;
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .timelineStatus.added {
@@ -156,7 +156,7 @@
 
 .timelineDiff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-density)) 0;

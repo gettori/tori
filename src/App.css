@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: center;
   width: 16px;
-  font-size: calc(18px * var(--ui-scale));
+  font-size: var(--sway-text-4xl);
   line-height: 1;
   font-family: "seti";
   color: inherit;
@@ -150,7 +150,7 @@ body.dragging {
 .detail-err {
   margin: 6px 8px;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--danger-fg);
   background: var(--canvas-input);
   border-radius: calc(4px * var(--ui-radius-scale));
@@ -165,7 +165,7 @@ body.dragging {
   gap: calc(8px * var(--ui-density));
   align-items: flex-start;
   color: var(--fg-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 .tree-empty p {
@@ -187,17 +187,17 @@ body.dragging {
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: calc(14px * var(--ui-scale));
+  font-size: var(--sway-text-2xl);
 }
 
 .detail-head h2 {
   margin: 0 0 4px;
-  font-size: calc(18px * var(--ui-scale));
+  font-size: var(--sway-text-4xl);
   font-weight: 600;
 }
 
 .detail .sub {
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-density));
@@ -210,12 +210,12 @@ body.dragging {
 .detail .path {
   margin-top: 4px;
   font-family: Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .arch-pill {
   color: var(--attention-fg);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   border: 1px solid var(--attention-fg);
   border-radius: calc(3px * var(--ui-radius-scale));
   padding: 0 calc(5px * var(--ui-density));
@@ -225,7 +225,7 @@ body.dragging {
   display: flex;
   gap: calc(18px * var(--ui-density));
   margin: 16px 0;
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   color: var(--fg-muted);
 }
 
@@ -235,7 +235,7 @@ body.dragging {
 
 .stats .model {
   font-family: Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .actions {
@@ -251,7 +251,7 @@ body.dragging {
 }
 
 .section-title {
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -260,7 +260,7 @@ body.dragging {
 }
 
 .sm.dim {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }
 
@@ -383,7 +383,7 @@ body.dragging {
   flex: none;
   margin: 0 4px;
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   background: transparent;
   border: 1px solid var(--border-default);

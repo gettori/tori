@@ -22,20 +22,20 @@
   box-shadow: var(--shadow-lg);
 }
 .modalTitle {
-  font-size: calc(14px * var(--ui-scale));
+  font-size: var(--sway-text-2xl);
   font-weight: 600;
   color: var(--fg-default);
   margin-bottom: 12px;
   white-space: pre-wrap;
 }
 .modalNote {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin-bottom: 8px;
   word-break: break-all;
 }
 .modalMsg {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin-bottom: 12px;
   white-space: pre-wrap;
@@ -47,7 +47,7 @@
 .modalInput {
   width: 100%;
   padding: calc(7px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
@@ -62,7 +62,7 @@
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .modalHint {
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
   margin-top: 8px;
   line-height: 1.4;
@@ -108,7 +108,7 @@
 }
 .pickerItem {
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
@@ -124,7 +124,7 @@
 }
 .pickerEmpty {
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }
 
@@ -133,12 +133,12 @@
   width: min(480px, calc(100vw - 48px));
 }
 .modalWarn {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--danger-fg);
   margin-bottom: 10px;
 }
 .modalLabel {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin: 12px 0 6px;
 }
@@ -182,14 +182,14 @@
   box-shadow: 0 0 0 2px var(--brand-ring);
 }
 .iconNone {
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   font-weight: 500;
 }
 .delSummary {
   display: flex;
   justify-content: space-between;
   gap: calc(12px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
   margin-bottom: 8px;
 }
@@ -202,7 +202,7 @@
 }
 .delEmpty {
   padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }
 .delEntry {
@@ -211,7 +211,7 @@
   justify-content: space-between;
   gap: calc(8px * var(--ui-density));
   padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
 }
 .delEntry + .delEntry {
@@ -228,7 +228,7 @@
   flex-shrink: 0;
 }
 .delTag {
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
   border-radius: calc(3px * var(--ui-radius-scale));
   border: 1px solid var(--border-default);
@@ -254,7 +254,7 @@
   align-items: center;
   gap: calc(10px * var(--ui-density));
   padding: calc(3px * var(--ui-density)) 0;
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 .wtDetailKey {
   flex-shrink: 0;
@@ -278,7 +278,7 @@
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   margin: 4px 0 4px;
   cursor: pointer;
@@ -303,7 +303,7 @@
 .segBtn {
   flex: 1;
   padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   background: transparent;
   border: none;
   border-left: 1px solid var(--border-default);

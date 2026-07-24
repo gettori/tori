@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
 import type { ToastEvent } from "../../utils/events";
 import { getTheme, reloadUserThemes, setTheme } from "../../theme";
+import { editorFontSizePx, terminalFontSizePx, uiScale } from "./scale";
 
 export type Appearance = { theme: string };
 export type Typography = {
@@ -70,7 +71,7 @@ export { zoom };
 
 /** Effective terminal font size in px (base setting × zoom), read by xterm.
  *  Reactive: reads both the store and the zoom signal. */
-export const terminalFontSize = () => Math.round(settings.typography.terminalFontSize * zoom());
+export const terminalFontSize = () => terminalFontSizePx(settings.typography.terminalFontSize, zoom());
 
 function setZoom(z: number) {
   const next = clampZoom(z);
@@ -95,12 +96,14 @@ export function applySettings(s: Settings) {
   const st = document.documentElement.style;
   const z = zoom();
   st.setProperty("--sway-font-ui", s.typography.uiFontFamily);
-  // Chrome font-sizes are `calc(<px> * var(--ui-scale))`, authored against a 13px
-  // design baseline; scale is the chosen UI size over that baseline, times the
-  // global zoom (e.g. the 15px default renders chrome at 15/13× its authored px).
-  st.setProperty("--ui-scale", String((s.typography.uiFontSize / 13) * z));
+  // Chrome sizing flows from one multiplier: every type step (and, in later
+  // phases, spacing and control dimensions) is `calc(<base> * var(--ui-scale))`.
+  // Scale is the chosen UI font size over the 15px design baseline, times the
+  // global zoom, so the 15px default rests at 1.0 and renders every base at its
+  // authored px.
+  st.setProperty("--ui-scale", String(uiScale(s.typography.uiFontSize, z)));
   st.setProperty("--editor-font-family", s.typography.editorFontFamily);
-  st.setProperty("--editor-font-size", `${s.typography.editorFontSize * z}px`);
+  st.setProperty("--editor-font-size", `${editorFontSizePx(s.typography.editorFontSize, z)}px`);
   st.setProperty("--ui-line-height", String(s.typography.lineHeight));
   // Radii are `calc(<px> * var(--ui-radius-scale))`; scale is the chosen radius
   // over the 5px baseline, so the default (5) is 1 and renders unchanged.

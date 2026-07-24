@@ -4,7 +4,7 @@
   overflow-y: auto;
   height: 100%;
   background: var(--canvas-card);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 .empty {
@@ -39,7 +39,7 @@
   padding: 0 calc(5px * var(--ui-density));
   border-radius: var(--sway-radius-pill);
   background: var(--neutral-subtle);
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
 }
 
 .problemRow {
@@ -67,7 +67,7 @@
   flex: none;
   color: var(--fg-muted);
   font-family: var(--sway-font-mono);
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
 }
 
 .message {
@@ -86,7 +86,7 @@
   background: transparent;
   color: var(--fg-muted);
   font-family: inherit;
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   cursor: pointer;
   opacity: 0;
 }
