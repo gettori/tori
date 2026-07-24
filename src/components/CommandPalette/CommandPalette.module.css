@@ -6,7 +6,7 @@
 }
 
 .itemSub {
-  margin-left: calc(8px * var(--ui-density));
+  margin-left: calc(8px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }

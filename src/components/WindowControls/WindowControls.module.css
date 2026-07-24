@@ -7,15 +7,15 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
-  padding: 0 calc(8px * var(--ui-density)) 0 calc(16px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) 0 calc(16px * var(--ui-scale));
   -webkit-app-region: drag;
 }
 
 .winDot {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
   padding: 0;
   border: none;
   border-radius: 50%;

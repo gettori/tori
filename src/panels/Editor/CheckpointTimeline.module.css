@@ -3,14 +3,14 @@
    prefers-reduced-motion is handled globally (src/styles/base.css). */
 .timeline {
   border-bottom: 1px solid var(--border-default);
-  padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
 }
 
 .timelineHeader {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 .timelineTitle {
@@ -24,7 +24,7 @@
 .cumulativeToggle {
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
   cursor: pointer;
@@ -33,9 +33,9 @@
 /* The turn strip scrolls on its own rather than widening the panel. */
 .strip {
   display: flex;
-  gap: calc(3px * var(--ui-density));
+  gap: calc(3px * var(--ui-scale));
   overflow-x: auto;
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 .strip:focus-visible {
@@ -49,8 +49,8 @@
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  min-width: calc(44px * var(--ui-density));
-  padding: calc(3px * var(--ui-density)) calc(5px * var(--ui-density));
+  min-width: calc(44px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-default);
@@ -82,18 +82,18 @@
 }
 
 .scopeHint {
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density)) calc(4px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
   line-height: 1.4;
 }
 
 .timelineActions {
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 .revertButton {
-  padding: calc(3px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-default);
@@ -112,7 +112,7 @@
 }
 
 .timelineEmpty {
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
@@ -120,8 +120,8 @@
 .timelineRow {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   cursor: pointer;
 }
 
@@ -131,7 +131,7 @@
 
 .timelineStatus {
   flex: none;
-  width: 14px;
+  width: calc(14px * var(--ui-scale));
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
@@ -159,13 +159,13 @@
   font-size: var(--sway-text-md);
   line-height: 1.4;
   overflow-x: auto;
-  padding: calc(4px * var(--ui-density)) 0;
+  padding: calc(4px * var(--ui-scale)) 0;
   background: var(--canvas-default);
 }
 
 .diffLine {
   white-space: pre;
-  padding: 0 calc(8px * var(--ui-density));
+  padding: 0 calc(8px * var(--ui-scale));
 }
 
 .diffLine.add {

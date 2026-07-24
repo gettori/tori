@@ -8,7 +8,7 @@
   flex: 1;
   overflow: auto;
   background: var(--canvas-card);
-  padding: calc(4px * var(--ui-density)) 0;
+  padding: calc(4px * var(--ui-scale)) 0;
   font-size: var(--sway-text-xl);
   -webkit-user-select: none;
   user-select: none;
@@ -18,10 +18,10 @@
    File/New Folder stay reachable while the tree scrolls. */
 .treeActions {
   position: sticky;
-  top: -4px;
+  top: calc(-4px * var(--ui-scale));
   display: flex;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
 }
@@ -29,9 +29,9 @@
 .treeRow {
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
-  margin: 0 calc(4px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   cursor: pointer;
   color: var(--fg-default);
@@ -67,7 +67,7 @@
 .touchedDot {
   flex: none;
   margin-left: auto;
-  padding-left: calc(4px * var(--ui-density));
+  padding-left: calc(4px * var(--ui-scale));
   color: var(--activity-touched);
   font-size: var(--sway-text-2xs);
   line-height: 1;
@@ -104,6 +104,6 @@
 }
 
 .empty {
-  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
 }

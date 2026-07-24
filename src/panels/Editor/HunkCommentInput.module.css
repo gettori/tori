@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
 }
 
 .commentToggle {
@@ -13,7 +13,7 @@
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
   cursor: pointer;
-  padding: 0 calc(4px * var(--ui-density));
+  padding: 0 calc(4px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
 }
 
@@ -29,8 +29,8 @@
 
 .commentBox {
   display: flex;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
 }
 
@@ -43,7 +43,7 @@
   color: var(--fg-default);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
 .commentSend {
@@ -54,7 +54,7 @@
   background: var(--canvas-default);
   color: var(--fg-default);
   cursor: pointer;
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 .commentSend:hover:not(:disabled) {

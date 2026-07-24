@@ -4,7 +4,7 @@
    marks) which are reached here via :global(). */
 /* Toolbar (background + bottom border live on .topbar so the whole bar matches) */
 .toolbar {
-  padding: calc(2px * var(--ui-density)) calc(10px * var(--ui-density)) 0;
+  padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -15,19 +15,19 @@
 .tbEmpty {
   color: var(--fg-muted);
   font-size: var(--sway-text-lg);
-  padding: calc(2px * var(--ui-density)) 0;
+  padding: calc(2px * var(--ui-scale)) 0;
 }
 
 .tbRow {
   display: flex;
   align-items: center;
-  gap: calc(12px * var(--ui-density));
+  gap: calc(12px * var(--ui-scale));
 }
 
 .tbInfo {
   display: flex;
   align-items: center;
-  gap: calc(10px * var(--ui-density));
+  gap: calc(10px * var(--ui-scale));
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -39,13 +39,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 280px;
+  max-width: calc(280px * var(--ui-scale));
 }
 
 .tbStats {
   display: inline-flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
   font-size: var(--sway-text-md);
   white-space: nowrap;
   color: var(--fg-muted);
@@ -68,7 +68,7 @@
 .tbStats .stat {
   display: inline-flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -76,8 +76,8 @@
 /* All four metric icons are SVGs; one fixed box keeps them uniform. */
 .tbStats .statIco {
   flex: none;
-  width: 13px;
-  height: 13px;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
   opacity: 0.9;
 }
 
@@ -90,7 +90,7 @@
 .tbCrumb {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
   min-width: 0;
   overflow: hidden;
 }
@@ -100,7 +100,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  max-width: calc(200px * var(--ui-scale));
   color: var(--fg-subtle);
 }
 
@@ -111,7 +111,7 @@
   color: var(--fg-default);
   display: inline-flex;
   align-items: center;
-  gap: calc(5px * var(--ui-density));
+  gap: calc(5px * var(--ui-scale));
 }
 
 /* The agent mark in the menubar inherits the leaf text color (no brand tint,
@@ -129,7 +129,7 @@
 
 .tbActions {
   display: flex;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   flex: 0 0 auto;
 }
 
@@ -139,10 +139,10 @@
    14px svg sizing. The .tbRow prefix lifts specificity above `.iconOnly.sm`. */
 .tbRow .tbActions button {
   box-sizing: border-box;
-  height: 24px;
-  padding: 0 4px 0 6px;
+  height: calc(24px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
   aspect-ratio: auto;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   /* Rest at the faint icon color (quiet chrome), brighten on hover. */
   color: var(--fg-subtle);
 }
@@ -150,17 +150,17 @@
   color: var(--fg-default);
 }
 .tbActions .tbAppIco {
-  width: 17px;
-  height: 17px;
+  width: calc(17px * var(--ui-scale));
+  height: calc(17px * var(--ui-scale));
 }
 .tbActions .tbArrow {
-  width: 10px;
-  height: 10px;
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
   opacity: 0.5;
 }
 
 .tbErr {
-  margin-top: 6px;
+  margin-top: calc(6px * var(--ui-scale));
   color: var(--danger-fg);
   font-size: var(--sway-text-md);
 }

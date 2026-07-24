@@ -15,7 +15,7 @@
 
   .panel {
     width: 100%;
-    max-width: 560px;
+    max-width: calc(560px * var(--ui-scale));
     background: var(--canvas-card);
     color: var(--fg-default);
     border: var(--sway-border-thin) solid var(--border-default);
@@ -96,10 +96,10 @@
   }
 
   .text {
-    width: 240px;
+    width: calc(240px * var(--ui-scale));
   }
   .num {
-    width: 72px;
+    width: calc(72px * var(--ui-scale));
   }
 
   .hint {
@@ -140,8 +140,8 @@
   }
 
   .dot {
-    width: 7px;
-    height: 7px;
+    width: calc(7px * var(--ui-scale));
+    height: calc(7px * var(--ui-scale));
     border-radius: 50%;
     flex: none;
   }

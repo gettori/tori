@@ -34,8 +34,8 @@
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: calc(9px * var(--ui-scale));
+  height: calc(9px * var(--ui-scale));
 }
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {

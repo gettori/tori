@@ -14,16 +14,16 @@
   min-width: 0;
   /* Where a branch/worktree name begins (sub1 indent). Shared so a selected
      session's inset pill can start on the same x and read as nested. */
-  --branch-label-x: calc(34px * var(--ui-density));
+  --branch-label-x: calc(34px * var(--ui-scale));
 }
 
 .treeSearch {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  min-height: 40px;
-  padding-inline: calc(14px * var(--ui-density)) calc(8px * var(--ui-density));
-  margin-bottom: calc(4px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding-inline: calc(14px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
 }
 
 .searchInput {
@@ -34,7 +34,7 @@
   color: var(--fg-default);
   caret-color: var(--brand-default);
   border-radius: var(--sway-radius-md);
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-xl);
   outline: none;
   transition:
@@ -66,8 +66,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: calc(30px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
   background: transparent;
   border: 1px solid transparent;
   color: var(--fg-subtle);
@@ -91,11 +91,11 @@
    (in the space bar), so the menu grows above it. */
 .gearMenu {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + calc(6px * var(--ui-scale)));
   left: 0;
   z-index: 1000;
-  min-width: 180px;
-  padding: calc(4px * var(--ui-density));
+  min-width: calc(180px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
@@ -105,8 +105,8 @@
 .gearItem {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
   border-radius: var(--sway-radius-sm);
@@ -134,7 +134,7 @@
 }
 .gearDivider {
   height: 1px;
-  margin: 4px 6px;
+  margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--border-default);
 }
 
@@ -146,7 +146,7 @@
      appears. Modern WebKit dropped `overflow: overlay`, so a genuinely floating
      custom bar isn't available; a stable gutter is the reliable no-jump fix. */
   scrollbar-gutter: stable;
-  padding: 0 0 calc(10px * var(--ui-density));
+  padding: 0 0 calc(10px * var(--ui-scale));
   min-height: 0;
 }
 
@@ -154,12 +154,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
-  height: 30px;
+  gap: calc(4px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
   /* Left inset kept; right inset dropped so rows run flush toward the reserved
      scrollbar gutter instead of doubling the right-hand gap. */
-  margin: 0 0 0 calc(6px * var(--ui-density));
-  padding: 0 calc(8px * var(--ui-density));
+  margin: 0 0 0 calc(6px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   white-space: nowrap;
@@ -195,7 +195,7 @@
 }
 .row.branch {
   position: sticky;
-  top: 30px;
+  top: calc(30px * var(--ui-scale));
   /* Opaque only from the label inward; the strip to the left of the label (where
      the branch-graph rail lives) stays transparent so the rail shows through and
      branches stay connected, even while this header is pinned. Scrolling session
@@ -258,8 +258,8 @@
      padding (8px·d) + half the 16px icon (8px). `--rail-x-row` is that same x
      re-expressed from the row's own box (minus the row's 6px·d left margin), so
      the elbow/segment drawn on the row line up on the rail. */
-  --rail-x: calc(14px * var(--ui-density) + 8px);
-  --rail-x-row: calc(8px * var(--ui-density) + 8px);
+  --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale));
+  --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
 }
 
 /* The vertical rail. Spans the node's full height so it passes behind an
@@ -278,7 +278,7 @@
    dangles below the final item, even when it is expanded. */
 .branchNode:last-child::before {
   bottom: auto;
-  height: 10px;
+  height: calc(10px * var(--ui-scale));
 }
 
 /* Selected unit: gild the whole node rail (the full-height ::before), so the
@@ -286,7 +286,7 @@
    The branch row's own gold segment (.row.branch.sel::before) sits on the same x
    and just overlaps the top of this. */
 .branchNode.railSel::before {
-  width: 2px;
+  width: calc(2px * var(--ui-scale));
   background: var(--brand-bar);
 }
 
@@ -312,7 +312,7 @@
 .row.branch::before {
   content: "";
   position: absolute;
-  left: calc(var(--branch-label-x) - 8px * var(--ui-density));
+  left: calc(var(--branch-label-x) - 8px * var(--ui-scale));
   right: 0;
   top: 0;
   bottom: 0;
@@ -336,11 +336,11 @@
   position: absolute;
   left: var(--rail-x-row);
   top: 0;
-  width: calc(9px * var(--ui-density));
-  height: 15px;
+  width: calc(9px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
   border-left: 1px solid var(--border-rail);
   border-bottom: 1px solid var(--border-rail);
-  border-bottom-left-radius: calc(8px * var(--ui-density));
+  border-bottom-left-radius: calc(8px * var(--ui-scale));
 }
 
 /* Selected branch: no fill; repurpose the ::before slot as a thin full-height
@@ -348,7 +348,7 @@
 .row.branch.sel::before {
   left: var(--rail-x-row);
   right: auto;
-  width: 2px;
+  width: calc(2px * var(--ui-scale));
   border-radius: 0;
   background: var(--brand-bar);
 }
@@ -377,7 +377,7 @@
   padding-left: var(--branch-label-x);
 }
 .row.sub2 {
-  padding-left: calc(46px * var(--ui-density));
+  padding-left: calc(46px * var(--ui-scale));
 }
 
 .row.dim {
@@ -404,8 +404,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
   color: var(--fg-muted);
 }
 
@@ -417,8 +417,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
   color: var(--fg-subtle);
   transition: transform var(--sway-duration-fast) ease;
 }
@@ -445,7 +445,7 @@
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: calc(3px * var(--ui-density));
+  gap: calc(3px * var(--ui-scale));
   /* Never shrink: it is icon-only (fixed-size glyph), so letting it shrink would
      squeeze its box below the glyph and the row's overflow:hidden would clip the
      icon off the right edge. Like .when/.badge, it holds its width and the label
@@ -476,14 +476,14 @@
 .statusBubble {
   display: inline-flex;
   align-items: center;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   margin-left: auto;
   flex: 0 0 auto;
 }
 .statusBubbleItem {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: calc(2px * var(--ui-scale));
   /* Sizes the count only (the glyph is a fixed-size `size` prop), now shown as a
      bare number with no "x" prefix, so a touch larger to stay legible on its own. */
   font-size: var(--sway-text-md);
@@ -507,19 +507,19 @@
    non-active space (or a search-filtered-out project of the active space). */
 .spaceBubble {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: calc(-4px * var(--ui-scale));
+  right: calc(-4px * var(--ui-scale));
   display: inline-flex;
   align-items: center;
   gap: 1px;
   background: var(--canvas-default);
   border-radius: var(--sway-radius-sm, 4px);
-  padding: 1px 2px;
+  padding: 1px calc(2px * var(--ui-scale));
 }
 
 .row.session .when {
   margin-left: auto;
-  padding-left: calc(8px * var(--ui-density));
+  padding-left: calc(8px * var(--ui-scale));
   font-size: var(--sway-text-sm);
   color: var(--fg-muted);
   flex: 0 0 auto;
@@ -535,14 +535,14 @@
   margin-left: auto;
   flex: 0 0 auto;
   font-size: var(--sway-text-2xs);
-  padding: 0 calc(4px * var(--ui-density));
+  padding: 0 calc(4px * var(--ui-scale));
   border-radius: calc(3px * var(--ui-radius-scale));
   color: var(--brand-default);
   background: var(--brand-subtle);
 }
 
 .row .badge + .when {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 
 /* Touched-file count, selected session row only. Same trailing-cluster
@@ -557,10 +557,10 @@
   font-variant-numeric: tabular-nums;
 }
 .row .badge + .touchedCount {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 .row .touchedCount + .when {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 
 /* The live-status glyph shares the trailing cluster's push-right convention:
@@ -570,7 +570,7 @@
 .row .badge + .statusIndicator,
 .row .touchedCount + .statusIndicator,
 .row .unseenDot + .statusIndicator {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 
 /* Unseen-changes dot: this session has been active since you last looked at it.
@@ -587,10 +587,10 @@
   background: var(--brand-default);
 }
 .row .badge + .unseenDot {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 .row .unseenDot + .when {
-  margin-left: 6px;
+  margin-left: calc(6px * var(--ui-scale));
 }
 
 .row .badge.hint {
@@ -613,9 +613,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density))
-    calc(16px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale))
+    calc(16px * var(--ui-scale));
 }
 
 /* Divider from the tree above, inset 8px from each edge so it does not run into
@@ -625,8 +625,8 @@
   content: "";
   position: absolute;
   top: 0;
-  left: calc(8px * var(--ui-density));
-  right: calc(8px * var(--ui-density));
+  left: calc(8px * var(--ui-scale));
+  right: calc(8px * var(--ui-scale));
   height: 1px;
   background: var(--border-default);
   /* Half the --border-default weight: this one divider reads a touch softer than the
@@ -643,7 +643,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(3px * var(--ui-density));
+  gap: calc(3px * var(--ui-scale));
   overflow-x: auto;
 }
 
@@ -652,7 +652,7 @@
   flex: none;
   align-self: stretch;
   width: 1px;
-  margin: calc(2px * var(--ui-density)) calc(2px * var(--ui-density));
+  margin: calc(2px * var(--ui-scale)) calc(2px * var(--ui-scale));
   background: var(--border-default);
 }
 
@@ -664,8 +664,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: calc(30px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--sway-radius-md);
@@ -707,8 +707,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: calc(30px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
   background: transparent;
   border: 1px dashed var(--border-default);
   border-radius: var(--sway-radius-md);

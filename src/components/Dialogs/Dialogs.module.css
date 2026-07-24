@@ -14,8 +14,8 @@
   background: var(--scrim-default);
 }
 .modal {
-  width: min(420px, calc(100vw - 48px));
-  padding: calc(20px * var(--ui-density));
+  width: min(calc(420px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+  padding: calc(20px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
@@ -25,19 +25,19 @@
   font-size: var(--sway-text-2xl);
   font-weight: 600;
   color: var(--fg-default);
-  margin-bottom: 12px;
+  margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
 }
 .modalNote {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
-  margin-bottom: 8px;
+  margin-bottom: calc(8px * var(--ui-scale));
   word-break: break-all;
 }
 .modalMsg {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
-  margin-bottom: 12px;
+  margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
 }
 .modalNote strong {
@@ -46,7 +46,7 @@
 }
 .modalInput {
   width: 100%;
-  padding: calc(7px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-xl);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
@@ -64,14 +64,14 @@
 .modalHint {
   font-size: var(--sway-text-md);
   color: var(--fg-muted);
-  margin-top: 8px;
+  margin-top: calc(8px * var(--ui-scale));
   line-height: 1.4;
 }
 .modalActions {
   display: flex;
   justify-content: flex-end;
-  gap: calc(8px * var(--ui-density));
-  margin-top: 14px;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: calc(14px * var(--ui-scale));
 }
 /* Modal action buttons now use the shared <Button> component; the old modal
    button block was removed in the button unification. The .warn token lives on
@@ -82,8 +82,8 @@
 .picker {
   display: flex;
   flex-direction: column;
-  max-height: min(70vh, 520px);
-  padding: calc(16px * var(--ui-density));
+  max-height: min(70vh, calc(520px * var(--ui-scale)));
+  padding: calc(16px * var(--ui-scale));
 }
 .pickerInputWrap {
   position: relative;
@@ -91,23 +91,23 @@
   align-items: center;
 }
 .pickerInput {
-  padding-right: calc(26px * var(--ui-density)); /* room for the clear button */
+  padding-right: calc(26px * var(--ui-scale)); /* room for the clear button */
 }
 /* Positioning only; the visual treatment now comes from the shared <Button>. */
 .pickerClear {
   position: absolute;
-  right: 6px;
+  right: calc(6px * var(--ui-scale));
 }
 .pickerList {
   flex: 1 1 auto;
   min-height: 0;
-  margin-top: 10px;
+  margin-top: calc(10px * var(--ui-scale));
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
 }
 .pickerItem {
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
   cursor: pointer;
@@ -123,24 +123,24 @@
   background: var(--brand-subtle);
 }
 .pickerEmpty {
-  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }
 
 /* ---- Delete-space confirmation extras (reuses the .modal chrome above). ---- */
 .modalDanger {
-  width: min(480px, calc(100vw - 48px));
+  width: min(calc(480px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
 }
 .modalWarn {
   font-size: var(--sway-text-lg);
   color: var(--danger-fg);
-  margin-bottom: 10px;
+  margin-bottom: calc(10px * var(--ui-scale));
 }
 .modalLabel {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
-  margin: 12px 0 6px;
+  margin: calc(12px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
 }
 .modalInput:disabled {
   opacity: 0.6;
@@ -152,9 +152,9 @@
 .iconGrid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  gap: calc(6px * var(--ui-density));
-  margin-bottom: 4px;
-  max-height: 216px;
+  gap: calc(6px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
+  max-height: calc(216px * var(--ui-scale));
   overflow-y: auto;
 }
 .iconTile {
@@ -188,20 +188,20 @@
 .delSummary {
   display: flex;
   justify-content: space-between;
-  gap: calc(12px * var(--ui-density));
+  gap: calc(12px * var(--ui-scale));
   font-size: var(--sway-text-md);
   color: var(--fg-muted);
-  margin-bottom: 8px;
+  margin-bottom: calc(8px * var(--ui-scale));
 }
 .delEntries {
-  max-height: 200px;
+  max-height: calc(200px * var(--ui-scale));
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   background: var(--canvas-input);
 }
 .delEmpty {
-  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }
@@ -209,8 +209,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(8px * var(--ui-density));
-  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
 }
@@ -224,12 +224,12 @@
 }
 .delEntryTags {
   display: flex;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   flex-shrink: 0;
 }
 .delTag {
   font-size: var(--sway-text-sm);
-  padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
+  padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
   border-radius: calc(3px * var(--ui-radius-scale));
   border: 1px solid var(--border-default);
 }
@@ -246,19 +246,19 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   background: var(--canvas-input);
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
-  margin-bottom: 10px;
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  margin-bottom: calc(10px * var(--ui-scale));
 }
 .wtDetailRow {
   display: flex;
   align-items: center;
-  gap: calc(10px * var(--ui-density));
-  padding: calc(3px * var(--ui-density)) 0;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) 0;
   font-size: var(--sway-text-lg);
 }
 .wtDetailKey {
   flex-shrink: 0;
-  width: 56px;
+  width: calc(56px * var(--ui-scale));
   color: var(--fg-muted);
 }
 .wtDetailVal {
@@ -271,23 +271,23 @@
 }
 .wtDetailTags {
   display: flex;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
   flex-wrap: wrap;
 }
 .wtCheck {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
-  margin: 4px 0 4px;
+  margin: calc(4px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
   cursor: pointer;
 }
 .wtCheck input {
   cursor: pointer;
 }
 .initCheck {
-  margin-top: 14px;
+  margin-top: calc(14px * var(--ui-scale));
 }
 
 /* ---- Segmented mode picker (NewProjectDialog). One row of buttons that share a
@@ -298,11 +298,11 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   overflow: hidden;
-  margin-bottom: 10px;
+  margin-bottom: calc(10px * var(--ui-scale));
 }
 .segBtn {
   flex: 1;
-  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   background: transparent;
   border: none;
