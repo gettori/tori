@@ -1,19 +1,19 @@
 .toastStack {
   position: fixed;
-  right: 14px;
-  bottom: 14px;
+  right: calc(14px * var(--ui-scale));
+  bottom: calc(14px * var(--ui-scale));
   z-index: 1200;
   display: flex;
   flex-direction: column;
-  gap: calc(8px * var(--ui-density));
-  max-width: min(380px, calc(100vw - 28px));
+  gap: calc(8px * var(--ui-scale));
+  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(28px * var(--ui-scale))));
   pointer-events: none;
 }
 .toast {
   display: flex;
   align-items: flex-start;
-  gap: calc(8px * var(--ui-density));
-  padding: calc(9px * var(--ui-density)) calc(10px * var(--ui-density)) calc(9px * var(--ui-density)) calc(12px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale)) calc(12px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   line-height: 1.4;
   color: var(--fg-default);
@@ -47,7 +47,7 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(calc(6px * var(--ui-scale)));
   }
   to {
     opacity: 1;

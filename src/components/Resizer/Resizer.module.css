@@ -3,7 +3,7 @@
    `.hairline` adds a faint full-length line at rest so dividers inside a single
    card still read as a seam. Works on both axes for the future split panes. */
 .resizer {
-  flex: 0 0 8px;
+  flex: 0 0 calc(8px * var(--ui-scale));
   align-self: stretch;
   position: relative;
   background: transparent;
@@ -62,18 +62,18 @@
 }
 
 .x::after {
-  top: calc(96px * var(--ui-density));
-  bottom: calc(96px * var(--ui-density));
+  top: calc(96px * var(--ui-scale));
+  bottom: calc(96px * var(--ui-scale));
   left: 50%;
-  width: 2px;
+  width: calc(2px * var(--ui-scale));
   transform: translateX(-50%);
 }
 
 .y::after {
-  left: calc(96px * var(--ui-density));
-  right: calc(96px * var(--ui-density));
+  left: calc(96px * var(--ui-scale));
+  right: calc(96px * var(--ui-scale));
   top: 50%;
-  height: 2px;
+  height: calc(2px * var(--ui-scale));
   transform: translateY(-50%);
 }
 

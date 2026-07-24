@@ -12,7 +12,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   color: var(--fg-default);
-  padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: inherit;
   font-size: var(--sway-text-lg);
   line-height: 1.4;
@@ -32,18 +32,18 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
-  padding: calc(4px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale));
 }
 
 /* Active-row pill: translucent gold fill on the pill radius. */
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
   background: var(--brand-subtle);
   color: var(--fg-default);
   border-radius: var(--sway-radius-pill);
-  padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
   font-size: var(--sway-text-lg);
 }
 
@@ -53,5 +53,5 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: calc(16px * var(--ui-density));
+  padding: calc(16px * var(--ui-scale));
 }

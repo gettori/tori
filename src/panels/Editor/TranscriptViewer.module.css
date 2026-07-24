@@ -4,18 +4,18 @@
   flex: 1;
   overflow: auto;
   background: var(--canvas-card);
-  padding: calc(10px * var(--ui-density));
+  padding: calc(10px * var(--ui-scale));
   font-size: var(--sway-text-xl);
 }
 
 .viewer :global(.tree-empty) {
-  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
 }
 
 .turn {
-  margin-bottom: calc(10px * var(--ui-density));
-  padding: calc(8px * var(--ui-density)) calc(10px * var(--ui-density));
+  margin-bottom: calc(10px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   border-left: 2px solid var(--border-default);
 }
@@ -33,8 +33,8 @@
 .turnHeader {
   display: flex;
   align-items: baseline;
-  gap: calc(8px * var(--ui-density));
-  margin-bottom: calc(4px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
 }
 
 .turnRole {
@@ -50,7 +50,7 @@
 }
 
 .block {
-  margin: calc(2px * var(--ui-density)) 0;
+  margin: calc(2px * var(--ui-scale)) 0;
 }
 
 .blockText {
@@ -66,8 +66,8 @@
 .blockSummary {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(2px * var(--ui-density)) calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   background: var(--neutral-hover);
   cursor: pointer;
@@ -94,8 +94,8 @@
 }
 
 .blockDetail {
-  margin: calc(4px * var(--ui-density)) 0 0;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  margin: calc(4px * var(--ui-scale)) 0 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-default);
   border-radius: var(--sway-radius-sm);
   font-family: "SF Mono", Menlo, Monaco, monospace;
@@ -106,8 +106,8 @@
 
 .loadOlder {
   display: block;
-  margin: calc(8px * var(--ui-density)) auto;
-  padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
+  margin: calc(8px * var(--ui-scale)) auto;
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
   background: none;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
@@ -123,15 +123,15 @@
 /* Turn-level checkpoints (Finding E): a per-turn "Changes this turn" row on
    user turns, expandable into a file list + per-file diff + revert. */
 .checkpoint {
-  margin-top: calc(6px * var(--ui-density));
-  padding-top: calc(4px * var(--ui-density));
+  margin-top: calc(6px * var(--ui-scale));
+  padding-top: calc(4px * var(--ui-scale));
   border-top: 1px dashed var(--border-default);
 }
 
 .checkpointToggle {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
   cursor: pointer;
@@ -142,7 +142,7 @@
 }
 
 .checkpointEmpty {
-  padding: calc(2px * var(--ui-density)) calc(4px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
@@ -150,15 +150,15 @@
 .checkpointRow {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(2px * var(--ui-density)) calc(4px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
 }
 
 .opBadge {
   flex: none;
-  width: 14px;
+  width: calc(14px * var(--ui-scale));
   text-align: center;
   border-radius: var(--sway-radius-sm);
   font-weight: 600;
@@ -183,7 +183,7 @@
 
 .revertButton {
   flex: none;
-  padding: 0 calc(6px * var(--ui-density));
+  padding: 0 calc(6px * var(--ui-scale));
   background: none;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
@@ -201,13 +201,13 @@
   font-size: var(--sway-text-md);
   line-height: 1.4;
   overflow-x: auto;
-  padding: calc(4px * var(--ui-density)) 0 calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
   background: var(--canvas-default);
 }
 
 .diffLine {
   white-space: pre;
-  padding: 0 calc(8px * var(--ui-density));
+  padding: 0 calc(8px * var(--ui-scale));
 }
 .diffLine.add {
   color: var(--diff-added);

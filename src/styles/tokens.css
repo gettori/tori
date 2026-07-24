@@ -97,15 +97,19 @@
     --sway-line-tight: 1.2;
     --sway-line-normal: 1.5;
 
-    /* ---- Spacing ---- */
-    --sway-space-1: 2px;
-    --sway-space-2: 4px;
-    --sway-space-3: 6px;
-    --sway-space-4: 8px;
-    --sway-space-5: 12px;
-    --sway-space-6: 16px;
-    --sway-space-7: 24px;
-    --sway-space-8: 32px;
+    /* ---- Spacing ----
+       Scale-aware like the type ramp: each step folds --ui-scale, so padding,
+       gaps, and margins built on these tokens track the UI font size (and Cmd
+       +/- zoom) from the one multiplier. Bases are the px each step renders at
+       the default UI size (--ui-scale = 1). */
+    --sway-space-1: calc(2px * var(--ui-scale));
+    --sway-space-2: calc(4px * var(--ui-scale));
+    --sway-space-3: calc(6px * var(--ui-scale));
+    --sway-space-4: calc(8px * var(--ui-scale));
+    --sway-space-5: calc(12px * var(--ui-scale));
+    --sway-space-6: calc(16px * var(--ui-scale));
+    --sway-space-7: calc(24px * var(--ui-scale));
+    --sway-space-8: calc(32px * var(--ui-scale));
 
     /* ---- Radii ---- */
     --sway-radius-sm: calc(3px * var(--ui-radius-scale));
@@ -128,7 +132,6 @@
     --ui-scale: 1; /* chrome sizing multiplier; = uiFontSize / 15 × zoom */
     --ui-line-height: var(--sway-line-normal);
     --ui-radius-scale: 1; /* border-radius multiplier; = radius / 5 */
-    --ui-density: 1; /* padding/gap multiplier; compact = 0.85 */
     --editor-font-family: "SF Mono", Menlo, Monaco, monospace;
     --editor-font-size: 13px;
 
@@ -474,13 +477,14 @@
 
   /* ---- END GENERATED ROLE TOKENS ---- */
 
-  /* ---- Spacing conventions (two-tier density) ----
+  /* ---- Spacing conventions (two-tier rhythm) ----
      Chrome surfaces (sidebar, toolbar, dialogs, settings, menus, toasts,
      buttons) are SPACIOUS: generous padding, section rhythm, pills, soft
      elevation. Reach for --sway-space-5/6/7 (12/16/24px) and --shadow-md/lg.
      Work surfaces (editor, terminal, file tree, session tree, tabs) stay DENSE:
      tight rows, upgraded only via radii/hover/type. Reach for --sway-space-2/3
-     (4/6px) and at most --shadow-sm. All padding/gap that should react to the
-     density setting must be `calc(<px> * var(--ui-density))`; radii use
-     `calc(<px> * var(--ui-radius-scale))`; chrome font-size `* var(--ui-scale)`. */
+     (4/6px) and at most --shadow-sm. All chrome spacing >=2px scales with the
+     UI: use a --sway-space-* token or `calc(<px> * var(--ui-scale))`, so padding,
+     gaps, and control dimensions track the UI font size (and Cmd +/- zoom).
+     1px hairlines/borders stay fixed; radii use `* var(--ui-radius-scale)`. */
 }

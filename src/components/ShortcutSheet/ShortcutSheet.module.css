@@ -12,8 +12,8 @@
   }
 
   .sheet {
-    width: min(680px, calc(100vw - 64px));
-    max-height: min(80vh, 720px);
+    width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(64px * var(--ui-scale))));
+    max-height: min(80vh, calc(720px * var(--ui-scale)));
     display: flex;
     flex-direction: column;
     background: var(--canvas-card);
@@ -32,7 +32,7 @@
     align-items: baseline;
     justify-content: space-between;
     gap: var(--sway-space-5);
-    padding: calc(16px * var(--ui-density)) calc(20px * var(--ui-density));
+    padding: calc(16px * var(--ui-scale)) calc(20px * var(--ui-scale));
     border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
   .title {
@@ -50,10 +50,10 @@
      independent, so they reflow without losing meaning. */
   .groups {
     overflow-y: auto;
-    padding: calc(8px * var(--ui-density)) calc(20px * var(--ui-density))
-      calc(16px * var(--ui-density));
+    padding: calc(8px * var(--ui-scale)) calc(20px * var(--ui-scale))
+      calc(16px * var(--ui-scale));
     columns: 2;
-    column-gap: calc(28px * var(--ui-density));
+    column-gap: calc(28px * var(--ui-scale));
   }
   @media (max-width: 620px) {
     .groups {
@@ -64,10 +64,10 @@
   .group {
     /* Keep a heading with its rows when the columns break. */
     break-inside: avoid;
-    margin-top: calc(14px * var(--ui-density));
+    margin-top: calc(14px * var(--ui-scale));
   }
   .groupTitle {
-    margin: 0 0 calc(4px * var(--ui-density));
+    margin: 0 0 calc(4px * var(--ui-scale));
     font-size: var(--sway-text-sm);
     font-weight: 600;
     text-transform: uppercase;
@@ -79,8 +79,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: calc(12px * var(--ui-density));
-    padding: calc(4px * var(--ui-density)) 0;
+    gap: calc(12px * var(--ui-scale));
+    padding: calc(4px * var(--ui-scale)) 0;
   }
   .label {
     font-size: var(--sway-text-lg);
@@ -93,8 +93,8 @@
     flex: 0 0 auto;
   }
   .key {
-    min-width: 18px;
-    padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
+    min-width: calc(18px * var(--ui-scale));
+    padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
     font-family: var(--sway-font-ui);
     font-size: var(--sway-text-md);
     line-height: 1.5;

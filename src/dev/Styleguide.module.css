@@ -19,8 +19,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: calc(12px * var(--ui-density));
-  padding: calc(12px * var(--ui-density)) calc(24px * var(--ui-density));
+  gap: calc(12px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(24px * var(--ui-scale));
   background: var(--canvas-head);
   border-bottom: 1px solid var(--border-default);
   box-shadow: var(--shadow-sm);
@@ -29,7 +29,7 @@
 .title {
   display: inline-flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
   color: var(--brand-default);
   font-size: var(--sway-text-3xl);
 }
@@ -38,7 +38,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(12px * var(--ui-density));
+  gap: calc(12px * var(--ui-scale));
 }
 
 .seg {
@@ -51,7 +51,7 @@
   background: var(--canvas-input);
   color: var(--fg-default);
   border: none;
-  padding: calc(4px * var(--ui-density)) calc(10px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font: inherit;
   cursor: pointer;
 }
@@ -65,7 +65,7 @@
   color: var(--fg-default);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   font: inherit;
   cursor: pointer;
 }
@@ -73,7 +73,7 @@
 .slider {
   display: inline-flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
@@ -81,13 +81,13 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: calc(32px * var(--ui-density));
-  padding: calc(24px * var(--ui-density));
-  max-width: 1100px;
+  gap: calc(32px * var(--ui-scale));
+  padding: calc(24px * var(--ui-scale));
+  max-width: calc(1100px * var(--ui-scale));
 }
 
 .body h2 {
-  margin: 0 0 calc(12px * var(--ui-density));
+  margin: 0 0 calc(12px * var(--ui-scale));
   font-size: var(--sway-text-md);
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -97,21 +97,21 @@
 
 .swatches {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: calc(12px * var(--ui-density));
+  grid-template-columns: repeat(auto-fill, minmax(calc(200px * var(--ui-scale)), 1fr));
+  gap: calc(12px * var(--ui-scale));
 }
 .swatch {
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ui-density));
-  padding: calc(12px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-sm);
 }
 .chip {
-  height: 44px;
+  height: calc(44px * var(--ui-scale));
   border-radius: var(--sway-radius-md);
   border: 1px solid var(--border-default);
 }
@@ -124,7 +124,7 @@
   font-size: var(--sway-text-md);
 }
 .brandText {
-  margin: calc(4px * var(--ui-density)) 0 0;
+  margin: calc(4px * var(--ui-scale)) 0 0;
   font-weight: 600;
 }
 
@@ -132,23 +132,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(16px * var(--ui-density));
-  margin-top: calc(16px * var(--ui-density));
+  gap: calc(16px * var(--ui-scale));
+  margin-top: calc(16px * var(--ui-scale));
 }
 .pill {
-  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
   background: var(--brand-subtle);
   color: var(--brand-default);
   border-radius: var(--sway-radius-pill);
   font-weight: 500;
 }
 .barItem {
-  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border-left: 3px solid var(--brand-bar);
   background: var(--canvas-card);
 }
 .ringBtn {
-  padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
   background: var(--canvas-input);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
@@ -160,15 +160,15 @@
 .shadowRow {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(32px * var(--ui-density));
-  padding: calc(8px * var(--ui-density)) 0;
+  gap: calc(32px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) 0;
 }
 .shadowBox {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 140px;
-  height: 90px;
+  width: calc(140px * var(--ui-scale));
+  height: calc(90px * var(--ui-scale));
   background: var(--canvas-card);
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-sm);
@@ -181,23 +181,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: calc(16px * var(--ui-density));
-  margin-top: calc(12px * var(--ui-density));
+  gap: calc(16px * var(--ui-scale));
+  margin-top: calc(12px * var(--ui-scale));
 }
 
 .patternGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: calc(24px * var(--ui-density));
+  grid-template-columns: repeat(auto-fit, minmax(calc(220px * var(--ui-scale)), 1fr));
+  gap: calc(24px * var(--ui-scale));
   align-items: start;
 }
 .patternCell {
   display: flex;
   flex-direction: column;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 .menuRow {
-  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
@@ -209,15 +209,15 @@
 .spaceRow {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(16px * var(--ui-density));
+  gap: calc(16px * var(--ui-scale));
 }
 .spaceItem {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 .spaceBar {
-  height: 16px;
+  height: calc(16px * var(--ui-scale));
   background: var(--brand-default);
   border-radius: var(--sway-radius-sm);
 }
@@ -230,15 +230,15 @@
 .radiiRow {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(16px * var(--ui-density));
-  margin-top: calc(16px * var(--ui-density));
+  gap: calc(16px * var(--ui-scale));
+  margin-top: calc(16px * var(--ui-scale));
 }
 .radiusBox {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100px;
-  height: 64px;
+  width: calc(100px * var(--ui-scale));
+  height: calc(64px * var(--ui-scale));
   background: var(--neutral-hover);
   border: 1px solid var(--border-default);
   font-size: var(--sway-text-md);
@@ -249,14 +249,14 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(12px * var(--ui-density));
-  margin-bottom: calc(12px * var(--ui-density));
+  gap: calc(12px * var(--ui-scale));
+  margin-bottom: calc(12px * var(--ui-scale));
 }
 
 .iconRow {
   display: flex;
   align-items: center;
-  gap: calc(20px * var(--ui-density));
+  gap: calc(20px * var(--ui-scale));
   color: var(--brand-default);
 }
 
@@ -268,7 +268,7 @@
 }
 .gateList {
   margin: 0;
-  padding-left: calc(20px * var(--ui-density));
+  padding-left: calc(20px * var(--ui-scale));
 }
 .gateFail {
   color: var(--danger-fg);
@@ -288,12 +288,12 @@
 .ansiRow {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 .ansiCell {
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ui-density));
+  gap: calc(4px * var(--ui-scale));
 }
 .ansiCell code {
   font-family: var(--sway-font-mono);
@@ -301,15 +301,15 @@
   color: var(--fg-muted);
 }
 .ansiChip {
-  height: 32px;
+  height: calc(32px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   border: 1px solid var(--border-default);
 }
 
 .terminalSample,
 .syntaxSample {
-  margin: calc(16px * var(--ui-density)) 0 0;
-  padding: calc(12px * var(--ui-density));
+  margin: calc(16px * var(--ui-scale)) 0 0;
+  padding: calc(12px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
@@ -321,13 +321,13 @@
 
 .iconGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: calc(8px * var(--ui-density));
+  grid-template-columns: repeat(auto-fill, minmax(calc(160px * var(--ui-scale)), 1fr));
+  gap: calc(8px * var(--ui-scale));
 }
 .iconCell {
   display: inline-flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 .iconCell code {
   font-family: var(--sway-font-mono);
@@ -336,7 +336,7 @@
 }
 
 .groupHead {
-  margin: calc(16px * var(--ui-density)) 0 calc(8px * var(--ui-density));
+  margin: calc(16px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
   font-size: var(--sway-text-md);
   font-weight: 600;
   color: var(--fg-subtle);
@@ -344,13 +344,13 @@
 }
 .roleGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: calc(8px * var(--ui-density));
+  grid-template-columns: repeat(auto-fill, minmax(calc(180px * var(--ui-scale)), 1fr));
+  gap: calc(8px * var(--ui-scale));
 }
 .roleCell {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 .roleCell code {
   font-family: var(--sway-font-mono);
@@ -361,8 +361,8 @@
 }
 .roleChip {
   flex: none;
-  width: 28px;
-  height: 20px;
+  width: calc(28px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   border: 1px solid var(--border-default);
 }
