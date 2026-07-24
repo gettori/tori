@@ -250,14 +250,55 @@
     --shell-glow: rgba(217, 164, 104, 0.14);
     --shell-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 
+    /* tree */
+    --tree-row-hover: #252a34;
+    --tree-row-active: #094771;
+
+    /* tab */
+    --tab-active-bg: #252a34;
+    --tab-active-fg: #e4e8f0;
+    --tab-hover-bg: #252a34;
+    --tab-inactive-fg: #98a0b0;
+    --tab-dirty: #d9a468;
+
+    /* activity */
+    --activity-touched: #4a9eff;
+    --activity-editing: #d9a468;
+
+    /* scale */
+    --scale-red: #cc3e44;
+    --scale-green: #8dc149;
+    --scale-blue: #519aba;
+    --scale-yellow: #cbcb41;
+    --scale-slate: #6d8086;
+    --scale-orange: #e37933;
+    --scale-purple: #a074c4;
+    --scale-pink: #f55385;
+    --scale-silver: #d4d7d6;
+    --scale-steel: #41535b;
+    --scale-graphite: #4d5a5e;
+
     /* syntax */
     --syntax-keyword: #569cd6;
+    --syntax-control: #c586c0;
+    --syntax-operator: #d4d4d4;
     --syntax-string: #ce9178;
+    --syntax-escape: #d7ba7d;
+    --syntax-regexp: #d16969;
     --syntax-comment: #6a9955;
     --syntax-number: #b5cea8;
+    --syntax-constant: #4fc1ff;
     --syntax-function: #dcdcaa;
+    --syntax-method: #dcdcaa;
     --syntax-type: #4ec9b0;
+    --syntax-class: #86c691;
+    --syntax-namespace: #4ec9b0;
     --syntax-variable: #9cdcfe;
+    --syntax-property: #9cdcfe;
+    --syntax-parameter: #7cc7e8;
+    --syntax-tag: #569cd6;
+    --syntax-attribute: #9cdcfe;
+    --syntax-punctuation: #808080;
   }
 
   /* ---- Semantic tokens, light ---- */
@@ -368,14 +409,55 @@
     --shell-glow: rgba(23, 23, 23, 0.04);
     --shell-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
 
+    /* tree */
+    --tree-row-hover: #ededed;
+    --tree-row-active: #cfe3fb;
+
+    /* tab */
+    --tab-active-bg: #ededed;
+    --tab-active-fg: #1e1e1e;
+    --tab-hover-bg: #ededed;
+    --tab-inactive-fg: #6a6a6a;
+    --tab-dirty: #8a6733;
+
+    /* activity */
+    --activity-touched: #005fb8;
+    --activity-editing: #8a6733;
+
+    /* scale */
+    --scale-red: #b02a30;
+    --scale-green: #4f7a1f;
+    --scale-blue: #2b6d8a;
+    --scale-yellow: #7d7d18;
+    --scale-slate: #4a5a60;
+    --scale-orange: #b5551a;
+    --scale-purple: #7a4ea6;
+    --scale-pink: #c22b5c;
+    --scale-silver: #7a7e7d;
+    --scale-steel: #2c3a40;
+    --scale-graphite: #39454a;
+
     /* syntax */
     --syntax-keyword: #0000ff;
+    --syntax-control: #af00db;
+    --syntax-operator: #000000;
     --syntax-string: #a31515;
+    --syntax-escape: #ee0000;
+    --syntax-regexp: #811f3f;
     --syntax-comment: #008000;
     --syntax-number: #098658;
+    --syntax-constant: #0070c1;
     --syntax-function: #795e26;
+    --syntax-method: #795e26;
     --syntax-type: #267f99;
+    --syntax-class: #0f7b6c;
+    --syntax-namespace: #267f99;
     --syntax-variable: #001080;
+    --syntax-property: #001080;
+    --syntax-parameter: #3b6ea5;
+    --syntax-tag: #800000;
+    --syntax-attribute: #e50000;
+    --syntax-punctuation: #808080;
   }
 
   /* ---- END GENERATED ROLE TOKENS ---- */

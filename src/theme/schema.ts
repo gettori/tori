@@ -129,14 +129,52 @@ export type PaletteColors = {
   ansiBrightCyan: Hex;
   ansiBrightWhite: Hex;
 
+  // ---- Icon scale ----
+  //
+  // The 11 hues the file-icon set resolves against. Seti ships one hex per file
+  // type (406 of them, but only 11 distinct), so the generator emits a hue NAME
+  // and the theme supplies the value: that is what lets the file tree follow the
+  // theme instead of staying on seti's dark variant over a light canvas.
+  scaleRed: Hex;
+  scaleGreen: Hex;
+  scaleBlue: Hex;
+  scaleYellow: Hex;
+  scaleSlate: Hex;
+  scaleOrange: Hex;
+  scalePurple: Hex;
+  scalePink: Hex;
+  scaleSilver: Hex;
+  scaleSteel: Hex;
+  scaleGraphite: Hex;
+
   // ---- Syntax ----
+  //
+  // Every category is authored rather than derived. A theme's syntax ramp is the
+  // part authors most want to control, and a derived sibling ("parameter is
+  // variable, 20% toward the foreground") is a rule that reads as a bug the
+  // first time a port wants those two the same distance apart in a different
+  // hue. The cost is real: this is 20 of the palette's 78 keys, and every port
+  // in Phase 6 pays it.
   synKeyword: Hex;
+  synControl: Hex;
+  synOperator: Hex;
   synString: Hex;
+  synEscape: Hex;
+  synRegexp: Hex;
   synComment: Hex;
   synNumber: Hex;
+  synConstant: Hex;
   synFunction: Hex;
+  synMethod: Hex;
   synType: Hex;
+  synClass: Hex;
+  synNamespace: Hex;
   synVariable: Hex;
+  synProperty: Hex;
+  synParameter: Hex;
+  synTag: Hex;
+  synAttribute: Hex;
+  synPunctuation: Hex;
 };
 
 export type Palette = {
@@ -166,8 +204,15 @@ export const PALETTE_KEYS: (keyof PaletteColors)[] = [
   "ansiBlue", "ansiMagenta", "ansiCyan", "ansiWhite",
   "ansiBrightBlack", "ansiBrightRed", "ansiBrightGreen", "ansiBrightYellow",
   "ansiBrightBlue", "ansiBrightMagenta", "ansiBrightCyan", "ansiBrightWhite",
-  "synKeyword", "synString", "synComment", "synNumber",
-  "synFunction", "synType", "synVariable",
+  "scaleRed", "scaleGreen", "scaleBlue", "scaleYellow", "scaleSlate", "scaleOrange",
+  "scalePurple", "scalePink", "scaleSilver", "scaleSteel", "scaleGraphite",
+  "synKeyword", "synControl", "synOperator",
+  "synString", "synEscape", "synRegexp",
+  "synComment", "synNumber", "synConstant",
+  "synFunction", "synMethod",
+  "synType", "synClass", "synNamespace",
+  "synVariable", "synProperty", "synParameter",
+  "synTag", "synAttribute", "synPunctuation",
 ];
 
 /** Structural validation. Returns the problems found, empty when the palette is

@@ -30,14 +30,35 @@ function relTo(root: string, abs: string): string {
 // the values are var() references, re-theming on THEME_APPLIED is automatic: the
 // theme module rewrites the vars and the browser re-resolves them on the next
 // paint, so the editor never needs to reconfigure for a theme change.
+// Ordered least to most specific: CodeMirror applies every matching rule, so a
+// later rule wins for a tag both cover. `t.function(t.propertyName)` must
+// therefore come after `t.propertyName`, or every method reads as a property.
 const swayHighlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier], color: "var(--syntax-keyword)" },
-  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syntax-string)" },
+  { tag: [t.keyword, t.definitionKeyword, t.moduleKeyword, t.modifier, t.self], color: "var(--syntax-keyword)" },
+  { tag: [t.controlKeyword, t.operatorKeyword], color: "var(--syntax-control)" },
+  { tag: [t.operator, t.compareOperator, t.arithmeticOperator, t.logicOperator], color: "var(--syntax-operator)" },
+  { tag: [t.string, t.special(t.string)], color: "var(--syntax-string)" },
+  { tag: [t.escape, t.character], color: "var(--syntax-escape)" },
+  { tag: [t.regexp], color: "var(--syntax-regexp)" },
   { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syntax-comment)", fontStyle: "italic" },
-  { tag: [t.number, t.bool, t.null], color: "var(--syntax-number)" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syntax-function)" },
-  { tag: [t.typeName, t.className, t.namespace], color: "var(--syntax-type)" },
-  { tag: [t.variableName, t.propertyName, t.attributeName], color: "var(--syntax-variable)" },
+  { tag: [t.number, t.integer, t.float], color: "var(--syntax-number)" },
+  { tag: [t.bool, t.null, t.constant(t.variableName), t.standard(t.variableName)], color: "var(--syntax-constant)" },
+  { tag: [t.typeName, t.standard(t.typeName)], color: "var(--syntax-type)" },
+  { tag: [t.className], color: "var(--syntax-class)" },
+  { tag: [t.namespace], color: "var(--syntax-namespace)" },
+  { tag: [t.variableName], color: "var(--syntax-variable)" },
+  // The closest lexical proxy for a parameter that a grammar alone can offer.
+  // Real parameter detection needs LSP semantic tokens, which are out of scope
+  // for this ticket; when they land this rule is what they replace.
+  { tag: [t.local(t.variableName)], color: "var(--syntax-parameter)" },
+  { tag: [t.propertyName], color: "var(--syntax-property)" },
+  { tag: [t.tagName, t.angleBracket], color: "var(--syntax-tag)" },
+  { tag: [t.attributeName], color: "var(--syntax-attribute)" },
+  { tag: [t.punctuation, t.separator, t.bracket, t.paren, t.brace, t.squareBracket], color: "var(--syntax-punctuation)" },
+  // Most specific last: these are refinements of tags matched above.
+  { tag: [t.function(t.variableName)], color: "var(--syntax-function)" },
+  { tag: [t.function(t.propertyName)], color: "var(--syntax-method)" },
+  { tag: [t.function(t.definition(t.variableName))], color: "var(--syntax-function)" },
 ]);
 
 const swayTheme = EditorView.theme(

@@ -118,7 +118,7 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--fg-muted);
+  color: var(--tab-inactive-fg);
   background: transparent;
   border-radius: var(--sway-radius-md);
   cursor: pointer;
@@ -129,13 +129,13 @@
 }
 
 .editorTabs .tab:hover:not(.active) {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
+  color: var(--tab-active-fg);
+  background: var(--tab-hover-bg);
 }
 
 .editorTabs .tab.active {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
+  color: var(--tab-active-fg);
+  background: var(--tab-active-bg);
 }
 
 .editorTabs :global(.tab-name) {
@@ -146,7 +146,7 @@
 
 .editorTabs :global(.tab-dirty) {
   font-size: calc(10px * var(--ui-scale));
-  color: var(--brand-default);
+  color: var(--tab-dirty);
 }
 
 /* Agent-touched dot on a file tab. Deliberately NOT nested under .editorTabs:
@@ -154,7 +154,7 @@
    this subtree (the reason .tab-dirty next door has to be a :global class). */
 .tabTouched {
   flex: none;
-  color: var(--accent-fg);
+  color: var(--activity-touched);
   font-size: calc(8px * var(--ui-scale));
   line-height: 1;
 }
@@ -174,7 +174,7 @@
 }
 
 .tabTouched.tabEditing {
-  color: var(--brand-default);
+  color: var(--activity-editing);
   animation: tabEditingPulse 1.2s ease-in-out infinite;
 }
 

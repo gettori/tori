@@ -162,13 +162,50 @@ export const ROLES: Role[] = [
   { id: "shell.glow", cssVar: "--shell-glow", group: "shell" },
   { id: "shell.cardShadow", cssVar: "--shell-card-shadow", group: "shell" },
 
+  { id: "tree.rowHover", cssVar: "--tree-row-hover", group: "tree" },
+  { id: "tree.rowActive", cssVar: "--tree-row-active", group: "tree" },
+
+  { id: "tab.activeBg", cssVar: "--tab-active-bg", group: "tab" },
+  { id: "tab.activeFg", cssVar: "--tab-active-fg", group: "tab" },
+  { id: "tab.hoverBg", cssVar: "--tab-hover-bg", group: "tab" },
+  { id: "tab.inactiveFg", cssVar: "--tab-inactive-fg", group: "tab" },
+  { id: "tab.dirty", cssVar: "--tab-dirty", group: "tab" },
+
+  { id: "activity.touched", cssVar: "--activity-touched", group: "activity" },
+  { id: "activity.editing", cssVar: "--activity-editing", group: "activity" },
+
+  { id: "scale.red", cssVar: "--scale-red", group: "scale" },
+  { id: "scale.green", cssVar: "--scale-green", group: "scale" },
+  { id: "scale.blue", cssVar: "--scale-blue", group: "scale" },
+  { id: "scale.yellow", cssVar: "--scale-yellow", group: "scale" },
+  { id: "scale.slate", cssVar: "--scale-slate", group: "scale" },
+  { id: "scale.orange", cssVar: "--scale-orange", group: "scale" },
+  { id: "scale.purple", cssVar: "--scale-purple", group: "scale" },
+  { id: "scale.pink", cssVar: "--scale-pink", group: "scale" },
+  { id: "scale.silver", cssVar: "--scale-silver", group: "scale" },
+  { id: "scale.steel", cssVar: "--scale-steel", group: "scale" },
+  { id: "scale.graphite", cssVar: "--scale-graphite", group: "scale" },
+
   { id: "syntax.keyword", cssVar: "--syntax-keyword", group: "syntax" },
+  { id: "syntax.control", cssVar: "--syntax-control", group: "syntax" },
+  { id: "syntax.operator", cssVar: "--syntax-operator", group: "syntax" },
   { id: "syntax.string", cssVar: "--syntax-string", group: "syntax" },
+  { id: "syntax.escape", cssVar: "--syntax-escape", group: "syntax" },
+  { id: "syntax.regexp", cssVar: "--syntax-regexp", group: "syntax" },
   { id: "syntax.comment", cssVar: "--syntax-comment", group: "syntax" },
   { id: "syntax.number", cssVar: "--syntax-number", group: "syntax" },
+  { id: "syntax.constant", cssVar: "--syntax-constant", group: "syntax" },
   { id: "syntax.function", cssVar: "--syntax-function", group: "syntax" },
+  { id: "syntax.method", cssVar: "--syntax-method", group: "syntax" },
   { id: "syntax.type", cssVar: "--syntax-type", group: "syntax" },
+  { id: "syntax.class", cssVar: "--syntax-class", group: "syntax" },
+  { id: "syntax.namespace", cssVar: "--syntax-namespace", group: "syntax" },
   { id: "syntax.variable", cssVar: "--syntax-variable", group: "syntax" },
+  { id: "syntax.property", cssVar: "--syntax-property", group: "syntax" },
+  { id: "syntax.parameter", cssVar: "--syntax-parameter", group: "syntax" },
+  { id: "syntax.tag", cssVar: "--syntax-tag", group: "syntax" },
+  { id: "syntax.attribute", cssVar: "--syntax-attribute", group: "syntax" },
+  { id: "syntax.punctuation", cssVar: "--syntax-punctuation", group: "syntax" },
 ];
 
 export const ROLE_BY_ID = new Map(ROLES.map((r) => [r.id, r]));
@@ -283,13 +320,62 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
       light: `0 12px 32px ${alpha(p.shadowTint, 0.12)}`,
     }),
 
+    // Tree and tab start as aliases of the chrome roles they replace, so this
+    // phase changes no pixel. The point is not a new look, it is that a theme
+    // can now restyle tree selection or the tab bar WITHOUT moving every focus
+    // ring in the app - which is what reusing accent and brand for row state
+    // made impossible. A role that is currently equal to another is not
+    // redundant if the two are free to diverge.
+    "tree.rowHover": p.hover,
+    "tree.rowActive": p.accentSubtle,
+
+    "tab.activeBg": p.hover,
+    "tab.activeFg": p.text,
+    "tab.hoverBg": p.hover,
+    "tab.inactiveFg": p.textMuted,
+    "tab.dirty": p.brand,
+
+    // Its own family rather than a member of tree and again of tab: "the agent
+    // touched this file" and "the agent is writing it right now" are one claim
+    // rendered on two surfaces, and duplicating them would let a theme make the
+    // tree and the tab bar disagree about the same file.
+    "activity.touched": p.accent,
+    "activity.editing": p.brand,
+
+    "scale.red": p.scaleRed,
+    "scale.green": p.scaleGreen,
+    "scale.blue": p.scaleBlue,
+    "scale.yellow": p.scaleYellow,
+    "scale.slate": p.scaleSlate,
+    "scale.orange": p.scaleOrange,
+    "scale.purple": p.scalePurple,
+    "scale.pink": p.scalePink,
+    "scale.silver": p.scaleSilver,
+    "scale.steel": p.scaleSteel,
+    "scale.graphite": p.scaleGraphite,
+
+    // Passed through one for one. Syntax is the one family with no derivation:
+    // see the note in schema.ts on why every category is authored.
     "syntax.keyword": p.synKeyword,
+    "syntax.control": p.synControl,
+    "syntax.operator": p.synOperator,
     "syntax.string": p.synString,
+    "syntax.escape": p.synEscape,
+    "syntax.regexp": p.synRegexp,
     "syntax.comment": p.synComment,
     "syntax.number": p.synNumber,
+    "syntax.constant": p.synConstant,
     "syntax.function": p.synFunction,
+    "syntax.method": p.synMethod,
     "syntax.type": p.synType,
+    "syntax.class": p.synClass,
+    "syntax.namespace": p.synNamespace,
     "syntax.variable": p.synVariable,
+    "syntax.property": p.synProperty,
+    "syntax.parameter": p.synParameter,
+    "syntax.tag": p.synTag,
+    "syntax.attribute": p.synAttribute,
+    "syntax.punctuation": p.synPunctuation,
   };
 }
 

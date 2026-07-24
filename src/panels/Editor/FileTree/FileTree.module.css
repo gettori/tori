@@ -40,7 +40,7 @@
 }
 
 .treeRow:hover {
-  background: var(--neutral-hover);
+  background: var(--tree-row-hover);
 }
 
 /* Gitignored entries read as present-but-inactive: the whole row drops to the
@@ -61,14 +61,14 @@
    deliberately quiet (a tint plus a small dot) so it reads as an annotation on
    the tree rather than competing with selection or the git gutter's meaning. */
 .treeName.touched {
-  color: var(--accent-fg);
+  color: var(--activity-touched);
 }
 
 .touchedDot {
   flex: none;
   margin-left: auto;
   padding-left: calc(4px * var(--ui-density));
-  color: var(--accent-fg);
+  color: var(--activity-touched);
   font-size: calc(8px * var(--ui-scale));
   line-height: 1;
 }
@@ -77,7 +77,7 @@
    A step up from the touched tint (brand, not accent) because it is a
    different claim - "changing right now" rather than "changed at some point". */
 .treeName.editing {
-  color: var(--brand-default);
+  color: var(--activity-editing);
 }
 
 /* Reduced motion is handled globally (src/styles/base.css), so there is no
@@ -99,7 +99,7 @@
 }
 
 .touchedDot.editingDot {
-  color: var(--brand-default);
+  color: var(--activity-editing);
   animation: editingPulse 1.2s ease-in-out infinite;
 }
 
