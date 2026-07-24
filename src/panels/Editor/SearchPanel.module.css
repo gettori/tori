@@ -5,13 +5,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   font-size: calc(13px * var(--ui-scale));
 }
 
 .searchPanel :global(.tree-empty) {
   padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .inputBar {
@@ -19,23 +19,23 @@
   top: 0;
   z-index: 1;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .searchInput {
   width: 100%;
   padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  color: var(--text);
+  color: var(--fg-default);
   font-size: calc(12px * var(--ui-scale));
 }
 
 .truncatedNotice {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(11px * var(--ui-scale));
 }
 
@@ -55,7 +55,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  color: var(--text);
+  color: var(--fg-default);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -68,7 +68,7 @@
 
 .matchCount {
   flex: none;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -86,14 +86,14 @@
 }
 
 .matchRow:hover {
-  background: var(--hover);
+  background: var(--neutral-hover);
 }
 
 .matchLine {
   flex: none;
   width: 32px;
   text-align: right;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: calc(11px * var(--ui-scale));
 }
@@ -101,7 +101,7 @@
 .matchText {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: calc(11px * var(--ui-scale));
 }

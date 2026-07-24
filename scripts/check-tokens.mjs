@@ -1,23 +1,31 @@
 #!/usr/bin/env node
-// Guard the token layer. Two checks:
+// Guard the token layer. Five checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
-//   2. tokens.css must be structurally two-theme: every semantic token dark
-//      defines needs a light value, light needs its own syntax ramp, and both
-//      need the full 16-slot terminal ANSI ramp.
+//   2. Every bundled palette produces every declared role, and the generated
+//      region of tokens.css agrees with what the generator emits today.
+//   3. Every var(--x) in src/ resolves to a role, a --sway-* primitive, or a
+//      locally declared property.
+//   4. Every name TerminalView.termColors() reads is a declared role.
+//   5. Every name the styleguide galleries list is a declared role.
 //
-// Check 2 lives here rather than in vitest because vitest stubs CSS imports to
-// the empty string, and this script already reads files and already gates
-// `pnpm test`.
+// All of it lives here rather than in vitest because vitest stubs CSS imports to
+// the empty string and jsdom does not resolve var(), so nothing in the test
+// stack can see the token layer at all. This script reads files directly and
+// already gates `pnpm test`.
+//
+// Checks 4 and 5 exist because those names are TypeScript string literals, so
+// no CSS tooling and not even check 3 can see them; a stale one degrades
+// silently rather than failing.
 //
 // Light mode is only as complete as the CSS is token-driven. A single stray
 // `#2ea043` renders identically in both themes, which is exactly the bug that
 // makes a "light mode" ship half-dark - and it is invisible in review because
 // dark looks correct. So this fails the build rather than relying on care.
 //
-// Scans src/ for hex colors, rgb()/rgba()/hsl()/hsla(), and CSS named colors,
-// and reports anything outside tokens.css or the allowlist below.
+// Check 1 scans src/ for hex colors, rgb()/rgba()/hsl()/hsla(), and CSS named
+// colors, and reports anything outside tokens.css or the allowlist below.
 //
 // Run: node scripts/check-tokens.mjs
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -46,7 +54,7 @@ const ALLOWLIST = new Map([
 // goes stale the moment a theme is added, and the staleness is silent.
 const ALLOWLIST_PREFIXES = new Map([
   ["src/theme/palettes/", "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them"],
-  ["src/theme/__baseline__/", "the frozen pre-migration token map: a committed snapshot of tokens.css used to prove the Phase 4 rename is purely nominal"],
+  ["src/theme/__baseline__/", "the frozen pre-migration token map, plus the rename table that translates it: together they prove the Phase 4 rename was purely nominal, and both are keyed by the old names by construction"],
 ]);
 
 /** Whether `rel` is exempt from check 1, by exact path or by directory prefix. */
@@ -328,9 +336,46 @@ if (termProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 5: the styleguide's galleries name roles that exist ----
+//
+// Same shape of blind spot as check 4. The galleries hold their token names as
+// string literals and render them as `var(${name})`, so check 3 sees only an
+// interpolation and waves them through. A stale name there renders an empty
+// chip, which reads as "that role has no colour" rather than as a typo.
+
+const STYLEGUIDE = "src/dev/Styleguide.tsx";
+const guideSource = sources.get(STYLEGUIDE);
+const GALLERIES = ["BRAND", "SEMANTIC"];
+const guideProblems = [];
+
+for (const gallery of GALLERIES) {
+  const body = guideSource && new RegExp(`const ${gallery}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\n\\]`).exec(guideSource);
+  if (!body) {
+    guideProblems.push(`could not find const ${gallery} in ${STYLEGUIDE}; this check locates it by that name`);
+    continue;
+  }
+  const names = [...body[0].matchAll(/"(--[\w-]+)"/g)].map((m) => m[1]);
+  if (names.length === 0) {
+    guideProblems.push(`${gallery} in ${STYLEGUIDE} lists no --tokens; the literal form this check scans for changed`);
+  }
+  for (const name of names) {
+    if (!ROLE_BY_CSS_VAR.has(name)) {
+      guideProblems.push(`${gallery} lists ${name}, which is not a role cssVar in src/theme/roles.ts`);
+    }
+  }
+}
+
+if (guideProblems.length > 0) {
+  console.error(`${guideProblems.length} problem(s) in the styleguide galleries:\n`);
+  for (const problem of guideProblems) console.error(`  ${problem}`);
+  console.error("\nA gallery name that is not a role renders an empty swatch rather than an error.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted directories), ` +
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
-    `every var() in src/ resolving, and all ${termNames.length} terminal reads mapped.`,
+    `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
+    `and every styleguide gallery name a declared role.`,
 );

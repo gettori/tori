@@ -17,9 +17,9 @@
   justify-content: center;
   padding: calc(4px * var(--ui-density));
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  color: var(--text-dim);
+  color: var(--fg-muted);
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition:
@@ -28,19 +28,19 @@
 }
 
 .solo:hover {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 /* Pane hidden: accent the icon (only the glyph, the border keeps its token) as a
    cue that clicking brings the pane back. Held through hover. */
 .solo.off,
 .solo.off:hover {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 .solo.off:hover {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
 }
 
 /* Terminal + editor: a joined two-button pair (the terminal new-split look).
@@ -57,8 +57,8 @@
   justify-content: center;
   padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
+  border: 1px solid var(--border-default);
+  color: var(--fg-muted);
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition:
@@ -76,23 +76,23 @@
 }
 
 .seg:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 /* Pane hidden: accent the icon, held through hover (see .solo.off). */
 .seg.off,
 .seg.off:hover:not(:disabled) {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 .seg.off:hover:not(:disabled) {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
 }
 
 /* Keep the shared divider crisp when only the left half is hovered. */
 .segLeft:hover:not(:disabled) + .segRight:not(:hover) {
-  border-left-color: var(--brand);
+  border-left-color: var(--brand-default);
 }
 
 .seg:disabled {

@@ -5,7 +5,7 @@
   flex: 1;
   display: flex;
   min-height: 0;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
 }
 
 .editorMain {
@@ -29,7 +29,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(13px * var(--ui-scale));
   text-align: center;
   padding: calc(20px * var(--ui-density));
@@ -37,7 +37,7 @@
 
 .editorErr {
   padding: calc(10px * var(--ui-density));
-  color: var(--danger);
+  color: var(--danger-fg);
   font-size: calc(12px * var(--ui-scale));
 }
 
@@ -46,9 +46,9 @@
   flex: none;
   align-self: center;
   font-size: calc(11px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   margin-right: 6px;
@@ -57,13 +57,13 @@
 
 .followToggle.active {
   color: var(--brand-on);
-  background: var(--brand);
-  border-color: var(--brand);
+  background: var(--brand-default);
+  border-color: var(--brand-default);
 }
 
 /* Icon-only variant of the toggle: center the glyph instead of the text
    padding. Same Bot glyph both ways; the on/off signal is the fill (dim +
-   border when off, --brand fill when on; see .followToggle.active). */
+   border when off, --brand-default fill when on; see .followToggle.active). */
 .iconToggle {
   display: inline-flex;
   align-items: center;
@@ -82,17 +82,17 @@
 }
 
 .paneToggle:hover {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 .paneToggle.toggleOff,
 .paneToggle.toggleOff:hover {
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 .paneToggle.toggleOff:hover {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
 }
 
 /* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
@@ -107,8 +107,8 @@
   padding: 0 calc(6px * var(--ui-density));
   -webkit-user-select: none;
   user-select: none;
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
   overflow: hidden;
 }
 
@@ -118,7 +118,7 @@
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: transparent;
   border-radius: var(--sway-radius-md);
   cursor: pointer;
@@ -129,13 +129,13 @@
 }
 
 .editorTabs .tab:hover:not(.active) {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 .editorTabs .tab.active {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
 .editorTabs :global(.tab-name) {
@@ -146,7 +146,7 @@
 
 .editorTabs :global(.tab-dirty) {
   font-size: calc(10px * var(--ui-scale));
-  color: var(--brand);
+  color: var(--brand-default);
 }
 
 /* Agent-touched dot on a file tab. Deliberately NOT nested under .editorTabs:
@@ -154,7 +154,7 @@
    this subtree (the reason .tab-dirty next door has to be a :global class). */
 .tabTouched {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-fg);
   font-size: calc(8px * var(--ui-scale));
   line-height: 1;
 }
@@ -174,7 +174,7 @@
 }
 
 .tabTouched.tabEditing {
-  color: var(--brand);
+  color: var(--brand-default);
   animation: tabEditingPulse 1.2s ease-in-out infinite;
 }
 
@@ -183,7 +183,7 @@
   align-items: center;
   justify-content: center;
   line-height: 1;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: none;
   border: none;
   cursor: pointer;
@@ -192,8 +192,8 @@
 }
 
 .editorTabs :global(.tab-close):hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
 }
 
 /* Right panel: Files / Changes toggle + the active panel */
@@ -220,8 +220,8 @@
   gap: calc(2px * var(--ui-density));
   padding: 0 calc(6px * var(--ui-density));
   overflow: hidden;
-  background: var(--pane-bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
 }
 
 /* Icon-only mode tabs (Files / Changes / …): a full-height centered glyph, dim
@@ -237,7 +237,7 @@
   align-items: center;
   justify-content: center;
   padding: 0 calc(6px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: none;
   border: none;
   cursor: pointer;
@@ -245,11 +245,11 @@
 }
 
 .rightTab:hover {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .rightTab.active {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .rightTab.active::after {
@@ -260,5 +260,5 @@
   bottom: 0;
   height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--brand);
+  background: var(--brand-default);
 }

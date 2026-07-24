@@ -40,8 +40,8 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas-default);
+  color: var(--fg-default);
   overflow: hidden;
 }
 
@@ -60,7 +60,7 @@ body.dragging {
      work-card floats above it. */
   background:
     radial-gradient(900px 600px at -10% -10%, var(--shell-glow), transparent 55%),
-    var(--bg);
+    var(--canvas-default);
 }
 
 .body {
@@ -105,10 +105,10 @@ body.dragging {
   padding: 0;
   aspect-ratio: auto;
   margin-right: calc(12px * var(--ui-density));
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 .topbar .topbar-gear:hover {
-  color: var(--text);
+  color: var(--fg-default);
 }
 .topbar .topbar-gear svg {
   width: 17px;
@@ -118,7 +118,7 @@ body.dragging {
 .pane {
   display: flex;
   flex-direction: column;
-  background: var(--pane-bg);
+  background: var(--canvas-card);
   min-width: 0;
   overflow: hidden;
 }
@@ -151,8 +151,8 @@ body.dragging {
   margin: 6px 8px;
   padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
-  color: var(--danger);
-  background: var(--input-bg);
+  color: var(--danger-fg);
+  background: var(--canvas-input);
   border-radius: calc(4px * var(--ui-radius-scale));
   white-space: pre-wrap;
 }
@@ -164,7 +164,7 @@ body.dragging {
   flex-direction: column;
   gap: calc(8px * var(--ui-density));
   align-items: flex-start;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(12px * var(--ui-scale));
 }
 
@@ -186,7 +186,7 @@ body.dragging {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(14px * var(--ui-scale));
 }
 
@@ -204,7 +204,7 @@ body.dragging {
 }
 
 .detail .dim {
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .detail .path {
@@ -214,9 +214,9 @@ body.dragging {
 }
 
 .arch-pill {
-  color: var(--warn);
+  color: var(--attention-fg);
   font-size: calc(11px * var(--ui-scale));
-  border: 1px solid var(--warn);
+  border: 1px solid var(--attention-fg);
   border-radius: calc(3px * var(--ui-radius-scale));
   padding: 0 calc(5px * var(--ui-density));
 }
@@ -226,11 +226,11 @@ body.dragging {
   gap: calc(18px * var(--ui-density));
   margin: 16px 0;
   font-size: calc(13px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 .stats b {
-  color: var(--text);
+  color: var(--fg-default);
 }
 
 .stats .model {
@@ -246,7 +246,7 @@ body.dragging {
 }
 
 .section {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
   padding-top: calc(16px * var(--ui-density));
 }
 
@@ -255,13 +255,13 @@ body.dragging {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   margin-bottom: 10px;
 }
 
 .sm.dim {
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* ---- Phase 7: workspace (toolbar + terminal + code-server) ---- */
@@ -282,10 +282,10 @@ body.dragging {
   flex: 1;
   display: flex;
   min-height: 0;
-  background: var(--pane-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-xl);
-  box-shadow: var(--work-card-shadow);
+  box-shadow: var(--shell-card-shadow);
   overflow: hidden;
 }
 
@@ -339,7 +339,7 @@ body.dragging {
   background: none;
   border: none;
   font: inherit;
-  color: var(--text-dim);
+  color: var(--fg-muted);
   border-radius: var(--sway-radius-sm);
   padding: calc(2px * var(--ui-density));
   cursor: pointer;
@@ -349,8 +349,8 @@ body.dragging {
 }
 
 .tab-close:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
 }
 
 /* Overflow tab bar (shared by the terminal + editor tab bars via OverflowTabBar) */
@@ -384,9 +384,9 @@ body.dragging {
   margin: 0 4px;
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   white-space: nowrap;
@@ -397,8 +397,8 @@ body.dragging {
 }
 .tab-overflow-count:hover,
 .tab-overflow-count.active {
-  color: var(--text);
-  border-color: var(--brand);
+  color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 /* The overflow-tab dropdown (+N) renders through the shared <Menu> component;
@@ -460,10 +460,10 @@ body.dragging {
 }
 
 .cm-tooltip.cm-tooltip-lint {
-  background: var(--pane-head-bg);
-  border: 1px solid var(--border);
+  background: var(--canvas-head);
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  color: var(--text);
+  color: var(--fg-default);
 }
 .cm-tooltip .cm-diagnostic {
   border-left-width: 3px;

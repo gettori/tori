@@ -13,7 +13,7 @@
 }
 
 .tbEmpty {
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(12px * var(--ui-scale));
   padding: calc(2px * var(--ui-density)) 0;
 }
@@ -48,7 +48,7 @@
   gap: calc(6px * var(--ui-density));
   font-size: calc(11px * var(--ui-scale));
   white-space: nowrap;
-  color: var(--text-dim);
+  color: var(--fg-muted);
 }
 
 /* Vertical rule between the session title and the counts. As its own flex
@@ -57,7 +57,7 @@
   flex: none;
   align-self: stretch;
   width: 1px;
-  background: var(--border);
+  background: var(--border-default);
 }
 
 .tbStats .statModel {
@@ -69,7 +69,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(4px * var(--ui-density));
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -82,7 +82,7 @@
 }
 
 .tbStats .statSep {
-  color: var(--text-dim);
+  color: var(--fg-muted);
   font-size: calc(18px * var(--ui-scale));
   line-height: 1;
 }
@@ -101,14 +101,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 
 .tbCrumb .crumb.leaf {
   flex: 0 1 auto;
   /* Match the sidebar session row (`.tree` is 13px). */
   font-size: calc(13px * var(--ui-scale));
-  color: var(--text);
+  color: var(--fg-default);
   display: inline-flex;
   align-items: center;
   gap: calc(5px * var(--ui-density));
@@ -124,7 +124,7 @@
 .tbCrumb .crumbSep {
   font-size: calc(12px * var(--ui-scale));
   flex: 0 0 auto;
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 
 .tbActions {
@@ -144,10 +144,10 @@
   aspect-ratio: auto;
   gap: calc(4px * var(--ui-density));
   /* Rest at the faint icon color (quiet chrome), brighten on hover. */
-  color: var(--text-faint);
+  color: var(--fg-subtle);
 }
 .tbRow .tbActions button:hover {
-  color: var(--text);
+  color: var(--fg-default);
 }
 .tbActions .tbAppIco {
   width: 17px;
@@ -161,6 +161,6 @@
 
 .tbErr {
   margin-top: 6px;
-  color: var(--danger);
+  color: var(--danger-fg);
   font-size: calc(11px * var(--ui-scale));
 }

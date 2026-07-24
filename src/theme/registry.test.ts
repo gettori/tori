@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_THEME_ID, getBundledTheme, listSelectableThemes } from "./bundled";
+import { RENAME } from "./__baseline__/rename";
+import { dropLegacy, readCache, type CacheStore } from ".";
 import { paintRoles, type StyleTarget } from "./resolver";
 import { buildRoles, ROLES } from "./roles";
 
@@ -45,12 +47,12 @@ describe("painting a theme switch", () => {
   it("repaints every role when switching themes", () => {
     const { target, props } = fakeStyle();
     paintRoles(target, darkRoles);
-    expect(props.get("--bg")).toBe("#15171c");
-    expect(props.get("--syn-keyword")).toBe("#569cd6");
+    expect(props.get("--canvas-default")).toBe("#15171c");
+    expect(props.get("--syntax-keyword")).toBe("#569cd6");
 
     paintRoles(target, lightRoles);
-    expect(props.get("--bg")).toBe("#ffffff");
-    expect(props.get("--syn-keyword")).toBe("#0000ff");
+    expect(props.get("--canvas-default")).toBe("#ffffff");
+    expect(props.get("--syntax-keyword")).toBe("#0000ff");
     expect(props.size).toBe(ROLES.length);
   });
 
@@ -74,12 +76,86 @@ describe("painting a theme switch", () => {
   it("removes an owned key the theme omits instead of stranding the old value", () => {
     const { target, props } = fakeStyle();
     paintRoles(target, darkRoles);
-    expect(props.get("--accent")).toBe("#4a9eff");
+    expect(props.get("--accent-fg")).toBe("#4a9eff");
 
     const partial = { ...lightRoles };
-    delete partial["--accent"];
+    delete partial["--accent-fg"];
     paintRoles(target, partial);
 
-    expect(props.has("--accent")).toBe(false);
+    expect(props.has("--accent-fg")).toBe(false);
+  });
+});
+
+// The upgrade path. The cached token map is namespaced by cssVar and every one
+// of those names changed, so v1 maps are dropped; the selection is not, so a
+// Light install still boots light on the very first launch after the rename
+// rather than flashing the dark fallback.
+describe("the v1 to v2 cache handoff", () => {
+  function fakeStore(seed: Record<string, string>): CacheStore & { seed: Record<string, string> } {
+    return {
+      seed,
+      getItem: (k) => (k in seed ? seed[k] : null),
+      removeItem: (k) => void delete seed[k],
+    };
+  }
+
+  /** The pre-rename name for a current one, looked up rather than written out.
+   *  A v1 fixture spelled literally is indistinguishable from a call site the
+   *  codemod missed, so the next run would "fix" it and leave this asserting
+   *  nothing. Deriving it means the fixture holds no old-name literal at all. */
+  const legacy = (current: string) => Object.keys(RENAME).find((old) => RENAME[old] === current)!;
+
+  it("keeps the kind from a v1 selection and discards the v1 token map", () => {
+    const store = fakeStore({
+      "sway.theme.selected.v1": JSON.stringify({ kind: "light", bundledId: "light-plus" }),
+      "sway.theme.v1": JSON.stringify({
+        [legacy("--fg-default")]: "#1f2328",
+        [legacy("--canvas-default")]: "#ffffff",
+      }),
+    });
+
+    const { kind, tokens } = readCache(store);
+
+    expect(kind).toBe("light");
+    expect(tokens).toEqual({});
+  });
+
+  it("clears both v1 keys, so the next boot reads only v2", () => {
+    const store = fakeStore({
+      "sway.theme.selected.v1": JSON.stringify({ kind: "light" }),
+      "sway.theme.v1": "{}",
+    });
+
+    dropLegacy(store);
+
+    expect(Object.keys(store.seed)).toEqual([]);
+    expect(readCache(store).kind).toBeNull();
+  });
+
+  // These land as inline props on <html>, above every rule in the token layer.
+  // A key a future build wrote would otherwise be pinned there permanently.
+  it("paints only owned keys, dropping anything else the cache holds", () => {
+    const store = fakeStore({
+      "sway.theme.v2": JSON.stringify({
+        "--fg-default": "#e6e6e6",
+        "--ui-density": "0.5",
+        "--some-future-role": "#ff00ff",
+      }),
+    });
+
+    expect(readCache(store).tokens).toEqual({ "--fg-default": "#e6e6e6" });
+  });
+
+  it("prefers v2 once it exists, under the new names", () => {
+    const store = fakeStore({
+      "sway.theme.selected.v2": JSON.stringify({ kind: "dark", bundledId: "sway-dark" }),
+      "sway.theme.selected.v1": JSON.stringify({ kind: "light" }),
+      "sway.theme.v2": JSON.stringify({ "--fg-default": "#e6e6e6" }),
+    });
+
+    const { kind, tokens } = readCache(store);
+
+    expect(kind).toBe("dark");
+    expect(tokens).toEqual({ "--fg-default": "#e6e6e6" });
   });
 });

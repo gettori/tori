@@ -3,16 +3,16 @@
    sizes. Colored variants (primary/success/warn/danger) hover with a brightness
    lift (from `modalBtn`); the flat variants (default/ghost) hover to a gold
    brand border. Keyboard focus paints a --brand-ring; primary is the brand
-   gold (--brand fill, --brand-on text). */
+   gold (--brand-default fill, --brand-on text). */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: calc(6px * var(--ui-density));
-  background: var(--hover);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: var(--neutral-hover);
+  border: 1px solid var(--border-default);
+  color: var(--fg-default);
   border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
   font-family: inherit;
@@ -29,7 +29,7 @@
 /* Keyboard focus: a gold brand ring (pointer focus stays quiet). */
 .btn:focus-visible {
   outline: none;
-  border-color: var(--brand);
+  border-color: var(--brand-default);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
@@ -51,35 +51,35 @@
 
 /* ---- Variants ---- */
 
-/* default: the flat --hover base above, nothing extra. */
+/* default: the flat --neutral-hover base above, nothing extra. */
 .default {
 }
 
 .primary {
-  background: var(--brand);
-  border-color: var(--brand);
+  background: var(--brand-default);
+  border-color: var(--brand-default);
   color: var(--brand-on);
   font-weight: 600;
 }
 
 .success {
-  background: var(--success);
-  border-color: var(--success);
-  color: var(--on-solid);
+  background: var(--success-fg);
+  border-color: var(--success-fg);
+  color: var(--fg-on-emphasis);
   font-weight: 600;
 }
 
 .warn {
-  /* Darker than the --warn text color so white label text stays legible. */
-  background: var(--warn-strong);
-  border-color: var(--warn-strong);
-  color: var(--on-solid);
+  /* Darker than the --attention-fg text color so white label text stays legible. */
+  background: var(--attention-emphasis);
+  border-color: var(--attention-emphasis);
+  color: var(--fg-on-emphasis);
 }
 
 .danger {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--on-solid);
+  background: var(--danger-fg);
+  border-color: var(--danger-fg);
+  color: var(--fg-on-emphasis);
 }
 
 .ghost {
@@ -89,7 +89,7 @@
 /* ---- Hover ---- */
 .default:hover,
 .ghost:hover {
-  border-color: var(--brand);
+  border-color: var(--brand-default);
 }
 
 .primary:hover,

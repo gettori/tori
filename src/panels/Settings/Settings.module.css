@@ -4,7 +4,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: var(--scrim);
+    background: var(--scrim-default);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -16,9 +16,9 @@
   .panel {
     width: 100%;
     max-width: 560px;
-    background: var(--pane-bg);
-    color: var(--text);
-    border: var(--sway-border-thin) solid var(--border);
+    background: var(--canvas-card);
+    color: var(--fg-default);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-lg);
     box-shadow: var(--shadow-lg);
     font-family: var(--sway-font-ui);
@@ -29,7 +29,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--sway-space-5) var(--sway-space-6);
-    border-bottom: var(--sway-border-thin) solid var(--border);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
 
   .title {
@@ -52,7 +52,7 @@
     font-size: var(--sway-text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim);
+    color: var(--fg-muted);
     margin-bottom: var(--sway-space-4);
   }
 
@@ -66,7 +66,7 @@
 
   .label {
     font-size: var(--sway-text-md);
-    color: var(--text);
+    color: var(--fg-default);
   }
 
   .control {
@@ -77,9 +77,9 @@
 
   .input,
   .select {
-    background: var(--input-bg);
-    color: var(--text);
-    border: var(--sway-border-thin) solid var(--border);
+    background: var(--canvas-input);
+    color: var(--fg-default);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
     padding: var(--sway-space-2) var(--sway-space-3);
     font: inherit;
@@ -91,7 +91,7 @@
   .input:focus,
   .select:focus {
     outline: none;
-    border-color: var(--brand);
+    border-color: var(--brand-default);
     box-shadow: 0 0 0 3px var(--brand-ring);
   }
 
@@ -104,14 +104,14 @@
 
   .hint {
     font-size: var(--sway-text-xs);
-    color: var(--text-dim);
+    color: var(--fg-muted);
     margin-top: var(--sway-space-2);
   }
 
   /* --- Agents cards --- */
 
   .card {
-    border: var(--sway-border-thin) solid var(--border);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
     padding: var(--sway-space-4);
     margin-bottom: var(--sway-space-3);
@@ -136,7 +136,7 @@
   .cardStatus code {
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-xs);
-    color: var(--text-dim);
+    color: var(--fg-muted);
   }
 
   .dot {
@@ -146,26 +146,26 @@
     flex: none;
   }
   .dotOk {
-    background: var(--success);
+    background: var(--success-fg);
   }
   .dotWarn {
-    background: var(--warn);
+    background: var(--attention-fg);
   }
   /* Not installed is absence, not failure: an outline, not a red light. */
   .dotOff {
     background: transparent;
-    box-shadow: inset 0 0 0 1px var(--text-dim);
+    box-shadow: inset 0 0 0 1px var(--fg-muted);
   }
 
   .cardStatus {
     font-size: var(--sway-text-sm);
-    color: var(--text);
+    color: var(--fg-default);
     margin-top: var(--sway-space-3);
   }
 
   .cardMeta {
     font-size: var(--sway-text-xs);
-    color: var(--text-dim);
+    color: var(--fg-muted);
     margin-top: var(--sway-space-2);
   }
 
@@ -181,18 +181,18 @@
 
   .chip {
     font-size: var(--sway-text-xs);
-    color: var(--text-dim);
-    background: var(--input-bg);
-    border: var(--sway-border-thin) solid var(--border);
+    color: var(--fg-muted);
+    background: var(--canvas-input);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-sm);
     padding: 1px var(--sway-space-2);
   }
 
   .welcome {
     font-size: var(--sway-text-sm);
-    color: var(--text);
-    background: var(--input-bg);
-    border: var(--sway-border-thin) solid var(--border);
+    color: var(--fg-default);
+    background: var(--canvas-input);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
     padding: var(--sway-space-4);
     margin-bottom: var(--sway-space-5);
