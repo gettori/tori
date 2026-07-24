@@ -2,11 +2,11 @@
   flex: 1;
   overflow: auto;
   background: var(--canvas-default);
-  padding: calc(16px * var(--ui-density)) calc(24px * var(--ui-density));
+  padding: calc(16px * var(--ui-scale)) calc(24px * var(--ui-scale));
 }
 
 .markdownBody {
-  max-width: 860px;
+  max-width: calc(860px * var(--ui-scale));
   margin: 0 auto;
   color: var(--fg-default);
   font-size: var(--sway-text-2xl);
@@ -41,7 +41,7 @@
 .markdownBody :global(pre) {
   background: var(--neutral-hover);
   border-radius: var(--sway-radius-md);
-  padding: calc(10px * var(--ui-density));
+  padding: calc(10px * var(--ui-scale));
   overflow-x: auto;
 }
 .markdownBody :global(pre code) {
@@ -65,7 +65,7 @@
 .markdownBody :global(th),
 .markdownBody :global(td) {
   border: 1px solid var(--border-default);
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 .markdownBody :global(ul),
 .markdownBody :global(ol) {

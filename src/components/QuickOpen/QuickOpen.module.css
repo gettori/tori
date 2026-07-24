@@ -6,12 +6,12 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding-top: calc(80px * var(--ui-density));
+  padding-top: calc(80px * var(--ui-scale));
   background: var(--scrim-soft);
 }
 
 .qoPanel {
-  width: 560px;
+  width: calc(560px * var(--ui-scale));
   max-width: 90vw;
   max-height: 60vh;
   display: flex;
@@ -25,7 +25,7 @@
 
 .qoInput {
   flex: none;
-  padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   font-size: var(--sway-text-xl);
   color: var(--fg-default);
   background: var(--canvas-input);
@@ -41,8 +41,8 @@
 .qoItem {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(5px * var(--ui-density)) calc(12px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(12px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
   cursor: pointer;
@@ -63,7 +63,7 @@
 }
 
 .qoEmpty {
-  padding: calc(10px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
 }

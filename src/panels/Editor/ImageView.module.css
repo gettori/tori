@@ -5,7 +5,7 @@
   justify-content: center;
   overflow: auto;
   background: var(--canvas-default);
-  padding: calc(16px * var(--ui-density));
+  padding: calc(16px * var(--ui-scale));
 }
 
 .image {

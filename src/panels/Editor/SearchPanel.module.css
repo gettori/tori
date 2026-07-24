@@ -10,7 +10,7 @@
 }
 
 .searchPanel :global(.tree-empty) {
-  padding: calc(8px * var(--ui-density)) calc(12px * var(--ui-density));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
 }
 
@@ -18,14 +18,14 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
 }
 
 .searchInput {
   width: 100%;
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-default);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
@@ -34,7 +34,7 @@
 }
 
 .truncatedNotice {
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
@@ -42,19 +42,19 @@
 .results {
   flex: 1;
   overflow: auto;
-  padding: calc(4px * var(--ui-density)) 0;
+  padding: calc(4px * var(--ui-scale)) 0;
   user-select: none;
 }
 
 .fileGroup {
-  margin-bottom: calc(4px * var(--ui-density));
+  margin-bottom: calc(4px * var(--ui-scale));
 }
 
 .fileHeader {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-default);
   font-weight: 600;
   white-space: nowrap;
@@ -75,9 +75,9 @@
 
 .matchRow {
   display: flex;
-  gap: calc(8px * var(--ui-density));
-  margin: 0 calc(4px * var(--ui-density));
-  padding: calc(1px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(1px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   cursor: pointer;
   white-space: nowrap;
@@ -91,7 +91,7 @@
 
 .matchLine {
   flex: none;
-  width: 32px;
+  width: calc(32px * var(--ui-scale));
   text-align: right;
   color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;

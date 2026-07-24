@@ -13,7 +13,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: calc(16px * var(--ui-scale));
   font-size: var(--sway-text-4xl);
   line-height: 1;
   font-family: "seti";
@@ -77,7 +77,7 @@ body.dragging {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  height: 44px;
+  height: calc(44px * var(--ui-scale));
   background: transparent;
 }
 
@@ -100,19 +100,19 @@ body.dragging {
   flex: 0 0 auto;
   align-self: center;
   box-sizing: border-box;
-  height: 24px;
-  width: 24px;
+  height: calc(24px * var(--ui-scale));
+  width: calc(24px * var(--ui-scale));
   padding: 0;
   aspect-ratio: auto;
-  margin-right: calc(12px * var(--ui-density));
+  margin-right: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
 }
 .topbar .topbar-gear:hover {
   color: var(--fg-default);
 }
 .topbar .topbar-gear svg {
-  width: 17px;
-  height: 17px;
+  width: calc(17px * var(--ui-scale));
+  height: calc(17px * var(--ui-scale));
 }
 
 .pane {
@@ -148,8 +148,8 @@ body.dragging {
 }
 
 .detail-err {
-  margin: 6px 8px;
-  padding: calc(6px * var(--ui-density)) calc(8px * var(--ui-density));
+  margin: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   font-size: var(--sway-text-md);
   color: var(--danger-fg);
   background: var(--canvas-input);
@@ -159,17 +159,17 @@ body.dragging {
 
 /* First-run / no-projects empty state inside the tree. */
 .tree-empty {
-  padding: calc(18px * var(--ui-density)) calc(14px * var(--ui-density));
+  padding: calc(18px * var(--ui-scale)) calc(14px * var(--ui-scale));
   display: flex;
   flex-direction: column;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
   align-items: flex-start;
   color: var(--fg-muted);
   font-size: var(--sway-text-lg);
 }
 
 .tree-empty p {
-  margin: 0 0 2px;
+  margin: 0 0 calc(2px * var(--ui-scale));
   line-height: 1.4;
 }
 
@@ -178,7 +178,7 @@ body.dragging {
 .detail {
   flex: 1;
   overflow: auto;
-  padding: calc(20px * var(--ui-density)) calc(24px * var(--ui-density));
+  padding: calc(20px * var(--ui-scale)) calc(24px * var(--ui-scale));
 }
 
 .detail-empty {
@@ -191,7 +191,7 @@ body.dragging {
 }
 
 .detail-head h2 {
-  margin: 0 0 4px;
+  margin: 0 0 calc(4px * var(--ui-scale));
   font-size: var(--sway-text-4xl);
   font-weight: 600;
 }
@@ -200,7 +200,7 @@ body.dragging {
   font-size: var(--sway-text-xl);
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-density));
+  gap: calc(8px * var(--ui-scale));
 }
 
 .detail .dim {
@@ -208,7 +208,7 @@ body.dragging {
 }
 
 .detail .path {
-  margin-top: 4px;
+  margin-top: calc(4px * var(--ui-scale));
   font-family: Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
 }
@@ -218,13 +218,13 @@ body.dragging {
   font-size: var(--sway-text-md);
   border: 1px solid var(--attention-fg);
   border-radius: calc(3px * var(--ui-radius-scale));
-  padding: 0 calc(5px * var(--ui-density));
+  padding: 0 calc(5px * var(--ui-scale));
 }
 
 .stats {
   display: flex;
-  gap: calc(18px * var(--ui-density));
-  margin: 16px 0;
+  gap: calc(18px * var(--ui-scale));
+  margin: calc(16px * var(--ui-scale)) 0;
   font-size: var(--sway-text-xl);
   color: var(--fg-muted);
 }
@@ -241,13 +241,13 @@ body.dragging {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(8px * var(--ui-density));
-  margin: 16px 0 24px;
+  gap: calc(8px * var(--ui-scale));
+  margin: calc(16px * var(--ui-scale)) 0 calc(24px * var(--ui-scale));
 }
 
 .section {
   border-top: 1px solid var(--border-default);
-  padding-top: calc(16px * var(--ui-density));
+  padding-top: calc(16px * var(--ui-scale));
 }
 
 .section-title {
@@ -256,7 +256,7 @@ body.dragging {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-muted);
-  margin-bottom: 10px;
+  margin-bottom: calc(10px * var(--ui-scale));
 }
 
 .sm.dim {
@@ -272,7 +272,7 @@ body.dragging {
   min-width: 0;
   /* Breathing room around the raised card. The left gap is the outer splitter,
      so no padding-left here. */
-  padding: 0 10px 10px 0;
+  padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
 }
 
 /* The raised work-card: terminal + editor read as one elevated block floating
@@ -320,7 +320,7 @@ body.dragging {
 /* With the sidebar hidden its Resizer gutter is gone too, so restore the
    card's left breathing room the gutter normally provided. */
 .workspace.no-sidebar {
-  padding-left: 10px;
+  padding-left: calc(10px * var(--ui-scale));
 }
 
 /* Shared tab-bar content (terminal + editor tabs) */
@@ -341,7 +341,7 @@ body.dragging {
   font: inherit;
   color: var(--fg-muted);
   border-radius: var(--sway-radius-sm);
-  padding: calc(2px * var(--ui-density));
+  padding: calc(2px * var(--ui-scale));
   cursor: pointer;
   transition:
     background var(--sway-duration-fast) ease,
@@ -381,8 +381,8 @@ body.dragging {
 .tab-overflow-count {
   align-self: center;
   flex: none;
-  margin: 0 4px;
-  padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   background: transparent;
@@ -406,7 +406,7 @@ body.dragging {
 
 /* Git diff gutter */
 .cm-diff-gutter {
-  width: 3px;
+  width: calc(3px * var(--ui-scale));
   padding: 0;
 }
 
@@ -467,7 +467,7 @@ body.dragging {
 }
 .cm-tooltip .cm-diagnostic {
   border-left-width: 3px;
-  padding: calc(4px * var(--ui-density)) calc(8px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 .cm-tooltip .cm-diagnostic-error {
   border-left-color: var(--diag-error);

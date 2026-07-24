@@ -4,11 +4,11 @@
 .menu {
   position: fixed;
   z-index: 1000;
-  min-width: 180px;
-  max-width: 320px;
+  min-width: calc(180px * var(--ui-scale));
+  max-width: calc(320px * var(--ui-scale));
   max-height: 60vh;
   overflow-y: auto;
-  padding: calc(6px * var(--ui-density));
+  padding: calc(6px * var(--ui-scale));
   -webkit-user-select: none;
   user-select: none;
   background: var(--canvas-card);
@@ -20,8 +20,8 @@
 .menuItem {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
-  padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
   border-radius: var(--sway-radius-md);
@@ -58,6 +58,6 @@
 
 .menuSep {
   height: 1px;
-  margin: 4px 6px;
+  margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--border-default);
 }

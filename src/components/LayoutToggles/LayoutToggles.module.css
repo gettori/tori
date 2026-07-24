@@ -6,7 +6,7 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-density));
+  gap: calc(6px * var(--ui-scale));
 }
 
 /* Sidebar toggle: standalone bordered icon button (the file-tree toggle look). */
@@ -15,7 +15,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: calc(4px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale));
   background: none;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
@@ -55,7 +55,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: calc(4px * var(--ui-density)) calc(6px * var(--ui-density));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--fg-muted);
