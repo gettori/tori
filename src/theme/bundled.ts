@@ -42,8 +42,9 @@ export function listThemes(): BundledTheme[] {
   return THEMES;
 }
 
-/** Themes the picker may offer. */
-export function listSelectableThemes(): BundledTheme[] {
+/** Bundled themes the picker may offer. The picker's full list is
+ *  `listSelectableThemes` in index.ts, which folds in the user themes. */
+export function listSelectableBundled(): BundledTheme[] {
   return THEMES.filter((t) => t.selectable);
 }
 

@@ -1,4 +1,4 @@
-import { onMount, For, Show } from "solid-js";
+import { createMemo, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
 import { settings, saveSettings, type Appearance, type Typography, type Layout, type Checkpoints } from "./settingsStore";
@@ -55,14 +55,19 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     return Math.min(max, Math.max(min, n));
   };
 
+  // One memo, split into the two groups the picker renders. The list folds the
+  // bundled set together with whatever is in the themes folder, so rebuilding it
+  // per <For> would do that work four times for one render.
+  const themes = createMemo(() => listSelectableThemes());
+  const bundledThemes = createMemo(() => themes().filter((t) => t.source === "bundled"));
+  const userThemes = createMemo(() => themes().filter((t) => t.source !== "bundled"));
+
   // The registry falls back to the default for an id it does not know, so the
   // picker has to show what is actually painted. Binding the stored id directly
   // renders the select *blank* whenever settings.json names a theme that no
   // longer exists, which reads as "no theme" rather than "that one is gone".
   const currentTheme = () =>
-    listSelectableThemes().some((t) => t.id === settings.appearance.theme)
-      ? settings.appearance.theme
-      : DEFAULT_THEME_ID;
+    themes().some((t) => t.id === settings.appearance.theme) ? settings.appearance.theme : DEFAULT_THEME_ID;
 
   return (
     <Portal>
@@ -102,9 +107,18 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                     value={currentTheme()}
                     onChange={(e) => setAppearance({ theme: e.currentTarget.value })}
                   >
-                    <For each={listSelectableThemes()}>
-                      {(t) => <option value={t.id}>{t.label}</option>}
-                    </For>
+                    {/* Grouped by source so a user theme is visibly not one of
+                        Sway's, and a file dropped in the folder is visibly the
+                        thing that appeared. The user group is omitted entirely
+                        when the folder is empty, rather than shown empty. */}
+                    <optgroup label="Bundled">
+                      <For each={bundledThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+                    </optgroup>
+                    <Show when={userThemes().length > 0}>
+                      <optgroup label="From ~/.config/sway/themes">
+                        <For each={userThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+                      </optgroup>
+                    </Show>
                   </select>
                 </div>
               </div>

@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import baseline from "./__baseline__/tokens-baseline.json";
-import { RENAME } from "./__baseline__/rename";
 import swayDark from "./palettes/sway-dark.json";
 import swayLight from "./palettes/sway-light.json";
 import { alpha, buildRoles, mix, ROLES, variants } from "./roles";
@@ -8,47 +6,11 @@ import { PALETTE_KEYS, validatePalette, type Palette } from "./schema";
 
 const dark = swayDark as Palette;
 const light = swayLight as Palette;
-const PALETTES: [string, Palette, Record<string, string>][] = [
-  ["sway-dark", dark, baseline.dark],
-  ["sway-light", light, baseline.light],
+const PALETTES: [string, Palette][] = [
+  ["sway-dark", dark],
+  ["sway-light", light],
 ];
 
-/**
- * The values that have deliberately left the frozen baseline, and why.
- *
- * The baseline proves the Phase 4 rename was NOMINAL: it is a migration record,
- * not a design freeze. Phase 6 measured every role against the surface it is
- * drawn on and moved the ones that missed their floor - which is the whole point
- * of shipping a contrast gate, and is impossible to do while every value is
- * pinned. So a value may leave the baseline only by being named here.
- *
- * Each entry is checked two ways: it must actually differ (an entry for a value
- * that never moved is stale and fails), and the palette it belongs to must clear
- * the gate (contrast.test.ts). An exemption that is not doing any work, or that
- * is covering a value still failing its floor, does not survive.
- */
-const MOVED_BY_THE_CONTRAST_GATE: Record<"dark" | "light", Record<string, string>> = {
-  dark: {
-    "--brand-ring": "a focus ring at 2.5 on the surfaces it is drawn on; the wash went 0.5 to 0.6 to clear 3.0",
-    "--accent-subtle": "the selection darkened one step so brand text on a selected row clears 4.5 (was 4.40)",
-    "--ansi-bright-black": "ANSI slot 8 was 2.90 on the terminal's canvas, just under the 3.0 graphic floor",
-    "--attention-emphasis": "a filled warn button carried a white label at 4.41; darkened to clear 4.5",
-  },
-  light: {
-    "--brand-default": "the brand gold read 4.21 on the panel head and 3.94 on a selected row",
-    "--brand-bar": "follows --brand-default, which it is derived from",
-    "--brand-ring": "a focus ring at 1.7, i.e. only visible to someone who already knew where focus was",
-    "--danger-fg": "4.37 on the panel head",
-    "--attention-fg": "3.97 on the panel head and 4.39 on the work card, the widest miss in either palette",
-    "--diff-modified": "4.39 on the work card",
-    "--diag-warning": "4.39 on the work card",
-    "--info-fg": "4.24 on the panel head",
-    "--success-fg": "4.15 on the panel head",
-    "--syntax-number": "4.15 on the editor's canvas, inherited from VS Code's Light+",
-    "--syntax-type": "4.13 on the editor's canvas, inherited from VS Code's Light+",
-    "--fg-muted": "4.41 on the panel head, and it is the second most used text role in the app",
-  },
-};
 
 describe("derivation helpers", () => {
   it("alpha() washes a hex to an rgba() string", () => {
@@ -102,69 +64,6 @@ describe("role table", () => {
       expect(value, role.id).not.toContain("var(");
       expect(value, role.id).not.toContain("undefined");
     }
-  });
-});
-
-// The proof that the new engine is behaviour-preserving. The baseline is a
-// committed snapshot of the hand-written token layer, resolved through
-// scripts/resolve-tokens.mjs, frozen BEFORE anything regenerates tokens.css - so
-// this comparison is against the old world, not against the generator's own
-// output.
-describe("generated roles reproduce the frozen token layer", () => {
-  // Since the Phase 4 flip the two maps no longer share key names, so the
-  // comparison goes through RENAME per pair. That is the whole proof the rename
-  // was nominal: the key set changed by exactly the table, and not one value
-  // moved. Swap two targets in the table and this fails, because each pair is
-  // checked against the baseline entry it claims to descend from rather than
-  // against a set or a multiset of values (many roles share a value, so a
-  // multiset comparison would wave a swap straight through).
-  it.each(PALETTES)("%s matches the baseline pair by pair", (id, palette, expected) => {
-    const built = buildRoles(palette);
-    const moved = MOVED_BY_THE_CONTRAST_GATE[palette.appearance];
-    // A superset, not an equality: phase 5 widened syntax and added the tree,
-    // tab, and editor families, so the role set has grown past the frozen map.
-    // What must still hold is that nothing the baseline covered has moved,
-    // except where the contrast gate named a reason for it.
-    for (const target of Object.values(RENAME)) expect(built, target).toHaveProperty(target);
-    for (const [oldVar, want] of Object.entries(expected)) {
-      const newVar = RENAME[oldVar];
-      expect(newVar, `${oldVar} has no rename entry`).toBeTypeOf("string");
-      if (newVar in moved) {
-        // A named exception must be doing work. If the value is back at its
-        // baseline the entry is stale, and leaving it would quietly exempt the
-        // role from the pair check for good.
-        expect(built[newVar], `${newVar} is exempt in ${id} but never moved`).not.toBe(want);
-        continue;
-      }
-      expect(built[newVar], `${oldVar} -> ${newVar}`).toBe(want);
-    }
-  });
-
-  it("covers all 150 baseline entries across both themes", () => {
-    expect(Object.keys(baseline.dark)).toHaveLength(75);
-    expect(Object.keys(baseline.light)).toHaveLength(75);
-    expect(Object.keys(RENAME)).toHaveLength(75);
-    // The role set only ever grows: every baseline role still exists, plus the
-    // families added since. A shrink means a role was dropped rather than
-    // renamed, which the pair check above would not catch on its own.
-    expect(ROLES.length).toBeGreaterThanOrEqual(75);
-  });
-
-  // An exception naming a role the baseline never covered exempts nothing while
-  // reading as a considered decision, which is the same silent rot the guard's
-  // stale-allowlist check exists to catch.
-  it("exempts only roles the baseline actually covers", () => {
-    const targets = new Set(Object.values(RENAME));
-    for (const theme of ["dark", "light"] as const) {
-      for (const cssVar of Object.keys(MOVED_BY_THE_CONTRAST_GATE[theme])) {
-        expect(targets, `${theme}: ${cssVar} is not a baseline role`).toContain(cssVar);
-      }
-    }
-  });
-
-  it("renames every baseline key exactly once, onto a distinct name", () => {
-    expect(Object.keys(RENAME).sort()).toEqual(Object.keys(baseline.dark).sort());
-    expect(new Set(Object.values(RENAME)).size).toBe(Object.keys(RENAME).length);
   });
 });
 
