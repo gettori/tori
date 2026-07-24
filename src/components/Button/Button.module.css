@@ -16,7 +16,7 @@
   border-radius: var(--sway-radius-md);
   padding: calc(6px * var(--ui-density)) calc(12px * var(--ui-density));
   font-family: inherit;
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   line-height: 1.4;
   cursor: pointer;
   transition:
@@ -40,8 +40,8 @@
 
 /* Icons scale with the UI; overridable per call site via --btn-icon-size. */
 .btn svg {
-  width: var(--btn-icon-size, calc(14px * var(--ui-scale)));
-  height: var(--btn-icon-size, calc(14px * var(--ui-scale)));
+  width: var(--btn-icon-size, calc(16px * var(--ui-scale)));
+  height: var(--btn-icon-size, calc(16px * var(--ui-scale)));
   flex: 0 0 auto;
 }
 
@@ -109,7 +109,7 @@
 
 .xs {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 /* ---- Icon-only: square padding, no label ---- */

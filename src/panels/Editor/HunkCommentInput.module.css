@@ -11,7 +11,7 @@
   border: none;
   background: transparent;
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   cursor: pointer;
   padding: 0 calc(4px * var(--ui-density));
   border-radius: var(--sway-radius-sm);
@@ -38,7 +38,7 @@
   flex: 1;
   min-width: 0;
   font-family: inherit;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   background: var(--canvas-default);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
@@ -48,7 +48,7 @@
 
 .commentSend {
   flex: none;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-default);

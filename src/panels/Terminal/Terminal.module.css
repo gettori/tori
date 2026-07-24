@@ -29,7 +29,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   color: var(--fg-muted);
   background: transparent;
   border: none;
@@ -67,7 +67,7 @@
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--fg-muted);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -139,7 +139,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 .termRestoreText {
@@ -149,7 +149,7 @@
 .termRestoreAccept,
 .termRestoreDismiss {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   border-radius: var(--sway-radius-sm);
   border: 1px solid var(--border-default);
   background: transparent;
@@ -232,7 +232,7 @@
 }
 
 .termSearchInput {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
@@ -274,7 +274,7 @@
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   text-align: center;
   padding: calc(20px * var(--ui-density));
 }

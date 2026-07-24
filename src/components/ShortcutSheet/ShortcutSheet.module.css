@@ -37,12 +37,12 @@
   }
   .title {
     margin: 0;
-    font-size: calc(14px * var(--ui-scale));
+    font-size: var(--sway-text-2xl);
     font-weight: 600;
     color: var(--fg-default);
   }
   .hint {
-    font-size: calc(11px * var(--ui-scale));
+    font-size: var(--sway-text-md);
     color: var(--fg-muted);
   }
 
@@ -68,7 +68,7 @@
   }
   .groupTitle {
     margin: 0 0 calc(4px * var(--ui-density));
-    font-size: calc(10px * var(--ui-scale));
+    font-size: var(--sway-text-sm);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -83,7 +83,7 @@
     padding: calc(4px * var(--ui-density)) 0;
   }
   .label {
-    font-size: calc(12px * var(--ui-scale));
+    font-size: var(--sway-text-lg);
     color: var(--fg-default);
   }
 
@@ -96,7 +96,7 @@
     min-width: 18px;
     padding: calc(1px * var(--ui-density)) calc(5px * var(--ui-density));
     font-family: var(--sway-font-ui);
-    font-size: calc(11px * var(--ui-scale));
+    font-size: var(--sway-text-md);
     line-height: 1.5;
     text-align: center;
     color: var(--fg-muted);

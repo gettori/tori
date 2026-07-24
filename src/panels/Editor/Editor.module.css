@@ -30,7 +30,7 @@
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   text-align: center;
   padding: calc(20px * var(--ui-density));
 }
@@ -38,14 +38,14 @@
 .editorErr {
   padding: calc(10px * var(--ui-density));
   color: var(--danger-fg);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 .followToggle {
   margin-left: auto;
   flex: none;
   align-self: center;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
   background: none;
   border: 1px solid var(--border-default);
@@ -117,7 +117,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(10px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--tab-inactive-fg);
   background: transparent;
   border-radius: var(--sway-radius-md);
@@ -145,7 +145,7 @@
 }
 
 .editorTabs :global(.tab-dirty) {
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   color: var(--tab-dirty);
 }
 
@@ -155,7 +155,7 @@
 .tabTouched {
   flex: none;
   color: var(--activity-touched);
-  font-size: calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-2xs);
   line-height: 1;
 }
 

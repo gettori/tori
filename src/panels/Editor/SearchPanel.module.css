@@ -6,7 +6,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--canvas-card);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
 }
 
 .searchPanel :global(.tree-empty) {
@@ -30,13 +30,13 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   color: var(--fg-default);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 .truncatedNotice {
   padding: calc(2px * var(--ui-density)) calc(8px * var(--ui-density));
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .results {
@@ -95,7 +95,7 @@
   text-align: right;
   color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .matchText {
@@ -103,5 +103,5 @@
   text-overflow: ellipsis;
   color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }

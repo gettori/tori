@@ -9,7 +9,7 @@
   max-width: 860px;
   margin: 0 auto;
   color: var(--fg-default);
-  font-size: calc(14px * var(--ui-scale));
+  font-size: var(--sway-text-2xl);
   line-height: 1.6;
 }
 

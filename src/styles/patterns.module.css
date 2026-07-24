@@ -14,7 +14,7 @@
   color: var(--fg-default);
   padding: calc(6px * var(--ui-density)) calc(10px * var(--ui-density));
   font-family: inherit;
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   line-height: 1.4;
   outline: none;
   transition:
@@ -44,7 +44,7 @@
   color: var(--fg-default);
   border-radius: var(--sway-radius-pill);
   padding: calc(4px * var(--ui-density)) calc(12px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 
 /* Spacious content card: rounded container with soft elevation. */

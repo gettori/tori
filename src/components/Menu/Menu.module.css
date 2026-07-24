@@ -22,7 +22,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
   border-radius: var(--sway-radius-md);
   cursor: pointer;
