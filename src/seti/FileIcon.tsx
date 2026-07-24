@@ -18,11 +18,12 @@ export function iconFor(name: string): SetiIcon {
   return defaultIcon;
 }
 
-/** Seti file-type icon, tinted with seti's per-type color (VS Code look). */
+/** Seti file-type icon. The mapping names a hue; the active theme supplies the
+ *  value, so the tree recolours on a theme switch with no work here. */
 export default function FileIcon(props: { name: string }) {
   const icon = () => iconFor(props.name);
   return (
-    <span class="seti-icon" aria-hidden="true" style={{ color: icon().color }}>
+    <span class="seti-icon" aria-hidden="true" style={{ color: `var(--scale-${icon().hue})` }}>
       {icon().glyph}
     </span>
   );

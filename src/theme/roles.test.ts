@@ -83,7 +83,10 @@ describe("generated roles reproduce the frozen token layer", () => {
   // multiset comparison would wave a swap straight through).
   it.each(PALETTES)("%s matches the baseline pair by pair", (_id, palette, expected) => {
     const built = buildRoles(palette);
-    expect(Object.keys(built).sort()).toEqual(Object.values(RENAME).sort());
+    // A superset, not an equality: phase 5 widened syntax and added the tree,
+    // tab, and editor families, so the role set has grown past the frozen map.
+    // What must still hold is that nothing the baseline covered has moved.
+    for (const target of Object.values(RENAME)) expect(built, target).toHaveProperty(target);
     for (const [oldVar, want] of Object.entries(expected)) {
       const newVar = RENAME[oldVar];
       expect(newVar, `${oldVar} has no rename entry`).toBeTypeOf("string");
@@ -94,11 +97,91 @@ describe("generated roles reproduce the frozen token layer", () => {
   it("covers all 150 baseline entries across both themes", () => {
     expect(Object.keys(baseline.dark)).toHaveLength(75);
     expect(Object.keys(baseline.light)).toHaveLength(75);
-    expect(ROLES).toHaveLength(75);
+    expect(Object.keys(RENAME)).toHaveLength(75);
+    // The role set only ever grows: every baseline role still exists, plus the
+    // families added since. A shrink means a role was dropped rather than
+    // renamed, which the pair check above would not catch on its own.
+    expect(ROLES.length).toBeGreaterThanOrEqual(75);
   });
 
   it("renames every baseline key exactly once, onto a distinct name", () => {
     expect(Object.keys(RENAME).sort()).toEqual(Object.keys(baseline.dark).sort());
     expect(new Set(Object.values(RENAME)).size).toBe(Object.keys(RENAME).length);
+  });
+});
+
+// Widening syntax is only worth anything if the categories are telling apart.
+// These six are the ones a reader actually uses to parse a line at a glance,
+// and VS Code's Dark+/Light+ (where this ramp started) collapses two of the
+// pairs, so they are asserted rather than assumed.
+describe("the syntax ramp is legible", () => {
+  const MUST_DIFFER = [
+    "--syntax-keyword",
+    "--syntax-control",
+    "--syntax-type",
+    "--syntax-class",
+    "--syntax-property",
+    "--syntax-parameter",
+  ];
+
+  it.each(PALETTES)("%s gives each of the six its own value", (_id, palette) => {
+    const built = buildRoles(palette);
+    const values = MUST_DIFFER.map((name) => {
+      expect(built, name).toHaveProperty(name);
+      return built[name];
+    });
+    expect(new Set(values).size).toBe(MUST_DIFFER.length);
+  });
+
+  it.each(PALETTES)("%s covers all 20 syntax categories", (_id, palette) => {
+    const built = buildRoles(palette);
+    const syntax = ROLES.filter((r) => r.group === "syntax");
+    expect(syntax).toHaveLength(20);
+    for (const role of syntax) expect(built[role.cssVar], role.id).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+// Adopting the tree/tab/activity roles must not restyle anything: they were
+// introduced as aliases so the surfaces become themeable, not so they change.
+// If one of these pairs ever diverges that is a design decision, and it should
+// arrive as a failing test rather than as a surprise in a screenshot.
+describe("the new surface roles start as exact aliases", () => {
+  const ALIASES: [string, string][] = [
+    ["--tree-row-hover", "--neutral-hover"],
+    ["--tree-row-active", "--accent-subtle"],
+    ["--tab-active-bg", "--neutral-hover"],
+    ["--tab-hover-bg", "--neutral-hover"],
+    ["--tab-active-fg", "--fg-default"],
+    ["--tab-inactive-fg", "--fg-muted"],
+    ["--tab-dirty", "--brand-default"],
+    ["--activity-touched", "--accent-fg"],
+    ["--activity-editing", "--brand-default"],
+  ];
+
+  it.each(PALETTES)("%s resolves each new role to the value it replaced", (_id, palette) => {
+    const built = buildRoles(palette);
+    for (const [added, replaced] of ALIASES) {
+      expect(built[added], `${added} should still equal ${replaced}`).toBe(built[replaced]);
+    }
+  });
+});
+
+// The file tree used to be pinned to seti's dark-variant hexes, so icons stayed
+// dark-canvas coloured over a light theme. The mapping now names a hue and the
+// theme supplies the value, which is only worth anything if the two themes
+// actually resolve those names differently.
+describe("file-icon hues follow the theme", () => {
+  const HUES = ROLES.filter((r) => r.group === "scale");
+
+  it("declares all 11 seti hues", () => {
+    expect(HUES).toHaveLength(11);
+  });
+
+  it("resolves every hue to a different value in each theme", () => {
+    const darkBuilt = buildRoles(dark);
+    const lightBuilt = buildRoles(light);
+    for (const role of HUES) {
+      expect(darkBuilt[role.cssVar], role.id).not.toBe(lightBuilt[role.cssVar]);
+    }
   });
 });
