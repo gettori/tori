@@ -16,9 +16,17 @@ function fakeStyle() {
 }
 
 describe("bundled registry", () => {
-  it("offers both Sway themes", () => {
-    expect(listSelectableThemes().map((t) => t.id)).toEqual(["sway-dark", "sway-light"]);
-    expect(listSelectableThemes().map((t) => t.label)).toEqual(["Sway Dark", "Sway Light"]);
+  it("offers the two Sway themes and the three ports", () => {
+    expect(listSelectableThemes().map((t) => t.id)).toEqual([
+      "sway-dark",
+      "sway-light",
+      "catppuccin-mocha",
+      "tokyo-night",
+      "rose-pine-dawn",
+    ]);
+    // Sway's own two lead, so the picker's first entries are the ones the app
+    // was designed against.
+    expect(listSelectableThemes().slice(0, 2).map((t) => t.label)).toEqual(["Sway Dark", "Sway Light"]);
   });
 
   it("defaults to Sway Dark", () => {

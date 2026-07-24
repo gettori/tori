@@ -1,7 +1,10 @@
 // Registry of themes shipped with Sway. Each is a palette of primitives that
 // roles.ts expands into the full role set; nothing here is a VS Code theme.
+import catppuccinMocha from "./palettes/catppuccin-mocha.json";
+import rosePineDawn from "./palettes/rose-pine-dawn.json";
 import swayDark from "./palettes/sway-dark.json";
 import swayLight from "./palettes/sway-light.json";
+import tokyoNight from "./palettes/tokyo-night.json";
 import type { Appearance, Palette } from "./schema";
 
 export type BundledTheme = {
@@ -15,6 +18,12 @@ export type BundledTheme = {
 const THEMES: BundledTheme[] = [
   { id: "sway-dark", label: "Sway Dark", appearance: "dark", selectable: true, palette: swayDark as Palette },
   { id: "sway-light", label: "Sway Light", appearance: "light", selectable: true, palette: swayLight as Palette },
+  // Ports. Each keeps its source theme's own hues but adopts Sway's fixed
+  // families: the champagne gold brand, the session status indicators, and the
+  // agent marks are not the port's to repaint (see adr_premium_design_system).
+  { id: "catppuccin-mocha", label: "Catppuccin Mocha", appearance: "dark", selectable: true, palette: catppuccinMocha as Palette },
+  { id: "tokyo-night", label: "Tokyo Night", appearance: "dark", selectable: true, palette: tokyoNight as Palette },
+  { id: "rose-pine-dawn", label: "Rosé Pine Dawn", appearance: "light", selectable: true, palette: rosePineDawn as Palette },
 ];
 
 export const DEFAULT_THEME_ID = "sway-dark";

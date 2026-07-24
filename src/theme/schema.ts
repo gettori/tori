@@ -64,9 +64,17 @@ export type PaletteColors = {
 
   // ---- Feedback ----
   danger: Hex;
+  /** Filled danger surface. Separate from `danger` because one stop cannot be
+   *  both readable AS text on the canvas and dark enough to carry white text:
+   *  Sway Dark's danger reads at 5.6 on the canvas but only 3.2 under a white
+   *  button label. Same reason `attentionStrong` has always been separate. */
+  dangerStrong: Hex;
   attention: Hex;
+  /** Filled attention surface. See `dangerStrong`. */
   attentionStrong: Hex;
   success: Hex;
+  /** Filled success surface. See `dangerStrong`. */
+  successStrong: Hex;
   info: Hex;
   /** Neutral low-contrast badge fill, washed by alpha. */
   fillTint: Hex;
@@ -192,7 +200,7 @@ export const PALETTE_KEYS: (keyof PaletteColors)[] = [
   "borderTint", "lineTint", "rail",
   "text", "textMuted", "textSubtle", "textOnEmphasis",
   "accent", "accentSubtle",
-  "danger", "attention", "attentionStrong", "success", "info", "fillTint",
+  "danger", "dangerStrong", "attention", "attentionStrong", "success", "successStrong", "info", "fillTint",
   "diffAdded", "diffModified", "diffDeleted",
   "diagError", "diagWarning", "diagInfo", "diagHint",
   "agentClaude", "agentPi",
