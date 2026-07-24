@@ -102,9 +102,11 @@ export const ROLES: Role[] = [
   { id: "neutral.subtle", cssVar: "--neutral-subtle", group: "neutral" },
 
   { id: "danger.fg", cssVar: "--danger-fg", group: "danger" },
+  { id: "danger.emphasis", cssVar: "--danger-emphasis", group: "danger" },
   { id: "attention.fg", cssVar: "--attention-fg", group: "attention" },
   { id: "attention.emphasis", cssVar: "--attention-emphasis", group: "attention" },
   { id: "success.fg", cssVar: "--success-fg", group: "success" },
+  { id: "success.emphasis", cssVar: "--success-emphasis", group: "success" },
   { id: "info.fg", cssVar: "--info-fg", group: "info" },
 
   { id: "diff.added", cssVar: "--diff-added", group: "diff" },
@@ -243,10 +245,15 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "neutral.hover": p.hover,
     "neutral.subtle": alpha(p.fillTint, v({ dark: 0.12, light: 0.06 })),
 
+    // The `.fg` stop is read AS text on the canvas; the `.emphasis` stop is a
+    // fill that carries `fg.onEmphasis`. One value cannot do both: Sway Dark's
+    // danger reads at 5.6 on the canvas and 3.2 under a white label.
     "danger.fg": p.danger,
+    "danger.emphasis": p.dangerStrong,
     "attention.fg": p.attention,
     "attention.emphasis": p.attentionStrong,
     "success.fg": p.success,
+    "success.emphasis": p.successStrong,
     "info.fg": p.info,
 
     "diff.added": p.diffAdded,
@@ -284,7 +291,11 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // deliberate design call, not as a "fix" to make it match gold-500.
     "brand.subtle": alpha(p.brandTint, v({ dark: 0.16, light: 0.14 })),
     "brand.bar": p.brand,
-    "brand.ring": alpha(p.brandTint, v({ dark: 0.5, light: 0.4 })),
+    // A focus ring is a WCAG 2.4.11 indicator, so it is measured, not judged by
+    // eye. At the wash this used to carry (dark 0.5, light 0.4) it sat at 2.5
+    // and 1.7 against the surfaces it is drawn on, i.e. a focus signal that only
+    // reads if you already know where focus is.
+    "brand.ring": alpha(p.brandTint, v({ dark: 0.6, light: 0.77 })),
     "brand.on": p.brandOn,
 
     "ansi.cursor": p.ansiCursor,
