@@ -14,7 +14,7 @@
 
 .tbEmpty {
   color: var(--fg-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   padding: calc(2px * var(--ui-density)) 0;
 }
 
@@ -35,7 +35,7 @@
 
 .tbName {
   font-weight: 600;
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -46,7 +46,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(6px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   white-space: nowrap;
   color: var(--fg-muted);
 }
@@ -83,7 +83,7 @@
 
 .tbStats .statSep {
   color: var(--fg-muted);
-  font-size: calc(18px * var(--ui-scale));
+  font-size: var(--sway-text-4xl);
   line-height: 1;
 }
 
@@ -96,7 +96,7 @@
 }
 
 .tbCrumb .crumb {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -107,7 +107,7 @@
 .tbCrumb .crumb.leaf {
   flex: 0 1 auto;
   /* Match the sidebar session row (`.tree` is 13px). */
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
   color: var(--fg-default);
   display: inline-flex;
   align-items: center;
@@ -122,7 +122,7 @@
 }
 
 .tbCrumb .crumbSep {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   flex: 0 0 auto;
   color: var(--fg-subtle);
 }
@@ -162,5 +162,5 @@
 .tbErr {
   margin-top: 6px;
   color: var(--danger-fg);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }

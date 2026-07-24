@@ -12,6 +12,6 @@
   margin: 0;
   outline: none;
   /* Sit in the same box as the label it replaces without nudging row height. */
-  height: calc(18px * var(--ui-scale));
-  line-height: calc(18px * var(--ui-scale));
+  height: calc(21px * var(--ui-scale));
+  line-height: calc(21px * var(--ui-scale));
 }

@@ -8,7 +8,7 @@
   background: var(--canvas-default);
   color: var(--fg-default);
   font-family: var(--sway-font-ui);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
 }
 
 .bar {
@@ -31,7 +31,7 @@
   align-items: center;
   gap: calc(8px * var(--ui-density));
   color: var(--brand-default);
-  font-size: calc(15px * var(--ui-scale));
+  font-size: var(--sway-text-3xl);
 }
 
 .controls {
@@ -75,7 +75,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-density));
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 
 .body {
@@ -88,7 +88,7 @@
 
 .body h2 {
   margin: 0 0 calc(12px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -117,11 +117,11 @@
 }
 .swatch code {
   font-family: var(--sway-font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 .note {
   color: var(--fg-muted);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
 }
 .brandText {
   margin: calc(4px * var(--ui-density)) 0 0;
@@ -173,7 +173,7 @@
   border-radius: var(--sway-radius-lg);
   box-shadow: var(--shadow-sm);
   font-family: var(--sway-font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
 }
 
@@ -199,7 +199,7 @@
 .menuRow {
   padding: calc(5px * var(--ui-density)) calc(8px * var(--ui-density));
   border-radius: var(--sway-radius-sm);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   color: var(--fg-default);
 }
 .menuRow:hover {
@@ -223,7 +223,7 @@
 }
 .spaceItem code {
   font-family: var(--sway-font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
 }
 
@@ -241,7 +241,7 @@
   height: 64px;
   background: var(--neutral-hover);
   border: 1px solid var(--border-default);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
 }
 
@@ -272,7 +272,7 @@
 }
 .gateFail {
   color: var(--danger-fg);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
 }
 .gateFail code {
   font-family: var(--sway-font-mono);
@@ -297,7 +297,7 @@
 }
 .ansiCell code {
   font-family: var(--sway-font-mono);
-  font-size: calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
   color: var(--fg-muted);
 }
 .ansiChip {
@@ -314,7 +314,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
   font-family: var(--sway-font-mono);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -331,13 +331,13 @@
 }
 .iconCell code {
   font-family: var(--sway-font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
 }
 
 .groupHead {
   margin: calc(16px * var(--ui-density)) 0 calc(8px * var(--ui-density));
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   font-weight: 600;
   color: var(--fg-subtle);
   font-family: var(--sway-font-mono);
@@ -354,7 +354,7 @@
 }
 .roleCell code {
   font-family: var(--sway-font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--sway-text-md);
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
