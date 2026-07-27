@@ -295,38 +295,8 @@
   margin-top: calc(14px * var(--ui-scale));
 }
 
-/* ---- Segmented mode picker (NewProjectDialog). One row of buttons that share a
-   border; the active segment fills with the accent. ---- */
-.seg {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  overflow: hidden;
+/* ---- Segmented mode picker (NewProjectDialog): the shared <SegmentedControl>,
+   with just the dialog's own bottom spacing added here. ---- */
+.newSeg {
   margin-bottom: calc(10px * var(--ui-scale));
-}
-.segBtn {
-  flex: 1;
-  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  background: transparent;
-  border: none;
-  border-left: 1px solid var(--border-default);
-  color: var(--fg-default);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.segBtn:first-child {
-  border-left: none;
-}
-.segBtn:hover {
-  background: var(--neutral-hover);
-}
-.segBtn.active {
-  background: var(--brand-default);
-  color: var(--brand-on);
-}
-.segBtn.active:hover {
-  filter: brightness(1.08);
-  background: var(--brand-default);
 }

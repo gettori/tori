@@ -1,7 +1,8 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import SegmentedControl from "../SegmentedControl/SegmentedControl";
 
 export type NewProjectMode = "folder" | "clone" | "bare";
 
@@ -61,10 +62,10 @@ export default function NewProjectDialog(props: {
     }
   }
 
-  const segs: { key: NewProjectMode; label: string }[] = [
-    { key: "folder", label: "Folder" },
-    { key: "clone", label: "Clone" },
-    { key: "bare", label: "Bare + worktree" },
+  const segs: { value: NewProjectMode; label: string }[] = [
+    { value: "folder", label: "Folder" },
+    { value: "clone", label: "Clone" },
+    { value: "bare", label: "Bare + worktree" },
   ];
 
   return (
@@ -73,21 +74,13 @@ export default function NewProjectDialog(props: {
         <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
           <div class={styles.modalTitle}>New in “{props.spaceName}”</div>
 
-          <div class={styles.seg} role="group" aria-label="What to create">
-            <For each={segs}>
-              {(s) => (
-                <button
-                  type="button"
-                  class={styles.segBtn}
-                  classList={{ [styles.active]: mode() === s.key }}
-                  aria-pressed={mode() === s.key}
-                  onClick={() => setMode(s.key)}
-                >
-                  {s.label}
-                </button>
-              )}
-            </For>
-          </div>
+          <SegmentedControl
+            class={styles.newSeg}
+            aria-label="What to create"
+            options={segs}
+            value={mode()}
+            onChange={setMode}
+          />
           <div class={styles.modalMsg}>{helper()}</div>
 
           <Show when={needsUrl()}>

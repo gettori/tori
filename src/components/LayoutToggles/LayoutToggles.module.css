@@ -1,108 +1,17 @@
-/* Topbar pane toggles. Two shapes borrowed from elsewhere in the UI: the
-   sidebar toggle mirrors the editor's file-tree toggle (a standalone bordered
-   icon button), and the terminal + editor toggles mirror the terminal tab bar's
-   new-split button (a joined segmented pair sharing one border). */
+/* Topbar pane toggles: three independent <IconButton> toggles. The cluster is
+   marked no-drag so the buttons stay clickable inside the draggable titlebar. */
 .cluster {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-}
-
-/* Sidebar toggle: standalone bordered icon button (the file-tree toggle look). */
-/* CSS-sized glyphs (the numeric Lucide size is dropped) so they track --ui-scale. */
-.solo svg,
-.seg svg {
-  width: calc(15px * var(--ui-scale));
-  height: calc(15px * var(--ui-scale));
-}
-
-.solo {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: calc(4px * var(--ui-scale));
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-muted);
-  cursor: pointer;
   -webkit-app-region: no-drag;
-  transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
 }
 
-.solo:hover {
-  color: var(--fg-default);
-  border-color: var(--brand-default);
-}
-
-/* Pane hidden: accent the icon (only the glyph, the border keeps its token) as a
-   cue that clicking brings the pane back. Held through hover. */
-.solo.off,
-.solo.off:hover {
+/* Pane hidden: accent the glyph (only the glyph, the border keeps its token),
+   held through hover. The "shown" state is the plain IconButton look, so this is
+   a passed modifier rather than IconButton's brand-fill `active`. */
+.off,
+.off:hover {
   color: var(--brand-default);
-}
-
-.solo.off:hover {
-  border-color: var(--brand-default);
-}
-
-/* Terminal + editor: a joined two-button pair (the terminal new-split look).
-   align-items: stretch keeps both halves the same height. */
-.split {
-  display: inline-flex;
-  align-items: stretch;
-}
-
-.seg {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: transparent;
-  border: 1px solid var(--border-default);
-  color: var(--fg-muted);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
-}
-
-.segLeft {
-  border-radius: var(--sway-radius-md) 0 0 var(--sway-radius-md);
-  border-right: none;
-}
-
-.segRight {
-  border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
-}
-
-.seg:hover:not(:disabled) {
-  color: var(--fg-default);
-  border-color: var(--brand-default);
-}
-
-/* Pane hidden: accent the icon, held through hover (see .solo.off). */
-.seg.off,
-.seg.off:hover:not(:disabled) {
-  color: var(--brand-default);
-}
-
-.seg.off:hover:not(:disabled) {
-  border-color: var(--brand-default);
-}
-
-/* Keep the shared divider crisp when only the left half is hovered. */
-.segLeft:hover:not(:disabled) + .segRight:not(:hover) {
-  border-left-color: var(--brand-default);
-}
-
-.seg:disabled {
-  opacity: 0.4;
-  cursor: default;
 }

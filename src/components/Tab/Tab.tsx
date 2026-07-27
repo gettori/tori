@@ -9,6 +9,8 @@ export interface TabProps
   icon?: JSX.Element;
   /** The label. */
   children?: JSX.Element;
+  /** Extra content after the label, before the close (e.g. dirty/touched dots). */
+  trailing?: JSX.Element;
   /** When set, renders a trailing close affordance that calls this instead of
    *  selecting the tab. */
   onClose?: (e: MouseEvent) => void;
@@ -24,6 +26,7 @@ export default function Tab(props: TabProps) {
     "active",
     "icon",
     "children",
+    "trailing",
     "onClose",
     "closeLabel",
     "class",
@@ -41,6 +44,7 @@ export default function Tab(props: TabProps) {
     >
       {local.icon}
       {local.children != null && <span class={styles.label}>{local.children}</span>}
+      {local.trailing}
       {local.onClose && (
         <span
           class={styles.close}

@@ -41,63 +41,14 @@
   font-size: var(--sway-text-lg);
 }
 
-.followToggle {
-  margin-left: auto;
-  flex: none;
-  align-self: center;
-  font-size: var(--sway-text-md);
-  color: var(--fg-muted);
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  margin-right: calc(6px * var(--ui-scale));
-  cursor: pointer;
-}
-
-.followToggle.active {
-  color: var(--brand-on);
-  background: var(--brand-default);
-  border-color: var(--brand-default);
-}
-
-/* Icon-only variant of the toggle: center the glyph instead of the text
-   padding. Same Bot glyph both ways; the on/off signal is the fill (dim +
-   border when off, --brand-default fill when on; see .followToggle.active). */
-.iconToggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: calc(4px * var(--ui-scale));
-}
-/* CSS-sized toggle glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.iconToggle svg {
-  width: calc(15px * var(--ui-scale));
-  height: calc(15px * var(--ui-scale));
-}
-
-/* File-tree toggle: matches the topbar pane toggles. Hover brightens the glyph
-   and turns the border brand; while the tree is hidden (.toggleOff) the icon is
-   accented (glyph only, border keeps its token), held through hover. Scoped to
-   this class so the sibling follow/preview buttons keep their plain look. */
-.paneToggle {
-  transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
-}
-
-.paneToggle:hover {
-  color: var(--fg-default);
-  border-color: var(--brand-default);
-}
-
-.paneToggle.toggleOff,
-.paneToggle.toggleOff:hover {
+/* The follow / preview / file-tree toggles are now <IconButton>s. The file-tree
+   toggle keeps a "pane hidden" accent: the glyph goes brand (only the glyph, the
+   border keeps its token) as a cue that clicking brings the tree back, held
+   through hover. Its "shown" state is the plain IconButton look, so this is a
+   passed modifier rather than IconButton's brand-fill `active`. */
+.paneToggleOff,
+.paneToggleOff:hover {
   color: var(--brand-default);
-}
-
-.paneToggle.toggleOff:hover {
-  border-color: var(--brand-default);
 }
 
 /* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
@@ -117,38 +68,8 @@
   overflow: hidden;
 }
 
-.editorTabs .tab {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--tab-inactive-fg);
-  background: transparent;
-  border-radius: var(--sway-radius-md);
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
-}
-
-.editorTabs .tab:hover:not(.active) {
-  color: var(--tab-active-fg);
-  background: var(--tab-hover-bg);
-}
-
-.editorTabs .tab.active {
-  color: var(--tab-active-fg);
-  background: var(--tab-active-bg);
-}
-
-.editorTabs :global(.tab-name) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: calc(160px * var(--ui-scale));
-}
-
+/* Editor tabs are the shared <Tab> pill now; only the extra markers <Tab> does
+   not own (the dirty dot, the agent-touched/editing dot) are styled here. */
 .editorTabs :global(.tab-dirty) {
   font-size: var(--sway-text-sm);
   color: var(--tab-dirty);
@@ -183,24 +104,6 @@
   animation: tabEditingPulse 1.2s ease-in-out infinite;
 }
 
-.editorTabs :global(.tab-close) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  color: var(--fg-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: calc(2px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-}
-
-.editorTabs :global(.tab-close):hover {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
-
 /* Right panel: Files / Changes toggle + the active panel */
 .rightPanel {
   /* Width is set inline from a drag-resized signal; the Resizer to its left
@@ -229,47 +132,4 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-/* Icon-only mode tabs (Files / Changes / …): a full-height centered glyph, dim
-   at rest and brightening on hover/active, with a VS Code-style brand underline
-   under the active one (no fill). Content-width, not `flex: 1`: OverflowTabBar
-   measures each tab's true width off the ghost row to decide what fits, so a
-   stretching tab would mismeasure. */
-.rightTab {
-  flex: 0 0 auto;
-  align-self: stretch;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 calc(6px * var(--ui-scale));
-  color: var(--fg-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color var(--sway-duration-fast) ease;
-}
-
-/* CSS-sized mode glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.rightTab svg {
-  width: var(--control-icon);
-  height: var(--control-icon);
-}
-
-.rightTab:hover {
-  color: var(--fg-default);
-}
-
-.rightTab.active {
-  color: var(--fg-default);
-}
-
-.rightTab.active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(2px * var(--ui-scale));
-  border-radius: 2px 2px 0 0;
-  background: var(--brand-default);
-}
+/* The mode tabs (Files / Changes / …) are icon-only <Tab> pills now. */

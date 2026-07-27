@@ -34,28 +34,7 @@
   color: var(--fg-muted);
 }
 
-.pushButton,
-.openPrButton {
-  flex: none;
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: var(--canvas-default);
-  color: var(--fg-default);
-  font-size: var(--sway-text-md);
-  cursor: pointer;
-}
-
-.pushButton:hover:not(:disabled),
-.openPrButton:hover:not(:disabled) {
-  background: var(--neutral-hover);
-}
-
-.pushButton:disabled,
-.openPrButton:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+/* Header push / Open-PR are shared <Button size="xs">s now. */
 
 .reviewPanel :global(.tree-empty) {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
@@ -88,24 +67,11 @@
   background: var(--neutral-hover);
 }
 
+/* The +/- stage toggle is a ghost <Button size="xs">; only the mono glyph is
+   kept here so the +/- reads like the diff gutter. */
 .stageToggle {
   flex: none;
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  cursor: pointer;
-}
-
-.stageToggle:hover {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
 }
 
 .reviewStatus {
@@ -206,71 +172,20 @@
   background: var(--canvas-card);
 }
 
+/* The Copy row action is a ghost <Button size="xs">; it stays hidden until the
+   row is hovered or the button is focused (so tabbing never lands on an
+   invisible control). Only that reveal behaviour is kept here. */
 .rowAction {
   flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  cursor: pointer;
   opacity: 0;
 }
-/* Revealed on keyboard focus too, not hover alone, so tabbing to it doesn't
-   land on an invisible control. */
 .reviewRow:hover .rowAction,
 .rowAction:focus-visible {
   opacity: 1;
 }
-.rowAction:hover {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
 
-/* Per-hunk stage/unstage, anchored in the hunk header so it sits in the same
-   place in both view modes. */
-.hunkStage {
-  flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--fg-muted);
-  font-family: inherit;
-  font-size: var(--sway-text-sm);
-  cursor: pointer;
-}
-.hunkStage:hover:not(:disabled) {
-  color: var(--fg-default);
-  border-color: var(--accent-fg);
-}
-.hunkStage:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.viewToggle {
-  flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
-  cursor: pointer;
-}
-.viewToggle:hover:not(:disabled) {
-  color: var(--fg-default);
-}
-.viewToggle:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.viewToggleOn {
-  color: var(--accent-fg);
-  border-color: var(--accent-fg);
-}
+/* The per-hunk stage/unstage and the inline/side-by-side view toggle are shared
+   <Button>/<IconButton> controls now. */
 
 .commitBox {
   position: sticky;
@@ -297,37 +212,9 @@
   gap: calc(6px * var(--ui-scale));
 }
 
+/* Draft / Commit are shared <Button>s (Commit is `primary`); they only need to
+   split the row evenly. */
 .draftButton,
 .commitButton {
   flex: 1;
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: var(--canvas-default);
-  color: var(--fg-default);
-  font-size: var(--sway-text-lg);
-  cursor: pointer;
-}
-
-.draftButton:hover:not(:disabled),
-.commitButton:hover:not(:disabled) {
-  background: var(--neutral-hover);
-}
-
-.draftButton:disabled,
-.commitButton:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.commitButton {
-  background: var(--accent-fg);
-  border-color: var(--accent-fg);
-  color: var(--canvas-card);
-}
-
-.commitButton:disabled {
-  background: var(--canvas-default);
-  color: var(--fg-muted);
-  border-color: var(--border-default);
 }
