@@ -1,0 +1,52 @@
+[
+  {
+    "type": "sendTurn",
+    "sessionId": "s1",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "look at this"
+      },
+      {
+        "type": "image",
+        "mediaType": "image/png",
+        "data": "iVBORw0KGgo="
+      },
+      {
+        "type": "fileRef",
+        "path": "/tmp/w/probe.txt",
+        "startLine": 2,
+        "endLine": 4,
+        "text": "beta"
+      }
+    ]
+  },
+  {
+    "type": "interrupt",
+    "sessionId": "s1"
+  },
+  {
+    "type": "respondPermission",
+    "sessionId": "s1",
+    "toolUseId": "toolu_3",
+    "requestId": "op-9",
+    "decision": "deny",
+    "scope": "once",
+    "reason": "not on this tree"
+  },
+  {
+    "type": "setMode",
+    "sessionId": "s1",
+    "mode": "plan"
+  },
+  {
+    "type": "setModel",
+    "sessionId": "s1",
+    "model": "claude-opus-5",
+    "effort": "xhigh"
+  },
+  {
+    "type": "close",
+    "sessionId": "s1"
+  }
+]
