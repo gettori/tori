@@ -2,6 +2,7 @@ import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "s
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
+import Button from "../../components/Button/Button";
 import type { LiveTab } from "../../utils/events";
 import styles from "./TranscriptViewer.module.css";
 
@@ -280,9 +281,9 @@ export default function TranscriptViewer(props: {
                               <span class={styles.checkpointPath} onClick={() => toggleFileDiff(turn.ts, file.path)}>
                                 {file.path}
                               </span>
-                              <button class={styles.revertButton} onClick={() => revertFile(turn.ts, file)}>
+                              <Button size="xs" onClick={() => revertFile(turn.ts, file)}>
                                 Revert
-                              </button>
+                              </Button>
                             </div>
                             <Show when={expandedFiles().has(key())}>
                               <div class={styles.checkpointDiff}>
@@ -307,9 +308,9 @@ export default function TranscriptViewer(props: {
         )}
       </For>
       <Show when={nextCursor() != null}>
-        <button class={styles.loadOlder} onClick={loadOlder} disabled={loadingMore()}>
+        <Button class={styles.loadOlder} size="sm" onClick={loadOlder} disabled={loadingMore()}>
           {loadingMore() ? "Loading…" : "Load older"}
-        </button>
+        </Button>
       </Show>
       <Show when={!turns().length}>
         <div class="tree-empty">

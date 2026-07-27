@@ -7,6 +7,7 @@ import { liveStatuses } from "../../utils/sessionStatus";
 import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { isUnderPath } from "../../utils/pathScope";
+import Button from "../../components/Button/Button";
 import styles from "./CheckpointTimeline.module.css";
 
 type CheckpointEntry = {
@@ -326,15 +327,14 @@ export default function CheckpointTimeline(props: {
           </div>
         </Show>
         <div class={styles.timelineActions}>
-          <button
-            type="button"
-            class={styles.revertButton}
+          <Button
+            size="sm"
             disabled={!!revertDisabledReason()}
             title={revertDisabledReason() ?? "Restore every file in this folder to this checkpoint"}
             onClick={revertToPicked}
           >
             {reverting() ? "Reverting…" : "Revert tree to here"}
-          </button>
+          </Button>
         </div>
         <Show when={files().length} fallback={<div class={styles.timelineEmpty}>No file changes in this turn.</div>}>
           <For each={files()}>

@@ -22,35 +22,7 @@
   overflow: hidden;
 }
 
-/* Tabs are floating rounded pills, centered in the strip: transparent at rest,
-   a subtle --card2 fill when active/hovered. No folder border or accent bar. */
-.termTab {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-xl);
-  color: var(--fg-muted);
-  background: transparent;
-  border: none;
-  border-radius: var(--sway-radius-md);
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: calc(200px * var(--ui-scale));
-  transition:
-    color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
-}
-
-.termTab:hover:not(.active) {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
-}
-
-.termTab.active {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
-}
+/* The terminal tabs are the shared <Tab> pill now. */
 
 /* Split button: "+ Claude" main action + caret that opens a launch menu.
    align-items: stretch makes the caret match the taller main half's height. */
@@ -157,33 +129,7 @@
   color: var(--fg-default);
 }
 
-.termRestoreAccept,
-.termRestoreDismiss {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  border-radius: var(--sway-radius-sm);
-  border: 1px solid var(--border-default);
-  background: transparent;
-  cursor: pointer;
-}
-
-.termRestoreAccept {
-  color: var(--brand-default);
-  border-color: var(--brand-default);
-}
-
-.termRestoreDismiss {
-  color: var(--fg-muted);
-}
-
-.termRestoreAccept:hover {
-  background: var(--brand-subtle);
-}
-
-.termRestoreDismiss:hover {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
-}
+/* Restore / Dismiss are shared <Button>s now. */
 
 .termStage {
   flex: 1;

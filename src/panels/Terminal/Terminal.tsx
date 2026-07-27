@@ -5,6 +5,8 @@ import TerminalView from "./TerminalView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
+import Tab from "../../components/Tab/Tab";
+import Button from "../../components/Button/Button";
 import { X, ChevronDown, SquareTerminal } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
@@ -732,16 +734,15 @@ export default function Terminal(props: {
         }}
         onReorder={mergeReorder}
         renderTab={(t) => (
-          <div
-            class={`${styles.termTab} ${visibleId() === t.id ? styles.active : ""}`}
+          <Tab
+            active={visibleId() === t.id}
             onClick={() => selectTab(t)}
             title={t.cwd}
+            closeLabel="Close"
+            onClose={(e) => close(t.id, e)}
           >
-            <span class="tab-label">{tabTitle(t)}</span>
-            <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
-              <Icon icon={X} />
-            </span>
-          </div>
+            {tabTitle(t)}
+          </Tab>
         )}
         renderMenuItem={(t) => (
           <>
@@ -822,12 +823,12 @@ export default function Terminal(props: {
             <span class={styles.termRestoreText}>
               {restoreOffer()!.count} terminal tab{restoreOffer()!.count > 1 ? "s" : ""} from last time
             </span>
-            <button class={styles.termRestoreAccept} onClick={() => void acceptRestore(restoreOffer()!.ws)}>
+            <Button variant="primary" size="sm" onClick={() => void acceptRestore(restoreOffer()!.ws)}>
               Restore
-            </button>
-            <button class={styles.termRestoreDismiss} onClick={() => markOffered(restoreOffer()!.ws)}>
+            </Button>
+            <Button size="sm" onClick={() => markOffered(restoreOffer()!.ws)}>
               Dismiss
-            </button>
+            </Button>
           </div>
         </Show>
       </div>

@@ -12,6 +12,8 @@ import { comparePrUrl } from "../../utils/prUrl";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
+import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
@@ -553,9 +555,11 @@ export default function ReviewPanel(props: {
     return (
       <div>
         <div class={styles.reviewRow} onClick={() => toggleDiff(key, f.path, opts.staged)} title={f.path}>
-          <button
-            type="button"
+          <Button
+            size="xs"
+            variant="ghost"
             class={styles.stageToggle}
+            aria-label={opts.staged ? "Unstage" : "Stage"}
             title={opts.staged ? "Unstage" : "Stage"}
             onClick={(e) => {
               e.stopPropagation();
@@ -563,7 +567,7 @@ export default function ReviewPanel(props: {
             }}
           >
             {opts.staged ? "−" : "+"}
-          </button>
+          </Button>
           <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>{f.status.trim() || "?"}</span>
           <span
             class={styles.reviewName}
@@ -574,8 +578,9 @@ export default function ReviewPanel(props: {
           >
             {f.path}
           </span>
-          <button
-            type="button"
+          <Button
+            size="xs"
+            variant="ghost"
             class={styles.rowAction}
             title="Copy diff"
             onClick={(e) => {
@@ -584,7 +589,7 @@ export default function ReviewPanel(props: {
             }}
           >
             Copy
-          </button>
+          </Button>
         </div>
         <Show when={expanded() === key}>
           <div class={styles.reviewDiff}>
@@ -602,9 +607,9 @@ export default function ReviewPanel(props: {
                       land in one place in both modes. */}
                   <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span>{hunk.header}</span>
-                    <button
-                      type="button"
-                      class={styles.hunkStage}
+                    <Button
+                      size="xs"
+                      variant="ghost"
                       disabled={applying()}
                       title={opts.staged ? "Unstage this hunk" : "Stage this hunk"}
                       onClick={(e) => {
@@ -616,7 +621,7 @@ export default function ReviewPanel(props: {
                       }}
                     >
                       {opts.staged ? "Unstage hunk" : "Stage hunk"}
-                    </button>
+                    </Button>
                     <HunkCommentInput
                       target={target()}
                       disabledReason={disabledReason()}
@@ -653,10 +658,10 @@ export default function ReviewPanel(props: {
           <span class={styles.branchName} title={branch() ?? ""}>
             {branch()}
           </span>
-          <button
-            type="button"
-            class={styles.viewToggle}
-            classList={{ [styles.viewToggleOn]: twoColumn() }}
+          <IconButton
+            size="xs"
+            active={twoColumn()}
+            icon={<span aria-hidden="true">⇹</span>}
             disabled={panelWidth() < SIDE_BY_SIDE_MIN_WIDTH}
             title={
               panelWidth() < SIDE_BY_SIDE_MIN_WIDTH
@@ -666,17 +671,14 @@ export default function ReviewPanel(props: {
                   : "Switch to side-by-side diff"
             }
             onClick={toggleSideBySide}
-          >
-            ⇹
-          </button>
+          />
           <Show
             when={aheadBehind()}
             fallback={<span class={styles.aheadBehind}>-</span>}
           >
             {(ab) => (
-              <button
-                type="button"
-                class={styles.pushButton}
+              <Button
+                size="xs"
                 disabled={pushing() || (ab().has_upstream && ab().ahead === 0)}
                 title={ab().has_upstream ? "Push" : "Push (sets upstream)"}
                 onClick={() => {
@@ -690,13 +692,13 @@ export default function ReviewPanel(props: {
                   : ab().has_upstream
                     ? `↑${ab().ahead} ↓${ab().behind}`
                     : "Unpushed branch"}
-              </button>
+              </Button>
             )}
           </Show>
           <Show when={origin() && baseBranch()}>
-            <button type="button" class={styles.openPrButton} disabled={openingPr()} onClick={openPr}>
+            <Button size="xs" disabled={openingPr()} onClick={openPr}>
               {openingPr() ? "Opening…" : "Open PR"}
-            </button>
+            </Button>
           </Show>
         </div>
       </Show>
@@ -741,24 +743,25 @@ export default function ReviewPanel(props: {
           }}
         />
         <div class={styles.commitActions}>
-          <button
-            type="button"
+          <Button
+            size="sm"
             class={styles.draftButton}
             disabled={!staged().length || !!disabledReason() || drafting()}
             title={disabledReason() ?? "Ask the selected session to draft a commit message"}
             onClick={askAgentToDraft}
           >
             Ask agent to draft
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             class={styles.commitButton}
             disabled={!staged().length || !commitMsg().trim() || committing()}
             title={staged().length ? "Commit staged changes" : "Nothing staged"}
             onClick={commit}
           >
             Commit
-          </button>
+          </Button>
         </div>
       </div>
     </div>

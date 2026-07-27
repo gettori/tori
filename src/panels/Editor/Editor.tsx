@@ -17,6 +17,8 @@ import ImageView, { isImagePath } from "./ImageView";
 import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
+import IconButton from "../../components/IconButton/IconButton";
+import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -129,15 +131,13 @@ export default function Editor(props: {
   // right panel's own tab strip (right-aligned) while the tree is shown, and in
   // the editor tab bar (its only remaining home) once the tree is hidden.
   const filetreeToggleBtn = (shown: boolean) => (
-    <button
-      class={`${styles.followToggle} ${styles.iconToggle} ${styles.paneToggle}`}
-      classList={{ [styles.toggleOff]: !shown }}
-      onClick={() => props.onToggleFiletree?.()}
+    <IconButton
+      class={shown ? undefined : styles.paneToggleOff}
+      icon={<Icon icon={PanelRight} />}
       aria-pressed={shown}
+      onClick={() => props.onToggleFiletree?.()}
       title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
-    >
-      <Icon icon={PanelRight} />
-    </button>
+    />
   );
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeId, setActiveId] = createSignal<string | null>(null);
@@ -646,9 +646,8 @@ export default function Editor(props: {
           onActivate={setActiveId}
           onReorder={setTabs}
           renderTab={(t) => (
-            <div
-              class={styles.tab}
-              classList={{ [styles.active]: tabId(t) === activeId() }}
+            <Tab
+              active={tabId(t) === activeId()}
               onClick={() => setActiveId(tabId(t))}
               title={t.kind === "file" ? t.path : t.name}
               draggable={t.kind === "file"}
@@ -658,34 +657,32 @@ export default function Editor(props: {
                 e.dataTransfer?.setData("text/plain", t.path);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
               }}
+              icon={
+                <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
+                  <FileIcon name={t.name} />
+                </Show>
+              }
+              trailing={
+                <>
+                  <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
+                    <span
+                      class={styles.tabTouched}
+                      classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
+                      title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                    >
+                      ●
+                    </span>
+                  </Show>
+                  <Show when={t.kind === "file" && dirty()[t.path]}>
+                    <span class="tab-dirty">●</span>
+                  </Show>
+                </>
+              }
+              closeLabel="Close"
+              onClose={() => closeTab(tabId(t))}
             >
-              <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
-                <FileIcon name={t.name} />
-              </Show>
-              <span class="tab-name">{t.name}</span>
-              <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
-                <span
-                  class={styles.tabTouched}
-                  classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
-                  title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
-                >
-                  ●
-                </span>
-              </Show>
-              <Show when={t.kind === "file" && dirty()[t.path]}>
-                <span class="tab-dirty">●</span>
-              </Show>
-              <button
-                class="tab-close"
-                aria-label="Close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(tabId(t));
-                }}
-              >
-                <Icon icon={X} />
-              </button>
-            </div>
+              {t.name}
+            </Tab>
           )}
           renderMenuItem={(t) => (
             <>
@@ -720,34 +717,29 @@ export default function Editor(props: {
           trailing={
             <>
               <Show when={isPreviewableTab()}>
-                <button
-                  class={`${styles.followToggle} ${styles.iconToggle}`}
+                <IconButton
+                  active={showingPreview()}
+                  icon={
+                    <Icon icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner} />
+                  }
                   onClick={togglePreview}
-                  aria-pressed={showingPreview()}
                   title={
                     showingPreview()
                       ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
                       : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
                   }
-                >
-                  <Icon
-                    icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner}
-                  />
-                </button>
+                />
               </Show>
-              <button
-                class={`${styles.followToggle} ${styles.iconToggle}`}
-                classList={{ [styles.active]: follow() }}
+              <IconButton
+                active={follow()}
+                icon={<Icon icon={Bot} />}
                 onClick={() => setFollow(!follow())}
-                aria-pressed={follow()}
                 title={
                   follow()
                     ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
                     : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
                 }
-              >
-                <Icon icon={Bot} />
-              </button>
+              />
               <Show when={props.onToggleFiletree && !filetreeOn()}>
                 {filetreeToggleBtn(false)}
               </Show>
@@ -820,15 +812,13 @@ export default function Editor(props: {
           onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
           trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
           renderTab={(t) => (
-            <button
-              class={styles.rightTab}
-              classList={{ [styles.active]: rightMode() === t.mode }}
+            <Tab
+              active={rightMode() === t.mode}
+              icon={<Icon icon={t.icon} />}
               onClick={() => setRightMode(t.mode)}
               title={t.label}
               aria-label={t.label}
-            >
-              <Icon icon={t.icon} />
-            </button>
+            />
           )}
           renderMenuItem={(t) => (
             <>

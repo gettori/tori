@@ -78,25 +78,15 @@
   color: var(--fg-default);
 }
 
+/* The Send action is a ghost <Button size="xs">; only its hover/focus reveal is
+   kept here (hidden until the row is hovered or the button is focused). */
 .sendButton {
   flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: transparent;
-  color: var(--fg-muted);
-  font-family: inherit;
-  font-size: var(--sway-text-sm);
-  cursor: pointer;
   opacity: 0;
 }
 .problemRow:hover .sendButton,
 .sendButton:focus-visible {
   opacity: 1;
-}
-.sendButton:hover {
-  color: var(--fg-default);
-  border-color: var(--accent-fg);
 }
 
 .error {

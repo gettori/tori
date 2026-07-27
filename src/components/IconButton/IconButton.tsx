@@ -23,12 +23,17 @@ export default function IconButton(props: IconButtonProps) {
     "class",
     "type",
     "aria-label",
+    "aria-pressed",
     "title",
   ]);
 
   const title = () =>
     typeof local.title === "string" ? local.title : undefined;
   const ariaLabel = () => local["aria-label"] ?? title();
+  // `active` drives the brand-fill look and, by default, aria-pressed. A pane
+  // toggle whose "on" state is the plain (not filled) look passes an explicit
+  // aria-pressed instead, keeping the accent styling on a `class`.
+  const ariaPressed = () => local["aria-pressed"] ?? local.active;
 
   if (import.meta.env.DEV && ariaLabel() == null) {
     console.warn(
@@ -41,7 +46,7 @@ export default function IconButton(props: IconButtonProps) {
       {...rest}
       type={local.type ?? "button"}
       aria-label={ariaLabel()}
-      aria-pressed={local.active}
+      aria-pressed={ariaPressed()}
       title={title()}
       class={local.class}
       classList={{

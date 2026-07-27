@@ -7,15 +7,18 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
+  /* The traffic-light triple is a fixed-size macOS-style ornament: the dots and
+     their inter-dot gap stay constant regardless of the UI scale (only the rail
+     padding and the toggle slot beside them scale). */
+  gap: 8px;
   padding: 0 calc(8px * var(--ui-scale)) 0 calc(16px * var(--ui-scale));
   -webkit-app-region: drag;
 }
 
 .winDot {
   flex: 0 0 auto;
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
+  width: 13px;
+  height: 13px;
   padding: 0;
   border: none;
   border-radius: 50%;

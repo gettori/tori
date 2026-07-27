@@ -104,20 +104,11 @@
   overflow-x: auto;
 }
 
+/* "Load older" is a shared <Button>; it just needs to sit centered in the
+   scroll. (The per-file Revert button is a shared <Button> too.) */
 .loadOlder {
   display: block;
   margin: calc(8px * var(--ui-scale)) auto;
-  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
-  cursor: pointer;
-}
-.loadOlder:hover {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
 }
 
 /* Turn-level checkpoints (Finding E): a per-turn "Changes this turn" row on
@@ -179,21 +170,6 @@
   text-overflow: ellipsis;
   color: var(--fg-default);
   cursor: pointer;
-}
-
-.revertButton {
-  flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  cursor: pointer;
-}
-.revertButton:hover {
-  color: var(--fg-default);
-  background: var(--neutral-hover);
 }
 
 .checkpointDiff {
