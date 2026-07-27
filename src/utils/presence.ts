@@ -83,14 +83,27 @@ export function unattendedNeedsYouCount(
   return live.filter((l) => l.dot === "needsYou" && !attendedMap[l.sessionId]).length;
 }
 
-/// Pure: don't toast for a session the user is already looking at (selected
-/// row + focused window) at the moment it blocks - they'll see it happen.
+/// Pure: don't toast for a session the user is already looking at at the moment
+/// it blocks - they'll see it happen.
+///
+/// Two ways of looking at one, because the two surfaces are watched
+/// differently. A PTY agent session is "being looked at" when it is the
+/// selected sidebar row. A chat is not reachable that way: it mints its session
+/// id before any transcript exists, so selecting its tab usually resolves only
+/// as far as its branch, and keying on the selection alone would notify about a
+/// prompt sitting in the pane on screen. `onScreenSessionIds` carries the chats
+/// whose tab is the visible one.
+///
+/// An unfocused window suppresses nothing either way: that is the case the
+/// notification exists for.
 export function shouldSuppressNotification(
   event: { sessionId: string },
   selectedSessionId: string | undefined,
   windowFocused: boolean,
+  onScreenSessionIds: ReadonlySet<string> = new Set(),
 ): boolean {
-  return selectedSessionId === event.sessionId && windowFocused;
+  if (!windowFocused) return false;
+  return selectedSessionId === event.sessionId || onScreenSessionIds.has(event.sessionId);
 }
 
 const emptyState: PresenceState = { attended: {}, lastDot: {} };

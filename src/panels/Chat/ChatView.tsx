@@ -3,8 +3,11 @@ import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
+import ModeSelector from "./ModeSelector";
+import RuleList from "./RuleList";
+import type { Answer } from "./PermissionPrompt";
 import Button from "../../components/Button/Button";
-import { parseChatEvent, type ContentBlock } from "../../utils/chatTypes";
+import { parseChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import { emitWith, FOCUS_SESSION_TAB, TOAST, type FocusSessionTab, type ToastEvent } from "../../utils/events";
@@ -16,23 +19,30 @@ import {
   enqueue,
   initialChat,
   isRunning,
+  modePending,
   pendingFlush,
   pushUserTurn,
   releaseQueue,
   removeQueued,
+  resolveApproval,
+  selectMode,
+  shownMode,
   takeForSend,
   type ChatState,
   type QueuedInput,
+  type ToolItem,
 } from "./chatStore";
+import { noteRulesChanged, rulesRevision, type ScopedRule } from "../../utils/chatRules";
+import {
+  refusalMessage,
+  refusalOf,
+  CONTESTED_NOTICE,
+  type ClaimOutcome,
+} from "../../utils/chatOwnership";
 import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
  *  error: it names the tab that holds the session, or the orphaned child. */
-type ClaimOutcome =
-  | { type: "granted"; contested: boolean }
-  | { type: "alreadyMineFocus"; tabId: string }
-  | { type: "heldByOther"; surface: "chat" | "ptyAgent"; tabId: string }
-  | { type: "orphaned"; childPid: number };
 type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null };
 
 /**
@@ -62,22 +72,21 @@ export default function ChatView(props: {
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
+  const [rules, setRules] = createSignal<ScopedRule[]>([]);
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
   const running = () => isRunning(state);
   // A refused claim means no child was started, so nothing may be typed at it.
-  const refused = () => {
-    const o = ownership();
-    return !!o && o.type !== "granted";
-  };
-  // Narrowed so the banners below can read their own fields without casting.
+  // Narrowed so the banners below read their own fields without casting.
+  const refusal = () => refusalOf(ownership());
+  const refused = () => refusal() !== null;
   const heldElsewhere = () => {
-    const o = ownership();
-    return o && (o.type === "alreadyMineFocus" || o.type === "heldByOther") ? o : null;
+    const r = refusal();
+    return r && r.type !== "orphaned" ? r : null;
   };
   const orphaned = () => {
-    const o = ownership();
-    return o && o.type === "orphaned" ? o : null;
+    const r = refusal();
+    return r && r.type === "orphaned" ? r : null;
   };
 
   onMount(() => {
@@ -103,10 +112,7 @@ export default function ChatView(props: {
       .then((res) => {
         setOwnership(res.ownership);
         if (res.ownership.type === "granted" && res.ownership.contested) {
-          emitWith<ToastEvent>(TOAST, {
-            message: "This session is also running outside Sway. Two drivers on one transcript will corrupt it.",
-            kind: "error",
-          });
+          emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
         }
       })
       .catch((e) => {
@@ -142,6 +148,7 @@ export default function ChatView(props: {
       folderPath: props.workspace,
       tabId: props.tabId,
       status: chatStatus(state),
+      visible: props.active,
     });
   });
 
@@ -188,6 +195,67 @@ export default function ChatView(props: {
     void sendBlocks([{ type: "text", text }]);
   }
 
+  // Re-read rather than patched locally: the rule store is a file the hook
+  // helper reads on every tool call, and a list maintained here would be a
+  // second opinion about what is in force.
+  //
+  // Keyed on the shared revision, not on this panel's own edits: a project rule
+  // is shared by every chat open on the folder, so one granted next door changes
+  // what this chat will do without asking. One file read per rule change across
+  // all chats, which is nothing next to a tool call.
+  createEffect(() => {
+    rulesRevision();
+    void invoke<ScopedRule[]>("chat_list_rules", { sessionId: props.sessionId, cwd: props.cwd })
+      .then(setRules)
+      .catch(() => setRules([]));
+  });
+
+  function onAnswer(card: ToolItem, answer: Answer) {
+    const approval = card.approval;
+    if (!approval) return;
+    // Cleared locally first: the card must stop reading as blocked the moment
+    // the user answers, and the tool's real outcome still comes from
+    // `toolCallCompleted`.
+    edit((s) => resolveApproval(s, card.toolUseId));
+    void invoke("chat_respond_permission", {
+      sessionId: props.sessionId,
+      cwd: props.cwd,
+      requestId: approval.requestId,
+      toolName: card.name ?? "",
+      toolInput: card.input ?? {},
+      decision: answer.decision,
+      scope: answer.scope,
+      reason: answer.reason,
+    })
+      .then(() => {
+        if (answer.scope !== "once") noteRulesChanged();
+      })
+      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
+  function onRemoveRule(rule: ScopedRule) {
+    void invoke("chat_remove_rule", {
+      sessionId: props.sessionId,
+      cwd: props.cwd,
+      tool: rule.tool,
+      prefix: rule.prefix,
+    })
+      .then(noteRulesChanged)
+      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
+  function onSelectMode(mode: PermissionMode) {
+    edit((s) => selectMode(s, mode));
+    void invoke("chat_set_mode", { sessionId: props.sessionId, mode }).catch((e) => {
+      // The request never left, so the control must stop promising a switch.
+      // Left set, it would show a mode the session will never enter.
+      edit((s) => {
+        if (s.pendingMode === mode) s.pendingMode = null;
+      });
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    });
+  }
+
   function onInterrupt() {
     void invoke("chat_interrupt", { sessionId: props.sessionId }).catch(() => {});
   }
@@ -218,13 +286,7 @@ export default function ChatView(props: {
       <Show when={heldElsewhere()}>
         {(held) => (
           <div class={styles.refusal}>
-            <span class={styles.bannerText}>
-              This session is already open
-              {held().type === "heldByOther" && (held() as { surface: string }).surface === "ptyAgent"
-                ? " in a terminal tab"
-                : " in another chat"}
-              . Two drivers on one transcript corrupt it.
-            </span>
+            <span class={styles.bannerText}>{refusalMessage(held())}</span>
             <Button
               size="sm"
               variant="primary"
@@ -242,9 +304,7 @@ export default function ChatView(props: {
       <Show when={orphaned()}>
         {(orphan) => (
           <div class={styles.refusal}>
-            <span class={styles.bannerText}>
-              A previous Sway left this session running. It has to end before the session can be reopened.
-            </span>
+            <span class={styles.bannerText}>{refusalMessage(orphan())}</span>
             <Button size="sm" variant="primary" onClick={() => endOrphan(orphan().childPid)}>
               End it
             </Button>
@@ -255,7 +315,20 @@ export default function ChatView(props: {
         )}
       </Show>
 
-      <MessageList items={state.items} streaming={running()} />
+      {/* The session's standing permissions, above the transcript: the mode it
+          will run the next turn in, and everything it may already do without
+          asking. Phase 9 adds the model and effort pickers to this row. */}
+      <div class={styles.controls}>
+        <ModeSelector
+          mode={shownMode(state)}
+          pending={modePending(state)}
+          disabled={refused() || state.ended}
+          onSelect={onSelectMode}
+        />
+        <RuleList rules={rules()} onRemove={onRemoveRule} />
+      </div>
+
+      <MessageList items={state.items} streaming={running()} onAnswer={onAnswer} />
 
       <Composer
         running={running()}

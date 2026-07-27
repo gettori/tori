@@ -138,17 +138,179 @@
   white-space: pre-wrap;
 }
 
+/* ---- the session's permissions ---- */
+
+.controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sway-space-4);
+  padding: var(--sway-space-2) var(--sway-space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-card);
+}
+
+.modeGroup {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sway-space-3);
+  min-width: 0;
+}
+
+.modeButtons {
+  display: flex;
+}
+
+.modeButton {
+  border: 1px solid var(--border-default);
+  border-right-width: 0;
+  padding: var(--sway-space-1) var(--sway-space-3);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  cursor: pointer;
+}
+
+.modeButton:first-child {
+  border-top-left-radius: var(--sway-radius-sm);
+  border-bottom-left-radius: var(--sway-radius-sm);
+}
+
+.modeButton:last-child {
+  border-right-width: 1px;
+  border-top-right-radius: var(--sway-radius-sm);
+  border-bottom-right-radius: var(--sway-radius-sm);
+}
+
+.modeButton:hover:not(:disabled) {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.modeButton:disabled {
+  color: var(--fg-subtle);
+  cursor: default;
+}
+
+/* After :hover, so the selected mode stays legible under the pointer. */
+.modeButton.modeSelected {
+  background: var(--accent-subtle);
+  color: var(--fg-default);
+}
+
+.modeNote {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  line-height: 1.3;
+}
+
+/* A switch that has not landed yet is a promise about the next turn, not a
+   description of this one. */
+.modeNotePending {
+  color: var(--attention-fg);
+}
+
+/* Bypass names itself after something Sway does not actually let it do. */
+.modeGuard {
+  flex-basis: 100%;
+  color: var(--attention-fg);
+  font-size: var(--sway-text-xs);
+  line-height: 1.3;
+}
+
+.rules {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.rulesToggle {
+  border: none;
+  padding: var(--sway-space-1) 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rulesToggle:hover:not(:disabled) {
+  color: var(--fg-default);
+}
+
+.rulesToggle:disabled {
+  cursor: default;
+}
+
+.rulesBody {
+  position: absolute;
+  right: 0;
+  z-index: 2;
+  margin: var(--sway-space-2) 0 0;
+  padding: var(--sway-space-2);
+  min-width: calc(280px * var(--ui-scale));
+  max-height: calc(240px * var(--ui-scale));
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--canvas-head);
+}
+
+.ruleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-1) var(--sway-space-2);
+}
+
+.ruleLabel {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ruleScope {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+}
+
+.ruleRemove {
+  display: inline-flex;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.ruleRemove:hover {
+  color: var(--danger-fg);
+}
+
 /* ---- tool calls ---- */
 
 .tool {
   display: flex;
-  align-items: baseline;
-  gap: var(--sway-space-3);
+  flex-direction: column;
+  gap: var(--sway-space-2);
   padding: var(--sway-space-2) var(--sway-space-3);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-card);
   font-size: var(--sway-text-sm);
+}
+
+.toolRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sway-space-3);
 }
 
 /* A blocked call must not read as work in progress. */
@@ -180,6 +342,62 @@
 
 .toolBlocked .toolState {
   color: var(--attention-fg);
+}
+
+/* ---- the approval prompt ---- */
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-2);
+  padding-top: var(--sway-space-2);
+  border-top: 1px solid var(--border-default);
+}
+
+/* The full arguments, scrollable rather than truncated: a call approved on the
+   strength of a summary was approved unread. */
+.promptInput {
+  max-height: calc(160px * var(--ui-scale));
+  margin: 0;
+  padding: var(--sway-space-2);
+  overflow: auto;
+  border-radius: var(--sway-radius-sm);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.promptActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sway-space-2);
+}
+
+.promptFeedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-2);
+}
+
+.promptReason {
+  resize: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  padding: var(--sway-space-2);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-sm);
+  line-height: 1.45;
+}
+
+.promptReason:focus {
+  outline: none;
+  border-color: var(--brand-ring);
 }
 
 /* ---- notices and banners ---- */
