@@ -74,6 +74,15 @@
   justify-content: center;
 }
 
+/* CSS-sized glyphs (the numeric Lucide size is dropped) so they track --ui-scale:
+   the launch glyph at the standard control icon, the caret chevron a touch
+   smaller. */
+.termNewMain svg,
+.termNewSolo svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
 .termNewMain {
   padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border-radius: var(--sway-radius-md) 0 0 var(--sway-radius-md);
@@ -97,6 +106,8 @@
 .termNewChevron {
   display: inline-flex;
   line-height: 1;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
   transition: transform var(--sway-duration-fast) ease;
 }
 

@@ -113,9 +113,12 @@
   cursor: pointer;
   white-space: nowrap;
 }
-/* Lucide affordance icon in a gear-menu item: dimmed, inherits the row colour. */
+/* Lucide affordance icon in a gear-menu item: dimmed, inherits the row colour.
+   CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale. */
 .gearItem :global(svg) {
   flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
   color: var(--fg-muted);
 }
 .gearItem:hover :global(svg) {
@@ -408,6 +411,11 @@
   height: calc(16px * var(--ui-scale));
   color: var(--fg-muted);
 }
+/* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.rowIcon :global(svg) {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
 
 /* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
    that rotates 180° into a chevron-up when the row is expanded. Because the
@@ -424,6 +432,11 @@
 }
 .rowChevron.open {
   transform: rotate(180deg);
+}
+/* CSS-sized chevron (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.rowChevron :global(svg) {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }
 
 .dot {
@@ -453,8 +466,13 @@
   flex: 0 0 auto;
   font-size: var(--sway-text-sm);
 }
-.statusIndicator :global(svg) {
+/* CSS-sized status glyph (the numeric Lucide size is dropped) so it tracks
+   --ui-scale; the same size feeds the rollup bubble below. */
+.statusIndicator :global(svg),
+.statusBubbleItem :global(svg) {
   flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }
 .statusIndicator.executing {
   color: var(--status-progress);
@@ -677,6 +695,12 @@
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
 }
+/* The tile's own glyph (direct child, so a nested bubble's status icons keep
+   their size). CSS-sized so it tracks --ui-scale. */
+.space > :global(svg) {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+}
 .space:hover,
 .space.menuActive {
   color: var(--fg-default);
@@ -717,6 +741,11 @@
   transition:
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
+}
+/* CSS-sized "+" glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.spaceAdd :global(svg) {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
 }
 .spaceAdd:hover {
   color: var(--fg-default);

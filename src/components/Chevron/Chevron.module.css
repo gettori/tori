@@ -22,3 +22,8 @@
 .chevron .chev.open {
   transform: rotate(90deg);
 }
+/* CSS-sized so the glyph tracks --ui-scale (the numeric Lucide size is dropped). */
+.chevron .chev svg {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}

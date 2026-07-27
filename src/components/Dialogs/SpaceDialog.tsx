@@ -108,7 +108,7 @@ export default function SpaceDialog(props: {
                   title={entry.name}
                   onClick={() => setIcon(entry.name)}
                 >
-                  <Icon icon={entry.icon} size={18} />
+                  <Icon icon={entry.icon} />
                 </button>
               )}
             </For>

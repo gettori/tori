@@ -107,7 +107,7 @@ function projectIcon(kind: string | undefined): LucideIcon {
 function RowChevron(props: { open: boolean }) {
   return (
     <span class={styles.rowChevron} classList={{ [styles.open]: props.open }}>
-      <Icon icon={ChevronDown} size={14} />
+      <Icon icon={ChevronDown} />
     </span>
   );
 }
@@ -655,13 +655,13 @@ export default function LeftSidebar(props: {
   function statusGlyph(status: SessionStatus) {
     switch (status) {
       case "executing":
-        return <Icon icon={ChevronsLeftRightEllipsis} size={14} />;
+        return <Icon icon={ChevronsLeftRightEllipsis} />;
       case "waitingForApproval":
-        return <Icon icon={MessageCircleQuestion} size={14} />;
+        return <Icon icon={MessageCircleQuestion} />;
       case "idle":
-        return <Icon icon={Check} size={14} />;
+        return <Icon icon={Check} />;
       case "running":
-        return <Icon icon={CircleDashed} size={14} />;
+        return <Icon icon={CircleDashed} />;
     }
   }
 
@@ -686,25 +686,25 @@ export default function LeftSidebar(props: {
       <span class={styles.statusBubble}>
         <Show when={r.waitingForApproval}>
           <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title="Waiting for approval">
-            <Icon icon={MessageCircleQuestion} size={14} />
+            <Icon icon={MessageCircleQuestion} />
             <Show when={r.waitingForApproval > 1}>{r.waitingForApproval}</Show>
           </span>
         </Show>
         <Show when={r.executing}>
           <span class={`${styles.statusBubbleItem} ${styles.executing}`} title="Executing">
-            <Icon icon={ChevronsLeftRightEllipsis} size={14} />
+            <Icon icon={ChevronsLeftRightEllipsis} />
             <Show when={r.executing > 1}>{r.executing}</Show>
           </span>
         </Show>
         <Show when={r.idle}>
           <span class={`${styles.statusBubbleItem} ${styles.idle}`} title="Idle">
-            <Icon icon={Check} size={14} />
+            <Icon icon={Check} />
             <Show when={r.idle > 1}>{r.idle}</Show>
           </span>
         </Show>
         <Show when={r.running}>
           <span class={`${styles.statusBubbleItem} ${styles.running}`} title="Running">
-            <Icon icon={CircleDashed} size={14} />
+            <Icon icon={CircleDashed} />
             <Show when={r.running > 1}>{r.running}</Show>
           </span>
         </Show>
@@ -2262,7 +2262,7 @@ export default function LeftSidebar(props: {
       }}
     >
       <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
-        {(glyph) => <Icon icon={glyph()} size={18} />}
+        {(glyph) => <Icon icon={glyph()} />}
       </Show>
       {spaceBubble(g)}
     </button>
@@ -2327,7 +2327,7 @@ export default function LeftSidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, p.path)}
                 >
-                  <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} size={14} /></span>
+                  <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} /></span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
                     bubbleForIds(
@@ -2452,19 +2452,19 @@ export default function LeftSidebar(props: {
               <div class={styles.gearMenu}>
                 <Show when={hasRoot()}>
                   <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
-                    <Icon icon={FolderPlus} size={14} />New space
+                    <Icon icon={FolderPlus} />New space
                   </div>
                 </Show>
                 <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
-                  <Icon icon={Pin} size={14} />Pin folder to "Other"
+                  <Icon icon={Pin} />Pin folder to "Other"
                 </div>
                 <div class={styles.gearDivider} />
                 <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
-                  <Icon icon={FolderOpen} size={14} />Add/Update root
+                  <Icon icon={FolderOpen} />Add/Update root
                 </div>
                 <Show when={hasRoot()}>
                   <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>
-                    <Icon icon={RotateCcw} size={14} />Reset root (forget only)
+                    <Icon icon={RotateCcw} />Reset root (forget only)
                   </div>
                 </Show>
               </div>
@@ -2481,7 +2481,7 @@ export default function LeftSidebar(props: {
 
           <Show when={hasRoot()}>
             <button class={styles.spaceAdd} title="New space" onClick={addSpace}>
-              <Icon icon={Plus} size={16} />
+              <Icon icon={Plus} />
             </button>
           </Show>
         </div>

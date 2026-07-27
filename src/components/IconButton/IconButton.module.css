@@ -1,0 +1,66 @@
+/* Square icon control on the shared control tokens. Its side is the size's
+   fixed --control-height, so it lines up pixel-for-pixel with a same-size
+   Button. Flat and quiet at rest; hover brightens the glyph and turns the
+   border brand; `active` fills with brand (a pressed toggle). */
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  aspect-ratio: 1;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease;
+}
+
+.iconBtn svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: 0 0 auto;
+}
+
+.iconBtn:hover:not(:disabled) {
+  color: var(--fg-default);
+  border-color: var(--brand-default);
+}
+
+.iconBtn:focus-visible {
+  outline: none;
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.iconBtn:active:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+/* Pressed toggle: brand fill, held through hover. */
+.active,
+.active:hover:not(:disabled) {
+  color: var(--brand-on);
+  background: var(--brand-default);
+  border-color: var(--brand-default);
+}
+
+/* ---- Sizes ---- */
+.md {
+}
+.sm {
+  height: var(--control-height-sm);
+}
+.xs {
+  height: var(--control-height-xs);
+}
+
+.iconBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
