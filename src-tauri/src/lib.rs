@@ -1,5 +1,6 @@
 mod agents;
 mod askpass;
+mod chat;
 mod checkpoint;
 mod config;
 mod env;

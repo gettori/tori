@@ -1,0 +1,170 @@
+[
+  {
+    "type": "sessionStarted",
+    "sessionId": "s1",
+    "cwd": "/tmp/w",
+    "model": "claude-sonnet-5",
+    "permissionMode": "bypassPermissions",
+    "tools": [
+      "Bash",
+      "Edit"
+    ],
+    "slashCommands": [
+      {
+        "name": "review",
+        "description": "Multi-lens code review",
+        "argumentHint": "<pr>",
+        "aliases": [
+          "rv"
+        ]
+      }
+    ],
+    "mcpServers": [
+      {
+        "name": "ctx",
+        "status": "connected",
+        "toolCount": 11,
+        "error": null
+      }
+    ],
+    "extra": {
+      "ttftMs": 1575
+    }
+  },
+  {
+    "type": "turnStarted",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "model": "claude-sonnet-5",
+    "permissionMode": "default"
+  },
+  {
+    "type": "textDelta",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "text": "hello"
+  },
+  {
+    "type": "thinkingDelta",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "text": "considering"
+  },
+  {
+    "type": "toolCallStarted",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "toolUseId": "toolu_1",
+    "name": "Bash",
+    "input": {
+      "command": "echo hi"
+    }
+  },
+  {
+    "type": "toolCallProgress",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "toolUseId": "toolu_1",
+    "partialInput": "{\"comm"
+  },
+  {
+    "type": "toolCallCompleted",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "toolUseId": "toolu_1",
+    "status": "ok",
+    "output": "hi",
+    "files": [
+      "/tmp/w/probe.txt"
+    ],
+    "durationMs": 42
+  },
+  {
+    "type": "fileEdit",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "toolUseId": "toolu_2",
+    "path": "/tmp/w/probe.txt",
+    "kind": "modified",
+    "beforeBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+  },
+  {
+    "type": "permissionRequest",
+    "sessionId": "s1",
+    "toolUseId": "toolu_3",
+    "toolName": "Bash",
+    "input": {
+      "command": "rm -rf /"
+    },
+    "requestId": "op-9",
+    "autoDenyAtMs": 1785179400000
+  },
+  {
+    "type": "planUpdate",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "items": [
+      {
+        "text": "Write the mappers",
+        "status": "inProgress"
+      }
+    ]
+  },
+  {
+    "type": "usage",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "usage": {
+      "inputTokens": 6,
+      "outputTokens": 205,
+      "cacheReadTokens": 64647,
+      "cacheWriteTokens": 8866,
+      "thinkingTokens": 22
+    },
+    "extra": {
+      "ttftMs": 1575
+    }
+  },
+  {
+    "type": "rateLimit",
+    "sessionId": "s1",
+    "status": "allowed",
+    "resetsAt": 1785179400,
+    "limitType": "five_hour"
+  },
+  {
+    "type": "turnCompleted",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "outcome": "cancelled",
+    "stopReason": "error_during_execution",
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "thinkingTokens": 0
+    },
+    "costUsd": 0.0762991,
+    "permissionDenials": [
+      {
+        "toolUseId": "toolu_3",
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "echo blocked"
+        }
+      }
+    ]
+  },
+  {
+    "type": "sessionError",
+    "sessionId": "s1",
+    "message": "child exited with status 1",
+    "fatal": true
+  },
+  {
+    "type": "sessionEnded",
+    "sessionId": "s1",
+    "reason": "closed by user"
+  }
+]
