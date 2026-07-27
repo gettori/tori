@@ -6,14 +6,19 @@
 //! [[lesson_pure_core_for_global_stores]] describes.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use tauri::ipc::Channel;
 use tauri::State;
 
 use crate::agents::{self, ChatConfig, ChatTransport};
 
+use super::approval::{self, ApprovalPrompt, HookResponse};
 use super::claude_transport::ClaudeTransport;
-use super::host::{ChatState, Spawned};
+use super::host::{ChatState, SessionBridge, Spawned};
+use super::rules;
+use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::{Claim, ClaimOutcome, Surface};
 use super::transport::{AgentTransport, StartSpec};
@@ -105,9 +110,31 @@ pub async fn chat_spawn(
     // already ours, and re-claiming would report `AlreadyMineFocus` and refuse to
     // rewire the tab that is asking.
     let host = &state.0;
-    let ownership = if host.is_live(&session_id) {
-        ClaimOutcome::Granted { contested: false }
-    } else {
+    let live = host.is_live(&session_id);
+
+    // **A remount rewires and stops.** Everything below builds a *new* approval
+    // bridge, and the running child cannot be told about it: the socket path it
+    // will call went into its `--settings` at launch and is fixed for the life of
+    // the process. Falling through would install a second server, tear the live
+    // one down (denying whatever was blocked and deleting the session's rules),
+    // and leave the child talking to a socket that had just been shut down -
+    // approvals silently broken for the rest of the session.
+    if live {
+        let spawned = host.spawn(
+            &session_id,
+            &tab_id,
+            Box::new(move |event| {
+                let _ = on_event.send(event);
+            }),
+            StartSpec::default(),
+            // Never called: the session is live, so `spawn` takes the rewire
+            // path and returns before it would need a transport.
+            || unreachable!("a live session rewires rather than spawning"),
+        )?;
+        return Ok(SpawnResult { ownership: ClaimOutcome::Granted { contested: false }, spawned: Some(spawned) });
+    }
+
+    let ownership = {
         let want = Claim {
             surface: Surface::Chat,
             tab_id: tab_id.clone(),
@@ -127,19 +154,58 @@ pub async fn chat_spawn(
         outcome
     };
 
+    // The approval socket has to exist before the child does: its path travels
+    // in the `--settings` payload the child is launched with.
+    let snapshots = Arc::new(Mutex::new(SnapshotCache::new(CACHE_CAP)));
+    let emitter = host.emitter();
+    let repo = PathBuf::from(&cwd);
+    let capture_into = snapshots.clone();
+    let server = approval::start(
+        Box::new(move |p: ApprovalPrompt| {
+            emitter(
+                &p.session_id,
+                ChatEvent::PermissionRequest {
+                    session_id: p.session_id.clone(),
+                    tool_use_id: p.tool_use_id,
+                    tool_name: p.tool_name,
+                    input: p.input,
+                    request_id: p.request_id,
+                    auto_deny_at_ms: Some(p.auto_deny_at_ms),
+                },
+            );
+        }),
+        // Runs on every authenticated call, before any decision, so a file's
+        // prior content is captured while it still *is* the prior content.
+        Box::new(move |req| {
+            let captured = snapshot::capture_all(&repo, &req.tool_name, &req.tool_input);
+            if !captured.is_empty() {
+                if let Ok(mut cache) = capture_into.lock() {
+                    cache.insert(&req.tool_use_id, captured);
+                }
+            }
+        }),
+    )
+    .map_err(|e| format!("could not start the approval bridge: {e}"))?;
+
+    // A fresh stamp before the child starts, so its very first tool call sees a
+    // supervised rules file rather than a stale one.
+    approval::refresh_stamp(&session_id);
+    let mut args = build_args(
+        chat,
+        &session_id,
+        resume,
+        model.as_deref(),
+        mode.as_deref(),
+        effort.as_deref(),
+        &extra_dirs,
+    );
+    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token())?);
+
     let spec = StartSpec {
         session_id: session_id.clone(),
         cwd,
         program: chat.program.clone(),
-        args: build_args(
-            chat,
-            &session_id,
-            resume,
-            model.as_deref(),
-            mode.as_deref(),
-            effort.as_deref(),
-            &extra_dirs,
-        ),
+        args,
         // Empty today. The map exists so multi-account support later changes
         // this one line rather than every signature between here and the child.
         env: HashMap::new(),
@@ -155,7 +221,18 @@ pub async fn chat_spawn(
         }),
         spec,
         move || make_transport(transport, &id_for_factory),
-    )?;
+    );
+    let spawned = match spawned {
+        Ok(s) => s,
+        Err(e) => {
+            // The socket outlives nothing: a child that never started has no
+            // hook to serve, and leaving the server up would leak a thread and a
+            // $TMPDIR directory per failed spawn.
+            server.shutdown();
+            return Err(e);
+        }
+    };
+    host.install_bridge(&session_id, SessionBridge::new(server, snapshots, &session_id));
 
     Ok(SpawnResult { ownership, spawned: Some(spawned) })
 }
@@ -175,16 +252,79 @@ pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> 
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_respond_permission(
     state: State<'_, ChatState>,
     session_id: String,
-    tool_use_id: String,
     request_id: String,
+    tool_name: String,
+    tool_input: serde_json::Value,
     decision: PermissionDecision,
     scope: PermissionScope,
     reason: Option<String>,
 ) -> Result<(), String> {
-    state.0.respond_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason)
+    // "Allow, and stop asking" writes a Sway-owned rule so the next matching
+    // call takes the cheap path. Never written to `~/.claude/settings.json`: a
+    // click in one chat pane must not change how every terminal session and
+    // every other project behaves.
+    if matches!(decision, PermissionDecision::Allow) && !matches!(scope, PermissionScope::Once) {
+        add_rule(&session_id, &tool_name, &tool_input, scope)?;
+    }
+
+    // The answer goes to the blocked hook process over the approval socket, not
+    // to the child's stdin: `PreToolUse` is the gate, and it is what is waiting.
+    let resp = match decision {
+        PermissionDecision::Allow => HookResponse::allow(reason.unwrap_or_else(|| "Allowed in Sway.".to_string())),
+        PermissionDecision::Deny => HookResponse::deny(reason.unwrap_or_else(|| "Denied in Sway.".to_string())),
+    };
+    state.0.resolve_permission(&session_id, &request_id, resp)
+}
+
+/// Record an allow rule for this session.
+///
+/// The scope decides how wide it is, and the widths are deliberately modest: a
+/// rule is created by clicking a button on one specific call, and a user
+/// clicking "always allow" on `Read /proj/a.rs` means files like that one, not
+/// every file on the machine.
+///
+///   * `Session` - this exact tool with this exact primary argument.
+///   * `Project` - this tool anywhere under the session's working directory.
+fn add_rule(
+    session_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+    scope: PermissionScope,
+) -> Result<(), String> {
+    let prefix = match scope {
+        PermissionScope::Once => return Ok(()),
+        PermissionScope::Session => rules::primary_arg(tool_name, tool_input),
+        // A project rule widens a path to its directory - but **only** for a
+        // tool whose primary argument really is a path. `Bash`'s is the command
+        // string, and `Path::parent("git status")` is `""`, which every argument
+        // starts with: one click on "always allow in this project" would have
+        // allowed every shell command the session ever runs. Widening is now
+        // opt-in per tool, and anything else falls back to the exact argument.
+        PermissionScope::Project => match rules::path_prefix_for(tool_name, tool_input) {
+            Some(dir) => Some(dir),
+            None => rules::primary_arg(tool_name, tool_input),
+        },
+    };
+    // An empty prefix matches everything, which is never what a click on one
+    // specific call meant. Belt and braces behind the widening rule above.
+    let prefix = prefix.filter(|p| !p.is_empty());
+    let path = rules::rules_path(session_id);
+    let mut file = rules::load(&path).unwrap_or(rules::RuleFile {
+        sway_pid: std::process::id(),
+        stamp_ms: rules::now_ms(),
+        rules: Vec::new(),
+    });
+    let rule = rules::Rule { tool: tool_name.to_string(), prefix };
+    if !file.rules.contains(&rule) {
+        file.rules.push(rule);
+    }
+    file.sway_pid = std::process::id();
+    file.stamp_ms = rules::now_ms();
+    rules::save(&path, &file)
 }
 
 #[tauri::command]
@@ -204,6 +344,51 @@ pub async fn chat_set_model(
     effort: Option<Effort>,
 ) -> Result<(), String> {
     state.0.set_model(&session_id, &model, effort)
+}
+
+/// The before-state of the files a tool call wrote, for a card the user
+/// expanded. Read back out of the object store on demand, which is why only the
+/// sha was ever cached.
+///
+/// `None` for a call that was never captured or has been evicted: the card says
+/// the diff is unavailable and offers the file, rather than erroring.
+#[tauri::command]
+pub async fn chat_tool_before_state(
+    state: State<'_, ChatState>,
+    session_id: String,
+    tool_use_id: String,
+    cwd: String,
+) -> Result<Option<Vec<BeforeContent>>, String> {
+    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(None) };
+    let captured = {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        guard.get(&tool_use_id).cloned()
+    };
+    let repo = PathBuf::from(&cwd);
+    Ok(captured.map(|entries| {
+        entries
+            .into_iter()
+            .map(|c| BeforeContent {
+                content: match &c.before {
+                    snapshot::BeforeState::Blob { sha } => snapshot::read_back(&repo, sha),
+                    _ => None,
+                },
+                path: c.path,
+                before: c.before,
+            })
+            .collect()
+    }))
+}
+
+/// One file's before-state, resolved to content where there is content to
+/// resolve. The `before` discriminant is kept so a creation renders as a
+/// creation rather than as an empty file.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BeforeContent {
+    pub path: String,
+    pub before: snapshot::BeforeState,
+    pub content: Option<String>,
 }
 
 #[tauri::command]

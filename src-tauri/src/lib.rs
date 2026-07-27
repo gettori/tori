@@ -65,6 +65,14 @@ pub fn run() {
         std::process::exit(askpass::run_helper());
     }
 
+    // Same re-exec trick for the chat approval hook: `claude` runs this binary
+    // as its `PreToolUse` hook with the socket markers set inline on the command
+    // string. Checked before any Tauri/AppKit init, because this path runs on
+    // every single tool call and must stay cheap.
+    if chat::approval::is_helper() {
+        std::process::exit(chat::approval::run_helper());
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -169,6 +177,7 @@ pub fn run() {
             chat::commands::chat_set_mode,
             chat::commands::chat_set_model,
             chat::commands::chat_close,
+            chat::commands::chat_tool_before_state,
             chat::commands::chat_terminate_orphan,
             config::get_config,
             config::get_docs_root,
