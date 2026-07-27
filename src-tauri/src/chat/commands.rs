@@ -20,7 +20,7 @@ use super::host::{ChatState, SessionBridge, Spawned};
 use super::rules;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
-use super::ownership::{Claim, ClaimOutcome, Surface};
+use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
 use super::transport::{AgentTransport, StartSpec};
 
 /// Build a transport for a declared wire protocol.
@@ -394,6 +394,17 @@ pub struct BeforeContent {
 #[tauri::command]
 pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
     state.0.close(&session_id)
+}
+
+/// What the startup reap found, delivered once, when the frontend is ready to
+/// show it.
+///
+/// A pull rather than an event: the reap runs inside Tauri's `setup`, before the
+/// webview exists, so anything emitted there is emitted to nobody and the orphan
+/// blocks its session id silently.
+#[tauri::command]
+pub async fn chat_orphans(orphans: State<'_, Orphans>) -> Result<Vec<Reaped>, String> {
+    Ok(orphans.take())
 }
 
 /// End a `claude` child left behind by a crashed Sway, so its session id becomes

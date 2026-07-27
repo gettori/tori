@@ -8,7 +8,7 @@
 export type LiveTab = {
   id: string;
   workspace: string;
-  kind: "shell" | "agent" | "command";
+  kind: "shell" | "agent" | "command" | "chat";
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.

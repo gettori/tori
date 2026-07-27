@@ -88,6 +88,15 @@
   line-height: 1.4;
 }
 
+/* Turn attribution is cross-contaminated while two chats share this worktree.
+   Marked, not hidden: presenting a turn's file list as fact would be worse. */
+.attributionWarning {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  color: var(--attention-fg);
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+}
+
 .timelineActions {
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
