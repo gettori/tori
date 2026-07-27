@@ -122,8 +122,9 @@
 }
 
 .tbCrumb .crumbSep {
-  font-size: var(--sway-text-lg);
   flex: 0 0 auto;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
 }
 
@@ -134,9 +135,9 @@
 }
 
 /* Ghostty/VSCode icon buttons: a fixed 24px pill holding a bigger app glyph
-   plus a small, dimmed launch arrow. Overrides the Button's content-driven
-   height, its iconOnly square (these have no text label), and its uniform
-   14px svg sizing. The .tbRow prefix lifts specificity above `.iconOnly.sm`. */
+   plus a small, dimmed launch arrow. Overrides the Button's iconOnly square
+   (these carry an icon + a trailing arrow, no text label) and its --control-icon
+   svg sizing. The .tbRow prefix lifts specificity above `.iconOnly.sm`. */
 .tbRow .tbActions button {
   box-sizing: border-box;
   height: calc(24px * var(--ui-scale));

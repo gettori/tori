@@ -25,7 +25,7 @@ export default function LayoutToggles(props: {
         title="Show or hide the sidebar (⌘B)"
         onClick={() => emit(TOGGLE_SIDEBAR)}
       >
-        <Icon icon={PanelLeft} size={15} />
+        <Icon icon={PanelLeft} />
       </button>
       <div class={styles.split}>
         <button
@@ -36,7 +36,7 @@ export default function LayoutToggles(props: {
           title={termLast() ? "Can't hide the terminal while the editor is hidden" : "Show or hide the terminal (⌘⌥J)"}
           onClick={() => emit(TOGGLE_TERMINAL)}
         >
-          <Icon icon={SquareTerminal} size={15} />
+          <Icon icon={SquareTerminal} />
         </button>
         <button
           class={`${styles.seg} ${styles.segRight}`}
@@ -46,7 +46,7 @@ export default function LayoutToggles(props: {
           title={editorLast() ? "Can't hide the editor while the terminal is hidden" : "Show or hide the editor (⌘⌥E)"}
           onClick={() => emit(TOGGLE_EDITOR)}
         >
-          <Icon icon={Code2} size={15} />
+          <Icon icon={Code2} />
         </button>
       </div>
     </div>

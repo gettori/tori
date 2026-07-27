@@ -739,7 +739,7 @@ export default function Terminal(props: {
           >
             <span class="tab-label">{tabTitle(t)}</span>
             <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
-              <Icon icon={X} size={14} />
+              <Icon icon={X} />
             </span>
           </div>
         )}
@@ -747,7 +747,7 @@ export default function Terminal(props: {
           <>
             <span class="tab-label">{tabTitle(t)}</span>
             <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
-              <Icon icon={X} size={14} />
+              <Icon icon={X} />
             </span>
           </>
         )}
@@ -761,7 +761,7 @@ export default function Terminal(props: {
               title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
               onClick={newShell}
             >
-              <Icon icon={SquareTerminal} size={16} />
+              <Icon icon={SquareTerminal} />
             </button>
             <button
               ref={caretEl}
@@ -772,7 +772,7 @@ export default function Terminal(props: {
               aria-expanded={menuOpen()}
               onClick={toggleMenu}
             >
-              <Icon icon={ChevronDown} size={14} class={styles.termNewChevron} />
+              <Icon icon={ChevronDown} class={styles.termNewChevron} />
             </button>
             <Show when={menuOpen()}>
               <Menu

@@ -10,11 +10,12 @@
   align-items: center;
   justify-content: center;
   gap: calc(6px * var(--ui-scale));
+  height: var(--control-height);
   background: var(--neutral-hover);
   border: 1px solid var(--border-default);
   color: var(--fg-default);
   border-radius: var(--sway-radius-md);
-  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: 0 calc(12px * var(--ui-scale));
   font-family: inherit;
   font-size: var(--sway-text-lg);
   line-height: 1.4;
@@ -38,10 +39,11 @@
   filter: brightness(0.96);
 }
 
-/* Icons scale with the UI; overridable per call site via --btn-icon-size. */
+/* Icons are CSS-sized to the standard control icon (overrides Lucide's numeric
+   width/height attrs), so they scale with the UI and no call site sets a size. */
 .btn svg {
-  width: var(--btn-icon-size, calc(16px * var(--ui-scale)));
-  height: var(--btn-icon-size, calc(16px * var(--ui-scale)));
+  width: var(--control-icon);
+  height: var(--control-icon);
   flex: 0 0 auto;
 }
 
@@ -99,29 +101,27 @@
   filter: brightness(1.08);
 }
 
-/* ---- Sizes (md is the base above) ---- */
+/* ---- Sizes: fixed outer height (md is the base above), tighter horizontal
+   padding as they shrink. Height, not padding, sets the vertical size, so a
+   button is the same height whatever it holds. ---- */
 .md {
 }
 
 .sm {
-  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  height: var(--control-height-sm);
+  padding: 0 calc(10px * var(--ui-scale));
 }
 
 .xs {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  height: var(--control-height-xs);
+  padding: 0 calc(8px * var(--ui-scale));
   font-size: var(--sway-text-md);
 }
 
-/* ---- Icon-only: square padding, no label ---- */
+/* ---- Icon-only: a square whose side is the size's fixed height, no label ---- */
 .iconOnly {
-  padding: calc(6px * var(--ui-scale));
+  padding: 0;
   aspect-ratio: 1;
-}
-.iconOnly.sm {
-  padding: calc(4px * var(--ui-scale));
-}
-.iconOnly.xs {
-  padding: calc(2px * var(--ui-scale));
 }
 
 /* ---- Disabled ---- */

@@ -70,6 +70,11 @@
   justify-content: center;
   padding: calc(4px * var(--ui-scale));
 }
+/* CSS-sized toggle glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.iconToggle svg {
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+}
 
 /* File-tree toggle: matches the topbar pane toggles. Hover brightens the glyph
    and turns the border brand; while the tree is hidden (.toggleOff) the icon is
@@ -242,6 +247,12 @@
   border: none;
   cursor: pointer;
   transition: color var(--sway-duration-fast) ease;
+}
+
+/* CSS-sized mode glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.rightTab svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
 }
 
 .rightTab:hover {

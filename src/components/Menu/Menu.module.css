@@ -33,6 +33,14 @@
   background: var(--neutral-hover);
 }
 
+/* A leading glyph in a rich row (direct child, so a nested control's own icon -
+   e.g. a .tab-close X - keeps its own size). CSS-sized to the control icon so it
+   tracks --ui-scale. */
+.menuItem > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
 /* Rich rows (overflow menu) put the label in a .tab-name/.tab-label; let it take
    the free space so trailing controls (e.g. the close button) sit at the edge. */
 .menuItem :global(.tab-name),

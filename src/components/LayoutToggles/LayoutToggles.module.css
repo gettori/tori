@@ -10,6 +10,13 @@
 }
 
 /* Sidebar toggle: standalone bordered icon button (the file-tree toggle look). */
+/* CSS-sized glyphs (the numeric Lucide size is dropped) so they track --ui-scale. */
+.solo svg,
+.seg svg {
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+}
+
 .solo {
   flex: 0 0 auto;
   display: inline-flex;

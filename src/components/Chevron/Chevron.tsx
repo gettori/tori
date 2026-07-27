@@ -10,7 +10,7 @@ export default function Chevron(props: { open: boolean }) {
   return (
     <span class={styles.chevron}>
       <span class={styles.chev} classList={{ [styles.open]: props.open }}>
-        <Icon icon={ChevronRight} size={14} />
+        <Icon icon={ChevronRight} />
       </span>
     </span>
   );

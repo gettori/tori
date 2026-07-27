@@ -249,11 +249,11 @@ export default function FileTree(props: {
         {(c) => (
           <div class={styles.treeActions}>
             <Button variant="ghost" size="xs" onClick={() => newFileIn(c(), c().root, reloadRoots)}>
-              <Icon icon={FilePlus} size={13} />
+              <Icon icon={FilePlus} />
               New File
             </Button>
             <Button variant="ghost" size="xs" onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
-              <Icon icon={FolderPlus} size={13} />
+              <Icon icon={FolderPlus} />
               New Folder
             </Button>
           </div>
