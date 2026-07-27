@@ -112,10 +112,10 @@
     --sway-space-8: calc(32px * var(--ui-scale));
 
     /* ---- Radii ---- */
-    --sway-radius-sm: calc(3px * var(--ui-radius-scale));
-    --sway-radius-md: calc(8px * var(--ui-radius-scale));
-    --sway-radius-lg: calc(10px * var(--ui-radius-scale));
-    --sway-radius-xl: calc(12px * var(--ui-radius-scale)); /* the floating work-card */
+    --sway-radius-sm: 3px;
+    --sway-radius-md: 8px;
+    --sway-radius-lg: 10px;
+    --sway-radius-xl: 12px; /* the floating work-card */
     --sway-radius-pill: 999px;
 
     /* ---- Border widths ---- */
@@ -131,7 +131,6 @@
        props on <html>; defaults here match the pre-settings look). ---- */
     --ui-scale: 1; /* chrome sizing multiplier; = uiFontSize / 15 × zoom */
     --ui-line-height: var(--sway-line-normal);
-    --ui-radius-scale: 1; /* border-radius multiplier; = radius / 5 */
     --editor-font-family: "SF Mono", Menlo, Monaco, monospace;
     --editor-font-size: 13px;
 
@@ -486,5 +485,5 @@
      (4/6px) and at most --shadow-sm. All chrome spacing >=2px scales with the
      UI: use a --sway-space-* token or `calc(<px> * var(--ui-scale))`, so padding,
      gaps, and control dimensions track the UI font size (and Cmd +/- zoom).
-     1px hairlines/borders stay fixed; radii use `* var(--ui-radius-scale)`. */
+     1px hairlines/borders stay fixed; radii are fixed px (--sway-radius-*). */
 }

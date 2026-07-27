@@ -68,13 +68,11 @@ describe("painting a theme switch", () => {
   // settings store's values.
   it("leaves keys it does not own untouched", () => {
     const { target, props } = fakeStyle();
-    target.setProperty("--ui-density", "0.85");
     target.setProperty("--editor-font-family", "Iosevka");
 
     paintRoles(target, darkRoles);
     paintRoles(target, lightRoles);
 
-    expect(props.get("--ui-density")).toBe("0.85");
     expect(props.get("--editor-font-family")).toBe("Iosevka");
   });
 
@@ -143,7 +141,7 @@ describe("the v1 to v2 cache handoff", () => {
     const store = fakeStore({
       "sway.theme.v2": JSON.stringify({
         "--fg-default": "#e6e6e6",
-        "--ui-density": "0.5",
+        "--ui-line-height": "1.6",
         "--some-future-role": "#ff00ff",
       }),
     });

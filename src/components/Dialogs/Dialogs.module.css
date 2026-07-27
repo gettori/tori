@@ -230,7 +230,7 @@
 .delTag {
   font-size: var(--sway-text-sm);
   padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
-  border-radius: calc(3px * var(--ui-radius-scale));
+  border-radius: 3px;
   border: 1px solid var(--border-default);
 }
 .delTag.muted {
