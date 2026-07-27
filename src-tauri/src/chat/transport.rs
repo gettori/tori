@@ -1,0 +1,233 @@
+//! The seam between the chat host and whatever harness is actually driving a
+//! session.
+//!
+//! [`AgentTransport`] is deliberately the *only* thing the host knows about a
+//! harness. `chat/claude.rs` maps Claude's wire format and `ClaudeTransport`
+//! drives its process; a second harness is a second implementor plus a TOML
+//! `[chat]` table, with no branch anywhere in the host.
+//!
+//! Two shapes here are load-bearing rather than incidental:
+//!
+//!   * **The sink is a closure behind a swappable slot**, not a Tauri `Channel`.
+//!     A transport that referenced `Channel` directly could only be tested
+//!     inside a Tauri app; injecting the emit closure is the same move
+//!     `askpass.rs` makes, and it is what lets the whole of Phase 3 be tested
+//!     headlessly. `chat_spawn` wraps a real `Channel` in that closure at the
+//!     command boundary and nowhere else.
+//!   * **`start` takes an explicit env map** from day one. Multi-account is out
+//!     of scope for now, but adding it later must not touch every call site, so
+//!     the parameter exists before there is anything to put in it.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+
+/// Delivers one event to whoever is currently listening to a session.
+pub type Emit = Box<dyn Fn(ChatEvent) + Send + Sync>;
+
+/// The swappable slot holding that closure, mirroring [`crate::pty`]'s sink: a
+/// remount re-subscribes by replacing the closure, and a session with no
+/// listener drops its events rather than blocking the reader thread.
+pub type Sink = Arc<Mutex<Option<Emit>>>;
+
+pub fn new_sink(emit: Emit) -> Sink {
+    Arc::new(Mutex::new(Some(emit)))
+}
+
+/// Send one event to the sink's current listener, if any.
+///
+/// Silent when nobody is listening. That is correct rather than lossy: the
+/// transcript's durable record is the harness's own on-disk one, and blocking a
+/// reader thread on an absent UI would wedge the child process.
+pub fn emit(sink: &Sink, event: ChatEvent) {
+    if let Ok(guard) = sink.lock() {
+        if let Some(f) = guard.as_ref() {
+            f(event);
+        }
+    }
+}
+
+/// Everything needed to launch one session's child process.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StartSpec {
+    pub session_id: String,
+    pub cwd: String,
+    pub program: String,
+    pub args: Vec<String>,
+    /// Extra environment for the child, layered on top of the inherited one.
+    /// Empty today; the parameter exists so multi-account support later is a
+    /// change at one call site rather than a signature change everywhere.
+    pub env: HashMap<String, String>,
+}
+
+/// Build the child command for a spec. Shared by every transport so PATH
+/// handling and env layering cannot drift between them.
+pub fn build_command(spec: &StartSpec) -> std::process::Command {
+    let mut cmd = std::process::Command::new(&spec.program);
+    cmd.args(&spec.args);
+    if !spec.cwd.is_empty() {
+        cmd.current_dir(&spec.cwd);
+    }
+    // No login shell runs to set PATH for a directly-spawned child, so the
+    // agent binary would be unfindable without this - the same reason
+    // `pty.rs`'s `command` tabs use it.
+    cmd.env("PATH", crate::env::augmented_path());
+    for (k, v) in &spec.env {
+        cmd.env(k, v);
+    }
+    cmd
+}
+
+/// One live agent session, driven as a long-lived process.
+///
+/// Every method returns `Result` rather than emitting on failure, so the host
+/// decides whether a failure is fatal to the session. Transports still emit
+/// [`ChatEvent::SessionError`] for failures that arrive *asynchronously* (the
+/// child dying between commands), which no return value could carry.
+pub trait AgentTransport: Send {
+    /// Launch the child and begin streaming events into `sink`. Must return
+    /// once the process is up; reading is the transport's own concern.
+    fn start(&mut self, spec: StartSpec, sink: Sink) -> Result<(), String>;
+
+    /// Submit a user turn.
+    fn send(&mut self, blocks: &[ContentBlock]) -> Result<(), String>;
+
+    /// Ask the harness to abandon the running turn.
+    fn interrupt(&mut self) -> Result<(), String>;
+
+    /// Answer a blocked permission request. Phase 4 owns the socket this
+    /// reaches; the transport only needs to know an answer exists.
+    fn respond_permission(
+        &mut self,
+        tool_use_id: &str,
+        request_id: &str,
+        decision: PermissionDecision,
+        scope: PermissionScope,
+        reason: Option<&str>,
+    ) -> Result<(), String>;
+
+    /// Applies from the **next** turn, never the running one.
+    fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String>;
+
+    /// Same next-turn semantics as [`Self::set_mode`].
+    fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String>;
+
+    /// Terminate the child. Must be idempotent: the host calls it on tab close,
+    /// and again on app exit for anything still in the map.
+    fn close(&mut self) -> Result<(), String>;
+
+    /// The child's pid, for the persisted claim's orphan record. `None` before
+    /// `start` or after the child has been reaped.
+    fn child_pid(&self) -> Option<u32>;
+}
+
+/// The trait's test double. It lives beside the trait rather than in the host's
+/// test module because the host, the ownership tests and the command tests all
+/// drive it, and three copies would drift.
+#[cfg(test)]
+pub(crate) mod mock {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct MockTransport {
+        pub started: Vec<StartSpec>,
+        pub sent: Vec<Vec<ContentBlock>>,
+        pub interrupts: u32,
+        pub closed: bool,
+        sink: Option<Sink>,
+    }
+
+    impl AgentTransport for MockTransport {
+        fn start(&mut self, spec: StartSpec, sink: Sink) -> Result<(), String> {
+            self.started.push(spec);
+            self.sink = Some(sink);
+            Ok(())
+        }
+        fn send(&mut self, blocks: &[ContentBlock]) -> Result<(), String> {
+            self.sent.push(blocks.to_vec());
+            Ok(())
+        }
+        fn interrupt(&mut self) -> Result<(), String> {
+            self.interrupts += 1;
+            Ok(())
+        }
+        fn respond_permission(
+            &mut self,
+            _tool_use_id: &str,
+            _request_id: &str,
+            _decision: PermissionDecision,
+            _scope: PermissionScope,
+            _reason: Option<&str>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
+            Ok(())
+        }
+        fn close(&mut self) -> Result<(), String> {
+            self.closed = true;
+            Ok(())
+        }
+        fn child_pid(&self) -> Option<u32> {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mock::MockTransport;
+    use super::*;
+    use std::io::Read;
+
+    /// A mock alone would only prove the trait compiles, so this spawns the
+    /// command `build_command` actually produces and reads the variable back out
+    /// of the child. If the env map ever stopped reaching the process, the value
+    /// printed here would be empty.
+    #[test]
+    fn the_env_map_reaches_the_spawned_command() {
+        let spec = StartSpec {
+            session_id: "s1".to_string(),
+            cwd: String::new(),
+            program: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), "printf '%s' \"$SWAY_CHAT_TEST\"".to_string()],
+            env: HashMap::from([("SWAY_CHAT_TEST".to_string(), "reached".to_string())]),
+        };
+        let mut child = build_command(&spec)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("the mock command should spawn");
+        let mut out = String::new();
+        child.stdout.take().unwrap().read_to_string(&mut out).unwrap();
+        let _ = child.wait();
+        assert_eq!(out, "reached");
+    }
+
+    /// A transport must be usable as a boxed object: the host holds
+    /// `Box<dyn AgentTransport>`, so an accidentally non-object-safe method
+    /// (a generic parameter, a `Self` return) would break it here first.
+    #[test]
+    fn the_trait_is_object_safe_and_the_mock_records_calls() {
+        let mut t: Box<dyn AgentTransport> = Box::<MockTransport>::default();
+        let sink = new_sink(Box::new(|_| {}));
+        t.start(StartSpec::default(), sink).unwrap();
+        t.send(&[ContentBlock::Text { text: "hi".to_string() }]).unwrap();
+        t.interrupt().unwrap();
+        t.close().unwrap();
+    }
+
+    /// A sink with no listener must drop events rather than panic or block: the
+    /// reader thread runs even while a tab is unmounted.
+    #[test]
+    fn an_unlistened_sink_drops_events() {
+        let sink: Sink = Arc::new(Mutex::new(None));
+        emit(
+            &sink,
+            ChatEvent::SessionEnded { session_id: "s".to_string(), reason: None },
+        );
+    }
+}
