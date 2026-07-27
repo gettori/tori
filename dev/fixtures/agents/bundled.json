@@ -1,0 +1,213 @@
+[
+  {
+    "id": "claude",
+    "label": "Claude",
+    "program": "claude",
+    "base_args": [],
+    "yolo_args": [
+      "--dangerously-skip-permissions"
+    ],
+    "resume_args": [
+      "--resume",
+      "{id}"
+    ],
+    "parser_kind": "claude_jsonl",
+    "running_pattern": "claude (--resume|-r) {id}",
+    "pty_quiet_ms": 2000,
+    "needs_you": true,
+    "hooks": true,
+    "verified_against": "claude 2.1.220",
+    "chat": {
+      "transport": "claude_stream_json",
+      "program": "claude",
+      "base_args": [
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages"
+      ],
+      "session_id_args": [
+        "--session-id",
+        "{id}"
+      ],
+      "resume_args": [
+        "--resume",
+        "{id}"
+      ],
+      "model_args": [
+        "--model",
+        "{model}"
+      ],
+      "effort_args": [
+        "--effort",
+        "{effort}"
+      ],
+      "mode_args": [
+        "--permission-mode",
+        "{mode}"
+      ],
+      "add_dir_args": [
+        "--add-dir",
+        "{dir}"
+      ],
+      "models": [
+        {
+          "id": "claude-opus-5",
+          "label": "Opus 5",
+          "context_window": 200000,
+          "effort_levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "supports_thinking": true,
+          "supports_images": true
+        },
+        {
+          "id": "claude-sonnet-5",
+          "label": "Sonnet 5",
+          "context_window": 200000,
+          "effort_levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "supports_thinking": true,
+          "supports_images": true
+        },
+        {
+          "id": "claude-haiku-4-5-20251001",
+          "label": "Haiku 4.5",
+          "context_window": 200000,
+          "effort_levels": [],
+          "supports_thinking": false,
+          "supports_images": true
+        }
+      ],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Ask",
+          "args": [
+            "--permission-mode",
+            "default"
+          ]
+        },
+        {
+          "id": "acceptEdits",
+          "label": "Accept edits",
+          "args": [
+            "--permission-mode",
+            "acceptEdits"
+          ]
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "args": [
+            "--permission-mode",
+            "plan"
+          ]
+        },
+        {
+          "id": "bypassPermissions",
+          "label": "Bypass",
+          "args": [
+            "--permission-mode",
+            "bypassPermissions"
+          ]
+        }
+      ],
+      "effort": [
+        {
+          "id": "low",
+          "label": "Low",
+          "args": [
+            "--effort",
+            "low"
+          ]
+        },
+        {
+          "id": "medium",
+          "label": "Medium",
+          "args": [
+            "--effort",
+            "medium"
+          ]
+        },
+        {
+          "id": "high",
+          "label": "High",
+          "args": [
+            "--effort",
+            "high"
+          ]
+        },
+        {
+          "id": "xhigh",
+          "label": "Extra high",
+          "args": [
+            "--effort",
+            "xhigh"
+          ]
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "args": [
+            "--effort",
+            "max"
+          ]
+        }
+      ]
+    },
+    "source": "bundled:claude"
+  },
+  {
+    "id": "opencode",
+    "label": "opencode",
+    "program": "opencode",
+    "base_args": [],
+    "yolo_args": [
+      "--auto"
+    ],
+    "resume_args": [
+      "--session",
+      "{id}"
+    ],
+    "parser_kind": "opencode_sqlite",
+    "running_pattern": "opencode.*--session {id}",
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": "opencode 1.18.3",
+    "chat": null,
+    "source": "bundled:opencode"
+  },
+  {
+    "id": "pi",
+    "label": "Pi",
+    "program": "pi",
+    "base_args": [],
+    "yolo_args": [],
+    "resume_args": [
+      "--session",
+      "{file}"
+    ],
+    "parser_kind": "pi_jsonl",
+    "running_pattern": "pi --session .*{id}",
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": null,
+    "chat": null,
+    "source": "bundled:pi"
+  }
+]

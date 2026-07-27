@@ -1,6 +1,10 @@
-schema_version = 1
+schema_version = 2
 id = "claude"
 label = "Claude"
+# The CLI these conventions were empirically captured against. The chat
+# transport below is a measurement of this version's wire format, so a drift
+# warning against a newer binary is meaningful rather than cosmetic.
+verified_against = "claude 2.1.220"
 
 [launch]
 program = "claude"
@@ -36,3 +40,107 @@ needs_you = true
 # an idle nudge), replacing the quiet-PTY x pending-tool_use guess with a
 # ground-truth signal for Sway-launched sessions only.
 hooks = true
+
+# --- schema v2: the structured chat transport ---
+#
+# Everything below was measured against the CLI named in `verified_against`,
+# not read from documentation; `dev/protocol-probe.mjs` re-verifies the wire
+# format these args produce.
+#
+# NOTE: every scalar key here must stay above the first [[chat.*]] header. A
+# TOML key written after a table header belongs to that table, so moving one
+# down silently reparents it.
+[chat]
+transport = "claude_stream_json"
+# `-p` with stream-json both ways, and stdin held open for the life of the
+# session. Closing stdin is what made early probes exit after a single turn;
+# the CLI itself is happy to run many.
+base_args = [
+  "-p",
+  "--input-format", "stream-json",
+  "--output-format", "stream-json",
+  "--verbose",
+  "--include-partial-messages",
+]
+session_id_args = ["--session-id", "{id}"]
+resume_args = ["--resume", "{id}"]
+model_args = ["--model", "{model}"]
+effort_args = ["--effort", "{effort}"]
+mode_args = ["--permission-mode", "{mode}"]
+add_dir_args = ["--add-dir", "{dir}"]
+
+# Context windows are the published figures for these models; the meter only
+# renders when a window is declared, so an unknown model shows no denominator
+# rather than a wrong one.
+[[chat.models]]
+id = "claude-opus-5"
+label = "Opus 5"
+context_window = 200000
+effort_levels = ["low", "medium", "high", "xhigh", "max"]
+supports_thinking = true
+supports_images = true
+
+[[chat.models]]
+id = "claude-sonnet-5"
+label = "Sonnet 5"
+context_window = 200000
+effort_levels = ["low", "medium", "high", "xhigh", "max"]
+supports_thinking = true
+supports_images = true
+
+[[chat.models]]
+id = "claude-haiku-4-5-20251001"
+label = "Haiku 4.5"
+context_window = 200000
+effort_levels = []
+supports_thinking = false
+supports_images = true
+
+# The four permission modes. Sway's own PreToolUse hook runs ahead of all of
+# them, so `bypassPermissions` still prompts for a tool matching no allow
+# rule - hooks run first in claude's permission chain.
+[[chat.modes]]
+id = "default"
+label = "Ask"
+args = ["--permission-mode", "default"]
+
+[[chat.modes]]
+id = "acceptEdits"
+label = "Accept edits"
+args = ["--permission-mode", "acceptEdits"]
+
+[[chat.modes]]
+id = "plan"
+label = "Plan"
+args = ["--permission-mode", "plan"]
+
+[[chat.modes]]
+id = "bypassPermissions"
+label = "Bypass"
+args = ["--permission-mode", "bypassPermissions"]
+
+# The five levels `--effort` accepts, confirmed present on this CLI.
+[[chat.effort]]
+id = "low"
+label = "Low"
+args = ["--effort", "low"]
+
+[[chat.effort]]
+id = "medium"
+label = "Medium"
+args = ["--effort", "medium"]
+
+[[chat.effort]]
+id = "high"
+label = "High"
+args = ["--effort", "high"]
+
+[[chat.effort]]
+id = "xhigh"
+label = "Extra high"
+args = ["--effort", "xhigh"]
+
+[[chat.effort]]
+id = "max"
+label = "Max"
+args = ["--effort", "max"]
