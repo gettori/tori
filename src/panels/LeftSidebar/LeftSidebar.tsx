@@ -62,6 +62,7 @@ import {
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
+import { computeSessionDot, type SessionDot } from "../../utils/sessionDot";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -550,15 +551,16 @@ export default function LeftSidebar(props: {
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
   // needs-you both need a real PTY to observe, which only a live tab has.
-  function sessionDot(id: string): "solid" | "hollow" | "working" | "needsYou" | "none" {
+  // The decision itself lives in sessionDot.ts as a pure function so it can be
+  // pinned by a golden fixture; this closure only gathers its four inputs.
+  function sessionDot(id: string): SessionDot {
     const tab = (props.liveTabs ?? []).find((t) => t.sessionId === id);
-    const running = probes()[id]?.running === true;
-    if (!tab) return running ? "hollow" : "none";
-    if (!running) return "none";
-    const activity = ptyActivity()[tab.id];
-    if (activity === "active") return "working";
-    if (activity === "quiet" && tailStates()[id] === "blocked-candidate") return "needsYou";
-    return "solid";
+    return computeSessionDot({
+      hasLiveTab: !!tab,
+      running: probes()[id]?.running === true,
+      ptyActivity: tab ? ptyActivity()[tab.id] : undefined,
+      tailState: tailStates()[id],
+    });
   }
 
   // Reverse-lookup: which space/project owns a branch-unit's `folderPath`,
