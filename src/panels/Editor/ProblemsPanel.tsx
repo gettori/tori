@@ -3,6 +3,7 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/ev
 import { diagnostics, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
 import { composeDiagnostic, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
+import Button from "../../components/Button/Button";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./ProblemsPanel.module.css";
 
@@ -97,8 +98,9 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
                         {p.line}:{p.column}
                       </span>
                       <span class={styles.message}>{p.message}</span>
-                      <button
-                        type="button"
+                      <Button
+                        size="xs"
+                        variant="ghost"
                         class={styles.sendButton}
                         title={disabledReason() ?? "Send to agent"}
                         onClick={(e) => {
@@ -107,7 +109,7 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
                         }}
                       >
                         Send
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </For>

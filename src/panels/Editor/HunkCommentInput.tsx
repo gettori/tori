@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { requestSend, composeHunkComment, type SessionTarget } from "../../utils/safeSend";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import Button from "../../components/Button/Button";
 import styles from "./HunkCommentInput.module.css";
 
 /** A per-hunk "comment on this" affordance shared by ReviewPanel and
@@ -51,9 +52,9 @@ export default function HunkCommentInput(props: {
 
   return (
     <>
-      <button type="button" class={styles.commentToggle} disabled={disabled()} title={title()} onClick={toggle}>
+      <Button size="xs" variant="ghost" disabled={disabled()} title={title()} onClick={toggle}>
         Comment
-      </button>
+      </Button>
       <Show when={open()}>
         <div class={styles.commentBox}>
           <input
@@ -72,9 +73,9 @@ export default function HunkCommentInput(props: {
               }
             }}
           />
-          <button type="button" class={styles.commentSend} disabled={!text().trim() || sending()} onClick={submit}>
+          <Button size="xs" disabled={!text().trim() || sending()} onClick={submit}>
             Send
-          </button>
+          </Button>
         </div>
       </Show>
     </>

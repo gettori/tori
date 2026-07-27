@@ -6,26 +6,7 @@
   gap: calc(6px * var(--ui-scale));
 }
 
-.commentToggle {
-  flex: none;
-  border: none;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
-  cursor: pointer;
-  padding: 0 calc(4px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-}
-
-.commentToggle:hover:not(:disabled) {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
-
-.commentToggle:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
+/* The Comment toggle is a ghost <Button size="xs"> now. */
 
 .commentBox {
   display: flex;
@@ -46,22 +27,4 @@
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
-.commentSend {
-  flex: none;
-  font-size: var(--sway-text-md);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: var(--canvas-default);
-  color: var(--fg-default);
-  cursor: pointer;
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-.commentSend:hover:not(:disabled) {
-  background: var(--neutral-hover);
-}
-
-.commentSend:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
+/* The Send button is a shared <Button size="xs"> now. */
