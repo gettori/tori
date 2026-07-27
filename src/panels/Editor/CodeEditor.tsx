@@ -16,6 +16,7 @@ import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics, problemsFromState } from "../../utils/diagnostics";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
+import { settings, zoom } from "../Settings/settingsStore";
 import { on as onEvent, emitWith, REFIT_PANES, TOAST, type ToastEvent } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
@@ -476,6 +477,17 @@ export default function CodeEditor(props: {
 
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
+  // Editor font size (base setting × global zoom) reaches .cm-content through the
+  // --editor-font-size CSS var, but CM6 caches the char/line geometry it measured
+  // at the old size. Re-measure when either input changes so the cursor, gutter
+  // and scroll geometry reflow to the new font rather than lagging a frame.
+  createEffect(
+    on(
+      () => [settings.typography.editorFontSize, zoom()],
+      () => view?.requestMeasure(),
+      { defer: true },
+    ),
+  );
   // Jump to line/col (nonce makes a repeated click on the same target retrigger).
   createEffect(
     on(

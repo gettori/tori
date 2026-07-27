@@ -1,5 +1,5 @@
 /* Checkpoint timeline inside the Changes panel, hash-scoped. Tokens and the
-   density/scale multipliers match ReviewPanel's so the two read as one surface.
+   --ui-scale multipliers match ReviewPanel's so the two read as one surface.
    prefers-reduced-motion is handled globally (src/styles/base.css). */
 .timeline {
   border-bottom: 1px solid var(--border-default);
