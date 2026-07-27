@@ -24,6 +24,15 @@
 
 /* The terminal tabs are the shared <Tab> pill now. */
 
+/* A chat tab blocked on an approval. Attention, not danger: nothing has gone
+   wrong, something is waiting on the user. */
+.termTabBlocked {
+  display: inline-flex;
+  align-items: center;
+  margin-right: calc(4px * var(--ui-scale));
+  color: var(--attention-fg);
+}
+
 /* Split button: "+ Claude" main action + caret that opens a launch menu.
    align-items: stretch makes the caret match the taller main half's height. */
 .termNewSplit {

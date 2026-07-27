@@ -11,10 +11,15 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
+import { refusalMessage, refusalOf, type ClaimOutcome, type Refusal } from "../../utils/chatOwnership";
 import { settings, terminalFontSize } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
+
+/** `PtySpawnResult` from `src-tauri/src/pty.rs`. `ownership` is null for every
+ *  tab that took no claim, which is most of them. */
+type PtySpawnResult = { ownership: ClaimOutcome | null };
 
 // File paths in terminal output, with optional :line:col. Requires an extension
 // so it doesn't match arbitrary words; existence is validated before linking.
@@ -83,6 +88,10 @@ export default function TerminalView(props: {
   // sides of a diverging conversation to one file.
   sessionId?: string;
   active: boolean;
+  /** The session id was refused: something else already drives it, so nothing
+   *  was spawned. The owner renders the way out, because only it can focus
+   *  another tab or open a fresh session. */
+  onOwnershipRefused?: (refusal: Refusal) => void;
 }) {
   let host!: HTMLDivElement;
   let searchInput: HTMLInputElement | undefined;
@@ -279,7 +288,7 @@ export default function TerminalView(props: {
     // tabs fall back to the backend's default.
     const quietMs = props.kind === "agent" ? findAgent(props.program).pty_quiet_ms : null;
 
-    await invoke("pty_spawn", {
+    const spawned = await invoke<PtySpawnResult>("pty_spawn", {
       id: props.id,
       program: props.program,
       args: props.args,
@@ -292,7 +301,18 @@ export default function TerminalView(props: {
       sessionId: props.kind === "agent" ? (props.sessionId ?? null) : null,
       agentId: props.kind === "agent" ? props.program : null,
       onOutput: output,
-    }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
+    }).catch((err) => {
+      term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`);
+      return null;
+    });
+    // A refused claim is a value, not a thrown error: nothing was spawned, and
+    // the answer is structural (go to the tab that holds it, or end the
+    // leftover process), which a line printed into a dead terminal cannot be.
+    const refusal = refusalOf(spawned?.ownership);
+    if (refusal) {
+      term?.writeln(`\r\n\x1b[33m${refusalMessage(refusal)}\x1b[0m`);
+      props.onOwnershipRefused?.(refusal);
+    }
 
     ro = new ResizeObserver(onResizeObserved);
     ro.observe(host);

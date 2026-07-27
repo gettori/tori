@@ -182,6 +182,81 @@ pub fn rules_path(session_id: &str) -> PathBuf {
         .join(format!("{}.json", sanitize_id(session_id)))
 }
 
+/// Rules the user asked to keep for a **project**, which have to outlive the
+/// chat that created them.
+///
+/// The session file above is a compiled artefact: the helper reads it on every
+/// call and it is deleted at teardown. "Always allow in this project" written
+/// only there would silently expire when the tab closed, so the durable copy
+/// lives here, keyed by working directory, and is compiled into each new
+/// session's file at spawn. Still Sway-owned and still never
+/// `~/.claude/settings.json`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectRuleFile {
+    #[serde(default)]
+    pub rules: Vec<Rule>,
+}
+
+/// Where a project's durable rules live.
+///
+/// The directory name carries a readable basename plus a hash of the full path,
+/// because two checkouts of one repo are two projects and must not share a rule
+/// set, while a path used verbatim would blow past the filename length cap.
+pub fn project_rules_path(cwd: &str) -> PathBuf {
+    let base = Path::new(cwd)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/chat-rules/projects")
+        .join(format!("{}-{:016x}.json", sanitize_id(&base), path_hash(cwd)))
+}
+
+/// FNV-1a over the path bytes. Not cryptographic and does not need to be: it
+/// only has to separate two directories that share a basename.
+fn path_hash(cwd: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in cwd.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// The session file a fresh chat starts with: the project's durable rules,
+/// stamped by the supervisor that is about to watch them.
+///
+/// Pure so the compile order is assertable off-disk. `existing` is carried
+/// through rather than replaced, because a resumed session id may already have a
+/// file and dropping its session-scoped rules would silently re-prompt for
+/// things the user had allowed.
+pub fn compiled(project: &ProjectRuleFile, existing: Option<&RuleFile>, sway_pid: u32, stamp_ms: u64) -> RuleFile {
+    let mut rules = existing.map(|f| f.rules.clone()).unwrap_or_default();
+    for rule in &project.rules {
+        if !rules.contains(rule) {
+            rules.push(rule.clone());
+        }
+    }
+    RuleFile { sway_pid, stamp_ms, rules }
+}
+
+pub fn load_project(path: &Path) -> ProjectRuleFile {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_project(path: &Path, file: &ProjectRuleFile) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string(file).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
 /// Reduce a session id to a bare path segment.
 ///
 /// Claude's ids are UUIDs, so this should never do anything - which is exactly
@@ -402,6 +477,43 @@ mod tests {
     fn an_empty_prefix_would_match_everything_which_is_why_one_is_never_written() {
         let dangerous = Rule { tool: "Bash".into(), prefix: Some(String::new()) };
         assert!(dangerous.matches("Bash", &json!({"command": "rm -rf /"})));
+    }
+
+    /// "Always allow in this project" has to mean the project, not the tab. The
+    /// session file is deleted at teardown, so a rule that lived only there
+    /// would expire the moment the chat closed.
+    #[test]
+    fn a_projects_rules_compile_into_a_session_that_has_none_of_its_own() {
+        let project = ProjectRuleFile { rules: vec![rule("Read", Some("/proj/"))] };
+        let compiled = compiled(&project, None, 42, 1_000);
+        assert_eq!(compiled.rules, project.rules);
+        assert_eq!(compiled.sway_pid, 42, "the compiling supervisor is the one that will be checked");
+        assert_eq!(compiled.stamp_ms, 1_000);
+    }
+
+    /// A resumed session id can already have a file. Replacing it wholesale
+    /// would silently revoke the session-scoped rules the user granted last
+    /// time, which reads as approvals coming back for no reason.
+    #[test]
+    fn compiling_keeps_a_sessions_own_rules_and_never_duplicates_a_shared_one() {
+        let shared = rule("Read", Some("/proj/"));
+        let own = rule("Bash", Some("git status"));
+        let existing = file(vec![own.clone(), shared.clone()]);
+        let project = ProjectRuleFile { rules: vec![shared.clone(), rule("Grep", None)] };
+
+        let compiled = compiled(&project, Some(&existing), 7, 2_000);
+        assert_eq!(compiled.rules, vec![own, shared, rule("Grep", None)]);
+    }
+
+    /// Two checkouts of one repo are two working trees. Sharing a rule set
+    /// between them would let a click in one grant tool access in the other.
+    #[test]
+    fn two_checkouts_sharing_a_basename_get_separate_rule_files() {
+        let a = project_rules_path("/Users/x/Projects/sway/main");
+        let b = project_rules_path("/Users/x/Projects/sway-wt/main");
+        assert_ne!(a, b);
+        assert_eq!(a.parent(), b.parent());
+        assert_eq!(a, project_rules_path("/Users/x/Projects/sway/main"), "the same path must be stable across runs");
     }
 
     /// The refresh interval has to leave room for a missed tick, or ordinary
