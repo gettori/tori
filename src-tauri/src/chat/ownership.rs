@@ -399,6 +399,32 @@ pub fn reap_on_startup() -> Vec<Reaped> {
     reap_at(&claims_path())
 }
 
+/// The startup reap's orphans, parked until the frontend asks for them.
+///
+/// Held rather than emitted: the reap runs inside Tauri's `setup`, which
+/// completes before the webview has loaded, and an event emitted there reaches
+/// no listener at all - the orphan would block its session id with nothing on
+/// screen saying why. A pull the frontend makes when it is ready cannot race.
+#[derive(Default)]
+pub struct Orphans(pub Mutex<Vec<Reaped>>);
+
+impl Orphans {
+    pub fn set(&self, found: Vec<Reaped>) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = found;
+        }
+    }
+
+    /// Read and clear. Once delivered they are the frontend's to act on, and a
+    /// second read must not re-offer children the user has already ended.
+    pub fn take(&self) -> Vec<Reaped> {
+        match self.0.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
 /// [`reap_on_startup`] against an explicit store, so the crash-recovery path can
 /// be tested without rewriting the real one.
 fn reap_at(path: &std::path::Path) -> Vec<Reaped> {
@@ -455,6 +481,21 @@ mod tests {
 
     fn clear() -> Probe {
         Probe { holder_alive: false, externally_running: false, child_still_ours: false }
+    }
+
+    #[test]
+    fn orphans_survive_until_the_frontend_asks_and_are_delivered_once() {
+        // The whole point of parking them: the reap finishes long before there
+        // is a webview to emit to, so the record has to wait rather than fire.
+        let parked = Orphans::default();
+        parked.set(vec![Reaped::Orphan {
+            session_id: "s1".into(),
+            child_pid: 4242,
+            agent: "claude".into(),
+        }]);
+        let first = parked.take();
+        assert_eq!(first.len(), 1, "the frontend's first read gets the orphan");
+        assert!(parked.take().is_empty(), "a second read must not re-offer a child already dealt with");
     }
 
     fn live() -> Probe {

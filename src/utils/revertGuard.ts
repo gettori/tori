@@ -8,8 +8,9 @@
 // it.
 //
 // Two tiers, because Sway's certainty differs between them:
-//   - a live-tab session showing Executing is *known* to be mid-turn, so it
-//     blocks hard, with no override;
+//   - a session *known* to be mid-turn blocks hard, with no override. That is
+//     a live agent tab reporting Executing, and now also a chat session, whose
+//     own event stream says exactly when a turn is running;
 //   - a detached session (found by the pgrep tier, no tab of ours) can never
 //     report Executing, so its activity is unknowable. "Cannot verify" blocks
 //     by default, but the user can override it explicitly, since a detached
@@ -22,9 +23,9 @@ export type RevertCandidate = {
   sessionName: string;
   folderPath: string;
   status: SessionStatus;
-  /** Does Sway host this session in a live agent tab? Detached sessions (found
-   *  only by the pgrep probe) are false, and their status tops out at
-   *  "running" - they can never report "executing". */
+  /** Does Sway host this session in a tab of its own (a PTY agent tab or a chat
+   *  tab)? Detached sessions, found only by the pgrep probe, are false and
+   *  their status tops out at "running". */
   hasLiveTab: boolean;
 };
 
@@ -58,7 +59,13 @@ export function revertBlockers(candidates: readonly RevertCandidate[], folderPat
   const blockers: RevertBlocker[] = [];
   for (const c of candidates) {
     if (!isUnderPath(c.folderPath, folderPath)) continue;
-    if (c.hasLiveTab && c.status === "executing") {
+    // Executing blocks on the status alone, not on `hasLiveTab && executing`.
+    // That earlier pairing leaned on an invariant chat retired: it was true
+    // while only a PTY agent tab could compose "executing", and a candidate
+    // that reported it without a live tab fell through both branches and
+    // blocked nothing at all. A session we can see is mid-turn is a hard block
+    // however we came to see it.
+    if (c.status === "executing") {
       blockers.push({
         sessionId: c.sessionId,
         sessionName: c.sessionName,

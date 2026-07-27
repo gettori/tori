@@ -146,15 +146,17 @@ pub fn run() {
             // announced rather than killed, because ending someone's running
             // session without asking is not ours to decide - and their records
             // are kept, so the session stays unclaimable until they do.
-            let orphans = chat::ownership::reap_on_startup();
-            if !orphans.is_empty() {
-                let _ = app.handle().emit("chat://orphans", orphans);
-            }
+            // Parked, not emitted: this runs before the webview has loaded, so
+            // an event here would reach no listener and the orphan would block
+            // its session id with nothing on screen saying why. The frontend
+            // pulls them with `chat_orphans` once it is ready.
+            app.state::<chat::ownership::Orphans>().set(chat::ownership::reap_on_startup());
 
             Ok(())
         })
         .manage(PtyState::default())
         .manage(ChatState::default())
+        .manage(chat::ownership::Orphans::default())
         .manage(ConfigWatch::default())
         .manage(ProjectIndex::default())
         .manage(RootWatch::default())
@@ -178,6 +180,7 @@ pub fn run() {
             chat::commands::chat_set_model,
             chat::commands::chat_close,
             chat::commands::chat_tool_before_state,
+            chat::commands::chat_orphans,
             chat::commands::chat_terminate_orphan,
             config::get_config,
             config::get_docs_root,

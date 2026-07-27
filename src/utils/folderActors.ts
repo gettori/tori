@@ -9,28 +9,43 @@
 // boundary) rather than per event.
 import { invoke } from "@tauri-apps/api/core";
 import { liveStatuses } from "./sessionStatus";
+import { liveChatIds, liveChats } from "./chatSessions";
 import type { RevertCandidate } from "./revertGuard";
 
 type SessionMeta = { id: string; agent: string; cwd: string; name?: string; title?: string };
 
-/** Sessions Sway hosts in a live agent tab, whose status it composes itself. */
+/** Sessions Sway hosts in a tab of its own, whose status it knows rather than
+ *  probes: PTY agent tabs (composed from activity + transcript tail) and chat
+ *  tabs (reported by the transport's own event stream). */
 export function liveCandidates(): RevertCandidate[] {
-  return liveStatuses().map((s) => ({
+  const pty = liveStatuses().map((s) => ({
     sessionId: s.sessionId,
     sessionName: s.sessionName,
     folderPath: s.folderPath,
     status: s.status,
     hasLiveTab: true,
   }));
+  const chat = liveChats().map((c) => ({
+    sessionId: c.sessionId,
+    sessionName: c.sessionName,
+    folderPath: c.folderPath,
+    status: c.status,
+    hasLiveTab: true,
+  }));
+  return [...pty, ...chat];
 }
 
 /** Every session rooted in this folder that Sway cannot see inside: found by
  *  list_sessions, absent from the live-tab set, and confirmed alive by the
  *  pgrep probe. Their status tops out at "running" - a detached process can
- *  never report Executing. */
+ *  never report Executing.
+ *
+ *  A chat's child answers that same pgrep probe, so chat-hosted ids are excluded
+ *  here: reporting one twice would downgrade a session whose exact status we
+ *  have into an overridable "cannot verify". */
 export async function detachedCandidates(folder: string): Promise<RevertCandidate[]> {
   const sessions = await invoke<SessionMeta[]>("list_sessions", { folder }).catch(() => [] as SessionMeta[]);
-  const liveIds = new Set(liveStatuses().map((s) => s.sessionId));
+  const liveIds = new Set([...liveStatuses().map((s) => s.sessionId), ...liveChatIds()]);
   const offTab = sessions.filter((s) => !liveIds.has(s.id));
   const probes = await Promise.all(
     offTab.map(async (s) => ({

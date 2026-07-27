@@ -1,0 +1,326 @@
+/* The chat surface (hash-scoped). Work-surface tier of the design system: dense
+   rows, small radii, no elevation past a hairline; the spacious treatment is for
+   chrome. Every colour is a role token, never a literal. */
+
+.chat {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+/* Declared after every other .chat rule so the visible tab always wins,
+   whatever order the bundler emits the class names in. */
+.chat.active {
+  display: flex;
+}
+
+/* ---- transcript ---- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sway-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-3);
+}
+
+.loadEarlier {
+  display: flex;
+  justify-content: center;
+  padding-bottom: var(--sway-space-3);
+}
+
+.bubble {
+  border-radius: var(--sway-radius-md);
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.user {
+  align-self: flex-end;
+  max-width: 80%;
+  white-space: pre-wrap;
+  background: var(--accent-subtle);
+  color: var(--fg-default);
+}
+
+.assistant {
+  background: var(--canvas-card);
+  color: var(--fg-default);
+  border: 1px solid var(--border-default);
+}
+
+/* Same treatment as MarkdownPreview's rendered body, so a fenced block reads
+   identically whether it came from a plan file or from the model. */
+.assistant :global(code) {
+  font-family: var(--sway-font-mono);
+  font-size: 0.9em;
+  background: var(--neutral-hover);
+  border-radius: var(--sway-radius-sm);
+  padding: 0.1em 0.35em;
+}
+
+.assistant :global(pre) {
+  margin: var(--sway-space-3) 0;
+  padding: var(--sway-space-3);
+  border-radius: var(--sway-radius-md);
+  background: var(--neutral-hover);
+  overflow-x: auto;
+}
+
+.assistant :global(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.assistant :global(blockquote) {
+  margin: var(--sway-space-3) 0;
+  padding-left: var(--sway-space-5);
+  border-left: 3px solid var(--border-default);
+  color: var(--fg-muted);
+}
+
+.assistant :global(a) {
+  color: var(--accent-fg);
+}
+
+/* The streaming caret: a block that sits under the last delta, so a turn that
+   is thinking silently still looks alive. */
+.cursor {
+  align-self: flex-start;
+  width: calc(7px * var(--ui-scale));
+  height: var(--sway-text-md);
+  background: var(--fg-muted);
+  animation: chatBlink 1s steps(2, start) infinite;
+}
+
+@keyframes chatBlink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* ---- thinking ---- */
+
+.thinking {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.thinkingToggle {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
+.thinkingToggle:hover {
+  color: var(--fg-muted);
+}
+
+.thinkingBody {
+  margin-top: var(--sway-space-2);
+  padding: var(--sway-space-3);
+  border-left: 2px solid var(--border-default);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* ---- tool calls ---- */
+
+.tool {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-2) var(--sway-space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-card);
+  font-size: var(--sway-text-sm);
+}
+
+/* A blocked call must not read as work in progress. */
+.toolBlocked {
+  border-color: var(--attention-emphasis);
+}
+
+.toolName {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.toolArg {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolState {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+}
+
+.toolBlocked .toolState {
+  color: var(--attention-fg);
+}
+
+/* ---- notices and banners ---- */
+
+.notice {
+  align-self: center;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+}
+
+.noticeError {
+  color: var(--danger-fg);
+}
+
+.banner,
+.refusal {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-4);
+  padding: var(--sway-space-3) var(--sway-space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-card);
+  font-size: var(--sway-text-sm);
+}
+
+.banner {
+  color: var(--attention-fg);
+}
+
+.refusal {
+  color: var(--fg-default);
+}
+
+.bannerText {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+/* ---- composer ---- */
+
+.composer {
+  border-top: 1px solid var(--border-default);
+  background: var(--canvas-card);
+  padding: var(--sway-space-3) var(--sway-space-4);
+}
+
+.composerRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sway-space-3);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(180px * var(--ui-scale));
+  resize: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  padding: var(--sway-space-3);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-md);
+  line-height: 1.5;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--brand-ring);
+}
+
+.input:disabled {
+  color: var(--fg-subtle);
+}
+
+.sendButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(28px * var(--ui-scale));
+  width: calc(28px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.sendButton:disabled {
+  color: var(--fg-subtle);
+  cursor: default;
+}
+
+/* ---- the queue strip ---- */
+
+.queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sway-space-2);
+  padding-bottom: var(--sway-space-3);
+}
+
+.queueLabel {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+}
+
+/* Held after a stopped turn: the queue is waiting on a decision, not on a
+   turn, and must not look like ordinary pending work. */
+.queueHeld .queueLabel {
+  color: var(--attention-fg);
+}
+
+.queueItem {
+  max-width: calc(220px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  padding: var(--sway-space-1) var(--sway-space-3);
+  background: var(--canvas-input);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.queueItem:hover {
+  border-color: var(--danger-emphasis);
+  color: var(--danger-fg);
+}
+
+.queueActions {
+  display: flex;
+  gap: var(--sway-space-2);
+}

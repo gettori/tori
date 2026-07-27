@@ -2,6 +2,7 @@ import { createSignal, createEffect, createMemo, on, onCleanup, onMount, For, Sh
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
+import ChatView from "../Chat/ChatView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
@@ -44,6 +45,7 @@ import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../util
 import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { liveStatuses } from "../../utils/sessionStatus";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
+import { chatTabLabel } from "../../utils/chatConcurrency";
 import styles from "./Terminal.module.css";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -54,7 +56,7 @@ type TailState = "working" | "done" | "blocked-candidate";
 // Selection (spaceName, projectKind, ... it never touches).
 type ResumeTarget = Pick<Selection, "sessionId" | "agent" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath">;
 
-type TabKind = "shell" | "agent" | "command";
+type TabKind = "shell" | "agent" | "command" | "chat";
 
 type OpenTerm = {
   id: string;
@@ -65,7 +67,9 @@ type OpenTerm = {
   // Command tabs (clone/bootstrap) group under their own cwd.
   workspace: string;
   // Every shell/agent tab hosts a login shell; an agent tab is that shell seeded
-  // with `init`. Command tabs (clone/bootstrap) spawn the program directly.
+  // with `init`. Command tabs (clone/bootstrap) spawn the program directly. A
+  // chat tab hosts no PTY at all: it drives the agent as a stream-json child
+  // through the chat host, and renders `ChatView` instead of `TerminalView`.
   kind: TabKind;
   program: string;
   args: string[];
@@ -74,12 +78,22 @@ type OpenTerm = {
   init?: string;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
+  // Chat tabs always carry one, minted up front rather than adopted later.
   sessionId?: string;
+  // Chat tabs: is this session already on disk (a restore), or brand new?
+  resume?: boolean;
   // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
   // seconds. Used to attribute the session that appears afterward (see
   // `backfillFreshSessions`).
   spawnedAt?: number;
 };
+
+// `Reaped` from src-tauri/src/chat/ownership.rs. Only `orphan` reaches the
+// screen: `stale` is bookkeeping the backend already cleaned up.
+type Reaped =
+  | { type: "orphan"; sessionId: string; childPid: number; agent: string }
+  | { type: "stale"; sessionId: string };
+type ChatOrphan = Extract<Reaped, { type: "orphan" }>;
 
 // Minimal shape of `list_sessions`' return, just what the backfill needs.
 type BackfillSession = { id: string; cwd: string; agent?: string; created_at: number };
@@ -87,6 +101,12 @@ type BackfillSession = { id: string; cwd: string; agent?: string; created_at: nu
 // The extra fields restore needs to hand a stored session back to focus-or-resume
 // (or to the transcript viewer, for a resume-less adapter).
 type RestoreSession = BackfillSession & { path: string; title: string; name?: string };
+
+// Every kind except `chat` is shell-hosted, which is exactly what TerminalView
+// takes. Narrowed here rather than by widening TerminalView's prop, because a
+// chat tab genuinely cannot be rendered by it.
+type PtyTab = OpenTerm & { kind: Exclude<TabKind, "chat"> };
+const asPtyTab = (t: OpenTerm): PtyTab | null => (t.kind === "chat" ? null : (t as PtyTab));
 
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
@@ -119,9 +139,10 @@ export default function Terminal(props: {
   // so a plain-property title read would not repaint; a signal read does.
   const [tabTitles, setTabTitles] = createSignal<Record<string, string>>({});
   const tabTitle = (t: OpenTerm) => tabTitles()[t.id] ?? t.title;
-  // A session-backed (agent) tab: its label tracks the session name (renamed
-  // from the sidebar), and clicking it moves the sidebar selection to its session.
-  const isSessionTab = (t: OpenTerm) => t.kind === "agent" && !!t.sessionId;
+  // A session-backed tab (agent or chat): its label tracks the session name
+  // (renamed from the sidebar), and clicking it moves the sidebar selection to
+  // its session.
+  const isSessionTab = (t: OpenTerm) => (t.kind === "agent" || t.kind === "chat") && !!t.sessionId;
   // Tabs are grouped by workspace (branch-unit folder). Only the active
   // workspace's tabs show in the bar/stage; every other group stays mounted and
   // CSS-hidden so its PTYs keep running (gotcha #64). `activeWorkspace` is the
@@ -231,6 +252,28 @@ export default function Terminal(props: {
     const producedId: (string | undefined)[] = [];
 
     for (const [i, d] of entry.tabs.entries()) {
+      if (d.kind === "chat" && d.sessionId) {
+        // Chat restores by resuming its own session id, not by respawning a
+        // shell. A session deleted since last run is skipped like any other.
+        if (!byId.has(d.sessionId)) {
+          missingSessions++;
+          continue;
+        }
+        const id = `chat:${crypto.randomUUID()}`;
+        openOrActivate({
+          id,
+          title: d.title,
+          cwd: await cwdFor(d.cwd),
+          workspace: ws,
+          kind: "chat",
+          program: d.program || "claude",
+          args: [],
+          sessionId: d.sessionId,
+          resume: true,
+        });
+        producedId[i] = id;
+        continue;
+      }
       if (d.kind === "agent" && d.sessionId) {
         const s = byId.get(d.sessionId);
         if (!s) {
@@ -321,7 +364,7 @@ export default function Terminal(props: {
         workspace: o.workspace,
         kind: o.kind,
         sessionId: o.sessionId,
-        agent: o.kind === "agent" ? (o.program === "pi" ? "pi" : "claude") : undefined,
+        agent: o.kind === "agent" || o.kind === "chat" ? (o.program === "pi" ? "pi" : "claude") : undefined,
       })),
     ),
   );
@@ -402,6 +445,19 @@ export default function Terminal(props: {
   });
   onCleanup(offPurge);
 
+  // Chat children a crashed Sway left running. The backend refuses to reclaim
+  // their session ids until they are gone, so without this the refusal would be
+  // silent: the session simply would not open, with nothing saying why.
+  const [orphans, setOrphans] = createSignal<ChatOrphan[]>([]);
+  async function endOrphan(o: ChatOrphan) {
+    setOrphans(orphans().filter((x) => x.sessionId !== o.sessionId));
+    await invoke("chat_terminate_orphan", {
+      sessionId: o.sessionId,
+      childPid: o.childPid,
+      agentId: o.agent,
+    }).catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
   // Tabs (clone / bootstrap) that should re-discover projects when they exit.
   const rediscoverOnExit = new Set<string>();
   let offOpenTerminal: (() => void) | undefined;
@@ -440,6 +496,12 @@ export default function Terminal(props: {
       }
       if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
     });
+    // Pulled, not listened for. The startup reap runs inside Tauri's `setup`,
+    // which finishes before this webview exists, so an event emitted there
+    // would reach nobody and an orphan would block its session id in silence.
+    // The backend parks the result; this is the frontend saying it is ready.
+    const reaped = await invoke<Reaped[]>("chat_orphans").catch(() => [] as Reaped[]);
+    setOrphans(reaped.filter((o): o is ChatOrphan => o.type === "orphan"));
     // A transcript just appeared: try to attribute it to a fresh tab (see
     // `backfillFreshSessions`) so the sidebar can focus it in place.
     unlistenSessions = await listen("sessions://changed", () => {
@@ -513,7 +575,7 @@ export default function Terminal(props: {
   async function syncTabTitles() {
     const byWorkspace = new Map<string, OpenTerm[]>();
     for (const t of open()) {
-      if (t.kind === "agent" && t.sessionId) {
+      if ((t.kind === "agent" || t.kind === "chat") && t.sessionId) {
         byWorkspace.set(t.workspace, [...(byWorkspace.get(t.workspace) ?? []), t]);
       }
     }
@@ -570,6 +632,10 @@ export default function Terminal(props: {
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
       focusTab(existing.workspace, existing.id);
+      // A chat tab already drives this session over stream-json. It hosts no
+      // PTY, so there is nothing to retype into, and a second driver would
+      // corrupt the transcript anyway.
+      if (existing.kind === "chat") return;
       // Agent still carrying its id in argv → visible/live, leave it. If it has
       // exited (dropped to the shell), retype the resume so the session comes
       // back in place. Best-effort: without shell integration we can't tell an
@@ -605,8 +671,14 @@ export default function Terminal(props: {
   // itself is confirmed running (never just the hosting shell, so a queued
   // send never lands in a bare shell), then blocked when the transcript tail
   // shows a needs-you prompt (refuse rather than queue behind it), else ready.
+  // Safe-send writes into a PTY, so only a shell-hosted agent tab can serve it.
+  // A chat-hosted session is deliberately not a match: Phase 8 gives chat its
+  // own structured attachment path, and a `pty_write` at a chat tab's id would
+  // land nowhere while reporting success.
+  const agentTabFor = (sessionId: string) => open().find((t) => t.kind === "agent" && t.sessionId === sessionId);
+
   async function probeSessionState(req: SendToSession): Promise<ProbeState> {
-    if (!open().some((t) => t.sessionId === req.sessionId)) return "not-ready";
+    if (!agentTabFor(req.sessionId)) return "not-ready";
     const running = await invoke<boolean>("session_running", { id: req.sessionId, agent: req.agent }).catch(
       () => false,
     );
@@ -625,7 +697,7 @@ export default function Terminal(props: {
   async function handleSendToSession(req: SendToSession) {
     const text = sanitizeForSend(req.text);
     if (!text) return;
-    if (!open().some((t) => t.sessionId === req.sessionId)) {
+    if (!agentTabFor(req.sessionId)) {
       await focusOrResume({
         sessionId: req.sessionId,
         agent: req.agent,
@@ -638,7 +710,7 @@ export default function Terminal(props: {
     const result = await sendWithProbeGate(text, {
       probe: () => probeSessionState(req),
       write: async (t) => {
-        const tab = open().find((o) => o.sessionId === req.sessionId);
+        const tab = agentTabFor(req.sessionId);
         if (!tab) throw new Error("session tab closed mid-send");
         await invoke("pty_write", { id: tab.id, data: bracketedPaste(t) });
       },
@@ -677,6 +749,33 @@ export default function Terminal(props: {
     });
   }
 
+  // A chat tab hosts no shell. It mints its own session id up front (the
+  // transport is spawned with `--session-id`), which is why - unlike an agent
+  // tab - it never needs the transcript-appears backfill to learn what it is.
+  function spawnChat(workspace: string, cwd: string, baseName: string, agentId = "claude") {
+    openOrActivate({
+      id: `chat:${crypto.randomUUID()}`,
+      title: chatTabLabel(
+        baseName,
+        tabsIn(workspace)
+          .filter((t) => t.kind === "chat")
+          .map(tabTitle),
+      ),
+      cwd,
+      workspace,
+      kind: "chat",
+      program: agentId,
+      args: [],
+      sessionId: crypto.randomUUID(),
+    });
+  }
+
+  function newChat(agentId = "claude") {
+    const sel = props.selected;
+    if (!sel) return;
+    spawnChat(sel.folderPath, sel.folderPath, sel.projectName, agentId);
+  }
+
   function newSession(agentId: string, yolo = false) {
     const sel = props.selected;
     if (!sel) return;
@@ -700,7 +799,11 @@ export default function Terminal(props: {
   }
 
   function closeId(id: string) {
-    invoke("pty_kill", { id }).catch(() => {});
+    const t = open().find((o) => o.id === id);
+    // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
+    // stream-json child would keep running (and keep its session id claimed).
+    // Unmounting ChatView ends it; this only has to not kill the wrong thing.
+    if (t?.kind !== "chat") invoke("pty_kill", { id }).catch(() => {});
     setOpen(open().filter((o) => o.id !== id));
     // No active-tab bookkeeping needed: visibleId() falls back to the workspace's
     // first tab when its remembered id is now gone.
@@ -782,6 +885,9 @@ export default function Terminal(props: {
                 anchorEl={splitEl}
                 onClose={() => setMenuOpen(false)}
                 items={[
+                  // Chat leads the menu but does not yet replace the main
+                  // button: the default flip is its own phase, behind a setting.
+                  { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
                   { label: findAgent("claude").label, onClick: () => newSession("claude") },
                   { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
                   { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
@@ -799,16 +905,37 @@ export default function Terminal(props: {
             (and thus unmount) the tabs. */}
         <For each={open()}>
           {(t) => (
-            <TerminalView
-              id={t.id}
-              cwd={t.cwd}
-              kind={t.kind}
-              program={t.program}
-              args={t.args}
-              init={t.init}
-              sessionId={t.sessionId}
-              active={visibleId() === t.id}
-            />
+            <Show
+              when={asPtyTab(t)}
+              fallback={
+                <ChatView
+                  sessionId={t.sessionId!}
+                  tabId={t.id}
+                  agentId={t.program}
+                  cwd={t.cwd}
+                  workspace={t.workspace}
+                  title={tabTitle(t)}
+                  resume={!!t.resume}
+                  active={visibleId() === t.id}
+                  onForkSession={() =>
+                    spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)
+                  }
+                />
+              }
+            >
+              {(term) => (
+                <TerminalView
+                  id={term().id}
+                  cwd={term().cwd}
+                  kind={term().kind}
+                  program={term().program}
+                  args={term().args}
+                  init={term().init}
+                  sessionId={term().sessionId}
+                  active={visibleId() === term().id}
+                />
+              )}
+            </Show>
           )}
         </For>
         <Show when={!visibleId()}>
@@ -819,6 +946,20 @@ export default function Terminal(props: {
         {/* Overlay, never a fallback: gating the always-mounted <For> on this
             would unmount every group's TerminalView and kill their PTYs
             (gotcha #64). */}
+        <Show when={orphans().length}>
+          <div class={styles.termRestore}>
+            <span class={styles.termRestoreText}>
+              {orphans().length} chat session{orphans().length > 1 ? "s" : ""} survived a crash and{" "}
+              {orphans().length > 1 ? "are" : "is"} still running
+            </span>
+            <Button variant="primary" size="sm" onClick={() => void Promise.all(orphans().map(endOrphan))}>
+              End {orphans().length > 1 ? "them" : "it"}
+            </Button>
+            <Button size="sm" onClick={() => setOrphans([])}>
+              Leave running
+            </Button>
+          </div>
+        </Show>
         <Show when={restoreOffer()}>
           <div class={styles.termRestore}>
             <span class={styles.termRestoreText}>

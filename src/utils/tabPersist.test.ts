@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toStore, pruneStale, parseStore, mergeStore, type TabStore, type OpenTabLike } from "./tabPersist";
+import { chatTabLabel } from "./chatConcurrency";
 
 const tab = (over: Partial<OpenTabLike> = {}): OpenTabLike => ({
   id: "t1",
@@ -41,6 +42,21 @@ describe("toStore", () => {
     const out = toStore([tab({ kind: "agent", program: "claude", sessionId: "abc" }), tab({ id: "2" })], {}, 100);
     expect(out["/w/a"].tabs[0].sessionId).toBe("abc");
     expect("sessionId" in out["/w/a"].tabs[1]).toBe(false);
+  });
+
+  it("persists a chat tab alongside the agent, shell and command kinds", () => {
+    const out = toStore(
+      [
+        tab({ id: "1", kind: "chat", title: "chat", program: "claude", sessionId: "c1" }),
+        tab({ id: "2", kind: "agent", program: "claude", sessionId: "a1" }),
+        tab({ id: "3" }),
+        tab({ id: "4", kind: "command", title: "clone" }),
+      ],
+      {},
+      100,
+    );
+    expect(out["/w/a"].tabs.map((t) => t.kind)).toEqual(["chat", "agent", "shell"]);
+    expect(out["/w/a"].tabs[0].sessionId).toBe("c1");
   });
 
   it("indexes the active tab against the filtered list, not the raw open set", () => {
@@ -99,6 +115,60 @@ describe("parseStore", () => {
   it("round-trips a store written by toStore", () => {
     const written = toStore([tab({ kind: "agent", program: "claude", sessionId: "s" })], { "/w/a": "t1" }, 100);
     expect(parseStore(JSON.stringify(written))).toEqual(written);
+  });
+
+  it("restores a chat tab, and existing kinds, unchanged", () => {
+    const written = toStore(
+      [
+        tab({ id: "1", kind: "chat", title: "chat", program: "claude", sessionId: "c1" }),
+        tab({ id: "2", kind: "agent", program: "claude", args: ["--resume", "a1"], sessionId: "a1" }),
+        tab({ id: "3", kind: "shell" }),
+      ],
+      { "/w/a": "1" },
+      100,
+    );
+    const back = parseStore(JSON.stringify(written));
+    expect(back).toEqual(written);
+    expect(back["/w/a"].tabs.map((t) => t.kind)).toEqual(["chat", "agent", "shell"]);
+    expect(back["/w/a"].active).toBe(0);
+  });
+
+  it("round-trips three chats on one branch, each still distinguishable", () => {
+    const written = toStore(
+      [0, 1, 2].reduce<OpenTabLike[]>(
+        (acc, n) => [
+          ...acc,
+          tab({
+            id: `chat:${n}`,
+            kind: "chat",
+            title: chatTabLabel("sway", acc.map((t) => t.title)),
+            program: "claude",
+            sessionId: `s${n}`,
+          }),
+        ],
+        [],
+      ),
+      { "/w/a": "chat:1" },
+      100,
+    );
+    const back = parseStore(JSON.stringify(written));
+    expect(back["/w/a"].tabs.map((t) => t.title)).toEqual(["sway chat", "sway chat 2", "sway chat 3"]);
+    expect(back["/w/a"].tabs.map((t) => t.sessionId)).toEqual(["s0", "s1", "s2"]);
+    expect(back["/w/a"].active).toBe(1);
+  });
+
+  it("drops a chat tab stored without a session id, which could never respawn", () => {
+    const raw = JSON.stringify({
+      w: {
+        tabs: [
+          { title: "chat", cwd: "/c", kind: "chat", program: "claude", args: [] },
+          { title: "ok", cwd: "/c", kind: "chat", program: "claude", args: [], sessionId: "s" },
+        ],
+        active: 0,
+        savedAt: 1,
+      },
+    });
+    expect(parseStore(raw).w.tabs.map((t) => t.sessionId)).toEqual(["s"]);
   });
 
   it("drops entries whose tabs are malformed, keeping valid siblings", () => {
