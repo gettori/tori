@@ -1,0 +1,7 @@
+{
+  "verifiedAgainst": "2.1.220 (Claude Code)",
+  "required": [
+    "control_response/success"
+  ],
+  "optional": []
+}

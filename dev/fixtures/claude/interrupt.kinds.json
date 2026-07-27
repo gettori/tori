@@ -1,0 +1,24 @@
+{
+  "verifiedAgainst": "2.1.220 (Claude Code)",
+  "required": [
+    "assistant/text",
+    "control_response/success",
+    "result/error_during_execution",
+    "result/success",
+    "stream_event/content_block_delta/text_delta",
+    "stream_event/content_block_start/text",
+    "stream_event/content_block_stop",
+    "stream_event/message_delta",
+    "stream_event/message_start",
+    "stream_event/message_stop",
+    "system/init",
+    "system/status",
+    "user/text"
+  ],
+  "optional": [
+    "rate_limit_event",
+    "stream_event/content_block_delta/thinking_delta",
+    "stream_event/content_block_start/thinking",
+    "system/thinking_tokens"
+  ]
+}
