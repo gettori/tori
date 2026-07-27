@@ -10,10 +10,14 @@ Three adapters ship bundled (`claude`, `pi`, `opencode`). You can add your
 own, or whole-replace a bundled one, by dropping a TOML file into
 `~/.config/sway/agents/`.
 
-> **Schema stability: v1 (stable).** Validated end to end by three real
-> agents with genuinely different transcript conventions (claude/pi: one
-> jsonl file per session; opencode: every session's messages/parts live as
-> rows in one shared SQLite DB). Breaking changes now go through a
+> **Schema stability: v2 (stable), v1 still loads.** v1 was validated end to
+> end by three real agents with genuinely different transcript conventions
+> (claude/pi: one jsonl file per session; opencode: every session's
+> messages/parts live as rows in one shared SQLite DB). **v2 is purely
+> additive**: it adds the optional `[chat]` table describing how to drive an
+> agent as a structured chat session instead of a PTY. An existing
+> `schema_version = 1` file keeps working untouched and simply reports no chat
+> transport, so there is nothing to migrate. Breaking changes go through a
 > deprecation period rather than landing silently.
 
 ## Supported agents
@@ -49,7 +53,7 @@ own, or whole-replace a bundled one, by dropping a TOML file into
 ## Schema
 
 ```toml
-schema_version = 1   # required; must be 1 - the only version implemented today
+schema_version = 2   # required; 1 or 2. v2 adds the optional [chat] table below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
@@ -76,7 +80,77 @@ pattern = '...'   # required; ERE template (for `pgrep -f`) with an `{id}` place
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
 needs_you = true      # optional, default true; whether quiet+pending-tool_use is trusted as "needs you" - see below
 hooks = false         # optional, default false; whether a verified hook-driven status mechanism overrides the tail join - see below
+
+# --- v2 only; omit the whole table for a PTY-only agent ---
+[chat]
+transport = "claude_stream_json"  # required; closed set - see below
+program = "..."           # optional, defaults to launch.program
+base_args = []            # optional; args always passed when starting a chat session
+session_id_args = []      # optional; `{id}` template selecting a new session id
+resume_args = []          # optional; `{id}` template resuming an existing session
+model_args = []           # optional; `{model}` template
+effort_args = []          # optional; `{effort}` template
+mode_args = []            # optional; `{mode}` template
+add_dir_args = []         # optional; `{dir}` template, applied once per extra directory
+
+[[chat.models]]
+id = "..."                # required; the id passed to model_args
+label = "..."             # required; display name in the picker
+context_window = 200000   # optional; omit if unknown - the meter only renders when declared
+effort_levels = []        # optional; must all name a [[chat.effort]] entry. Empty hides the control
+supports_thinking = false # optional, default false
+supports_images = false   # optional, default false
+
+[[chat.modes]]
+id = "..."                # required; the permission mode's identifier
+label = "..."             # required; display name
+args = []                 # optional; the args that select this mode
+
+[[chat.effort]]
+id = "..."                # required; the level's identifier
+label = "..."             # required; display name
+args = []                 # optional; the args that select this level
 ```
+
+### The `[chat]` table
+
+An adapter with a `[chat]` table can be driven as a **structured chat
+session**: one long-lived child speaking a streaming protocol, rendered as
+messages, tool cards and inline diffs, rather than a TUI in a PTY. Omitting
+the table is the normal case, not a degraded one - `pi` and `opencode` ship
+without one and are fully functional as PTY agents.
+
+`transport` is a **closed enum**, for the same reason `parser.kind` is: a
+transport is a Rust module implementing a specific wire protocol, so a TOML
+can only select one that already exists. Today the only member is
+`claude_stream_json`. An unrecognised value is rejected loudly and the id
+keeps its previous adapter, the same way a broken override does.
+
+Everything else in the table is an **arg template**, so adding a harness is a
+TOML table rather than a Rust branch. Placeholders are substituted at spawn
+time: `{id}`, `{model}`, `{effort}`, `{mode}`, `{dir}`.
+
+**A mode or effort level can be written two ways, and entry args win.** Either
+the table-level template (`mode_args = ["--permission-mode", "{mode}"]`) or the
+entry's own `args`. The rule is: **an entry's `args` are used when non-empty,
+otherwise the template is filled with the entry's `id`.** The template is the
+concise default; per-entry `args` are the escape hatch for a harness whose
+modes are not one flag with a varying value. `claude.toml` states both, and
+they agree.
+
+Two rules the loader enforces, because both failures are otherwise silent:
+
+- **`[chat]` requires `schema_version = 2`.** A chat table in a v1 file is
+  refused by name rather than ignored, since a silently-dropped table looks
+  exactly like an adapter that has no chat surface.
+- **Every `effort_levels` entry must name a `[[chat.effort]]` entry.** An
+  undefined level would render a picker option carrying no args, so selecting
+  it would appear to work and do nothing.
+
+> **Watch the TOML table boundary.** Every scalar key in `[chat]` must appear
+> *above* the first `[[chat.models]]` header. A key written after a table
+> header belongs to that table, so moving one down silently reparents it into
+> a model entry instead of failing.
 
 ### `capabilities.hooks`
 
