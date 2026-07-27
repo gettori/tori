@@ -348,6 +348,13 @@ body.dragging {
     color var(--sway-duration-fast) ease;
 }
 
+/* CSS-sized close glyph (the numeric Lucide size is dropped) so it tracks
+   --ui-scale; shared by the editor + terminal tab strips and the overflow menu. */
+.tab-close svg {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
 .tab-close:hover {
   background: var(--neutral-hover);
   color: var(--fg-default);

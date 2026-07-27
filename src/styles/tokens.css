@@ -122,6 +122,15 @@
     --sway-border-thin: 1px;
     --sway-border-thick: 2px;
 
+    /* ---- Controls (buttons, toggles, segmented, tabs) ----
+       Fixed outer heights + a standard icon size, all scaling with the UI.
+       Every control of a given size is exactly one of these tall, regardless
+       of whether it holds text, an icon, or both. No min floor by design. */
+    --control-height: calc(28px * var(--ui-scale));
+    --control-height-sm: calc(24px * var(--ui-scale));
+    --control-height-xs: calc(20px * var(--ui-scale));
+    --control-icon: calc(16px * var(--ui-scale));
+
     /* ---- Motion ---- */
     --sway-duration-fast: 80ms;
     --sway-duration-med: 160ms;

@@ -136,7 +136,7 @@ export default function Editor(props: {
       aria-pressed={shown}
       title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     >
-      <Icon icon={PanelRight} size={15} />
+      <Icon icon={PanelRight} />
     </button>
   );
   const [tabs, setTabs] = createSignal<Tab[]>([]);
@@ -683,7 +683,7 @@ export default function Editor(props: {
                   closeTab(tabId(t));
                 }}
               >
-                <Icon icon={X} size={14} />
+                <Icon icon={X} />
               </button>
             </div>
           )}
@@ -713,7 +713,7 @@ export default function Editor(props: {
                   closeTab(tabId(t));
                 }}
               >
-                <Icon icon={X} size={14} />
+                <Icon icon={X} />
               </button>
             </>
           )}
@@ -732,7 +732,6 @@ export default function Editor(props: {
                 >
                   <Icon
                     icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner}
-                    size={15}
                   />
                 </button>
               </Show>
@@ -747,7 +746,7 @@ export default function Editor(props: {
                     : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
                 }
               >
-                <Icon icon={Bot} size={15} />
+                <Icon icon={Bot} />
               </button>
               <Show when={props.onToggleFiletree && !filetreeOn()}>
                 {filetreeToggleBtn(false)}
@@ -828,12 +827,12 @@ export default function Editor(props: {
               title={t.label}
               aria-label={t.label}
             >
-              <Icon icon={t.icon} size={16} />
+              <Icon icon={t.icon} />
             </button>
           )}
           renderMenuItem={(t) => (
             <>
-              <Icon icon={t.icon} size={16} />
+              <Icon icon={t.icon} />
               <span class="tab-name">{t.label}</span>
             </>
           )}

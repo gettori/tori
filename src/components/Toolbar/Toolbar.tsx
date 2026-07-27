@@ -196,15 +196,15 @@ export default function Toolbar(props: { selected: Selection | null }) {
           <div class={styles.tbInfo}>
             <nav class={styles.tbCrumb} aria-label="location">
               <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
-              <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
+              <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
               <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
-              <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
+              <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
               <Show
                 when={isSession()}
                 fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
               >
                 <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
-                <Icon icon={ChevronRight} size={12} class={`${styles.crumbSep} dim`} />
+                <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                 <span class={`${styles.crumb} ${styles.leaf}`}>
                   <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
                   {displayName()}

@@ -1,8 +1,12 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
-import { Settings, Search, ChevronRight, GitBranch, FileCode } from "lucide-solid";
+import { Settings, Search, ChevronRight, GitBranch, FileCode, Bot, PanelRight, FileText } from "lucide-solid";
 import Icon from "../components/Icon/Icon";
 import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";
+import IconButton from "../components/IconButton/IconButton";
+import SegmentedControl from "../components/SegmentedControl/SegmentedControl";
+import Tab from "../components/Tab/Tab";
+import type { ControlSize } from "../components/controls";
 import FileIcon from "../seti/FileIcon";
 import { checkPalette } from "../theme/contrast";
 import { applyResolved } from "../theme/resolver";
@@ -13,9 +17,8 @@ import patterns from "../styles/patterns.module.css";
 
 /** Dev-only theme workbench. NOT a router route (sway has none): App renders it
  *  when `import.meta.env.DEV && location.hash === "#styleguide"`. It drives the
- *  real theme registry and the real `--ui-*` inline props, so a palette can be
- *  authored here and checked in every surface it touches, at non-default
- *  density/scale/radius.
+ *  real theme registry and the real `--ui-scale` inline prop, so a palette can
+ *  be authored here and checked in every surface it touches, at any UI scale.
  *
  *  The role gallery is DERIVED from `ROLES` rather than curated. A hand-listed
  *  gallery goes stale the moment a role is added, and it goes stale silently:
@@ -87,6 +90,10 @@ export default function Styleguide() {
   const themes = listSelectableThemes();
   const [themeId, setThemeId] = createSignal(DEFAULT_THEME_ID);
   const [scale, setScale] = createSignal(1);
+  // Interactive state for the control-family gallery below.
+  const [toggled, setToggled] = createSignal(true);
+  const [seg, setSeg] = createSignal<"files" | "changes" | "search">("files");
+  const [activeTab, setActiveTab] = createSignal(0);
 
   const active = createMemo(() => themes.find((t) => t.id === themeId()) ?? themes[0]);
   /** The gate's verdict on the theme currently painted, recomputed on switch. */
@@ -323,6 +330,58 @@ export default function Styleguide() {
               </div>
             )}
           </For>
+        </section>
+
+        <section>
+          <h2>Controls (icon button, segmented, tab)</h2>
+          <p class={styles.note}>
+            Each control of a size is exactly one fixed height (28 / 24 / 20 &times; scale), so a
+            button, an icon button, a segmented strip, and a tab all line up.
+          </p>
+          <For each={SIZES as ControlSize[]}>
+            {(size) => (
+              <div class={styles.btnRow}>
+                <Button size={size} icon={<Icon icon={PanelRight} />}>
+                  text + icon
+                </Button>
+                <IconButton size={size} icon={<Icon icon={Bot} />} aria-label="Bot" title="Bot" />
+                <IconButton
+                  size={size}
+                  active={toggled()}
+                  icon={<Icon icon={Bot} />}
+                  aria-label="Follow"
+                  title="Toggle follow"
+                  onClick={() => setToggled((v) => !v)}
+                />
+                <SegmentedControl
+                  size={size}
+                  aria-label="Right panel"
+                  value={seg()}
+                  onChange={setSeg}
+                  options={[
+                    { value: "files", label: "Files" },
+                    { value: "changes", label: "Changes" },
+                    { value: "search", label: "Search" },
+                  ]}
+                />
+              </div>
+            )}
+          </For>
+          <div class={styles.btnRow}>
+            <For each={["README.md", "tokens.css", "settings.rs"]}>
+              {(name, i) => (
+                <Tab
+                  active={activeTab() === i()}
+                  icon={<Icon icon={FileText} />}
+                  onClick={() => setActiveTab(i())}
+                  onClose={() => {}}
+                  closeLabel={`Close ${name}`}
+                >
+                  {name}
+                </Tab>
+              )}
+            </For>
+          </div>
         </section>
 
         <section>

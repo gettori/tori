@@ -1,0 +1,70 @@
+/* The shared tab pill (mirrors the editor/terminal strips): a floating rounded
+   pill, transparent at rest, a subtle --card2 fill when active or hovered. */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  height: var(--control-height);
+  padding: 0 calc(10px * var(--ui-scale));
+  background: transparent;
+  border: none;
+  border-radius: var(--sway-radius-md);
+  color: var(--tab-inactive-fg);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease;
+}
+
+.tab svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: 0 0 auto;
+}
+
+.tab:hover:not(.active) {
+  color: var(--tab-active-fg);
+  background: var(--tab-hover-bg);
+}
+
+.tab.active {
+  color: var(--tab-active-fg);
+  background: var(--tab-active-bg);
+}
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(160px * var(--ui-scale));
+}
+
+/* Trailing close: a small quiet glyph that brightens on hover, its own hit area
+   so it never triggers tab selection (the handler stops propagation). */
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.close svg {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
+.close:hover {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
