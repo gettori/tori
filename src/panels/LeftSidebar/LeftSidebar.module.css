@@ -536,7 +536,7 @@
   flex: 0 0 auto;
   font-size: var(--sway-text-2xs);
   padding: 0 calc(4px * var(--ui-scale));
-  border-radius: calc(3px * var(--ui-radius-scale));
+  border-radius: 3px;
   color: var(--brand-default);
   background: var(--brand-subtle);
 }

@@ -153,7 +153,7 @@ body.dragging {
   font-size: var(--sway-text-md);
   color: var(--danger-fg);
   background: var(--canvas-input);
-  border-radius: calc(4px * var(--ui-radius-scale));
+  border-radius: 4px;
   white-space: pre-wrap;
 }
 
@@ -217,7 +217,7 @@ body.dragging {
   color: var(--attention-fg);
   font-size: var(--sway-text-md);
   border: 1px solid var(--attention-fg);
-  border-radius: calc(3px * var(--ui-radius-scale));
+  border-radius: 3px;
   padding: 0 calc(5px * var(--ui-scale));
 }
 

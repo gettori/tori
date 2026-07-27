@@ -1,7 +1,7 @@
 // Global user settings: ~/.config/sway/settings.json (JSONC, like VS Code).
 // Read with json5 (comment-tolerant), written as pretty JSON. Separate from
 // sway.toml, which is project *discovery* config; this is user preferences
-// (appearance, typography, layout). Mirrors config.rs's watcher + the pure
+// (appearance, typography, checkpoints). Mirrors config.rs's watcher + the pure
 // core / thin wrapper split so the load/save logic is unit-testable off-disk
 // (see the repo's "pure core for global stores" lesson).
 
@@ -102,24 +102,6 @@ impl Default for Typography {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Layout {
-    /// "comfortable" | "compact".
-    pub density: String,
-    /// Corner radius in px.
-    pub radius: u16,
-}
-
-impl Default for Layout {
-    fn default() -> Self {
-        Self {
-            density: "comfortable".into(),
-            radius: 5,
-        }
-    }
-}
-
 /// Turn-level checkpoints (Finding E): on by default, a global escape hatch
 /// for a user who doesn't want a scratch-index snapshot taken per prompt.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -141,8 +123,6 @@ pub struct Settings {
     pub appearance: Appearance,
     #[serde(default)]
     pub typography: Typography,
-    #[serde(default)]
-    pub layout: Layout,
     #[serde(default)]
     pub checkpoints: Checkpoints,
 }
@@ -283,7 +263,7 @@ mod tests {
         let s = load_from(&p);
         assert_eq!(s.typography.ui_font_size, 16);
         assert_eq!(s.appearance, Appearance::default());
-        assert_eq!(s.layout, Layout::default());
+        assert_eq!(s.checkpoints, Checkpoints::default());
         std::fs::remove_file(&p).ok();
     }
 
@@ -297,7 +277,7 @@ mod tests {
     fn save_then_load_round_trips() {
         let p = tmp_file();
         let mut s = Settings::default();
-        s.layout.radius = 12;
+        s.typography.ui_font_size = 12;
         s.appearance.theme = "sway-light".into();
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);

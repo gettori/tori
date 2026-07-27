@@ -1,5 +1,5 @@
 // Global user settings store. Loads ~/.config/sway/settings.json via the Rust
-// backend, applies typography/layout to CSS tokens, and re-applies live when the
+// backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
 import { createSignal } from "solid-js";
@@ -21,9 +21,8 @@ export type Typography = {
   terminalFontSize: number;
   lineHeight: number;
 };
-export type Layout = { density: "comfortable" | "compact"; radius: number };
 export type Checkpoints = { enabled: boolean };
-export type Settings = { appearance: Appearance; typography: Typography; layout: Layout; checkpoints: Checkpoints };
+export type Settings = { appearance: Appearance; typography: Typography; checkpoints: Checkpoints };
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "sway-dark" },
@@ -36,7 +35,6 @@ export const DEFAULT_SETTINGS: Settings = {
     terminalFontSize: 15,
     lineHeight: 1.5,
   },
-  layout: { density: "comfortable", radius: 5 },
   checkpoints: { enabled: true },
 };
 
@@ -91,7 +89,7 @@ export function resetZoom() {
   setZoom(1);
 }
 
-/** Map typography/layout onto the CSS tokens that the chrome and editor read. */
+/** Map typography onto the CSS tokens that the chrome and editor read. */
 export function applySettings(s: Settings) {
   const st = document.documentElement.style;
   const z = zoom();
@@ -105,11 +103,6 @@ export function applySettings(s: Settings) {
   st.setProperty("--editor-font-family", s.typography.editorFontFamily);
   st.setProperty("--editor-font-size", `${editorFontSizePx(s.typography.editorFontSize, z)}px`);
   st.setProperty("--ui-line-height", String(s.typography.lineHeight));
-  // Radii are `calc(<px> * var(--ui-radius-scale))`; scale is the chosen radius
-  // over the 5px baseline, so the default (5) is 1 and renders unchanged.
-  st.setProperty("--ui-radius-scale", String(s.layout.radius / 5));
-  // Padding/gap are `calc(<px> * var(--ui-density))`; compact tightens spacing.
-  st.setProperty("--ui-density", s.layout.density === "compact" ? "0.85" : "1");
 }
 
 /** Surface theme problems as toasts. A theme that will not paint has to say so:
