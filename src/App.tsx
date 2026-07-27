@@ -115,7 +115,7 @@ function loadSelection(): Selection | null {
 function App() {
   // Dev-only QA surface, gated by an env flag + a #styleguide hash (NOT a route).
   // Rendered standalone so the app's settings/theme init never fights its
-  // density/scale/theme controls.
+  // scale/theme controls.
   if (import.meta.env.DEV && window.location.hash === "#styleguide") {
     return (
       <Suspense>

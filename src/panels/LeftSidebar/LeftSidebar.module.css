@@ -257,10 +257,11 @@
    for the row's own left margin so they line up on that same x. */
 .branchNode {
   position: relative;
-  /* Centre the rail under the project row's icon: row margin (6px·d) + row
-     padding (8px·d) + half the 16px icon (8px). `--rail-x-row` is that same x
-     re-expressed from the row's own box (minus the row's 6px·d left margin), so
-     the elbow/segment drawn on the row line up on the rail. */
+  /* Centre the rail under the project row's icon: row margin (6px·s) + row
+     padding (8px·s) + half the 16px icon (8px). `--rail-x-row` is that same x
+     re-expressed from the row's own box (minus the row's 6px·s left margin), so
+     the elbow/segment drawn on the row line up on the rail. Every term folds
+     --ui-scale (`s`), so the rail tracks the elbow at any UI scale. */
   --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale));
   --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
 }
