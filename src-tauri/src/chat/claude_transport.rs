@@ -353,7 +353,7 @@ fn effort_wire(effort: Effort) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::chat::transport::new_sink;
     use std::collections::HashMap;
@@ -687,7 +687,7 @@ mod tests {
     /// name. Derived from the clock and the pid rather than pulling in a uuid
     /// dependency for two ignored tests.
     #[cfg(test)]
-    fn uuid_like() -> String {
+    pub fn uuid_like() -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())

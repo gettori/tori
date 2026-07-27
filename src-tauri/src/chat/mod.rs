@@ -20,12 +20,15 @@
 //! would be: the model and the Claude mapper are now reached from a live
 //! session rather than from tests only.
 
+pub mod approval;
 pub mod claude;
 pub mod claude_transport;
 pub mod commands;
 pub mod host;
 pub mod model;
 pub mod ownership;
+pub mod rules;
+pub mod snapshot;
 pub mod transport;
 
 #[cfg(test)]
