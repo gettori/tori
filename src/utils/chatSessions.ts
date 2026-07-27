@@ -20,6 +20,12 @@ export type LiveChat = {
   folderPath: string;
   tabId: string;
   status: SessionStatus;
+  /** Is this chat the tab currently on screen? Read by presence: an approval
+   *  that blocks in the chat you are watching does not need an OS notification
+   *  telling you about it. The sidebar selection cannot answer this - a chat
+   *  mints its session id before any transcript exists, so selecting its tab
+   *  usually resolves only as far as its branch. */
+  visible: boolean;
 };
 
 const [liveChats, setLiveChats] = createSignal<LiveChat[]>([]);

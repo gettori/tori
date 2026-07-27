@@ -105,7 +105,14 @@ export type ChatState = {
    *  messages the user pressed stop to prevent. */
   queueHeld: boolean;
   model: string | null;
+  /** The mode the session is actually in, as the child re-declares it on every
+   *  turn. Never set from a click: a control that moved on its own would claim
+   *  an effect the CLI cannot deliver mid-turn. */
   permissionMode: PermissionMode | null;
+  /** A mode the user picked that has not taken effect yet. The CLI applies a
+   *  switch at the next turn boundary, so until then the two disagree and the
+   *  control has to say so. */
+  pendingMode: PermissionMode | null;
   tools: string[];
   slashCommands: SlashCommand[];
   mcpServers: McpServer[];
@@ -133,6 +140,7 @@ export function initialChat(sessionId: string): ChatState {
     queueHeld: false,
     model: null,
     permissionMode: null,
+    pendingMode: null,
     tools: [],
     slashCommands: [],
     mcpServers: [],
@@ -199,6 +207,14 @@ function touchTurn(s: ChatState, turnId: string) {
   s.awaitingTurn = false;
 }
 
+/** Record the mode the child says it is in. The per-turn init re-emission is the
+ *  only confirmation a switch landed, so a pending pick clears here and nowhere
+ *  else - clearing it on the click would show the new mode a turn early. */
+function noteMode(s: ChatState, mode: PermissionMode) {
+  s.permissionMode = mode;
+  if (s.pendingMode === mode) s.pendingMode = null;
+}
+
 function appendText(s: ChatState, turnId: string, text: string, thinking: boolean) {
   touchTurn(s, turnId);
   const openId = thinking ? s.openThinkingId : s.openTextId;
@@ -233,7 +249,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       // `system/init` re-emits every turn; only the first is a session start,
       // and treating a later one as one would reset the transcript mid-chat.
       s.model = ev.model;
-      s.permissionMode = ev.permissionMode;
+      noteMode(s, ev.permissionMode);
       s.tools = ev.tools;
       s.slashCommands = ev.slashCommands;
       s.mcpServers = ev.mcpServers;
@@ -243,7 +259,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
     }
     case "turnStarted": {
       s.model = ev.model;
-      s.permissionMode = ev.permissionMode;
+      noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
       return;
     }
@@ -432,6 +448,26 @@ export function resolveApproval(s: ChatState, toolUseId: string) {
 // ---------------------------------------------------------------------------
 // Derived
 // ---------------------------------------------------------------------------
+
+/** Record the user's mode pick. Kept apart from `permissionMode` so the control
+ *  shows the pick immediately without claiming it is in force yet. */
+export function selectMode(s: ChatState, mode: PermissionMode) {
+  // Picking the mode already in force is a cancellation of any pending switch,
+  // not a switch of its own.
+  s.pendingMode = mode === s.permissionMode ? null : mode;
+}
+
+/** The mode the control shows as selected: the pick if there is one, otherwise
+ *  what the session is actually in. */
+export function shownMode(s: ChatState): PermissionMode {
+  return s.pendingMode ?? s.permissionMode ?? "default";
+}
+
+/** Is the shown mode a promise about the next turn rather than a fact about
+ *  this one? */
+export function modePending(s: ChatState): boolean {
+  return s.pendingMode !== null;
+}
 
 /** Every card still blocked on the user. */
 export function pendingApprovals(s: ChatState): ToolItem[] {

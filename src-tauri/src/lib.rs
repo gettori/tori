@@ -180,6 +180,8 @@ pub fn run() {
             chat::commands::chat_set_model,
             chat::commands::chat_close,
             chat::commands::chat_tool_before_state,
+            chat::commands::chat_list_rules,
+            chat::commands::chat_remove_rule,
             chat::commands::chat_orphans,
             chat::commands::chat_terminate_orphan,
             config::get_config,

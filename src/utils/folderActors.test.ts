@@ -36,6 +36,7 @@ describe("detachedCandidates", () => {
       sessionName: "chat",
       folderPath: "/work/repo",
       tabId: "chat:1",
+      visible: false,
       status: "executing",
     });
     const detached = await detachedCandidates("/work/repo");

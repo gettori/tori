@@ -4,6 +4,7 @@ import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
 import type { ContentBlock } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
+import PermissionPrompt, { type Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 
 // Assistant text is model output, so it is untrusted as far as script execution
@@ -66,7 +67,11 @@ function ThinkingBlock(props: { text: string }) {
  * scroll down again, which is what makes reading an earlier turn mid-stream
  * possible.
  */
-export default function MessageList(props: { items: readonly ChatItem[]; streaming: boolean }) {
+export default function MessageList(props: {
+  items: readonly ChatItem[];
+  streaming: boolean;
+  onAnswer: (card: ToolItem, answer: Answer) => void;
+}) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   const [stuck, setStuck] = createSignal(true);
   let scroller: HTMLDivElement | undefined;
@@ -123,9 +128,17 @@ export default function MessageList(props: { items: readonly ChatItem[]; streami
             <Match when={item.kind === "tool" && item}>
               {(it) => (
                 <div class={`${styles.tool} ${it().state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
-                  <span class={styles.toolName}>{it().name ?? "tool"}</span>
-                  <span class={styles.toolArg}>{toolSummary(it())}</span>
-                  <span class={styles.toolState}>{TOOL_STATE_LABEL[it().state]}</span>
+                  <div class={styles.toolRow}>
+                    <span class={styles.toolName}>{it().name ?? "tool"}</span>
+                    <span class={styles.toolArg}>{toolSummary(it())}</span>
+                    <span class={styles.toolState}>{TOOL_STATE_LABEL[it().state]}</span>
+                  </div>
+                  {/* The prompt lives on the card rather than in a dialog: what
+                      is being approved is this call, and a modal would hide the
+                      transcript that explains why it was made. */}
+                  <Show when={it().approval}>
+                    <PermissionPrompt card={it()} onAnswer={(answer) => props.onAnswer(it(), answer)} />
+                  </Show>
                 </div>
               )}
             </Match>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSessionDot, type SessionDot, type SessionDotInputs } from "./sessionDot";
-import { statusFromDot, type SessionStatus } from "./sessionStatus";
+import { dotFromStatus, statusFromDot, type SessionStatus } from "./sessionStatus";
 
 // A golden baseline of today's status behaviour, captured *before* chat exists.
 //
@@ -101,5 +101,30 @@ describe("sessionDot golden baseline", () => {
       expect(r.inputs.tailState).toBe("blocked-candidate");
     }
     expect(rows.some((r) => r.dot === "needsYou")).toBe(true);
+  });
+});
+
+// The chat tier knows its status directly and has to hand it back into the
+// dot-shaped presence pipeline (OS notification, tray, dock badge). If the two
+// mappings ever disagreed there would be two answers to "is anything waiting on
+// me", which is the one question presence exists to answer.
+describe("dotFromStatus", () => {
+  const statuses: SessionStatus[] = ["executing", "waitingForApproval", "idle", "running", "none"];
+
+  it("round-trips every status through the dot vocabulary unchanged", () => {
+    for (const status of statuses) {
+      expect(statusFromDot(dotFromStatus(status))).toBe(status);
+    }
+  });
+
+  // The one that carries the notification, the badge and the tab marker.
+  it("maps a blocked chat onto the needs-you dot the notification path watches", () => {
+    expect(dotFromStatus("waitingForApproval")).toBe("needsYou");
+  });
+
+  // `liveCounts` counts any dot other than "none" as a running session, so an
+  // ended chat must not keep a tray entry alive.
+  it("maps an ended chat onto no dot at all", () => {
+    expect(dotFromStatus("none")).toBe("none");
   });
 });

@@ -127,6 +127,30 @@ pub fn is_helper() -> bool {
     std::env::var_os(ENV_SOCK).is_some()
 }
 
+/// Everything the helper's decision is allowed to depend on.
+///
+/// **`permission_mode` is deliberately not here**, though the payload carries
+/// it. Hooks run first in the permission chain, ahead of deny rules, ask rules
+/// and the mode itself, which is the whole reason Sway's gate is authoritative.
+/// Reading the mode would be the one way to give that up: under
+/// `bypassPermissions` the helper would stop asking, and "Sway still approves"
+/// would quietly stop being true exactly where it matters most.
+pub struct HookInputs {
+    pub tool_name: String,
+    pub tool_input: Value,
+    pub session_id: String,
+    pub tool_use_id: String,
+}
+
+pub fn hook_inputs(parsed: &Value) -> HookInputs {
+    HookInputs {
+        tool_name: parsed["tool_name"].as_str().unwrap_or_default().to_string(),
+        tool_input: parsed.get("tool_input").cloned().unwrap_or(Value::Null),
+        session_id: parsed["session_id"].as_str().unwrap_or_default().to_string(),
+        tool_use_id: parsed["tool_use_id"].as_str().unwrap_or_default().to_string(),
+    }
+}
+
 /// The helper: read the `PreToolUse` payload from stdin, decide, print the hook
 /// JSON to stdout. Returns the process exit code.
 ///
@@ -140,10 +164,7 @@ pub fn run_helper() -> i32 {
         return emit_decision(&HookResponse::deny("Sway could not read the hook payload."));
     }
     let parsed: Value = serde_json::from_str(&payload).unwrap_or(Value::Null);
-    let tool_name = parsed["tool_name"].as_str().unwrap_or_default().to_string();
-    let tool_input = parsed.get("tool_input").cloned().unwrap_or(Value::Null);
-    let session_id = parsed["session_id"].as_str().unwrap_or_default().to_string();
-    let tool_use_id = parsed["tool_use_id"].as_str().unwrap_or_default().to_string();
+    let HookInputs { tool_name, tool_input, session_id, tool_use_id } = hook_inputs(&parsed);
 
     // The cheap path: one file read, no socket. A write tool is excluded from
     // it on purpose - see `HookRequest::pre_approved`.
@@ -799,6 +820,40 @@ mod tests {
     fn resolving_an_unknown_request_is_a_no_op() {
         let (server, _rx) = test_server(Duration::from_secs(1));
         resolve(&server, "apr-does-not-exist", HookResponse::allow("stale click"));
+    }
+
+    /// **A bypass-mode session still gets approved.**
+    ///
+    /// `bypassPermissions` disables *Claude's* permission checks. Sway's hook
+    /// runs ahead of all of them, so a call matching no allow rule still stops
+    /// and asks. Pinned against a real `PreToolUse` payload declaring the mode,
+    /// because the guarantee is that the mode never reaches the decision.
+    #[test]
+    fn a_bypass_mode_call_matching_no_rule_still_prompts() {
+        let payload = json!({
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "bypassPermissions",
+            "session_id": "s1",
+            "tool_use_id": "toolu_1",
+            "tool_name": "Bash",
+            "tool_input": { "command": "rm -rf build" },
+        });
+        let inputs = hook_inputs(&payload);
+        assert_eq!(inputs.tool_name, "Bash");
+
+        let allows_reads = RuleFile {
+            sway_pid: std::process::id(),
+            stamp_ms: rules::now_ms(),
+            rules: vec![rules::Rule { tool: "Read".into(), prefix: None }],
+        };
+        let verdict = rules::evaluate(
+            Some(&allows_reads),
+            &inputs.tool_name,
+            &inputs.tool_input,
+            rules::now_ms(),
+            pid_alive,
+        );
+        assert_eq!(verdict, Verdict::Ask, "the mode must not be able to skip Sway's approval");
     }
 
     // ---- the cheap path ----

@@ -105,4 +105,22 @@ describe("shouldSuppressNotification", () => {
     expect(shouldSuppressNotification(event, "other", true)).toBe(false); // focused but a different tab
     expect(shouldSuppressNotification(event, undefined, true)).toBe(false);
   });
+
+  // A chat is watched by having its tab on screen, not by being the sidebar's
+  // selected row: its session id exists before any transcript does, so
+  // selecting its tab usually resolves only as far as its branch. Keying on the
+  // selection alone notified about a prompt sitting in the visible pane.
+  it("also suppresses for a chat whose tab is the one on screen", () => {
+    const event = { sessionId: "chat-1" };
+    const onScreen = new Set(["chat-1"]);
+    expect(shouldSuppressNotification(event, undefined, true, onScreen)).toBe(true);
+    // A background chat is exactly what the notification is for.
+    expect(shouldSuppressNotification(event, undefined, true, new Set(["chat-2"]))).toBe(false);
+  });
+
+  // The case the notification exists for. Nothing on screen counts as watched
+  // when the window is behind another app.
+  it("suppresses nothing while the window is unfocused", () => {
+    expect(shouldSuppressNotification({ sessionId: "chat-1" }, "chat-1", false, new Set(["chat-1"]))).toBe(false);
+  });
 });

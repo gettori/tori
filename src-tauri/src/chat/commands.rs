@@ -187,6 +187,10 @@ pub async fn chat_spawn(
     )
     .map_err(|e| format!("could not start the approval bridge: {e}"))?;
 
+    // The project's durable rules become this session's compiled file before the
+    // child exists, so an "always allow in this project" from an earlier chat is
+    // in force on this one's very first tool call rather than from its second.
+    compile_project_rules(&session_id, &cwd)?;
     // A fresh stamp before the child starts, so its very first tool call sees a
     // supervised rules file rather than a stale one.
     approval::refresh_stamp(&session_id);
@@ -256,6 +260,7 @@ pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> 
 pub async fn chat_respond_permission(
     state: State<'_, ChatState>,
     session_id: String,
+    cwd: String,
     request_id: String,
     tool_name: String,
     tool_input: serde_json::Value,
@@ -263,21 +268,41 @@ pub async fn chat_respond_permission(
     scope: PermissionScope,
     reason: Option<String>,
 ) -> Result<(), String> {
+    // **The answer goes out first.** A hook process is blocked on this call, and
+    // the rule below is only an optimisation for *later* ones. Persisting first
+    // meant an unwritable `~/.config` returned early and left the hook unanswered
+    // until the 110s auto-deny - so a call the user clicked Allow on ended up
+    // denied, by a disk error.
+    //
+    // It goes to the blocked hook over the approval socket, not to the child's
+    // stdin: `PreToolUse` is the gate, and it is what is waiting.
+    state.0.resolve_permission(&session_id, &request_id, hook_response_for(decision, reason))?;
+
     // "Allow, and stop asking" writes a Sway-owned rule so the next matching
     // call takes the cheap path. Never written to `~/.claude/settings.json`: a
     // click in one chat pane must not change how every terminal session and
     // every other project behaves.
     if matches!(decision, PermissionDecision::Allow) && !matches!(scope, PermissionScope::Once) {
-        add_rule(&session_id, &tool_name, &tool_input, scope)?;
+        // A failure here is reported, not swallowed: the call was allowed, but
+        // the promise not to ask again was not kept, and the user is the only
+        // one who can tell those apart.
+        add_rule(&session_id, &cwd, &tool_name, &tool_input, scope)?;
     }
+    Ok(())
+}
 
-    // The answer goes to the blocked hook process over the approval socket, not
-    // to the child's stdin: `PreToolUse` is the gate, and it is what is waiting.
-    let resp = match decision {
+/// One answer, as the blocked hook will emit it.
+///
+/// The reason is not decoration. `permissionDecisionReason` reaches the model as
+/// the tool result, which is what makes "deny with feedback" a redirection ("not
+/// that file, use the fixture") rather than just a refusal. A typed reason
+/// therefore has to survive verbatim; the defaults exist only for the buttons
+/// that carry no message.
+fn hook_response_for(decision: PermissionDecision, reason: Option<String>) -> HookResponse {
+    match decision {
         PermissionDecision::Allow => HookResponse::allow(reason.unwrap_or_else(|| "Allowed in Sway.".to_string())),
         PermissionDecision::Deny => HookResponse::deny(reason.unwrap_or_else(|| "Denied in Sway.".to_string())),
-    };
-    state.0.resolve_permission(&session_id, &request_id, resp)
+    }
 }
 
 /// Record an allow rule for this session.
@@ -291,6 +316,7 @@ pub async fn chat_respond_permission(
 ///   * `Project` - this tool anywhere under the session's working directory.
 fn add_rule(
     session_id: &str,
+    cwd: &str,
     tool_name: &str,
     tool_input: &serde_json::Value,
     scope: PermissionScope,
@@ -320,11 +346,101 @@ fn add_rule(
     });
     let rule = rules::Rule { tool: tool_name.to_string(), prefix };
     if !file.rules.contains(&rule) {
-        file.rules.push(rule);
+        file.rules.push(rule.clone());
     }
     file.sway_pid = std::process::id();
     file.stamp_ms = rules::now_ms();
-    rules::save(&path, &file)
+    rules::save(&path, &file)?;
+
+    // A project rule also lands in the durable store. Without this it would live
+    // only in the session file, which is a compiled artefact deleted at
+    // teardown - so "always allow in this project" would quietly mean "until
+    // this tab closes", which is not what the button says.
+    if matches!(scope, PermissionScope::Project) {
+        let project_path = rules::project_rules_path(cwd);
+        let mut project = rules::load_project(&project_path);
+        if !project.rules.contains(&rule) {
+            project.rules.push(rule);
+            rules::save_project(&project_path, &project)?;
+        }
+    }
+    Ok(())
+}
+
+/// Seed a session's compiled rule file from the project's durable one.
+fn compile_project_rules(session_id: &str, cwd: &str) -> Result<(), String> {
+    let project = rules::load_project(&rules::project_rules_path(cwd));
+    let path = rules::rules_path(session_id);
+    let existing = rules::load(&path);
+    // Nothing to compile and nothing already there: leave the disk alone rather
+    // than writing an empty file the helper would have to read on every call.
+    if project.rules.is_empty() && existing.is_none() {
+        return Ok(());
+    }
+    let compiled = rules::compiled(&project, existing.as_ref(), std::process::id(), rules::now_ms());
+    rules::save(&path, &compiled)
+}
+
+/// One allow rule as the UI lists it: what it covers, and which store it lives
+/// in, because removing it has to reach that store.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedRule {
+    pub tool: String,
+    pub prefix: Option<String>,
+    pub scope: PermissionScope,
+}
+
+/// Every rule in force for this session, project-scoped ones marked as such.
+///
+/// Read from the compiled session file, which is the file the hook helper
+/// actually consults, so the list is what is really in effect rather than a
+/// second opinion about it.
+#[tauri::command]
+pub async fn chat_list_rules(session_id: String, cwd: String) -> Result<Vec<ScopedRule>, String> {
+    let project = rules::load_project(&rules::project_rules_path(&cwd));
+    let session = rules::load(&rules::rules_path(&session_id)).map(|f| f.rules).unwrap_or_default();
+    Ok(session
+        .into_iter()
+        .map(|r| ScopedRule {
+            scope: if project.rules.contains(&r) { PermissionScope::Project } else { PermissionScope::Session },
+            tool: r.tool,
+            prefix: r.prefix,
+        })
+        .collect())
+}
+
+/// Revoke a rule, so the next matching call prompts again.
+///
+/// Removed from both stores unconditionally: leaving it in the durable project
+/// file would make it reappear in the next chat opened on this folder, which
+/// reads as the revoke not having worked.
+#[tauri::command]
+pub async fn chat_remove_rule(
+    session_id: String,
+    cwd: String,
+    tool: String,
+    prefix: Option<String>,
+) -> Result<(), String> {
+    let target = rules::Rule { tool, prefix };
+
+    let path = rules::rules_path(&session_id);
+    if let Some(mut file) = rules::load(&path) {
+        file.rules.retain(|r| r != &target);
+        // The stamp is refreshed with the write, so the helper's next read is
+        // both current and rule-free rather than current and stale-looking.
+        file.sway_pid = std::process::id();
+        file.stamp_ms = rules::now_ms();
+        rules::save(&path, &file)?;
+    }
+
+    let project_path = rules::project_rules_path(&cwd);
+    let mut project = rules::load_project(&project_path);
+    if project.rules.contains(&target) {
+        project.rules.retain(|r| r != &target);
+        rules::save_project(&project_path, &project)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -524,6 +640,124 @@ mod tests {
         assert_eq!(json["ownership"]["type"], "heldByOther");
         assert_eq!(json["ownership"]["tabId"], "pty-1");
         assert!(json["spawned"].is_null());
+    }
+
+    /// The five buttons are three decisions crossed with reach. This pins the
+    /// decision half: what the blocked hook emits, and therefore what the model
+    /// is told.
+    #[test]
+    fn every_answer_reaches_the_hook_as_the_decision_it_names() {
+        let allow = approval::hook_output(&hook_response_for(PermissionDecision::Allow, None));
+        assert!(allow.contains("\"permissionDecision\":\"allow\""), "{allow}");
+
+        let deny = approval::hook_output(&hook_response_for(PermissionDecision::Deny, None));
+        assert!(deny.contains("\"permissionDecision\":\"deny\""), "{deny}");
+    }
+
+    /// "Deny with feedback" is a redirection, not a refusal: the typed reason is
+    /// delivered to the model as the tool result. A default substituted over it
+    /// would throw away the only part the user wrote.
+    #[test]
+    fn a_typed_denial_reason_survives_verbatim_into_the_tool_result() {
+        let typed = "Not that file - use dev/fixtures/chat/events.json.";
+        let out = approval::hook_output(&hook_response_for(PermissionDecision::Deny, Some(typed.to_string())));
+        assert!(out.contains(typed), "{out}");
+        assert!(!out.contains("Denied in Sway."), "the default must not displace what the user wrote");
+    }
+
+    /// A working directory nothing else in the suite uses, so the durable
+    /// project store these tests write to cannot collide with a real one.
+    fn scratch_project(name: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("sway-rules-{}-{name}", std::process::id()))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn cleanup(session_id: &str, cwd: &str) {
+        let _ = std::fs::remove_file(rules::rules_path(session_id));
+        let _ = std::fs::remove_file(rules::project_rules_path(cwd));
+    }
+
+    /// The whole point of the project scope: a rule granted in one chat is in
+    /// force in the *next* chat opened on that folder. Written against the
+    /// compiled file the hook helper actually reads, not against intent.
+    #[test]
+    fn a_project_rule_outlives_the_chat_that_granted_it() {
+        let cwd = scratch_project("outlives");
+        let first = format!("rules-first-{}", std::process::id());
+        let second = format!("rules-second-{}", std::process::id());
+        cleanup(&first, &cwd);
+        let _ = std::fs::remove_file(rules::rules_path(&second));
+
+        add_rule(&first, &cwd, "Read", &serde_json::json!({"file_path": format!("{cwd}/src/a.rs")}), PermissionScope::Project).unwrap();
+        // The tab closes: its compiled file goes with it.
+        std::fs::remove_file(rules::rules_path(&first)).unwrap();
+
+        compile_project_rules(&second, &cwd).unwrap();
+        let compiled = rules::load(&rules::rules_path(&second)).expect("the new session should have a compiled file");
+        assert_eq!(compiled.rules.len(), 1);
+        assert_eq!(compiled.rules[0].tool, "Read");
+
+        cleanup(&second, &cwd);
+    }
+
+    /// A session-scoped rule is exactly that. Leaking it into the durable store
+    /// would make "for this session" quietly permanent.
+    #[test]
+    fn a_session_rule_never_reaches_the_durable_project_store() {
+        let cwd = scratch_project("session-only");
+        let session = format!("rules-session-{}", std::process::id());
+        cleanup(&session, &cwd);
+
+        add_rule(&session, &cwd, "Bash", &serde_json::json!({"command": "git status"}), PermissionScope::Session).unwrap();
+        assert!(rules::load_project(&rules::project_rules_path(&cwd)).rules.is_empty());
+
+        cleanup(&session, &cwd);
+    }
+
+    /// Removing a rule has to reach both stores. Left in the durable one it
+    /// would come back with the next chat on this folder, which reads as the
+    /// revoke having failed.
+    #[test]
+    fn removing_a_rule_clears_it_from_the_session_and_from_the_project() {
+        let cwd = scratch_project("remove");
+        let session = format!("rules-remove-{}", std::process::id());
+        let later = format!("rules-later-{}", std::process::id());
+        cleanup(&session, &cwd);
+        let _ = std::fs::remove_file(rules::rules_path(&later));
+
+        let input = serde_json::json!({"file_path": format!("{cwd}/src/a.rs")});
+        add_rule(&session, &cwd, "Read", &input, PermissionScope::Project).unwrap();
+        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(matches!(listed[0].scope, PermissionScope::Project), "a rule from the project store lists as project-scoped");
+
+        tauri::async_runtime::block_on(chat_remove_rule(
+            session.clone(),
+            cwd.clone(),
+            listed[0].tool.clone(),
+            listed[0].prefix.clone(),
+        ))
+        .unwrap();
+
+        // Gone here, and gone for the next chat on this folder.
+        assert!(tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap().is_empty());
+        // The point of removing it: the next matching call prompts again rather
+        // than taking the cheap path.
+        let verdict = rules::evaluate(
+            rules::load(&rules::rules_path(&session)).as_ref(),
+            "Read",
+            &input,
+            rules::now_ms(),
+            |_| true,
+        );
+        assert_eq!(verdict, rules::Verdict::Ask);
+        compile_project_rules(&later, &cwd).unwrap();
+        assert!(rules::load(&rules::rules_path(&later)).map(|f| f.rules).unwrap_or_default().is_empty());
+
+        cleanup(&session, &cwd);
+        let _ = std::fs::remove_file(rules::rules_path(&later));
     }
 
     /// The guard the whole ownership layer exists for, stated as a fact about

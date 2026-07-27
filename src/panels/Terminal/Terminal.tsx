@@ -8,7 +8,7 @@ import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
 import Tab from "../../components/Tab/Tab";
 import Button from "../../components/Button/Button";
-import { X, ChevronDown, SquareTerminal } from "lucide-solid";
+import { X, ChevronDown, SquareTerminal, MessageCircleQuestion } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -46,6 +46,8 @@ import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } f
 import { liveStatuses } from "../../utils/sessionStatus";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
+import { liveChats } from "../../utils/chatSessions";
+import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import styles from "./Terminal.module.css";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -458,6 +460,43 @@ export default function Terminal(props: {
     }).catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
+  // A PTY agent tab whose session id was already claimed. Held per tab rather
+  // than globally: two refused tabs are two separate offers, and the banner has
+  // to end the right leftover process.
+  const [ptyRefusals, setPtyRefusals] = createSignal<{ tab: OpenTerm; refusal: Refusal }[]>([]);
+  const ptyRefusal = () => ptyRefusals().find((r) => r.tab.id === visibleId()) ?? null;
+
+  function noteRefusal(tab: OpenTerm, refusal: Refusal) {
+    setPtyRefusals([...ptyRefusals().filter((r) => r.tab.id !== tab.id), { tab, refusal }]);
+  }
+
+  function clearRefusal(tabId: string) {
+    setPtyRefusals(ptyRefusals().filter((r) => r.tab.id !== tabId));
+  }
+
+  // The way out of every refusal, on both surfaces: a brand-new session id
+  // cannot collide with the one that is already held.
+  function forkFrom(tab: OpenTerm) {
+    // The refused tab spawned nothing, so it is an empty shell that would sit
+    // in the bar forever. Closing it also clears its refusal.
+    closeId(tab.id);
+    void spawnSession(tab.program, tab.workspace, tab.workspace.split("/").pop() || tab.program);
+  }
+
+  async function endRefusalOrphan(entry: { tab: OpenTerm; refusal: Refusal }) {
+    if (entry.refusal.type !== "orphaned" || !entry.tab.sessionId) return;
+    await invoke("chat_terminate_orphan", {
+      sessionId: entry.tab.sessionId,
+      childPid: entry.refusal.childPid,
+      agentId: entry.tab.program,
+    })
+      .then(() => {
+        clearRefusal(entry.tab.id);
+        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "info" });
+      })
+      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
   // Tabs (clone / bootstrap) that should re-discover projects when they exit.
   const rediscoverOnExit = new Set<string>();
   let offOpenTerminal: (() => void) | undefined;
@@ -804,6 +843,7 @@ export default function Terminal(props: {
     // stream-json child would keep running (and keep its session id claimed).
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
     if (t?.kind !== "chat") invoke("pty_kill", { id }).catch(() => {});
+    clearRefusal(id);
     setOpen(open().filter((o) => o.id !== id));
     // No active-tab bookkeeping needed: visibleId() falls back to the workspace's
     // first tab when its remembered id is now gone.
@@ -812,6 +852,14 @@ export default function Terminal(props: {
   function close(id: string, e: MouseEvent) {
     e.stopPropagation();
     closeId(id);
+  }
+
+  /** Is this tab a chat blocked on an approval? Read from the live-chat
+   *  registry, which the chat's own event stream fills, so it is exact rather
+   *  than inferred from PTY quiet. */
+  function blockedChat(t: OpenTerm): boolean {
+    if (t.kind !== "chat") return false;
+    return liveChats().some((c) => c.tabId === t.id && c.status === "waitingForApproval");
   }
 
   // The bar reorders only the active workspace's tabs (the subset it was given).
@@ -840,10 +888,18 @@ export default function Terminal(props: {
           <Tab
             active={visibleId() === t.id}
             onClick={() => selectTab(t)}
-            title={t.cwd}
+            title={blockedChat(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
             closeLabel="Close"
             onClose={(e) => close(t.id, e)}
           >
+            {/* A blocked chat is blocked whether or not you are looking at it,
+                so the tab says so: without it a background chat waiting on an
+                approval is indistinguishable from one still working. */}
+            <Show when={blockedChat(t)}>
+              <span class={styles.termTabBlocked} aria-label="Waiting for approval">
+                <Icon icon={MessageCircleQuestion} />
+              </span>
+            </Show>
             {tabTitle(t)}
           </Tab>
         )}
@@ -933,6 +989,7 @@ export default function Terminal(props: {
                   init={term().init}
                   sessionId={term().sessionId}
                   active={visibleId() === term().id}
+                  onOwnershipRefused={(refusal) => noteRefusal(term(), refusal)}
                 />
               )}
             </Show>
@@ -946,6 +1003,35 @@ export default function Terminal(props: {
         {/* Overlay, never a fallback: gating the always-mounted <For> on this
             would unmount every group's TerminalView and kill their PTYs
             (gotcha #64). */}
+        {/* A PTY agent tab refused the session id. Same offer the chat surface
+            makes, because it is the same refusal: go to what holds it, end the
+            leftover process, or start a fresh session beside it. */}
+        <Show when={ptyRefusal()}>
+          {(entry) => (
+            <div class={styles.termRestore}>
+              <span class={styles.termRestoreText}>{refusalMessage(entry().refusal)}</span>
+              <Show when={holdingTab(entry().refusal)}>
+                {(tabId) => (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: tabId() })}
+                  >
+                    Go to it
+                  </Button>
+                )}
+              </Show>
+              <Show when={entry().refusal.type === "orphaned"}>
+                <Button variant="primary" size="sm" onClick={() => void endRefusalOrphan(entry())}>
+                  End it
+                </Button>
+              </Show>
+              <Button size="sm" onClick={() => forkFrom(entry().tab)}>
+                Start a new session
+              </Button>
+            </div>
+          )}
+        </Show>
         <Show when={orphans().length}>
           <div class={styles.termRestore}>
             <span class={styles.termRestoreText}>

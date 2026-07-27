@@ -153,6 +153,7 @@ describe("a live chat blocks a real tree revert", () => {
       sessionName: "chat",
       folderPath: REPO,
       tabId: "chat:1",
+      visible: false,
       status: chatStatus(state),
     });
   }

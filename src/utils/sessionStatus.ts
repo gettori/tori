@@ -32,6 +32,26 @@ export function statusFromDot(dot: string): SessionStatus {
   }
 }
 
+// The exact inverse of `statusFromDot`, for the chat tier, which knows its
+// status directly and has to hand it *back* to the dot-shaped presence
+// pipeline (OS notification, tray, dock badge). Those consumers were written
+// against dots, and a second presence pipeline keyed on statuses would be two
+// implementations of "is anything waiting on me" that could disagree.
+export function dotFromStatus(status: SessionStatus): string {
+  switch (status) {
+    case "executing":
+      return "working";
+    case "waitingForApproval":
+      return "needsYou";
+    case "idle":
+      return "solid";
+    case "running":
+      return "hollow";
+    default:
+      return "none";
+  }
+}
+
 export type LiveSessionStatus = {
   sessionId: string;
   status: SessionStatus;

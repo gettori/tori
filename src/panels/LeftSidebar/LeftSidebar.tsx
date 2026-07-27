@@ -55,6 +55,7 @@ import { findAgent, resumeCommand } from "../../utils/agents";
 import { copyText } from "../../utils/clipboard";
 import {
   statusFromDot,
+  dotFromStatus,
   setLiveStatuses,
   rollupStatuses,
   STATUS_LABEL,
@@ -62,6 +63,7 @@ import {
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
+import { liveChats } from "../../utils/chatSessions";
 import { computeSessionDot, type SessionDot } from "../../utils/sessionDot";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
@@ -602,6 +604,26 @@ export default function LeftSidebar(props: {
         tabId: t.id,
       });
     }
+    // The chat tier, which needs none of the composition above: its own event
+    // stream says when a turn is running and when a tool call is blocked. Fed
+    // into the same list so an approval waiting in a chat raises the same OS
+    // notification and the same dock badge a blocked PTY agent does.
+    //
+    // Only this list, deliberately - `liveSessionStatuses` below stays
+    // PTY-only, because `folderActors` already merges the chat tier into the
+    // revert guard and adding chats here as well would report each of them
+    // twice.
+    for (const c of liveChats()) {
+      const proj = projectForFolder(c.folderPath);
+      live.push({
+        sessionId: c.sessionId,
+        dot: dotFromStatus(c.status),
+        sessionName: c.sessionName,
+        projectName: proj?.projectName ?? "",
+        folderPath: c.folderPath,
+        tabId: c.tabId,
+      });
+    }
     return live;
   });
 
@@ -715,6 +737,11 @@ export default function LeftSidebar(props: {
   }
 
   const [windowFocused, setWindowFocused] = createSignal(true);
+  // Chats whose tab is the one on screen. A chat that blocks in the pane you are
+  // watching needs no notification, and the sidebar selection cannot tell us
+  // that: a chat's session id is minted before its transcript exists, so
+  // clicking its tab resolves only as far as its branch.
+  const onScreenChats = () => new Set(liveChats().filter((c) => c.visible).map((c) => c.sessionId));
   // A session reads as attended once it's both the sidebar's current
   // selection and the window has focus - the same "you're looking at it"
   // signal focusOrResume already uses to bring a tab to the front.
@@ -728,7 +755,7 @@ export default function LeftSidebar(props: {
   createEffect(
     on(lastTransition, (event) => {
       if (!event) return;
-      if (shouldSuppressNotification(event, props.selected?.sessionId, windowFocused())) return;
+      if (shouldSuppressNotification(event, props.selected?.sessionId, windowFocused(), onScreenChats())) return;
       void notifyNeedsYou(event);
     }),
   );

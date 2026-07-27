@@ -118,6 +118,19 @@ fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &st
     }
 }
 
+/// The result of asking to open a PTY tab.
+///
+/// `ownership` is `None` for every tab that never took a claim - a shell tab, a
+/// command tab, a fresh agent tab whose session id does not exist yet, and a
+/// remount of a tab we already hold - and `Some(refusal)` when the claim was
+/// declined and nothing was spawned. A granted claim also reports `None`: there
+/// is nothing for the caller to do about it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtySpawnResult {
+    pub ownership: Option<crate::chat::ownership::ClaimOutcome>,
+}
+
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
@@ -148,14 +161,14 @@ pub fn pty_spawn(
     agent_id: Option<String>,
     on_output: Channel<InvokeResponseBody>,
     chat: State<crate::chat::host::ChatState>,
-) -> Result<(), String> {
+) -> Result<PtySpawnResult, String> {
     // If a session with this id already exists, rewire its output to the new
     // channel (a remount/re-subscribe) and leave the process running.
     {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = guard.get(&id) {
             *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
-            return Ok(());
+            return Ok(PtySpawnResult { ownership: None });
         }
     }
 
@@ -183,20 +196,12 @@ pub fn pty_spawn(
         );
         match outcome {
             ClaimOutcome::Granted { .. } => claimed_session = Some(session_id.clone()),
-            // Phase 5 turns these into the focus / fork-to-new-session
-            // affordances the plan describes. Until then a refusal is a plain
-            // error, which is honest and still blocks the corruption.
-            ClaimOutcome::AlreadyMineFocus { tab_id } => {
-                return Err(format!("session {session_id} is already open in tab {tab_id}"))
-            }
-            ClaimOutcome::HeldByOther { tab_id, .. } => {
-                return Err(format!("session {session_id} is already open in a chat tab ({tab_id})"))
-            }
-            ClaimOutcome::Orphaned { child_pid } => {
-                return Err(format!(
-                    "session {session_id} is still being run by a leftover process (pid {child_pid}) from a crashed Sway"
-                ))
-            }
+            // A refusal is a value, not an error string, exactly as `chat_spawn`
+            // reports one: the frontend can only offer "go to the tab holding
+            // it" or "end the leftover process" if it is told which tab and
+            // which pid, and it cannot parse either back out of a message.
+            // Nothing is spawned either way, so the corruption stays blocked.
+            refused => return Ok(PtySpawnResult { ownership: Some(refused) }),
         }
     }
 
@@ -339,7 +344,7 @@ pub fn pty_spawn(
             claimed_session,
         },
     );
-    Ok(())
+    Ok(PtySpawnResult { ownership: None })
 }
 
 #[tauri::command]

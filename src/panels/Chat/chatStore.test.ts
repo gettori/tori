@@ -10,12 +10,15 @@ import {
   hasEarlier,
   initialChat,
   isRunning,
+  modePending,
   pendingApprovals,
   pendingFlush,
   pushUserTurn,
   releaseQueue,
   removeQueued,
   resolveApproval,
+  selectMode,
+  shownMode,
   takeForSend,
   windowed,
   type ChatItem,
@@ -356,5 +359,63 @@ describe("the render window", () => {
     windowed(s.items, 60);
     expect(performance.now() - at).toBeLessThan(500);
     expect(s.items).toHaveLength(2000);
+  });
+});
+
+// A mode switch is applied by the CLI at the next turn boundary, so between the
+// click and that boundary the control is describing the future. Showing it as
+// current would be wrong for exactly the turn the user is worried about.
+describe("the permission mode control", () => {
+  const turnIn = (turnId: string, mode: "default" | "plan" | "acceptEdits" | "bypassPermissions"): ChatEvent => ({
+    type: "turnStarted",
+    sessionId: "s1",
+    turnId,
+    model: "m",
+    permissionMode: mode,
+  });
+
+  it("shows a pick immediately and flags it as not yet in force", () => {
+    const s = replay([turnIn("t1", "default")]);
+    expect(shownMode(s)).toBe("default");
+    expect(modePending(s)).toBe(false);
+
+    selectMode(s, "plan");
+    expect(shownMode(s)).toBe("plan");
+    expect(modePending(s)).toBe(true);
+    // The session itself has not moved: only the child's own re-declaration
+    // says a switch landed.
+    expect(s.permissionMode).toBe("default");
+  });
+
+  it("settles once the next turn declares the mode it was given", () => {
+    const s = replay([turnIn("t1", "default")]);
+    selectMode(s, "plan");
+    applyEvent(s, turnIn("t2", "plan"));
+    expect(modePending(s)).toBe(false);
+    expect(shownMode(s)).toBe("plan");
+  });
+
+  // The CLI is free to ignore a switch. A control that cleared its pending mark
+  // on the click alone would then show a mode the session is not in, forever.
+  it("stays pending when the next turn comes back in the old mode", () => {
+    const s = replay([turnIn("t1", "default")]);
+    selectMode(s, "bypassPermissions");
+    applyEvent(s, turnIn("t2", "default"));
+    expect(modePending(s)).toBe(true);
+    expect(shownMode(s)).toBe("bypassPermissions");
+  });
+
+  it("treats re-picking the mode in force as cancelling the pending switch", () => {
+    const s = replay([turnIn("t1", "default")]);
+    selectMode(s, "plan");
+    selectMode(s, "default");
+    expect(modePending(s)).toBe(false);
+    expect(shownMode(s)).toBe("default");
+  });
+
+  it("falls back to default before the session has said anything", () => {
+    const s = initialChat("s1");
+    expect(shownMode(s)).toBe("default");
+    expect(modePending(s)).toBe(false);
   });
 });
