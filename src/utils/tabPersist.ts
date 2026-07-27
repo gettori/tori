@@ -17,7 +17,7 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Command tabs (clone/bootstrap) are deliberately excluded: they are one-shot
 // progress views, and re-running a clone on relaunch would be destructive.
-export type PersistedKind = "shell" | "agent";
+export type PersistedKind = "shell" | "agent" | "chat";
 
 export type PersistedTab = {
   title: string;
@@ -27,6 +27,10 @@ export type PersistedTab = {
   args: string[];
   // Agent tabs that were resumed from a known session; absent for a fresh agent
   // tab whose transcript had not appeared yet, and for plain shells.
+  //
+  // A chat tab always carries one: unlike an agent tab it mints its own session
+  // id up front (the transport is spawned with `--session-id`), so there is no
+  // window where a live chat has no id to restore against.
   sessionId?: string;
 };
 
@@ -51,7 +55,8 @@ export type OpenTabLike = {
   sessionId?: string;
 };
 
-const isPersistable = (kind: string): kind is PersistedKind => kind === "shell" || kind === "agent";
+const isPersistable = (kind: string): kind is PersistedKind =>
+  kind === "shell" || kind === "agent" || kind === "chat";
 
 // Fold the whole open set into a per-workspace store. Called on every open-set,
 // order, or active-tab change, so the stored order always matches what is on
@@ -116,7 +121,15 @@ export function parseStore(raw: string | null): TabStore {
       if (!e || !Array.isArray(e.tabs) || typeof e.savedAt !== "number") continue;
       const tabs = e.tabs.filter(
         (t): t is PersistedTab =>
-          !!t && typeof t.title === "string" && typeof t.cwd === "string" && isPersistable(t.kind) && Array.isArray(t.args),
+          !!t &&
+          typeof t.title === "string" &&
+          typeof t.cwd === "string" &&
+          isPersistable(t.kind) &&
+          Array.isArray(t.args) &&
+          // A chat tab restores by resuming its session id, so one stored
+          // without an id has nothing to come back to: drop it here rather than
+          // producing a tab that can never spawn.
+          (t.kind !== "chat" || typeof t.sessionId === "string"),
       );
       if (tabs.length) out[ws] = { tabs, active: typeof e.active === "number" ? e.active : -1, savedAt: e.savedAt };
     }

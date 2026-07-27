@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { revertGuard, revertBlockers, type RevertCandidate } from "./revertGuard";
+import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";
+import { dropLiveChat, setLiveChat } from "./chatSessions";
+import { liveCandidates } from "./folderActors";
+import type { ChatEvent } from "./chatTypes";
 
 const REPO = "/work/repo";
 
@@ -102,5 +106,93 @@ describe("revertGuard", () => {
       folderPath: REPO,
     });
     expect(verdict.allow).toBe(true);
+  });
+
+  it("blocks hard on a chat session mid-turn", () => {
+    const verdict = revertGuard([candidate({ sessionId: "chat", status: "executing" })], { folderPath: REPO });
+    expect(verdict.allow).toBe(false);
+    if (verdict.allow) return;
+    expect(verdict.overridable).toBe(false);
+    expect(verdict.blockers).toEqual([{ sessionId: "chat", sessionName: "chat", kind: "executing" }]);
+  });
+
+  it("does not block on an idle chat session", () => {
+    expect(revertGuard([candidate({ sessionId: "chat", status: "idle" })], { folderPath: REPO }).allow).toBe(true);
+  });
+
+  it("blocks a session known to be executing even without a live tab", () => {
+    // The old `hasLiveTab && executing` pairing relied on an invariant chat
+    // retired: a candidate reporting executing without a live tab matched
+    // neither branch and blocked nothing.
+    const verdict = revertGuard([candidate({ sessionId: "chat", status: "executing", hasLiveTab: false })], {
+      folderPath: REPO,
+    });
+    expect(verdict.allow).toBe(false);
+    if (verdict.allow) return;
+    expect(verdict.overridable).toBe(false);
+  });
+});
+
+describe("a live chat blocks a real tree revert", () => {
+  // End to end through the shipping path, with no synthetic candidate anywhere:
+  // real events -> chatStore -> chatStatus -> the live-chat registry ->
+  // folderActors.liveCandidates -> revertGuard.
+  const SESSION = "11111111-2222-3333-4444-555555555555";
+
+  const turn = (turnId: string): ChatEvent => ({
+    type: "turnStarted",
+    sessionId: SESSION,
+    turnId,
+    model: "claude-sonnet-5",
+    permissionMode: "default",
+  });
+
+  function register(state: ReturnType<typeof initialChat>) {
+    setLiveChat({
+      sessionId: SESSION,
+      sessionName: "chat",
+      folderPath: REPO,
+      tabId: "chat:1",
+      status: chatStatus(state),
+    });
+  }
+
+  afterEach(() => dropLiveChat(SESSION));
+
+  it("refuses hard while the chat is mid-turn, and allows once it finishes", () => {
+    const state = initialChat(SESSION);
+    applyEvent(state, {
+      type: "sessionStarted",
+      sessionId: SESSION,
+      cwd: REPO,
+      model: "claude-sonnet-5",
+      permissionMode: "default",
+      tools: [],
+      slashCommands: [],
+      mcpServers: [],
+    });
+    register(state);
+    expect(revertGuard(liveCandidates(), { folderPath: REPO }).allow).toBe(true);
+
+    applyEvent(state, turn("t1"));
+    register(state);
+    const blocked = revertGuard(liveCandidates(), { folderPath: REPO });
+    expect(blocked.allow).toBe(false);
+    if (blocked.allow) return;
+    expect(blocked.overridable).toBe(false);
+    expect(blocked.blockers.map((b) => b.kind)).toEqual(["executing"]);
+
+    applyEvent(state, {
+      type: "turnCompleted",
+      sessionId: SESSION,
+      turnId: "t1",
+      outcome: "completed",
+      stopReason: "end_turn",
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 },
+      costUsd: null,
+      permissionDenials: [],
+    });
+    register(state);
+    expect(revertGuard(liveCandidates(), { folderPath: REPO }).allow).toBe(true);
   });
 });

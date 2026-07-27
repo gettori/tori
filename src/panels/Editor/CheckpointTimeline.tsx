@@ -6,6 +6,7 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import { liveStatuses } from "../../utils/sessionStatus";
 import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
+import { attributionReliable, ATTRIBUTION_UNRELIABLE_NOTE } from "../../utils/chatConcurrency";
 import { isUnderPath } from "../../utils/pathScope";
 import Button from "../../components/Button/Button";
 import styles from "./CheckpointTimeline.module.css";
@@ -320,6 +321,13 @@ export default function CheckpointTimeline(props: {
             )}
           </For>
         </div>
+        {/* Two chats share one working tree while `checkpoint.rs` still
+            snapshots it whole, so a turn's file list can contain the other
+            chat's edits. Say so rather than present it as fact; the phase that
+            lands per-turn attribution removes this. */}
+        <Show when={props.folderPath && !attributionReliable(props.folderPath)}>
+          <div class={styles.attributionWarning}>{ATTRIBUTION_UNRELIABLE_NOTE}</div>
+        </Show>
         <Show when={cumulative()}>
           <div class={styles.scopeHint}>
             Everything that changed in this folder since this point, including your own edits and any other session's
