@@ -1,0 +1,374 @@
+[
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true
+    },
+    "dot": "solid",
+    "status": "idle"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate"
+    },
+    "dot": "solid",
+    "status": "idle"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "streaming"
+    },
+    "dot": "solid",
+    "status": "idle"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active"
+    },
+    "dot": "working",
+    "status": "executing"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "working",
+    "status": "executing"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "streaming"
+    },
+    "dot": "working",
+    "status": "executing"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet"
+    },
+    "dot": "solid",
+    "status": "idle"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "streaming"
+    },
+    "dot": "solid",
+    "status": "idle"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "agent-tab",
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "streaming"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "streaming"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "external-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "streaming"
+    },
+    "dot": "hollow",
+    "status": "running"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate"
+    },
+    "dot": "none",
+    "status": "none"
+  },
+  {
+    "case": "no-session",
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "streaming"
+    },
+    "dot": "none",
+    "status": "none"
+  }
+]
