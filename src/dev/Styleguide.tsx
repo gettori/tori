@@ -86,9 +86,7 @@ const SIZES: ButtonSize[] = ["md", "sm", "xs"];
 export default function Styleguide() {
   const themes = listSelectableThemes();
   const [themeId, setThemeId] = createSignal(DEFAULT_THEME_ID);
-  const [density, setDensity] = createSignal(1);
   const [scale, setScale] = createSignal(1);
-  const [radius, setRadius] = createSignal(1);
 
   const active = createMemo(() => themes.find((t) => t.id === themeId()) ?? themes[0]);
   /** The gate's verdict on the theme currently painted, recomputed on switch. */
@@ -105,10 +103,7 @@ export default function Styleguide() {
     applyResolved(buildRoles(theme.palette), theme.appearance);
   });
   createEffect(() => {
-    const st = document.documentElement.style;
-    st.setProperty("--ui-density", String(density()));
-    st.setProperty("--ui-scale", String(scale()));
-    st.setProperty("--ui-radius-scale", String(radius()));
+    document.documentElement.style.setProperty("--ui-scale", String(scale()));
   });
 
   return (
@@ -125,21 +120,9 @@ export default function Styleguide() {
           >
             <For each={themes}>{(t) => <option value={t.id}>{t.label}</option>}</For>
           </select>
-          <div class={styles.seg}>
-            <button classList={{ [styles.on]: density() === 1 }} onClick={() => setDensity(1)}>
-              comfortable
-            </button>
-            <button classList={{ [styles.on]: density() === 0.85 }} onClick={() => setDensity(0.85)}>
-              compact
-            </button>
-          </div>
           <label class={styles.slider}>
             scale {scale().toFixed(2)}
             <input type="range" min="0.85" max="1.4" step="0.05" value={scale()} onInput={(e) => setScale(+e.currentTarget.value)} />
-          </label>
-          <label class={styles.slider}>
-            radius {radius().toFixed(2)}
-            <input type="range" min="0.4" max="2" step="0.1" value={radius()} onInput={(e) => setRadius(+e.currentTarget.value)} />
           </label>
         </div>
       </header>

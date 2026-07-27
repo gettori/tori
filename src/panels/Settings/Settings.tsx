@@ -1,7 +1,7 @@
 import { createMemo, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
-import { settings, saveSettings, type Appearance, type Typography, type Layout, type Checkpoints } from "./settingsStore";
+import { settings, saveSettings, type Appearance, type Typography, type Checkpoints } from "./settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID } from "../../theme";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
@@ -42,8 +42,6 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     saveSettings({ ...settings, appearance: { ...settings.appearance, ...a } });
   const setTypography = (t: Partial<Typography>) =>
     saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
-  const setLayout = (l: Partial<Layout>) =>
-    saveSettings({ ...settings, layout: { ...settings.layout, ...l } });
   const setCheckpoints = (c: Partial<Checkpoints>) =>
     saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
 
@@ -209,34 +207,6 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                   onChange={(e) =>
                     setTypography({ lineHeight: clamp(e.currentTarget.value, 1, 2.5, settings.typography.lineHeight) })
                   }
-                />
-              </div>
-            </section>
-
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Layout</div>
-              <div class={styles.row}>
-                <label class={styles.label}>Density</label>
-                <select
-                  class={styles.select}
-                  value={settings.layout.density}
-                  onChange={(e) =>
-                    setLayout({ density: e.currentTarget.value as Layout["density"] })
-                  }
-                >
-                  <option value="comfortable">Comfortable</option>
-                  <option value="compact">Compact</option>
-                </select>
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Corner radius</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="16"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.layout.radius}
-                  onChange={(e) => setLayout({ radius: clamp(e.currentTarget.value, 0, 16, settings.layout.radius) })}
                 />
               </div>
             </section>

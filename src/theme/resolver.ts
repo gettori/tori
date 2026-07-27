@@ -27,7 +27,7 @@ export type StyleTarget = {
  *  Every owned key is either written or explicitly removed. Removing matters:
  *  it hands the role back to the token layer's fallback instead of leaving the
  *  previous theme's value stranded above it. Keys outside OWNED are never
- *  touched, which is what keeps --ui-density and --editor-font-family alive
+ *  touched, which is what keeps --ui-scale and --editor-font-family alive
  *  across a theme switch. */
 export function paintRoles(style: StyleTarget, resolved: Record<string, string>) {
   for (const cssVar of OWNED) {
