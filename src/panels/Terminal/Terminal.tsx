@@ -806,6 +806,7 @@ export default function Terminal(props: {
               program={t.program}
               args={t.args}
               init={t.init}
+              sessionId={t.sessionId}
               active={visibleId() === t.id}
             />
           )}

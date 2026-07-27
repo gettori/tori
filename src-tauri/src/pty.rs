@@ -47,6 +47,10 @@ pub struct Session {
     writer: SharedWriter,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     sink: Sink,
+    /// The agent session id this tab claimed, so `pty_kill` can release it.
+    /// `None` for a shell/command tab, and for a fresh agent tab whose session
+    /// id does not exist yet (see `pty_spawn`).
+    claimed_session: Option<String>,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -135,7 +139,15 @@ pub fn pty_spawn(
     // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
     // omits it and gets `DEFAULT_QUIET_MS`.
     quiet_ms: Option<u64>,
+    // The agent session this tab is resuming, and which adapter it belongs to.
+    // Both `None` for a shell/command tab, and for a *fresh* agent tab: its
+    // session id does not exist until the agent writes a transcript, so there is
+    // nothing to claim and nothing that could conflict. A resume is the case
+    // that can corrupt, and it is the case that carries these.
+    session_id: Option<String>,
+    agent_id: Option<String>,
     on_output: Channel<InvokeResponseBody>,
+    chat: State<crate::chat::host::ChatState>,
 ) -> Result<(), String> {
     // If a session with this id already exists, rewire its output to the new
     // channel (a remount/re-subscribe) and leave the process running.
@@ -144,6 +156,47 @@ pub fn pty_spawn(
         if let Some(session) = guard.get(&id) {
             *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
             return Ok(());
+        }
+    }
+
+    // Ownership, enforced here rather than by a separate command a caller could
+    // forget: an agent session driven by two processes at once appends both
+    // sides of a diverging conversation to one transcript, measured, with no
+    // lock and no error from the CLI. Deliberately *after* the re-subscribe
+    // return above, so a tab remount is not mistaken for a second opener.
+    let mut claimed_session = None;
+    if let (Some(session_id), Some(agent_id)) = (&session_id, &agent_id) {
+        use crate::chat::ownership::{Claim, ClaimOutcome, Surface};
+        let outcome = chat.0.registry.claim(
+            session_id,
+            Claim {
+                surface: Surface::PtyAgent,
+                tab_id: id.clone(),
+                agent: agent_id.clone(),
+                // A PTY agent tab's child is a login shell, not the agent, so
+                // its pid would never match the adapter's running pattern.
+                // Recording it would make the orphan check answer "gone" for a
+                // session that is in fact running.
+                child_pid: None,
+                sway_pid: std::process::id(),
+            },
+        );
+        match outcome {
+            ClaimOutcome::Granted { .. } => claimed_session = Some(session_id.clone()),
+            // Phase 5 turns these into the focus / fork-to-new-session
+            // affordances the plan describes. Until then a refusal is a plain
+            // error, which is honest and still blocks the corruption.
+            ClaimOutcome::AlreadyMineFocus { tab_id } => {
+                return Err(format!("session {session_id} is already open in tab {tab_id}"))
+            }
+            ClaimOutcome::HeldByOther { tab_id, .. } => {
+                return Err(format!("session {session_id} is already open in a chat tab ({tab_id})"))
+            }
+            ClaimOutcome::Orphaned { child_pid } => {
+                return Err(format!(
+                    "session {session_id} is still being run by a leftover process (pid {child_pid}) from a crashed Sway"
+                ))
+            }
         }
     }
 
@@ -283,6 +336,7 @@ pub fn pty_spawn(
             writer,
             child,
             sink,
+            claimed_session,
         },
     );
     Ok(())
@@ -322,10 +376,19 @@ pub fn pty_resize(
 }
 
 #[tauri::command]
-pub fn pty_kill(state: State<PtyState>, id: String) -> Result<(), String> {
+pub fn pty_kill(
+    state: State<PtyState>,
+    chat: State<crate::chat::host::ChatState>,
+    id: String,
+) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut session) = guard.remove(&id) {
         let _ = session.child.kill();
+        // Give the session id back, or closing an agent tab would leave it
+        // permanently unopenable until Sway restarts.
+        if let Some(session_id) = &session.claimed_session {
+            chat.0.registry.release(session_id, &id);
+        }
     }
     Ok(())
 }

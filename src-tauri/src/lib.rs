@@ -24,6 +24,7 @@ mod themes;
 mod update;
 mod worktree;
 
+use chat::host::ChatState;
 use config::{ConfigWatch, ProjectIndex, RootWatch};
 use fs::FsWatch;
 use settings::SettingsWatch;
@@ -131,9 +132,21 @@ pub fn run() {
             let session_index = app.state::<SessionIndex>();
             hooks::prune_stale(|| sessions::all_sessions(&session_index));
 
+            // Chat claims left by a previous run. A record whose Sway is gone is
+            // either litter (dropped here) or an orphan: a `claude` child that
+            // outlived the app and is still writing to a transcript. Orphans are
+            // announced rather than killed, because ending someone's running
+            // session without asking is not ours to decide - and their records
+            // are kept, so the session stays unclaimable until they do.
+            let orphans = chat::ownership::reap_on_startup();
+            if !orphans.is_empty() {
+                let _ = app.handle().emit("chat://orphans", orphans);
+            }
+
             Ok(())
         })
         .manage(PtyState::default())
+        .manage(ChatState::default())
         .manage(ConfigWatch::default())
         .manage(ProjectIndex::default())
         .manage(RootWatch::default())
@@ -149,6 +162,14 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
+            chat::commands::chat_spawn,
+            chat::commands::chat_send,
+            chat::commands::chat_interrupt,
+            chat::commands::chat_respond_permission,
+            chat::commands::chat_set_mode,
+            chat::commands::chat_set_model,
+            chat::commands::chat_close,
+            chat::commands::chat_terminate_orphan,
             config::get_config,
             config::get_docs_root,
             config::list_branches,
@@ -259,6 +280,15 @@ pub fn run() {
             themes::list_user_themes,
             themes::themes_watch_start,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        // `build` + a run callback rather than `run`, so app exit can be
+        // observed. A `claude` child holds its own stdin and would otherwise
+        // outlive the window that started it: still writing to the transcript,
+        // still holding its session id unclaimable on the next launch.
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<ChatState>().0.shutdown();
+            }
+        });
 }

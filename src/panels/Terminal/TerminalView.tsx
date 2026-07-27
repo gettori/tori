@@ -76,6 +76,12 @@ export default function TerminalView(props: {
   program: string;
   args: string[];
   init?: string;
+  // The agent session this tab resumes. Absent for shell/command tabs and for a
+  // fresh agent tab, whose session id does not exist until the agent writes a
+  // transcript. When present the backend claims it, so one session id can never
+  // be driven by a terminal tab and a chat tab at once - two drivers append both
+  // sides of a diverging conversation to one file.
+  sessionId?: string;
   active: boolean;
 }) {
   let host!: HTMLDivElement;
@@ -283,6 +289,8 @@ export default function TerminalView(props: {
       kind: props.kind,
       init: props.init ?? null,
       quietMs,
+      sessionId: props.kind === "agent" ? (props.sessionId ?? null) : null,
+      agentId: props.kind === "agent" ? props.program : null,
       onOutput: output,
     }).catch((err) => term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`));
 
