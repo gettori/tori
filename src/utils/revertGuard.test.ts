@@ -171,6 +171,9 @@ describe("a live chat blocks a real tree revert", () => {
       tools: [],
       slashCommands: [],
       mcpServers: [],
+      models: [],
+      fastModeState: null,
+      fastModeDisabledReason: null,
     });
     register(state);
     expect(revertGuard(liveCandidates(), { folderPath: REPO }).allow).toBe(true);
