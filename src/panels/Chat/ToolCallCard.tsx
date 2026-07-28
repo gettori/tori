@@ -1,0 +1,232 @@
+import { For, Show, Switch, Match, createSignal, createResource } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
+import { parseDiffHunks } from "../../utils/diffHunks";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
+import { hunkFingerprint } from "../../utils/hunkFingerprint";
+import { isUnderPath } from "../../utils/pathScope";
+import PermissionPrompt, { type Answer } from "./PermissionPrompt";
+import { formatDuration, isEditTool, toolDigest, toolPaths, toolRenderer } from "./toolRenderers";
+import type { ToolItem } from "./chatStore";
+import styles from "./Chat.module.css";
+
+/** `ToolDiff` from `chat/commands.rs`. */
+type ToolDiff = { path: string; diff: string | null; created: boolean };
+
+/** One rendered hunk, identified the way the backend re-checks it: by the hash
+ *  of what was on screen, not by its position in a diff that may have moved. */
+export type HunkRef = {
+  toolUseId: string;
+  path: string;
+  hunkIndex: number;
+  fingerprint: string;
+};
+
+const STATE_LABEL: Record<ToolItem["state"], string> = {
+  awaitingApproval: "Waiting for approval",
+  running: "Running",
+  ok: "Done",
+  error: "Failed",
+  denied: "Denied",
+};
+
+function prettyInput(input: unknown): string {
+  if (typeof input === "string") return input;
+  try {
+    return JSON.stringify(input, null, 2) ?? "";
+  } catch {
+    return String(input);
+  }
+}
+
+function diffLineClass(line: string): string {
+  if (line.startsWith("+")) return styles.diffAdd;
+  if (line.startsWith("-")) return styles.diffDel;
+  return styles.diffCtx;
+}
+
+/**
+ * One tool call.
+ *
+ * Collapsed it is a row: name, the argument that distinguishes this call,
+ * duration, status. Expanded it is the full input, the output, and - for a
+ * writing tool - the real diff of what it changed, computed against the
+ * before-state the approval hook captured on the way past rather than against
+ * whatever the working tree looks like now. That distinction is the point when
+ * several chats share one tree.
+ *
+ * Every path is clickable, because a transcript that names a file and cannot
+ * open it is making the user do the lookup.
+ */
+export default function ToolCallCard(props: {
+  card: ToolItem;
+  sessionId: string;
+  cwd: string;
+  onAnswer: (card: ToolItem, answer: Answer) => void;
+  /** Undo one hunk. Resolves true when the file was actually rewritten, which is
+   *  when the card's diff has to be re-read. */
+  onRevertHunk: (ref: HunkRef) => Promise<boolean>;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [reverting, setReverting] = createSignal<string | null>(null);
+  const renderer = () => toolRenderer(props.card.name);
+  const settled = () => props.card.state === "ok" || props.card.state === "error";
+
+  // Fetched when the card is opened and the call has finished, never on every
+  // card: a diff is a `git diff` per file, and a turn can make dozens of calls.
+  const [diffs, { refetch }] = createResource(
+    () => (open() && settled() && isEditTool(props.card.name) ? props.card.toolUseId : null),
+    async (toolUseId) =>
+      await invoke<ToolDiff[]>("chat_tool_diff", {
+        sessionId: props.sessionId,
+        toolUseId,
+        cwd: props.cwd,
+      }).catch(() => [] as ToolDiff[]),
+  );
+
+  function openPath(path: string, line?: number) {
+    // A path outside the workspace is a real case, not a bug: a tool can read a
+    // system header or a file in another project. Saying so beats opening an
+    // editor tab on something the user did not expect.
+    if (!isUnderPath(path, props.cwd)) {
+      emitWith<ToastEvent>(TOAST, { message: `${path} is outside this workspace.`, kind: "info" });
+      return;
+    }
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path, line });
+  }
+
+  // Re-read after a successful revert rather than patched locally: the diff the
+  // next click is checked against is the one the backend recomputes, so a card
+  // still showing the reverted hunk would be an invitation to a refusal.
+  async function revertHunk(path: string, index: number, header: string, lines: string[]) {
+    const key = `${path}:${index}`;
+    if (reverting()) return;
+    setReverting(key);
+    try {
+      const done = await props.onRevertHunk({
+        toolUseId: props.card.toolUseId,
+        path,
+        hunkIndex: index,
+        fingerprint: hunkFingerprint(header, lines),
+      });
+      if (done) void refetch();
+    } finally {
+      setReverting(null);
+    }
+  }
+
+  return (
+    <div class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
+      <button type="button" class={styles.toolRow} onClick={() => setOpen(!open())} aria-expanded={open()}>
+        <span class={styles.toolName}>{props.card.name ?? "tool"}</span>
+        <span class={styles.toolArg}>{toolDigest(props.card)}</span>
+        <Show when={formatDuration(props.card.durationMs)}>
+          {(d) => <span class={styles.toolDuration}>{d()}</span>}
+        </Show>
+        <span class={styles.toolState}>{STATE_LABEL[props.card.state]}</span>
+      </button>
+
+      <Show when={open()}>
+        <div class={styles.toolBody}>
+          {/* The paths this call touched, as the way into the editor. */}
+          <Show when={toolPaths(props.card).length}>
+            <div class={styles.toolPaths}>
+              <For each={toolPaths(props.card)}>
+                {(path) => (
+                  <button type="button" class={styles.toolPath} title={`Open ${path}`} onClick={() => openPath(path)}>
+                    {path}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          <Switch>
+            {/* A shell command is read as a command, not as JSON with a
+                "command" key in it. */}
+            <Match when={renderer() === "bash"}>
+              <pre class={`${styles.toolPre} ${styles.toolCommand}`}>{toolDigest(props.card)}</pre>
+            </Match>
+            <Match when={renderer() !== "bash"}>
+              <pre class={styles.toolPre}>{prettyInput(props.card.input)}</pre>
+            </Match>
+          </Switch>
+
+          {/* The diff, for a call that wrote something. */}
+          <Show when={isEditTool(props.card.name) && settled()}>
+            <Show
+              when={!diffs.loading}
+              fallback={<div class={styles.toolNote}>Reading what changed...</div>}
+            >
+              <For each={diffs()}>
+                {(d) => (
+                  <div class={styles.toolDiff}>
+                    <button type="button" class={styles.toolPath} onClick={() => openPath(d.path)}>
+                      {d.path}
+                      <Show when={d.created}>
+                        <span class={styles.toolBadge}>new</span>
+                      </Show>
+                    </button>
+                    <Show
+                      when={d.diff}
+                      fallback={
+                        <div class={styles.toolNote}>
+                          No before-state was captured for this call, so there is nothing to diff against. Open the file
+                          to see it as it is now.
+                        </div>
+                      }
+                    >
+                      {(text) => (
+                        <For
+                          each={parseDiffHunks(text())}
+                          fallback={<div class={styles.toolNote}>The file is unchanged.</div>}
+                        >
+                          {(hunk, index) => (
+                            <div class={styles.hunk}>
+                              <div class={styles.hunkHeaderRow}>
+                                <button
+                                  type="button"
+                                  class={`${styles.diffLine} ${styles.hunkHeader}`}
+                                  title="Open at this line"
+                                  onClick={() => openPath(d.path, hunk.startLine)}
+                                >
+                                  {hunk.header}
+                                </button>
+                                <button
+                                  type="button"
+                                  class={styles.hunkRevert}
+                                  title="Undo this hunk in the working tree"
+                                  disabled={reverting() !== null}
+                                  onClick={() => void revertHunk(d.path, index(), hunk.header, hunk.lines)}
+                                >
+                                  {reverting() === `${d.path}:${index()}` ? "Reverting..." : "Revert"}
+                                </button>
+                              </div>
+                              <For each={hunk.lines}>
+                                {(line) => <div class={`${styles.diffLine} ${diffLineClass(line)}`}>{line || " "}</div>}
+                              </For>
+                            </div>
+                          )}
+                        </For>
+                      )}
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </Show>
+          </Show>
+
+          <Show when={props.card.output}>
+            {(output) => <pre class={`${styles.toolPre} ${styles.toolOutput}`}>{output()}</pre>}
+          </Show>
+        </div>
+      </Show>
+
+      {/* The prompt lives on the card rather than in a dialog: what is being
+          approved is this call, and a modal would hide the transcript that
+          explains why it was made. */}
+      <Show when={props.card.approval}>
+        <PermissionPrompt card={props.card} onAnswer={(answer) => props.onAnswer(props.card, answer)} />
+      </Show>
+    </div>
+  );
+}

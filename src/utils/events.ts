@@ -1,4 +1,5 @@
 // Lightweight window-event bus for cross-component actions.
+import type { ContentBlock } from "./chatTypes";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -99,10 +100,30 @@ export const THEME_APPLIED = "sway:theme-applied";
 export const SETTINGS_CHANGED = "sway:settings-changed";
 
 // Payload-carrying event: open a file in the editor at an optional position.
-// (File-change fan-out is not here — that rides the backend `fs://changed`
-// Tauri event, consumed directly by the editor panes.)
+// (General file-change fan-out is not here — that rides the backend
+// `fs://changed` Tauri event, consumed directly by the editor panes. The one
+// exception is AGENT_FILES_WRITTEN below, which is not a fan-out of the watcher
+// but a report from a chat session about its own writes.)
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
 export type OpenInEditor = { path: string; line?: number; col?: number };
+
+// Payload-carrying event: the files a chat session's tool call just wrote,
+// straight off its `toolCallCompleted`/`fileEdit` events.
+//
+// The watcher already reports these ~250ms later (its debounce), so this is not
+// new information - it is the same information sooner, and exactly, since the
+// event names the files rather than a directory burst. The gutter and the
+// Changes panel take it so an agent edit is on screen while the user is still
+// reading the tool card. Consumers keep their `isSelfWrite` check and stay
+// idempotent, because the watcher's echo is still coming.
+export const AGENT_FILES_WRITTEN = "sway:agent-files-written";
+export type AgentFilesWritten = { paths: string[] };
+
+// How long a consumer coalesces a burst of the above. This event is per tool
+// call where the watcher's is per burst, so a turn making fifty edits would run
+// fifty refreshes without it. Deliberately shorter than the watcher's own ~250ms
+// so the whole point (being there before it) survives.
+export const AGENT_WRITE_DEBOUNCE_MS = 100;
 
 // Payload-carrying event: open a session's transcript as a read-only virtual
 // tab in the editor's center pane. Emitted by the sidebar's session context menu.
@@ -167,6 +188,12 @@ export type SendToSession = {
   // via `session_tail_state`; omitted, the probe falls back to plain
   // liveness (`session_running`) with no blocked-refusal.
   sessionPath?: string;
+  // The same message as content blocks, for a chat-backed target. A PTY can
+  // only hold the flattened `text`, so both readings travel together and
+  // Terminal.tsx takes whichever the target can represent. Omitted, a chat
+  // target falls back to `text` as one block, which loses the structure but
+  // never the message.
+  blocks?: ContentBlock[];
 };
 
 export const SEND_TO_SESSION_RESULT = "sway:send-to-session-result";

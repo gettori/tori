@@ -1,7 +1,17 @@
 import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
+import {
+  emitWith,
+  onWith,
+  AGENT_FILES_WRITTEN,
+  AGENT_WRITE_DEBOUNCE_MS,
+  OPEN_IN_EDITOR,
+  TOAST,
+  type AgentFilesWritten,
+  type ToastEvent,
+} from "../../utils/events";
+import { debounce } from "../../utils/debounce";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, toSideBySide, type DiffRow, type Gap } from "../../utils/diffView";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
@@ -451,6 +461,15 @@ export default function ReviewPanel(props: {
   }
 
   let unlistenFs: UnlistenFn | undefined;
+  let offAgentWrites: (() => void) | undefined;
+  const agentWritten = new Set<string>();
+  const flushAgentWrites = debounce(() => {
+    const paths = [...agentWritten];
+    agentWritten.clear();
+    void refresh();
+    const open = openDiff();
+    if (open && paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
+  }, AGENT_WRITE_DEBOUNCE_MS);
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
@@ -463,6 +482,20 @@ export default function ReviewPanel(props: {
       const open = openDiff();
       if (!open || !changed || changed.endsWith(open.path)) void refreshExpandedDiff();
     });
+    // A chat session's own report of what it just wrote, ahead of the watcher's
+    // debounce. Same two refreshes the watcher drives, and both are re-entrant,
+    // so the echo that follows is a second read rather than a second opinion.
+    //
+    // Debounced, because this event is per tool call where the watcher's is per
+    // burst: a turn making fifty edits would otherwise run fifty `git status`
+    // refreshes. Shorter than the watcher's own window so the panel still moves
+    // well inside the budget, long enough that a burst collapses into one. The
+    // paths accumulate across the window rather than the last event winning,
+    // or an edit to the open file early in a burst would lose its refresh.
+    offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
+      for (const p of paths) agentWritten.add(p);
+      flushAgentWrites();
+    });
     // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
     // emits no fs://changed - window focus and the askpass-bridge git events
     // (fetch here, push above) pick up the slack.
@@ -472,6 +505,7 @@ export default function ReviewPanel(props: {
   });
   onCleanup(() => {
     unlistenFs?.();
+    offAgentWrites?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
     window.removeEventListener("focus", refreshAll);
