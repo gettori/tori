@@ -93,6 +93,10 @@ type OpenTerm = {
   // into this new id, and the two diverge from that point. Distinct from
   // `resume`, which continues writing the *same* session.
   forkFrom?: string;
+  // Chat tabs: set when this tab is a rewind of `forkFrom` rather than a plain
+  // fork. The checkpoint the worktree was put back to, which is also where the
+  // replayed history is cut.
+  rewindTo?: number;
   // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
   // seconds. Used to attribute the session that appears afterward (see
   // `backfillFreshSessions`).
@@ -285,6 +289,11 @@ export default function Terminal(props: {
           args: [],
           sessionId: d.sessionId,
           resume: true,
+          // Resumed, not re-forked: the fork happened last run and its
+          // conversation is in this session's own transcript now. The marker
+          // rides along only so the tab keeps saying the agent remembers turns
+          // that were undone, which is still true.
+          rewindTo: d.rewindTo,
         });
         producedId[i] = id;
         continue;
@@ -876,6 +885,7 @@ export default function Terminal(props: {
     baseName: string,
     agentId = "claude",
     forkFrom?: string,
+    rewindTo?: number,
   ): string {
     const sessionId = crypto.randomUUID();
     openOrActivate({
@@ -893,8 +903,30 @@ export default function Terminal(props: {
       args: [],
       sessionId,
       forkFrom,
+      rewindTo,
     });
     return sessionId;
+  }
+
+  /**
+   * Carry a chat into a rewound fork and close the tab it came from.
+   *
+   * The close is the point: a rewind supersedes the session it came from, and
+   * two open tabs on the same work would both be live, both claimed, and both
+   * looking like the place to type. The old session is not deleted - it stays
+   * on disk with its transcript intact, reachable from the session list - it
+   * simply stops being somewhere you can drive.
+   *
+   * Ordered close-then-open so the claim on the old id is released before the
+   * fork asks for its own; they are different ids, so this is tidiness rather
+   * than a race, but a fork that outlived its origin's claim would leave the
+   * tree showing two live rows for one piece of work.
+   */
+  function rewindChat(tab: OpenTerm, promptTs: number) {
+    if (!tab.sessionId) return;
+    const origin = tab.sessionId;
+    closeId(tab.id);
+    spawnChat(tab.workspace, tab.cwd, tab.workspace.split("/").pop() || "chat", tab.program, origin, promptTs);
   }
 
   function newChat(agentId = "claude") {
@@ -1154,7 +1186,9 @@ export default function Terminal(props: {
                       t.sessionId,
                     )
                   }
+                  onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
                   forkFrom={t.forkFrom}
+                  rewindTo={t.rewindTo}
                 />
               }
             >

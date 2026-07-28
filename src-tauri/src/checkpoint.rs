@@ -1732,6 +1732,40 @@ mod tests {
     }
 
     #[test]
+    fn a_rewind_puts_the_tree_back_exactly_as_the_checkpoint_recorded_it() {
+        // The file list coming back right is not the same as the bytes coming
+        // back right. Compared tree-to-tree, so a restore that wrote the wrong
+        // content, or left a file the turn created behind, fails here instead
+        // of looking correct in `restored`.
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("kept.txt"), "before").unwrap();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        let target =
+            list_checkpoints(&repo, &sid).into_iter().find(|c| c.ts == 100).unwrap().tree;
+
+        // A turn that edited one file and created another.
+        std::fs::write(dir.join("kept.txt"), "after").unwrap();
+        std::fs::write(dir.join("made.txt"), "new").unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            "Edit".into(),
+            vec![
+                dir.join("kept.txt").to_string_lossy().into_owned(),
+                dir.join("made.txt").to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+
+        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+
+        let now = write_tree_scratch(&repo, &checkpoint_index_path(&sid)).unwrap();
+        assert_eq!(now, target);
+        cleanup(&dir, &sid);
+    }
+
+    #[test]
     fn revert_created_file_deletes_it() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();

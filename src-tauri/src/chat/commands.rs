@@ -708,18 +708,31 @@ pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Resu
 /// it forked from under its own new id - stamping that history with the
 /// original's id would have every event dropped by the panel's own routing
 /// guard, and the fork would open blank.
+///
+/// `up_to_prompt_ts` is a rewind: the replay stops before the prompt that
+/// checkpoint was taken for, so the panel shows the conversation as it stood
+/// when the files did. It cuts the **panel** only. The child is still spawned
+/// `--resume <old> --fork-session`, so the agent's own context is the whole
+/// original conversation including the turns being undone - the one thing about
+/// a rewind that cannot be hidden, and therefore the thing the rewind banner and
+/// the seeded first message both say out loud.
 #[tauri::command]
 pub async fn chat_history(
     session_id: String,
     from_session_id: Option<String>,
     agent_id: String,
+    up_to_prompt_ts: Option<u64>,
 ) -> Result<Vec<ChatEvent>, String> {
     let source = from_session_id.as_deref().unwrap_or(&session_id);
     let Some(path) = crate::sessions::transcript_path(source, &agent_id) else {
         return Ok(Vec::new());
     };
     let turns = crate::sessions::transcript_turns(&path, &agent_id);
-    Ok(super::history::events_from_turns(&session_id, &turns))
+    let shown = match up_to_prompt_ts.and_then(|ts| super::history::prompt_boundary(&turns, ts)) {
+        Some(at) => &turns[..at],
+        None => &turns[..],
+    };
+    Ok(super::history::events_from_turns(&session_id, shown))
 }
 
 // --- mid-turn quit recovery ------------------------------------------------

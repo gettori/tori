@@ -44,6 +44,25 @@ describe("toStore", () => {
     expect("sessionId" in out["/w/a"].tabs[1]).toBe(false);
   });
 
+  it("keeps a rewound chat's marker, so the tab still says what the agent remembers", () => {
+    // The gap a rewind opens - the agent remembering turns that are no longer
+    // above it - lasts as long as the session, not as long as the app run, so
+    // the notice has to survive a relaunch too.
+    const out = toStore(
+      [
+        tab({ id: "1", kind: "chat", program: "claude", sessionId: "c1", rewindTo: 1700 }),
+        tab({ id: "2", kind: "chat", program: "claude", sessionId: "c2" }),
+      ],
+      {},
+      100,
+    );
+    expect(out["/w/a"].tabs[0].rewindTo).toBe(1700);
+    // An ordinary chat carries no marker at all rather than a falsy one, or
+    // every restored tab would have to know to disbelieve a zero.
+    expect("rewindTo" in out["/w/a"].tabs[1]).toBe(false);
+    expect(parseStore(JSON.stringify(out))["/w/a"].tabs[0].rewindTo).toBe(1700);
+  });
+
   it("persists a chat tab alongside the agent, shell and command kinds", () => {
     const out = toStore(
       [

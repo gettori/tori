@@ -96,6 +96,12 @@ export default function MessageList(props: {
   anchorTurnId?: string | null;
   /** Reports the turn the reader was on as this list goes away. */
   onAnchor?: (turnId: string | null) => void;
+  /** The checkpoint a turn can be rewound to, or null when there is none.
+   *  Only turns this tab actually ran have one: a replayed turn predates the
+   *  snapshot, so offering to rewind to it would promise a tree state that was
+   *  never recorded. */
+  rewindTsFor?: (turnId: string) => number | null;
+  onRewind?: (promptTs: number) => void;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -133,6 +139,22 @@ export default function MessageList(props: {
             <span class={styles.turnAgent}>Claude</span>
             <Show when={props.modelLabelFor(id())}>
               {(label) => <span class={styles.turnModel}>{label()}</span>}
+            </Show>
+            {/* On the turn's own header because the checkpoint behind it is the
+                tree as it stood *before* this turn ran, which is exactly what
+                "go back to here" has to mean for the undo to include this
+                turn's edits. */}
+            <Show when={props.rewindTsFor?.(id())}>
+              {(ts) => (
+                <button
+                  type="button"
+                  class={styles.turnRewind}
+                  title="Put the files back to how they were before this turn, and carry the conversation into a new chat"
+                  onClick={() => props.onRewind?.(ts())}
+                >
+                  Rewind to here
+                </button>
+              )}
             </Show>
           </div>
         )}
