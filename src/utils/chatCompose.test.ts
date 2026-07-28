@@ -4,11 +4,20 @@ import {
   clearPending,
   diagnosticBlocks,
   dropPending,
+  clearComposer,
+  draftFor,
+  fileMentionBlocks,
+  historyFor,
   hunkCommentBlocks,
+  pushHistory,
+  setDraft,
   offerToComposer,
   pendingFor,
+  hasSomethingToSend,
   routeFor,
+  seedForSend,
   selectionBlocks,
+  takeAutoSend,
   takePending,
 } from "./chatCompose";
 import { composeDiagnostic, composeHunkComment, composeSelectionMention, type SessionTarget } from "./safeSend";
@@ -37,6 +46,12 @@ describe("the block composers keep what the flat wire format loses", () => {
     ]);
     // The PTY reading of the same action is still a single mention line.
     expect(composeSelectionMention(TARGET, "/work/repo/src/a.ts", 10, 14)).toBe("@src/a.ts#L10-L14");
+  });
+
+  it("keeps a whole-file mention rangeless, since the user named the file", () => {
+    expect(fileMentionBlocks("/work/repo/src/a.ts")).toEqual([
+      { type: "fileRef", path: "/work/repo/src/a.ts", startLine: null, endLine: null, text: null },
+    ]);
   });
 
   it("splits a hunk comment into the reference and the prose", () => {
@@ -106,6 +121,110 @@ describe("the pending composer inbox", () => {
   it("ignores an empty offer rather than showing an empty chip", () => {
     offerToComposer(SESSION, []);
     expect(pendingFor(SESSION)).toEqual([]);
+  });
+});
+
+describe("the draft and the chips clear together", () => {
+  afterEach(() => clearComposer(SESSION));
+
+  it("keeps a draft per session", () => {
+    setDraft(SESSION, "half a thought");
+    expect(draftFor(SESSION)).toBe("half a thought");
+    expect(draftFor("other")).toBe("");
+  });
+
+  // A sent turn must not leave chips behind, and a cleared draft must not leave
+  // chips either: they are one composer's contents, so they go together.
+  it("clears the typed half and the attached half in one call", () => {
+    setDraft(SESSION, "text");
+    offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
+    clearComposer(SESSION);
+    expect(draftFor(SESSION)).toBe("");
+    expect(pendingFor(SESSION)).toEqual([]);
+  });
+});
+
+describe("composer history", () => {
+  afterEach(() => clearComposer(SESSION));
+
+  it("records what was sent, newest first", () => {
+    pushHistory(SESSION, "first");
+    pushHistory(SESSION, "second");
+    expect(historyFor(SESSION)).toEqual(["second", "first"]);
+  });
+
+  it("does not record blank sends, which an attachment-only turn produces", () => {
+    pushHistory(SESSION, "   ");
+    expect(historyFor(SESSION)).toEqual([]);
+  });
+
+  // Pressing Up to resend the last thing should not need two presses to walk
+  // back past the duplicate it just created.
+  it("does not record the same message twice in a row", () => {
+    pushHistory(SESSION, "again");
+    pushHistory(SESSION, "again");
+    expect(historyFor(SESSION)).toEqual(["again"]);
+  });
+
+  it("stays bounded so a long session's composer is not a second transcript", () => {
+    for (let i = 0; i < 60; i++) pushHistory(SESSION, `msg ${i}`);
+    expect(historyFor(SESSION)).toHaveLength(50);
+    expect(historyFor(SESSION)[0]).toBe("msg 59");
+  });
+});
+
+describe("send to a new session", () => {
+  const TARGET = "s2";
+  afterEach(() => {
+    clearComposer(SESSION);
+    clearComposer(TARGET);
+    takeAutoSend(TARGET);
+  });
+
+  it("moves the draft and the chips to the new session and marks it to send", () => {
+    setDraft(SESSION, "look at this");
+    offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
+
+    expect(seedForSend(SESSION, TARGET)).toBe(true);
+    expect(draftFor(TARGET)).toBe("look at this");
+    expect(pendingFor(TARGET)).toHaveLength(1);
+    // Moved, not copied: leaving them behind would send the same thing twice.
+    expect(draftFor(SESSION)).toBe("");
+    expect(pendingFor(SESSION)).toEqual([]);
+  });
+
+  // Consuming, so a remount of the seeded tab cannot fire the turn again.
+  it("answers the auto-send flag exactly once", () => {
+    setDraft(SESSION, "go");
+    seedForSend(SESSION, TARGET);
+    expect(takeAutoSend(TARGET)).toBe(true);
+    expect(takeAutoSend(TARGET)).toBe(false);
+  });
+
+  // Asked before the tab is opened: a click with nothing to send must not cost
+  // a chat tab, a spawned child and a claimed session id.
+  it("reports an empty composer as having nothing to send", () => {
+    expect(hasSomethingToSend(SESSION)).toBe(false);
+    setDraft(SESSION, "   ");
+    expect(hasSomethingToSend(SESSION)).toBe(false);
+    setDraft(SESSION, "go");
+    expect(hasSomethingToSend(SESSION)).toBe(true);
+  });
+
+  it("counts attachments alone as something to send", () => {
+    offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
+    expect(hasSomethingToSend(SESSION)).toBe(true);
+  });
+
+  it("refuses to seed an empty composer rather than opening a blank chat", () => {
+    expect(seedForSend(SESSION, TARGET)).toBe(false);
+    expect(takeAutoSend(TARGET)).toBe(false);
+  });
+
+  it("seeds on attachments alone, which is a real thing to send", () => {
+    offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
+    expect(seedForSend(SESSION, TARGET)).toBe(true);
+    expect(pendingFor(TARGET)).toHaveLength(1);
   });
 });
 

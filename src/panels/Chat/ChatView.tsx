@@ -9,7 +9,22 @@ import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
-import { clearPending, dropPending, pendingFor, takePending } from "../../utils/chatCompose";
+import {
+  clearComposer,
+  draftFor,
+  dropPending,
+  fileMentionBlocks,
+  imageBlocks,
+  offerToComposer,
+  hasSomethingToSend,
+  historyFor,
+  pendingFor,
+  seedForSend,
+  pushHistory,
+  setDraft,
+  takeAutoSend,
+  takePending,
+} from "../../utils/chatCompose";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import { parseChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
@@ -81,8 +96,9 @@ export default function ChatView(props: {
   resume: boolean;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
-   *  session id can never collide with the one that is already held. */
-  onForkSession: () => void;
+   *  session id can never collide with the one that is already held. Returns
+   *  the new session's id, so this one can seed it. */
+  onForkSession: () => string;
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
@@ -144,6 +160,12 @@ export default function ChatView(props: {
         if (res.ownership.type === "granted" && res.ownership.contested) {
           emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
         }
+        // A session opened by "send to a new chat" carries its first turn. Sent
+        // only once the claim came back granted: a refused claim has no child to
+        // send to, and the seed stays in the composer for the user to decide.
+        if (res.ownership.type === "granted" && takeAutoSend(props.sessionId)) {
+          onSend(draftFor(props.sessionId));
+        }
       })
       .catch((e) => {
         edit((s) =>
@@ -156,9 +178,10 @@ export default function ChatView(props: {
   // already ended, so this is safe on every unmount path.
   onCleanup(() => {
     dropLiveChat(props.sessionId);
-    // Chips belong to the composer that was showing them; a reopened tab must
-    // not inherit an attachment nobody can see the origin of any more.
-    clearPending(props.sessionId);
+    // The composer's contents belong to the session that was showing them; a
+    // reopened tab must not inherit an attachment nobody can see the origin of
+    // any more, nor a draft written against a transcript that is gone.
+    clearComposer(props.sessionId);
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
 
@@ -225,6 +248,9 @@ export default function ChatView(props: {
   // sent later and silently emptying the composer of its attachments now would
   // leave the user unable to see what the next turn is going to carry.
   function onSend(text: string) {
+    // Recorded on the way out whichever path it takes, since from the user's
+    // side both are "I sent that".
+    pushHistory(props.sessionId, text);
     if (running()) {
       // Attachment-only is a valid thing to send but not a valid thing to
       // queue: the queue carries text, so an empty entry would flush as an
@@ -297,6 +323,43 @@ export default function ChatView(props: {
       });
       emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
     });
+  }
+
+  // The project's file index, for `@` completion. Fetched on demand rather than
+  // on mount: it is a full walk of the tree, and a chat that never mentions a
+  // file should not pay for one. The composer asks once and caches.
+  function loadProjectFiles(): Promise<string[]> {
+    return invoke<string[]>("list_project_files", { projectPath: props.cwd }).catch(() => []);
+  }
+
+  // A completed `@` mention. The composer hands back the project-relative path
+  // it showed; resolving it against the session's cwd happens here, so exactly
+  // one place decides what a mention means.
+  function onAttachFile(relPath: string) {
+    offerToComposer(props.sessionId, fileMentionBlocks(`${props.cwd}/${relPath}`));
+  }
+
+  // A dragged path is a mention, not an upload: the agent has the filesystem, so
+  // sending the bytes would be sending it something it can already read.
+  function onAttachPaths(absPaths: string[]) {
+    for (const path of absPaths) offerToComposer(props.sessionId, fileMentionBlocks(path));
+  }
+
+  function onAttachImages(images: { mediaType: string; base64: string }[]) {
+    for (const img of images) offerToComposer(props.sessionId, imageBlocks(img.mediaType, img.base64));
+  }
+
+  // Move what is in the composer to a brand-new chat and let it open with that
+  // turn. A send the user asked for, at a session that does not exist yet.
+  function onSendToNewSession() {
+    // Asked before the fork, not after: opening the tab first would leave an
+    // empty chat behind (and a spawned child, and a claimed session id) on a
+    // click that turns out to have nothing to send.
+    if (!hasSomethingToSend(props.sessionId)) {
+      emitWith<ToastEvent>(TOAST, { message: "Type something first, or attach a file.", kind: "info" });
+      return;
+    }
+    seedForSend(props.sessionId, props.onForkSession());
   }
 
   // Undo one hunk of an edit this session made.
@@ -421,6 +484,14 @@ export default function ChatView(props: {
           onSelect={onSelectMode}
         />
         <RuleList rules={rules()} onRemove={onRemoveRule} />
+        <Button
+          size="sm"
+          title="Open a new chat and send what is in the composer to it"
+          disabled={refused()}
+          onClick={onSendToNewSession}
+        >
+          Send to a new chat
+        </Button>
       </div>
 
       <MessageList
@@ -436,9 +507,18 @@ export default function ChatView(props: {
         running={running()}
         queue={state.queue}
         attachments={pendingFor(props.sessionId)}
+        draft={draftFor(props.sessionId)}
+        onDraftChange={(t) => setDraft(props.sessionId, t)}
+        history={historyFor(props.sessionId)}
+        commands={state.slashCommands}
+        loadFiles={loadProjectFiles}
         held={state.queueHeld}
         disabled={refused() || state.ended}
         onSend={onSend}
+        onAttachFile={onAttachFile}
+        onAttachPaths={onAttachPaths}
+        onAttachImages={onAttachImages}
+        onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onInterrupt={onInterrupt}
         onDropQueued={(id) => edit((s) => removeQueued(s, id))}
         onDropAttachment={(id) => dropPending(props.sessionId, id)}
