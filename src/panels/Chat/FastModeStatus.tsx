@@ -32,7 +32,7 @@ export default function FastModeStatus(props: { state: string | null; reason: st
 
   return (
     <Show when={props.state !== null}>
-      <span class={styles.modelNote}>
+      <span class={styles.menuNote}>
         <Show when={props.state === "on"} fallback={<>Fast mode off{reason() ? `: ${reason()}` : ""}</>}>
           Fast mode on
         </Show>

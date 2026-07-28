@@ -2,6 +2,7 @@ import { Show, createSignal } from "solid-js";
 import Button from "../../components/Button/Button";
 import type { PermissionDecision, PermissionScope } from "../../utils/chatTypes";
 import type { ToolItem } from "./chatStore";
+import { toolDigest, toolRenderer } from "./toolRenderers";
 import styles from "./Chat.module.css";
 
 export type Answer = {
@@ -28,6 +29,11 @@ function inputText(input: unknown): string {
 /**
  * The approval gate, attached to its tool card by `tool_use_id`.
  *
+ * The question reads as a sentence ("Run `cmd` in this workspace?") because
+ * that is the decision actually being made; the raw arguments stay one
+ * disclosure away for anything the digest cannot carry, so the sentence is a
+ * headline over the evidence rather than a replacement for it.
+ *
  * Five answers, which are three decisions crossed with how far they reach:
  * allow this call, allow it for this session, allow it for this project (a
  * Sway-owned rule, never `~/.claude/settings.json`), deny, or deny with a
@@ -37,6 +43,7 @@ function inputText(input: unknown): string {
  */
 export default function PermissionPrompt(props: { card: ToolItem; onAnswer: (answer: Answer) => void }) {
   const [feedback, setFeedback] = createSignal<string | null>(null);
+  const [showInput, setShowInput] = createSignal(false);
 
   const allow = (scope: PermissionScope) => props.onAnswer({ decision: "allow", scope, reason: null });
 
@@ -45,9 +52,43 @@ export default function PermissionPrompt(props: { card: ToolItem; onAnswer: (ans
     props.onAnswer({ decision: "deny", scope: "once", reason: reason || null });
   }
 
+  const digest = () => toolDigest(props.card);
+
   return (
     <div class={styles.prompt}>
-      <pre class={styles.promptInput}>{inputText(props.card.input)}</pre>
+      <div class={styles.promptQuestion}>
+        <Show
+          when={toolRenderer(props.card.name) === "bash"}
+          fallback={
+            <>
+              Allow <code>{props.card.name ?? "this tool"}</code>
+              <Show when={digest()}>
+                {(d) => (
+                  <>
+                    {" on "}
+                    <code>{d()}</code>
+                  </>
+                )}
+              </Show>
+              ?
+            </>
+          }
+        >
+          Run <code>{digest()}</code> in this workspace?
+        </Show>
+      </div>
+
+      <button
+        type="button"
+        class={styles.promptDisclose}
+        aria-expanded={showInput()}
+        onClick={() => setShowInput(!showInput())}
+      >
+        {showInput() ? "Hide the full arguments" : "Show the full arguments"}
+      </button>
+      <Show when={showInput()}>
+        <pre class={styles.promptInput}>{inputText(props.card.input)}</pre>
+      </Show>
 
       <Show
         when={feedback() === null}
@@ -86,12 +127,12 @@ export default function PermissionPrompt(props: { card: ToolItem; onAnswer: (ans
             Allow for this session
           </Button>
           <Button size="sm" onClick={() => allow("project")}>
-            Always allow in this project
+            Always in this project
           </Button>
-          <Button size="sm" onClick={() => props.onAnswer({ decision: "deny", scope: "once", reason: null })}>
+          <Button size="sm" variant="ghost" onClick={() => props.onAnswer({ decision: "deny", scope: "once", reason: null })}>
             Deny
           </Button>
-          <Button size="sm" onClick={() => setFeedback("")}>
+          <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
             Deny with feedback
           </Button>
         </div>

@@ -6,11 +6,11 @@ import SessionInfo from "./SessionInfo";
 import Composer from "./Composer";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
-import ConnectionStatus from "./ConnectionStatus";
-import ModeSelector, { MODES } from "./ModeSelector";
+import StatusStrip from "./StatusStrip";
+import ModeSelector, { BYPASS_STILL_APPROVED } from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
-import { usageSummary } from "../../utils/chatUsage";
+import { fmtTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
 import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
@@ -41,12 +41,11 @@ import { checkpointChatTurn } from "../../utils/checkpoints";
 import {
   contextTokens,
   pickableModels,
-  restoredPicks,
   selectedModel,
   type PickableModel,
 } from "../../utils/chatModels";
 import { findAgent } from "../../utils/agents";
-import { chatPrefs, rememberChatPrefs, settings } from "../Settings/settingsStore";
+import { settings } from "../Settings/settingsStore";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -71,6 +70,7 @@ import {
   isRunning,
   modePending,
   modelPending,
+  pendingApprovals,
   pendingFlush,
   pushUserTurn,
   releaseQueue,
@@ -81,7 +81,9 @@ import {
   selectEffort,
   selectMode,
   selectModel,
+  settleBackfill,
   shownEffort,
+  turnModel,
   shownMode,
   shownModelValue,
   takeForSend,
@@ -160,6 +162,26 @@ export default function ChatView(props: {
   // probe, and the load-earlier check), so an accessor would re-filter the
   // whole transcript three times for every streaming delta.
   const shownItems = createMemo(() => visibleItems(state.items, settings.chatDefaults.showSwayHooks));
+
+  // The strip's three numbers. Derived from the transcript rather than kept as
+  // counters, so a replayed history and a live session count the same way.
+  const touchedFiles = createMemo(() => {
+    const paths = new Set<string>();
+    for (const it of state.items) {
+      if (it.kind !== "tool") continue;
+      for (const f of it.files) paths.add(f);
+      for (const e of it.edits) paths.add(e.path);
+    }
+    return paths.size;
+  });
+  const messageCount = createMemo(() =>
+    state.items.reduce((n, it) => n + (it.kind === "user" || it.kind === "text" ? 1 : 0), 0),
+  );
+  // Null until a turn completed: a zero would be a claim (see UsageReadout).
+  const sessionTokens = () => {
+    const summary = usageSummary(state);
+    return summary.turn ? fmtTokens(summary.session.tokens) : null;
+  };
   // A refused claim means no child was started, so nothing may be typed at it.
   // Narrowed so the banners below read their own fields without casting.
   const refusal = () => refusalOf(ownership());
@@ -211,6 +233,10 @@ export default function ChatView(props: {
             const ev = parseChatEvent(item);
             if (ev) applyEvent(s, ev);
           }
+          // The transcript carries no turn boundaries, so without this the
+          // last replayed turn stays "active" and the whole panel reads as
+          // working on a turn that finished before the tab existed.
+          settleBackfill(s);
         });
       })
       // History is an enhancement, not a precondition: a transcript that cannot
@@ -500,9 +526,8 @@ export default function ChatView(props: {
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
-  function onSelectMode(mode: PermissionMode, remember = true) {
+  function onSelectMode(mode: PermissionMode) {
     edit((s) => selectMode(s, mode));
-    if (remember) rememberChatPrefs(props.cwd, { mode });
     void invoke("chat_set_mode", { sessionId: props.sessionId, mode }).catch((e) => {
       // The request never left, so the control must stop promising a switch.
       // Left set, it would show a mode the session will never enter.
@@ -525,16 +550,12 @@ export default function ChatView(props: {
   // `--model` value and would leave the control blank.
   const shownModel = () => selectedModel(models(), shownModelValue(state), state.model);
 
-  // `remember` is false when the pick is a replay of what is already stored:
-  // writing it back would rewrite settings.json, fire the watcher and re-apply
-  // the theme on every chat open, for data that did not change.
-  function onSelectModel(model: PickableModel, remember = true) {
+  function onSelectModel(model: PickableModel) {
     edit((s) => selectModel(s, model));
     // Effort is sent with the model because that is how the command carries it:
     // a level the new model does not offer would be rejected, so it is dropped
     // rather than sent and blamed on the model switch.
     const effort = model.effortLevels.includes(shownEffort(state) ?? "") ? shownEffort(state) : null;
-    if (remember) rememberChatPrefs(props.cwd, { model: model.value, effort });
     applyModelChange(model.value, effort, () => edit((s) => revertModelPick(s, model.value)));
   }
 
@@ -548,37 +569,13 @@ export default function ChatView(props: {
     const value = shownModel()?.value;
     if (value === undefined) return;
     edit((s) => selectEffort(s, effort));
-    rememberChatPrefs(props.cwd, { model: value, effort });
     applyModelChange(value, effort, () => edit((s) => revertEffortPick(s, effort)));
   }
 
-  // Restore this project's last combination, once the session has reported the
-  // catalogue a stored value can be checked against. Applied as a real pick
-  // rather than written straight into the store, so it goes through the same
-  // next-turn boundary and the same failure handling as a click.
-  let restored = false;
-  createEffect(() => {
-    if (restored || !state.started) return;
-    // Latched only once there is something to check against. Marking it done on
-    // an empty catalogue would burn the one attempt: with no handshake, the
-    // adapter table arrives from `list_agents` a moment later, and the restore
-    // has to still be waiting for it.
-    const offered = models();
-    if (offered.length === 0) return;
-    restored = true;
-    const prefs = chatPrefs(props.cwd);
-    const { model, effort } = restoredPicks(offered, prefs);
-    if (model) {
-      // Staged before the model pick so the one request carries both, rather
-      // than sending a model and then immediately re-sending it with a level.
-      if (effort) edit((s) => selectEffort(s, effort));
-      onSelectModel(model, false);
-    }
-    // Mode is Phase 6's control; this only replays the remembered pick through
-    // it rather than introducing a second way to set one.
-    const mode = MODES.find((m) => m.value === prefs.mode);
-    if (mode && mode.value !== state.permissionMode) onSelectMode(mode.value, false);
-  });
+  // No pick is replayed at spawn on purpose: a new chat opens on whatever the
+  // CLI itself would choose, so the session's defaults are Claude's defaults.
+  // The pickers exist for changing course mid-conversation, not for staging a
+  // configuration before one.
 
   /** The one path to `chat_set_model`. A request that never left must not leave
    *  a control promising a switch: the CLI's own error is what the user sees,
@@ -750,74 +747,71 @@ export default function ChatView(props: {
         )}
       </Show>
 
-      {/* Everything the next turn will run under: the mode, the model and its
-          effort, and the permissions already granted. All three switches land
-          at the same next-turn boundary, so they say so in the same words. */}
-      <div class={styles.controls}>
-        <ModeSelector
-          mode={shownMode(state)}
-          pending={modePending(state)}
-          disabled={refused() || state.ended}
-          onSelect={onSelectMode}
+      {/* Not for a refused claim. No child was ever started there, so the
+          health would sit on "connecting" forever - a claim about a process
+          that is never coming - and a Reconnect button would offer to take a
+          session another tab holds. The refusal banner above already says
+          what happened and offers the two real ways out. */}
+      <Show when={!refused()}>
+        <StatusStrip
+          health={connectionHealth(state)}
+          running={running()}
+          awaitingApproval={pendingApprovals(state).length > 0}
+          files={touchedFiles()}
+          tokens={sessionTokens()}
+          messages={messageCount()}
+          onReconnect={() => reconnect?.()}
+          menu={
+            <div class={styles.menuBody}>
+              <div class={styles.menuActions}>
+                <Button
+                  size="sm"
+                  title="Open a new chat and send what is in the composer to it"
+                  onClick={onSendToNewSession}
+                >
+                  Send to a new chat
+                </Button>
+                {/* Only once there is something to branch from. A fork of a
+                    session with no turns is just a new chat, and offering it as
+                    a fork would promise history that does not exist. */}
+                <Show when={state.started && state.items.length > 0}>
+                  <Button
+                    size="sm"
+                    title="Branch this conversation into a new session, keeping everything up to here"
+                    onClick={() => props.onForkFrom()}
+                  >
+                    Fork this chat
+                  </Button>
+                </Show>
+              </div>
+              <UsageReadout summary={usageSummary(state)} />
+              <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
+              <RuleList rules={rules()} onRemove={onRemoveRule} />
+              <SessionInfo
+                mcpServers={state.mcpServers}
+                skills={state.skills}
+                agents={state.agents}
+                plugins={state.plugins}
+                cwd={props.cwd}
+              />
+            </div>
+          }
         />
-        <ModelPicker
-          models={models()}
-          value={shownModel()?.value ?? null}
-          effort={shownEffort(state)}
-          contextTokens={contextTokens(state.lastUsage)}
-          modelPending={modelPending(state)}
-          effortPending={effortPending(state)}
-          disabled={refused() || state.ended}
-          onSelectModel={onSelectModel}
-          onSelectEffort={onSelectEffort}
-        />
-        <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
-        <UsageReadout summary={usageSummary(state)} />
-        {/* Not for a refused claim. No child was ever started there, so the
-            health would sit on "connecting" forever - a claim about a process
-            that is never coming - and a Reconnect button would offer to take a
-            session another tab holds. The refusal banner above already says
-            what happened and offers the two real ways out. */}
-        <Show when={!refused()}>
-          <ConnectionStatus health={connectionHealth(state)} onReconnect={() => reconnect?.()} />
-        </Show>
-        <RuleList rules={rules()} onRemove={onRemoveRule} />
-        <Button
-          size="sm"
-          title="Open a new chat and send what is in the composer to it"
-          disabled={refused()}
-          onClick={onSendToNewSession}
-        >
-          Send to a new chat
-        </Button>
-        {/* Only once there is something to branch from. A fork of a session
-            with no turns is just a new chat, and offering it as a fork would
-            promise history that does not exist. */}
-        <Show when={state.started && state.items.length > 0}>
-          <Button
-            size="sm"
-            title="Branch this conversation into a new session, keeping everything up to here"
-            disabled={refused()}
-            onClick={() => props.onForkFrom()}
-          >
-            Fork this chat
-          </Button>
-        </Show>
-      </div>
-
-      <SessionInfo
-        mcpServers={state.mcpServers}
-        skills={state.skills}
-        agents={state.agents}
-        plugins={state.plugins}
-        cwd={props.cwd}
-      />
+      </Show>
 
       <MessageList
         items={shownItems()}
         streaming={running()}
         sessionId={props.sessionId}
         cwd={props.cwd}
+        // The catalogue's display name when the resolved id matches one, the
+        // raw id when it does not: an old id from a resumed transcript is
+        // still better named than hidden.
+        modelLabelFor={(turnId) => {
+          const resolved = turnModel(state, turnId);
+          if (!resolved) return null;
+          return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
+        }}
         onAnswer={onAnswer}
         onRevertHunk={onRevertHunk}
       />
@@ -845,6 +839,37 @@ export default function ChatView(props: {
         onDropAttachment={(id) => dropPending(props.sessionId, id)}
         onSendQueued={() => edit((s) => releaseQueue(s))}
         onDiscardQueued={() => edit((s) => discardQueue(s))}
+        // Everything the next turn will run under: the mode, the model and its
+        // effort. All the switches land at the same next-turn boundary, so
+        // they sit together in the bar under the input.
+        controls={
+          <>
+            <ModeSelector
+              mode={shownMode(state)}
+              pending={modePending(state)}
+              disabled={refused() || state.ended}
+              onSelect={onSelectMode}
+            />
+            <ModelPicker
+              models={models()}
+              value={shownModel()?.value ?? null}
+              effort={shownEffort(state)}
+              contextTokens={contextTokens(state.lastUsage)}
+              modelPending={modelPending(state)}
+              effortPending={effortPending(state)}
+              disabled={refused() || state.ended}
+              onSelectModel={onSelectModel}
+              onSelectEffort={onSelectEffort}
+            />
+          </>
+        }
+        // Bypass names itself after something Sway does not actually let it do,
+        // so the guard stays a visible line rather than a tooltip.
+        notice={
+          <Show when={shownMode(state) === "bypassPermissions"}>
+            <div class={styles.composerNotice}>{BYPASS_STILL_APPROVED}</div>
+          </Show>
+        }
       />
 
       <Show when={confirmReq()}>

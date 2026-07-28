@@ -3,8 +3,10 @@ import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent } from "../../utils/chatTypes";
 import {
   applyEvent,
+  beginReconnect,
   chatStatus,
   clearAwaitingTurn,
+  connectionHealth,
   discardQueue,
   effortPending,
   enqueue,
@@ -25,6 +27,7 @@ import {
   selectEffort,
   selectMode,
   selectModel,
+  settleBackfill,
   shownEffort,
   shownMode,
   shownModelValue,
@@ -707,16 +710,17 @@ describe("hook rows", () => {
 
   it("settles the started frame retroactively so a pair never splits", () => {
     // Only the response carries Sway's marker, so the started frame arrives
-    // unattributed. Without back-propagation the row that starts Sway's hook
-    // would stay visible while the row that finishes it folded away.
+    // unattributed. It is quiet anyway (nothing has failed yet), and the
+    // back-propagation is what keeps it folded under the *reveal-all-but-Sway*
+    // reading a future view might take; the marker must land either way.
     const s = initialChat("s1");
     applyEvent(s, hook("sway-1", "started", false));
-    expect(hookRows(s, false)).toHaveLength(1);
     applyEvent(s, hook("sway-1", "finished", true));
+    expect(s.items.filter((i) => i.kind === "hook" && i.swayOwned)).toHaveLength(2);
     expect(hookRows(s, false)).toHaveLength(0);
   });
 
-  it("shows a user hook inline with its outcome and exit code", () => {
+  it("surfaces a failed user hook, with its outcome and stderr, and nothing else", () => {
     const s = initialChat("s1");
     applyEvent(s, hook("user-1", "started", false, { name: "SessionStart:startup", event: "SessionStart" }));
     applyEvent(
@@ -729,24 +733,25 @@ describe("hook rows", () => {
         stderr: "a warning",
       }),
     );
+    // Only the failure row: the started frame was not news, the failure is.
     const rows = hookRows(s, false);
-    expect(rows).toHaveLength(2);
-    const done = rows[1] as { name: string; outcome: string; exitCode: number; stderr: string };
+    expect(rows).toHaveLength(1);
+    const done = rows[0] as { name: string; outcome: string; exitCode: number; stderr: string };
     expect(done.name).toBe("SessionStart:startup");
     expect(done.outcome).toBe("blocking_error");
     expect(done.exitCode).toBe(2);
     expect(done.stderr).toBe("a warning");
   });
 
-  it("keeps the user's hooks visible while folding Sway's, in one interleaved turn", () => {
-    // The attribution has to be per-hook, not per-name: both hooks here are
-    // `PreToolUse:Bash`, and only the marker separates them.
+  it("folds a user hook that ran as configured; the toggle still reveals the lot", () => {
+    // A hook that succeeded is an answer to a question nobody asked: four
+    // SessionStart rows on every resumed tab was the measured complaint.
     const s = initialChat("s1");
     applyEvent(s, hook("sway-1", "started", false));
     applyEvent(s, hook("user-1", "started", false));
     applyEvent(s, hook("sway-1", "finished", true));
     applyEvent(s, hook("user-1", "finished", false));
-    expect(hookRows(s, false).map((r) => (r as { hookId: string }).hookId)).toEqual(["user-1", "user-1"]);
+    expect(hookRows(s, false)).toHaveLength(0);
     expect(hookRows(s, true)).toHaveLength(4);
   });
 
@@ -756,5 +761,96 @@ describe("hook rows", () => {
     applyEvent(s, hook("sway-1", "finished", true));
     // Folded from the view, still present in the transcript.
     expect(s.items.filter((i) => i.kind === "hook")).toHaveLength(2);
+  });
+});
+
+// `system/init` does not arrive until the first turn starts, so the answered
+// handshake is the only liveness signal a chat nobody has typed in has. This
+// is what keeps a fresh chat from reading "Connecting" until the first send.
+describe("the answered handshake (sessionReady)", () => {
+  const MODEL = {
+    value: "sonnet",
+    resolvedModel: "claude-sonnet-5",
+    displayName: "Sonnet 5",
+    description: "Balanced",
+    supportsEffort: true,
+    supportedEffortLevels: ["low", "high"],
+  };
+  const ready = (over: Partial<Extract<ChatEvent, { type: "sessionReady" }>> = {}): ChatEvent => ({
+    type: "sessionReady",
+    sessionId: "s1",
+    slashCommands: [{ name: "review", description: "Multi-lens code review", argumentHint: null, aliases: [] }],
+    models: [MODEL],
+    ...over,
+  });
+
+  it("reads as connected and idle before any turn has run", () => {
+    const s = initialChat("s1");
+    expect(connectionHealth(s)).toBe("connecting");
+    expect(chatStatus(s)).toBe("running");
+    applyEvent(s, ready());
+    expect(connectionHealth(s)).toBe("connected");
+    expect(chatStatus(s)).toBe("idle");
+    // Weaker than started: nothing has named a model or a mode yet.
+    expect(s.started).toBe(false);
+  });
+
+  it("delivers the catalogues before the first message", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    expect(s.models.map((m) => m.value)).toEqual(["sonnet"]);
+    expect(s.slashCommands.map((c) => c.name)).toEqual(["review"]);
+  });
+
+  it("lets a bare acknowledgement pass without erasing delivered catalogues", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    applyEvent(s, ready({ slashCommands: [], models: [] }));
+    expect(s.models).toHaveLength(1);
+    expect(s.slashCommands).toHaveLength(1);
+  });
+
+  it("hands over to sessionStarted unchanged", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    applyEvent(s, sessionStarted({ models: [MODEL] }));
+    expect(s.started).toBe(true);
+    expect(connectionHealth(s)).toBe("connected");
+  });
+
+  it("is cleared by a reconnect, whose new child has answered nothing yet", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    beginReconnect(s);
+    expect(connectionHealth(s)).toBe("connecting");
+    expect(chatStatus(s)).toBe("running");
+  });
+});
+
+// The transcript on disk records no turn boundaries, so a replay's turn-scoped
+// events register their `hist-turn-*` as live and nothing ever completes it.
+// Settling is what keeps a reopened tab from reading "working" about turns
+// that finished before the tab existed.
+describe("settleBackfill", () => {
+  it("puts a replayed session at rest", () => {
+    const s = initialChat("s1");
+    applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: "hist-turn-1", blocks: [{ type: "text", text: "hi" }] });
+    applyEvent(s, text("hist-turn-1", "finished answer"));
+    expect(isRunning(s)).toBe(true);
+    settleBackfill(s);
+    expect(isRunning(s)).toBe(false);
+    expect(chatStatus(s)).toBe("running"); // still pre-handshake: not started
+  });
+
+  it("keeps settled turns closed against late deltas, while live turns still open", () => {
+    const s = initialChat("s1");
+    applyEvent(s, text("hist-turn-1", "old"));
+    settleBackfill(s);
+    // A stray delta for a settled turn is history, not a resurrected spinner.
+    applyEvent(s, text("hist-turn-1", " tail"));
+    expect(isRunning(s)).toBe(false);
+    // A genuinely live turn re-opens through its own id space.
+    applyEvent(s, turnStarted("turn-1"));
+    expect(isRunning(s)).toBe(true);
   });
 });

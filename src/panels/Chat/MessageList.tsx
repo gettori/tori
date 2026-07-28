@@ -1,4 +1,6 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
+import { User } from "lucide-solid";
+import Icon from "../../components/Icon/Icon";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
@@ -83,6 +85,10 @@ export default function MessageList(props: {
   streaming: boolean;
   sessionId: string;
   cwd: string;
+  /** Display label for the model that ran a turn, or null when the turn never
+   *  named one (replayed history). The header renders the agent name alone
+   *  then, rather than blaming an old turn on the current model. */
+  modelLabelFor: (turnId: string) => string | null;
   onAnswer: (card: ToolItem, answer: Answer) => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
 }) {
@@ -91,6 +97,39 @@ export default function MessageList(props: {
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
+
+  // The item ids that open their turn: the first assistant-side row of each
+  // turn carries the "who answered" header, the way one reply gets one byline
+  // rather than every bubble repeating it.
+  const turnOpeners = createMemo(() => {
+    const openers = new Map<string, string>();
+    const seen = new Set<string>();
+    for (const it of shown()) {
+      const turnId =
+        it.kind === "text" || it.kind === "thinking" ? it.turnId : it.kind === "tool" ? it.turnId : null;
+      if (!turnId || seen.has(turnId)) continue;
+      seen.add(turnId);
+      openers.set(it.id, turnId);
+    }
+    return openers;
+  });
+
+  const TurnHeader = (p: { itemId: string }) => {
+    const turnId = () => turnOpeners().get(p.itemId);
+    return (
+      <Show when={turnId()}>
+        {(id) => (
+          <div class={styles.turnHeader}>
+            <span class={styles.turnDot} aria-hidden="true" />
+            <span class={styles.turnAgent}>Claude</span>
+            <Show when={props.modelLabelFor(id())}>
+              {(label) => <span class={styles.turnModel}>{label()}</span>}
+            </Show>
+          </div>
+        )}
+      </Show>
+    );
+  };
 
   // Within a few pixels of the bottom counts as being at the bottom: sub-pixel
   // layout and a mid-stream reflow would otherwise detach the view on their own.
@@ -128,12 +167,31 @@ export default function MessageList(props: {
         {(item) => (
           <Switch>
             <Match when={item.kind === "user" && item}>
-              {(it) => <div class={`${styles.bubble} ${styles.user}`}>{blockText(it().blocks)}</div>}
+              {(it) => (
+                <div class={styles.userRow}>
+                  <span class={styles.userAvatar} aria-hidden="true">
+                    <Icon icon={User} size={13} />
+                  </span>
+                  <div class={styles.userText}>{blockText(it().blocks)}</div>
+                </div>
+              )}
             </Match>
             <Match when={item.kind === "text" && item}>
-              {(it) => <div class={`${styles.bubble} ${styles.assistant}`} innerHTML={renderMarkdown(it().text)} />}
+              {(it) => (
+                <>
+                  <TurnHeader itemId={it().id} />
+                  <div class={styles.assistant} innerHTML={renderMarkdown(it().text)} />
+                </>
+              )}
             </Match>
-            <Match when={item.kind === "thinking" && item}>{(it) => <ThinkingBlock text={it().text} />}</Match>
+            <Match when={item.kind === "thinking" && item}>
+              {(it) => (
+                <>
+                  <TurnHeader itemId={it().id} />
+                  <ThinkingBlock text={it().text} />
+                </>
+              )}
+            </Match>
             <Match when={item.kind === "notice" && item}>
               {(it) => (
                 <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>{it().text}</div>
@@ -142,13 +200,16 @@ export default function MessageList(props: {
             <Match when={item.kind === "hook" && item}>{(it) => <HookRow item={it()} />}</Match>
             <Match when={item.kind === "tool" && item}>
               {(it) => (
-                <ToolCallCard
-                  card={it()}
-                  sessionId={props.sessionId}
-                  cwd={props.cwd}
-                  onAnswer={props.onAnswer}
-                  onRevertHunk={props.onRevertHunk}
-                />
+                <>
+                  <TurnHeader itemId={it().id} />
+                  <ToolCallCard
+                    card={it()}
+                    sessionId={props.sessionId}
+                    cwd={props.cwd}
+                    onAnswer={props.onAnswer}
+                    onRevertHunk={props.onRevertHunk}
+                  />
+                </>
               )}
             </Match>
           </Switch>

@@ -1,5 +1,5 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
-import { Paperclip, Send, Square } from "lucide-solid";
+import { For, Show, createMemo, createSignal, type JSX } from "solid-js";
+import { ArrowUp, Plus, Square } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import type { QueuedInput } from "./chatStore";
@@ -74,6 +74,12 @@ export default function Composer(props: {
   history: readonly string[];
   onSendQueued: () => void;
   onDiscardQueued: () => void;
+  /** The session controls (mode, model, effort) rendered into the bar under
+   *  the input. Slotted rather than owned: their state and wiring belong to
+   *  `ChatView`, and this component only decides where they sit. */
+  controls?: JSX.Element;
+  /** A one-line notice above the input (a pending switch, the bypass guard). */
+  notice?: JSX.Element;
 }) {
   // The draft lives in the caller's store; this reads and writes it so there is
   // one answer to "what is in the composer" rather than a local copy that has to
@@ -406,36 +412,13 @@ export default function Composer(props: {
           </For>
         </div>
       </Show>
-      <div class={styles.composerRow}>
-        {/* A plain file input rather than a native dialog: the webview has one
-            already, and it needs no extra Tauri permission to open. */}
-        <input
-          ref={picker}
-          class={styles.hiddenPicker}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => {
-            void attachFiles([...(e.currentTarget.files ?? [])]);
-            // Cleared so picking the same file twice in a row still fires.
-            e.currentTarget.value = "";
-          }}
-        />
-        <button
-          type="button"
-          class={styles.attachButton}
-          title="Attach an image"
-          aria-label="Attach an image"
-          disabled={props.disabled}
-          onClick={() => picker?.click()}
-        >
-          <Icon icon={Paperclip} />
-        </button>
+      {props.notice}
+      <div class={styles.composerBox}>
         <textarea
           ref={input}
           class={styles.input}
           rows="1"
-          placeholder={props.running ? "Type to queue for the next turn" : "Message Claude"}
+          placeholder={props.running ? "Type to queue for the next turn" : "Reply, or @ a file · / for commands"}
           value={text()}
           disabled={props.disabled}
           onInput={(e) => {
@@ -453,16 +436,44 @@ export default function Composer(props: {
           onSelect={syncToken}
           onBlur={closeMenu}
         />
-        <button
-          type="button"
-          class={styles.sendButton}
-          title={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
-          aria-label={props.running ? "Stop" : "Send"}
-          disabled={props.disabled || (!props.running && !hasContent())}
-          onClick={() => (props.running ? props.onInterrupt() : submit())}
-        >
-          <Icon icon={props.running ? Square : Send} />
-        </button>
+        <div class={styles.composerBar}>
+          {/* A plain file input rather than a native dialog: the webview has one
+              already, and it needs no extra Tauri permission to open. */}
+          <input
+            ref={picker}
+            class={styles.hiddenPicker}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              void attachFiles([...(e.currentTarget.files ?? [])]);
+              // Cleared so picking the same file twice in a row still fires.
+              e.currentTarget.value = "";
+            }}
+          />
+          <button
+            type="button"
+            class={styles.attachButton}
+            title="Attach an image"
+            aria-label="Attach an image"
+            disabled={props.disabled}
+            onClick={() => picker?.click()}
+          >
+            <Icon icon={Plus} />
+          </button>
+          {props.controls}
+          <div class={styles.composerSpacer} />
+          <button
+            type="button"
+            class={styles.sendButton}
+            title={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
+            aria-label={props.running ? "Stop" : "Send"}
+            disabled={props.disabled || (!props.running && !hasContent())}
+            onClick={() => (props.running ? props.onInterrupt() : submit())}
+          >
+            <Icon icon={props.running ? Square : ArrowUp} />
+          </button>
+        </div>
       </div>
     </div>
   );

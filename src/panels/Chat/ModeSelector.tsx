@@ -1,14 +1,20 @@
 import { For, Show } from "solid-js";
+import { ChevronDown } from "lucide-solid";
+import Icon from "../../components/Icon/Icon";
 import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 
 /**
  * The `--permission-mode` control.
  *
- * **The only one in the app.** Phase 9 adds model and effort pickers and
- * consumes this rather than growing a second mode control beside it: two
- * controls writing one piece of session state is how they end up disagreeing
- * about which mode the session is in.
+ * **The only one in the app.** The model and effort pickers sit beside it in
+ * the composer bar and consume this rather than growing a second mode control:
+ * two controls writing one piece of session state is how they end up
+ * disagreeing about which mode the session is in.
+ *
+ * A pill select rather than a segmented row: the control lives in the composer
+ * now, where the mode is changed occasionally mid-conversation, not studied
+ * before starting one. The hints ride the options and the pill's tooltip.
  */
 export const MODES: { value: PermissionMode; label: string; hint: string }[] = [
   { value: "default", label: "Default", hint: "Claude asks before acting outside its allowances." },
@@ -35,36 +41,53 @@ export default function ModeSelector(props: {
   onSelect: (mode: PermissionMode) => void;
 }) {
   const current = () => MODES.find((m) => m.value === props.mode);
+  const title = () =>
+    [current()?.hint, props.mode === "bypassPermissions" ? BYPASS_STILL_APPROVED : null]
+      .filter(Boolean)
+      .join(" ");
 
   return (
-    <div class={styles.modeGroup}>
-      <div class={styles.modeButtons} role="group" aria-label="Permission mode">
-        <For each={MODES}>
-          {(m) => (
-            <button
-              type="button"
-              class={`${styles.modeButton} ${props.mode === m.value ? styles.modeSelected : ""}`}
-              title={m.value === "bypassPermissions" ? `${m.hint} ${BYPASS_STILL_APPROVED}` : m.hint}
-              aria-pressed={props.mode === m.value}
-              disabled={props.disabled}
-              onClick={() => props.onSelect(m.value)}
-            >
-              {m.label}
-            </button>
-          )}
-        </For>
-      </div>
+    <>
+      {/* A chip drawn by us with the native select stretched invisibly over
+          it: the app's look on the closed control, the platform's menu and
+          keyboard handling on the open one. */}
+      <label
+        class={styles.pill}
+        classList={{
+          [styles.pillAttention]: props.mode === "bypassPermissions",
+          [styles.pillPending]: props.pending,
+        }}
+        title={title()}
+      >
+        <span class={styles.pillValue}>{current()?.label}</span>
+        <span class={styles.pillCaret} aria-hidden="true">
+          <Icon icon={ChevronDown} size={13} />
+        </span>
+        <select
+          class={styles.pillSelect}
+          aria-label="Permission mode"
+          disabled={props.disabled}
+          value={props.mode}
+          onChange={(e) => {
+            const picked = MODES.find((m) => m.value === e.currentTarget.value);
+            if (picked) props.onSelect(picked.value);
+          }}
+        >
+          <For each={MODES}>
+            {(m) => (
+              <option value={m.value} title={m.hint}>
+                {m.label}
+              </option>
+            )}
+          </For>
+        </select>
+      </label>
       {/* Never "switched to X": the CLI applies a mode at a turn boundary, and
           a control that claimed otherwise would be wrong for the rest of the
           running turn - which is exactly the turn the user is worried about. */}
-      <span class={`${styles.modeNote} ${props.pending ? styles.modeNotePending : ""}`}>
-        <Show when={props.pending} fallback={current()?.hint}>
-          Applies from the next turn.
-        </Show>
-      </span>
-      <Show when={props.mode === "bypassPermissions"}>
-        <span class={styles.modeGuard}>{BYPASS_STILL_APPROVED}</span>
+      <Show when={props.pending}>
+        <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
       </Show>
-    </div>
+    </>
   );
 }

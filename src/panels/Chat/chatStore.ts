@@ -100,22 +100,37 @@ export type HookItem = {
 export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem;
 
 /**
- * The transcript rows to render, given whether Sway's own hook rows are shown.
+ * The transcript rows to render, given whether hook plumbing is shown.
  *
- * Sway's approval hook runs on every single tool call and contributes two
- * frames each time, so a 60-tool-call turn would add 120 rows of Sway's own
- * plumbing to a transcript the user is reading for their *own* hooks. Folded by
- * default, revealed by the setting, and never dropped from the state so the
- * toggle works on a session already in progress.
+ * A hook that succeeded is an answer to a question nobody asked: it ran, as
+ * configured, the way it does on every session. So by default a hook earns a
+ * row only by **failing** (a non-zero exit), which is the one time it is the
+ * most important thing on screen and nothing else explains what happened.
+ * Sway's own approval hook stays folded even then - its verdict already
+ * renders on the tool card it gated, and it fires twice per tool call, so a
+ * 60-call turn would otherwise add 120 rows of Sway's own plumbing.
+ *
+ * The setting reveals everything, and nothing is ever dropped from the state,
+ * so the toggle works on a session already in progress.
  */
-export function visibleItems(items: readonly ChatItem[], showSwayHooks: boolean): ChatItem[] {
-  if (showSwayHooks) return items.slice();
-  return items.filter((it) => it.kind !== "hook" || !it.swayOwned);
+export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean): ChatItem[] {
+  if (showAllHooks) return items.slice();
+  return items.filter((it) => it.kind !== "hook" || (!it.swayOwned && hookFailed(it)));
+}
+
+/** The one outcome worth a transcript row: the harness reported a non-zero
+ *  exit. A `started` frame (exit still null) is never a failure yet. */
+export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
+  return it.exitCode !== null && it.exitCode !== 0;
 }
 
 export type QueuedInput = { id: string; text: string };
 
-type TurnRecord = { completed: boolean };
+/** `model` is the resolved id `turnStarted` reported for this turn, or null
+ *  for a turn that never named one (replayed history has no turn frames). The
+ *  transcript's per-turn header reads it, so an old turn keeps the model that
+ *  actually ran it rather than inheriting whatever the session switched to. */
+type TurnRecord = { completed: boolean; model: string | null };
 
 export type ChatState = {
   sessionId: string;
@@ -129,6 +144,10 @@ export type ChatState = {
    *  next delta must open a fresh one. */
   openTextId: string | null;
   openThinkingId: string | null;
+  /** The child answered the `initialize` handshake. Weaker than `started`:
+   *  the process is alive and talking, but no turn has run, so nothing has
+   *  named the model or the mode yet. */
+  ready: boolean;
   started: boolean;
   ended: boolean;
   /** A turn has been sent that the child has not acknowledged with its
@@ -228,6 +247,7 @@ export function initialChat(sessionId: string): ChatState {
     activeTurnId: null,
     openTextId: null,
     openThinkingId: null,
+    ready: false,
     started: false,
     ended: false,
     awaitingTurn: false,
@@ -333,7 +353,7 @@ function touchTurn(s: ChatState, turnId: string) {
     if (!known.completed) s.activeTurnId = turnId;
     return;
   }
-  s.turns[turnId] = { completed: false };
+  s.turns[turnId] = { completed: false, model: null };
   s.activeTurnId = turnId;
   s.awaitingTurn = false;
   // A new turn is the boundary the CLI applies a queued effort switch at, and
@@ -442,10 +462,20 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.started = true;
       return;
     }
+    case "sessionReady": {
+      // The answered handshake: the child is alive before any turn has run.
+      // The catalogues are taken only when the response actually carried them,
+      // so a bare acknowledgement cannot erase what a fuller frame delivered.
+      s.ready = true;
+      if (ev.slashCommands.length) s.slashCommands = ev.slashCommands;
+      if (ev.models.length) s.models = ev.models;
+      return;
+    }
     case "turnStarted": {
       noteModel(s, ev.model);
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
+      s.turns[ev.turnId].model = ev.model;
       return;
     }
     case "hookFired": {
@@ -581,7 +611,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
     case "turnCompleted": {
       const known = s.turns[ev.turnId];
       if (known?.completed) return;
-      s.turns[ev.turnId] = { completed: true };
+      s.turns[ev.turnId] = { completed: true, model: known?.model ?? null };
       if (s.activeTurnId === ev.turnId) s.activeTurnId = null;
       s.awaitingTurn = false;
       s.openTextId = null;
@@ -642,10 +672,36 @@ export function clearAwaitingTurn(s: ChatState) {
   s.awaitingTurn = false;
 }
 
+/** The resolved model id that ran a turn, or null when the turn never named
+ *  one (replayed history). For the transcript's per-turn header. */
+export function turnModel(s: ChatState, turnId: string): string | null {
+  return s.turns[turnId]?.model ?? null;
+}
+
 /** Is a turn in flight? True from the moment the user hits Enter, not from the
  *  child's acknowledgement, so the stop button is live for the round trip too. */
 export function isRunning(s: ChatState): boolean {
   return s.activeTurnId !== null || s.awaitingTurn;
+}
+
+/**
+ * Settle a replayed backfill: everything read off disk is finished work.
+ *
+ * The transcript has no `turnCompleted` frames, so replaying it leaves the
+ * last `hist-turn-*` registered as the active turn - a session that would
+ * read "working", with a live stop button, about turns that ended before the
+ * tab was even opened. Marking them completed also arms `touchTurn`'s
+ * "a completed turn never reopens" guard, so a stray late delta for a
+ * replayed turn lands as history rather than resurrecting the spinner.
+ *
+ * Called once, after the backfill fold and before parked live events drain:
+ * a genuinely running turn re-opens through its own live events, which carry
+ * `turn-*` ids that can never collide with the replay's.
+ */
+export function settleBackfill(s: ChatState) {
+  for (const id of Object.keys(s.turns)) s.turns[id].completed = true;
+  s.activeTurnId = null;
+  s.awaitingTurn = false;
 }
 
 /** Input typed while a turn was running. Queued, never dropped, and never sent
@@ -801,9 +857,9 @@ export function chatStatus(s: ChatState): SessionStatus {
   if (s.ended) return "none";
   if (pendingApprovals(s).length) return "waitingForApproval";
   if (isRunning(s)) return "executing";
-  // Alive but nothing known yet: the child is spawning and has not sent its
-  // first init.
-  return s.started ? "idle" : "running";
+  // A ready child that has not run a turn is idle, not busy: the spinner
+  // covers only the genuine gap between spawn and the answered handshake.
+  return s.started || s.ready ? "idle" : "running";
 }
 
 /**
@@ -816,15 +872,17 @@ export function chatStatus(s: ChatState): SessionStatus {
  * tune, which is the whole reason this reads off the event stream rather than
  * off a liveness probe.
  *
- * `connecting` is its own state, not folded into `connected`: between the spawn
- * and the first `system/init` there is genuinely no session yet, and calling
- * that connected would show a healthy chat that cannot take a turn.
+ * `connecting` is its own state, not folded into `connected`: between the
+ * spawn and the answered handshake there is genuinely nothing to talk to yet.
+ * The answered handshake (`ready`) counts as connected, because `system/init`
+ * does not arrive until the first turn starts - waiting for `started` here is
+ * what kept a fresh chat on "Connecting" until the user's first message.
  */
 export type ConnectionHealth = "connecting" | "connected" | "disconnected";
 
 export function connectionHealth(s: ChatState): ConnectionHealth {
   if (s.ended) return "disconnected";
-  return s.started ? "connected" : "connecting";
+  return s.started || s.ready ? "connected" : "connecting";
 }
 
 /**
@@ -843,6 +901,9 @@ export function connectionHealth(s: ChatState): ConnectionHealth {
  */
 export function beginReconnect(s: ChatState) {
   s.ended = false;
+  // Both liveness flags, for the same reason: the new child has answered
+  // nothing yet, and either one left set would claim it has.
+  s.ready = false;
   s.started = false;
   s.activeTurnId = null;
   s.awaitingTurn = false;

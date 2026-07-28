@@ -1,9 +1,11 @@
 import { For, Show } from "solid-js";
+import { ChevronDown } from "lucide-solid";
+import Icon from "../../components/Icon/Icon";
 import type { PickableModel } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
 
 /**
- * The `--model` and `--effort` controls.
+ * The `--model` and `--effort` controls, as pills in the composer bar.
  *
  * They live in one component because they are not independent: the levels on
  * offer are a property of the *selected* model, and a model that declares none
@@ -28,30 +30,42 @@ export default function ModelPicker(props: {
   onSelectModel: (model: PickableModel) => void;
   onSelectEffort: (effort: string) => void;
 }) {
-  const current = () => props.models.find((m) => m.value === props.value) ?? null;
+  // Before any pick, a session started without `--model` is running the
+  // catalogue's own default entry by definition, so that entry is shown as
+  // selected rather than a placeholder: "Starting..." on an idle chat read as
+  // a control that never finished loading. A catalogue with no default entry
+  // keeps the placeholder, because naming one would be a guess.
+  const shownValue = () => props.value ?? props.models.find((m) => m.value === "default")?.value ?? null;
+  const current = () => props.models.find((m) => m.value === shownValue()) ?? null;
   const levels = () => current()?.effortLevels ?? [];
   // The adapter table is a hand-maintained fallback, so a list drawn from it is
   // worth saying so about rather than presenting as this machine's truth.
   const stale = () => props.models.length > 0 && !props.models[0].live;
 
   return (
-    <div class={styles.modelGroup}>
-      <label class={styles.modelLabel}>
-        <span class={styles.modelLabelText}>Model</span>
+    <>
+      <label class={styles.pill} classList={{ [styles.pillPending]: props.modelPending }} title="Model">
+        <span class={styles.pillValue}>
+          {current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
+        </span>
+        <span class={styles.pillCaret} aria-hidden="true">
+          <Icon icon={ChevronDown} size={13} />
+        </span>
         <select
-          class={styles.modelSelect}
+          class={styles.pillSelect}
+          aria-label="Model"
           disabled={props.disabled || props.models.length === 0}
-          value={props.value ?? ""}
+          value={shownValue() ?? ""}
           onChange={(e) => {
             const picked = props.models.find((m) => m.value === e.currentTarget.value);
             if (picked) props.onSelectModel(picked);
           }}
         >
-          {/* Only until the first init names a model: a placeholder that stayed
-              selectable would be a pick that resolves to nothing. */}
-          <Show when={props.value === null}>
+          {/* Only while nothing can be shown as selected: a placeholder that
+              stayed selectable would be a pick that resolves to nothing. */}
+          <Show when={shownValue() === null}>
             <option value="" disabled>
-              {props.models.length === 0 ? "No models" : "Starting..."}
+              {props.models.length === 0 ? "No models" : "Default"}
             </option>
           </Show>
           <For each={props.models}>
@@ -67,10 +81,15 @@ export default function ModelPicker(props: {
       {/* Hidden, not disabled: a model with no effort levels has no control to
           offer, and an inert one reads as a broken control. */}
       <Show when={levels().length > 0}>
-        <label class={styles.modelLabel}>
-          <span class={styles.modelLabelText}>Effort</span>
+        <label class={styles.pill} classList={{ [styles.pillPending]: props.effortPending }} title="Thinking effort">
+          <span class={styles.pillPrefix}>Thinking:</span>
+          <span class={styles.pillValue}>{props.effort ?? "Default"}</span>
+          <span class={styles.pillCaret} aria-hidden="true">
+            <Icon icon={ChevronDown} size={13} />
+          </span>
           <select
-            class={styles.modelSelect}
+            class={styles.pillSelect}
+            aria-label="Thinking effort"
             disabled={props.disabled}
             value={props.effort ?? ""}
             onChange={(e) => props.onSelectEffort(e.currentTarget.value)}
@@ -99,7 +118,7 @@ export default function ModelPicker(props: {
           const pct = () => Math.min(100, Math.round(((used() ?? 0) / window()) * 100));
           return (
             <span
-              class={styles.modelNote}
+              class={styles.barNote}
               title={used() === null ? undefined : `${pct()}% of ${fmtTokens(window())} context used`}
             >
               <Show when={used() !== null} fallback={`${fmtTokens(window())} context`}>
@@ -114,13 +133,15 @@ export default function ModelPicker(props: {
       </Show>
 
       <Show when={props.modelPending || props.effortPending}>
-        <span class={`${styles.modelNote} ${styles.modelNotePending}`}>Applies from the next turn.</span>
+        <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
       </Show>
 
       <Show when={stale()}>
-        <span class={styles.modelNote}>From the adapter's list: this session did not report its own.</span>
+        <span class={styles.barNote} title="This session did not report its own model list.">
+          From the adapter's list: this session did not report its own.
+        </span>
       </Show>
-    </div>
+    </>
   );
 }
 
