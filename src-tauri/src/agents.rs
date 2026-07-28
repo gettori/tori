@@ -163,6 +163,12 @@ pub struct ChatConfig {
     pub session_id_args: Vec<String>,
     /// `{id}` template resuming an existing session.
     pub resume_args: Vec<String>,
+    /// `{from}`/`{id}` template replaying an existing session into a **new**
+    /// one. Two placeholders because a fork is the one case where the session
+    /// being read and the session being written are different ids. Empty for an
+    /// adapter that cannot fork, which is what hides the action rather than
+    /// offering one that would silently resume in place.
+    pub fork_args: Vec<String>,
     /// `{model}` template.
     pub model_args: Vec<String>,
     /// `{effort}` template, the **default** for every `[[chat.effort]]` entry.
@@ -298,6 +304,8 @@ struct ChatToml {
     session_id_args: Vec<String>,
     #[serde(default)]
     resume_args: Vec<String>,
+    #[serde(default)]
+    fork_args: Vec<String>,
     #[serde(default)]
     model_args: Vec<String>,
     #[serde(default)]
@@ -519,6 +527,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 base_args: c.base_args,
                 session_id_args: c.session_id_args,
                 resume_args: c.resume_args,
+                fork_args: c.fork_args,
                 model_args: c.model_args,
                 effort_args: c.effort_args,
                 mode_args: c.mode_args,

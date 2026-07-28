@@ -64,6 +64,13 @@ base_args = [
 ]
 session_id_args = ["--session-id", "{id}"]
 resume_args = ["--resume", "{id}"]
+# Forking replays an existing conversation into a **new** session id. Measured:
+# `--resume <old> --fork-session --session-id <new>` honours the id we pass and
+# reports it back, which is what lets Sway claim the fork before starting it -
+# a CLI-chosen id would be claimed only after the fact, if at all. `{from}` is
+# the session being forked; `{id}` is the new one, and the template carries both
+# because a fork is the one case where the two differ.
+fork_args = ["--resume", "{from}", "--fork-session", "--session-id", "{id}"]
 model_args = ["--model", "{model}"]
 effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]

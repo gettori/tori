@@ -301,6 +301,46 @@ pub enum ChatEvent {
         extra: Extra,
     },
 
+    /// A user turn, as an event rather than as something the composer already
+    /// knows it sent.
+    ///
+    /// A live chat pushes its own user turn locally, so this exists for the
+    /// turns it did *not* send: a transcript replayed into a reopened tab, and a
+    /// session whose earlier turns happened in a PTY tab or an outside terminal.
+    /// Without it, backfilled history would render the assistant talking to
+    /// nobody.
+    UserMessage {
+        session_id: String,
+        turn_id: String,
+        blocks: Vec<ContentBlock>,
+    },
+
+    /// The conversation was compacted: earlier turns were replaced by a summary
+    /// so the context window could be reclaimed.
+    ///
+    /// Measured on a real transcript (claude 2.1.220): the boundary is a
+    /// `system`/`compact_boundary` record carrying `compactMetadata` with
+    /// `trigger`, `preTokens` and `postTokens`, and the **summary is the next
+    /// user message**, not a field on the boundary. So `summary` is stitched on
+    /// by whoever reads the two together; a reader that only saw the boundary
+    /// leaves it `None` rather than inventing one.
+    ///
+    /// Surfaced rather than swallowed because a transcript that silently loses
+    /// its middle is indistinguishable from one that lost it to a bug.
+    Compacted {
+        session_id: String,
+        turn_id: String,
+        /// `"manual"` (the user ran `/compact`) or `"auto"` (the window filled).
+        #[serde(default)]
+        trigger: Option<String>,
+        #[serde(default)]
+        pre_tokens: Option<u64>,
+        #[serde(default)]
+        post_tokens: Option<u64>,
+        #[serde(default)]
+        summary: Option<String>,
+    },
+
     TextDelta {
         session_id: String,
         turn_id: String,
@@ -539,6 +579,19 @@ mod tests {
                 permission_mode: PermissionMode::Default,
                 extra: Extra::new(),
             },
+            ChatEvent::UserMessage {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                blocks: vec![ContentBlock::Text { text: "fix the bug".into() }],
+            },
+            ChatEvent::Compacted {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                trigger: Some("manual".into()),
+                pre_tokens: Some(247408),
+                post_tokens: Some(9444),
+                summary: Some("This session is being continued from a previous conversation".into()),
+            },
             ChatEvent::TextDelta {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
@@ -710,6 +763,8 @@ mod tests {
             let _name = match ev {
                 ChatEvent::SessionStarted { .. } => "sessionStarted",
                 ChatEvent::TurnStarted { .. } => "turnStarted",
+                ChatEvent::UserMessage { .. } => "userMessage",
+                ChatEvent::Compacted { .. } => "compacted",
                 ChatEvent::TextDelta { .. } => "textDelta",
                 ChatEvent::ThinkingDelta { .. } => "thinkingDelta",
                 ChatEvent::ToolCallStarted { .. } => "toolCallStarted",
@@ -725,8 +780,8 @@ mod tests {
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
             };
         }
-        // 15 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 15, "every_event() must hold exactly one sample per variant");
+        // 17 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 17, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

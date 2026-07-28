@@ -6,7 +6,7 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import { liveStatuses } from "../../utils/sessionStatus";
 import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
-import { attributionReliable, ATTRIBUTION_UNRELIABLE_NOTE } from "../../utils/chatConcurrency";
+import { chatsInFolder } from "../../utils/chatSessions";
 import { isUnderPath } from "../../utils/pathScope";
 import Button from "../../components/Button/Button";
 import styles from "./CheckpointTimeline.module.css";
@@ -17,7 +17,14 @@ type CheckpointEntry = {
   file_count: number;
   bytes: number;
 };
-type CheckpointFile = { path: string; status: string };
+type CheckpointFile = {
+  path: string;
+  status: string;
+  // Other live sessions that also wrote this file in an overlapping turn.
+  // Non-empty means the change is genuinely not this session's alone, which the
+  // row says rather than resolving in favour of whoever asked.
+  shared_with?: string[];
+};
 export type RevertOutcome = {
   backstop_ts: number | null;
   restored: string[];
@@ -129,6 +136,11 @@ export default function CheckpointTimeline(props: {
       sessionId,
       promptTs: ts,
       cumulative: cumulative(),
+      // The worktree's other chats, so a file more than one of them wrote is
+      // marked instead of being silently attributed to this one.
+      others: chatsInFolder(props.folderPath ?? "")
+        .map((c) => c.sessionId)
+        .filter((id) => id !== sessionId),
     }).catch(() => [] as CheckpointFile[]);
     setFiles(list);
     setExpanded(null);
@@ -197,12 +209,44 @@ export default function CheckpointTimeline(props: {
     });
     if (!ok) return;
 
+    // Files another live chat also wrote. The revert is scoped to this
+    // session's own writes, so these would be skipped silently; they are worth
+    // a second question rather than a quiet omission, and the answer names who
+    // else is in them.
+    //
+    // Asked cumulatively: reverting *to* a boundary undoes every turn after it,
+    // so a file shared in a later turn is in the blast radius too. The loaded
+    // `files()` may be the single-turn view, which would have left those out of
+    // the question while the revert still reached them.
+    const cumulativeFiles = await invoke<CheckpointFile[]>("checkpoint_turn_files", {
+      repoPath: root,
+      sessionId,
+      promptTs: ts,
+      cumulative: true,
+      others: chatsInFolder(props.folderPath ?? "")
+        .map((c) => c.sessionId)
+        .filter((id) => id !== sessionId),
+    }).catch(() => files());
+    const shared = cumulativeFiles.filter((f) => f.shared_with?.length).map((f) => f.path);
+    let confirmedShared: string[] = [];
+    if (shared.length) {
+      const who = [...new Set(cumulativeFiles.flatMap((f) => f.shared_with ?? []))];
+      const alsoRevert = await askConfirm({
+        title: `${shared.length} file${shared.length === 1 ? "" : "s"} also written by another chat`,
+        message: `${shared.join(", ")} ${shared.length === 1 ? "was" : "were"} also written by ${who.join(", ")}. Reverting ${shared.length === 1 ? "it" : "them"} undoes that session's work too. Leave ${shared.length === 1 ? "it" : "them"} alone, or revert everything?`,
+        confirmLabel: "Revert these too",
+        danger: true,
+      });
+      if (alsoRevert) confirmedShared = shared;
+    }
+
     setReverting(true);
     try {
       const outcome = await invoke<RevertOutcome>("checkpoint_revert_tree", {
         repoPath: root,
         sessionId,
         promptTs: ts,
+        shared: confirmedShared,
       });
       props.onReverted?.(outcome);
       await loadEntries();
@@ -321,13 +365,6 @@ export default function CheckpointTimeline(props: {
             )}
           </For>
         </div>
-        {/* Two chats share one working tree while `checkpoint.rs` still
-            snapshots it whole, so a turn's file list can contain the other
-            chat's edits. Say so rather than present it as fact; the phase that
-            lands per-turn attribution removes this. */}
-        <Show when={props.folderPath && !attributionReliable(props.folderPath)}>
-          <div class={styles.attributionWarning}>{ATTRIBUTION_UNRELIABLE_NOTE}</div>
-        </Show>
         <Show when={cumulative()}>
           <div class={styles.scopeHint}>
             Everything that changed in this folder since this point, including your own edits and any other session's
@@ -350,6 +387,14 @@ export default function CheckpointTimeline(props: {
               <div>
                 <div class={styles.timelineRow} onClick={() => void toggleDiff(f.path)} title={f.path}>
                   <span class={`${styles.timelineStatus} ${styles[f.status]}`}>{f.status[0].toUpperCase()}</span>
+                  <Show when={f.shared_with?.length}>
+                    <span
+                      class={styles.sharedMarker}
+                      title={`Also written by another chat in this worktree (${f.shared_with!.join(", ")}). Reverting affects work that is not only this session's.`}
+                    >
+                      shared
+                    </span>
+                  </Show>
                   <span
                     class={styles.timelineName}
                     onClick={(e) => {

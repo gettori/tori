@@ -351,11 +351,11 @@ pub fn transcript_turns(db_path: &Path, session_id: &str) -> Vec<TranscriptTurn>
                             let name = part.data.get("tool").and_then(|n| n.as_str()).unwrap_or("").to_string();
                             let input =
                                 part.data.get("state").and_then(|s| s.get("input")).cloned().unwrap_or(Value::Null);
-                            blocks.push(sessions::tool_call_block(name.clone(), input));
+                            blocks.push(sessions::tool_call_block(name.clone(), input, None));
                             if let Some(state) = part.data.get("state") {
                                 if let Some(output) = state.get("output").and_then(|o| o.as_str()) {
                                     let is_error = state.get("status").and_then(|s| s.as_str()) == Some("error");
-                                    blocks.push(sessions::tool_result_block(Some(name), output.to_string(), is_error));
+                                    blocks.push(sessions::tool_result_block(Some(name), output.to_string(), is_error, None));
                                 }
                             }
                         }
