@@ -1,30 +1,58 @@
 import { defineConfig } from "vitest/config";
+import solid from "vite-plugin-solid";
 
-// Standalone test config (takes precedence over vite.config.ts) so the
-// vite-plugin-solid jsdom setup isn't pulled in. The unit tests cover pure,
-// DOM-free helpers, so the lightweight node environment is enough.
+// Standalone test config (takes precedence over vite.config.ts), split into two
+// projects because the two kinds of test want opposite things.
+//
+//   * **unit** (`*.test.ts`) - the pure, DOM-free helpers. Node environment, no
+//     JSX transform, no jsdom to construct. This is the bulk of the suite and it
+//     stays fast; nothing here should ever need a document.
+//   * **dom** (`*.test.tsx`) - components actually mounted, through
+//     `@solidjs/testing-library`. Needs jsdom and needs `vite-plugin-solid`,
+//     since Solid's JSX compiles to reactive DOM calls rather than to a
+//     runtime `h()` a plain esbuild transform could produce.
+//
+// Splitting on the file extension rather than on a directory keeps a component's
+// mounted test next to its unit test, and makes which environment a file gets a
+// property of the file rather than of where somebody put it.
+
+// Resolve solid-js to its browser build. The default node condition pulls in
+// solid's server build, whose Icon module throws a "client-only API" error at
+// import time, which would break any test that imports a lucide-solid icon (e.g.
+// the icon registry). Externalized node_modules bypass Vite's resolve conditions
+// and get the node build anyway, so they are inlined too.
+//
+// Both projects need this, and a project does not inherit the root's copy, so it
+// is defined once here and spread into each rather than written three times.
+const solidResolve = {
+  resolve: { conditions: ["browser", "development"] },
+  ssr: { resolve: { conditions: ["browser", "development"] } },
+};
+const inlineSolid = { deps: { inline: ["lucide-solid", "solid-js"] } };
+
 export default defineConfig({
-  // Resolve solid-js to its browser build. The default node condition pulls in
-  // solid's server build, whose Icon module throws a "client-only API" error at
-  // import time, which would break any test that imports a lucide-solid icon
-  // (e.g. the icon registry). We never render here, just import the components.
-  resolve: {
-    conditions: ["browser", "development"],
-  },
-  ssr: {
-    resolve: {
-      conditions: ["browser", "development"],
-    },
-  },
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
-    // Externalized node_modules bypass Vite's resolve conditions and get the
-    // node (server) build of solid-js; inline them so the browser build is used.
-    server: {
-      deps: {
-        inline: ["lucide-solid", "solid-js"],
+    projects: [
+      {
+        ...solidResolve,
+        test: {
+          name: "unit",
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+          server: inlineSolid,
+        },
       },
-    },
+      {
+        ...solidResolve,
+        plugins: [solid()],
+        test: {
+          name: "dom",
+          environment: "jsdom",
+          include: ["src/**/*.test.tsx"],
+          setupFiles: ["src/test/domSetup.ts"],
+          server: inlineSolid,
+        },
+      },
+    ],
   },
 });

@@ -803,7 +803,10 @@ export default function Terminal(props: {
   // A chat tab hosts no shell. It mints its own session id up front (the
   // transport is spawned with `--session-id`), which is why - unlike an agent
   // tab - it never needs the transcript-appears backfill to learn what it is.
-  function spawnChat(workspace: string, cwd: string, baseName: string, agentId = "claude") {
+  // Returns the minted session id, so a caller that wants to seed the new chat
+  // (send-to-new-session) can address it before it mounts.
+  function spawnChat(workspace: string, cwd: string, baseName: string, agentId = "claude"): string {
+    const sessionId = crypto.randomUUID();
     openOrActivate({
       id: `chat:${crypto.randomUUID()}`,
       title: chatTabLabel(
@@ -817,8 +820,9 @@ export default function Terminal(props: {
       kind: "chat",
       program: agentId,
       args: [],
-      sessionId: crypto.randomUUID(),
+      sessionId,
     });
+    return sessionId;
   }
 
   function newChat(agentId = "claude") {

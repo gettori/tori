@@ -814,6 +814,13 @@ mod tests {
             described.iter().any(|c| !c.description.is_empty()),
             "the catalogue carried no descriptions"
         );
+        // The menu shows the hint beside the name, so it has to survive the
+        // absorb. Measured: `argumentHint` is present but empty on most
+        // commands, so this asserts at least one real one rather than all.
+        assert!(
+            described.iter().any(|c| c.argument_hint.as_deref().is_some_and(|h| !h.is_empty())),
+            "the catalogue carried no argument hints"
+        );
 
         let mut without = ClaudeMapper::new("s1");
         let events = without.map(&serde_json::json!({

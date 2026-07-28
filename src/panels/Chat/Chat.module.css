@@ -423,6 +423,60 @@
   overflow-x: auto;
 }
 
+/* The `@` / `/` completion menu. Above the input, because the composer sits at
+   the bottom of the pane and a menu below it would open off-screen. */
+.completions {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(240px * var(--ui-scale));
+  margin: 0 var(--sway-space-3) var(--sway-space-2);
+  overflow-y: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-card);
+}
+
+.completion {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sway-space-2);
+  border: none;
+  padding: var(--sway-space-1) var(--sway-space-2);
+  background: transparent;
+  color: var(--fg-default);
+  font-size: var(--sway-text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.completion:hover {
+  background: var(--neutral-hover);
+}
+
+/* Declared after :hover, so keyboard selection wins over whatever the pointer
+   happens to be resting on. */
+.completionActive {
+  background: var(--accent-subtle);
+}
+
+.completionName {
+  flex: none;
+  font-family: var(--sway-font-mono);
+}
+
+.completionHint {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+}
+
+.completionDesc {
+  overflow: hidden;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* What the next turn will carry besides what is typed: a selection, a hunk
    comment, a diagnostic. Removable, and never sent on its own. */
 .attachments {
@@ -451,6 +505,57 @@
 .attachment:hover {
   border-color: var(--danger-fg);
   color: var(--fg-default);
+}
+
+/* An image chip shows the image: a chip reading "image" says nothing about
+   which one, and a composer can hold several. */
+.attachmentThumb {
+  display: block;
+  width: calc(40px * var(--ui-scale));
+  height: calc(40px * var(--ui-scale));
+  object-fit: cover;
+}
+
+.attachment:has(.attachmentThumb) {
+  padding: 0;
+  border-radius: var(--sway-radius-sm);
+  line-height: 0;
+}
+
+/* The drop target is the whole composer, so an image can be dropped on the
+   input, the chips or the strip around them without hunting for a zone. */
+.composerDragging {
+  outline: 2px dashed var(--accent-fg);
+  outline-offset: calc(-1 * var(--sway-space-1));
+}
+
+.hiddenPicker {
+  display: none;
+}
+
+.attachButton {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  width: calc(28px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.attachButton:hover {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.attachButton:disabled {
+  color: var(--fg-muted);
+  cursor: default;
 }
 
 /* The header and its revert action share one strip: the action belongs to the
