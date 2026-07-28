@@ -585,6 +585,59 @@ pub async fn chat_tool_diff(
         .collect())
 }
 
+/// One file's whole-session diff, for the transcript's diff view.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFileDiff {
+    pub path: String,
+    #[serde(flatten)]
+    pub accumulated: snapshot::AccumulatedDiff,
+}
+
+/// Every file this session wrote, each as one diff spanning the session rather
+/// than one diff per tool call.
+///
+/// The transcript's diff view is the same session read a different way: instead
+/// of "what happened, in order", it answers "what is different now, and which
+/// step made it so". Both come off the same captured before-states, so the two
+/// views cannot disagree about what changed.
+///
+/// Files are ordered by when the session first touched them, so the list reads
+/// in the order the work happened.
+#[tauri::command]
+pub async fn chat_session_diff(
+    state: State<'_, ChatState>,
+    session_id: String,
+    cwd: String,
+) -> Result<Vec<SessionFileDiff>, String> {
+    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(Vec::new()) };
+    let captures = {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        guard.in_order()
+    };
+
+    // Group by path, preserving both first-touch order and per-path call order.
+    let mut order: Vec<String> = Vec::new();
+    let mut by_path: HashMap<String, Vec<(String, snapshot::BeforeState)>> = HashMap::new();
+    for (id, c) in captures {
+        if !by_path.contains_key(&c.path) {
+            order.push(c.path.clone());
+        }
+        by_path.entry(c.path).or_default().push((id, c.before));
+    }
+
+    let repo = PathBuf::from(&cwd);
+    Ok(order
+        .into_iter()
+        .filter_map(|path| {
+            let calls = by_path.get(&path)?;
+            let accumulated = snapshot::accumulate(&repo, &path, calls)?;
+            // A file the session opened and put back unchanged is not a change.
+            (!accumulated.diff.is_empty()).then_some(SessionFileDiff { path, accumulated })
+        })
+        .collect())
+}
+
 /// Undo one hunk of a tool call's edit, in the working tree.
 ///
 /// Scoped to the before-state *this call* captured rather than to a checkpoint:

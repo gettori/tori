@@ -228,6 +228,23 @@ impl SnapshotCache {
         self.entries.get(tool_use_id)
     }
 
+    /// Every capture, oldest first, as `(tool_use_id, captured)`.
+    ///
+    /// The order is the whole point: a session's *first* capture of a path is
+    /// the state that file was in before this session touched it, which is the
+    /// left-hand side an accumulating diff needs. Reading the map directly
+    /// would give whatever order it hashed into.
+    pub fn in_order(&self) -> Vec<(String, Captured)> {
+        let mut out = Vec::new();
+        for id in &self.order {
+            let Some(caps) = self.entries.get(id) else { continue };
+            for c in caps {
+                out.push((id.clone(), c.clone()));
+            }
+        }
+        out
+    }
+
     /// Test-only: the product asks about one tool call at a time. No companion
     /// `is_empty`, because nothing would call it - clippy's usual pairing rule
     /// does not apply to a method that only exists for assertions.
@@ -236,6 +253,111 @@ impl SnapshotCache {
         self.entries.len()
     }
 
+}
+
+/// The new-side line numbers a diff marks as added, in the file's current
+/// coordinates.
+///
+/// New-side rather than old-side because these are compared *across* diffs that
+/// share one right-hand side (the file as it is now); only the right-hand
+/// coordinates mean the same thing in all of them.
+fn changed_new_lines(diff: &str) -> Vec<u32> {
+    let mut out = Vec::new();
+    for hunk in crate::patch::parse_patch(diff).hunks {
+        let mut line = hunk.new_start;
+        for body in &hunk.body {
+            match body.chars().next() {
+                Some('+') => {
+                    out.push(line);
+                    line += 1;
+                }
+                // A removal occupies no line on the new side, so it does not
+                // advance the counter. A deletion-only hunk therefore claims no
+                // lines, which is correct: there is nothing left to attribute.
+                Some('-') => {}
+                _ => line += 1,
+            }
+        }
+    }
+    out
+}
+
+/// One file's whole-session diff, plus which tool call each hunk came from.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccumulatedDiff {
+    /// Unified diff from the session's earliest before-state for this file to
+    /// the file as it is now. For a single-session worktree with no manual
+    /// edits, this is the same change `git diff` reports between the session's
+    /// first and last checkpoint.
+    pub diff: String,
+    /// Whether the session created the file.
+    pub created: bool,
+    /// One entry per hunk of `diff`, in the same order: the call whose write
+    /// those lines last came from, or `None` when no call claims them (a manual
+    /// edit, or a call whose before-state was evicted).
+    pub hunk_tool_use_ids: Vec<Option<String>>,
+    /// Every call that wrote this file, oldest first.
+    pub tool_use_ids: Vec<String>,
+}
+
+/// Accumulate one file's session-long diff and attribute its hunks.
+///
+/// `calls` is every capture for this path, oldest first. The diff spans the
+/// first of them to the file's current content, so a line rewritten four times
+/// appears once, at its final value.
+///
+/// Attribution reads the same span from each call in turn. A line still
+/// differing from what call `i` saw is a line some call at or after `i` wrote,
+/// so taking the *last* call whose view still differs names the write that
+/// actually produced the text on screen. The consequence, accepted rather than
+/// hidden: a line two calls edited is credited only to the later one.
+pub fn accumulate(repo: &Path, path: &str, calls: &[(String, BeforeState)]) -> Option<AccumulatedDiff> {
+    let (_, first) = calls.first()?;
+    let diff = diff_against_now(repo, first, path)?;
+
+    let mut owner: HashMap<u32, String> = HashMap::new();
+    for (id, before) in calls {
+        let Some(d) = diff_against_now(repo, before, path) else { continue };
+        for line in changed_new_lines(&d) {
+            owner.insert(line, id.clone());
+        }
+    }
+    // Rank by call order so a hunk spanning two calls' lines reports the later
+    // one, matching what the line-level rule already does.
+    let rank: HashMap<&str, usize> =
+        calls.iter().enumerate().map(|(i, (id, _))| (id.as_str(), i)).collect();
+
+    let hunk_tool_use_ids = crate::patch::parse_patch(&diff)
+        .hunks
+        .iter()
+        .map(|hunk| {
+            let mut line = hunk.new_start;
+            let mut best: Option<&str> = None;
+            for body in &hunk.body {
+                match body.chars().next() {
+                    Some('+') => {
+                        if let Some(id) = owner.get(&line) {
+                            if best.is_none_or(|b| rank.get(id.as_str()) > rank.get(b)) {
+                                best = Some(id);
+                            }
+                        }
+                        line += 1;
+                    }
+                    Some('-') => {}
+                    _ => line += 1,
+                }
+            }
+            best.map(str::to_string)
+        })
+        .collect();
+
+    Some(AccumulatedDiff {
+        diff,
+        created: matches!(first, BeforeState::Absent),
+        hunk_tool_use_ids,
+        tool_use_ids: calls.iter().map(|(id, _)| id.clone()).collect(),
+    })
 }
 
 /// Capture every file a tool call is about to write.
@@ -353,6 +475,119 @@ mod tests {
         let ok = Command::new("git").current_dir(&dir).args(["init", "-q"]).status().unwrap();
         assert!(ok.success());
         dir
+    }
+
+    /// Only the changed lines, so two diffs of the same change compare equal
+    /// even though their headers name different blobs.
+    fn changed_lines(diff: &str) -> Vec<String> {
+        diff.lines()
+            .filter(|l| (l.starts_with('+') || l.starts_with('-')) && !l.starts_with("+++") && !l.starts_with("---"))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn git_out(repo: &std::path::Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .current_dir(repo)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t.test")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// The diff view's contract. Three writes to one file across a session
+    /// accumulate into **one** diff, and for a single-session worktree with no
+    /// manual edits that diff is the same change `git diff` reports between the
+    /// session's first and last checkpoint.
+    ///
+    /// The per-call diffs cannot say this: a line rewritten three times appears
+    /// three times across them, at values that no longer exist on disk.
+    #[test]
+    fn an_accumulated_diff_matches_git_between_the_first_and_last_checkpoint() {
+        let repo = temp_repo("accumulate");
+        let file = repo.join("a.txt");
+        std::fs::write(&file, "one\ntwo\nthree\nfour\n").unwrap();
+        let path = file.to_string_lossy().into_owned();
+        git_out(&repo, &["add", "-A"]);
+        let first_tree = git_out(&repo, &["write-tree"]);
+
+        // Three calls, each capturing what the previous left behind. Line two is
+        // rewritten twice, so its intermediate value must not survive.
+        let mut calls = Vec::new();
+        calls.push(("call-1".to_string(), capture(&repo, &path)));
+        std::fs::write(&file, "one\nTWO\nthree\nfour\n").unwrap();
+        calls.push(("call-2".to_string(), capture(&repo, &path)));
+        std::fs::write(&file, "one\nTWO-FINAL\nthree\nfour\n").unwrap();
+        calls.push(("call-3".to_string(), capture(&repo, &path)));
+        std::fs::write(&file, "one\nTWO-FINAL\nthree\nFOUR\n").unwrap();
+
+        git_out(&repo, &["add", "-A"]);
+        let last_tree = git_out(&repo, &["write-tree"]);
+
+        let acc = accumulate(&repo, &path, &calls).expect("the session captured this file");
+        let expected = git_out(&repo, &["diff", "--no-color", "-U3", &first_tree, &last_tree, "--", "a.txt"]);
+
+        assert_eq!(changed_lines(&acc.diff), changed_lines(&expected));
+        assert!(!acc.diff.contains("+TWO\n"), "the intermediate value is not on disk: {}", acc.diff);
+        assert_eq!(acc.tool_use_ids, ["call-1", "call-2", "call-3"]);
+        assert!(!acc.created);
+    }
+
+    /// A hunk is credited to the call that produced the text on screen, not to
+    /// the first call that happened to touch the file.
+    #[test]
+    fn a_hunk_is_credited_to_the_call_whose_write_still_stands() {
+        let repo = temp_repo("attribute");
+        let file = repo.join("b.txt");
+        // Two edit sites far enough apart to land in separate hunks.
+        let mut original = vec!["top"];
+        original.extend(std::iter::repeat_n("filler", 20));
+        original.push("bottom");
+        std::fs::write(&file, format!("{}\n", original.join("\n"))).unwrap();
+        let path = file.to_string_lossy().into_owned();
+
+        let mut calls = Vec::new();
+        calls.push(("call-top".to_string(), capture(&repo, &path)));
+        let mut now = original.clone();
+        now[0] = "TOP";
+        std::fs::write(&file, format!("{}\n", now.join("\n"))).unwrap();
+
+        calls.push(("call-bottom".to_string(), capture(&repo, &path)));
+        let last = now.len() - 1;
+        now[last] = "BOTTOM";
+        std::fs::write(&file, format!("{}\n", now.join("\n"))).unwrap();
+
+        let acc = accumulate(&repo, &path, &calls).unwrap();
+        assert_eq!(acc.hunk_tool_use_ids.len(), 2, "two edit sites, two hunks: {}", acc.diff);
+        assert_eq!(acc.hunk_tool_use_ids[0].as_deref(), Some("call-top"));
+        assert_eq!(
+            acc.hunk_tool_use_ids[1].as_deref(),
+            Some("call-bottom"),
+            "the second hunk is the second call's work, though both calls' diffs contain it"
+        );
+    }
+
+    /// A file the session created reads as a creation, and every line is the
+    /// creating call's.
+    #[test]
+    fn a_created_file_accumulates_as_a_creation() {
+        let repo = temp_repo("created");
+        let file = repo.join("new.txt");
+        let path = file.to_string_lossy().into_owned();
+
+        let calls = vec![("call-1".to_string(), capture(&repo, &path))];
+        assert_eq!(calls[0].1, BeforeState::Absent);
+        std::fs::write(&file, "fresh\n").unwrap();
+
+        let acc = accumulate(&repo, &path, &calls).unwrap();
+        assert!(acc.created);
+        assert!(acc.diff.contains("+fresh"), "{}", acc.diff);
+        assert_eq!(acc.hunk_tool_use_ids, [Some("call-1".to_string())]);
     }
 
     /// The card's whole job: two edits to one file in one turn are two

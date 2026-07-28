@@ -181,6 +181,7 @@ pub fn run() {
             chat::commands::chat_close,
             chat::commands::chat_tool_before_state,
             chat::commands::chat_tool_diff,
+            chat::commands::chat_session_diff,
             chat::commands::chat_revert_tool_hunk,
             chat::commands::chat_list_rules,
             chat::commands::chat_mcp_list,
