@@ -211,6 +211,12 @@ export default function ChatView(props: {
     // after. Null before the first turn, when there is no boundary to file
     // against - a write then belongs to no turn rather than to turn zero.
     let turnTs: number | null = null;
+    // Tool names by `toolUseId`. The name arrives on `toolCallStarted` and the
+    // write targets on `toolCallCompleted`, so the two have to be rejoined here
+    // to report which tool wrote what. Which tool ran is what tells attribution
+    // whether its file list is exhaustive: a `Bash` call names no path, so a
+    // turn containing one can only ever be a lower bound on what it wrote.
+    const toolNames = new Map<string, string>();
 
     // Backfill from the transcript the harness itself wrote, which is the same
     // file whether the earlier turns happened in this panel, in a PTY agent tab
@@ -283,6 +289,10 @@ export default function ChatView(props: {
       // edits, which is the only state reverting the turn can mean.
       if (ev.type === "turnStarted") {
         turnTs = Math.floor(Date.now() / 1000);
+        // No tool call outlives the turn that opened it, so anything still in
+        // here is spent. Cleared per turn rather than never, which would grow
+        // the map for as long as the panel is open.
+        toolNames.clear();
         void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
       }
       // Sway's own record of whether a turn is in flight. A killed app leaves
@@ -294,23 +304,33 @@ export default function ChatView(props: {
           turnId: ev.type === "turnStarted" ? ev.turnId : null,
         }).catch(() => {});
       }
+      if (ev.type === "toolCallStarted") toolNames.set(ev.toolUseId, ev.name);
       // The session says which files it wrote, so the gutter and the Changes
       // panel do not have to wait for the watcher to notice. The watcher's own
       // event still arrives; both consumers are idempotent.
       const written = filesWritten(ev);
       if (written.length) {
         emitWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, { paths: [...written] });
-        // The measurement that makes per-turn attribution exact: these are the
-        // paths *this* session wrote, which is what the whole-tree snapshot
-        // cannot say when several chats share one worktree. Recorded against
-        // the turn's own checkpoint timestamp so the two line up.
-        if (turnTs !== null) {
-          void invoke("checkpoint_note_touched", {
-            sessionId: props.sessionId,
-            promptTs: turnTs,
-            files: [...written],
-          }).catch(() => {});
-        }
+      }
+      // The measurement that makes per-turn attribution exact: these are the
+      // paths *this* session wrote, which is what the whole-tree snapshot
+      // cannot say when several chats share one worktree. Recorded against the
+      // turn's own checkpoint timestamp so the two line up.
+      //
+      // Reported per tool call and not per write, because a call that wrote
+      // nothing Sway could see is exactly the case attribution must know about:
+      // an unrecorded `Bash` call leaves a turn looking like a PTY turn, which
+      // takes the unfiltered branch and claims another session's edits.
+      if (turnTs !== null && (ev.type === "toolCallCompleted" || ev.type === "fileEdit")) {
+        void invoke("checkpoint_note_touched", {
+          sessionId: props.sessionId,
+          promptTs: turnTs,
+          // An unrecognised name is honest here: it is not on the
+          // path-parseable allowlist, so the turn grades as partial rather than
+          // claiming a completeness nothing established.
+          tool: toolNames.get(ev.toolUseId) ?? "",
+          files: [...written],
+        }).catch(() => {});
       }
     }
 

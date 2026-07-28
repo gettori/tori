@@ -172,6 +172,17 @@
   cursor: pointer;
 }
 
+/* Matches CheckpointTimeline's shared marker: both say "this row is not purely
+   this session's", and reading as one thing is the point. */
+.unattributed {
+  flex: none;
+  padding: 0 var(--sway-space-1);
+  border-radius: var(--sway-radius-sm);
+  background: var(--attention-subtle, var(--neutral-hover));
+  color: var(--attention-fg);
+  font-size: var(--sway-text-xs);
+}
+
 .checkpointDiff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
