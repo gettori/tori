@@ -433,6 +433,33 @@ export function filesWritten(ev: ChatEvent): readonly string[] {
 }
 
 /**
+ * The assistant's last word before a tool call: the nearest text or thinking
+ * item preceding it in the transcript.
+ *
+ * This is what lets the diff view answer "why is this line here" without
+ * storing a second copy of the reasoning beside the diff. The transcript
+ * already holds it in order; the diff only needs a way back in.
+ *
+ * Nearest-preceding rather than whole-turn, because a turn with six tool calls
+ * has six separate justifications and attributing all of them to every hunk
+ * would be worse than showing none.
+ */
+export function reasoningFor(items: readonly ChatItem[], toolUseId: string): string | null {
+  const at = items.findIndex((it) => it.kind === "tool" && it.toolUseId === toolUseId);
+  if (at < 0) return null;
+  for (let i = at - 1; i >= 0; i--) {
+    const it = items[i];
+    // A user turn boundary means the model said nothing before this call.
+    if (it.kind === "user") return null;
+    if (it.kind === "text" || it.kind === "thinking") {
+      const text = it.text.trim();
+      if (text) return text;
+    }
+  }
+  return null;
+}
+
+/**
  * Fold one event into the state.
  *
  * Tolerant by construction: an event for another session is ignored, a repeated

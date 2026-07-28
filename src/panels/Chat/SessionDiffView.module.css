@@ -1,0 +1,114 @@
+/* The diff view stands in for the message list, so it takes the same place in
+   the column flow: the one scrolling region between the header and the
+   composer. Row-level diff styling comes from DiffRows.module.css. */
+.diffView {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sway-space-2) 0;
+  background: var(--canvas-default);
+}
+
+/* The layout control, right-aligned so it sits out of the way of the diffs it
+   applies to. */
+.viewBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 calc(8px * var(--ui-scale)) var(--sway-space-1);
+}
+
+.empty {
+  padding: var(--sway-space-3);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.file {
+  margin-bottom: var(--sway-space-3);
+}
+
+.fileHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-block: 1px solid var(--border-default);
+  background: var(--canvas-card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.filePath {
+  font-weight: 600;
+  font-size: var(--sway-text-md);
+  color: var(--fg-default);
+}
+
+.badge {
+  padding: 0 var(--sway-space-1);
+  border-radius: var(--sway-radius-sm);
+  background: var(--attention-subtle, var(--neutral-hover));
+  color: var(--attention-fg);
+  font-size: var(--sway-text-xs);
+}
+
+.callCount {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+}
+
+/* The hunk header carries the "why" control, the same way the Changes panel's
+   header carries its per-hunk actions: one predictable place per hunk. */
+.hunkHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+}
+
+.whyToggle {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  cursor: pointer;
+}
+.whyToggle:hover {
+  color: var(--fg-default);
+}
+
+/* Files this session did not write. Set below the diffs and visibly quieter:
+   they are context for the work, not the work. */
+.foreign {
+  margin-top: var(--sway-space-3);
+  border-top: 1px solid var(--border-default);
+  padding-top: var(--sway-space-2);
+}
+
+.foreignHeading {
+  padding: 0 calc(8px * var(--ui-scale)) var(--sway-space-1);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+}
+
+.foreignRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+}
+
+/* The model's own words, set apart from the code so the two never read as one
+   block. Pre-wrap because reasoning arrives as prose with real line breaks. */
+.why {
+  white-space: pre-wrap;
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-left: 2px solid var(--border-default);
+  margin: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}

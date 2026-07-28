@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { User } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { marked } from "marked";
@@ -91,9 +91,18 @@ export default function MessageList(props: {
   modelLabelFor: (turnId: string) => string | null;
   onAnswer: (card: ToolItem, answer: Answer) => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
+  /** The turn to open at, so returning from another view lands where the reader
+   *  left rather than at the bottom. Null means the usual pin-to-bottom. */
+  anchorTurnId?: string | null;
+  /** Reports the turn the reader was on as this list goes away. */
+  onAnchor?: (turnId: string | null) => void;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
-  const [stuck, setStuck] = createSignal(true);
+  // Read once, deliberately: whether this list opens pinned to the bottom is an
+  // initial condition, not something that should flip mid-life. Returning to a
+  // remembered turn starts unpinned so the pin effect does not yank the reader
+  // to the tail before the anchor is restored.
+  const [stuck, setStuck] = createSignal(!props.anchorTurnId);
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
@@ -119,7 +128,7 @@ export default function MessageList(props: {
     return (
       <Show when={turnId()}>
         {(id) => (
-          <div class={styles.turnHeader}>
+          <div class={styles.turnHeader} data-turn-id={id()}>
             <span class={styles.turnDot} aria-hidden="true" />
             <span class={styles.turnAgent}>Claude</span>
             <Show when={props.modelLabelFor(id())}>
@@ -142,6 +151,40 @@ export default function MessageList(props: {
     const last = props.items[props.items.length - 1];
     return last && (last.kind === "text" || last.kind === "thinking") ? last.text.length : 0;
   };
+
+  // The turn the reader is looking at: the last header at or above the top of
+  // the viewport, else the first one below it. Turn headers are the anchor
+  // because a turn is the unit the reader is actually placed in; a pixel offset
+  // would not survive the list re-windowing.
+  function visibleTurn(): string | null {
+    if (!scroller) return null;
+    const headers = [...scroller.querySelectorAll<HTMLElement>("[data-turn-id]")];
+    if (!headers.length) return null;
+    const top = scroller.getBoundingClientRect().top;
+    let current = headers[0];
+    for (const h of headers) {
+      if (h.getBoundingClientRect().top > top + 1) break;
+      current = h;
+    }
+    return current.dataset.turnId ?? null;
+  }
+
+  onMount(() => {
+    // Captured now, not read again inside the microtask: props are reactive
+    // getters, and the anchor this mount is restoring is the one it opened
+    // with.
+    const anchor = props.anchorTurnId;
+    if (!anchor) return;
+    // After the first paint, so the rows the anchor is measured against exist.
+    queueMicrotask(() => {
+      const target = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(anchor)}"]`);
+      if (!target || !scroller) return;
+      scroller.scrollTop += target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      setStuck(atBottom());
+    });
+  });
+
+  onCleanup(() => props.onAnchor?.(visibleTurn()));
 
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(
