@@ -1,5 +1,12 @@
-import { For, Show, Switch, Match, createResource } from "solid-js";
+import { For, Show, Switch, Match, createResource, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { ensureAgentsLoaded, findAgent } from "../../utils/agents";
+import {
+  chatTier,
+  publishedCapabilities,
+  steerCostDetail,
+  type PublishedCapability,
+} from "../../utils/chatCapabilities";
 import styles from "./Settings.module.css";
 
 // One card per registered adapter, answering the question a new user actually
@@ -41,8 +48,24 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
+// What each published key means, since the value alone is deliberately terse.
+// Keyed on the capability's own `key`, so a value changing (a better rewind, a
+// re-measured steer) does not orphan its explanation.
+const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
+  rewind:
+    "Puts the files back to a chosen turn and carries the conversation into a fork. The forked agent still remembers the turns you undid.",
+  steer: "A message typed during a turn goes into that turn rather than waiting for the next one.",
+  hooks: "Per-tool approval, Sway-owned rules and spend ceilings, all riding the agent's PreToolUse hook.",
+};
+
 function AgentCard(props: { agent: AgentHealth }) {
   const a = () => props.agent;
+  // From the resolved adapter rather than from `agent_health`, which answers
+  // about the binary on disk and knows nothing about the chat transport. An
+  // agent still resolving reports the PTY-only tier, which is the honest
+  // answer to "what can it do" before the adapter has been read.
+  const tier = () => chatTier(findAgent(a().id).chat?.transport);
+  const capabilities = () => publishedCapabilities(tier());
   return (
     <div class={styles.card}>
       <div class={styles.cardHead}>
@@ -95,6 +118,33 @@ function AgentCard(props: { agent: AgentHealth }) {
         </Show>
       </div>
 
+      {/* What the chat surface can actually do with this agent, beside the
+          probes rather than on a page of its own: "is it installed" and "how
+          much of Sway works with it" are the same question asked twice.
+
+          Each entry publishes the *qualified* value, never the bare feature
+          name. A chip reading "rewind" would promise the unqualified capability
+          when what shipped is a fork the agent still remembers. */}
+      <div class={styles.cardMeta}>
+        <Show
+          when={capabilities().length}
+          fallback={<>Terminal only. Sway has no chat transport for this agent.</>}
+        >
+          Chat:{" "}
+          <For each={capabilities()}>
+            {(cap, i) => (
+              <>
+                {i() > 0 ? ", " : ""}
+                <code title={CAPABILITY_NOTES[cap.key]}>{cap.label}</code>
+              </>
+            )}
+          </For>
+        </Show>
+      </div>
+      <Show when={steerCostDetail(tier())}>
+        {(detail) => <div class={styles.hint}>{detail()}</div>}
+      </Show>
+
       <Show when={a().overridePath}>
         {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
       </Show>
@@ -104,6 +154,10 @@ function AgentCard(props: { agent: AgentHealth }) {
 
 export default function AgentsSection() {
   const [health] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  // The tier is read off the resolved adapter, which the sidebar usually has
+  // already asked for. Asking again is a no-op after the first call, and it is
+  // what makes this section correct when Settings is the first thing opened.
+  onMount(() => ensureAgentsLoaded());
 
   return (
     <section class={styles.section}>

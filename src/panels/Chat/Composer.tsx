@@ -46,8 +46,13 @@ export default function Composer(props: {
   running: boolean;
   /** The running turn can take input right now, so Enter steers it rather than
    *  queueing for the next one. False for the window between Enter and the
-   *  child's acknowledgement, where there is no turn to steer yet. */
+   *  child's acknowledgement, where there is no turn to steer yet, and false
+   *  for a harness whose declared tier cannot take input mid-turn. */
   steering: boolean;
+  /** How long a steer took when it was measured (`"1.5-5.4s"`), or null when
+   *  there is nothing to quote. Shown rather than dropped, because the one
+   *  thing this control must not imply is that a steer is instant. */
+  steerCost: string | null;
   queue: readonly QueuedInput[];
   attachments: readonly PendingBlock[];
   held: boolean;
@@ -423,13 +428,16 @@ export default function Composer(props: {
           ref={input}
           class={styles.input}
           rows="1"
-          // Says what Enter will actually do, and does not present a steer as
-          // instant: Phase 2's spike measured 1.5s to 5.4s from the write to
-          // the model acting on it.
+          // Says what Enter will actually do, and quotes the measured delivery
+          // rather than letting a steer read as instant. The figure comes from
+          // the declared tier, so it cannot drift from what was measured; the
+          // fallback wording still refuses to promise immediacy.
           placeholder={
             props.running
               ? props.steering
-                ? "Steer this turn, picked up at its next step"
+                ? props.steerCost
+                  ? `Steer this turn, picked up in ${props.steerCost}`
+                  : "Steer this turn, picked up at its next step"
                 : "Type to queue for the next turn"
               : "Reply, or @ a file · / for commands"
           }
