@@ -362,6 +362,21 @@ pub(crate) fn all_sessions(index: &SessionIndex) -> Vec<SessionMeta> {
     ensure_index(index)
 }
 
+/// The ids of every session anchored at `folder` or under it.
+///
+/// For teardown, where the question is "what did this directory own" rather
+/// than "what should the tree show", so the overlay's names and archive flags
+/// are beside the point. Must be called while the directory still exists: a
+/// session is found by its recorded `cwd`, and nothing matches a path that is
+/// already gone.
+pub(crate) fn ids_under(index: &SessionIndex, folder: &str) -> Vec<String> {
+    ensure_index(index)
+        .into_iter()
+        .filter(|s| cwd_matches(&s.cwd, folder))
+        .map(|s| s.id)
+        .collect()
+}
+
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
 /// newest first.
 #[tauri::command]

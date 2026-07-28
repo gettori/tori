@@ -10,7 +10,11 @@ use std::process::Command;
 
 use serde::Serialize;
 
-const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "dist", "target"];
+/// Same list as `fs::IGNORED_DIRS`, including `.sway-attempts`: an attempt is a
+/// second checkout of the same project, so without it every hit in the user's
+/// own code would come back once more per attempt.
+const IGNORED_DIRS: &[&str] =
+    &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
 #[derive(Clone, Serialize)]
 pub struct SearchMatch {
