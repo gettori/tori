@@ -30,7 +30,8 @@
 //! `cfg(test)`. The real Codex and ACP transports replace them wholesale.
 
 use super::model::{
-    ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolStatus, TurnOutcome, Usage,
+    ChatCommand, ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolStatus, TurnOutcome,
+    Usage,
 };
 
 // ---------------------------------------------------------------------------
@@ -336,6 +337,60 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
 }
 
 // ---------------------------------------------------------------------------
+// The other direction: what a harness can be *asked* to do
+// ---------------------------------------------------------------------------
+
+/// What a harness does with one [`ChatCommand`].
+///
+/// The command side needs its own check for a reason the event side does not
+/// have: an event Sway cannot map is a gap in the *model*, but a verb a harness
+/// cannot serve is normal and permanent. Nothing is wrong with a transport that
+/// has no mid-turn input; what would be wrong is a verb only Claude can be
+/// asked for, since then the trait is Claude's interface wearing a neutral name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Support {
+    /// The harness has a wire form for this verb.
+    Native,
+    /// It has none. The transport returns an error, and the caller degrades;
+    /// it must never accept the call and quietly do something else, which the
+    /// caller could not tell apart from success.
+    Refuses,
+}
+
+/// Codex `app-server`, per the captured protocol in the parked handoff.
+///
+/// Exhaustive on purpose: a new [`ChatCommand`] stops this compiling until
+/// someone says what a non-Claude harness does with it.
+pub fn codex_support(command: &ChatCommand) -> Support {
+    match command {
+        ChatCommand::SendTurn { .. } => Support::Native,
+        // No mid-turn input in the captured protocol. This is the answer the
+        // verb exists to make expressible: refusable, not absent.
+        ChatCommand::Steer { .. } => Support::Refuses,
+        ChatCommand::Interrupt { .. } => Support::Native,
+        ChatCommand::RespondPermission { .. } => Support::Native,
+        ChatCommand::SetMode { .. } => Support::Native,
+        ChatCommand::SetModel { .. } => Support::Native,
+        ChatCommand::Close { .. } => Support::Native,
+    }
+}
+
+/// ACP, same rules.
+pub fn acp_support(command: &ChatCommand) -> Support {
+    match command {
+        ChatCommand::SendTurn { .. } => Support::Native,
+        ChatCommand::Steer { .. } => Support::Refuses,
+        ChatCommand::Interrupt { .. } => Support::Native,
+        ChatCommand::RespondPermission { .. } => Support::Native,
+        // No model or effort switch mid-session in the captured protocol; the
+        // mode update is an event ACP *sends*, not one it takes.
+        ChatCommand::SetMode { .. } => Support::Refuses,
+        ChatCommand::SetModel { .. } => Support::Refuses,
+        ChatCommand::Close { .. } => Support::Native,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -472,5 +527,30 @@ mod tests {
     fn file_edit_is_derived_not_mapped() {
         let kinds = [FileEditKind::Created, FileEditKind::Modified, FileEditKind::Deleted];
         assert_eq!(kinds.len(), 3);
+    }
+
+    /// A verb only Claude can be asked for would make `AgentTransport` Claude's
+    /// interface under a neutral name, so every command has to be answerable by
+    /// a harness that is not Claude - including by refusing it.
+    ///
+    /// `Steer` is the one this phase publishes, and both non-Claude harnesses
+    /// refuse it. That is the *right* answer, and the point: a refusable verb is
+    /// neutral, an unaskable one is not.
+    #[test]
+    fn every_command_is_answerable_by_a_harness_that_is_not_claude() {
+        let steer = ChatCommand::Steer { session_id: "s1".into(), blocks: vec![] };
+        assert_eq!(codex_support(&steer), Support::Refuses);
+        assert_eq!(acp_support(&steer), Support::Refuses);
+
+        // Not every verb may refuse, or the trait would describe nothing two
+        // harnesses share. Send, interrupt and close are the floor.
+        for cmd in [
+            ChatCommand::SendTurn { session_id: "s1".into(), blocks: vec![] },
+            ChatCommand::Interrupt { session_id: "s1".into() },
+            ChatCommand::Close { session_id: "s1".into() },
+        ] {
+            assert_eq!(codex_support(&cmd), Support::Native, "{cmd:?} is the shared floor");
+            assert_eq!(acp_support(&cmd), Support::Native, "{cmd:?} is the shared floor");
+        }
     }
 }

@@ -21,6 +21,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
     <Composer
       running={false}
       steering={false}
+      steerCost={null}
       queue={[]}
       attachments={[]}
       commands={[]}
@@ -82,10 +83,23 @@ describe("Composer keys", () => {
   // two it will do. It also must not present a steer as instant: Phase 2 measured
   // 1.5s to 5.4s from the write to the model acting on it.
   it("says whether typing steers this turn or queues for the next", () => {
-    expect(setup({ running: true, steering: true }).input.placeholder).toBe(
-      "Steer this turn, picked up at its next step",
+    expect(setup({ running: true, steering: true, steerCost: "1.5-5.4s" }).input.placeholder).toBe(
+      "Steer this turn, picked up in 1.5-5.4s",
     );
     expect(setup({ running: true, steering: false }).input.placeholder).toBe("Type to queue for the next turn");
+  });
+
+  // The figure comes from the declared tier, so a harness measured differently
+  // quotes its own; one with nothing measured still refuses to imply immediacy.
+  it("quotes the measured delivery rather than implying a steer is instant", () => {
+    const slower = setup({ running: true, steering: true, steerCost: "3.0-9.0s" }).input.placeholder;
+    expect(slower).toBe("Steer this turn, picked up in 3.0-9.0s");
+
+    const unmeasured = setup({ running: true, steering: true, steerCost: null }).input.placeholder;
+    expect(unmeasured).toBe("Steer this turn, picked up at its next step");
+    for (const text of [slower, unmeasured]) {
+      expect(text).not.toMatch(/instant|immediate|now\b/i);
+    }
   });
 });
 
@@ -318,6 +332,7 @@ describe("draft and history", () => {
       <Composer
         running={false}
         steering={false}
+        steerCost={null}
         queue={[]}
         attachments={[]}
         commands={[]}
@@ -350,6 +365,7 @@ describe("draft and history", () => {
       <Composer
         running={false}
         steering={false}
+        steerCost={null}
         queue={[]}
         attachments={[]}
         commands={[]}

@@ -409,6 +409,14 @@
   cursor: default;
 }
 
+/* Why there are no rules to show, for a harness with no approval hook. Prose,
+   not a dimmed control: the whole point is that there is nothing to operate. */
+.rulesUnsupported {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  line-height: 1.5;
+}
+
 .rulesBody {
   margin: calc(6px * var(--ui-scale)) 0 0;
   padding: 0;

@@ -57,6 +57,7 @@ import {
   type PickableModel,
 } from "../../utils/chatModels";
 import { findAgent } from "../../utils/agents";
+import { chatTier, steerCostLabel } from "../../utils/chatCapabilities";
 import { settings } from "../Settings/settingsStore";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
@@ -548,6 +549,12 @@ export default function ChatView(props: {
   // one working tree and that checkpoint attribution suffers for it.
   const multiChatNotice = () => shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
 
+  // What the harness behind this session actually supports, from the adapter's
+  // declared transport. Every gate below asks this rather than asking whether
+  // the code exists in this build: the code is here for every session, and a
+  // second harness would otherwise inherit Claude's measurements by silence.
+  const tier = () => chatTier(findAgent(props.agentId).chat?.transport);
+
   async function sendBlocks(blocks: ContentBlock[]) {
     edit((s) => pushUserTurn(s, blocks));
     try {
@@ -598,6 +605,17 @@ export default function ChatView(props: {
    * after that, so without this a session blocked on a permission prompt would
    * refuse the message and eat it.
    */
+  /**
+   * Both halves of "this message can go into the running turn".
+   *
+   * `steerable` knows only that a turn is under way; it cannot know whether
+   * *this* harness reads stdin mid-turn. A harness that buffers to turn end
+   * would take the write and deliver it as the next turn, which the user could
+   * not tell apart from a steer that landed, so the declared tier decides and
+   * anything short of `consumed-before-next-tool` queues instead.
+   */
+  const canSteer = () => steerable(state) && tier().steer === "consumed-before-next-tool";
+
   async function steer(text: string) {
     // Before the gate, not inside `write`: bailing after the gate has committed
     // would report "sent" for a message that was never composed.
@@ -638,7 +656,7 @@ export default function ChatView(props: {
     // side all three are "I sent that".
     pushHistory(props.sessionId, text);
     if (running()) {
-      if (steerable(state)) {
+      if (canSteer()) {
         void steer(text);
         return;
       }
@@ -759,6 +777,11 @@ export default function ChatView(props: {
 
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
+    // The stop rides the same rule file the approval hook reads, so a harness
+    // without that hook cannot be stopped by it. Reporting a ceiling as armed
+    // there would be the one failure a spend ceiling must not have: the user
+    // believes the spending stopped and it did not.
+    if (!tier().hooks) return;
     const budgets = settings.budgets;
     if (!budgets) return;
     const now = spend();
@@ -1248,7 +1271,7 @@ export default function ChatView(props: {
               </div>
               <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
               <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
-              <RuleList rules={rules()} onRemove={onRemoveRule} onRestrict={onRestrict} />
+              <RuleList rules={rules()} hooks={tier().hooks} onRemove={onRemoveRule} onRestrict={onRestrict} />
               <SessionInfo
                 mcpServers={state.mcpServers}
                 skills={state.skills}
@@ -1290,7 +1313,11 @@ export default function ChatView(props: {
         }}
         onAnswer={onAnswer}
         onRevertHunk={onRevertHunk}
-        rewindTsFor={(turnId) => turnStamps()[turnId] ?? null}
+        // Gated on the declaration, not on the checkpoint alone: a harness that
+        // cannot fork has no way to carry the conversation across, and offering
+        // "rewind to here" there would promise the tree *and* the conversation
+        // and deliver only the tree.
+        rewindTsFor={(turnId) => (tier().rewind === "fork" ? turnStamps()[turnId] ?? null : null)}
         onRewind={onRewind}
       />
       </Show>
@@ -1299,7 +1326,8 @@ export default function ChatView(props: {
 
       <Composer
         running={running()}
-        steering={steerable(state)}
+        steering={canSteer()}
+        steerCost={steerCostLabel(tier())}
         queue={state.queue}
         attachments={pendingFor(props.sessionId)}
         draft={draftFor(props.sessionId)}
