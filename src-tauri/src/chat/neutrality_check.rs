@@ -348,6 +348,7 @@ mod tests {
     fn target(ev: &ChatEvent) -> &'static str {
         match ev {
             ChatEvent::SessionStarted { .. } => "sessionStarted",
+            ChatEvent::SessionReady { .. } => "sessionReady",
             ChatEvent::HookFired { .. } => "hookFired",
             ChatEvent::TurnStarted { .. } => "turnStarted",
             ChatEvent::UserMessage { .. } => "userMessage",

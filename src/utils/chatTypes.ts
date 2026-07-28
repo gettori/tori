@@ -133,6 +133,16 @@ export type ChatEvent =
       fastModeDisabledReason: string | null;
       extra?: Extra;
     }
+  /// The child answered the `initialize` handshake: alive and talking, but no
+  /// turn has run yet, so `system/init` has not opened the session. Emitted
+  /// once, before `sessionStarted`, carrying the catalogues the response held
+  /// so the UI is off its fallbacks before the first message.
+  | {
+      type: "sessionReady";
+      sessionId: string;
+      slashCommands: SlashCommand[];
+      models: ChatModelInfo[];
+    }
   /// One hook execution, from the in-band `hook_started`/`hook_response` frames
   /// that `--include-hook-events` turns on. One event per **frame**: a hook
   /// produces a `started` and then a `finished` sharing one `hookId`.
@@ -269,6 +279,7 @@ export type ChatEventType = ChatEvent["type"];
 /// consumer can assert it handles all of them.
 export const CHAT_EVENT_TYPES = [
   "sessionStarted",
+  "sessionReady",
   "hookFired",
   "turnStarted",
   "userMessage",
@@ -353,6 +364,9 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "fastModeDisabledReason",
     ],
     optional: ["extra"],
+  },
+  sessionReady: {
+    required: ["sessionId", "slashCommands", "models"],
   },
   hookFired: {
     required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],

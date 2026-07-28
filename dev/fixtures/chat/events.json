@@ -47,6 +47,33 @@
     }
   },
   {
+    "type": "sessionReady",
+    "sessionId": "s1",
+    "slashCommands": [
+      {
+        "name": "review",
+        "description": "Multi-lens code review",
+        "argumentHint": "<pr>",
+        "aliases": [
+          "rv"
+        ]
+      }
+    ],
+    "models": [
+      {
+        "value": "sonnet",
+        "resolvedModel": "claude-sonnet-5",
+        "displayName": "Sonnet 5",
+        "description": "Balanced",
+        "supportsEffort": true,
+        "supportedEffortLevels": [
+          "low",
+          "high"
+        ]
+      }
+    ]
+  },
+  {
     "type": "turnStarted",
     "sessionId": "s1",
     "turnId": "t1",

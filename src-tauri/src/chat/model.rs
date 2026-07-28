@@ -297,6 +297,27 @@ pub enum ChatEvent {
         extra: Extra,
     },
 
+    /// The child answered a control request: alive and talking, but no turn
+    /// has run, so `system/init` has not opened the session yet. Emitted once,
+    /// before `SessionStarted`, from the `initialize` handshake the transport
+    /// sends at spawn. Without it a freshly opened chat reads "connecting"
+    /// until the first message, about a child that answered within a second.
+    ///
+    /// Carries the catalogues the handshake response held, because they
+    /// otherwise wait for the first `system/init` to ride `SessionStarted`
+    /// into the UI - which is exactly the wait this event exists to end.
+    SessionReady {
+        session_id: String,
+        /// The rich command catalogue from the `initialize` response; empty
+        /// when the response did not carry one.
+        #[serde(default)]
+        slash_commands: Vec<SlashCommand>,
+        /// The model catalogue from the same response, empty the same way,
+        /// which the picker reads as "fall back to the adapter table".
+        #[serde(default)]
+        models: Vec<ChatModelInfo>,
+    },
+
     /// One hook execution, from the in-band `hook_started`/`hook_response`
     /// frames that `--include-hook-events` turns on.
     ///
@@ -615,6 +636,23 @@ mod tests {
                 fast_mode_disabled_reason: Some("sdk_opt_in_required".into()),
                 extra: extra(),
             },
+            ChatEvent::SessionReady {
+                session_id: "s1".into(),
+                slash_commands: vec![SlashCommand {
+                    name: "review".into(),
+                    description: "Multi-lens code review".into(),
+                    argument_hint: Some("<pr>".into()),
+                    aliases: vec!["rv".into()],
+                }],
+                models: vec![ChatModelInfo {
+                    value: "sonnet".into(),
+                    resolved_model: "claude-sonnet-5".into(),
+                    display_name: "Sonnet 5".into(),
+                    description: "Balanced".into(),
+                    supports_effort: true,
+                    supported_effort_levels: vec!["low".into(), "high".into()],
+                }],
+            },
             ChatEvent::TurnStarted {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
@@ -821,6 +859,7 @@ mod tests {
         for ev in &events {
             let _name = match ev {
                 ChatEvent::SessionStarted { .. } => "sessionStarted",
+                ChatEvent::SessionReady { .. } => "sessionReady",
                 ChatEvent::HookFired { .. } => "hookFired",
                 ChatEvent::TurnStarted { .. } => "turnStarted",
                 ChatEvent::UserMessage { .. } => "userMessage",
@@ -840,8 +879,8 @@ mod tests {
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
             };
         }
-        // 18 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 18, "every_event() must hold exactly one sample per variant");
+        // 19 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 19, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]
