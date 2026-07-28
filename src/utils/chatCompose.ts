@@ -191,6 +191,26 @@ export function setDraft(sessionId: string, text: string) {
   setDrafts((prev) => (prev[sessionId] === text ? prev : { ...prev, [sessionId]: text }));
 }
 
+/**
+ * Put back text whose send did not land, so the user can retry without
+ * retyping. [[concept_safe_send]]'s rule ("keep the typed text on anything but
+ * sent"), applied to a composer that has already been cleared.
+ *
+ * A composer clears itself the moment a send is *handed off*, which is right
+ * for a path that cannot fail from there and wrong for one that can: a chat
+ * steer is refused while the session waits on a permission prompt, and that
+ * answer arrives long after the input emptied.
+ *
+ * **Only into an empty composer.** The user may have started typing something
+ * else during the round trip, and restoring over that would lose the newer text
+ * to save the older one. In that case the recall history is the fallback, which
+ * is why the send is recorded there whichever path it took.
+ */
+export function restoreDraft(sessionId: string, text: string) {
+  if (!text || draftFor(sessionId)) return;
+  setDraft(sessionId, text);
+}
+
 /** Everything a composer was holding, cleared together: chips, draft and recall
  *  history. A sent turn must not leave chips behind, and a closed tab must not
  *  leave any of the three for a session whose transcript is no longer on screen.

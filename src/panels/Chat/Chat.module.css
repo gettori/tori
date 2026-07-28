@@ -213,6 +213,27 @@
   padding: 0.1em 0.35em;
 }
 
+/* A steer: the same person's message, delivered into the turn above it rather
+   than opening one of its own. Indented and tightened so it reads as an aside
+   within that turn, not as the next thing asked. */
+.steerRow {
+  margin-top: calc(6px * var(--ui-scale));
+  margin-left: calc(20px * var(--ui-scale));
+}
+.steerRow .userAvatar {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+}
+.steerRow .userText {
+  padding-top: 0;
+  font-size: var(--sway-text-md);
+}
+.steerLabel {
+  margin-right: calc(6px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+}
+
 /* The reply's byline: who answered, once per turn. */
 .turnHeader {
   display: flex;
@@ -413,7 +434,7 @@
   gap: calc(6px * var(--ui-scale));
   margin-top: calc(8px * var(--ui-scale));
   padding-top: calc(8px * var(--ui-scale));
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
 }
 
 .ruleKind,
@@ -421,7 +442,7 @@
   padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-sm);
-  background: var(--bg-default);
+  background: var(--canvas-input);
   color: var(--fg-default);
   font: inherit;
   font-size: var(--sway-text-md);

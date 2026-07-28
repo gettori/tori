@@ -23,12 +23,13 @@ import styles from "./Chat.module.css";
  * send button becomes a stop button while a turn runs, so there is one control
  * in one place rather than two that disagree.
  *
- * Typing during a turn never drops input and never interleaves it into the
- * running turn: it queues, visibly. The strip below the input is the queue, and
- * every entry in it is removable. When the turn was *cancelled* the queue is
- * held rather than flushed (see `pendingFlush`), and the strip grows send-now
- * and discard actions, because a turn the user stopped must not fire the
- * messages they stopped it to prevent.
+ * Typing during a turn never drops input. Once the turn is acknowledged the
+ * message *steers* it: sent straight away, picked up at the agent's next step.
+ * Before that acknowledgement there is no turn to steer, so it queues, visibly.
+ * The strip below the input is the queue, and every entry in it is removable.
+ * When the turn was *cancelled* the queue is held rather than flushed (see
+ * `pendingFlush`), and the strip grows send-now and discard actions, because a
+ * turn the user stopped must not fire the messages they stopped it to prevent.
  *
  * Attachments (an editor selection, a hunk comment, a diagnostic) arrive as
  * chips above the input and wait there. They are removable and nothing about
@@ -43,6 +44,10 @@ import styles from "./Chat.module.css";
  */
 export default function Composer(props: {
   running: boolean;
+  /** The running turn can take input right now, so Enter steers it rather than
+   *  queueing for the next one. False for the window between Enter and the
+   *  child's acknowledgement, where there is no turn to steer yet. */
+  steering: boolean;
   queue: readonly QueuedInput[];
   attachments: readonly PendingBlock[];
   held: boolean;
@@ -418,7 +423,16 @@ export default function Composer(props: {
           ref={input}
           class={styles.input}
           rows="1"
-          placeholder={props.running ? "Type to queue for the next turn" : "Reply, or @ a file · / for commands"}
+          // Says what Enter will actually do, and does not present a steer as
+          // instant: Phase 2's spike measured 1.5s to 5.4s from the write to
+          // the model acting on it.
+          placeholder={
+            props.running
+              ? props.steering
+                ? "Steer this turn, picked up at its next step"
+                : "Type to queue for the next turn"
+              : "Reply, or @ a file · / for commands"
+          }
           value={text()}
           disabled={props.disabled}
           onInput={(e) => {

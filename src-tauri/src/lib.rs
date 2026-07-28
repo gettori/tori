@@ -174,6 +174,7 @@ pub fn run() {
             pty::pty_kill,
             chat::commands::chat_spawn,
             chat::commands::chat_send,
+            chat::commands::chat_steer,
             chat::commands::chat_interrupt,
             chat::commands::chat_respond_permission,
             chat::commands::chat_set_mode,

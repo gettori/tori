@@ -268,6 +268,7 @@ impl ChatHost {
     pub fn dispatch(&self, command: &ChatCommand) -> Result<(), String> {
         let session_id = match command {
             ChatCommand::SendTurn { session_id, .. }
+            | ChatCommand::Steer { session_id, .. }
             | ChatCommand::Interrupt { session_id }
             | ChatCommand::RespondPermission { session_id, .. }
             | ChatCommand::SetMode { session_id, .. }
@@ -280,6 +281,7 @@ impl ChatHost {
         let mut t = lock(&transport);
         match command {
             ChatCommand::SendTurn { blocks, .. } => t.send(blocks),
+            ChatCommand::Steer { blocks, .. } => t.steer(blocks),
             ChatCommand::Interrupt { .. } => t.interrupt(),
             ChatCommand::RespondPermission { tool_use_id, request_id, decision, scope, reason, .. } => {
                 t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref())
@@ -297,6 +299,10 @@ impl ChatHost {
     /// what they do rather than as enum construction.
     pub fn send(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
         self.dispatch(&ChatCommand::SendTurn { session_id: session_id.to_string(), blocks })
+    }
+
+    pub fn steer(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
+        self.dispatch(&ChatCommand::Steer { session_id: session_id.to_string(), blocks })
     }
 
     pub fn interrupt(&self, session_id: &str) -> Result<(), String> {
@@ -397,6 +403,9 @@ mod tests {
             Ok(())
         }
         fn send(&mut self, _blocks: &[ContentBlock]) -> Result<(), String> {
+            Ok(())
+        }
+        fn steer(&mut self, _blocks: &[ContentBlock]) -> Result<(), String> {
             Ok(())
         }
         fn interrupt(&mut self) -> Result<(), String> {
@@ -584,6 +593,9 @@ mod tests {
                 Err("no such file or directory".to_string())
             }
             fn send(&mut self, _b: &[ContentBlock]) -> Result<(), String> {
+                Ok(())
+            }
+            fn steer(&mut self, _b: &[ContentBlock]) -> Result<(), String> {
                 Ok(())
             }
             fn interrupt(&mut self) -> Result<(), String> {

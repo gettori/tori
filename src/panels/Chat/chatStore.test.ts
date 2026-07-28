@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent } from "../../utils/chatTypes";
+import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
 import {
   applyEvent,
   beginReconnect,
@@ -18,6 +19,7 @@ import {
   modelPending,
   pendingApprovals,
   pendingFlush,
+  pushSteer,
   pushUserTurn,
   reasoningFor,
   releaseQueue,
@@ -32,12 +34,15 @@ import {
   shownEffort,
   shownMode,
   shownModelValue,
+  steerable,
+  steerProbe,
   takeForSend,
   visibleItems,
   windowed,
   type ChatItem,
   type ChatState,
   type ToolItem,
+  type UserItem,
 } from "./chatStore";
 
 // The same file the Rust round-trip test writes, so a renamed field on either
@@ -372,6 +377,102 @@ describe("the composer queue", () => {
   });
 });
 
+// Phase 2's spike 5 measured a message written mid-turn being consumed before
+// the next tool call, 3 trials of 3. So an acknowledged running turn takes input
+// directly, and the queue narrows to the one window where there is still no turn
+// to steer.
+describe("steering a running turn", () => {
+  it("is offered only once the child has acknowledged the turn", () => {
+    const s = replay([FIXTURE[0]]);
+    expect(steerable(s)).toBe(false);
+
+    // Between Enter and `turnStarted` the turn is in flight but has not begun,
+    // so there is nothing to steer and the queue is still the right answer.
+    pushUserTurn(s, [{ type: "text", text: "do the thing" }]);
+    expect(isRunning(s)).toBe(true);
+    expect(steerable(s)).toBe(false);
+
+    applyEvent(s, turnStarted("t1"));
+    expect(steerable(s)).toBe(true);
+  });
+
+  it("is not offered once the turn or the session is over", () => {
+    const s = replay([FIXTURE[0], turnStarted("t1")]);
+    applyEvent(s, turnDone("t1", "completed"));
+    expect(steerable(s)).toBe(false);
+
+    applyEvent(s, turnStarted("t2"));
+    applyEvent(s, { type: "sessionEnded", sessionId: "s1", reason: "child exited" });
+    expect(steerable(s)).toBe(false);
+  });
+
+  it("records the steer without claiming a second turn is in flight", () => {
+    const s = replay([FIXTURE[0], turnStarted("t1")]);
+    pushSteer(s, [{ type: "text", text: "actually, stop reading and summarise" }]);
+
+    const last = s.items[s.items.length - 1];
+    expect(last.kind).toBe("user");
+    expect((last as UserItem).steer).toBe(true);
+    // The turn it interrupted is still the running one. `awaitingTurn` would
+    // make the composer wait for a `turnStarted` that is never coming, and a
+    // changed `activeTurnId` would split one turn's output across two headers.
+    expect(s.awaitingTurn).toBe(false);
+    expect(s.activeTurnId).toBe("t1");
+    expect(steerable(s)).toBe(true);
+  });
+
+  it("marks an ordinary turn as not a steer", () => {
+    const s = replay([FIXTURE[0]]);
+    pushUserTurn(s, [{ type: "text", text: "do the thing" }]);
+    expect((s.items[s.items.length - 1] as UserItem).steer).toBe(false);
+    expect(s.awaitingTurn).toBe(true);
+  });
+
+  // Task 4's contract, asserted through the real gate rather than by reading
+  // the probe's return value: what matters is that a blocked session is refused
+  // with the reason the PTY route already gives, and that nothing is written.
+  it("is refused, with the existing reason, while the session awaits a permission answer", async () => {
+    const s = replay([FIXTURE[0], turnStarted("t1"), started("t1", "toolu_1"), prompt("toolu_1")]);
+    expect(steerable(s)).toBe(true);
+    expect(steerProbe(s)).toBe("blocked");
+
+    const written: string[] = [];
+    const refused = await sendWithProbeGate("stop, just summarise", {
+      probe: async () => steerProbe(s),
+      write: async (t) => void written.push(t),
+      now: () => 0,
+      sleep: async () => {},
+    });
+    expect(refused).toEqual({ kind: "blocked" });
+    expect(written).toEqual([]);
+    // The same string the terminal route refuses with, so one rule does not
+    // read as two.
+    expect(BLOCKED_REASON).toContain("waiting for permission");
+
+    // Answering the prompt is what unblocks it, so the refusal is a "not yet"
+    // rather than a dead end.
+    resolveApproval(s, "toolu_1");
+    expect(steerProbe(s)).toBe("ready");
+    expect(await sendWithProbeGate("stop, just summarise", {
+      probe: async () => steerProbe(s),
+      write: async (t) => void written.push(t),
+      now: () => 0,
+      sleep: async () => {},
+    })).toEqual({ kind: "sent" });
+    expect(written).toEqual(["stop, just summarise"]);
+  });
+
+  it("replays a historical user message as an ordinary one, never a steer", () => {
+    // The wire frame carries no such distinction, so guessing at one would put a
+    // "Steer" label on a message nothing recorded as one.
+    const s = replay([
+      FIXTURE[0],
+      { type: "userMessage", sessionId: "s1", turnId: "hist-turn-1", blocks: [{ type: "text", text: "from the transcript" }] },
+    ]);
+    expect((s.items[s.items.length - 1] as UserItem).steer).toBe(false);
+  });
+});
+
 describe("the render window", () => {
   it("renders only the tail and offers to load earlier", () => {
     const s = initialChat("s1");
@@ -522,7 +623,7 @@ describe("reasoningFor", () => {
   it("stops at the user's turn rather than reaching into the previous one", () => {
     const items: ChatItem[] = [
       text("x1", "last turn's reasoning"),
-      { kind: "user", id: "u2", blocks: [{ type: "text", text: "now do this" }] },
+      { kind: "user", id: "u2", blocks: [{ type: "text", text: "now do this" }], steer: false },
       tool("toolu_9"),
     ];
     expect(reasoningFor(items, "toolu_9")).toBeNull();
