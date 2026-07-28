@@ -3,18 +3,28 @@
 // A tree revert rewrites every file in the repo, so any agent mid-turn in that
 // folder can have its work silently clobbered, or can clobber the revert a
 // second later. The guard is deliberately conservative and lives here rather
-// than in Rust: "Executing" is composed in the frontend from PTY activity plus
-// the transcript tail (LeftSidebar's `sessionDot`), and the backend cannot see
-// it.
+// than in Rust: "Executing" is known only in the frontend - inferred from PTY
+// activity plus the transcript tail for an agent tab, and stated outright by
+// the transport's event stream for a chat (both via `sessionDot`) - and the
+// backend cannot see either.
 //
 // Two tiers, because Sway's certainty differs between them:
 //   - a session *known* to be mid-turn blocks hard, with no override. That is
-//     a live agent tab reporting Executing, and now also a chat session, whose
-//     own event stream says exactly when a turn is running;
-//   - a detached session (found by the pgrep tier, no tab of ours) can never
-//     report Executing, so its activity is unknowable. "Cannot verify" blocks
-//     by default, but the user can override it explicitly, since a detached
-//     session is often just an idle shell someone left open.
+//     a live agent tab reporting Executing, and also a chat session, whose own
+//     event stream says exactly when a turn is running;
+//   - a session Sway does not host (found by the pgrep tier, no tab of ours)
+//     reports no more than "running", so whether it is mid-turn is unknowable.
+//     "Cannot verify" blocks by default, but the user can override it
+//     explicitly, since such a session is often just an idle shell someone left
+//     open.
+//
+// Retired, and deliberately not restated as a rule anywhere in this file: the
+// old single-agent-per-tree assumption that tablessness ruled Executing out.
+// It held only while a PTY tab was the sole composer of the status, and the
+// guard was written to lean on it - the `hasLiveTab && executing` pairing it
+// used to test let a chat mid-turn fall through both branches and block
+// nothing. Executing is now judged on the status alone, whatever tier produced
+// it.
 import { isUnderPath } from "./pathScope";
 import type { SessionStatus } from "./sessionStatus";
 

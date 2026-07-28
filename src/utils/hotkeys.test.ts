@@ -47,6 +47,7 @@ describe("the canonical binding table", () => {
         "quick-open",
         "reload",
         "shortcut-sheet",
+        "stop-chat",
         "tab-cycle",
         "tab-jump",
         "terminal-search",

@@ -3,6 +3,9 @@ import { revertGuard, revertBlockers, type RevertCandidate } from "./revertGuard
 import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";
 import { dropLiveChat, setLiveChat } from "./chatSessions";
 import { liveCandidates } from "./folderActors";
+import { computeSessionDot } from "./sessionDot";
+import { statusFromDot } from "./sessionStatus";
+import guardSource from "./revertGuard.ts?raw";
 import type { ChatEvent } from "./chatTypes";
 
 const REPO = "/work/repo";
@@ -130,6 +133,35 @@ describe("revertGuard", () => {
     expect(verdict.allow).toBe(false);
     if (verdict.allow) return;
     expect(verdict.overridable).toBe(false);
+  });
+});
+
+// The half of Phase 5's fix that could not be checked until chat actually
+// supplied a status: the guard was corrected then, but nothing composed an
+// `executing` without a live tab, so the corrected branch was unreachable and
+// the module's own docs still taught the retired invariant. Both halves are
+// pinned here - the behaviour through the shipping composition, and the prose,
+// which is what a reader believes when the code disagrees with it.
+describe("the retired single-agent invariant", () => {
+  it("no longer survives in the guard's doc comment", () => {
+    // Read as source rather than asserted from memory: the claim was true when
+    // it was written, so nothing about the code flags it as stale.
+    expect(guardSource).not.toMatch(/never report Executing/i);
+    expect(guardSource).toMatch(/judged on the status alone/);
+  });
+
+  it("blocks the revert through the same composition the sidebar renders", () => {
+    // computeSessionDot -> statusFromDot -> RevertCandidate, i.e. the path the
+    // sidebar row takes, not a hand-written "executing".
+    const dot = computeSessionDot({ chatStatus: "executing", hasLiveTab: false, running: false });
+    const verdict = revertGuard(
+      [candidate({ sessionId: "chat", status: statusFromDot(dot), hasLiveTab: false })],
+      { folderPath: REPO },
+    );
+    expect(verdict.allow).toBe(false);
+    if (verdict.allow) return;
+    expect(verdict.overridable).toBe(false);
+    expect(verdict.blockers.map((b) => b.kind)).toEqual(["executing"]);
   });
 });
 

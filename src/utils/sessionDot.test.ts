@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeSessionDot, type SessionDot, type SessionDotInputs } from "./sessionDot";
-import { dotFromStatus, statusFromDot, type SessionStatus } from "./sessionStatus";
+import { computeSessionDot, dotCertainty, type SessionDot, type SessionDotInputs } from "./sessionDot";
+import { dotFromStatus, statusFromDot, statusPresentation, STATUS_LABEL, type SessionStatus } from "./sessionStatus";
 
 // A golden baseline of today's status behaviour, captured *before* chat exists.
 //
@@ -71,11 +71,12 @@ describe("sessionDot golden baseline", () => {
     expect([...cases].sort()).toEqual(["agent-tab", "external-session", "no-session"]);
   });
 
-  // The load-bearing invariant Phase 11's revert-guard fix turns on, pinned
-  // here so it is impossible to break it silently: today, a session with no
-  // live tab can never report `executing`. `revertBlockers` relies on exactly
-  // that to split its two branches, and a chat session is what will break it.
-  it("never reports executing for a session with no live tab", () => {
+  // The invariant Phase 11's revert-guard fix turned on, kept pinned but now
+  // scoped to what it was ever true of: the *inferred* tiers, which is all this
+  // matrix builds. A chat session with no live terminal tab does report
+  // `executing` (see the chat-tier block below), which is precisely why
+  // `revertBlockers` no longer pairs `executing` with `hasLiveTab`.
+  it("never reports executing for an inferred session with no live tab", () => {
     const detached = rows.filter((r) => !r.inputs.hasLiveTab);
     expect(detached.length).toBeGreaterThan(0);
     for (const r of detached) {
@@ -126,5 +127,94 @@ describe("dotFromStatus", () => {
   // ended chat must not keep a tray entry alive.
   it("maps an ended chat onto no dot at all", () => {
     expect(dotFromStatus("none")).toBe("none");
+  });
+});
+
+// The tier Phase 11 added, ahead of both inferred branches.
+describe("the chat tier", () => {
+  const statuses: SessionStatus[] = ["executing", "waitingForApproval", "idle", "running", "none"];
+
+  // The whole point of putting it first: a chat has no PTY to watch and its
+  // pgrep probe is beside the point, so every combination of the inferred
+  // inputs has to leave the answer alone.
+  it("wins over every combination of the inferred inputs", () => {
+    for (const chatStatus of statuses) {
+      for (const hasLiveTab of [true, false]) {
+        for (const running of [true, false]) {
+          for (const ptyActivity of [undefined, "active", "quiet"]) {
+            for (const tailState of [undefined, "blocked-candidate", "streaming"]) {
+              const inputs: SessionDotInputs = { chatStatus, hasLiveTab, running, ptyActivity, tailState };
+              expect(computeSessionDot(inputs)).toBe(dotFromStatus(chatStatus));
+              expect(statusFromDot(computeSessionDot(inputs))).toBe(chatStatus);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // The case the golden matrix cannot contain and the revert guard turns on: a
+  // chat mid-turn is `executing` with no terminal tab anywhere near it.
+  it("reports executing for a chat with no live terminal tab", () => {
+    const dot = computeSessionDot({ chatStatus: "executing", hasLiveTab: false, running: false });
+    expect(statusFromDot(dot)).toBe("executing");
+  });
+
+  it("is inert when no chat hosts the session", () => {
+    const inferred: SessionDotInputs = { hasLiveTab: true, running: true, ptyActivity: "active" };
+    expect(computeSessionDot(inferred)).toBe("working");
+    expect(computeSessionDot({ ...inferred, chatStatus: undefined })).toBe("working");
+  });
+});
+
+// Certainty is what the sidebar marks, and it is derived from the same inputs
+// rather than returned beside the dot - so recording it could not move the
+// golden fixture's shape even by accident.
+describe("dotCertainty", () => {
+  it("calls a chat-backed session exact and everything else inferred", () => {
+    expect(dotCertainty({ chatStatus: "idle", hasLiveTab: false, running: false })).toBe("exact");
+    expect(dotCertainty({ hasLiveTab: true, running: true, ptyActivity: "active" })).toBe("inferred");
+    expect(dotCertainty({ hasLiveTab: false, running: true })).toBe("inferred");
+  });
+
+  // An ended chat is still a chat: Sway measured that it ended rather than
+  // failing to find it. Downgrading it to inferred would claim less than it
+  // knows, which is the mirror image of the mistake the tiering prevents.
+  it("keeps an ended chat on the exact side", () => {
+    expect(dotCertainty({ chatStatus: "none", hasLiveTab: false, running: false })).toBe("exact");
+  });
+});
+
+// How the tiering reaches the screen. The rule under test is which side gets
+// marked, because getting it backwards is what would have restyled every
+// pre-chat session.
+describe("statusPresentation", () => {
+  const detectable = ["executing", "waitingForApproval", "idle", "running"] as const;
+
+  // The verify: a chat and an external session in the same state must not be
+  // one indistinguishable row. The class flag is what the sidebar hangs the
+  // marker rule on and the title is what a hover reads.
+  it("tells the two tiers apart in the same status", () => {
+    for (const status of detectable) {
+      const exact = statusPresentation(status, "exact");
+      const inferred = statusPresentation(status, "inferred");
+      expect(exact.exact).toBe(true);
+      expect(inferred.exact).toBe(false);
+      expect(exact.title).not.toBe(inferred.title);
+    }
+  });
+
+  // The other half, and the one that keeps the golden fixture passing
+  // unmodified: the inferred side is byte-for-byte what it has always been.
+  it("leaves the inferred side exactly as it was", () => {
+    for (const status of detectable) {
+      expect(statusPresentation(status, "inferred")).toEqual({ title: STATUS_LABEL[status], exact: false });
+    }
+  });
+
+  it("marks the exact side by adding to the label rather than qualifying the other", () => {
+    for (const status of detectable) {
+      expect(statusPresentation(status, "exact").title.startsWith(STATUS_LABEL[status])).toBe(true);
+    }
   });
 });

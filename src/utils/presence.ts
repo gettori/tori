@@ -73,6 +73,31 @@ export function liveCounts(live: { dot: string }[]): { running: number; needsYou
   return { running, needsYou };
 }
 
+/// Pure: the tray's per-session menu, built from the **same** live list the
+/// tray counts come from.
+///
+/// Both tiers appear here, and that is the whole point: the counts have always
+/// been taken from the merged list (PTY agent tabs plus chats), while the
+/// entries were once taken from the PTY-only status list. A chat blocked on an
+/// approval therefore contributed to the "needs you" count and to the dock
+/// badge, but had no row in the menu - so the tray told you something needed
+/// you and then offered no way to get to it.
+///
+/// Waiting-first ordering, and stable within a tier: a `sort` comparator that
+/// only knows about the waiting state must not reorder everything else, or the
+/// menu reshuffles on every unrelated status change.
+export function trayEntries(live: readonly LiveSessionDot[]): { id: string; label: string }[] {
+  const rank = (dot: string) => (dot === "needsYou" ? 0 : 1);
+  return live
+    .filter((l) => l.dot !== "none")
+    .slice()
+    .sort((a, b) => rank(a.dot) - rank(b.dot))
+    .map((l) => ({
+      id: l.sessionId,
+      label: `${l.dot === "needsYou" ? "⚠ " : ""}${l.sessionName}${l.projectName ? ` (${l.projectName})` : ""}`,
+    }));
+}
+
 /// Pure: the dock badge count - sessions currently needsYou AND not yet
 /// attended. Independent of `liveCounts.needsYou`, which counts every
 /// needsYou session regardless of whether it's been looked at.

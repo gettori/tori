@@ -35,6 +35,7 @@ import type {
   SlashCommand,
   Usage,
 } from "../../utils/chatTypes";
+import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
 import type { SessionStatus } from "../../utils/sessionStatus";
 
 /** How far back the message list renders before "load earlier" is offered. */
@@ -140,8 +141,35 @@ export type ChatState = {
   slashCommands: SlashCommand[];
   mcpServers: McpServer[];
   plan: PlanItem[];
+  /** The newest usage figure of any kind, including the mid-turn `usage`
+   *  events. The context meter wants this: it asks "how full is the window
+   *  right now", and waiting for the turn to end would leave it stale for the
+   *  whole turn. */
   lastUsage: Usage | null;
+  /** The last **completed** turn's usage, paired with `lastCostUsd` from the
+   *  same `result` frame. Kept apart from `lastUsage` because that one moves
+   *  mid-turn while the cost cannot: showing them together would caption a
+   *  running turn's tokens with the previous turn's price. */
+  lastTurnUsage: Usage | null;
   lastCostUsd: number | null;
+  /** Every completed turn's usage and cost added up, plus how many turns went
+   *  into them.
+   *
+   *  Summed rather than read off the newest `result`, because the field named
+   *  `total_cost_usd` is **per turn** despite the name. Measured on the
+   *  two-turn capture: both result frames report `num_turns: 1` and the same
+   *  `input_tokens: 2` / `output_tokens: 3`, which a session-cumulative figure
+   *  could not do. Taking the last frame as the session total would therefore
+   *  have shown the newest turn's cost labelled as the whole session's.
+   *
+   *  `totalCostUsd` stays null until some turn actually reports a cost, so a
+   *  session whose turns carried none reads as unknown rather than as free. */
+  totalUsage: Usage;
+  totalCostUsd: number | null;
+  turnsCompleted: number;
+  /** The newest `rate_limit_event`, whatever it said. Null until one arrives.
+   *  Whether it is worth a banner is `isLimited`'s decision, not this field's. */
+  rateLimit: RateLimitState | null;
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
   seq: number;
@@ -176,9 +204,29 @@ export function initialChat(sessionId: string): ChatState {
     mcpServers: [],
     plan: [],
     lastUsage: null,
+    lastTurnUsage: null,
     lastCostUsd: null,
+    totalUsage: zeroUsage(),
+    totalCostUsd: null,
+    turnsCompleted: 0,
+    rateLimit: null,
     seq: 0,
   };
+}
+
+function zeroUsage(): Usage {
+  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 };
+}
+
+/** Add one turn's usage into the running session total, field by field so a new
+ *  field on `Usage` fails the typecheck here rather than being silently dropped
+ *  from every total. */
+function addUsage(total: Usage, turn: Usage) {
+  total.inputTokens += turn.inputTokens;
+  total.outputTokens += turn.outputTokens;
+  total.cacheReadTokens += turn.cacheReadTokens;
+  total.cacheWriteTokens += turn.cacheWriteTokens;
+  total.thinkingTokens += turn.thinkingTokens;
 }
 
 /** Token counts as the notices show them. Same rounding as the context meter,
@@ -437,6 +485,11 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.lastUsage = ev.usage;
       return;
     case "rateLimit":
+      // Recorded whatever the status, so the banner's own rule decides what is
+      // worth showing. Every captured frame says `allowed`, and rendering on
+      // the event rather than on the status would pin a permanent banner to
+      // every chat.
+      s.rateLimit = rateLimitFrom(ev);
       return;
     case "turnCompleted": {
       const known = s.turns[ev.turnId];
@@ -447,7 +500,13 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.openTextId = null;
       s.openThinkingId = null;
       s.lastUsage = ev.usage;
+      s.lastTurnUsage = ev.usage;
       s.lastCostUsd = ev.costUsd;
+      // Safe from double counting because a repeated `turnCompleted` returned
+      // above: this runs exactly once per turn id.
+      addUsage(s.totalUsage, ev.usage);
+      s.turnsCompleted += 1;
+      if (ev.costUsd !== null) s.totalCostUsd = (s.totalCostUsd ?? 0) + ev.costUsd;
       // The load-bearing distinction: an interrupt is a completion on the wire
       // but the opposite of one in intent.
       if (ev.outcome !== "completed" && s.queue.length) s.queueHeld = true;
@@ -658,6 +717,48 @@ export function chatStatus(s: ChatState): SessionStatus {
   // Alive but nothing known yet: the child is spawning and has not sent its
   // first init.
   return s.started ? "idle" : "running";
+}
+
+/**
+ * Whether this chat still has a child behind it.
+ *
+ * Derived rather than stored, from the two flags that already say it: the
+ * transport emits a fatal `sessionError` the moment the child's stdout hits
+ * EOF, which is what sets `ended`. So a child killed from outside Sway shows up
+ * here as fast as the OS closes the pipe - there is no poll and no timeout to
+ * tune, which is the whole reason this reads off the event stream rather than
+ * off a liveness probe.
+ *
+ * `connecting` is its own state, not folded into `connected`: between the spawn
+ * and the first `system/init` there is genuinely no session yet, and calling
+ * that connected would show a healthy chat that cannot take a turn.
+ */
+export type ConnectionHealth = "connecting" | "connected" | "disconnected";
+
+export function connectionHealth(s: ChatState): ConnectionHealth {
+  if (s.ended) return "disconnected";
+  return s.started ? "connected" : "connecting";
+}
+
+/**
+ * Put the state back to "a child is starting" for a reconnect attempt.
+ *
+ * `started` is cleared as well as `ended` so the panel reads as connecting
+ * until the resumed child's own `system/init` arrives - leaving it set would
+ * show connected the instant the button was pressed, which is a claim about a
+ * process that has not answered yet.
+ *
+ * The item list is deliberately untouched. The reconnect resumes the same
+ * session, so its transcript is still the truth; clearing it would throw away
+ * the conversation to reflect a dropped pipe. The queue is likewise kept, held
+ * flag and all: whatever the user typed during the outage is still what they
+ * wanted to send.
+ */
+export function beginReconnect(s: ChatState) {
+  s.ended = false;
+  s.started = false;
+  s.activeTurnId = null;
+  s.awaitingTurn = false;
 }
 
 /** The tail of the list that renders, with "load earlier" raising the limit.

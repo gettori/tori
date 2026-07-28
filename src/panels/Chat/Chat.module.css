@@ -803,6 +803,120 @@
   line-height: 1.4;
 }
 
+/* ---- connection health ----
+   Quiet when healthy, loud only when the pane is unusable: every control in the
+   chat is inert once the child is gone, and nothing else on screen says why. */
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  font-size: var(--sway-text-xs);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.connectionDot {
+  flex: none;
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.connection.connected {
+  color: var(--status-idle);
+}
+
+.connection.connecting {
+  color: var(--status-running);
+}
+
+.connection.disconnected {
+  color: var(--danger-fg);
+}
+
+/* ---- plan card ----
+   Pinned between the transcript and the composer: current state, not a
+   transcript entry (see PlanCard.tsx). Capped and scrollable because a long
+   task's plan can run to a dozen steps and the composer must not be pushed off
+   the bottom of the pane by one. */
+.planCard {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border-default);
+  background: var(--canvas-card);
+  font-size: var(--sway-text-sm);
+}
+
+.planHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  padding: var(--sway-space-2) var(--sway-space-4);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+}
+
+.planTitle {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.planCount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The in-flight step, which is the part worth reading at a glance, so it takes
+   the remaining width and ellipsizes rather than wrapping the header. */
+.planActive {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-default);
+}
+
+.planList {
+  margin: 0;
+  padding: 0 var(--sway-space-4) var(--sway-space-2);
+  list-style: none;
+  max-height: calc(140px * var(--ui-scale));
+  overflow-y: auto;
+}
+
+.planItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sway-space-2);
+  padding: calc(1px * var(--ui-scale)) 0;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.planGlyph {
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+  color: currentColor;
+}
+
+.planText {
+  min-width: 0;
+}
+
+.planItem.completed {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
+
+.planItem.inProgress {
+  color: var(--status-progress);
+}
+
+.planItem.pending {
+  color: var(--fg-muted);
+}
+
 /* ---- composer ---- */
 
 .composer {
