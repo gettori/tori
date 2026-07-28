@@ -1,4 +1,6 @@
 import { For, Show, Switch, Match, createSignal, createResource } from "solid-js";
+import { ChevronRight } from "lucide-solid";
+import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
@@ -117,12 +119,27 @@ export default function ToolCallCard(props: {
   return (
     <div class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
       <button type="button" class={styles.toolRow} onClick={() => setOpen(!open())} aria-expanded={open()}>
-        <span class={styles.toolName}>{props.card.name ?? "tool"}</span>
+        <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
+          <Icon icon={ChevronRight} size={12} />
+        </span>
+        <span
+          class={styles.toolName}
+          classList={{
+            [styles.toolNameEdit]: isEditTool(props.card.name),
+            [styles.toolNameError]: props.card.state === "error" || props.card.state === "denied",
+          }}
+        >
+          {props.card.name ?? "tool"}
+        </span>
         <span class={styles.toolArg}>{toolDigest(props.card)}</span>
         <Show when={formatDuration(props.card.durationMs)}>
           {(d) => <span class={styles.toolDuration}>{d()}</span>}
         </Show>
-        <span class={styles.toolState}>{STATE_LABEL[props.card.state]}</span>
+        {/* "Done" earns no label: a settled call's row already reads as done,
+            and captioning every one would caption the whole transcript. */}
+        <Show when={props.card.state !== "ok"}>
+          <span class={styles.toolState}>{STATE_LABEL[props.card.state]}</span>
+        </Show>
       </button>
 
       <Show when={open()}>

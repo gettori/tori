@@ -1,20 +1,158 @@
-/* The chat surface (hash-scoped). Work-surface tier of the design system: dense
-   rows, small radii, no elevation past a hairline; the spacious treatment is for
-   chrome. Every colour is a role token, never a literal. */
+/* The chat surface (hash-scoped). Follows the app's design language end to
+   end: chrome-tier sizes (interactive text at --sway-text-lg / --sway-text-md,
+   never smaller), fixed control heights, --sway-font-mono for code and
+   figures, menus on the shared menuSurface recipe, and the gold brand for
+   focus and the one primary action. Every colour is a role token.
 
+   Three bands: the status strip, the transcript, and the composer card that
+   also carries the session controls. Everything occasional lives behind the
+   strip's overflow menu. */
+
+/* On --canvas-card like every work pane (editor, terminal): --canvas-default
+   is the shell backdrop behind the sidebar, and a pane on it reads a shade
+   darker than its neighbours. */
 .chat {
   position: absolute;
   inset: 0;
   display: none;
   flex-direction: column;
   min-height: 0;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
 }
 
 /* Declared after every other .chat rule so the visible tab always wins,
    whatever order the bundler emits the class names in. */
 .chat.active {
   display: flex;
+}
+
+/* ---- the status strip ----
+   One quiet line: status + clock, then the session's three figures, mono like
+   every number surface in the app, separated by hairlines. */
+
+.strip {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(12px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+}
+
+.stripStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  white-space: nowrap;
+  color: var(--fg-default);
+}
+
+.stripDot {
+  flex: none;
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* The dot carries the tone; the words stay legible in the default fg. */
+.stripBusy .stripDot {
+  color: var(--success-fg);
+}
+
+.stripIdle .stripDot {
+  color: var(--fg-subtle);
+}
+
+.stripAttention .stripDot {
+  color: var(--brand-default);
+}
+
+.stripBad {
+  color: var(--danger-fg);
+}
+
+.stripTime {
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.stripItem {
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.stripSep {
+  flex: none;
+  width: 1px;
+  height: calc(14px * var(--ui-scale));
+  background: var(--border-strong);
+}
+
+.stripSpacer {
+  flex: 1;
+}
+
+.stripMenuButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background var(--sway-duration-fast) var(--sway-ease);
+}
+
+.stripMenuButton:hover,
+.stripMenuButton[aria-expanded="true"] {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+/* The overflow menu, on the shared menuSurface recipe. */
+.stripMenu {
+  position: absolute;
+  top: 100%;
+  right: calc(12px * var(--ui-scale));
+  z-index: 1000;
+  min-width: calc(320px * var(--ui-scale));
+  max-width: calc(440px * var(--ui-scale));
+  max-height: 60vh;
+  margin-top: calc(6px * var(--ui-scale));
+  overflow-y: auto;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.menuBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale));
+}
+
+.menuActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.menuNote {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
 }
 
 /* ---- transcript ---- */
@@ -24,43 +162,50 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--sway-space-4);
+  padding: calc(24px * var(--ui-scale)) calc(24px * var(--ui-scale)) calc(12px * var(--ui-scale));
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-3);
+  gap: calc(12px * var(--ui-scale));
 }
 
 .loadEarlier {
   display: flex;
   justify-content: center;
-  padding-bottom: var(--sway-space-3);
+  padding-bottom: calc(8px * var(--ui-scale));
 }
 
-.bubble {
-  border-radius: var(--sway-radius-md);
-  padding: var(--sway-space-3) var(--sway-space-4);
-  font-size: var(--sway-text-md);
-  line-height: 1.55;
-  overflow-wrap: anywhere;
+/* A user turn is a row with a small avatar, not a bubble: the transcript reads
+   as one column, and the avatar is what says who is speaking. */
+.userRow {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(12px * var(--ui-scale));
+  margin-top: calc(12px * var(--ui-scale));
 }
 
-.user {
-  align-self: flex-end;
-  max-width: 80%;
+.userAvatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(26px * var(--ui-scale));
+  height: calc(26px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--neutral-hover);
+  color: var(--fg-muted);
+}
+
+.userText {
+  min-width: 0;
+  padding-top: calc(3px * var(--ui-scale));
   white-space: pre-wrap;
-  background: var(--accent-subtle);
+  overflow-wrap: anywhere;
   color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  line-height: 1.6;
 }
 
-.assistant {
-  background: var(--canvas-card);
-  color: var(--fg-default);
-  border: 1px solid var(--border-default);
-}
-
-/* Same treatment as MarkdownPreview's rendered body, so a fenced block reads
-   identically whether it came from a plan file or from the model. */
-.assistant :global(code) {
+.userText :global(code) {
   font-family: var(--sway-font-mono);
   font-size: 0.9em;
   background: var(--neutral-hover);
@@ -68,23 +213,80 @@
   padding: 0.1em 0.35em;
 }
 
+/* The reply's byline: who answered, once per turn. */
+.turnHeader {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+}
+
+.turnDot {
+  flex: none;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  background: var(--brand-default);
+}
+
+.turnAgent {
+  color: var(--fg-muted);
+}
+
+.turnModel {
+  color: var(--fg-subtle);
+}
+
+/* Assistant text is flat prose in the column, distinguished by nothing louder
+   than its byline: the tool cards between turns already segment the flow. */
+.assistant {
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.assistant > :global(:first-child) {
+  margin-top: 0;
+}
+
+.assistant > :global(:last-child) {
+  margin-bottom: 0;
+}
+
+/* Same treatment as MarkdownPreview's rendered body, so a fenced block reads
+   identically whether it came from a plan file or from the model. Inline code
+   picks up the brand tint the mock gives it. */
+.assistant :global(code) {
+  font-family: var(--sway-font-mono);
+  font-size: 0.9em;
+  color: var(--brand-strong);
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-sm);
+  padding: 0.1em 0.35em;
+}
+
 .assistant :global(pre) {
-  margin: var(--sway-space-3) 0;
-  padding: var(--sway-space-3);
+  margin: calc(8px * var(--ui-scale)) 0;
+  padding: calc(12px * var(--ui-scale));
+  border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--neutral-hover);
+  background: var(--canvas-default);
   overflow-x: auto;
 }
 
 .assistant :global(pre code) {
+  color: var(--fg-default);
   background: none;
   padding: 0;
 }
 
 .assistant :global(blockquote) {
-  margin: var(--sway-space-3) 0;
-  padding-left: var(--sway-space-5);
-  border-left: 3px solid var(--border-default);
+  margin: calc(8px * var(--ui-scale)) 0;
+  padding-left: calc(12px * var(--ui-scale));
+  border-left: 3px solid var(--border-strong);
   color: var(--fg-muted);
 }
 
@@ -97,7 +299,7 @@
 .cursor {
   align-self: flex-start;
   width: calc(7px * var(--ui-scale));
-  height: var(--sway-text-md);
+  height: var(--sway-text-lg);
   background: var(--fg-muted);
   animation: chatBlink 1s steps(2, start) infinite;
 }
@@ -120,7 +322,7 @@
   border: none;
   padding: 0;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
   cursor: pointer;
 }
 
@@ -129,173 +331,29 @@
 }
 
 .thinkingBody {
-  margin-top: var(--sway-space-2);
-  padding: var(--sway-space-3);
-  border-left: 2px solid var(--border-default);
+  margin-top: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-left: 2px solid var(--border-strong);
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  line-height: 1.5;
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 
-/* ---- the session's permissions ---- */
-
-.controls {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sway-space-4);
-  padding: var(--sway-space-2) var(--sway-space-4);
-  border-bottom: 1px solid var(--border-default);
-  background: var(--canvas-card);
-}
-
-.modeGroup {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sway-space-3);
-  min-width: 0;
-}
-
-.modeButtons {
-  display: flex;
-}
-
-.modeButton {
-  border: 1px solid var(--border-default);
-  border-right-width: 0;
-  padding: var(--sway-space-1) var(--sway-space-3);
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
-  cursor: pointer;
-}
-
-.modeButton:first-child {
-  border-top-left-radius: var(--sway-radius-sm);
-  border-bottom-left-radius: var(--sway-radius-sm);
-}
-
-.modeButton:last-child {
-  border-right-width: 1px;
-  border-top-right-radius: var(--sway-radius-sm);
-  border-bottom-right-radius: var(--sway-radius-sm);
-}
-
-.modeButton:hover:not(:disabled) {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
-
-.modeButton:disabled {
-  color: var(--fg-subtle);
-  cursor: default;
-}
-
-/* After :hover, so the selected mode stays legible under the pointer. */
-.modeButton.modeSelected {
-  background: var(--accent-subtle);
-  color: var(--fg-default);
-}
-
-.modeNote {
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
-  line-height: 1.3;
-}
-
-/* A switch that has not landed yet is a promise about the next turn, not a
-   description of this one. */
-.modeNotePending {
-  color: var(--attention-fg);
-}
-
-.modelGroup {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sway-space-3);
-  min-width: 0;
-}
-
-.modelLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--sway-space-2);
-  min-width: 0;
-}
-
-.modelLabelText {
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
-}
-
-.modelSelect {
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  padding: var(--sway-space-1) var(--sway-space-2);
-  background: transparent;
-  color: var(--fg-default);
-  font-size: var(--sway-text-xs);
-  max-width: 16rem;
-}
-
-.modelSelect:disabled {
-  color: var(--fg-subtle);
-  cursor: default;
-}
-
-.modelNote {
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
-  line-height: 1.3;
-}
-
-.contextMeter {
-  display: inline-block;
-  width: 3rem;
-  height: 0.35rem;
-  margin-right: var(--sway-space-2);
-  border-radius: var(--sway-radius-sm);
-  background: var(--neutral-hover);
-  overflow: hidden;
-  vertical-align: middle;
-}
-
-.contextMeterFill {
-  display: block;
-  height: 100%;
-  background: var(--accent-fg);
-}
-
-/* Same rule as .modeNotePending: a switch that has not landed is a promise
-   about the next turn, not a fact about this one. */
-.modelNotePending {
-  color: var(--attention-fg);
-}
-
-/* Bypass names itself after something Sway does not actually let it do. */
-.modeGuard {
-  flex-basis: 100%;
-  color: var(--attention-fg);
-  font-size: var(--sway-text-xs);
-  line-height: 1.3;
-}
+/* ---- the granted-rules list (inside the overflow menu) ---- */
 
 .rules {
-  position: relative;
-  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .rulesToggle {
   border: none;
-  padding: var(--sway-space-1) 0;
+  padding: 0;
   background: transparent;
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
   cursor: pointer;
-  white-space: nowrap;
+  text-align: left;
 }
 
 .rulesToggle:hover:not(:disabled) {
@@ -307,25 +365,18 @@
 }
 
 .rulesBody {
-  position: absolute;
-  right: 0;
-  z-index: 2;
-  margin: var(--sway-space-2) 0 0;
-  padding: var(--sway-space-2);
-  min-width: calc(280px * var(--ui-scale));
-  max-height: calc(240px * var(--ui-scale));
+  margin: calc(6px * var(--ui-scale)) 0 0;
+  padding: 0;
+  max-height: calc(200px * var(--ui-scale));
   overflow-y: auto;
   list-style: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  background: var(--canvas-head);
 }
 
 .ruleRow {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-1) var(--sway-space-2);
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) 0;
 }
 
 .ruleLabel {
@@ -333,7 +384,7 @@
   min-width: 0;
   color: var(--fg-default);
   font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -341,7 +392,7 @@
 
 .ruleScope {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
   white-space: nowrap;
 }
 
@@ -358,52 +409,107 @@
   color: var(--danger-fg);
 }
 
-/* ---- tool calls ---- */
+/* ---- tool calls ----
+   The mock's rows: full-width rounded cards a shade above the canvas, mono
+   throughout, the tool name as the row's one coloured word, duration on the
+   right edge. */
 
 .tool {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-2);
-  padding: var(--sway-space-2) var(--sway-space-3);
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: var(--canvas-card);
-  font-size: var(--sway-text-sm);
+  border-radius: var(--sway-radius-md);
+  /* A step above the pane, the way the mock's rows sit above its canvas. */
+  background: var(--neutral-subtle);
 }
 
 /* The collapsed row is the whole disclosure control, so the whole row is the
    hit target rather than a caret the user has to find. */
 .toolRow {
   display: flex;
-  align-items: baseline;
-  gap: var(--sway-space-3);
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
   width: 100%;
+  min-height: calc(20px * var(--ui-scale));
   border: none;
   padding: 0;
   background: transparent;
-  font: inherit;
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-md);
   text-align: left;
   cursor: pointer;
 }
 
+.toolCaret {
+  flex: none;
+  display: inline-flex;
+  color: var(--fg-subtle);
+  transition: transform var(--sway-duration-fast) var(--sway-ease);
+}
+
+.toolCaretOpen {
+  transform: rotate(90deg);
+}
+
+/* Read-ish tools quiet green, writes the brand-adjacent attention hue,
+   failures the danger one - the mock's colour code, on role tokens. */
+.toolName {
+  color: var(--success-fg);
+  font-weight: 500;
+}
+
+.toolNameEdit {
+  color: var(--attention-fg);
+}
+
+.toolNameError {
+  color: var(--danger-fg);
+}
+
+.toolArg {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .toolDuration {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
   white-space: nowrap;
+}
+
+.toolState {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  white-space: nowrap;
+}
+
+/* A blocked call must not read as work in progress. */
+.toolBlocked {
+  border-color: var(--brand-default);
+}
+
+.toolBlocked .toolState {
+  color: var(--brand-default);
 }
 
 .toolBody {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-2);
-  padding-top: var(--sway-space-2);
+  gap: calc(8px * var(--ui-scale));
+  padding-top: calc(8px * var(--ui-scale));
   border-top: 1px solid var(--border-default);
 }
 
 .toolPaths {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sway-space-2);
+  gap: calc(8px * var(--ui-scale));
 }
 
 /* A path in a transcript that cannot be opened makes the reader do the lookup
@@ -411,13 +517,13 @@
 .toolPath {
   display: inline-flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: calc(6px * var(--ui-scale));
   border: none;
   padding: 0;
   background: transparent;
   color: var(--accent-fg);
   font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
   text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -429,23 +535,26 @@
 
 .toolBadge {
   border-radius: var(--sway-radius-pill);
-  padding: 0 var(--sway-space-2);
+  padding: 0 calc(6px * var(--ui-scale));
   color: var(--diff-added);
   font-family: inherit;
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
 }
 
+/* Expanded detail: a darker well inside the card, the way the mock's diff
+   block sits below its Edit row. */
 .toolPre {
   max-height: calc(320px * var(--ui-scale));
   margin: 0;
-  padding: var(--sway-space-2);
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   overflow: auto;
-  border-radius: var(--sway-radius-sm);
-  background: var(--neutral-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--canvas-default);
   color: var(--fg-default);
   font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
-  line-height: 1.45;
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -460,7 +569,7 @@
 
 .toolNote {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-md);
   line-height: 1.4;
 }
 
@@ -469,157 +578,23 @@
 .toolDiff {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-2);
+  gap: calc(6px * var(--ui-scale));
 }
 
 .hunk {
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--sway-radius-md);
+  background: var(--canvas-default);
   overflow: hidden;
 }
 
 .diffLine {
-  padding: 0 var(--sway-space-2);
+  padding: 0 calc(12px * var(--ui-scale));
   font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
-  line-height: 1.5;
+  font-size: var(--sway-text-md);
+  line-height: 1.6;
   white-space: pre;
   overflow-x: auto;
-}
-
-/* The `@` / `/` completion menu. Above the input, because the composer sits at
-   the bottom of the pane and a menu below it would open off-screen. */
-.completions {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(240px * var(--ui-scale));
-  margin: 0 var(--sway-space-3) var(--sway-space-2);
-  overflow-y: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: var(--canvas-card);
-}
-
-.completion {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sway-space-2);
-  border: none;
-  padding: var(--sway-space-1) var(--sway-space-2);
-  background: transparent;
-  color: var(--fg-default);
-  font-size: var(--sway-text-xs);
-  text-align: left;
-  cursor: pointer;
-}
-
-.completion:hover {
-  background: var(--neutral-hover);
-}
-
-/* Declared after :hover, so keyboard selection wins over whatever the pointer
-   happens to be resting on. */
-.completionActive {
-  background: var(--accent-subtle);
-}
-
-.completionName {
-  flex: none;
-  font-family: var(--sway-font-mono);
-}
-
-.completionHint {
-  flex: none;
-  color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-}
-
-.completionDesc {
-  overflow: hidden;
-  color: var(--fg-muted);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* What the next turn will carry besides what is typed: a selection, a hunk
-   comment, a diagnostic. Removable, and never sent on its own. */
-.attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sway-space-2);
-  padding: 0 var(--sway-space-3) var(--sway-space-2);
-}
-
-.attachment {
-  max-width: 100%;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-pill);
-  padding: 0 var(--sway-space-2);
-  overflow: hidden;
-  background: var(--neutral-hover);
-  color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
-  line-height: 1.8;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.attachment:hover {
-  border-color: var(--danger-fg);
-  color: var(--fg-default);
-}
-
-/* An image chip shows the image: a chip reading "image" says nothing about
-   which one, and a composer can hold several. */
-.attachmentThumb {
-  display: block;
-  width: calc(40px * var(--ui-scale));
-  height: calc(40px * var(--ui-scale));
-  object-fit: cover;
-}
-
-.attachment:has(.attachmentThumb) {
-  padding: 0;
-  border-radius: var(--sway-radius-sm);
-  line-height: 0;
-}
-
-/* The drop target is the whole composer, so an image can be dropped on the
-   input, the chips or the strip around them without hunting for a zone. */
-.composerDragging {
-  outline: 2px dashed var(--accent-fg);
-  outline-offset: calc(-1 * var(--sway-space-1));
-}
-
-.hiddenPicker {
-  display: none;
-}
-
-.attachButton {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  align-self: flex-end;
-  width: calc(28px * var(--ui-scale));
-  height: calc(28px * var(--ui-scale));
-  border: none;
-  border-radius: var(--sway-radius-sm);
-  background: transparent;
-  color: var(--fg-subtle);
-  cursor: pointer;
-}
-
-.attachButton:hover {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
-
-.attachButton:disabled {
-  color: var(--fg-muted);
-  cursor: default;
 }
 
 /* The header and its revert action share one strip: the action belongs to the
@@ -627,8 +602,8 @@
 .hunkHeaderRow {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
-  background: var(--neutral-hover);
+  gap: calc(6px * var(--ui-scale));
+  background: var(--neutral-subtle);
 }
 
 .hunkHeader {
@@ -648,11 +623,11 @@
 .hunkRevert {
   flex: none;
   border: none;
-  padding: 0 var(--sway-space-2);
+  padding: 0 calc(8px * var(--ui-scale));
   background: transparent;
   color: var(--fg-subtle);
   font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
   cursor: pointer;
 }
 
@@ -679,45 +654,49 @@
   color: var(--fg-muted);
 }
 
-/* A blocked call must not read as work in progress. */
-.toolBlocked {
-  border-color: var(--attention-emphasis);
-}
-
-.toolName {
-  color: var(--fg-default);
-  font-weight: 600;
-}
-
-.toolArg {
-  flex: 1;
-  min-width: 0;
-  color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.toolState {
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
-  white-space: nowrap;
-}
-
-.toolBlocked .toolState {
-  color: var(--attention-fg);
-}
-
-/* ---- the approval prompt ---- */
+/* ---- the approval prompt ----
+   The mock's card: a gold-bordered rounded container, the question as a
+   sentence, the primary action in the brand gold. */
 
 .prompt {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-2);
-  padding-top: var(--sway-space-2);
-  border-top: 1px solid var(--border-default);
+  gap: calc(10px * var(--ui-scale));
+  margin-top: calc(8px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border: 1px solid var(--brand-default);
+  border-radius: var(--sway-radius-lg);
+  background: var(--canvas-card);
+}
+
+.promptQuestion {
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.promptQuestion code {
+  font-family: var(--sway-font-mono);
+  font-size: 0.9em;
+  color: var(--brand-strong);
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-sm);
+  padding: 0.1em 0.35em;
+}
+
+.promptDisclose {
+  align-self: flex-start;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  cursor: pointer;
+}
+
+.promptDisclose:hover {
+  color: var(--fg-default);
 }
 
 /* The full arguments, scrollable rather than truncated: a call approved on the
@@ -725,14 +704,15 @@
 .promptInput {
   max-height: calc(160px * var(--ui-scale));
   margin: 0;
-  padding: var(--sway-space-2);
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   overflow: auto;
-  border-radius: var(--sway-radius-sm);
-  background: var(--neutral-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--canvas-default);
   color: var(--fg-default);
   font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
-  line-height: 1.45;
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -740,30 +720,38 @@
 .promptActions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sway-space-2);
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
 }
 
 .promptFeedback {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-2);
+  gap: calc(8px * var(--ui-scale));
 }
 
+/* The shared input recipe (patterns.module.css), on the prompt's textarea. */
 .promptReason {
   resize: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  padding: var(--sway-space-2);
+  display: block;
+  width: 100%;
   background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
   color: var(--fg-default);
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-sm);
-  line-height: 1.45;
+  font-size: var(--sway-text-lg);
+  line-height: 1.4;
+  outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
 }
 
 .promptReason:focus {
-  outline: none;
-  border-color: var(--brand-ring);
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* ---- notices and banners ---- */
@@ -771,28 +759,26 @@
 .notice {
   align-self: center;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
 }
 
 .noticeError {
   color: var(--danger-fg);
 }
 
-/* What the session loaded: MCP servers, skills, agents, plugins. A disclosure
-   rather than permanent chrome - it answers an occasional question, never one
-   asked mid-conversation. */
+/* What the session loaded: MCP servers, skills, agents, plugins. Lives in the
+   overflow menu; a disclosure there rather than permanent chrome. */
 .sessionInfo {
-  border-bottom: 1px solid var(--border-default);
-  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .sessionInfoToggle {
   background: none;
   border: 0;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   cursor: pointer;
-  font-size: var(--sway-text-sm);
-  padding: var(--sway-space-2) var(--sway-space-3);
+  font-size: var(--sway-text-md);
+  padding: 0;
   text-align: left;
   width: 100%;
 }
@@ -804,16 +790,16 @@
 .sessionInfoBody {
   display: flex;
   flex-direction: column;
-  font-size: var(--sway-text-sm);
-  gap: var(--sway-space-3);
-  padding: 0 var(--sway-space-3) var(--sway-space-3);
+  font-size: var(--sway-text-md);
+  gap: calc(10px * var(--ui-scale));
+  padding-top: calc(8px * var(--ui-scale));
 }
 
 .sessionInfoBody h4 {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
   font-weight: 600;
-  margin: 0 0 var(--sway-space-1);
+  margin: 0 0 calc(2px * var(--ui-scale));
 }
 
 .sessionInfoBody ul {
@@ -839,11 +825,11 @@
 .refusal {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
-  padding: var(--sway-space-3) var(--sway-space-4);
+  gap: calc(12px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   background: var(--canvas-card);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
 }
 
 .banner {
@@ -860,57 +846,23 @@
   line-height: 1.4;
 }
 
-/* ---- connection health ----
-   Quiet when healthy, loud only when the pane is unusable: every control in the
-   chat is inert once the child is gone, and nothing else on screen says why. */
-.connection {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sway-space-2);
-  font-size: var(--sway-text-xs);
-  color: var(--fg-muted);
-  white-space: nowrap;
-}
-
-.connectionDot {
-  flex: none;
-  width: calc(6px * var(--ui-scale));
-  height: calc(6px * var(--ui-scale));
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.connection.connected {
-  color: var(--status-idle);
-}
-
-.connection.connecting {
-  color: var(--status-running);
-}
-
-.connection.disconnected {
-  color: var(--danger-fg);
-}
-
 /* ---- plan card ----
    Pinned between the transcript and the composer: current state, not a
-   transcript entry (see PlanCard.tsx). Capped and scrollable because a long
-   task's plan can run to a dozen steps and the composer must not be pushed off
-   the bottom of the pane by one. */
+   transcript entry (see PlanCard.tsx). */
 .planCard {
   flex: 0 0 auto;
   border-top: 1px solid var(--border-default);
   background: var(--canvas-card);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
 }
 
 .planHead {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
-  padding: var(--sway-space-2) var(--sway-space-4);
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
 }
 
 .planTitle {
@@ -919,6 +871,7 @@
 }
 
 .planCount {
+  font-family: var(--sway-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -935,7 +888,7 @@
 
 .planList {
   margin: 0;
-  padding: 0 var(--sway-space-4) var(--sway-space-2);
+  padding: 0 calc(16px * var(--ui-scale)) calc(6px * var(--ui-scale));
   list-style: none;
   max-height: calc(140px * var(--ui-scale));
   overflow-y: auto;
@@ -944,10 +897,10 @@
 .planItem {
   display: flex;
   align-items: baseline;
-  gap: var(--sway-space-2);
+  gap: calc(8px * var(--ui-scale));
   padding: calc(1px * var(--ui-scale)) 0;
   color: var(--fg-muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .planGlyph {
@@ -974,18 +927,44 @@
   color: var(--fg-muted);
 }
 
-/* ---- composer ---- */
+/* ---- composer ----
+   The mock's floating card: input on top, then the bar with the attach
+   button, the session-control chips, and the brand-gold send circle. Focus
+   paints the shared gold ring. */
 
 .composer {
-  border-top: 1px solid var(--border-default);
-  background: var(--canvas-card);
-  padding: var(--sway-space-3) var(--sway-space-4);
+  flex: none;
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(16px * var(--ui-scale));
 }
 
-.composerRow {
+/* The drop target is the whole composer, so an image can be dropped on the
+   input, the chips or the strip around them without hunting for a zone. */
+.composerDragging {
+  outline: 2px dashed var(--brand-default);
+  outline-offset: calc(-4px * var(--ui-scale));
+}
+
+.composerNotice {
+  padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  color: var(--attention-fg);
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+}
+
+.composerBox {
   display: flex;
-  align-items: flex-end;
-  gap: var(--sway-space-3);
+  flex-direction: column;
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+.composerBox:focus-within {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 .input {
@@ -993,46 +972,317 @@
   min-width: 0;
   max-height: calc(180px * var(--ui-scale));
   resize: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  padding: var(--sway-space-3);
-  background: var(--canvas-input);
+  border: none;
+  border-radius: var(--sway-radius-xl) var(--sway-radius-xl) 0 0;
+  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: transparent;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--sway-text-lg);
   line-height: 1.5;
+}
+
+.input::placeholder {
+  color: var(--fg-subtle);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--brand-ring);
 }
 
 .input:disabled {
   color: var(--fg-subtle);
 }
 
-.sendButton {
-  display: inline-flex;
+.composerBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale));
+}
+
+.composerSpacer {
+  flex: 1;
+}
+
+.hiddenPicker {
+  display: none;
+}
+
+/* The square attach button, bordered like the mock's. */
+.attachButton {
+  display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  height: calc(28px * var(--ui-scale));
-  width: calc(28px * var(--ui-scale));
+  width: var(--control-height);
+  height: var(--control-height);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   background: transparent;
   color: var(--fg-muted);
   cursor: pointer;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    color var(--sway-duration-fast) ease;
 }
 
-.sendButton:hover:not(:disabled) {
-  background: var(--neutral-hover);
+.attachButton:hover:not(:disabled) {
+  border-color: var(--brand-default);
   color: var(--fg-default);
 }
 
-.sendButton:disabled {
+.attachButton:disabled {
   color: var(--fg-subtle);
   cursor: default;
+}
+
+/* The one primary action in the pane: the brand-gold send circle. */
+.sendButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  width: var(--control-height);
+  border: none;
+  border-radius: var(--sway-radius-pill);
+  background: var(--brand-default);
+  color: var(--brand-on);
+  cursor: pointer;
+  transition: filter var(--sway-duration-fast) ease;
+}
+
+.sendButton:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.sendButton:disabled {
+  background: var(--neutral-hover);
+  color: var(--fg-subtle);
+  cursor: default;
+}
+
+/* ---- the control chips in the composer bar ----
+   Model, thinking effort, and permission mode: quiet stadium chips at the
+   standard control height, the way the mock draws them. */
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  height: var(--control-height);
+  padding: 0 calc(9px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));
+  border: 1px solid transparent;
+  border-radius: var(--sway-radius-pill);
+  background: var(--neutral-subtle);
+  color: var(--fg-default);
+  transition:
+    background var(--sway-duration-fast) ease,
+    border-color var(--sway-duration-fast) ease;
+}
+
+.pill:hover {
+  background: var(--neutral-hover);
+}
+
+/* Keyboard focus on the overlaid select paints the chip, since the select
+   itself is invisible. */
+.pill:focus-within {
+  border-color: var(--brand-default);
+}
+
+.pillPrefix {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  white-space: nowrap;
+}
+
+.pillValue {
+  max-width: calc(160px * var(--ui-scale));
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--sway-text-md);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pillCaret {
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+/* The native select, stretched invisibly over the whole chip: the platform
+   menu and its keyboard handling, under the app's own closed control. */
+.pillSelect {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pillSelect:focus {
+  outline: none;
+}
+
+.pillSelect:disabled {
+  cursor: default;
+}
+
+/* A pick that has not landed is a promise about the next turn, not a fact
+   about this one; the chip says so until the boundary passes. */
+.pillPending {
+  border-color: var(--brand-default);
+  color: var(--brand-strong);
+}
+
+/* Bypass names itself after something Sway does not actually let it do; the
+   chip wears the warning the whole time the mode is in force. */
+.pillAttention {
+  border-color: var(--attention-emphasis);
+  color: var(--attention-fg);
+}
+
+/* Small print in the composer bar (context meter, pending and stale notes). */
+.barNote {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.barNotePending {
+  color: var(--brand-strong);
+}
+
+.contextMeter {
+  display: inline-block;
+  width: calc(48px * var(--ui-scale));
+  height: calc(5px * var(--ui-scale));
+  margin-right: calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--neutral-hover);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.contextMeterFill {
+  display: block;
+  height: 100%;
+  background: var(--brand-default);
+}
+
+/* The `@` / `/` completion menu, on the shared menuSurface recipe. Above the
+   input, because the composer sits at the bottom of the pane and a menu below
+   it would open off-screen. */
+.completions {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(240px * var(--ui-scale));
+  margin: 0 0 calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale));
+  overflow-y: auto;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.completion {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: transparent;
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.completion:hover {
+  background: var(--neutral-hover);
+}
+
+/* Declared after :hover, so keyboard selection wins over whatever the pointer
+   happens to be resting on. */
+.completionActive {
+  background: var(--neutral-hover);
+}
+
+.completionName {
+  flex: none;
+  font-family: var(--sway-font-mono);
+}
+
+.completionHint {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+}
+
+.completionDesc {
+  overflow: hidden;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* What the next turn will carry besides what is typed: a selection, a hunk
+   comment, a diagnostic. Removable, and never sent on its own. */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
+
+.attachment {
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  overflow: hidden;
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.attachment:hover {
+  border-color: var(--danger-fg);
+  color: var(--fg-default);
+}
+
+/* An image chip shows the image: a chip reading "image" says nothing about
+   which one, and a composer can hold several. */
+.attachmentThumb {
+  display: block;
+  width: calc(40px * var(--ui-scale));
+  height: calc(40px * var(--ui-scale));
+  object-fit: cover;
+}
+
+.attachment:has(.attachmentThumb) {
+  padding: 0;
+  border-radius: var(--sway-radius-md);
+  line-height: 0;
 }
 
 /* ---- the queue strip ---- */
@@ -1041,13 +1291,13 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sway-space-2);
-  padding-bottom: var(--sway-space-3);
+  gap: calc(6px * var(--ui-scale));
+  padding-bottom: calc(8px * var(--ui-scale));
 }
 
 .queueLabel {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-md);
 }
 
 /* Held after a stopped turn: the queue is waiting on a decision, not on a
@@ -1060,10 +1310,10 @@
   max-width: calc(220px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-pill);
-  padding: var(--sway-space-1) var(--sway-space-3);
+  padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: var(--canvas-input);
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-md);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1077,5 +1327,5 @@
 
 .queueActions {
   display: flex;
-  gap: var(--sway-space-2);
+  gap: calc(6px * var(--ui-scale));
 }
