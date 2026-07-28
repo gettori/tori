@@ -253,7 +253,13 @@ impl Default for FsWatch {
 /// build output. Terminal-driven git/build/install touch these constantly and a
 /// match here means "skip" so follow-mode and the git gutter only react to real
 /// source edits. (Best-effort gitignore beyond this explicit list is deferred.)
-const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "dist", "target"];
+/// `.sway-attempts` is here for a different reason than the rest: it is not
+/// build output, it is several whole worktrees. Creating three attempts writes
+/// three checkouts plus three cloned dependency trees inside the project, and
+/// without this the watcher would report every one of those files as a change
+/// to the project the user is actually looking at.
+const IGNORED_DIRS: &[&str] =
+    &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
 fn is_ignored(path: &Path) -> bool {
     path.components().any(|c| {
@@ -333,6 +339,9 @@ mod tests {
     #[test]
     fn ignored_dirs_filtered_anywhere_in_path() {
         assert!(is_ignored(Path::new("/p/.git/index")));
+        // An attempt is a whole second checkout inside the project, so its churn
+        // must not read as a change to the project the user is looking at.
+        assert!(is_ignored(Path::new("/p/.sway-attempts/try-1/src/main.rs")));
         assert!(is_ignored(Path::new("/p/node_modules/x/y.js")));
         assert!(is_ignored(Path::new("/p/dist/bundle.js")));
         assert!(is_ignored(Path::new("/p/src-tauri/target/debug/foo")));

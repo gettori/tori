@@ -1,5 +1,6 @@
 mod agents;
 mod askpass;
+mod attempts;
 mod chat;
 mod checkpoint;
 mod config;
@@ -173,6 +174,9 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_kill,
             chat::commands::chat_spawn,
+            attempts::create_attempt,
+            attempts::promote_attempt,
+            attempts::list_project_attempts,
             chat::commands::chat_send,
             chat::commands::chat_steer,
             chat::commands::chat_interrupt,

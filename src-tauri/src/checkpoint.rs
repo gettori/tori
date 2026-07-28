@@ -257,11 +257,23 @@ fn git_output(repo: &str, args: &[&str]) -> Result<String, String> {
 
 /// `git add -A` + `write-tree` against a session's persistent scratch index
 /// (never the user's real index). Creates the index's parent dir on first use.
-fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String, String> {
+pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String, String> {
     if let Some(parent) = index_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let index_str = index_path.to_string_lossy().into_owned();
+    // No pathspec, deliberately, and the attempts directory is kept out by its
+    // ignore entry alone.
+    //
+    // An earlier version excluded it with `-- . :(exclude).sway-attempts`, on
+    // the theory that gitignore stops a file entering the index without stopping
+    // git walking the tree to discover that. **Measured, and that is not how git
+    // behaves**: an ignored *directory* is pruned, not descended. A repo with
+    // 4000 ignored files added in 34ms against 200ms for the same files tracked.
+    // The pathspec also broke this outright, since an exclude matching only
+    // ignored paths makes `git add` error rather than skip - so a fanned-out
+    // project's every snapshot would have failed. See
+    // [[gotchas#an-exclude-pathspec-over-ignored-paths-fails-git-add]].
     let add = Command::new("git")
         .arg("-C")
         .arg(repo)
