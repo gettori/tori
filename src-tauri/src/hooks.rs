@@ -206,9 +206,25 @@ mod tests {
         SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
     }
 
-    // status_for/prune go through the real `dirs::home_dir()`-derived path
-    // (no env-var override in this codebase's convention), so these tests
-    // write/read that same path directly rather than a fake HOME.
+    /// Serializes every test that touches the shared hooks-status directory.
+    ///
+    /// `status_for`/`prune` go through the real `dirs::home_dir()`-derived path
+    /// (no env-var override in this codebase's convention), so these tests all
+    /// share **one** real directory. `prune_stale_is_a_noop_...` empties it
+    /// outright, which raced the tests that write a file and read it back:
+    /// either the wipe landed between another test's write and its read (that
+    /// test saw `None`), or a write landed between the wipe and the noop
+    /// assertion (the closure ran, and `assert!(!called)` failed). Both were
+    /// observed intermittently, roughly one full-suite run in five.
+    ///
+    /// Poisoning is recovered from rather than propagated: one failing test
+    /// should report its own assertion, not turn every sibling into a panic.
+    static DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_dir() -> std::sync::MutexGuard<'static, ()> {
+        DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn write_status(session_id: &str, event: &str, at: u64) {
         std::fs::create_dir_all(hooks_status_dir()).unwrap();
         std::fs::write(status_path(session_id), json!({ "event": event, "at": at }).to_string()).unwrap();
@@ -216,6 +232,7 @@ mod tests {
 
     #[test]
     fn status_for_maps_known_events() {
+        let _guard = lock_dir();
         let id = format!("test-status-{}", now_secs());
         write_status(&id, "Notification", now_secs());
         assert_eq!(status_for(&id), Some(TailState::BlockedCandidate));
@@ -230,6 +247,7 @@ mod tests {
 
     #[test]
     fn status_for_unrecognized_event_falls_back() {
+        let _guard = lock_dir();
         let id = format!("test-status-unknown-{}", now_secs());
         write_status(&id, "SessionStart", now_secs());
         assert_eq!(status_for(&id), None);
@@ -238,11 +256,13 @@ mod tests {
 
     #[test]
     fn status_for_missing_file_is_none() {
+        let _guard = lock_dir();
         assert_eq!(status_for("no-such-session-ever"), None);
     }
 
     #[test]
     fn prune_removes_the_file() {
+        let _guard = lock_dir();
         let id = format!("test-prune-{}", now_secs());
         write_status(&id, "Stop", now_secs());
         assert!(status_path(&id).exists());
@@ -252,6 +272,7 @@ mod tests {
 
     #[test]
     fn prune_stale_removes_files_for_gone_or_outdated_sessions() {
+        let _guard = lock_dir();
         let gone = format!("test-stale-gone-{}", now_secs());
         let outdated = format!("test-stale-outdated-{}", now_secs());
         let fresh = format!("test-stale-fresh-{}", now_secs());
@@ -295,6 +316,7 @@ mod tests {
 
     #[test]
     fn prune_stale_is_a_noop_when_the_directory_is_empty() {
+        let _guard = lock_dir();
         // No panic/side effect when hooks-status has never been created or
         // has nothing in it - must not force the sessions() closure to run.
         let dir = hooks_status_dir();
