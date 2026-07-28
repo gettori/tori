@@ -16,10 +16,28 @@ import { createSignal } from "solid-js";
 import type { PermissionScope } from "./chatTypes";
 
 /** One entry of `chat_list_rules`. */
+/** What a rule does when it matches. `deny` and `ask` are restrictions and beat
+ *  `allow`, whatever order the rules happen to sit in. */
+export type RuleKind = "allow" | "ask" | "deny";
+
+/** Why a rule exists: reached for, or accepted from an offer Sway made after
+ *  counting repeat approvals. */
+export type RuleOrigin = "manual" | "learned";
+
 export type ScopedRule = {
   tool: string;
   prefix: string | null;
+  glob: string | null;
+  kind: RuleKind;
+  origin: RuleOrigin;
   scope: PermissionScope;
+};
+
+/** Sway's offer to stop asking about a call the user keeps approving by hand. */
+export type RuleOffer = {
+  tool: string;
+  prefix: string;
+  approvals: number;
 };
 
 const [revision, setRevision] = createSignal(0);
@@ -35,5 +53,17 @@ export function noteRulesChanged(): void {
 
 /** What a rule actually covers, in the same words the approval buttons used. */
 export function ruleLabel(rule: ScopedRule): string {
-  return rule.prefix ? `${rule.tool} · ${rule.prefix}` : `${rule.tool} · anything`;
+  // The glob is the scope when there is one: a restriction is written *about* a
+  // pattern, so showing the tool alone would hide the part that decides where it
+  // bites. `kind` leads for a restriction and is left off an allow rule, which
+  // is what the list has always been made of and needs no word for.
+  const where = rule.glob ?? rule.prefix ?? "anything";
+  const what = rule.kind === "allow" ? rule.tool : `${rule.kind} ${rule.tool}`;
+  return `${what} · ${where}`;
+}
+
+/** The one-line "why is this here" for a rule, or null when it is the ordinary
+ *  case of a rule the user wrote. */
+export function ruleOriginNote(rule: ScopedRule): string | null {
+  return rule.origin === "learned" ? "Added by Sway after you approved this a few times." : null;
 }
