@@ -136,6 +136,33 @@ pub struct SlashCommand {
     pub aliases: Vec<String>,
 }
 
+/// One model the live harness says it can run, as the picker needs it.
+///
+/// Measured: this catalogue exists **only** in the `initialize` control
+/// response, never on `system/init`, which reports a single already-resolved
+/// model id. The two fields are not interchangeable and conflating them is the
+/// trap this struct exists to make impossible: `value` (`default`, `sonnet`,
+/// `opus`) is what `--model` takes and what the picker keeps as the authority
+/// for its own selection, while `resolved_model` (`claude-sonnet-5`) is what
+/// `system/init.model` reports back. Several distinct `value`s resolve to one
+/// `resolved_model`, so init alone can never say which was picked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatModelInfo {
+    pub value: String,
+    pub resolved_model: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub supports_effort: bool,
+    /// Empty for a model with no effort control, which is what hides the
+    /// control rather than rendering an inert one.
+    #[serde(default)]
+    pub supported_effort_levels: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServer {
@@ -246,6 +273,18 @@ pub enum ChatEvent {
         tools: Vec<String>,
         slash_commands: Vec<SlashCommand>,
         mcp_servers: Vec<McpServer>,
+        /// The live model catalogue from the `initialize` control response.
+        /// **Empty when the handshake did not happen**, which the picker reads
+        /// as "fall back to the adapter table" rather than as "no models".
+        #[serde(default)]
+        models: Vec<ChatModelInfo>,
+        /// `system/init`'s fast-mode state and, when it is unavailable, the
+        /// harness's own reason. Typed rather than left in `extra` because the
+        /// toggle renders the reason instead of an inert control.
+        #[serde(default)]
+        fast_mode_state: Option<String>,
+        #[serde(default)]
+        fast_mode_disabled_reason: Option<String>,
         #[serde(default, skip_serializing_if = "extra_is_empty")]
         extra: Extra,
     },
@@ -481,6 +520,16 @@ mod tests {
                     tool_count: Some(11),
                     error: None,
                 }],
+                models: vec![ChatModelInfo {
+                    value: "sonnet".into(),
+                    resolved_model: "claude-sonnet-5".into(),
+                    display_name: "Sonnet 5".into(),
+                    description: "Balanced".into(),
+                    supports_effort: true,
+                    supported_effort_levels: vec!["low".into(), "high".into()],
+                }],
+                fast_mode_state: Some("off".into()),
+                fast_mode_disabled_reason: Some("sdk_opt_in_required".into()),
                 extra: extra(),
             },
             ChatEvent::TurnStarted {

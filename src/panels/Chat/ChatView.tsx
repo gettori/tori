@@ -3,7 +3,9 @@ import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
-import ModeSelector from "./ModeSelector";
+import ModeSelector, { MODES } from "./ModeSelector";
+import ModelPicker from "./ModelPicker";
+import FastModeStatus from "./FastModeStatus";
 import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
@@ -29,6 +31,15 @@ import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import { parseChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
+import {
+  contextTokens,
+  pickableModels,
+  restoredPicks,
+  selectedModel,
+  type PickableModel,
+} from "../../utils/chatModels";
+import { findAgent } from "../../utils/agents";
+import { chatPrefs, rememberChatPrefs } from "../Settings/settingsStore";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -45,17 +56,25 @@ import {
   clearAwaitingTurn,
   discardQueue,
   enqueue,
+  effortPending,
   filesWritten,
   initialChat,
   isRunning,
   modePending,
+  modelPending,
   pendingFlush,
   pushUserTurn,
   releaseQueue,
   removeQueued,
   resolveApproval,
+  revertEffortPick,
+  revertModelPick,
+  selectEffort,
   selectMode,
+  selectModel,
+  shownEffort,
   shownMode,
+  shownModelValue,
   takeForSend,
   type ChatState,
   type QueuedInput,
@@ -313,14 +332,93 @@ export default function ChatView(props: {
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
-  function onSelectMode(mode: PermissionMode) {
+  function onSelectMode(mode: PermissionMode, remember = true) {
     edit((s) => selectMode(s, mode));
+    if (remember) rememberChatPrefs(props.cwd, { mode });
     void invoke("chat_set_mode", { sessionId: props.sessionId, mode }).catch((e) => {
       // The request never left, so the control must stop promising a switch.
       // Left set, it would show a mode the session will never enter.
       edit((s) => {
         if (s.pendingMode === mode) s.pendingMode = null;
       });
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    });
+  }
+
+  // What the picker may offer: the session's own catalogue when the handshake
+  // gave us one, the adapter's table when it did not. `pickableModels` owns
+  // that choice so the picker, the effort control and the meter cannot each
+  // decide it differently.
+  const models = () => pickableModels(state.models, findAgent(props.agentId).chat ?? null);
+
+  // The entry the picker shows as selected. Resolved through the catalogue
+  // rather than read straight off the store, because before the first pick the
+  // only thing known is the *resolved* id the session reported, which is not a
+  // `--model` value and would leave the control blank.
+  const shownModel = () => selectedModel(models(), shownModelValue(state), state.model);
+
+  // `remember` is false when the pick is a replay of what is already stored:
+  // writing it back would rewrite settings.json, fire the watcher and re-apply
+  // the theme on every chat open, for data that did not change.
+  function onSelectModel(model: PickableModel, remember = true) {
+    edit((s) => selectModel(s, model));
+    // Effort is sent with the model because that is how the command carries it:
+    // a level the new model does not offer would be rejected, so it is dropped
+    // rather than sent and blamed on the model switch.
+    const effort = model.effortLevels.includes(shownEffort(state) ?? "") ? shownEffort(state) : null;
+    if (remember) rememberChatPrefs(props.cwd, { model: model.value, effort });
+    applyModelChange(model.value, effort, () => edit((s) => revertModelPick(s, model.value)));
+  }
+
+  function onSelectEffort(effort: string) {
+    // A model value is required by the command, so an effort-only change re-sends
+    // the model the picker is already showing. Without one there is nothing to
+    // attach the level to, and the CLI has no effort-only control.
+    //
+    // Checked *before* the pick is staged: staging first would leave the control
+    // promising a level at the next turn that no request ever carried.
+    const value = shownModel()?.value;
+    if (value === undefined) return;
+    edit((s) => selectEffort(s, effort));
+    rememberChatPrefs(props.cwd, { model: value, effort });
+    applyModelChange(value, effort, () => edit((s) => revertEffortPick(s, effort)));
+  }
+
+  // Restore this project's last combination, once the session has reported the
+  // catalogue a stored value can be checked against. Applied as a real pick
+  // rather than written straight into the store, so it goes through the same
+  // next-turn boundary and the same failure handling as a click.
+  let restored = false;
+  createEffect(() => {
+    if (restored || !state.started) return;
+    // Latched only once there is something to check against. Marking it done on
+    // an empty catalogue would burn the one attempt: with no handshake, the
+    // adapter table arrives from `list_agents` a moment later, and the restore
+    // has to still be waiting for it.
+    const offered = models();
+    if (offered.length === 0) return;
+    restored = true;
+    const prefs = chatPrefs(props.cwd);
+    const { model, effort } = restoredPicks(offered, prefs);
+    if (model) {
+      // Staged before the model pick so the one request carries both, rather
+      // than sending a model and then immediately re-sending it with a level.
+      if (effort) edit((s) => selectEffort(s, effort));
+      onSelectModel(model, false);
+    }
+    // Mode is Phase 6's control; this only replays the remembered pick through
+    // it rather than introducing a second way to set one.
+    const mode = MODES.find((m) => m.value === prefs.mode);
+    if (mode && mode.value !== state.permissionMode) onSelectMode(mode.value, false);
+  });
+
+  /** The one path to `chat_set_model`. A request that never left must not leave
+   *  a control promising a switch: the CLI's own error is what the user sees,
+   *  rather than a picker that silently shows a model the session never
+   *  entered. */
+  function applyModelChange(model: string, effort: string | null, revert: () => void) {
+    void invoke("chat_set_model", { sessionId: props.sessionId, model, effort }).catch((e) => {
+      revert();
       emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
     });
   }
@@ -473,9 +571,9 @@ export default function ChatView(props: {
         )}
       </Show>
 
-      {/* The session's standing permissions, above the transcript: the mode it
-          will run the next turn in, and everything it may already do without
-          asking. Phase 9 adds the model and effort pickers to this row. */}
+      {/* Everything the next turn will run under: the mode, the model and its
+          effort, and the permissions already granted. All three switches land
+          at the same next-turn boundary, so they say so in the same words. */}
       <div class={styles.controls}>
         <ModeSelector
           mode={shownMode(state)}
@@ -483,6 +581,18 @@ export default function ChatView(props: {
           disabled={refused() || state.ended}
           onSelect={onSelectMode}
         />
+        <ModelPicker
+          models={models()}
+          value={shownModel()?.value ?? null}
+          effort={shownEffort(state)}
+          contextTokens={contextTokens(state.lastUsage)}
+          modelPending={modelPending(state)}
+          effortPending={effortPending(state)}
+          disabled={refused() || state.ended}
+          onSelectModel={onSelectModel}
+          onSelectEffort={onSelectEffort}
+        />
+        <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
         <RuleList rules={rules()} onRemove={onRemoveRule} />
         <Button
           size="sm"

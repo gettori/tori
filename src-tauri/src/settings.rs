@@ -116,6 +116,28 @@ impl Default for Checkpoints {
     }
 }
 
+/// What a chat session should reopen with, remembered per project.
+///
+/// **Per project rather than global** because the answer is a property of the
+/// work: a repo where every turn edits code wants a different model and effort
+/// than one where chat is mostly questions, and a single global setting would
+/// make each project's last choice overwrite the others'.
+///
+/// `model` holds the `--model` **value** (`sonnet`, `opus`), never the resolved
+/// id the session reports back. The value is what the flag takes, and it
+/// survives a model being re-resolved to a different id; storing the resolved
+/// id would restore a pick the CLI cannot be given.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatPrefs {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -125,6 +147,11 @@ pub struct Settings {
     pub typography: Typography,
     #[serde(default)]
     pub checkpoints: Checkpoints,
+    /// Keyed by project path. Untyped as a map rather than a list so a project
+    /// that has never been opened simply has no entry, instead of needing one
+    /// written before the first pick can be stored.
+    #[serde(default)]
+    pub chat: std::collections::HashMap<String, ChatPrefs>,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -238,6 +265,46 @@ mod tests {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("sway-settings-test-{n}-{seq}.json"))
+    }
+
+    /// The picks are keyed per project and hold the `--model` **value**, not
+    /// the resolved id the session reports back. A file written before chat
+    /// existed has no `chat` key at all, and must still load.
+    #[test]
+    fn chat_prefs_round_trip_per_project_and_default_to_empty() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        assert!(s.chat.is_empty());
+        s.chat.insert(
+            "/repo/a".into(),
+            ChatPrefs {
+                model: Some("sonnet".into()),
+                effort: Some("xhigh".into()),
+                mode: Some("plan".into()),
+            },
+        );
+        s.chat.insert(
+            "/repo/b".into(),
+            ChatPrefs {
+                model: Some("haiku".into()),
+                ..Default::default()
+            },
+        );
+        save_to(&p, &s).unwrap();
+
+        let back = load_from(&p);
+        // Per project, so one repo's choice never overwrites another's.
+        assert_eq!(back.chat["/repo/a"].model.as_deref(), Some("sonnet"));
+        assert_eq!(back.chat["/repo/a"].effort.as_deref(), Some("xhigh"));
+        assert_eq!(back.chat["/repo/b"].model.as_deref(), Some("haiku"));
+        assert_eq!(back.chat["/repo/b"].effort, None);
+        assert!(!back.chat.contains_key("/repo/c"));
+
+        // A settings file predating this section loads rather than resetting
+        // everything else to defaults.
+        std::fs::write(&p, r#"{"appearance":{"theme":"sway-dark"}}"#).unwrap();
+        assert!(load_from(&p).chat.is_empty());
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

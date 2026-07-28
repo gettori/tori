@@ -27,6 +27,21 @@
         "error": null
       }
     ],
+    "models": [
+      {
+        "value": "sonnet",
+        "resolvedModel": "claude-sonnet-5",
+        "displayName": "Sonnet 5",
+        "description": "Balanced",
+        "supportsEffort": true,
+        "supportedEffortLevels": [
+          "low",
+          "high"
+        ]
+      }
+    ],
+    "fastModeState": "off",
+    "fastModeDisabledReason": "sdk_opt_in_required",
     "extra": {
       "ttftMs": 1575
     }

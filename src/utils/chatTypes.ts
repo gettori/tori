@@ -53,6 +53,24 @@ export type McpServer = {
   error: string | null;
 };
 
+/// One model the live harness says it can run.
+///
+/// `value` is what `--model` takes and what the picker keeps as the authority
+/// for its own selection; `resolvedModel` is what `system/init.model` reports
+/// back. Several values resolve to one `resolvedModel`, so init alone can never
+/// say which was picked - comparing a picked value against init's model is the
+/// trap these two separate fields exist to prevent.
+export type ChatModelInfo = {
+  value: string;
+  resolvedModel: string;
+  displayName: string;
+  description: string;
+  supportsEffort: boolean;
+  /// Empty for a model with no effort control, which hides the control rather
+  /// than rendering an inert one.
+  supportedEffortLevels: string[];
+};
+
 export type Usage = {
   inputTokens: number;
   outputTokens: number;
@@ -102,6 +120,14 @@ export type ChatEvent =
       tools: string[];
       slashCommands: SlashCommand[];
       mcpServers: McpServer[];
+      /// The live catalogue from the `initialize` handshake. **Empty when the
+      /// handshake did not happen**, which the picker reads as "fall back to
+      /// the adapter table" rather than as "no models".
+      models: ChatModelInfo[];
+      /// From `system/init`. A disabled fast mode carries the harness's own
+      /// reason, which the toggle renders instead of an inert control.
+      fastModeState: string | null;
+      fastModeDisabledReason: string | null;
       extra?: Extra;
     }
   /// `model` and `permissionMode` repeat here because the per-turn init
@@ -265,7 +291,18 @@ export const CHAT_COMMAND_TYPES = [
 /// that are merely nullable - a `null` is still a present key.
 export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; optional?: string[] }> = {
   sessionStarted: {
-    required: ["sessionId", "cwd", "model", "permissionMode", "tools", "slashCommands", "mcpServers"],
+    required: [
+      "sessionId",
+      "cwd",
+      "model",
+      "permissionMode",
+      "tools",
+      "slashCommands",
+      "mcpServers",
+      "models",
+      "fastModeState",
+      "fastModeDisabledReason",
+    ],
     optional: ["extra"],
   },
   turnStarted: {

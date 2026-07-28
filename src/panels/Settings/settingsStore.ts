@@ -22,7 +22,18 @@ export type Typography = {
   lineHeight: number;
 };
 export type Checkpoints = { enabled: boolean };
-export type Settings = { appearance: Appearance; typography: Typography; checkpoints: Checkpoints };
+/** What a chat reopens with, remembered per project because the right model and
+ *  effort are a property of the work rather than of the user. `model` is the
+ *  `--model` **value**, never the resolved id the session reports back: the
+ *  value is what the flag takes and what survives a re-resolution. */
+export type ChatPrefs = { model?: string | null; effort?: string | null; mode?: string | null };
+export type Settings = {
+  appearance: Appearance;
+  typography: Typography;
+  checkpoints: Checkpoints;
+  /** Keyed by project path. A project with no entry has never had a pick. */
+  chat: Record<string, ChatPrefs>;
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "sway-dark" },
@@ -36,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
     lineHeight: 1.5,
   },
   checkpoints: { enabled: true },
+  chat: {},
 };
 
 const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
@@ -149,6 +161,31 @@ export async function saveSettings(next: Settings): Promise<void> {
   setSettings(saved);
   applyAll(saved);
   emit(SETTINGS_CHANGED);
+}
+
+/** This project's remembered chat picks, or an empty set for one that has never
+ *  had any. */
+export function chatPrefs(projectPath: string): ChatPrefs {
+  return settings.chat?.[projectPath] ?? {};
+}
+
+/**
+ * Remember one or more chat picks for a project, leaving the rest alone.
+ *
+ * Merged rather than replaced because the three picks are made independently:
+ * writing the whole record on a model change would erase an effort level the
+ * user had chosen a moment earlier.
+ *
+ * Failure is swallowed on purpose. A pick that could not be persisted is a
+ * preference not carried to the next session, which is not worth a toast during
+ * a live chat - the pick itself already took effect.
+ */
+export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
+  const next: Settings = {
+    ...settings,
+    chat: { ...settings.chat, [projectPath]: { ...chatPrefs(projectPath), ...prefs } },
+  };
+  void saveSettings(next).catch(() => {});
 }
 
 /** Re-read the themes folder, then re-apply the active theme so an edit to the

@@ -29,7 +29,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::model::{
-    ChatEvent, Extra, McpServer, PermissionDenial, PermissionMode, SlashCommand, ToolStatus, TurnOutcome, Usage,
+    ChatEvent, ChatModelInfo, Extra, McpServer, PermissionDenial, PermissionMode, SlashCommand, ToolStatus,
+    TurnOutcome, Usage,
 };
 
 /// What kind of content an open block at a given index holds. Recorded at
@@ -61,6 +62,11 @@ pub struct ClaudeMapper {
     /// held until the first `system/init` can carry it into `SessionStarted`.
     /// `system/init` itself reports only bare names.
     command_catalogue: Vec<SlashCommand>,
+    /// The model catalogue from the same control response, held the same way
+    /// and for the same reason: `system/init` reports one resolved model id and
+    /// never the list of what could be picked. Empty for a session that never
+    /// handshook, which the picker reads as "fall back to the adapter table".
+    model_catalogue: Vec<ChatModelInfo>,
     /// Tool inputs accumulated from `input_json_delta`, keyed by block index.
     partial_tool_input: HashMap<u64, String>,
 }
@@ -77,27 +83,51 @@ impl ClaudeMapper {
         format!("turn-{}", self.turn_seq)
     }
 
-    /// Absorb the `initialize` control response, whose catalogue is the only
-    /// place command descriptions and argument hints exist.
+    /// Absorb the `initialize` control response, the only place command
+    /// descriptions, argument hints and the model catalogue exist.
+    ///
+    /// The two catalogues are absorbed independently: a response carrying one
+    /// and not the other must not discard what it does carry.
     pub fn absorb_control_response(&mut self, frame: &Value) {
         let inner = &frame["response"]["response"];
-        let Some(commands) = inner["commands"].as_array() else {
-            return;
-        };
-        self.command_catalogue = commands
-            .iter()
-            .filter_map(|c| {
-                Some(SlashCommand {
-                    name: c["name"].as_str()?.to_string(),
-                    description: c["description"].as_str().unwrap_or_default().to_string(),
-                    argument_hint: c["argumentHint"].as_str().map(str::to_string),
-                    aliases: c["aliases"]
-                        .as_array()
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-                        .unwrap_or_default(),
+        if let Some(commands) = inner["commands"].as_array() {
+            self.command_catalogue = commands
+                .iter()
+                .filter_map(|c| {
+                    Some(SlashCommand {
+                        name: c["name"].as_str()?.to_string(),
+                        description: c["description"].as_str().unwrap_or_default().to_string(),
+                        argument_hint: c["argumentHint"].as_str().map(str::to_string),
+                        aliases: c["aliases"]
+                            .as_array()
+                            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default(),
+                    })
                 })
-            })
-            .collect();
+                .collect();
+        }
+        if let Some(models) = inner["models"].as_array() {
+            self.model_catalogue = models
+                .iter()
+                .filter_map(|m| {
+                    // Both ids are required: an entry missing either one cannot
+                    // be picked (`--model` needs `value`) or confirmed (the next
+                    // init reports `resolvedModel`), so it is dropped rather
+                    // than half-rendered.
+                    Some(ChatModelInfo {
+                        value: m["value"].as_str()?.to_string(),
+                        resolved_model: m["resolvedModel"].as_str()?.to_string(),
+                        display_name: m["displayName"].as_str().unwrap_or_default().to_string(),
+                        description: m["description"].as_str().unwrap_or_default().to_string(),
+                        supports_effort: m["supportsEffort"].as_bool().unwrap_or(false),
+                        supported_effort_levels: m["supportedEffortLevels"]
+                            .as_array()
+                            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default(),
+                    })
+                })
+                .collect();
+        }
     }
 
     /// Map one stream-json frame to zero or more `ChatEvent`s.
@@ -163,12 +193,8 @@ impl ClaudeMapper {
                     extra.insert(camel(key), v.clone());
                 }
             }
-            if let Some(v) = frame.get("fast_mode_state") {
-                extra.insert("fastModeState".into(), v.clone());
-            }
-            if let Some(v) = frame.get("fast_mode_disabled_reason") {
-                extra.insert("fastModeDisabledReason".into(), v.clone());
-            }
+            let fast_mode_state = frame["fast_mode_state"].as_str().map(str::to_string);
+            let fast_mode_disabled_reason = frame["fast_mode_disabled_reason"].as_str().map(str::to_string);
 
             self.turn_seq = 1;
             self.turn_open = true;
@@ -184,6 +210,9 @@ impl ClaudeMapper {
                         .unwrap_or_default(),
                     slash_commands,
                     mcp_servers: mcp_servers(&frame["mcp_servers"]),
+                    models: self.model_catalogue.clone(),
+                    fast_mode_state,
+                    fast_mode_disabled_reason,
                     extra,
                 },
                 ChatEvent::TurnStarted {
@@ -833,6 +862,61 @@ mod tests {
         };
         assert_eq!(fallback.len(), 1);
         assert_eq!(fallback[0].name, "review");
+    }
+
+    /// The model catalogue rides the same control response as the commands and
+    /// is absent from `system/init`, so the picker's source is the handshake.
+    #[test]
+    fn the_model_catalogue_comes_from_the_control_response() {
+        let control = &fixture("initialize")[0];
+        let init = serde_json::json!({
+            "type": "system", "subtype": "init", "model": "claude-sonnet-5",
+            "permissionMode": "default", "cwd": "/w", "tools": [],
+            "slash_commands": [], "mcp_servers": [],
+            "fast_mode_state": "off", "fast_mode_disabled_reason": "sdk_opt_in_required"
+        });
+
+        let mut with = ClaudeMapper::new("s1");
+        with.map(control);
+        let (models, state, reason) = match &with.map(&init)[0] {
+            ChatEvent::SessionStarted {
+                models,
+                fast_mode_state,
+                fast_mode_disabled_reason,
+                ..
+            } => (models.clone(), fast_mode_state.clone(), fast_mode_disabled_reason.clone()),
+            other => panic!("expected SessionStarted, got {other:?}"),
+        };
+        assert_eq!(models.len(), 5, "the catalogue was not absorbed");
+        // `value` is what `--model` takes, `resolvedModel` is what the next
+        // init reports back, and they are measurably not the same string.
+        let default = models.iter().find(|m| m.value == "default").expect("default present");
+        assert_eq!(default.resolved_model, "claude-sonnet-5");
+        assert_eq!(default.display_name, "Default (recommended)");
+        // Three distinct values resolving to one id is exactly why agreement
+        // cannot be checked by comparing the picked value against init's model.
+        assert_eq!(
+            models.iter().filter(|m| m.resolved_model == "claude-sonnet-5").count(),
+            2
+        );
+        let sonnet = models.iter().find(|m| m.value == "sonnet").expect("sonnet present");
+        assert!(sonnet.supports_effort);
+        assert_eq!(sonnet.supported_effort_levels, ["low", "medium", "high", "xhigh", "max"]);
+        // Measured: haiku omits both effort keys entirely rather than declaring
+        // them empty, which is the hidden-control case the effort task needs.
+        let haiku = models.iter().find(|m| m.value == "haiku").expect("haiku present");
+        assert!(!haiku.supports_effort);
+        assert!(haiku.supported_effort_levels.is_empty());
+        // `fast_mode_state` rides `system/init`, not the control response.
+        assert_eq!(state.as_deref(), Some("off"));
+        assert_eq!(reason.as_deref(), Some("sdk_opt_in_required"));
+
+        // No handshake reports an empty list rather than a fabricated one.
+        let mut without = ClaudeMapper::new("s1");
+        match &without.map(&init)[0] {
+            ChatEvent::SessionStarted { models, .. } => assert!(models.is_empty()),
+            other => panic!("expected SessionStarted, got {other:?}"),
+        }
     }
 
     #[test]
