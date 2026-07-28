@@ -23,6 +23,14 @@
 //! still running. That is an orphan, and it is *not* the same as an external
 //! session, because we know its pid and can offer to end it.
 //!
+//! **Scope, stated because the name promises more than the file delivers:
+//! nothing here addresses two live Sways.** The claims file is read, edited and
+//! replaced without a lock across processes, so two running instances race it
+//! and the loser's claim is dropped by last-writer-wins. Every rule below
+//! assumes one Sway plus any number of agent processes it did not start. A
+//! second instance is out of scope for this module and for the plan that built
+//! it, not handled and known to be unhandled.
+//!
 //! Following [[lesson_pure_core_for_global_stores]], every rule here is a pure
 //! function over explicit inputs; the disk and the process table are touched
 //! only by the thin wrappers at the bottom.
@@ -234,11 +242,21 @@ fn load_claims_from(path: &std::path::Path) -> HashMap<String, Claim> {
     std::fs::read_to_string(path).map(|t| parse_claims(&t)).unwrap_or_default()
 }
 
+/// Replace the claims file atomically.
+///
+/// A bare `fs::write` truncates in place, so a crash between the truncate and
+/// the write leaves a short file - and both readers here end in
+/// `unwrap_or_default()`, so a torn file does not fail loudly, it reads back as
+/// **no claims at all**. That is exactly the failure this module exists to
+/// prevent: every live session would look unowned, and a second opener of any of
+/// them would be waved through onto one transcript.
+///
+/// `write_atomically` (write temp, fsync temp, `rename`, fsync the directory) is
+/// the convention the owned-state layout names for every small map, and the
+/// primitive the sibling stores already use. Claims were the one store still
+/// outside it.
 fn save_claims_to(path: &std::path::Path, claims: &HashMap<String, Claim>) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(path, serialize_claims(claims)).map_err(|e| e.to_string())
+    crate::chat::rules::write_atomically(path, &serialize_claims(claims))
 }
 
 /// Pids `kill` interprets as something other than one process: 0 is "every
@@ -649,6 +667,56 @@ mod tests {
         release(&mut claims, "s1", "tab-a");
         save_claims_to(&path, &claims).unwrap();
         assert!(load_claims_from(&path).is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The claims file is *replaced*, never truncated in place.
+    ///
+    /// A bare `fs::write` truncates before it writes, so a crash mid-write
+    /// leaves a short file - and every reader here ends in `unwrap_or_default`,
+    /// so that reads back as an empty map rather than as an error: every live
+    /// session would look unowned and a second opener would be waved through.
+    ///
+    /// The property is checkable without a crash. `rename` swaps a directory
+    /// entry, so a handle opened before the save keeps reading the bytes it was
+    /// opened on, while an in-place truncate would rewrite the very file that
+    /// handle points at. The old implementation fails this assertion.
+    #[test]
+    fn claims_are_replaced_by_rename_so_a_torn_write_cannot_empty_the_file() {
+        use std::io::Read;
+        let dir = std::env::temp_dir().join(format!("sway-claims-atomic-{}", std::process::id()));
+        let path = dir.join("chat-claims.json");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut first = HashMap::new();
+        record(&mut first, "s1", claim(Surface::Chat, "tab-a"));
+        save_claims_to(&path, &first).unwrap();
+
+        // Opened against the first version and held across the second save.
+        let mut held = std::fs::File::open(&path).unwrap();
+
+        let mut second = HashMap::new();
+        record(&mut second, "s2", claim(Surface::PtyAgent, "tab-b"));
+        save_claims_to(&path, &second).unwrap();
+
+        let mut carried = String::new();
+        held.read_to_string(&mut carried).unwrap();
+        assert_eq!(
+            parse_claims(&carried),
+            first,
+            "a handle opened before the save must still see the replaced file, which only a rename gives",
+        );
+        assert_eq!(load_claims_from(&path), second);
+
+        // The temp file is renamed onto the target, never left beside it.
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "chat-claims.json")
+            .collect();
+        assert!(leftovers.is_empty(), "unexpected leftovers: {leftovers:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
