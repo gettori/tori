@@ -78,6 +78,11 @@ pub struct ClaudeMapper {
     /// be re-examined only through this id, and the set is bounded by the
     /// number of tool calls rather than by anything unbounded.
     sway_hook_ids: std::collections::HashSet<String>,
+    /// Tool calls whose result names a file they only *read*. Learned from the
+    /// call's own name, and retained for the same reason and with the same
+    /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
+    /// `tool_use_id` on it.
+    read_only_calls: std::collections::HashSet<String>,
 }
 
 impl ClaudeMapper {
@@ -147,7 +152,7 @@ impl ClaudeMapper {
     /// Guessing an event for such a frame would duplicate content in the
     /// transcript, which is worse than dropping it.
     pub fn map(&mut self, frame: &Value) -> Vec<ChatEvent> {
-        match frame["type"].as_str() {
+        let events = match frame["type"].as_str() {
             Some("system") => self.map_system(frame),
             Some("stream_event") => self.map_stream_event(frame),
             Some("user") => self.map_user(frame),
@@ -159,7 +164,18 @@ impl ClaudeMapper {
                 self.report_ready()
             }
             _ => Vec::new(),
+        };
+        // Noted here rather than at each emission site, because a tool call is
+        // announced from two of them (block open, then block close with the
+        // full input) and this is the one place both pass through.
+        for ev in &events {
+            if let ChatEvent::ToolCallStarted { tool_use_id, name, .. } = ev {
+                if READ_ONLY_TOOLS.contains(&name.as_str()) {
+                    self.read_only_calls.insert(tool_use_id.clone());
+                }
+            }
         }
+        events
     }
 
     /// An answered control request is the first proof the child is alive:
@@ -456,7 +472,15 @@ impl ClaudeMapper {
                     ToolStatus::Ok
                 },
                 output: tool_result_text(&c["content"]),
-                files: files_touched(&frame["tool_use_result"]),
+                // A read reports its target in the same shape a write does, so
+                // the *call* has to say which it was. Without this, opening a
+                // file another session is editing files that file under this
+                // session's writes, and the turn offers to revert it.
+                files: if self.read_only_calls.contains(c["tool_use_id"].as_str().unwrap_or_default()) {
+                    Vec::new()
+                } else {
+                    files_touched(&frame["tool_use_result"])
+                },
                 duration_ms: None,
             })
             .collect()
@@ -624,6 +648,12 @@ fn tool_result_text(raw: &Value) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("\n"))
 }
 
+/// Tools whose result names a file they did not write. `Read` reports its
+/// target under `file.filePath`, which is indistinguishable from a write's
+/// `filePath` once the frame is all that is left, so the exclusion is keyed off
+/// the call's name instead of guessing at the result's shape.
+const READ_ONLY_TOOLS: &[&str] = &["Read", "NotebookRead"];
+
 /// The paths a tool touched, read off `tool_use_result`.
 ///
 /// This is the field per-turn attribution turns on: with several chats sharing
@@ -790,6 +820,35 @@ mod tests {
             files.iter().any(|f| f.contains("probe.txt")),
             "the edited file never appeared in a completion: {files:?}"
         );
+    }
+
+    /// The same capture opens `probe.txt` with `Read` before editing it, and a
+    /// `Read` result carries `file.filePath` exactly as a write carries
+    /// `filePath`. Only the edit may report the path: a file this session merely
+    /// opened is not one it wrote, and recording it as such makes the turn claim
+    /// a file another session may own.
+    #[test]
+    fn a_read_reports_no_touched_file_even_though_its_result_names_one() {
+        let mut mapper = ClaudeMapper::new("s1");
+        let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut per_tool: Vec<(String, Vec<String>)> = Vec::new();
+        for frame in fixture("edit-call") {
+            for ev in mapper.map(&frame) {
+                match ev {
+                    ChatEvent::ToolCallStarted { tool_use_id, name, .. } => {
+                        names.insert(tool_use_id, name);
+                    }
+                    ChatEvent::ToolCallCompleted { tool_use_id, files, .. } => {
+                        per_tool.push((names.get(&tool_use_id).cloned().unwrap_or_default(), files));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let read = per_tool.iter().find(|(name, _)| name == "Read").expect("the capture reads first");
+        assert!(read.1.is_empty(), "a read is not a write: {:?}", read.1);
+        let edit = per_tool.iter().find(|(name, _)| name == "Edit").expect("the capture then edits");
+        assert!(edit.1.iter().any(|f| f.contains("probe.txt")), "the edit still reports its file");
     }
 
     /// The distinction the composer queue depends on: a cancelled turn is not
