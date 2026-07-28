@@ -30,6 +30,11 @@ pub mod mcp;
 pub mod model;
 pub mod ownership;
 pub mod rules;
+/// The version-1 rule parser, kept only so tests can prove a Sway that predates
+/// a format change refuses to act on a file written after it. Test-only: it must
+/// never be reachable from the shipping decision path.
+#[cfg(test)]
+pub mod rules_v1_frozen;
 pub mod snapshot;
 pub mod transport;
 

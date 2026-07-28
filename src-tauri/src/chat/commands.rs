@@ -292,7 +292,7 @@ pub async fn chat_respond_permission(
     decision: PermissionDecision,
     scope: PermissionScope,
     reason: Option<String>,
-) -> Result<(), String> {
+) -> Result<Option<RuleOffer>, String> {
     // **The answer goes out first.** A hook process is blocked on this call, and
     // the rule below is only an optimisation for *later* ones. Persisting first
     // meant an unwritable `~/.config` returned early and left the hook unanswered
@@ -311,9 +311,130 @@ pub async fn chat_respond_permission(
         // A failure here is reported, not swallowed: the call was allowed, but
         // the promise not to ask again was not kept, and the user is the only
         // one who can tell those apart.
-        add_rule(&session_id, &cwd, &tool_name, &tool_input, scope)?;
+        add_rule(&session_id, &cwd, &tool_name, &tool_input, scope, rules::RuleOrigin::Manual)?;
+        return Ok(None);
+    }
+    if matches!(decision, PermissionDecision::Allow) {
+        return Ok(note_repeat_approval(&cwd, &tool_name, &tool_input));
+    }
+    Ok(None)
+}
+
+/// How many times the same call must be approved by hand before Sway offers to
+/// stop asking.
+///
+/// Three. Two is a coincidence - the same file opened twice in a row - and by
+/// five the offer arrives long after the user started finding it tedious, which
+/// is the moment it was meant to catch.
+pub const OFFER_AFTER: u32 = 3;
+
+/// An offer to turn a habit into a rule.
+#[derive(serde::Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleOffer {
+    pub tool: String,
+    /// What the rule would cover: a directory for a path-shaped tool, the exact
+    /// argument otherwise. Shown verbatim, so the user is agreeing to a scope
+    /// they can see rather than to the word "project".
+    pub prefix: String,
+    pub approvals: u32,
+}
+
+/// Count one hand-approved call and decide whether to offer a rule for it.
+///
+/// **Counted here, in the supervisor, and never in the helper.** The helper runs
+/// on every tool call and its cheap path is a single file read; a counter
+/// written there would put a file write on the path
+/// [[concept_pretooluse_approval_bridge]] exists to keep free. This runs once
+/// per prompt the user actually answered, which is orders of magnitude rarer.
+///
+/// Offered **at** the threshold rather than at or above it, so declining is
+/// remembered without storing that it was declined: the count keeps climbing and
+/// never equals the threshold again.
+///
+/// A counting failure returns no offer and no error. The call was already
+/// allowed and the answer already sent; failing the command over a tally would
+/// turn a bookkeeping problem into a visible one.
+fn note_repeat_approval(cwd: &str, tool: &str, input: &serde_json::Value) -> Option<RuleOffer> {
+    let scope = rules::offer_scope(tool, input)?;
+    if scope.is_empty() {
+        return None;
+    }
+    let n = rules::record_approval(&rules::counts_path(cwd), tool, &scope).ok()?;
+    (n == OFFER_AFTER).then(|| RuleOffer { tool: tool.to_string(), prefix: scope, approvals: n })
+}
+
+/// Accept an offer: write the rule it described, marked as learned.
+///
+/// Project-scoped, because the offer is made about a project path and the point
+/// is to stop being asked in the next chat too - a session-scoped rule would
+/// expire with the tab and the same offer would come back tomorrow.
+#[tauri::command]
+pub async fn chat_accept_rule_offer(
+    session_id: String,
+    cwd: String,
+    tool: String,
+    prefix: String,
+) -> Result<(), String> {
+    let rule = rules::Rule {
+        origin: rules::RuleOrigin::Learned,
+        ..rules::Rule::allow(&tool, Some(&prefix))
+    };
+    write_rule(&session_id, &cwd, rule, true)
+}
+
+/// Add a rule to a session's compiled file, and to the project's durable file
+/// when it is project-scoped.
+fn write_rule(session_id: &str, cwd: &str, rule: rules::Rule, project_scoped: bool) -> Result<(), String> {
+    let path = rules::rules_path(session_id);
+    let mut file = rules::load_ok(&path)
+        .unwrap_or_else(|| rules::RuleFile::new(std::process::id(), rules::now_ms(), Vec::new()));
+    if !file.rules.iter().any(|r| r.same_scope(&rule)) {
+        file.rules.push(rule.clone());
+    }
+    file.sway_pid = std::process::id();
+    file.stamp_ms = rules::now_ms();
+    rules::save(&path, &file)?;
+
+    // A project rule also lands in the durable store. Without this it would live
+    // only in the session file, which is a compiled artefact deleted at
+    // teardown - so "always allow in this project" would quietly mean "until
+    // this tab closes", which is not what the button says.
+    if project_scoped {
+        let project_path = rules::project_rules_path(cwd);
+        // Read strictly, because the next line writes. A file this build cannot
+        // parse read as "empty" would be replaced by an empty one, and the
+        // durable store is the copy with nothing to rebuild it from.
+        let mut project = rules::read_project(&project_path).map_err(|e| {
+            format!("Sway could not read this project's saved rules, so it did not change them: {e}")
+        })?;
+        if !project.rules.iter().any(|r| r.same_scope(&rule)) {
+            project.rules.push(rule);
+            rules::save_project(&project_path, &project)?;
+        }
     }
     Ok(())
+}
+
+/// Add a restrictive rule: `ask` or `deny`, optionally scoped by a path glob.
+///
+/// Separate from the allow path on purpose. An allow rule is created by clicking
+/// a button on one specific call, so its scope is derived from that call; a
+/// restriction is written deliberately about a place in the tree, which is the
+/// only reason a glob is offered at all. See the note on `rules::Rule`.
+#[tauri::command]
+pub async fn chat_add_restriction(
+    session_id: String,
+    cwd: String,
+    tool: String,
+    kind: rules::RuleKind,
+    glob: Option<String>,
+    prefix: Option<String>,
+) -> Result<(), String> {
+    if matches!(kind, rules::RuleKind::Allow) {
+        return Err("Use the permission prompt to allow a tool; this is for restrictions.".into());
+    }
+    write_rule(session_id.as_str(), cwd.as_str(), rules::Rule { tool, prefix, glob, kind, origin: rules::RuleOrigin::Manual }, true)
 }
 
 /// One answer, as the blocked hook will emit it.
@@ -339,12 +460,17 @@ fn hook_response_for(decision: PermissionDecision, reason: Option<String>) -> Ho
 ///
 ///   * `Session` - this exact tool with this exact primary argument.
 ///   * `Project` - this tool anywhere under the session's working directory.
+///
+/// `origin` records whether the user reached for this themselves or accepted an
+/// offer Sway made after counting repeat approvals, so a rule can be explained
+/// later rather than only listed.
 fn add_rule(
     session_id: &str,
     cwd: &str,
     tool_name: &str,
     tool_input: &serde_json::Value,
     scope: PermissionScope,
+    origin: rules::RuleOrigin,
 ) -> Result<(), String> {
     let prefix = match scope {
         PermissionScope::Once => return Ok(()),
@@ -363,40 +489,15 @@ fn add_rule(
     // An empty prefix matches everything, which is never what a click on one
     // specific call meant. Belt and braces behind the widening rule above.
     let prefix = prefix.filter(|p| !p.is_empty());
-    let path = rules::rules_path(session_id);
-    let mut file = rules::load(&path).unwrap_or(rules::RuleFile {
-        sway_pid: std::process::id(),
-        stamp_ms: rules::now_ms(),
-        rules: Vec::new(),
-    });
-    let rule = rules::Rule { tool: tool_name.to_string(), prefix };
-    if !file.rules.contains(&rule) {
-        file.rules.push(rule.clone());
-    }
-    file.sway_pid = std::process::id();
-    file.stamp_ms = rules::now_ms();
-    rules::save(&path, &file)?;
-
-    // A project rule also lands in the durable store. Without this it would live
-    // only in the session file, which is a compiled artefact deleted at
-    // teardown - so "always allow in this project" would quietly mean "until
-    // this tab closes", which is not what the button says.
-    if matches!(scope, PermissionScope::Project) {
-        let project_path = rules::project_rules_path(cwd);
-        let mut project = rules::load_project(&project_path);
-        if !project.rules.contains(&rule) {
-            project.rules.push(rule);
-            rules::save_project(&project_path, &project)?;
-        }
-    }
-    Ok(())
+    let rule = rules::Rule { origin, ..rules::Rule::allow(tool_name, prefix.as_deref()) };
+    write_rule(session_id, cwd, rule, matches!(scope, PermissionScope::Project))
 }
 
 /// Seed a session's compiled rule file from the project's durable one.
 fn compile_project_rules(session_id: &str, cwd: &str) -> Result<(), String> {
     let project = rules::load_project(&rules::project_rules_path(cwd));
     let path = rules::rules_path(session_id);
-    let existing = rules::load(&path);
+    let existing = rules::load_ok(&path);
     // Nothing to compile and nothing already there: leave the disk alone rather
     // than writing an empty file the helper would have to read on every call.
     if project.rules.is_empty() && existing.is_none() {
@@ -413,6 +514,12 @@ fn compile_project_rules(session_id: &str, cwd: &str) -> Result<(), String> {
 pub struct ScopedRule {
     pub tool: String,
     pub prefix: Option<String>,
+    pub glob: Option<String>,
+    pub kind: rules::RuleKind,
+    /// Why this rule exists. A learned rule was accepted from an offer rather
+    /// than reached for, so the list can say so instead of leaving the user to
+    /// wonder when they wrote it.
+    pub origin: rules::RuleOrigin,
     pub scope: PermissionScope,
 }
 
@@ -445,13 +552,20 @@ pub async fn chat_mcp_remove(cwd: String, name: String) -> Result<Vec<super::mcp
 #[tauri::command]
 pub async fn chat_list_rules(session_id: String, cwd: String) -> Result<Vec<ScopedRule>, String> {
     let project = rules::load_project(&rules::project_rules_path(&cwd));
-    let session = rules::load(&rules::rules_path(&session_id)).map(|f| f.rules).unwrap_or_default();
+    let session = rules::load_ok(&rules::rules_path(&session_id)).map(|f| f.rules).unwrap_or_default();
     Ok(session
         .into_iter()
         .map(|r| ScopedRule {
-            scope: if project.rules.contains(&r) { PermissionScope::Project } else { PermissionScope::Session },
+            scope: if project.rules.iter().any(|p| p.same_scope(&r)) {
+                PermissionScope::Project
+            } else {
+                PermissionScope::Session
+            },
             tool: r.tool,
             prefix: r.prefix,
+            glob: r.glob,
+            kind: r.kind,
+            origin: r.origin,
         })
         .collect())
 }
@@ -467,12 +581,23 @@ pub async fn chat_remove_rule(
     cwd: String,
     tool: String,
     prefix: Option<String>,
+    glob: Option<String>,
+    kind: Option<rules::RuleKind>,
 ) -> Result<(), String> {
-    let target = rules::Rule { tool, prefix };
+    // Defaulted rather than required, so a caller that predates the restrictive
+    // kinds still names an allow rule and cannot accidentally revoke a `deny`
+    // that happens to share a tool and prefix with it.
+    let target = rules::Rule {
+        tool,
+        prefix,
+        glob,
+        kind: kind.unwrap_or(rules::RuleKind::Allow),
+        origin: rules::RuleOrigin::Manual,
+    };
 
     let path = rules::rules_path(&session_id);
-    if let Some(mut file) = rules::load(&path) {
-        file.rules.retain(|r| r != &target);
+    if let Some(mut file) = rules::load_ok(&path) {
+        file.rules.retain(|r| !r.same_scope(&target));
         // The stamp is refreshed with the write, so the helper's next read is
         // both current and rule-free rather than current and stale-looking.
         file.sway_pid = std::process::id();
@@ -481,9 +606,12 @@ pub async fn chat_remove_rule(
     }
 
     let project_path = rules::project_rules_path(&cwd);
-    let mut project = rules::load_project(&project_path);
-    if project.rules.contains(&target) {
-        project.rules.retain(|r| r != &target);
+    // Strict for the same reason as `write_rule`: revoking one rule must not be
+    // able to drop every other rule in a file this build could not parse.
+    let mut project = rules::read_project(&project_path)
+        .map_err(|e| format!("Sway could not read this project's saved rules, so it did not change them: {e}"))?;
+    if project.rules.iter().any(|r| r.same_scope(&target)) {
+        project.rules.retain(|r| !r.same_scope(&target));
         rules::save_project(&project_path, &project)?;
     }
     Ok(())
@@ -1074,12 +1202,12 @@ mod tests {
         cleanup(&first, &cwd);
         let _ = std::fs::remove_file(rules::rules_path(&second));
 
-        add_rule(&first, &cwd, "Read", &serde_json::json!({"file_path": format!("{cwd}/src/a.rs")}), PermissionScope::Project).unwrap();
+        add_rule(&first, &cwd, "Read", &serde_json::json!({"file_path": format!("{cwd}/src/a.rs")}), PermissionScope::Project, rules::RuleOrigin::Manual).unwrap();
         // The tab closes: its compiled file goes with it.
         std::fs::remove_file(rules::rules_path(&first)).unwrap();
 
         compile_project_rules(&second, &cwd).unwrap();
-        let compiled = rules::load(&rules::rules_path(&second)).expect("the new session should have a compiled file");
+        let compiled = rules::load_ok(&rules::rules_path(&second)).expect("the new session should have a compiled file");
         assert_eq!(compiled.rules.len(), 1);
         assert_eq!(compiled.rules[0].tool, "Read");
 
@@ -1094,7 +1222,7 @@ mod tests {
         let session = format!("rules-session-{}", std::process::id());
         cleanup(&session, &cwd);
 
-        add_rule(&session, &cwd, "Bash", &serde_json::json!({"command": "git status"}), PermissionScope::Session).unwrap();
+        add_rule(&session, &cwd, "Bash", &serde_json::json!({"command": "git status"}), PermissionScope::Session, rules::RuleOrigin::Manual).unwrap();
         assert!(rules::load_project(&rules::project_rules_path(&cwd)).rules.is_empty());
 
         cleanup(&session, &cwd);
@@ -1112,7 +1240,7 @@ mod tests {
         let _ = std::fs::remove_file(rules::rules_path(&later));
 
         let input = serde_json::json!({"file_path": format!("{cwd}/src/a.rs")});
-        add_rule(&session, &cwd, "Read", &input, PermissionScope::Project).unwrap();
+        add_rule(&session, &cwd, "Read", &input, PermissionScope::Project, rules::RuleOrigin::Manual).unwrap();
         let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
         assert_eq!(listed.len(), 1);
         assert!(matches!(listed[0].scope, PermissionScope::Project), "a rule from the project store lists as project-scoped");
@@ -1122,6 +1250,8 @@ mod tests {
             cwd.clone(),
             listed[0].tool.clone(),
             listed[0].prefix.clone(),
+            listed[0].glob.clone(),
+            Some(listed[0].kind),
         ))
         .unwrap();
 
@@ -1130,7 +1260,7 @@ mod tests {
         // The point of removing it: the next matching call prompts again rather
         // than taking the cheap path.
         let verdict = rules::evaluate(
-            rules::load(&rules::rules_path(&session)).as_ref(),
+            &rules::load(&rules::rules_path(&session)),
             "Read",
             &input,
             rules::now_ms(),
@@ -1138,7 +1268,7 @@ mod tests {
         );
         assert_eq!(verdict, rules::Verdict::Ask);
         compile_project_rules(&later, &cwd).unwrap();
-        assert!(rules::load(&rules::rules_path(&later)).map(|f| f.rules).unwrap_or_default().is_empty());
+        assert!(rules::load_ok(&rules::rules_path(&later)).map(|f| f.rules).unwrap_or_default().is_empty());
 
         cleanup(&session, &cwd);
         let _ = std::fs::remove_file(rules::rules_path(&later));
@@ -1147,6 +1277,85 @@ mod tests {
     /// The guard the whole ownership layer exists for, stated as a fact about
     /// the flags: two live drivers of one session id both resume it and both
     /// append to one transcript.
+    /// The offer arrives once, at the threshold, and the rule it writes is
+    /// marked as learned so the rule list can explain itself later.
+    ///
+    /// **Offered at the threshold and not above it**, which is how declining is
+    /// remembered without recording that it was declined: the count keeps
+    /// climbing and never equals the threshold again. A `>=` here would nag on
+    /// every subsequent approval, which is the behaviour that makes people stop
+    /// reading prompts.
+    #[test]
+    fn a_repeatedly_approved_call_is_offered_as_a_rule_exactly_once() {
+        let cwd = scratch_project("offer");
+        let session = format!("rules-offer-{}", std::process::id());
+        cleanup(&session, &cwd);
+        let _ = std::fs::remove_file(rules::counts_path(&cwd));
+        let call = serde_json::json!({ "file_path": format!("{cwd}/src/a.rs") });
+
+        let mut offers = Vec::new();
+        for _ in 0..(OFFER_AFTER + 2) {
+            offers.push(note_repeat_approval(&cwd, "Read", &call));
+        }
+        let made: Vec<_> = offers.iter().flatten().collect();
+        assert_eq!(made.len(), 1, "exactly one offer, however many times it is approved");
+        assert_eq!(made[0].approvals, OFFER_AFTER);
+        assert_eq!(made[0].prefix, format!("{cwd}/src/"));
+        assert!(offers[OFFER_AFTER as usize - 1].is_some(), "the offer lands on the threshold approval");
+
+        // Accepting writes a project rule that says where it came from.
+        tauri::async_runtime::block_on(chat_accept_rule_offer(
+            session.clone(),
+            cwd.clone(),
+            made[0].tool.clone(),
+            made[0].prefix.clone(),
+        ))
+        .unwrap();
+        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(matches!(listed[0].origin, rules::RuleOrigin::Learned), "a rule from an offer must say so");
+        assert!(matches!(listed[0].scope, PermissionScope::Project), "the offer was about the project");
+
+        let _ = std::fs::remove_file(rules::counts_path(&cwd));
+        cleanup(&session, &cwd);
+    }
+
+    /// A restriction is written about a place in the tree, which is the only
+    /// reason a glob exists at all - so the command that writes one refuses to
+    /// be used to widen a grant.
+    #[test]
+    fn the_restriction_command_will_not_write_an_allow_rule() {
+        let cwd = scratch_project("restrict");
+        let session = format!("rules-restrict-{}", std::process::id());
+        cleanup(&session, &cwd);
+
+        assert!(tauri::async_runtime::block_on(chat_add_restriction(
+            session.clone(),
+            cwd.clone(),
+            "Write".into(),
+            rules::RuleKind::Allow,
+            Some("**".into()),
+            None,
+        ))
+        .is_err());
+
+        tauri::async_runtime::block_on(chat_add_restriction(
+            session.clone(),
+            cwd.clone(),
+            "Write".into(),
+            rules::RuleKind::Ask,
+            Some("**/migrations/**".into()),
+            None,
+        ))
+        .unwrap();
+        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(matches!(listed[0].kind, rules::RuleKind::Ask));
+        assert_eq!(listed[0].glob.as_deref(), Some("**/migrations/**"));
+
+        cleanup(&session, &cwd);
+    }
+
     #[test]
     fn the_claude_transport_is_what_the_factory_builds_for_the_bundled_adapter() {
         let chat = claude_chat();

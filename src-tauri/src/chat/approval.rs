@@ -184,9 +184,12 @@ pub fn run_helper() -> i32 {
 
     // The cheap path: one file read, no socket. A write tool is excluded from
     // it on purpose - see `HookRequest::pre_approved`.
-    let rules_file = std::env::var(ENV_RULES).ok().and_then(|p| rules::load(Path::new(&p)));
+    let rules_file = std::env::var(ENV_RULES)
+        .ok()
+        .map(|p| rules::load(Path::new(&p)))
+        .unwrap_or(rules::Parsed::Unreadable);
     let writes = !super::snapshot::write_targets(&tool_name, &tool_input).is_empty();
-    let pre_approved = match rules::evaluate(rules_file.as_ref(), &tool_name, &tool_input, rules::now_ms(), pid_alive) {
+    let pre_approved = match rules::evaluate(&rules_file, &tool_name, &tool_input, rules::now_ms(), pid_alive) {
         Verdict::Allow if !writes => return emit_decision(&HookResponse::allow("Allowed by a Sway rule.")),
         Verdict::Allow => true,
         Verdict::Deny(reason) => return emit_decision(&HookResponse::deny(reason)),
@@ -584,11 +587,8 @@ pub fn settings_path(session_id: &str) -> PathBuf {
 /// watching*.
 pub fn refresh_stamp(session_id: &str) {
     let path = rules::rules_path(session_id);
-    let mut file = rules::load(&path).unwrap_or(RuleFile {
-        sway_pid: std::process::id(),
-        stamp_ms: 0,
-        rules: Vec::new(),
-    });
+    let mut file =
+        rules::load_ok(&path).unwrap_or_else(|| RuleFile::new(std::process::id(), 0, Vec::new()));
     file.sway_pid = std::process::id();
     file.stamp_ms = rules::now_ms();
     let _ = rules::save(&path, &file);
@@ -857,13 +857,10 @@ mod tests {
         let inputs = hook_inputs(&payload);
         assert_eq!(inputs.tool_name, "Bash");
 
-        let allows_reads = RuleFile {
-            sway_pid: std::process::id(),
-            stamp_ms: rules::now_ms(),
-            rules: vec![rules::Rule { tool: "Read".into(), prefix: None }],
-        };
+        let allows_reads =
+            rules::Parsed::Ok(RuleFile::new(std::process::id(), rules::now_ms(), vec![rules::Rule::allow("Read", None)]));
         let verdict = rules::evaluate(
-            Some(&allows_reads),
+            &allows_reads,
             &inputs.tool_name,
             &inputs.tool_input,
             rules::now_ms(),
@@ -879,7 +876,7 @@ mod tests {
     /// decision are both real.
     fn helper_decide(rules_path: &Path, sock: &Path, token: &str, tool: &str, input: Value) -> HookResponse {
         let file = rules::load(rules_path);
-        match rules::evaluate(file.as_ref(), tool, &input, rules::now_ms(), pid_alive) {
+        match rules::evaluate(&file, tool, &input, rules::now_ms(), pid_alive) {
             Verdict::Allow => HookResponse::allow("Allowed by a Sway rule."),
             Verdict::Deny(reason) => HookResponse::deny(reason),
             Verdict::Ask => {
@@ -901,7 +898,7 @@ mod tests {
         let path = std::env::temp_dir()
             .join(format!("sway-approval-{}", std::process::id()))
             .join(format!("{name}.json"));
-        rules::save(&path, &RuleFile { sway_pid, stamp_ms: rules::now_ms(), rules: rules_list }).unwrap();
+        rules::save(&path, &RuleFile::new(sway_pid, rules::now_ms(), rules_list)).unwrap();
         path
     }
 
@@ -916,8 +913,8 @@ mod tests {
             "cheap",
             std::process::id(),
             vec![
-                rules::Rule { tool: "Read".into(), prefix: None },
-                rules::Rule { tool: "Grep".into(), prefix: None },
+                rules::Rule::allow("Read", None),
+                rules::Rule::allow("Grep", None),
             ],
         );
 
@@ -961,7 +958,7 @@ mod tests {
             .args(["-c", "sleep 30"])
             .spawn()
             .expect("the stand-in supervisor should start");
-        let rules_path = write_rules("supervised", supervisor.id(), vec![rules::Rule { tool: "Read".into(), prefix: None }]);
+        let rules_path = write_rules("supervised", supervisor.id(), vec![rules::Rule::allow("Read", None)]);
 
         // While it is alive, the rule is honoured.
         let allowed = helper_decide(&rules_path, server.sock_path(), server.token(), "Read", json!({"file_path": "/a"}));
@@ -982,7 +979,7 @@ mod tests {
     #[test]
     fn the_cheap_path_stays_under_the_fifteen_millisecond_budget() {
         let (server, _rx) = test_server(Duration::from_secs(1));
-        let rules_path = write_rules("budget", std::process::id(), vec![rules::Rule { tool: "Read".into(), prefix: None }]);
+        let rules_path = write_rules("budget", std::process::id(), vec![rules::Rule::allow("Read", None)]);
 
         let mut samples: Vec<Duration> = Vec::new();
         for i in 0..40 {
@@ -1022,7 +1019,7 @@ mod tests {
         let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
         assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
 
-        let rules_path = write_rules("e2e", std::process::id(), vec![rules::Rule { tool: "Read".into(), prefix: None }]);
+        let rules_path = write_rules("e2e", std::process::id(), vec![rules::Rule::allow("Read", None)]);
         let payload = json!({
             "session_id": "s1",
             "tool_use_id": "toolu_1",
@@ -1176,15 +1173,15 @@ mod tests {
         // Add a rule, then remove it, through the real store.
         rules::save(
             &path,
-            &RuleFile {
-                sway_pid: std::process::id(),
-                stamp_ms: rules::now_ms(),
-                rules: vec![rules::Rule { tool: "Bash".into(), prefix: Some("git status".into()) }],
-            },
+            &RuleFile::new(
+                std::process::id(),
+                rules::now_ms(),
+                vec![rules::Rule::allow("Bash", Some("git status"))],
+            ),
         )
         .unwrap();
         refresh_stamp(&session);
-        assert!(rules::load(&path).is_some(), "the rule should have landed in Sway's own store");
+        assert!(matches!(rules::load(&path), rules::Parsed::Ok(_)), "the rule should have landed in Sway's own store");
         let _ = settings_args(&session, Path::new("/tmp/s"), "tok");
         std::fs::remove_file(&path).unwrap();
 
@@ -1258,11 +1255,7 @@ mod tests {
         let rules_path = rules::rules_path(&session);
         rules::save(
             &rules_path,
-            &RuleFile {
-                sway_pid: std::process::id(),
-                stamp_ms: rules::now_ms(),
-                rules: vec![rules::Rule { tool: "Bash".into(), prefix: None }],
-            },
+            &RuleFile::new(std::process::id(), rules::now_ms(), vec![rules::Rule::allow("Bash", None)]),
         )
         .unwrap();
         let (server, _rx) = test_server(Duration::from_secs(30));
