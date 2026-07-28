@@ -110,34 +110,9 @@
   background: var(--canvas-default);
 }
 
-.reviewDiff .diffLine {
-  white-space: pre;
-  padding: 0 calc(8px * var(--ui-scale));
-}
-
-.reviewDiff .diffLine.add {
-  color: var(--diff-added);
-}
-.reviewDiff .diffLine.del {
-  color: var(--diff-deleted);
-}
-.reviewDiff .diffLine.hunk {
-  color: var(--accent-fg);
-}
-.reviewDiff .diffLine.meta {
-  color: var(--fg-muted);
-}
-
-/* Intra-line highlight: the token that actually changed inside a paired
-   -/+ line. Rounded so adjacent highlighted tokens read as one span. */
-.reviewDiff .diffLine.add .wordChanged {
-  background: var(--diff-added-word);
-  border-radius: 2px;
-}
-.reviewDiff .diffLine.del .wordChanged {
-  background: var(--diff-deleted-word);
-  border-radius: 2px;
-}
+/* Row-level diff styling (line, add/del/hunk/meta, word highlights, and the
+   side-by-side grid) lives in DiffRows.module.css, shared with the
+   transcript's diff view. Only what is specific to *this* panel stays here. */
 
 /* Collapsed unchanged region. Clickable, and dim so it reads as chrome
    between the real diff lines rather than as content. */
@@ -150,26 +125,6 @@
 }
 .reviewDiff .diffGap:hover {
   color: var(--fg-default);
-}
-
-/* Side-by-side. Both columns live in one grid row inside a single scroll
-   container, so they stay aligned and scroll together without a sync handler. */
-.sideBySide {
-  min-width: min-content;
-}
-.sideRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.sideRow > .diffLine {
-  overflow: hidden;
-}
-.sideRow > .diffLine:first-child {
-  border-right: 1px solid var(--border-default);
-}
-/* A cell with no counterpart on this side: present but visibly not a line. */
-.reviewDiff .diffLine.sideEmpty {
-  background: var(--canvas-card);
 }
 
 /* The Copy row action is a ghost <Button size="xs">; it stays hidden until the

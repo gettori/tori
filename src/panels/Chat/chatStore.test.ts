@@ -19,6 +19,7 @@ import {
   pendingApprovals,
   pendingFlush,
   pushUserTurn,
+  reasoningFor,
   releaseQueue,
   removeQueued,
   resolveApproval,
@@ -488,6 +489,52 @@ describe("filesWritten", () => {
   it("reports nothing for the events that wrote nothing", () => {
     expect(filesWritten(prompt("toolu_1"))).toEqual([]);
     expect(filesWritten(started("t1", "toolu_1", "Read", { file_path: "/a" }))).toEqual([]);
+  });
+});
+
+describe("reasoningFor", () => {
+  // How the diff view answers "why is this line here" without storing a second
+  // copy of the reasoning: the transcript already holds it, in order.
+  const tool = (id: string): ChatItem => ({
+    kind: "tool",
+    id: `card-${id}`,
+    toolUseId: id,
+    turnId: "t1",
+    name: "Edit",
+    input: {},
+    state: "ok",
+    approval: null,
+    output: null,
+    files: [],
+    durationMs: null,
+    edits: [],
+  });
+  const text = (id: string, body: string): ChatItem => ({ kind: "text", id, turnId: "t1", text: body });
+
+  it("takes the model's last word before the call", () => {
+    const items = [text("x1", "first thought"), tool("toolu_1"), text("x2", "second thought"), tool("toolu_2")];
+    expect(reasoningFor(items, "toolu_1")).toBe("first thought");
+    // Not "first thought": a turn with six calls has six justifications, and
+    // crediting all of them to every hunk would be worse than showing none.
+    expect(reasoningFor(items, "toolu_2")).toBe("second thought");
+  });
+
+  it("stops at the user's turn rather than reaching into the previous one", () => {
+    const items: ChatItem[] = [
+      text("x1", "last turn's reasoning"),
+      { kind: "user", id: "u2", blocks: [{ type: "text", text: "now do this" }] },
+      tool("toolu_9"),
+    ];
+    expect(reasoningFor(items, "toolu_9")).toBeNull();
+  });
+
+  it("skips empty text rather than reporting a blank explanation", () => {
+    const items = [text("x1", "the real reason"), text("x2", "   "), tool("toolu_1")];
+    expect(reasoningFor(items, "toolu_1")).toBe("the real reason");
+  });
+
+  it("is null for a call the transcript does not have", () => {
+    expect(reasoningFor([], "toolu_missing")).toBeNull();
   });
 });
 

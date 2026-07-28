@@ -1,0 +1,62 @@
+/* Row-level diff presentation, shared by every surface that renders a hunk.
+   Owned here rather than copied per panel so "the same hunk looks the same
+   everywhere" holds by construction: a colour or a highlight changed here
+   changes in the Changes panel and the transcript's diff view together.
+
+   Self-contained on purpose. These rules depend on no ancestor class, because
+   CSS modules hash their selectors per file, so a `.container .diffLine` rule
+   living in a panel's own stylesheet could never match a row rendered from
+   here. Container-level choices (padding, background, how the body scrolls)
+   stay with the panel; only what makes a *row* a row lives here. */
+
+.diffLine {
+  white-space: pre;
+  padding: 0 calc(8px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+}
+
+.diffLine.add {
+  color: var(--diff-added);
+}
+.diffLine.del {
+  color: var(--diff-deleted);
+}
+.diffLine.hunk {
+  color: var(--accent-fg);
+}
+.diffLine.meta {
+  color: var(--fg-muted);
+}
+
+/* Intra-line highlight: the token that actually changed inside a paired
+   -/+ line. Rounded so adjacent highlighted tokens read as one span. */
+.diffLine.add .wordChanged {
+  background: var(--diff-added-word);
+  border-radius: 2px;
+}
+.diffLine.del .wordChanged {
+  background: var(--diff-deleted-word);
+  border-radius: 2px;
+}
+
+/* Side-by-side. Both columns live in one grid row inside a single scroll
+   container, so they stay aligned and scroll together without a sync handler. */
+.sideBySide {
+  min-width: min-content;
+}
+.sideRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.sideRow > .diffLine {
+  overflow: hidden;
+}
+.sideRow > .diffLine:first-child {
+  border-right: 1px solid var(--border-default);
+}
+/* A cell with no counterpart on this side: present but visibly not a line. */
+.diffLine.sideEmpty {
+  background: var(--canvas-card);
+}

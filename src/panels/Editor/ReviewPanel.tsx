@@ -13,7 +13,9 @@ import {
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import { parseDiffHunks } from "../../utils/diffHunks";
-import { buildRows, hunkGaps, toSideBySide, type DiffRow, type Gap } from "../../utils/diffView";
+import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
+import DiffRows, { diffRowClasses } from "./DiffRows";
+import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
@@ -49,17 +51,6 @@ function statusClass(status: string): string {
 // at the granularity `git add -p` uses, and the untouched stretches it omits
 // are recovered separately (see `hunkGaps` / `expandGap`).
 const DIFF_CONTEXT = 3;
-// Below this the two columns are too narrow to read, so side-by-side falls
-// back to inline regardless of the persisted preference.
-const SIDE_BY_SIDE_MIN_WIDTH = 640;
-const SIDE_BY_SIDE_KEY = "sway.review.sideBySide";
-
-function rowClass(row: DiffRow): string {
-  if (row.kind === "add") return "add";
-  if (row.kind === "del") return "del";
-  if (row.kind === "meta") return "meta";
-  return "";
-}
 
 /** Changes panel: VS Code-style Staged / Changes sections over git_status's
  *  staged/unstaged split, with per-file stage/unstage, a manual commit box,
@@ -83,7 +74,7 @@ export default function ReviewPanel(props: {
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
   const [pushing, setPushing] = createSignal(false);
   const [openingPr, setOpeningPr] = createSignal(false);
-  const [sideBySide, setSideBySide] = createSignal(localStorage.getItem(SIDE_BY_SIDE_KEY) === "1");
+  const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   // Which file the expanded diff belongs to, and which of its two sections:
   // needed to refetch the right diff after a hunk apply or a disk change.
   const [openDiff, setOpenDiff] = createSignal<{ path: string; staged: boolean } | null>(null);
@@ -106,7 +97,7 @@ export default function ReviewPanel(props: {
   function toggleSideBySide() {
     const next = !sideBySide();
     setSideBySide(next);
-    localStorage.setItem(SIDE_BY_SIDE_KEY, next ? "1" : "0");
+    writeSideBySide(next);
   }
 
   // Fetch (once) and reveal the file lines behind a collapsed gap. Clicking an
@@ -511,15 +502,6 @@ export default function ReviewPanel(props: {
     window.removeEventListener("focus", refreshAll);
   });
 
-  // A line's text, with the changed tokens wrapped when the row was paired.
-  function lineContent(r: DiffRow) {
-    const segs = (r.kind === "del" || r.kind === "add") && r.segs;
-    if (!segs) return "text" in r ? r.text || " " : " ";
-    return (
-      <For each={segs}>{(s) => (s.changed ? <span class={styles.wordChanged}>{s.text}</span> : <>{s.text}</>)}</For>
-    );
-  }
-
   // An unchanged stretch between two hunks. Collapsed it is a single clickable
   // row; expanded it shows the real file lines, fetched on demand because the
   // diff (taken at git's default context so a hunk stays a stageable unit)
@@ -531,7 +513,7 @@ export default function ReviewPanel(props: {
         when={openGaps().has(gapKey)}
         fallback={
           <div
-            class={`${styles.diffLine} ${styles.diffGap}`}
+            class={`${diffRowClasses.line} ${styles.diffGap}`}
             onClick={() => void expandGap(gapKey, path, staged, gap)}
           >
             {`\u22ef ${count} unchanged line${count === 1 ? "" : "s"}`}
@@ -541,45 +523,15 @@ export default function ReviewPanel(props: {
         <For each={gapLines()[gapKey] ?? []}>
           {(text) =>
             twoColumn() ? (
-              <div class={styles.sideRow}>
-                <div class={styles.diffLine}>{text || " "}</div>
-                <div class={styles.diffLine}>{text || " "}</div>
+              <div class={diffRowClasses.sideRow}>
+                <div class={diffRowClasses.line}>{text || " "}</div>
+                <div class={diffRowClasses.line}>{text || " "}</div>
               </div>
             ) : (
-              <div class={styles.diffLine}>{text || " "}</div>
+              <div class={diffRowClasses.line}>{text || " "}</div>
             )
           }
         </For>
-      </Show>
-    );
-  }
-
-  function renderHunkBody(rows: DiffRow[]) {
-    return (
-      <Show
-        when={twoColumn()}
-        fallback={
-          <For each={rows}>
-            {(r) => <div class={`${styles.diffLine} ${styles[rowClass(r)] ?? ""}`}>{lineContent(r)}</div>}
-          </For>
-        }
-      >
-        {/* Side-by-side: one scroll container holding both columns, so the two
-            sides scroll together by construction rather than by syncing. */}
-        <div class={styles.sideBySide}>
-          <For each={toSideBySide(rows)}>
-            {(side) => (
-              <div class={styles.sideRow}>
-                <div class={`${styles.diffLine} ${side.left ? (styles[rowClass(side.left)] ?? "") : styles.sideEmpty}`}>
-                  {side.left ? lineContent(side.left) : " "}
-                </div>
-                <div class={`${styles.diffLine} ${side.right ? (styles[rowClass(side.right)] ?? "") : styles.sideEmpty}`}>
-                  {side.right ? lineContent(side.right) : " "}
-                </div>
-              </div>
-            )}
-          </For>
-        </div>
       </Show>
     );
   }
@@ -639,7 +591,7 @@ export default function ReviewPanel(props: {
                   {/* The hunk header is the shared control anchor: it renders
                       identically inline and side-by-side, so per-hunk actions
                       land in one place in both modes. */}
-                  <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span>{hunk.header}</span>
                     <Button
                       size="xs"
@@ -664,7 +616,7 @@ export default function ReviewPanel(props: {
                       endLine={hunk.endLine}
                     />
                   </div>
-                  {renderHunkBody(buildRows(hunk.lines))}
+                  <DiffRows rows={buildRows(hunk.lines)} twoColumn={twoColumn()} />
                   <For each={gaps().filter((g) => g.afterHunk === hi())}>
                     {(gap) => gapRow(gap, `${key}:gap${hi()}`, f.path, opts.staged)}
                   </For>
