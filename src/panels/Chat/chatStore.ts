@@ -161,6 +161,10 @@ export type ChatState = {
    *  reports as a completion, and flushing on it would send exactly the
    *  messages the user pressed stop to prevent. */
   queueHeld: boolean;
+  /** Set when a spend ceiling stopped this chat. Held in the store rather than
+   *  in the panel so `chatStatus` can report it, which is what puts a stopped
+   *  session on the same needs-you edge as one blocked on a permission prompt. */
+  budgetStopped: boolean;
   /** The **resolved** model id the child reports (`claude-sonnet-5`), which is
    *  not what `--model` takes and not what the picker selects on. */
   model: string | null;
@@ -253,6 +257,7 @@ export function initialChat(sessionId: string): ChatState {
     awaitingTurn: false,
     queue: [],
     queueHeld: false,
+    budgetStopped: false,
     model: null,
     modelValue: null,
     pendingModel: null,
@@ -883,6 +888,10 @@ export function pendingApprovals(s: ChatState): ToolItem[] {
 export function chatStatus(s: ChatState): SessionStatus {
   if (s.ended) return "none";
   if (pendingApprovals(s).length) return "waitingForApproval";
+  // Ahead of idle, and deliberately not folded into it: a chat that stopped at
+  // its ceiling looks idle from the outside, and reporting it as idle is how it
+  // would sit there unnoticed until someone wondered why it never finished.
+  if (s.budgetStopped) return "budgetStopped";
   if (isRunning(s)) return "executing";
   // A ready child that has not run a turn is idle, not busy: the spinner
   // covers only the genuine gap between spawn and the answered handshake.

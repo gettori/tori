@@ -11,8 +11,17 @@ import StatusStrip from "./StatusStrip";
 import ModeSelector, { BYPASS_STILL_APPROVED } from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
-import { fmtTokens, usageSummary } from "../../utils/chatUsage";
+import { fmtTokens, turnTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
+import {
+  approaching,
+  breach,
+  stopNotice,
+  stopReason,
+  warnNotice,
+  type BudgetBreach,
+  type Spend,
+} from "../../utils/chatBudget";
 import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
@@ -39,6 +48,7 @@ import { hunkRevertPermission } from "../../utils/hunkRevert";
 import { parseChatEvent, type ChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
 import { checkpointChatTurn } from "../../utils/checkpoints";
+import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
   contextTokens,
   pickableModels,
@@ -177,6 +187,20 @@ export default function ChatView(props: {
   // times. Null until the count reaches the threshold, and cleared by either
   // answer, since the backend offers exactly once.
   const [ruleOffer, setRuleOffer] = createSignal<RuleOffer | null>(null);
+  // What this session and its project have spent, read back from disk on open so
+  // a reopened tab resumes its budget rather than restarting it.
+  const [spent, setSpent] = createSignal<UsageTotals | null>(null);
+  // The ceiling that stopped this chat, if one did. Sticky: the stop is
+  // terminal for the session, so this is cleared only by raising the limit.
+  const [stopped, setStopped] = createSignal<BudgetBreach | null>(null);
+  // Which ceiling the user has already been warned about, or null. Keyed on the
+  // limit rather than a bare flag: once per ceiling, not once per turn (a
+  // warning that repeats every turn is one people learn to scroll past) and not
+  // once per session either (raising a limit has to be able to warn again).
+  const [warned, setWarned] = createSignal<string | null>(null);
+  // Human prompts the transcript holds, which is what says whether this chat
+  // observed the whole session or only part of it.
+  const [promptCount, setPromptCount] = createSignal(0);
 
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
@@ -212,7 +236,7 @@ export default function ChatView(props: {
   );
   // Null until a turn completed: a zero would be a claim (see UsageReadout).
   const sessionTokens = () => {
-    const summary = usageSummary(state);
+    const summary = usageSummary({ ...state, promptsInTranscript: promptCount() });
     return summary.turn ? fmtTokens(summary.session.tokens) : null;
   };
   // A refused claim means no child was started, so nothing may be typed at it.
@@ -241,6 +265,19 @@ export default function ChatView(props: {
     if (props.rewindTo && !draftFor(props.sessionId).trim()) {
       setDraft(props.sessionId, rewindSeed());
     }
+
+    // The budget this tab is resuming, and how much of the session it can
+    // actually vouch for. Both are reads of what happened before this tab
+    // existed, so both happen on open rather than being accumulated.
+    void invoke<UsageTotals>("chat_usage_totals", { cwd: props.cwd, sessionId: props.sessionId })
+      .then((totals) => {
+        setSpent(totals);
+        return applyBudget();
+      })
+      .catch(() => {});
+    void invoke<number>("chat_prompt_count", { sessionId: props.sessionId, agentId: props.agentId })
+      .then(setPromptCount)
+      .catch(() => {});
 
     // Live events arriving before the backfill has been folded in would render
     // this session's history *after* its newest turn. They are parked here
@@ -349,6 +386,12 @@ export default function ChatView(props: {
         // the map for as long as the panel is open.
         toolNames.clear();
         void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
+      }
+      // A turn's cost is persisted the moment it lands, not on close: a ceiling
+      // that forgets what has been spent whenever a tab is reopened is not a
+      // ceiling, and a crash mid-session must not reset the tally to zero.
+      if (ev.type === "turnCompleted") {
+        void recordSpend(ev.usage ? turnTokens(ev.usage) : 0, ev.costUsd);
       }
       // Sway's own record of whether a turn is in flight. A killed app leaves
       // this set, which is the only way to tell a turn that was interrupted
@@ -607,6 +650,107 @@ export default function ChatView(props: {
     })
       .then(noteRulesChanged)
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
+  /** What this chat has spent, in the three currencies a ceiling can name. */
+  function spend(): Spend {
+    const totals = spent();
+    const usage = state.lastUsage;
+    const window = shownModel()?.contextWindow ?? null;
+    return {
+      sessionUsd: totals?.session.costUsd ?? null,
+      projectUsd: totals?.project.costUsd ?? null,
+      contextPercent:
+        window && usage ? ((contextTokens(usage) ?? 0) / window) * 100 : null,
+    };
+  }
+
+  /**
+   * Persist one completed turn, then decide whether this chat may run another.
+   *
+   * The stop is armed **between** turns, which is also the only place it can be:
+   * the ceiling is only knowable once a turn has reported what it cost. Armed in
+   * the rule file, it then bites at the *next tool boundary* - the hook fires
+   * before a call runs, so the refusal means the tool never started rather than
+   * that it was cut off halfway. Nothing here can stop a tool mid-flight, which
+   * is the property the plan asked for and the one this shape gives for free.
+   */
+  async function recordSpend(tokens: number, costUsd: number | null) {
+    const totals = await invoke<UsageTotals>("chat_record_usage", {
+      cwd: props.cwd,
+      sessionId: props.sessionId,
+      tokens,
+      costUsd,
+    }).catch(() => null);
+    if (!totals) return;
+    setSpent(totals);
+    await applyBudget();
+  }
+
+  // A ceiling edited mid-session takes effect at once rather than at the next
+  // turn end. Tracked on the limits alone, so an unrelated settings change (a
+  // font size) does not re-run the budget check.
+  createEffect(
+    on(
+      () => [settings.budgets?.sessionUsd, settings.budgets?.projectUsd, settings.budgets?.contextPercent],
+      () => void applyBudget(),
+      { defer: true },
+    ),
+  );
+
+  /** Arm or clear the stop, and warn once on the way up. */
+  async function applyBudget() {
+    const budgets = settings.budgets;
+    if (!budgets) return;
+    const now = spend();
+
+    const hit = breach(now, budgets);
+    if (hit && !stopped()) {
+      setStopped(hit);
+      // Into the store as well as the signal: `chatStatus` reads the store, and
+      // that is what puts this session on the sidebar's needs-you edge.
+      edit((st) => {
+        st.budgetStopped = true;
+      });
+      // The model's reason and the user's differ on purpose: the model is told
+      // a settled fact with no remedy, because a denial naming its own fix
+      // reliably produces a retry (spike 2) and a retry is exactly what a
+      // budget stop must not cause. The user is told what to do about it.
+      await invoke("chat_set_budget_stop", { sessionId: props.sessionId, reason: stopReason(hit) }).catch(() => {});
+      edit((s) => applyEvent(s, {
+        type: "sessionError",
+        sessionId: props.sessionId,
+        message: stopNotice(hit),
+        fatal: false,
+      }));
+      return;
+    }
+    if (!hit && stopped()) {
+      // The ceiling moved. Clearing the flag as well as the file, or the chat
+      // would stay stopped in the UI while its tools ran again.
+      setStopped(null);
+      edit((st) => {
+        st.budgetStopped = false;
+      });
+      await invoke("chat_set_budget_stop", { sessionId: props.sessionId, reason: null }).catch(() => {});
+      return;
+    }
+    // Re-armed whenever the ceiling itself moves, keyed on the limit rather than
+    // on a bare flag. Raising a limit after being warned about the old one would
+    // otherwise mean never being warned about the new one - the warning would
+    // fire once per session for the life of the tab and then go quiet for good.
+    const ceiling = `${budgets.sessionUsd}/${budgets.projectUsd}/${budgets.contextPercent}`;
+    if (warned() !== ceiling) setWarned(null);
+    if (hit || warned() === ceiling) return;
+    const near = approaching(now, budgets);
+    if (!near) return;
+    setWarned(ceiling);
+    edit((s) => applyEvent(s, {
+      type: "sessionError",
+      sessionId: props.sessionId,
+      message: warnNotice(near, budgets),
+      fatal: false,
+    }));
   }
 
   // Project-scoped, always: a restriction that expired with the tab would be a
@@ -1043,7 +1187,7 @@ export default function ChatView(props: {
                   </Button>
                 </Show>
               </div>
-              <UsageReadout summary={usageSummary(state)} />
+              <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
               <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
               <RuleList rules={rules()} onRemove={onRemoveRule} onRestrict={onRestrict} />
               <SessionInfo
