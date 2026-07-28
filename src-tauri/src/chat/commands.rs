@@ -18,6 +18,7 @@ use super::approval::{self, ApprovalPrompt, HookResponse};
 use super::claude_transport::ClaudeTransport;
 use super::host::{ChatState, SessionBridge, Spawned};
 use super::rules;
+use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
@@ -414,6 +415,83 @@ fn write_rule(session_id: &str, cwd: &str, rule: rules::Rule, project_scoped: bo
         }
     }
     Ok(())
+}
+
+// --- spend ceilings --------------------------------------------------------
+
+/// Record one completed turn against this session's running total.
+///
+/// Returns the session's new total **and** the project's, because the two
+/// ceilings are checked against different sums and the caller would otherwise
+/// need a second round trip to learn the one it did not ask for.
+#[tauri::command]
+pub async fn chat_record_usage(
+    cwd: String,
+    session_id: String,
+    tokens: u64,
+    cost_usd: Option<f64>,
+) -> Result<UsageTotals, String> {
+    let path = usage::usage_path(&cwd);
+    let session = usage::record_turn(&path, &session_id, tokens, cost_usd)?;
+    Ok(UsageTotals { project: usage::project_total(&usage::load(&path)), session })
+}
+
+/// How many human prompts this session's transcript holds.
+///
+/// The denominator of the honesty rule: compared against the turns this chat saw
+/// a `result` frame for, it says whether the session total is the truth or a
+/// floor. Resolved from the session id here rather than in the panel, which
+/// knows its id but not the file the harness writes it to - and the resolution
+/// is `transcript_path`, the same one the replay uses, so the two cannot drift
+/// onto different files.
+///
+/// 0 for a session with no transcript yet, which reads as "not known to be
+/// complete" and keeps the caveat. A brand-new chat has nothing to be complete
+/// about.
+#[tauri::command]
+pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u32, String> {
+    let Some(path) = crate::sessions::transcript_path(&session_id, &agent_id) else {
+        return Ok(0);
+    };
+    let tail = crate::sessions::session_prompt_tail(path, agent_id)?;
+    Ok(tail.count)
+}
+
+/// This session's persisted total, for a panel that has just reopened.
+#[tauri::command]
+pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<UsageTotals, String> {
+    let file = usage::load(&usage::usage_path(&cwd));
+    let session = file.sessions.get(&session_id).cloned().unwrap_or_default();
+    Ok(UsageTotals { project: usage::project_total(&file), session })
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTotals {
+    pub session: usage::SessionUsage,
+    pub project: usage::SessionUsage,
+}
+
+/// Arm or clear this session's spend stop.
+///
+/// Written into the rule file rather than held in memory, because that file is
+/// the one thing the hook helper reads on **every** tool call - including the
+/// ones a rule already allowed, which never open the approval socket. A ceiling
+/// enforced only at the socket would be a ceiling that a session with allow-listed
+/// reads could walk straight past.
+///
+/// Enforcement therefore lands at the next tool boundary, never mid-tool: the
+/// hook fires before the call runs, so a refusal here means the tool did not
+/// start, not that it was interrupted halfway.
+#[tauri::command]
+pub async fn chat_set_budget_stop(session_id: String, reason: Option<String>) -> Result<(), String> {
+    let path = rules::rules_path(&session_id);
+    let mut file = rules::load_ok(&path)
+        .unwrap_or_else(|| rules::RuleFile::new(std::process::id(), rules::now_ms(), Vec::new()));
+    file.stop = reason;
+    file.sway_pid = std::process::id();
+    file.stamp_ms = rules::now_ms();
+    rules::save(&path, &file)
 }
 
 /// Add a restrictive rule: `ask` or `deny`, optionally scoped by a path glob.

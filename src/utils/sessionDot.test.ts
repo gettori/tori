@@ -121,6 +121,11 @@ describe("dotFromStatus", () => {
   // The one that carries the notification, the badge and the tab marker.
   it("maps a blocked chat onto the needs-you dot the notification path watches", () => {
     expect(dotFromStatus("waitingForApproval")).toBe("needsYou");
+    // A budget stop raises the same needs-you edge as a permission prompt.
+    // Both mean "this is not going anywhere until you look at it", which is the
+    // only question the dot answers - and a stopped chat reported as idle would
+    // sit there unnoticed until someone wondered why it never finished.
+    expect(dotFromStatus("budgetStopped")).toBe("needsYou");
   });
 
   // `liveCounts` counts any dot other than "none" as a running session, so an

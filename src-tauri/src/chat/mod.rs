@@ -37,6 +37,7 @@ pub mod rules;
 pub mod rules_v1_frozen;
 pub mod snapshot;
 pub mod transport;
+pub mod usage;
 
 #[cfg(test)]
 mod neutrality_check;
