@@ -4,7 +4,8 @@ import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
 import type { ContentBlock } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
-import PermissionPrompt, { type Answer } from "./PermissionPrompt";
+import ToolCallCard, { type HunkRef } from "./ToolCallCard";
+import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 
 // Assistant text is model output, so it is untrusted as far as script execution
@@ -18,27 +19,6 @@ function renderMarkdown(text: string): string {
 function blockText(blocks: readonly ContentBlock[]): string {
   return blocks.map((b) => (b.type === "text" ? b.text : b.type === "fileRef" ? `@${b.path}` : "[image]")).join("\n");
 }
-
-/** One-line summary of what a tool call is doing, from the argument that
- *  actually distinguishes it. The rich card, its diff and its editor coupling
- *  are a later phase; this is enough to read the transcript. */
-function toolSummary(card: ToolItem): string {
-  if (!card.input || typeof card.input !== "object") return "";
-  const rec = card.input as Record<string, unknown>;
-  for (const key of ["command", "file_path", "path", "pattern", "url", "query"]) {
-    const v = rec[key];
-    if (typeof v === "string" && v) return v;
-  }
-  return "";
-}
-
-const TOOL_STATE_LABEL: Record<ToolItem["state"], string> = {
-  awaitingApproval: "Waiting for approval",
-  running: "Running",
-  ok: "Done",
-  error: "Failed",
-  denied: "Denied",
-};
 
 function ThinkingBlock(props: { text: string }) {
   const [open, setOpen] = createSignal(false);
@@ -70,7 +50,10 @@ function ThinkingBlock(props: { text: string }) {
 export default function MessageList(props: {
   items: readonly ChatItem[];
   streaming: boolean;
+  sessionId: string;
+  cwd: string;
   onAnswer: (card: ToolItem, answer: Answer) => void;
+  onRevertHunk: (ref: HunkRef) => Promise<boolean>;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   const [stuck, setStuck] = createSignal(true);
@@ -127,19 +110,13 @@ export default function MessageList(props: {
             </Match>
             <Match when={item.kind === "tool" && item}>
               {(it) => (
-                <div class={`${styles.tool} ${it().state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
-                  <div class={styles.toolRow}>
-                    <span class={styles.toolName}>{it().name ?? "tool"}</span>
-                    <span class={styles.toolArg}>{toolSummary(it())}</span>
-                    <span class={styles.toolState}>{TOOL_STATE_LABEL[it().state]}</span>
-                  </div>
-                  {/* The prompt lives on the card rather than in a dialog: what
-                      is being approved is this call, and a modal would hide the
-                      transcript that explains why it was made. */}
-                  <Show when={it().approval}>
-                    <PermissionPrompt card={it()} onAnswer={(answer) => props.onAnswer(it(), answer)} />
-                  </Show>
-                </div>
+                <ToolCallCard
+                  card={it()}
+                  sessionId={props.sessionId}
+                  cwd={props.cwd}
+                  onAnswer={props.onAnswer}
+                  onRevertHunk={props.onRevertHunk}
+                />
               )}
             </Match>
           </Switch>

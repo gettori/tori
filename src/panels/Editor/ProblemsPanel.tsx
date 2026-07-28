@@ -2,6 +2,7 @@ import { For, Show } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import { diagnostics, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
 import { composeDiagnostic, requestSend, type SessionTarget } from "../../utils/safeSend";
+import { diagnosticBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
 import Button from "../../components/Button/Button";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -65,7 +66,11 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
     }
     if (!t) return;
     const text = composeDiagnostic(t, path, p.line, p.endLine, p.severity, p.message);
-    const result = await requestSend({ ...t, text });
+    const result = await requestSend({
+      ...t,
+      text,
+      blocks: diagnosticBlocks(path, p.line, p.endLine, p.severity, p.message),
+    });
     if (result.kind === "blocked") {
       emitWith<ToastEvent>(TOAST, { message: "That session is waiting on a prompt, answer it first.", kind: "error" });
     } else if (result.kind === "timeout") {

@@ -234,6 +234,21 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
 }
 
 /**
+ * The files this event says the session wrote, for the consumers that want to
+ * know sooner than the fs watcher's debounce can tell them (the gutter, the
+ * Changes panel).
+ *
+ * Read off the events the transport already emits rather than off a second
+ * source: `toolCallCompleted` carries the tool's write targets, and `fileEdit`
+ * names one file each. Anything else writes nothing, which is most events.
+ */
+export function filesWritten(ev: ChatEvent): readonly string[] {
+  if (ev.type === "toolCallCompleted") return ev.files;
+  if (ev.type === "fileEdit") return [ev.path];
+  return [];
+}
+
+/**
  * Fold one event into the state.
  *
  * Tolerant by construction: an event for another session is ignored, a repeated

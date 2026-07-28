@@ -46,7 +46,8 @@ import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } f
 import { liveStatuses } from "../../utils/sessionStatus";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
-import { liveChats } from "../../utils/chatSessions";
+import { liveChatIds, liveChats } from "../../utils/chatSessions";
+import { offerToComposer, routeFor } from "../../utils/chatCompose";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import styles from "./Terminal.module.css";
 
@@ -711,9 +712,9 @@ export default function Terminal(props: {
   // send never lands in a bare shell), then blocked when the transcript tail
   // shows a needs-you prompt (refuse rather than queue behind it), else ready.
   // Safe-send writes into a PTY, so only a shell-hosted agent tab can serve it.
-  // A chat-hosted session is deliberately not a match: Phase 8 gives chat its
-  // own structured attachment path, and a `pty_write` at a chat tab's id would
-  // land nowhere while reporting success.
+  // A chat-hosted session is deliberately not a match: it takes the structured
+  // route in `handleSendToSession` above, and a `pty_write` at a chat tab's id
+  // would land nowhere while reporting success.
   const agentTabFor = (sessionId: string) => open().find((t) => t.kind === "agent" && t.sessionId === sessionId);
 
   async function probeSessionState(req: SendToSession): Promise<ProbeState> {
@@ -736,6 +737,17 @@ export default function Terminal(props: {
   async function handleSendToSession(req: SendToSession) {
     const text = sanitizeForSend(req.text);
     if (!text) return;
+    // A chat-backed session takes the structured reading of the same message.
+    // Decided here rather than at each caller: this component already knows
+    // which session is hosted where, and a caller guessing would have to be
+    // told again every time the answer changed.
+    if (routeFor(req.sessionId, liveChatIds()) === "chat") {
+      offerToComposer(req.sessionId, req.blocks ?? [{ type: "text", text }]);
+      const chat = liveChats().find((c) => c.sessionId === req.sessionId);
+      if (chat) focusTab(chat.folderPath, chat.tabId);
+      emitWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: "sent" });
+      return;
+    }
     if (!agentTabFor(req.sessionId)) {
       await focusOrResume({
         sessionId: req.sessionId,
