@@ -188,6 +188,8 @@ pub fn run() {
             chat::commands::chat_mcp_add,
             chat::commands::chat_mcp_remove,
             chat::commands::chat_remove_rule,
+            chat::commands::chat_accept_rule_offer,
+            chat::commands::chat_add_restriction,
             chat::commands::chat_history,
             chat::commands::chat_mark_turn,
             chat::commands::chat_take_interrupted_turn,
