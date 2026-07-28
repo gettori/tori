@@ -8,6 +8,7 @@ import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder } from "../../utils/chatSessions";
 import { isUnderPath } from "../../utils/pathScope";
+import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import Button from "../../components/Button/Button";
 import styles from "./CheckpointTimeline.module.css";
 
@@ -24,6 +25,10 @@ type CheckpointFile = {
   // Non-empty means the change is genuinely not this session's alone, which the
   // row says rather than resolving in favour of whoever asked.
   shared_with?: string[];
+  // Changed during the turn with no session claiming it, on a turn that ran a
+  // tool whose writes Sway cannot see. The likeliest author is this session,
+  // which is not the same as knowing, so a revert leaves it alone.
+  unattributed?: boolean;
 };
 export type RevertOutcome = {
   backstop_ts: number | null;
@@ -227,6 +232,20 @@ export default function CheckpointTimeline(props: {
         .map((c) => c.sessionId)
         .filter((id) => id !== sessionId),
     }).catch(() => files());
+    // Files the tree says changed and no session claims. The revert is scoped to
+    // this session's recorded writes, so they are left on disk - said here
+    // rather than discovered afterwards, because "revert everything to here"
+    // reads as a promise that they went back too.
+    const orphans = cumulativeFiles.filter((f) => f.unattributed).map((f) => f.path);
+    if (orphans.length) {
+      const go = await askConfirm({
+        title: `${orphans.length} file${orphans.length === 1 ? "" : "s"} will be left alone`,
+        message: `${orphans.join(", ")}\n\n${UNATTRIBUTED_NOTICE}\n\nThese stay exactly as they are. Revert them one at a time from the turn's file list if they are yours.`,
+        confirmLabel: "Revert the rest",
+      });
+      if (!go) return;
+    }
+
     const shared = cumulativeFiles.filter((f) => f.shared_with?.length).map((f) => f.path);
     let confirmedShared: string[] = [];
     if (shared.length) {
@@ -393,6 +412,11 @@ export default function CheckpointTimeline(props: {
                       title={`Also written by another chat in this worktree (${f.shared_with!.join(", ")}). Reverting affects work that is not only this session's.`}
                     >
                       shared
+                    </span>
+                  </Show>
+                  <Show when={f.unattributed}>
+                    <span class={styles.sharedMarker} title={UNATTRIBUTED_NOTICE}>
+                      unattributed
                     </span>
                   </Show>
                   <span
