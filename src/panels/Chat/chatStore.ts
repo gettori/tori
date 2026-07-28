@@ -29,12 +29,14 @@ import type {
   ChatModelInfo,
   ContentBlock,
   FileEditKind,
+  HookPhase,
   McpServer,
   PermissionMode,
   PlanItem,
   SlashCommand,
   Usage,
 } from "../../utils/chatTypes";
+import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
 import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
 import type { SessionStatus } from "../../utils/sessionStatus";
 
@@ -75,7 +77,41 @@ export type ToolItem = {
   edits: ChatFileEdit[];
 };
 
-export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem;
+/** One hook frame, as a transcript row.
+ *
+ *  One row per frame rather than one per hook execution: the `started` and
+ *  `finished` frames both appear. Sway's own approval hook is folded away by
+ *  default (`swayOwned`), which is what keeps a 60-tool-call turn from adding
+ *  120 rows of Sway's own plumbing. */
+export type HookItem = {
+  kind: "hook";
+  id: string;
+  hookId: string;
+  name: string;
+  event: string;
+  phase: HookPhase;
+  swayOwned: boolean;
+  outcome: string | null;
+  exitCode: number | null;
+  output: string | null;
+  stderr: string | null;
+};
+
+export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem;
+
+/**
+ * The transcript rows to render, given whether Sway's own hook rows are shown.
+ *
+ * Sway's approval hook runs on every single tool call and contributes two
+ * frames each time, so a 60-tool-call turn would add 120 rows of Sway's own
+ * plumbing to a transcript the user is reading for their *own* hooks. Folded by
+ * default, revealed by the setting, and never dropped from the state so the
+ * toggle works on a session already in progress.
+ */
+export function visibleItems(items: readonly ChatItem[], showSwayHooks: boolean): ChatItem[] {
+  if (showSwayHooks) return items.slice();
+  return items.filter((it) => it.kind !== "hook" || !it.swayOwned);
+}
 
 export type QueuedInput = { id: string; text: string };
 
@@ -140,6 +176,14 @@ export type ChatState = {
   tools: string[];
   slashCommands: SlashCommand[];
   mcpServers: McpServer[];
+  /** Skills, subagents and plugins the session loaded, from `system/init`.
+   *  Measured shapes (claude 2.1.220): `skills` and `agents` are arrays of
+   *  plain strings, `plugins` an array of objects. They live in `extra` on the
+   *  wire because they are Claude-specific, and are lifted here so the UI does
+   *  not have to know that. */
+  skills: string[];
+  agents: string[];
+  plugins: ChatPlugin[];
   plan: PlanItem[];
   /** The newest usage figure of any kind, including the mid-turn `usage`
    *  events. The context meter wants this: it asks "how full is the window
@@ -202,6 +246,9 @@ export function initialChat(sessionId: string): ChatState {
     tools: [],
     slashCommands: [],
     mcpServers: [],
+    skills: [],
+    agents: [],
+    plugins: [],
     plan: [],
     lastUsage: null,
     lastTurnUsage: null,
@@ -385,6 +432,9 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.tools = ev.tools;
       s.slashCommands = ev.slashCommands;
       s.mcpServers = ev.mcpServers;
+      s.skills = stringList(ev.extra, "skills");
+      s.agents = stringList(ev.extra, "agents");
+      s.plugins = chatPlugins(ev.extra);
       s.models = ev.models;
       s.fastModeState = ev.fastModeState;
       s.fastModeDisabledReason = ev.fastModeDisabledReason;
@@ -396,6 +446,43 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       noteModel(s, ev.model);
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
+      return;
+    }
+    case "hookFired": {
+      // Only the response carries Sway's marker, so the `started` frame that
+      // preceded it was pushed as unattributed. Settle it now, or the pair
+      // splits: the row that starts Sway's hook would stay visible while the
+      // row that finishes it folds away.
+      //
+      // Searched from the end and stopped at the first hit: a `hookId` is
+      // unique to one execution and its `started` frame is almost always the
+      // row just pushed, so scanning the whole transcript per hook response
+      // would be O(items) sixty times over on a tool-heavy turn.
+      if (ev.swayOwned) {
+        for (let i = s.items.length - 1; i >= 0; i--) {
+          const it = s.items[i];
+          if (it.kind === "hook" && it.hookId === ev.hookId) {
+            it.swayOwned = true;
+            break;
+          }
+        }
+      }
+      // Kept as an item even when Sway owns it, rather than dropped here: the
+      // collapse is a *view* decision, so the opt-in toggle can reveal the
+      // folded rows without needing the session replayed to recover them.
+      s.items.push({
+        kind: "hook",
+        id: `hook-${s.seq++}`,
+        hookId: ev.hookId,
+        name: ev.name,
+        event: ev.event,
+        phase: ev.phase,
+        swayOwned: ev.swayOwned,
+        outcome: ev.outcome ?? null,
+        exitCode: ev.exitCode ?? null,
+        output: ev.output ?? null,
+        stderr: ev.stderr ?? null,
+      });
       return;
     }
     case "userMessage":

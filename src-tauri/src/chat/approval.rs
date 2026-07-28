@@ -104,9 +104,25 @@ impl HookResponse {
     }
 }
 
+/// The marker that makes Sway's own hook identifiable in the in-band
+/// `hook_response` stream.
+///
+/// Needed because nothing else distinguishes it. Measured on claude 2.1.220:
+/// `hook_name` reports the **tool**, not the configured matcher, so Sway's
+/// all-tools hook and a user's `PreToolUse` hook on the same tool both arrive
+/// as `PreToolUse:Bash`, and the frames carry no command. Rather than guess
+/// from the shape of the output, Sway stamps its own.
+///
+/// Verified non-invasive: claude echoes the whole stdout string back in
+/// `hook_response.output` verbatim and ignores keys it does not know, and a
+/// `deny` carrying this marker was still honoured (it landed in
+/// `result.permission_denials`).
+pub const SWAY_HOOK_MARKER: &str = "swayApproval";
+
 /// The JSON a `PreToolUse` hook writes to stdout to decide a call.
 pub fn hook_output(resp: &HookResponse) -> String {
     json!({
+        SWAY_HOOK_MARKER: true,
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": resp.decision,

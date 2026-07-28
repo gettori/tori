@@ -778,6 +778,63 @@
   color: var(--danger-fg);
 }
 
+/* What the session loaded: MCP servers, skills, agents, plugins. A disclosure
+   rather than permanent chrome - it answers an occasional question, never one
+   asked mid-conversation. */
+.sessionInfo {
+  border-bottom: 1px solid var(--border-default);
+  flex: 0 0 auto;
+}
+
+.sessionInfoToggle {
+  background: none;
+  border: 0;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  font-size: var(--sway-text-sm);
+  padding: var(--sway-space-2) var(--sway-space-3);
+  text-align: left;
+  width: 100%;
+}
+
+.sessionInfoToggle:hover {
+  color: var(--fg-default);
+}
+
+.sessionInfoBody {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--sway-text-sm);
+  gap: var(--sway-space-3);
+  padding: 0 var(--sway-space-3) var(--sway-space-3);
+}
+
+.sessionInfoBody h4 {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  font-weight: 600;
+  margin: 0 0 var(--sway-space-1);
+}
+
+.sessionInfoBody ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sessionInfoBody p,
+.sessionInfoBody li {
+  color: var(--fg-muted);
+  margin: 0;
+  /* Skill and server lists are long and unbroken; without this the panel
+     forces the whole transcript column wider. */
+  overflow-wrap: anywhere;
+}
+
+.sessionInfoBad {
+  color: var(--danger-fg);
+}
+
 .banner,
 .refusal {
   display: flex;

@@ -1,0 +1,169 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, fireEvent, waitFor } from "@solidjs/testing-library";
+import { invoke } from "@tauri-apps/api/core";
+import SessionInfo from "./SessionInfo";
+import type { McpServer } from "../../utils/chatTypes";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
+const invoked = vi.mocked(invoke);
+
+const server = (over: Partial<McpServer> = {}): McpServer => ({
+  name: "ctx",
+  status: "connected",
+  toolCount: 11,
+  error: null,
+  ...over,
+});
+
+const props = (over: Partial<Parameters<typeof SessionInfo>[0]> = {}) => ({
+  mcpServers: [] as McpServer[],
+  skills: [] as string[],
+  agents: [] as string[],
+  plugins: [] as { name: string; version: string | null; source: string | null; path: string | null }[],
+  ...over,
+});
+
+const open = (container: HTMLElement) => {
+  const toggle = container.querySelector("button");
+  if (!toggle) throw new Error("no disclosure toggle rendered");
+  fireEvent.click(toggle);
+};
+
+describe("SessionInfo", () => {
+  beforeEach(() => {
+    invoked.mockReset();
+    invoked.mockResolvedValue([]);
+  });
+
+  it("renders nothing for a session that loaded none of it", () => {
+    const { container } = render(() => <SessionInfo {...props()} />);
+    expect(container.textContent).toBe("");
+  });
+
+  it("shows a connected server with its tool count", () => {
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()] })} />);
+    open(container);
+    expect(container.textContent).toContain("ctx");
+    expect(container.textContent).toContain("connected");
+    expect(container.textContent).toContain("11 tools");
+  });
+
+  it("shows a failed server with its error, and says so before being opened", () => {
+    // The whole reason someone opens this panel, so the count is in the summary.
+    const { container } = render(() => (
+      <SessionInfo
+        {...props({ mcpServers: [server({ name: "broken", status: "failed", toolCount: null, error: "ENOENT" })] })}
+      />
+    ));
+    expect(container.textContent).toContain("1 not connected");
+    open(container);
+    expect(container.textContent).toContain("broken");
+    expect(container.textContent).toContain("failed");
+    expect(container.textContent).toContain("ENOENT");
+  });
+
+  it("says zero tools rather than hiding the count", () => {
+    // A connected server exposing nothing is a real and confusing state; it
+    // must be distinguishable from one that reported no count at all.
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server({ toolCount: 0 })] })} />);
+    open(container);
+    expect(container.textContent).toContain("0 tools");
+  });
+
+  it("omits the tool count when the harness reported none", () => {
+    // A server declaring no count must not read as having zero tools.
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server({ toolCount: null })] })} />);
+    open(container);
+    expect(container.textContent).not.toContain("tools");
+  });
+
+  it("lists skills, agents and plugins", () => {
+    const { container } = render(() => (
+      <SessionInfo
+        {...props({
+          skills: ["adversary", "grill-plan"],
+          agents: ["Explore"],
+          plugins: [{ name: "context-mode", version: "1.0.162", source: null, path: null }],
+        })}
+      />
+    ));
+    expect(container.textContent).toContain("2 skills");
+    open(container);
+    expect(container.textContent).toContain("adversary");
+    expect(container.textContent).toContain("Explore");
+    expect(container.textContent).toContain("context-mode");
+    expect(container.textContent).toContain("1.0.162");
+  });
+
+  it("writes a new server to the project config through Claude's own shape", async () => {
+    // The command/args split is what `claude mcp add <name> -- <cmd> <args>`
+    // produces, so the file Sway writes is one Claude already understands.
+    invoked.mockResolvedValue([]);
+    const { container, getByPlaceholderText, getByText } = render(() => (
+      <SessionInfo {...props({ cwd: "/repo" })} />
+    ));
+    open(container);
+    await waitFor(() => expect(invoked).toHaveBeenCalledWith("chat_mcp_list", { cwd: "/repo" }));
+
+    fireEvent.click(getByText("Add server"));
+    fireEvent.input(getByPlaceholderText("name"), { target: { value: "everything" } });
+    fireEvent.input(getByPlaceholderText("npx -y @scope/server"), {
+      target: { value: "npx -y @modelcontextprotocol/server-everything" },
+    });
+    fireEvent.click(getByText("Save"));
+
+    await waitFor(() =>
+      expect(invoked).toHaveBeenCalledWith("chat_mcp_add", {
+        cwd: "/repo",
+        name: "everything",
+        config: { command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] },
+      }),
+    );
+  });
+
+  it("says a project server is pending approval rather than pretending it is live", async () => {
+    // Measured against claude 2.1.220: a freshly written .mcp.json server is
+    // loaded as pending and not connected to. Sway reports that instead of
+    // force-enabling it, because the approval lives in Claude's own state file.
+    invoked.mockResolvedValue([
+      { name: "everything", scope: "project", approval: "pending", config: {} },
+    ]);
+    const { container } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
+    open(container);
+    await waitFor(() => expect(container.textContent).toContain("pending approval"));
+  });
+
+  it("offers Remove only for the project scope Sway actually writes", async () => {
+    invoked.mockResolvedValue([
+      { name: "mine", scope: "project", approval: "approved", config: {} },
+      { name: "theirs", scope: "user", approval: "notApplicable", config: {} },
+    ]);
+    const { container, getAllByText } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
+    open(container);
+    await waitFor(() => expect(container.textContent).toContain("theirs"));
+    // One button, for the project-scoped server only: a user-scoped server
+    // lives in a file Sway deliberately never writes.
+    expect(getAllByText("Remove")).toHaveLength(1);
+  });
+
+  it("surfaces a failed write instead of silently doing nothing", async () => {
+    invoked.mockResolvedValueOnce([]);
+    const { container, getByText, getByPlaceholderText } = render(() => (
+      <SessionInfo {...props({ cwd: "/repo" })} />
+    ));
+    open(container);
+    await waitFor(() => expect(invoked).toHaveBeenCalled());
+    invoked.mockRejectedValueOnce("permission denied");
+    fireEvent.click(getByText("Add server"));
+    fireEvent.input(getByPlaceholderText("name"), { target: { value: "x" } });
+    fireEvent.input(getByPlaceholderText("npx -y @scope/server"), { target: { value: "cmd" } });
+    fireEvent.click(getByText("Save"));
+    await waitFor(() => expect(container.textContent).toContain("permission denied"));
+  });
+
+  it("starts collapsed so it costs no space above the transcript", () => {
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()] })} />);
+    expect(container.textContent).not.toContain("11 tools");
+    expect(container.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+  });
+});

@@ -106,6 +106,15 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();
           break;
+        case "hookFired":
+          // The measured shape: `name` reports the tool, not the configured
+          // matcher, which is exactly why `swayOwned` cannot be derived from it.
+          expect(ev.name).toBe("PreToolUse:Bash");
+          expect(ev.event).toBe("PreToolUse");
+          expect(ev.phase).toBe("finished");
+          expect(ev.swayOwned).toBe(false);
+          expect(ev.exitCode).toBe(0);
+          break;
         case "compacted":
           // The figures are what make "it reclaimed context" checkable rather
           // than a claim; the summary is the harness's own words.

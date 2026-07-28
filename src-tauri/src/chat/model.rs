@@ -253,6 +253,14 @@ pub enum ContentBlock {
 // Events
 // ---------------------------------------------------------------------------
 
+/// Which half of a hook execution a [`ChatEvent::HookFired`] carries.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HookPhase {
+    Started,
+    Finished,
+}
+
 /// Everything a chat session can tell the UI.
 ///
 /// Every variant carries `session_id` because events from several concurrent
@@ -287,6 +295,41 @@ pub enum ChatEvent {
         fast_mode_disabled_reason: Option<String>,
         #[serde(default, skip_serializing_if = "extra_is_empty")]
         extra: Extra,
+    },
+
+    /// One hook execution, from the in-band `hook_started`/`hook_response`
+    /// frames that `--include-hook-events` turns on.
+    ///
+    /// One event per **frame**, not per hook: a hook produces a `Started` and
+    /// then a `Finished` sharing one `hook_id`, and the transcript renders the
+    /// pair as a row that fills in its outcome rather than waiting for it.
+    HookFired {
+        session_id: String,
+        /// Pairs `Started` with its `Finished`. Also what lets a `Started` be
+        /// attributed to Sway retroactively: only the response carries the
+        /// marker, so the started frame inherits ownership through this id.
+        hook_id: String,
+        /// As the harness names it, e.g. `PreToolUse:Bash`. **Reports the tool,
+        /// not the configured matcher** (measured, claude 2.1.220), which is
+        /// why it cannot identify whose hook this is.
+        name: String,
+        /// The lifecycle event, e.g. `PreToolUse`, `SessionStart`.
+        event: String,
+        phase: HookPhase,
+        /// True when this is Sway's own injected approval hook, identified by
+        /// the marker it stamps on its own output. Collapsed by default: it
+        /// runs on every tool call and is Sway's own plumbing, not something
+        /// the user configured.
+        sway_owned: bool,
+        #[serde(default)]
+        outcome: Option<String>,
+        #[serde(default)]
+        exit_code: Option<i64>,
+        /// The hook's stdout. Kept so a user hook can show what it contributed.
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
+        stderr: Option<String>,
     },
 
     /// A turn began. `model` and `permission_mode` are repeated here because
@@ -689,6 +732,22 @@ mod tests {
                 session_id: "s1".into(),
                 reason: Some("closed by user".into()),
             },
+            // Last on purpose: the TS replay tests read this list as an arrival
+            // order, and a hook frame is not part of the session-lifecycle
+            // sequence they assert on.
+            ChatEvent::HookFired {
+                session_id: "s1".into(),
+                hook_id: "0169c799-647f-402b-8585-49a207f46940".into(),
+                // The measured shape: the tool, not the configured matcher.
+                name: "PreToolUse:Bash".into(),
+                event: "PreToolUse".into(),
+                phase: HookPhase::Finished,
+                sway_owned: false,
+                outcome: Some("success".into()),
+                exit_code: Some(0),
+                output: Some("{\"hookSpecificOutput\":{}}".into()),
+                stderr: None,
+            },
         ]
     }
 
@@ -762,6 +821,7 @@ mod tests {
         for ev in &events {
             let _name = match ev {
                 ChatEvent::SessionStarted { .. } => "sessionStarted",
+                ChatEvent::HookFired { .. } => "hookFired",
                 ChatEvent::TurnStarted { .. } => "turnStarted",
                 ChatEvent::UserMessage { .. } => "userMessage",
                 ChatEvent::Compacted { .. } => "compacted",
@@ -780,8 +840,8 @@ mod tests {
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
             };
         }
-        // 17 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 17, "every_event() must hold exactly one sample per variant");
+        // 18 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 18, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

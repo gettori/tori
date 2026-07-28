@@ -1,7 +1,17 @@
 import { createMemo, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
-import { settings, saveSettings, type Appearance, type Typography, type Checkpoints } from "./settingsStore";
+import {
+  settings,
+  saveSettings,
+  type Appearance,
+  type ChatDefaults,
+  type Checkpoints,
+  type DefaultSurface,
+  type Harness,
+  type TranscriptDensity,
+  type Typography,
+} from "./settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID } from "../../theme";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
@@ -44,6 +54,10 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
   const setCheckpoints = (c: Partial<Checkpoints>) =>
     saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
+  const setChatDefaults = (c: Partial<ChatDefaults>) =>
+    saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
+  const setHarness = (h: Partial<Harness>) =>
+    saveSettings({ ...settings, harness: { ...settings.harness, ...h } });
 
   // Reject empty/NaN/out-of-range commits (a blank or 0 font size would blank
   // the UI); fall back to the current value so an invalid entry is a no-op.
@@ -223,6 +237,172 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               </div>
               <div class={styles.hint}>
                 Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt.
+              </div>
+            </section>
+
+            <section class={styles.section}>
+              <div class={styles.sectionTitle}>Chat</div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Open sessions in</label>
+                <div class={styles.control}>
+                  <select
+                    class={styles.select}
+                    value={settings.chatDefaults.defaultSurface}
+                    onChange={(e) => setChatDefaults({ defaultSurface: e.currentTarget.value as DefaultSurface })}
+                  >
+                    <option value="chat">Chat</option>
+                    <option value="agent">Terminal (agent tab)</option>
+                  </select>
+                </div>
+              </div>
+              <div class={styles.hint}>
+                Which surface a click on a session opens. The other one stays available from the
+                split-button menu either way, and already-saved tabs reopen on the surface they were
+                saved on.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Default model</label>
+                <input
+                  class={`${styles.input} ${styles.text}`}
+                  value={settings.chatDefaults.model ?? ""}
+                  placeholder="the harness default"
+                  onChange={(e) => setChatDefaults({ model: e.currentTarget.value.trim() || null })}
+                />
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Default effort</label>
+                <div class={styles.control}>
+                  <select
+                    class={styles.select}
+                    value={settings.chatDefaults.effort ?? ""}
+                    onChange={(e) => setChatDefaults({ effort: e.currentTarget.value || null })}
+                  >
+                    <option value="">The harness default</option>
+                    <For each={["low", "medium", "high", "xhigh", "max"]}>
+                      {(level) => <option value={level}>{level}</option>}
+                    </For>
+                  </select>
+                </div>
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Default mode</label>
+                <div class={styles.control}>
+                  <select
+                    class={styles.select}
+                    value={settings.chatDefaults.mode ?? ""}
+                    onChange={(e) => setChatDefaults({ mode: e.currentTarget.value || null })}
+                  >
+                    <option value="">The harness default</option>
+                    <option value="default">Ask</option>
+                    <option value="acceptEdits">Accept edits</option>
+                    <option value="plan">Plan</option>
+                    <option value="bypassPermissions">Bypass</option>
+                  </select>
+                </div>
+              </div>
+              <div class={styles.hint}>
+                What a new chat starts with. A project that already has its own remembered picks
+                keeps them.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Stream responses</label>
+                <input
+                  type="checkbox"
+                  checked={settings.chatDefaults.streaming}
+                  onChange={(e) => setChatDefaults({ streaming: e.currentTarget.checked })}
+                />
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Transcript density</label>
+                <div class={styles.control}>
+                  <select
+                    class={styles.select}
+                    value={settings.chatDefaults.density}
+                    onChange={(e) => setChatDefaults({ density: e.currentTarget.value as TranscriptDensity })}
+                  >
+                    <option value="comfortable">Comfortable</option>
+                    <option value="compact">Compact</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Tool output lines</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.chatDefaults.toolOutputLines}
+                  onChange={(e) =>
+                    setChatDefaults({
+                      toolOutputLines: clamp(e.currentTarget.value, 0, 500, settings.chatDefaults.toolOutputLines),
+                    })
+                  }
+                />
+              </div>
+              <div class={styles.hint}>Lines shown before a tool's output folds. 0 shows all of it.</div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Auto-deny approvals after</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="3600"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.chatDefaults.approvalAutoDenySecs}
+                  onChange={(e) =>
+                    setChatDefaults({
+                      approvalAutoDenySecs: clamp(
+                        e.currentTarget.value,
+                        5,
+                        3600,
+                        settings.chatDefaults.approvalAutoDenySecs,
+                      ),
+                    })
+                  }
+                />
+              </div>
+              <div class={styles.hint}>
+                Seconds an unanswered tool approval waits before Sway denies it. Sway owns this
+                timeout so it always fires before the harness's own.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Show Sway's approval hook</label>
+                <input
+                  type="checkbox"
+                  checked={settings.chatDefaults.showSwayHooks}
+                  onChange={(e) => setChatDefaults({ showSwayHooks: e.currentTarget.checked })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Sway's own hook runs on every tool call and adds two transcript rows each time, so it
+                is folded away by default. Your own hooks always show.
+              </div>
+            </section>
+
+            <section class={styles.section}>
+              <div class={styles.sectionTitle}>Harness</div>
+              <div class={styles.row}>
+                <label class={styles.label}>Binary path</label>
+                <input
+                  class={`${styles.input} ${styles.text}`}
+                  value={settings.harness.path ?? ""}
+                  placeholder="found on your login shell's PATH"
+                  onChange={(e) => setHarness({ path: e.currentTarget.value.trim() || null })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Overrides the discovered binary for new chat sessions. Leave it empty to use the one
+                found above. The detected version and any drift from what Sway's adapter was built
+                against are shown in Agents.
               </div>
             </section>
           </div>

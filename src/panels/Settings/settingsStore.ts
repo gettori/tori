@@ -27,10 +27,31 @@ export type Checkpoints = { enabled: boolean };
  *  `--model` **value**, never the resolved id the session reports back: the
  *  value is what the flag takes and what survives a re-resolution. */
 export type ChatPrefs = { model?: string | null; effort?: string | null; mode?: string | null };
+/** Which surface a single click on a sidebar session opens. Chat is the
+ *  default; `agent` is the fallback restoring the pre-chat behaviour. */
+export type DefaultSurface = "chat" | "agent";
+export type TranscriptDensity = "comfortable" | "compact";
+/** Global chat preferences: what a new chat starts with, and how the transcript
+ *  renders. Separate from the per-project `chat` map so neither reshapes the
+ *  other's on-disk field. */
+export type ChatDefaults = {
+  defaultSurface: DefaultSurface;
+  model?: string | null;
+  effort?: string | null;
+  mode?: string | null;
+  streaming: boolean;
+  density: TranscriptDensity;
+  toolOutputLines: number;
+  approvalAutoDenySecs: number;
+  showSwayHooks: boolean;
+};
+export type Harness = { path?: string | null };
 export type Settings = {
   appearance: Appearance;
   typography: Typography;
   checkpoints: Checkpoints;
+  chatDefaults: ChatDefaults;
+  harness: Harness;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
 };
@@ -47,6 +68,15 @@ export const DEFAULT_SETTINGS: Settings = {
     lineHeight: 1.5,
   },
   checkpoints: { enabled: true },
+  chatDefaults: {
+    defaultSurface: "chat",
+    streaming: true,
+    density: "comfortable",
+    toolOutputLines: 20,
+    approvalAutoDenySecs: 120,
+    showSwayHooks: false,
+  },
+  harness: {},
   chat: {},
 };
 

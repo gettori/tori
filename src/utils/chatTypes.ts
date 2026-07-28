@@ -53,6 +53,9 @@ export type McpServer = {
   error: string | null;
 };
 
+/// Which half of a hook execution a `hookFired` event carries.
+export type HookPhase = "started" | "finished";
+
 /// One model the live harness says it can run.
 ///
 /// `value` is what `--model` takes and what the picker keeps as the authority
@@ -129,6 +132,30 @@ export type ChatEvent =
       fastModeState: string | null;
       fastModeDisabledReason: string | null;
       extra?: Extra;
+    }
+  /// One hook execution, from the in-band `hook_started`/`hook_response` frames
+  /// that `--include-hook-events` turns on. One event per **frame**: a hook
+  /// produces a `started` and then a `finished` sharing one `hookId`.
+  | {
+      type: "hookFired";
+      sessionId: string;
+      /// Pairs `started` with its `finished`, and is what lets a `started` be
+      /// attributed to Sway retroactively.
+      hookId: string;
+      /// As the harness names it, e.g. `PreToolUse:Bash`. **Reports the tool,
+      /// not the configured matcher** (measured, claude 2.1.220), which is why
+      /// it cannot identify whose hook this is.
+      name: string;
+      /// The lifecycle event, e.g. `PreToolUse`, `SessionStart`.
+      event: string;
+      phase: HookPhase;
+      /// True for Sway's own injected approval hook, identified by the marker it
+      /// stamps on its own output. Collapsed by default.
+      swayOwned: boolean;
+      outcome?: string | null;
+      exitCode?: number | null;
+      output?: string | null;
+      stderr?: string | null;
     }
   /// `model` and `permissionMode` repeat here because the per-turn init
   /// re-emission is how a mid-session switch is confirmed to have taken effect.
@@ -242,6 +269,7 @@ export type ChatEventType = ChatEvent["type"];
 /// consumer can assert it handles all of them.
 export const CHAT_EVENT_TYPES = [
   "sessionStarted",
+  "hookFired",
   "turnStarted",
   "userMessage",
   "compacted",
@@ -325,6 +353,9 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "fastModeDisabledReason",
     ],
     optional: ["extra"],
+  },
+  hookFired: {
+    required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],
   },
   turnStarted: {
     required: ["sessionId", "turnId", "model", "permissionMode"],

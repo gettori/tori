@@ -686,7 +686,10 @@ pub fn apply_template(template: &[String], id: &str, file: &str) -> Vec<String> 
 pub fn session_pattern(agent: &str, id: &str) -> String {
     match find(agent).or_else(|| find("claude")) {
         Some(a) => a.running_pattern.replace("{id}", id),
-        None => format!("claude (--resume|-r) {id}"),
+        // Kept in step with `agents/claude.toml`'s `[running] pattern`: the
+        // token run is what makes a chat's command line match, since the chat
+        // transport puts its base_args before `--resume`/`--session-id`.
+        None => format!("claude ([^ ]+ )*(--resume|-r|--session-id) {id}"),
     }
 }
 
@@ -741,6 +744,42 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sway_agents_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// The running pattern has to match every shape that actually drives a
+    /// session, and none of the decoys that merely mention its id.
+    ///
+    /// Pinned because the original pattern silently failed the chat shapes: it
+    /// wanted the flag adjacent to the program name, and the chat transport
+    /// puts its base_args first. Every guard built on `session_running` (the
+    /// worktree-removal count, the delete-group warning, the revert guard's
+    /// detached tier, the sidebar status dot) was therefore blind to chats.
+    #[test]
+    fn the_running_pattern_matches_chat_command_lines_not_just_pty_ones() {
+        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let id = "2e0777d8-a84b-425c-9a71-7b875918dcf1";
+        let re = regex::Regex::new(&claude.running_pattern.replace("{id}", id)).expect("valid ERE");
+
+        let base = "claude -p --input-format stream-json --output-format stream-json --verbose \
+                    --include-partial-messages --include-hook-events";
+        for (label, cmdline) in [
+            ("PTY agent tab", format!("claude --resume {id}")),
+            ("PTY agent tab, short flag", format!("claude -r {id}")),
+            // The two the original pattern missed.
+            ("a new chat", format!("{base} --session-id {id}")),
+            ("a resumed chat", format!("{base} --resume {id}")),
+            ("a forked chat", format!("{base} --resume other --fork-session --session-id {id}")),
+        ] {
+            assert!(re.is_match(&cmdline), "{label} must count as running: {cmdline}");
+        }
+
+        for (label, cmdline) in [
+            ("a tail on the transcript", format!("tail -f /Users/x/.claude/projects/p/{id}.jsonl")),
+            ("an editor with it open", format!("nvim /Users/x/.claude/projects/p/{id}.jsonl")),
+            ("a grep for the id", format!("grep -r {id} /Users/x/notes")),
+        ] {
+            assert!(!re.is_match(&cmdline), "{label} must not count as running: {cmdline}");
+        }
     }
 
     #[test]

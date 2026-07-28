@@ -98,6 +98,15 @@ both anonymous, both at most once a day, both silent on failure:
 Nothing about you, your code, or your sessions is included in either. Use the
 app offline to stop both.
 
+**Your agent's own traffic is its own.** A chat tab runs the same `claude` on
+your machine that you would run in a terminal, under your own subscription, and
+that process talks to its vendor exactly as it always does. Sway starts it,
+reads its output and writes to its stdin; it adds no endpoint of its own, proxies
+nothing, and sees nothing the CLI would not already be sending. The same goes for
+MCP servers: Sway reads and writes Claude's own config files, and Claude, not
+Sway, connects to whatever they name. Git pushes and fetches go straight from
+the system `git` to your remote.
+
 Everything else is a plain file on your machine: preferences, spaces,
 checkpoints, and adapter overrides under `~/.config/sway/`, plus the cached
 model list under `~/Library/Caches/sway/`. Your agents' own transcripts stay

@@ -26,6 +26,7 @@ pub mod claude_transport;
 pub mod commands;
 pub mod history;
 pub mod host;
+pub mod mcp;
 pub mod model;
 pub mod ownership;
 pub mod rules;

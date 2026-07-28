@@ -90,7 +90,9 @@ export const FALLBACK_AGENTS: Agent[] = [
     yolo_args: ["--dangerously-skip-permissions"],
     resume_args: ["--resume", "{id}"],
     parser_kind: "claude_jsonl",
-    running_pattern: "claude (--resume|-r) {id}",
+    // The token run matches a chat's command line too, where base_args come
+    // before `--resume`/`--session-id`. See agents/claude.toml.
+    running_pattern: "claude ([^ ]+ )*(--resume|-r|--session-id) {id}",
     pty_quiet_ms: 2000,
     // The chat table is deliberately omitted here rather than duplicated: the
     // fallback exists so the *sidebar* paints before `list_agents` resolves,
