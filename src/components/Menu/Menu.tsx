@@ -60,13 +60,20 @@ export default function Menu(props: {
 
   // The menu's own size is known only after mount, so clamp it into the viewport
   // then (flip back from the right/bottom edge rather than overflow).
+  //
+  // The opening position is read here, not inside the frame callback: the owner
+  // renders this from a signal it clears on close (`menu()!.x`), so an item
+  // chosen before the frame ran would leave the callback reading a position that
+  // no longer exists. Clamping to where the menu actually opened is also the
+  // only correct answer.
   onMount(() => {
+    const openedAt = { x: props.x, y: props.y };
     requestAnimationFrame(() => {
       if (!el) return;
       const r = el.getBoundingClientRect();
       const pad = 6;
-      let left = props.x;
-      let top = props.y;
+      let left = openedAt.x;
+      let top = openedAt.y;
       if (left + r.width > window.innerWidth - pad) left = window.innerWidth - r.width - pad;
       if (top + r.height > window.innerHeight - pad) top = window.innerHeight - r.height - pad;
       setPos({ left: Math.max(pad, left), top: Math.max(pad, top) });
