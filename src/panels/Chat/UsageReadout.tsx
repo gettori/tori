@@ -31,7 +31,13 @@ export default function UsageReadout(props: { summary: UsageSummary }) {
             `\nSession: ${fmtTokens(session().tokens)} tokens over ${session().turns} ` +
             `turn${session().turns === 1 ? "" : "s"}` +
             (session().cost === null ? "" : `, ${fmtCost(session().cost!)}`) +
-            `\nCounts only the turns this chat watched finish, so a resumed session's earlier turns are not included.`
+            // Said only when it is true. The caveat used to be unconditional,
+            // which meant a chat that started the session and watched every
+            // turn of it still told the user its exact figure might be short -
+            // training them to discount a number that was right.
+            (props.summary.complete
+              ? ""
+              : `\nCounts only the turns this chat watched finish, so a resumed session's earlier turns are not included.`)
           }
         >
           {fmtTokens(t().tokens)} tok

@@ -5,6 +5,7 @@ import {
   settings,
   saveSettings,
   type Appearance,
+  type Budgets,
   type ChatDefaults,
   type Checkpoints,
   type DefaultSurface,
@@ -56,6 +57,16 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
   const setChatDefaults = (c: Partial<ChatDefaults>) =>
     saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
+  const setBudgets = (b: Partial<Budgets>) =>
+    saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
+  // A ceiling is opt-in, so a blank field is the *unset* value rather than an
+  // invalid one. `clamp` cannot express that: it falls back to the previous
+  // value, which would make a ceiling impossible to clear once set.
+  const optionalNumber = (v: string, min: number): number | null => {
+    if (v.trim() === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= min ? n : null;
+  };
   const setHarness = (h: Partial<Harness>) =>
     saveSettings({ ...settings, harness: { ...settings.harness, ...h } });
 
@@ -329,6 +340,57 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               <div class={styles.hint}>
                 Seconds an unanswered tool approval waits before Sway denies it. Sway owns this
                 timeout so it always fires before the harness's own.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Stop this chat after</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="no limit"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.budgets.sessionUsd ?? ""}
+                  onChange={(e) => setBudgets({ sessionUsd: optionalNumber(e.currentTarget.value, 0) })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Dollars one chat may spend before it stops at its next tool call. Leave blank for no
+                limit, which is the default.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Stop this project after</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="no limit"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.budgets.projectUsd ?? ""}
+                  onChange={(e) => setBudgets({ projectUsd: optionalNumber(e.currentTarget.value, 0) })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Dollars across every chat in one project. Two chats open on one repo spend one
+                budget.
+              </div>
+
+              <div class={styles.row}>
+                <label class={styles.label}>Stop at context</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  placeholder="no limit"
+                  class={`${styles.input} ${styles.num}`}
+                  value={settings.budgets.contextPercent ?? ""}
+                  onChange={(e) => setBudgets({ contextPercent: optionalNumber(e.currentTarget.value, 1) })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Percent of the model's context window. Unlike the money limits this one recovers on
+                its own after a compaction.
               </div>
 
               <div class={styles.row}>

@@ -51,7 +51,31 @@ export type UsageSummary = {
   turn: { tokens: number; cost: number | null } | null;
   /** Every turn this chat watched complete. */
   session: { tokens: number; cost: number | null; turns: number };
+  /** Whether the session figure is the truth or a floor. See
+   *  [`observationComplete`]. */
+  complete: boolean;
 };
+
+/**
+ * Is the session total the whole story, or a floor?
+ *
+ * **Measured, not assumed.** The honest answer was previously "always a floor",
+ * which is safe and unhelpful: a chat that started the session and watched every
+ * turn of it knows its total exactly, and telling that user their figure might
+ * be incomplete trains them to discount a number that was right. So the caveat
+ * is dropped only when the turns Sway saw a `result` frame for account for every
+ * prompt in the transcript.
+ *
+ * Erring towards the caveat on every uncertainty: a transcript that could not be
+ * read reports 0 prompts, which would otherwise make an unread session look
+ * perfectly observed. Fewer prompts than observed turns is likewise treated as
+ * incomplete rather than as a surplus - it means the two counts are measuring
+ * different things, and the safe reading of a disagreement is the modest one.
+ */
+export function observationComplete(turnsObserved: number, promptsInTranscript: number): boolean {
+  if (promptsInTranscript <= 0) return false;
+  return turnsObserved >= promptsInTranscript;
+}
 
 export function usageSummary(s: {
   /** The last **completed** turn's usage, not the live `lastUsage` the context
@@ -61,6 +85,9 @@ export function usageSummary(s: {
   totalUsage: Usage;
   totalCostUsd: number | null;
   turnsCompleted: number;
+  /** Human prompts the transcript holds, from `session_prompt_tail`. 0 when it
+   *  has not been read yet, which reads as "not known to be complete". */
+  promptsInTranscript?: number;
 }): UsageSummary {
   return {
     turn: s.lastTurnUsage === null ? null : { tokens: turnTokens(s.lastTurnUsage), cost: s.lastCostUsd },
@@ -69,5 +96,6 @@ export function usageSummary(s: {
       cost: s.totalCostUsd,
       turns: s.turnsCompleted,
     },
+    complete: observationComplete(s.turnsCompleted, s.promptsInTranscript ?? 0),
   };
 }

@@ -9,11 +9,24 @@ import { createSignal } from "solid-js";
 // `dotFromStatus` from here) rather than a runtime import cycle.
 import type { SessionDot, StatusCertainty } from "./sessionDot";
 
-export type SessionStatus = "executing" | "waitingForApproval" | "idle" | "running" | "none";
+export type SessionStatus =
+  | "executing"
+  /** Blocked on a permission prompt. */
+  | "waitingForApproval"
+  /** Stopped at a spend ceiling. Distinct from `waitingForApproval` because it
+   *  is not a question with a yes: the session will not continue until a limit
+   *  is raised, and labelling it "waiting for approval" would send the user
+   *  looking for a prompt that does not exist. Both map to the same dot, since
+   *  both mean the same thing to the person deciding what to look at next. */
+  | "budgetStopped"
+  | "idle"
+  | "running"
+  | "none";
 
 export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
   executing: "Executing",
   waitingForApproval: "Waiting for approval",
+  budgetStopped: "Stopped: budget reached",
   idle: "Idle",
   running: "Running",
 };
@@ -66,6 +79,7 @@ export function dotFromStatus(status: SessionStatus): SessionDot {
     case "executing":
       return "working";
     case "waitingForApproval":
+    case "budgetStopped":
       return "needsYou";
     case "idle":
       return "solid";

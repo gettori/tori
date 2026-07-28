@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import twoTurns from "../../dev/fixtures/claude/two-turns.jsonl?raw";
-import { fmtCost, fmtTokens, turnTokens, usageSummary } from "./chatUsage";
+import { fmtCost, fmtTokens, observationComplete, turnTokens, usageSummary } from "./chatUsage";
 import { applyEvent, initialChat } from "../panels/Chat/chatStore";
 import type { ChatEvent, Usage } from "./chatTypes";
 
@@ -154,5 +154,43 @@ describe("formatting", () => {
     expect(fmtCost(0.055789599999999995)).toBe("$0.06");
     expect(fmtCost(0.0004)).toBe("$0.0004");
     expect(fmtCost(0)).toBe("$0");
+  });
+
+  // The honesty rule, made conditional. It used to be unconditional: a chat
+  // that started the session and watched every turn of it still told the user
+  // its figure might be short, which trains people to discount a number that
+  // was right.
+  describe("observationComplete", () => {
+    it("is complete when the turns seen account for every prompt on disk", () => {
+      expect(observationComplete(3, 3)).toBe(true);
+    });
+
+    it("is a floor when the transcript holds turns this chat never saw", () => {
+      expect(observationComplete(1, 4)).toBe(false);
+    });
+
+    // An unread transcript reports 0 prompts. Treating that as "no prompts to
+    // account for, therefore complete" would make the *least* observed case
+    // claim to be the best observed one.
+    it("keeps the caveat when the transcript could not be read", () => {
+      expect(observationComplete(3, 0)).toBe(false);
+      expect(observationComplete(0, 0)).toBe(false);
+    });
+
+    // More turns seen than prompts on disk means the two counts are measuring
+    // different things. The safe reading of a disagreement is the modest one,
+    // but it is not evidence of a gap either, so this stays complete.
+    it("does not treat a surplus of observed turns as a gap", () => {
+      expect(observationComplete(5, 3)).toBe(true);
+    });
+  });
+
+  it("carries the completeness verdict through the summary", () => {
+    const zero: Usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 };
+    const base = { lastTurnUsage: zero, lastCostUsd: 0.01, totalUsage: zero, totalCostUsd: 0.01, turnsCompleted: 2 };
+    expect(usageSummary({ ...base, promptsInTranscript: 2 }).complete).toBe(true);
+    expect(usageSummary({ ...base, promptsInTranscript: 9 }).complete).toBe(false);
+    // Absent means unknown, which keeps the caveat.
+    expect(usageSummary(base).complete).toBe(false);
   });
 });

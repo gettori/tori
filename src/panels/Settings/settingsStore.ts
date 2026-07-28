@@ -46,11 +46,33 @@ export type ChatDefaults = {
   showSwayHooks: boolean;
 };
 export type Harness = { path?: string | null };
+
+/**
+ * Spend ceilings. **Null means unlimited, and that is the default**: a budget
+ * nobody asked for that quietly stops an agent mid-task would be worse than no
+ * budget at all, so every ceiling here is opt-in.
+ *
+ * Two currencies, because they answer different questions. Dollars are what a
+ * bill is denominated in; context percentage is what actually degrades a long
+ * session, and a user watching for one is usually not watching for the other.
+ */
+export type Budgets = {
+  /** Ceiling for one chat session, in dollars. */
+  sessionUsd: number | null;
+  /** Ceiling across every session in a project, in dollars. Two chats open on
+   *  one repo spend one budget. */
+  projectUsd: number | null;
+  /** Stop when a turn's context window passes this percentage. */
+  contextPercent: number | null;
+  /** Warn once at this fraction of whichever ceiling is in force. */
+  warnAtFraction: number;
+};
 export type Settings = {
   appearance: Appearance;
   typography: Typography;
   checkpoints: Checkpoints;
   chatDefaults: ChatDefaults;
+  budgets: Budgets;
   harness: Harness;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
@@ -76,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
     approvalAutoDenySecs: 120,
     showSwayHooks: false,
   },
+  budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
   harness: {},
   chat: {},
 };
