@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import Button from "../../components/Button/Button";
 import type { LiveTab } from "../../utils/events";
+import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import styles from "./TranscriptViewer.module.css";
 
 type TranscriptBlock = {
@@ -16,7 +17,14 @@ type TranscriptBlock = {
 type TranscriptTurn = { role: "user" | "assistant" | "tool"; ts: number; blocks: TranscriptBlock[] };
 type TranscriptPage = { turns: TranscriptTurn[]; next_cursor: number | null };
 
-type CheckpointFile = { path: string; status: "added" | "modified" | "deleted" };
+type CheckpointFile = {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  /// Changed during the turn with no session claiming it. Listed because this
+  /// turn ran a tool whose writes Sway cannot see (a shell command), so it is
+  /// the likeliest author - likeliest, not established.
+  unattributed?: boolean;
+};
 
 function fmtTime(epochSecs: number): string {
   return epochSecs ? new Date(epochSecs * 1000).toLocaleString() : "";
@@ -82,6 +90,10 @@ export default function TranscriptViewer(props: {
       repoPath: props.repoPath,
       sessionId: props.sessionId,
       promptTs: ts,
+      // Without the other sessions in this workspace, a partial turn cannot
+      // tell a change nobody wrote from one another chat wrote, and would offer
+      // that chat's file for revert under an "unattributed" label.
+      others: otherSessionsHere(),
     }).catch(() => [] as CheckpointFile[]);
     setCheckpointFiles((m) => ({ ...m, [ts]: files }));
   }
@@ -122,9 +134,16 @@ export default function TranscriptViewer(props: {
   }
 
   async function revertFile(ts: number, file: CheckpointFile) {
+    // An unattributed file gets its own question rather than the ordinary one:
+    // the backend refuses it unless this answer is passed back, because the
+    // author may be a live agent in the same folder and the backstop restores
+    // the bytes but not that agent's belief about them.
+    const message = file.unattributed
+      ? `${UNATTRIBUTED_NOTICE} ${REVERT_MESSAGE[file.status](file.path)}`
+      : REVERT_MESSAGE[file.status](file.path);
     const ok = await askConfirm({
       title: `Revert ${file.path.split("/").pop()}?`,
-      message: REVERT_MESSAGE[file.status](file.path),
+      message,
       confirmLabel: "Revert",
       danger: true,
     });
@@ -135,6 +154,7 @@ export default function TranscriptViewer(props: {
         sessionId: props.sessionId,
         promptTs: ts,
         file: file.path,
+        force: file.unattributed === true,
       });
       await loadCheckpointFiles(ts);
       const key = fileKey(ts, file.path);
@@ -148,6 +168,14 @@ export default function TranscriptViewer(props: {
     }
   }
 
+  // Agent tabs rooted at this session's repo, this one aside. The other
+  // sessions' own recorded writes are what let a turn's file list rule a change
+  // out as somebody else's rather than presenting it as unclaimed.
+  const otherSessionsHere = () =>
+    props.liveTabs
+      .filter((t) => t.kind === "agent" && t.workspace === props.repoPath)
+      .map((t) => t.sessionId ?? "")
+      .filter((id) => id && id !== props.sessionId);
   // More than one live agent tab rooted at this session's repo: the turn's
   // diff may include another session's edits too, so its label says so.
   const sharesWorkspace = () =>
@@ -281,6 +309,11 @@ export default function TranscriptViewer(props: {
                               <span class={styles.checkpointPath} onClick={() => toggleFileDiff(turn.ts, file.path)}>
                                 {file.path}
                               </span>
+                              <Show when={file.unattributed}>
+                                <span class={styles.unattributed} title={UNATTRIBUTED_NOTICE}>
+                                  unattributed
+                                </span>
+                              </Show>
                               <Button size="xs" onClick={() => revertFile(turn.ts, file)}>
                                 Revert
                               </Button>
