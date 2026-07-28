@@ -67,6 +67,10 @@ pub struct ClaudeMapper {
     /// never the list of what could be picked. Empty for a session that never
     /// handshook, which the picker reads as "fall back to the adapter table".
     model_catalogue: Vec<ChatModelInfo>,
+    /// Whether the answered handshake was already reported as `SessionReady`.
+    /// Once, like `session_open`: a later control response (a set_model ack, an
+    /// interrupt ack) proves nothing the first one did not.
+    handshake_reported: bool,
     /// Tool inputs accumulated from `input_json_delta`, keyed by block index.
     partial_tool_input: HashMap<u64, String>,
     /// Hook ids proven to be Sway's own, learned from the marker on their
@@ -152,10 +156,27 @@ impl ClaudeMapper {
             Some("result") => self.map_result(frame),
             Some("control_response") => {
                 self.absorb_control_response(frame);
-                Vec::new()
+                self.report_ready()
             }
             _ => Vec::new(),
         }
+    }
+
+    /// An answered control request is the first proof the child is alive:
+    /// `system/init` does not arrive until the first turn starts, so without
+    /// this a freshly opened chat has no liveness signal at all until the user
+    /// sends something. Reported once, and not after `system/init` has already
+    /// opened the session, where it would be stale news.
+    fn report_ready(&mut self) -> Vec<ChatEvent> {
+        if self.handshake_reported || self.session_open {
+            return Vec::new();
+        }
+        self.handshake_reported = true;
+        vec![ChatEvent::SessionReady {
+            session_id: self.session_id.clone(),
+            slash_commands: self.command_catalogue.clone(),
+            models: self.model_catalogue.clone(),
+        }]
     }
 
     fn map_system(&mut self, frame: &Value) -> Vec<ChatEvent> {
@@ -988,6 +1009,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The answered handshake is the only liveness signal before the first
+    /// turn: `system/init` waits for a message, and a chat nobody has typed in
+    /// yet must not read "connecting" about a child that already answered.
+    #[test]
+    fn the_answered_handshake_reports_ready_once_with_the_catalogues() {
+        let control = &fixture("initialize")[0];
+        let mut m = ClaudeMapper::new("s1");
+
+        let events = m.map(control);
+        let (commands, models) = match events.as_slice() {
+            [ChatEvent::SessionReady { slash_commands, models, .. }] => (slash_commands.clone(), models.clone()),
+            other => panic!("expected exactly one SessionReady, got {other:?}"),
+        };
+        // The catalogues ride the ready event so the UI is off its fallbacks
+        // before the first message, not just off "connecting".
+        assert!(commands.len() > 1, "the command catalogue did not ride SessionReady");
+        assert_eq!(models.len(), 5, "the model catalogue did not ride SessionReady");
+
+        // A second ack proves nothing new; after init it would be stale news.
+        assert!(m.map(control).is_empty(), "a second control response re-reported ready");
+        m.map(&serde_json::json!({
+            "type": "system", "subtype": "init", "model": "m", "permissionMode": "default",
+            "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
+        }));
+        assert!(m.map(control).is_empty(), "a control response after init re-reported ready");
+    }
+
+    /// A session that opened without ever handshaking (a resumed child whose
+    /// first frame is `system/init`) must not get a late `SessionReady` when
+    /// some other control request is acknowledged mid-conversation.
+    #[test]
+    fn a_control_response_after_init_alone_does_not_report_ready() {
+        let control = &fixture("initialize")[0];
+        let mut m = ClaudeMapper::new("s1");
+        m.map(&serde_json::json!({
+            "type": "system", "subtype": "init", "model": "m", "permissionMode": "default",
+            "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
+        }));
+        assert!(m.map(control).is_empty());
     }
 
     /// The rich catalogue exists only in the control response; `system/init`
