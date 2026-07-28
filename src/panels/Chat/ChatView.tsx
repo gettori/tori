@@ -1,7 +1,8 @@
-import { Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
+import SessionInfo from "./SessionInfo";
 import Composer from "./Composer";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
@@ -45,7 +46,7 @@ import {
   type PickableModel,
 } from "../../utils/chatModels";
 import { findAgent } from "../../utils/agents";
-import { chatPrefs, rememberChatPrefs } from "../Settings/settingsStore";
+import { chatPrefs, rememberChatPrefs, settings } from "../Settings/settingsStore";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -84,6 +85,7 @@ import {
   shownMode,
   shownModelValue,
   takeForSend,
+  visibleItems,
   type ChatState,
   type QueuedInput,
   type ToolItem,
@@ -152,6 +154,12 @@ export default function ChatView(props: {
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
   const running = () => isRunning(state);
+
+  // Memoized, not a plain accessor. Solid props are getters and MessageList
+  // reads `items` in three places (its window memo, its stick-to-bottom tail
+  // probe, and the load-earlier check), so an accessor would re-filter the
+  // whole transcript three times for every streaming delta.
+  const shownItems = createMemo(() => visibleItems(state.items, settings.chatDefaults.showSwayHooks));
   // A refused claim means no child was started, so nothing may be typed at it.
   // Narrowed so the banners below read their own fields without casting.
   const refusal = () => refusalOf(ownership());
@@ -797,8 +805,16 @@ export default function ChatView(props: {
         </Show>
       </div>
 
+      <SessionInfo
+        mcpServers={state.mcpServers}
+        skills={state.skills}
+        agents={state.agents}
+        plugins={state.plugins}
+        cwd={props.cwd}
+      />
+
       <MessageList
-        items={state.items}
+        items={shownItems()}
         streaming={running()}
         sessionId={props.sessionId}
         cwd={props.cwd}

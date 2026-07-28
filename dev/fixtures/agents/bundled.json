@@ -12,7 +12,7 @@
       "{id}"
     ],
     "parser_kind": "claude_jsonl",
-    "running_pattern": "claude (--resume|-r) {id}",
+    "running_pattern": "claude ([^ ]+ )*(--resume|-r|--session-id) {id}",
     "pty_quiet_ms": 2000,
     "needs_you": true,
     "hooks": true,
@@ -27,7 +27,8 @@
         "--output-format",
         "stream-json",
         "--verbose",
-        "--include-partial-messages"
+        "--include-partial-messages",
+        "--include-hook-events"
       ],
       "session_id_args": [
         "--session-id",

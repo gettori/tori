@@ -51,6 +51,8 @@ import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import { offerToComposer, routeFor } from "../../utils/chatCompose";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
+import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
+import { settings } from "../Settings/settingsStore";
 import styles from "./Terminal.module.css";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -261,7 +263,11 @@ export default function Terminal(props: {
     const producedId: (string | undefined)[] = [];
 
     for (const [i, d] of entry.tabs.entries()) {
-      if (d.kind === "chat" && d.sessionId) {
+      // Restore is routed on the stored kind alone, never on the default-surface
+      // preference: a workspace saved with agent tabs comes back as agent tabs
+      // on an install where chat is now the default. See `restoreRoute`.
+      const surface = restoreRoute(d.kind);
+      if (surface === "chat" && d.sessionId) {
         // Chat restores by resuming its own session id, not by respawning a
         // shell. A session deleted since last run is skipped like any other.
         if (!byId.has(d.sessionId)) {
@@ -283,7 +289,10 @@ export default function Terminal(props: {
         producedId[i] = id;
         continue;
       }
-      if (d.kind === "agent" && d.sessionId) {
+      // `surface` is "agent" for a stored shell too; the extra kind check is
+      // what separates a session-bearing agent tab from one, and a plain shell
+      // falls through to the respawn below either way.
+      if (surface === "agent" && d.kind === "agent" && d.sessionId) {
         const s = byId.get(d.sessionId);
         if (!s) {
           missingSessions++;
@@ -669,7 +678,7 @@ export default function Terminal(props: {
       (sel) => {
         if (!sel?.folderPath) return;
         setActiveWorkspace(sel.folderPath);
-        if (sel.sessionId) void focusOrResume(sel);
+        if (sel.sessionId) void openSelectedSession(sel);
       },
     ),
   );
@@ -680,6 +689,37 @@ export default function Terminal(props: {
   // hook-driven status to sessions this function actually spawned/resumed.
   async function hookArgs(agentId: string): Promise<string[]> {
     return invoke<string[]>("agent_hook_launch_args", { agentId }).catch(() => []);
+  }
+
+  /**
+   * A session selection, routed to whichever surface the user has made default
+   * (chat since Phase 12, PTY agent behind the fallback setting).
+   *
+   * The `session_running` probe is taken up front rather than inside the PTY
+   * branch, because the route itself depends on it: chat drives a session by
+   * resuming it, which is unsafe against one already running outside Sway.
+   */
+  async function openSelectedSession(sel: ResumeTarget) {
+    const sessionId = sel.sessionId!;
+    const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
+    const hostedHere = open().some((t) => t.sessionId === sessionId);
+    // Only worth asking when the answer can change the route. A tab of ours
+    // already hosting it short-circuits to `focus` either way, and the PTY
+    // branch runs its own probe for the retype decision.
+    const runningElsewhere =
+      hostedHere || settings.chatDefaults.defaultSurface === "agent"
+        ? false
+        : await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(() => true);
+    const route = routeSelection({
+      preference: settings.chatDefaults.defaultSurface,
+      hostedHere,
+      runningElsewhere,
+    });
+    if (route === "chat") {
+      await continueInChat(sel, agentId);
+      return;
+    }
+    await focusOrResume(sel);
   }
 
   async function focusOrResume(sel: ResumeTarget) {
@@ -1043,9 +1083,18 @@ export default function Terminal(props: {
                 anchorEl={splitEl}
                 onClose={() => setMenuOpen(false)}
                 items={[
-                  // Chat leads the menu but does not yet replace the main
-                  // button: the default flip is its own phase, behind a setting.
-                  { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                  // The user's default surface leads, and the other one sits
+                  // directly under it: whichever way the setting points, the
+                  // other route stays a single click from this menu.
+                  ...(settings.chatDefaults.defaultSurface === "agent"
+                    ? [
+                        { label: findAgent("claude").label, onClick: () => newSession("claude") },
+                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                      ]
+                    : [
+                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                        { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                      ]),
                   // Only for a session selection, since there is nothing to
                   // continue from a bare branch. The session need not have been
                   // started in chat: every surface writes the transcript this
@@ -1056,9 +1105,15 @@ export default function Terminal(props: {
                           label: "Continue this session in chat",
                           onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
                         },
+                        // The counterpart route for a session selection, so the
+                        // PTY surface is reachable for an existing session and
+                        // not only for a new one.
+                        {
+                          label: "Continue this session in terminal",
+                          onClick: () => void focusOrResume(props.selected!),
+                        },
                       ]
                     : []),
-                  { label: findAgent("claude").label, onClick: () => newSession("claude") },
                   { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
                   { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
                 ]}

@@ -29,8 +29,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::model::{
-    ChatEvent, ChatModelInfo, Extra, McpServer, PermissionDenial, PermissionMode, SlashCommand, ToolStatus,
-    TurnOutcome, Usage,
+    ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, SlashCommand,
+    ToolStatus, TurnOutcome, Usage,
 };
 
 /// What kind of content an open block at a given index holds. Recorded at
@@ -69,6 +69,11 @@ pub struct ClaudeMapper {
     model_catalogue: Vec<ChatModelInfo>,
     /// Tool inputs accumulated from `input_json_delta`, keyed by block index.
     partial_tool_input: HashMap<u64, String>,
+    /// Hook ids proven to be Sway's own, learned from the marker on their
+    /// `hook_response`. Retained for the session because a hook's `Started` can
+    /// be re-examined only through this id, and the set is bounded by the
+    /// number of tool calls rather than by anything unbounded.
+    sway_hook_ids: std::collections::HashSet<String>,
 }
 
 impl ClaudeMapper {
@@ -157,6 +162,8 @@ impl ClaudeMapper {
         match frame["subtype"].as_str() {
             Some("init") => self.map_init(frame),
             Some("compact_boundary") => self.map_compact_boundary(frame),
+            Some("hook_started") => self.map_hook(frame, HookPhase::Started),
+            Some("hook_response") => self.map_hook(frame, HookPhase::Finished),
             _ => Vec::new(),
         }
     }
@@ -180,6 +187,45 @@ impl ClaudeMapper {
             pre_tokens: meta["preTokens"].as_u64(),
             post_tokens: meta["postTokens"].as_u64(),
             summary: None,
+        }]
+    }
+
+    /// One `hook_started`/`hook_response` frame.
+    ///
+    /// Ownership is decided from the marker Sway stamps on its own hook output
+    /// ([`approval::SWAY_HOOK_MARKER`]), never from `hook_name`: that field
+    /// reports the *tool*, so Sway's all-tools hook and a user's hook on the
+    /// same tool are both `PreToolUse:Bash` and cannot be told apart by name.
+    ///
+    /// Only the response carries the marker, so a `Started` is remembered by
+    /// `hook_id` and its ownership settled when the response arrives. A
+    /// `Started` whose response has not landed yet is reported as not-ours,
+    /// which is the safe direction: it shows a row that may then be folded
+    /// away, rather than hiding a user hook that never gets attributed.
+    fn map_hook(&mut self, frame: &Value, phase: HookPhase) -> Vec<ChatEvent> {
+        let hook_id = frame["hook_id"].as_str().unwrap_or_default().to_string();
+        let output = frame["output"].as_str().map(str::to_string);
+        let sway_owned = match phase {
+            HookPhase::Finished => {
+                let owned = output.as_deref().is_some_and(is_sway_hook_output);
+                if owned {
+                    self.sway_hook_ids.insert(hook_id.clone());
+                }
+                owned
+            }
+            HookPhase::Started => self.sway_hook_ids.contains(&hook_id),
+        };
+        vec![ChatEvent::HookFired {
+            session_id: self.session_id.clone(),
+            hook_id,
+            name: frame["hook_name"].as_str().unwrap_or_default().to_string(),
+            event: frame["hook_event"].as_str().unwrap_or_default().to_string(),
+            phase,
+            sway_owned,
+            outcome: frame["outcome"].as_str().map(str::to_string),
+            exit_code: frame["exit_code"].as_i64(),
+            output,
+            stderr: frame["stderr"].as_str().map(str::to_string).filter(|s| !s.is_empty()),
         }]
     }
 
@@ -488,6 +534,18 @@ fn camel(snake: &str) -> String {
     out
 }
 
+/// Does this hook stdout carry Sway's own marker?
+///
+/// Parsed rather than substring-matched: a user hook that merely *prints* the
+/// marker word (echoing a payload, logging a diff) must not be mistaken for
+/// Sway's, and only a real top-level `true` counts.
+fn is_sway_hook_output(output: &str) -> bool {
+    serde_json::from_str::<Value>(output)
+        .ok()
+        .and_then(|v| v.get(super::approval::SWAY_HOOK_MARKER).and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
 fn mcp_servers(raw: &Value) -> Vec<McpServer> {
     raw.as_array()
         .map(|a| {
@@ -759,6 +817,93 @@ mod tests {
                     && output.as_deref().is_some_and(|o| o.contains("denied by fixture hook")))
         });
         assert!(errored, "the denial reason never surfaced on the tool card");
+    }
+
+    /// Pinned against the real frames captured from claude 2.1.220 with
+    /// `--include-hook-events`, including the measured detail that makes the
+    /// whole attribution necessary: Sway's all-tools hook and the user's hook
+    /// on the same tool both arrive as `PreToolUse:Bash`.
+    #[test]
+    fn sway_and_user_hooks_on_one_tool_call_are_told_apart_by_the_marker() {
+        let mut m = ClaudeMapper::new("s1");
+        let started = |id: &str| {
+            serde_json::json!({
+                "type": "system", "subtype": "hook_started", "hook_id": id,
+                "hook_name": "PreToolUse:Bash", "hook_event": "PreToolUse", "session_id": "s1"
+            })
+        };
+        let response = |id: &str, output: &str| {
+            serde_json::json!({
+                "type": "system", "subtype": "hook_response", "hook_id": id,
+                "hook_name": "PreToolUse:Bash", "hook_event": "PreToolUse",
+                "output": output, "stdout": "", "stderr": "", "exit_code": 0,
+                "outcome": "success", "session_id": "s1"
+            })
+        };
+        let owned = |evs: &[ChatEvent]| match evs {
+            [ChatEvent::HookFired { sway_owned, .. }] => *sway_owned,
+            _ => panic!("expected exactly one HookFired, got {evs:?}"),
+        };
+
+        // Both started frames are indistinguishable, and neither has been
+        // attributed yet: an unattributed hook reports as not-ours, so a user
+        // hook is never hidden by a guess.
+        assert!(!owned(&m.map(&started("sway"))));
+        assert!(!owned(&m.map(&started("user"))));
+
+        // The responses settle it. Only Sway's carries the marker.
+        let sway_out = super::super::approval::hook_output(&super::super::approval::HookResponse::allow(""));
+        assert!(owned(&m.map(&response("sway", &sway_out))));
+        assert!(!owned(&m.map(&response("user", ""))));
+
+        // And the id is now known, so a later frame for the same hook is ours.
+        assert!(owned(&m.map(&started("sway"))));
+    }
+
+    #[test]
+    fn a_user_hook_that_merely_prints_the_marker_word_is_not_mistaken_for_sways() {
+        // A hook echoing a payload or logging a diff can easily contain the
+        // marker's text. Only a parsed top-level `true` counts.
+        let mut m = ClaudeMapper::new("s1");
+        for output in [
+            "swayApproval",
+            "{\"swayApproval\": false}",
+            "{\"nested\": {\"swayApproval\": true}}",
+            "not json at all { swayApproval: true",
+        ] {
+            let evs = m.map(&serde_json::json!({
+                "type": "system", "subtype": "hook_response", "hook_id": "u",
+                "hook_name": "PreToolUse:Bash", "hook_event": "PreToolUse",
+                "output": output, "exit_code": 0, "outcome": "success", "session_id": "s1"
+            }));
+            assert!(
+                matches!(evs.as_slice(), [ChatEvent::HookFired { sway_owned: false, .. }]),
+                "output {output:?} must not read as Sway's own hook"
+            );
+        }
+    }
+
+    #[test]
+    fn a_user_hook_carries_its_outcome_and_exit_code() {
+        let mut m = ClaudeMapper::new("s1");
+        let evs = m.map(&serde_json::json!({
+            "type": "system", "subtype": "hook_response", "hook_id": "u",
+            "hook_name": "SessionStart:startup", "hook_event": "SessionStart",
+            "output": "context", "stderr": "a warning", "exit_code": 2,
+            "outcome": "blocking_error", "session_id": "s1"
+        }));
+        match evs.as_slice() {
+            [ChatEvent::HookFired { name, event, outcome, exit_code, output, stderr, sway_owned, .. }] => {
+                assert_eq!(name, "SessionStart:startup");
+                assert_eq!(event, "SessionStart");
+                assert_eq!(outcome.as_deref(), Some("blocking_error"));
+                assert_eq!(*exit_code, Some(2));
+                assert_eq!(output.as_deref(), Some("context"));
+                assert_eq!(stderr.as_deref(), Some("a warning"));
+                assert!(!sway_owned);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     /// Thinking is rendered separately from the answer, and its signature must

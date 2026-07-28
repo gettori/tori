@@ -201,5 +201,18 @@
     "type": "sessionEnded",
     "sessionId": "s1",
     "reason": "closed by user"
+  },
+  {
+    "type": "hookFired",
+    "sessionId": "s1",
+    "hookId": "0169c799-647f-402b-8585-49a207f46940",
+    "name": "PreToolUse:Bash",
+    "event": "PreToolUse",
+    "phase": "finished",
+    "swayOwned": false,
+    "outcome": "success",
+    "exitCode": 0,
+    "output": "{\"hookSpecificOutput\":{}}",
+    "stderr": null
   }
 ]

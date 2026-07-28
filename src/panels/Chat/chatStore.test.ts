@@ -29,6 +29,7 @@ import {
   shownMode,
   shownModelValue,
   takeForSend,
+  visibleItems,
   windowed,
   type ChatItem,
   type ChatState,
@@ -118,7 +119,8 @@ describe("replaying the captured fixture", () => {
     const s = replay(FIXTURE);
     // the replayed user turn, the compaction notice, text, thinking, then a
     // card each for toolu_1 (started), toolu_2 (fileEdit) and toolu_3
-    // (permissionRequest), then the error and end notices.
+    // (permissionRequest), then the error and end notices, and last the hook
+    // frame (the fixture lists it after the lifecycle events).
     expect(kinds(s)).toEqual([
       "user",
       "notice",
@@ -129,6 +131,7 @@ describe("replaying the captured fixture", () => {
       "tool",
       "notice",
       "notice",
+      "hook",
     ]);
     // The compaction renders in place, carrying the figures and the summary.
     expect((s.items[1] as { text: string }).text).toContain("Compacted manually (247k to 9k)");
@@ -660,5 +663,98 @@ describe("backfilled history", () => {
     const s = initialChat("other");
     applyEvent(s, userMsg("hist-turn-1", "not yours"));
     expect(s.items).toEqual([]);
+  });
+});
+
+describe("hook rows", () => {
+  const hook = (
+    hookId: string,
+    phase: "started" | "finished",
+    swayOwned: boolean,
+    over: Record<string, unknown> = {},
+  ): ChatEvent =>
+    ({
+      type: "hookFired",
+      sessionId: "s1",
+      hookId,
+      // The measured name: the tool, not the matcher. Sway's hook and the
+      // user's hook on the same tool are indistinguishable by this field.
+      name: "PreToolUse:Bash",
+      event: "PreToolUse",
+      phase,
+      swayOwned,
+      outcome: phase === "finished" ? "success" : null,
+      exitCode: phase === "finished" ? 0 : null,
+      output: null,
+      stderr: null,
+      ...over,
+    }) as ChatEvent;
+
+  const hookRows = (s: ChatState, show: boolean) => visibleItems(s.items, show).filter((i) => i.kind === "hook");
+
+  it("adds no visible rows for a 60-tool-call turn, and reveals all 120 when toggled", () => {
+    // The plan's headline figure. Sway's approval hook runs on every tool call
+    // and contributes two frames each time, which is exactly the noise the
+    // default collapse exists to keep out of the user's transcript.
+    const s = initialChat("s1");
+    for (let i = 0; i < 60; i++) {
+      applyEvent(s, hook(`sway-${i}`, "started", false));
+      applyEvent(s, hook(`sway-${i}`, "finished", true));
+    }
+    expect(hookRows(s, false)).toHaveLength(0);
+    expect(hookRows(s, true)).toHaveLength(120);
+  });
+
+  it("settles the started frame retroactively so a pair never splits", () => {
+    // Only the response carries Sway's marker, so the started frame arrives
+    // unattributed. Without back-propagation the row that starts Sway's hook
+    // would stay visible while the row that finishes it folded away.
+    const s = initialChat("s1");
+    applyEvent(s, hook("sway-1", "started", false));
+    expect(hookRows(s, false)).toHaveLength(1);
+    applyEvent(s, hook("sway-1", "finished", true));
+    expect(hookRows(s, false)).toHaveLength(0);
+  });
+
+  it("shows a user hook inline with its outcome and exit code", () => {
+    const s = initialChat("s1");
+    applyEvent(s, hook("user-1", "started", false, { name: "SessionStart:startup", event: "SessionStart" }));
+    applyEvent(
+      s,
+      hook("user-1", "finished", false, {
+        name: "SessionStart:startup",
+        event: "SessionStart",
+        outcome: "blocking_error",
+        exitCode: 2,
+        stderr: "a warning",
+      }),
+    );
+    const rows = hookRows(s, false);
+    expect(rows).toHaveLength(2);
+    const done = rows[1] as { name: string; outcome: string; exitCode: number; stderr: string };
+    expect(done.name).toBe("SessionStart:startup");
+    expect(done.outcome).toBe("blocking_error");
+    expect(done.exitCode).toBe(2);
+    expect(done.stderr).toBe("a warning");
+  });
+
+  it("keeps the user's hooks visible while folding Sway's, in one interleaved turn", () => {
+    // The attribution has to be per-hook, not per-name: both hooks here are
+    // `PreToolUse:Bash`, and only the marker separates them.
+    const s = initialChat("s1");
+    applyEvent(s, hook("sway-1", "started", false));
+    applyEvent(s, hook("user-1", "started", false));
+    applyEvent(s, hook("sway-1", "finished", true));
+    applyEvent(s, hook("user-1", "finished", false));
+    expect(hookRows(s, false).map((r) => (r as { hookId: string }).hookId)).toEqual(["user-1", "user-1"]);
+    expect(hookRows(s, true)).toHaveLength(4);
+  });
+
+  it("never drops a folded row from the state, so the toggle works mid-session", () => {
+    const s = initialChat("s1");
+    applyEvent(s, hook("sway-1", "started", false));
+    applyEvent(s, hook("sway-1", "finished", true));
+    // Folded from the view, still present in the transcript.
+    expect(s.items.filter((i) => i.kind === "hook")).toHaveLength(2);
   });
 });

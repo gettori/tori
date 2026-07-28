@@ -35,6 +35,37 @@ function ThinkingBlock(props: { text: string }) {
 }
 
 /**
+ * One hook frame.
+ *
+ * Deliberately a single dense line: a hook is context for the tool call next to
+ * it, not an event competing with the conversation for attention. The failure
+ * case is the exception - a non-zero exit or a blocking outcome is the one time
+ * a hook is the most important thing on screen, so it gets the error styling and
+ * its stderr.
+ */
+function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
+  const failed = () => props.item.exitCode !== null && props.item.exitCode !== 0;
+  // A finished frame that reported neither an outcome nor an exit code still
+  // has to say something: "()" reads as a rendering bug rather than as a hook
+  // that simply told us nothing.
+  const detail = () => {
+    if (props.item.phase === "started") return "running";
+    const parts = [props.item.outcome, props.item.exitCode === null ? null : `exit ${props.item.exitCode}`].filter(
+      Boolean,
+    );
+    return parts.length ? parts.join(", ") : "finished";
+  };
+  return (
+    <div class={`${styles.notice} ${failed() ? styles.noticeError : ""}`}>
+      <span>
+        {props.item.swayOwned ? "Sway approval hook" : props.item.name} ({detail()})
+      </span>
+      <Show when={failed() && props.item.stderr}>{(err) => <div>{err()}</div>}</Show>
+    </div>
+  );
+}
+
+/**
  * The transcript.
  *
  * Windowed, not virtualized: a chat is read from the bottom, and rendering the
@@ -108,6 +139,7 @@ export default function MessageList(props: {
                 <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>{it().text}</div>
               )}
             </Match>
+            <Match when={item.kind === "hook" && item}>{(it) => <HookRow item={it()} />}</Match>
             <Match when={item.kind === "tool" && item}>
               {(it) => (
                 <ToolCallCard
