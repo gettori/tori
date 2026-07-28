@@ -15,6 +15,8 @@
   /* Where a branch/worktree name begins (sub1 indent). Shared so a selected
      session's inset pill can start on the same x and read as nested. */
   --branch-label-x: calc(34px * var(--ui-scale));
+  /* One indent level: sub1 to sub2, and branch depth to attempt depth. */
+  --nest-step: calc(12px * var(--ui-scale));
 }
 
 .treeSearch {
@@ -302,6 +304,27 @@
   height: auto;
 }
 
+/* ---- Attempt groups (one level deeper than a branch) ----
+   A fan-out group is a branch node whose children are branch nodes: the group
+   header sits at branch depth, each attempt one step in, and an attempt's
+   sessions one step further. Nothing here re-implements the rail; the branch
+   machinery is entirely variable-driven, so an attempt node just re-anchors
+   those three variables one --nest-step to the right and the same rules draw
+   the deeper rail, elbow, hover pill and session inset. Declared after
+   .branchNode (equal specificity) so the overrides win. */
+.attemptNode {
+  --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --branch-label-x: calc(34px * var(--ui-scale) + var(--nest-step));
+}
+
+/* An attempt header pins one row below the group header rather than on top of
+   it, and paints under it while both are stuck. */
+.attemptNode > .row.branch {
+  top: calc(60px * var(--ui-scale));
+  z-index: 1;
+}
+
 /* Branch hover: an inset fill that hugs the branch name with the standard 8px of
    left padding (it starts 8px before the name, just past the elbow, so the text
    is never jammed against the pill edge) and never reaches the far left. Sits
@@ -377,11 +400,14 @@
   color: var(--fg-default);
 }
 
+/* Indent levels, both expressed from --branch-label-x so a nested node (see
+   .attemptNode) shifts its whole subtree by overriding that one variable. At the
+   top level these are 34px·s and 46px·s, as they always were. */
 .row.sub1 {
   padding-left: var(--branch-label-x);
 }
 .row.sub2 {
-  padding-left: calc(46px * var(--ui-scale));
+  padding-left: calc(var(--branch-label-x) + var(--nest-step));
 }
 
 .row.dim {

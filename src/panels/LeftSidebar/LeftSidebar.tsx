@@ -97,6 +97,13 @@ import {
   CircleDashed,
 } from "lucide-solid";
 import type { LucideIcon } from "lucide-solid";
+import {
+  attemptFolderName,
+  groupAttempts,
+  samePath,
+  type AttemptGroup,
+  type AttemptRecord,
+} from "./attempts";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a project row, keyed by its git kind: a worktree container
@@ -267,6 +274,10 @@ export default function LeftSidebar(props: {
   // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
   // Keyed by project path.
   const [origins, setOrigins] = createSignal<Record<string, boolean>>({});
+  // Per-project fan-out attempts, keyed by project path. Git already reports an
+  // attempt's worktree; this is only what git has no field for (its group and
+  // its goal), so it is fetched alongside the config rather than folded into it.
+  const [attempts, setAttempts] = createSignal<Record<string, AttemptRecord[]>>({});
   const [query, setQuery] = createSignal("");
   const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
@@ -1067,6 +1078,26 @@ export default function LeftSidebar(props: {
         );
         setOrigins(map);
       })();
+      // Same shape for the fan-out groups: every git project is asked, since the
+      // answer is normally an empty list and the call reconciles the map against
+      // git, which is what keeps a group whose worktree was removed outside Sway
+      // from rendering at all.
+      void (async () => {
+        const map: Record<string, AttemptRecord[]> = {};
+        await Promise.all(
+          cfg.spaces
+            .flatMap((g) => g.projects)
+            .filter((p) => gitProject(p))
+            .map(async (p) => {
+              try {
+                map[p.path] = await invoke<AttemptRecord[]>("list_project_attempts", { root: p.path });
+              } catch {
+                map[p.path] = [];
+              }
+            }),
+        );
+        setAttempts(map);
+      })();
     } catch (e) {
       setError(String(e));
     }
@@ -1567,6 +1598,132 @@ export default function LeftSidebar(props: {
     await selectUnit(g, p, u);
   }
 
+  // --- fan-out ---
+
+  // A branch stem from the goal, so three attempts at one question read as one
+  // family in `git branch` too. Kept to the characters `attempt_folder` accepts
+  // verbatim, since the folder is derived from the branch.
+  function branchStem(goal: string): string {
+    const slug = goal
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24)
+      .replace(/-+$/, "");
+    return slug || "attempt";
+  }
+
+  // Fan out: create N attempts at one task, each its own worktree on its own
+  // branch, with the dependency directories cloned in.
+  //
+  // Two questions rather than a dialog: the goal is the one thing git will not
+  // record, and the count is the whole rest of the decision. The branches are
+  // derived from the goal instead of being typed three times, since attempts are
+  // alternatives to be thrown away, not names anyone has to live with.
+  //
+  // Sequential, not parallel: `git worktree add` takes the repository index
+  // lock, so three at once would race for it.
+  async function fanOut(p: Project) {
+    const goal = await askText(
+      "Fan out: what are these attempts for?",
+      "",
+      "Recorded with the group, so a promotion later can still say what was being attempted.",
+    );
+    if (goal == null) return; // cancelled
+    const what = goal.trim();
+    if (!what) return;
+    const count = await askPick("How many attempts?", ["2", "3", "4"]);
+    if (!count) return;
+
+    const stem = branchStem(what);
+    const groupId = `${stem}-${Date.now().toString(36)}`;
+    const uncloned = new Set<string>();
+    let made = 0;
+    for (let i = 1; i <= Number(count); i++) {
+      try {
+        const created = await invoke<{ path: string; branch: string; uncloned: string[] }>(
+          "create_attempt",
+          { root: p.path, groupId, goal: what, branch: `${stem}-${i}` },
+        );
+        created.uncloned.forEach((d) => uncloned.add(d));
+        made++;
+      } catch (e) {
+        // Stop rather than press on: the same failure (a name collision, a
+        // locked index) will hit every remaining attempt. The ones already
+        // created stay, as a group of however many succeeded.
+        setError(`Created ${made} of ${count} attempts. ${String(e)}`);
+        break;
+      }
+    }
+    await loadConfig();
+    // The group appearing in the tree is the success message. Only the part the
+    // tree cannot show is said out loud: a dependency directory that was not
+    // cloned, which the user would otherwise meet at the first build.
+    if (uncloned.size) {
+      setError(
+        `Not cloned into the attempts (install them there): ${[...uncloned].join(", ")}`,
+        "info",
+      );
+    }
+  }
+
+  // Promote one attempt and discard the rest of its group. The winner is kept
+  // exactly as it stands, on its own branch: nothing here merges, and what to do
+  // with that branch afterwards is ordinary git work.
+  async function promoteAttempt(p: Project, u: BranchUnit, a: AttemptRecord) {
+    const losers = (attempts()[p.path] ?? []).filter(
+      (x) => x.groupId === a.groupId && !samePath(x.path, a.path),
+    );
+    const n = losers.length;
+    // What is still running inside the attempts about to be deleted. Counted
+    // before the confirm, as worktree removal does: a promotion removes with
+    // `force`, so nothing further down stops for a live agent, and the tabs are
+    // torn down here a moment later.
+    const running = (await Promise.all(losers.map((l) => countRunningAgents(l.path)))).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    const ok = await askConfirm({
+      title: `Promote “${unitLabel(u)}”?`,
+      message:
+        `“${unitLabel(u)}” is kept as it is, on its own branch and unmerged. ` +
+        (n === 0
+          ? "It stops being an attempt."
+          : `The other ${n} attempt${n === 1 ? "" : "s"} in this group ` +
+            `${n === 1 ? "is" : "are"} deleted outright: worktree, branch, sessions and checkpoints. ` +
+            (running > 0
+              ? `${running} terminal tab${running === 1 ? "" : "s"} or agent${running === 1 ? " is" : "s are"} running in them and will be stopped. `
+              : "") +
+            "This cannot be undone."),
+      confirmLabel: "Promote",
+      danger: n > 0,
+    });
+    if (!ok) return;
+
+    // Tear down PTYs and editor tabs under each loser before it goes, so no
+    // agent is left writing into a vanishing cwd (as worktree removal does).
+    for (const loser of losers) emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: loser.path });
+    try {
+      // The recorded path, not the unit's: it is what the backend resolves the
+      // group by, and a synthesized unit carries no other identity.
+      const problems = await invoke<string[]>("promote_attempt", {
+        root: p.path,
+        winnerPath: a.path,
+      });
+      const sel = props.selected;
+      if (sel && losers.some((l) => isUnderPath(sel.folderPath, l.path))) props.onSelect(null);
+      // Per-loser problems: the promotion itself succeeded, so this is not an
+      // error dialog, but each line names a leftover someone has to clear by
+      // hand and saying nothing would leave it to be discovered.
+      if (problems.length) {
+        setError(`Promoted. ${problems.length} attempt(s) did not fully go: ${problems.join("; ")}`);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+    await loadConfig();
+  }
+
   // Open the removal confirmation for a plain-repo branch, then fetch its
   // unpushed / has-remote status so the dialog can warn and offer remote deletion.
   function openRemoveBranch(p: Project, u: BranchUnit) {
@@ -1701,6 +1858,11 @@ export default function LeftSidebar(props: {
   // A project's git kind comes from its branch-units (all share one kind).
   const projectKind = (p: Project) => p.branchUnits[0]?.kind;
 
+  // A project with a working tree git can branch from: a plain repo or a
+  // worktree container. Not a non-git folder, and not a bare stub, which has no
+  // checkout to attempt anything against.
+  const gitProject = (p: Project) => projectKind(p) === "plain" || projectKind(p) === "worktree";
+
   // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
   // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
   // a plain repo commits / sets a remote / pushes.
@@ -1710,6 +1872,7 @@ export default function LeftSidebar(props: {
       case "worktree":
         return [
           { label: "Add Worktree", onClick: () => addWorktree(p) },
+          { label: "Fan out…", onClick: () => fanOut(p) },
           ...(hasOrigin(p)
             ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
             : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
@@ -1731,6 +1894,7 @@ export default function LeftSidebar(props: {
       case "plain": {
         const items: MenuItem[] = [
           { label: "Add Branch", onClick: () => addBranch(p) },
+          { label: "Fan out…", onClick: () => fanOut(p) },
         ];
         items.push({ separator: true });
         if (hasOrigin(p)) {
@@ -1785,6 +1949,15 @@ export default function LeftSidebar(props: {
     }
     return items;
   };
+
+  // An attempt's own menu. Deliberately short: an attempt exists to be worked in
+  // and then either promoted or discarded with its group, so it carries neither
+  // the worktree removal nor the checkout items an ordinary unit has.
+  const attemptMenu = (g: Space, p: Project, u: BranchUnit, a: AttemptRecord): MenuItem[] => [
+    { label: "New session", onClick: () => startSession(g, p, u) },
+    { separator: true },
+    { label: "Promote this attempt", warn: true, onClick: () => promoteAttempt(p, u, a) },
+  ];
 
   function openTranscript(s: SessionMeta) {
     emitWith<OpenTranscript>(OPEN_TRANSCRIPT, {
@@ -2120,6 +2293,125 @@ export default function LeftSidebar(props: {
     );
   }
 
+  const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
+
+  // One branch-unit node: its row, its sessions, and the rail that joins them.
+  // Shared by the flat worktree/branch list and by the attempts inside a group,
+  // which are the same node one indent deeper - `attemptNode` re-anchors the
+  // rail variables, so every class below is unchanged at either level.
+  function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord) {
+    const uopen = () => expanded().has(ukey(g, p, u));
+    return (
+      <div
+        class={`node ${styles.branchNode}`}
+        classList={{
+          [styles.attemptNode]: attempt != null,
+          // Gild the whole node rail (branch + its sessions), not just the
+          // branch row, while this unit is selected.
+          [styles.railSel]: unitSelected(u),
+          [styles.railOpen]: uopen(),
+        }}
+      >
+        <div
+          class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
+          onClick={() => {
+            toggle(ukey(g, p, u));
+            fetchSessions(u.folderPath);
+            selectUnit(g, p, u);
+          }}
+          onContextMenu={(e) =>
+            openMenu(e, attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u))
+          }
+          draggable={true}
+          onDragStart={(e) => startAbsDrag(e, u.folderPath)}
+        >
+          <span class={styles.label}>{unitLabel(u)}</span>
+          <Show when={u.kind === "incomplete"}>
+            <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
+          </Show>
+          <Show when={u.isCurrent}>
+            <span class={styles.dot} title="current checkout">●</span>
+          </Show>
+          {statusBubble(
+            bubbleForIds(
+              new Set(
+                (!uopen()
+                  ? unitSessionsAll(p, u)
+                  : unitSessionsAll(p, u).filter((s) => !sessionVisible(s))
+                ).map((s) => s.id),
+              ),
+            ),
+          )}
+          <RowChevron open={uopen()} />
+        </div>
+        <Show when={uopen()}>
+          {sessionRows(g, p, u, "sub2")}
+        </Show>
+      </div>
+    );
+  }
+
+  // The unit an attempt renders as. A worktree container already reports one
+  // (git listed the worktree); a plain repo lists branches instead, so there the
+  // record is all there is and the unit is built from it. `branch` stays null
+  // rather than guessing: a name collision puts folder `<stem>-2` on branch
+  // `<stem>`, and the folder is the half that is certain.
+  function attemptUnit(m: { attempt: AttemptRecord; unit: BranchUnit | undefined }): BranchUnit {
+    return (
+      m.unit ?? {
+        label: attemptFolderName(m.attempt.path),
+        folderPath: m.attempt.path,
+        branch: null,
+        kind: "worktree",
+        isCurrent: false,
+      }
+    );
+  }
+
+  // One fan-out group: the goal as the header, its attempts nested beneath.
+  // Grouping is the whole point - three attempts at one question are one thing
+  // in the tree, not three unrelated worktrees sitting next to `main`.
+  function attemptGroupNode(g: Space, p: Project, grp: AttemptGroup<BranchUnit>) {
+    const key = gkey(g, p, grp.groupId);
+    const open = () => expanded().has(key);
+    const units = () => grp.members.map(attemptUnit);
+    // Same rollup rule as a branch row: everything under a closed group, and
+    // only what the search filter hides under an open one.
+    const rolledUp = () => {
+      const all = units().flatMap((u) => unitSessionsAll(p, u));
+      return new Set((open() ? all.filter((s) => !sessionVisible(s)) : all).map((s) => s.id));
+    };
+    return (
+      <div class={`node ${styles.branchNode}`} classList={{ [styles.railOpen]: open() }}>
+        <div
+          class={`${styles.row} ${styles.branch} ${styles.sub1}`}
+          onClick={() => {
+            toggle(key);
+            // The attempts under it start collapsed, so nothing else would load
+            // their sessions and the group would roll up an empty set.
+            if (open()) for (const u of units()) void fetchSessions(u.folderPath);
+          }}
+          title={grp.goal}
+        >
+          <span class={styles.label}>{grp.goal}</span>
+          <span
+            class={`${styles.badge} ${styles.hint}`}
+            title="Independent attempts at one task. Promote one and the rest are discarded."
+          >
+            {grp.members.length === 1 ? "1 attempt" : `${grp.members.length} attempts`}
+          </span>
+          {statusBubble(bubbleForIds(rolledUp()))}
+          <RowChevron open={open()} />
+        </div>
+        <Show when={open()}>
+          <For each={grp.members}>
+            {(m) => unitNode(g, p, attemptUnit(m), m.attempt)}
+          </For>
+        </Show>
+      </div>
+    );
+  }
+
   // The plain unit that owns re-homed sessions: the current checkout, else the
   // branchless folder fallback (detached/unborn HEAD), else the first plain unit.
   // A key (branch, or a sentinel for the branchless unit) identifies it uniquely,
@@ -2181,10 +2473,19 @@ export default function LeftSidebar(props: {
   function sessionText(s: SessionMeta) {
     return (s.name || s.title).toLowerCase();
   }
+  // Every folder whose sessions belong to this project: its branch-units, plus
+  // its attempts, which on a plain repo are not branch-units at all - filtering
+  // by a name inside one would otherwise hide the project that holds it.
+  function projectFolders(p: Project): string[] {
+    return [
+      ...p.branchUnits.map((u) => u.folderPath),
+      ...(attempts()[p.path] ?? []).map((a) => a.path),
+    ];
+  }
   function sessionsMatch(p: Project) {
     if (!q()) return false;
-    return p.branchUnits.some((u) =>
-      (sessions()[u.folderPath] ?? []).some((s) => sessionText(s).includes(q())),
+    return projectFolders(p).some((f) =>
+      (sessions()[f] ?? []).some((s) => sessionText(s).includes(q())),
     );
   }
   function projectVisible(p: Project) {
@@ -2387,6 +2688,20 @@ export default function LeftSidebar(props: {
             // never a same-named branch stub).
             const plainDir = () => projectKind(p) === "plain-dir";
             const folderUnit = () => p.branchUnits[0];
+            // The flat units and the fan-out groups. An attempt of a worktree
+            // container arrives as an ordinary worktree unit, so it is lifted
+            // out here rather than rendered twice.
+            const split = () => groupAttempts(p.branchUnits, attempts()[p.path] ?? []);
+            // Everything under this project, groups included, for the rollup a
+            // collapsed project row shows: on a plain repo an attempt is not a
+            // branch-unit at all, so its running session would bubble nowhere.
+            const allUnits = () => [
+              ...p.branchUnits,
+              ...split()
+                .groups.flatMap((grp) => grp.members)
+                .filter((m) => !m.unit)
+                .map(attemptUnit),
+            ];
             return (
               <div class="node">
                 <div
@@ -2408,7 +2723,7 @@ export default function LeftSidebar(props: {
                     bubbleForIds(
                       new Set(
                         (!popen()
-                          ? p.branchUnits.flatMap((u) => unitSessionsAll(p, u))
+                          ? allUnits().flatMap((u) => unitSessionsAll(p, u))
                           : plainDir()
                             ? unitSessionsAll(p, folderUnit()).filter((s) => !sessionVisible(s))
                             : []
@@ -2428,58 +2743,16 @@ export default function LeftSidebar(props: {
                     }
                   >
                   <For
-                    each={p.branchUnits}
-                    fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no branches</div>}
+                    each={split().units}
+                    fallback={
+                      <Show when={split().groups.length === 0}>
+                        <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no branches</div>
+                      </Show>
+                    }
                   >
-                    {(u) => {
-                      const uopen = () => expanded().has(ukey(g, p, u));
-                      return (
-                        <div
-                          class={`node ${styles.branchNode}`}
-                          classList={{
-                            // Gild the whole node rail (branch + its sessions), not
-                            // just the branch row, while this unit is selected.
-                            [styles.railSel]: unitSelected(u),
-                            [styles.railOpen]: uopen(),
-                          }}
-                        >
-                          <div
-                            class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
-                            onClick={() => {
-                              toggle(ukey(g, p, u));
-                              fetchSessions(u.folderPath);
-                              selectUnit(g, p, u);
-                            }}
-                            onContextMenu={(e) => openMenu(e, unitMenu(g, p, u))}
-                            draggable={true}
-                            onDragStart={(e) => startAbsDrag(e, u.folderPath)}
-                          >
-                            <span class={styles.label}>{unitLabel(u)}</span>
-                            <Show when={u.kind === "incomplete"}>
-                              <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
-                            </Show>
-                            <Show when={u.isCurrent}>
-                              <span class={styles.dot} title="current checkout">●</span>
-                            </Show>
-                            {statusBubble(
-                              bubbleForIds(
-                                new Set(
-                                  (!uopen()
-                                    ? unitSessionsAll(p, u)
-                                    : unitSessionsAll(p, u).filter((s) => !sessionVisible(s))
-                                  ).map((s) => s.id),
-                                ),
-                              ),
-                            )}
-                            <RowChevron open={uopen()} />
-                          </div>
-                          <Show when={uopen()}>
-                            {sessionRows(g, p, u, "sub2")}
-                          </Show>
-                        </div>
-                      );
-                    }}
+                    {(u) => unitNode(g, p, u)}
                   </For>
+                  <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
                   </Show>
                 </Show>
               </div>
