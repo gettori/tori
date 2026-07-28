@@ -106,6 +106,18 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();
           break;
+        case "compacted":
+          // The figures are what make "it reclaimed context" checkable rather
+          // than a claim; the summary is the harness's own words.
+          expect(ev.preTokens).toBeGreaterThan(ev.postTokens!);
+          expect(ev.trigger).toBe("manual");
+          expect(ev.summary).toContain("continued from a previous conversation");
+          break;
+        case "userMessage":
+          // History's counterpart to the composer's own push, so it carries the
+          // same block shapes a sent turn does.
+          expect(ev.blocks[0]).toEqual({ type: "text", text: "fix the bug" });
+          break;
         case "textDelta":
         case "thinkingDelta":
           expect(typeof ev.text).toBe("string");

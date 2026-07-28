@@ -140,6 +140,25 @@ export type ChatEvent =
       permissionMode: PermissionMode;
       extra?: Extra;
     }
+  /// A user turn the panel did not send itself: a replayed transcript, or turns
+  /// that happened in a PTY tab or an outside terminal. A live chat pushes its
+  /// own user turn locally, so this is history's counterpart to that.
+  | { type: "userMessage"; sessionId: string; turnId: string; blocks: ContentBlock[] }
+  /// The conversation was compacted: earlier turns were replaced by a summary
+  /// to reclaim the context window. Measured: the boundary carries the token
+  /// figures, and the **summary is the next user message**, stitched on by
+  /// whoever reads the two together - so `summary` is null for a reader that
+  /// only saw the boundary rather than being invented.
+  | {
+      type: "compacted";
+      sessionId: string;
+      turnId: string;
+      /// "manual" (the user ran /compact) or "auto" (the window filled).
+      trigger: string | null;
+      preTokens: number | null;
+      postTokens: number | null;
+      summary: string | null;
+    }
   | { type: "textDelta"; sessionId: string; turnId: string; text: string }
   | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string }
   | {
@@ -224,6 +243,8 @@ export type ChatEventType = ChatEvent["type"];
 export const CHAT_EVENT_TYPES = [
   "sessionStarted",
   "turnStarted",
+  "userMessage",
+  "compacted",
   "textDelta",
   "thinkingDelta",
   "toolCallStarted",
@@ -308,6 +329,10 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   turnStarted: {
     required: ["sessionId", "turnId", "model", "permissionMode"],
     optional: ["extra"],
+  },
+  userMessage: { required: ["sessionId", "turnId", "blocks"] },
+  compacted: {
+    required: ["sessionId", "turnId", "trigger", "preTokens", "postTokens", "summary"],
   },
   textDelta: { required: ["sessionId", "turnId", "text"] },
   thinkingDelta: { required: ["sessionId", "turnId", "text"] },

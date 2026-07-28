@@ -29,8 +29,9 @@ import {
 } from "../../utils/chatCompose";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
-import { parseChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
+import { parseChatEvent, type ChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
+import { checkpointChatTurn } from "../../utils/checkpoints";
 import {
   contextTokens,
   pickableModels,
@@ -113,11 +114,20 @@ export default function ChatView(props: {
   title: string;
   /** A tab restored from a previous run, whose session already has a transcript. */
   resume: boolean;
+  /** The session this one was forked from, when it is a fork. Its history is
+   *  replayed here and the two diverge from that point; new turns never reach
+   *  the original. */
+  forkFrom?: string;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
    *  the new session's id, so this one can seed it. */
   onForkSession: () => string;
+  /** Fork *this* session: a new id that replays this one's history. Distinct
+   *  from `onForkSession`, which starts empty - that one is the escape hatch
+   *  from a refused claim, where touching the contested session is the thing to
+   *  avoid. */
+  onForkFrom: () => string;
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
@@ -149,25 +159,137 @@ export default function ChatView(props: {
   };
 
   onMount(() => {
+    // Live events arriving before the backfill has been folded in would render
+    // this session's history *after* its newest turn. They are parked here
+    // until the replay lands, then drained in arrival order.
+    let backfilled = false;
+    const parked: ChatEvent[] = [];
+    // The checkpoint timestamp of the turn currently running, so this session's
+    // reported writes are filed against the same turn its snapshot is named
+    // after. Null before the first turn, when there is no boundary to file
+    // against - a write then belongs to no turn rather than to turn zero.
+    let turnTs: number | null = null;
+
+    // Backfill from the transcript the harness itself wrote, which is the same
+    // file whether the earlier turns happened in this panel, in a PTY agent tab
+    // or in an outside terminal. A session with none yet replays nothing.
+    //
+    // A fork reads the session it forked *from*: its own file does not exist
+    // until the CLI writes it, and what the user expects to see is the history
+    // up to the fork point.
+    void invoke<unknown[]>("chat_history", {
+      sessionId: props.sessionId,
+      fromSessionId: props.forkFrom ?? null,
+      agentId: props.agentId,
+    })
+      .then((raw) => {
+        // Replayed history is folded straight in rather than through
+        // `handleLive`: it is finished work, so it must not re-snapshot
+        // checkpoints or re-record attribution for turns that already ran.
+        edit((s) => {
+          for (const item of raw) {
+            const ev = parseChatEvent(item);
+            if (ev) applyEvent(s, ev);
+          }
+        });
+      })
+      // History is an enhancement, not a precondition: a transcript that cannot
+      // be read must not stop the live session from running.
+      .catch(() => {})
+      .finally(() => {
+        // Draining and flipping the flag happen in **one synchronous block**.
+        // Split across two microtasks, a channel message delivered between them
+        // would be parked and then thrown away by the clear - and because the
+        // drain went through `applyEvent` directly, a parked `turnStarted` would
+        // also have skipped its checkpoint and its attribution entirely.
+        const pending = parked.splice(0, parked.length);
+        backfilled = true;
+        for (const ev of pending) handleLive(ev);
+        // A turn Sway still believed was open when it last went away. Read
+        // *after* the backfill so the notice lands at the end of the replayed
+        // history, where that turn actually is. Consumed as it is read, so it
+        // is announced once rather than on every reopen.
+        void invoke<{ turnId: string } | null>("chat_take_interrupted_turn", {
+          sessionId: props.sessionId,
+        })
+          .then((open) => {
+            if (!open) return;
+            edit((s) =>
+              applyEvent(s, {
+                type: "sessionError",
+                sessionId: props.sessionId,
+                message:
+                  "This turn was interrupted when Sway last closed. Its partial output is above; send again to continue.",
+                fatal: false,
+              }),
+            );
+          })
+          .catch(() => {});
+      });
+
+    // One path for every live event, whether it arrived while the backfill was
+    // still in flight or after. Two paths is how a parked event ends up folded
+    // into the transcript without the side effects a live one gets.
+    function handleLive(ev: ChatEvent) {
+      edit((s) => applyEvent(s, ev));
+      // A real turn boundary, not one inferred from a re-read prompt count.
+      // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
+      // edits, which is the only state reverting the turn can mean.
+      if (ev.type === "turnStarted") {
+        turnTs = Math.floor(Date.now() / 1000);
+        void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
+      }
+      // Sway's own record of whether a turn is in flight. A killed app leaves
+      // this set, which is the only way to tell a turn that was interrupted
+      // from one that ended: the transcript just stops either way.
+      if (ev.type === "turnStarted" || ev.type === "turnCompleted") {
+        void invoke("chat_mark_turn", {
+          sessionId: props.sessionId,
+          turnId: ev.type === "turnStarted" ? ev.turnId : null,
+        }).catch(() => {});
+      }
+      // The session says which files it wrote, so the gutter and the Changes
+      // panel do not have to wait for the watcher to notice. The watcher's own
+      // event still arrives; both consumers are idempotent.
+      const written = filesWritten(ev);
+      if (written.length) {
+        emitWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, { paths: [...written] });
+        // The measurement that makes per-turn attribution exact: these are the
+        // paths *this* session wrote, which is what the whole-tree snapshot
+        // cannot say when several chats share one worktree. Recorded against
+        // the turn's own checkpoint timestamp so the two line up.
+        if (turnTs !== null) {
+          void invoke("checkpoint_note_touched", {
+            sessionId: props.sessionId,
+            promptTs: turnTs,
+            files: [...written],
+          }).catch(() => {});
+        }
+      }
+    }
+
     const channel = new Channel<unknown>();
     channel.onmessage = (raw) => {
       const ev = parseChatEvent(raw);
       // An unrecognised frame is dropped, never thrown: a panel must not go
       // down mid-turn over a frame it did not expect.
       if (!ev) return;
-      edit((s) => applyEvent(s, ev));
-      // The session says which files it wrote, so the gutter and the Changes
-      // panel do not have to wait for the watcher to notice. The watcher's own
-      // event still arrives; both consumers are idempotent.
-      const written = filesWritten(ev);
-      if (written.length) emitWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, { paths: [...written] });
+      // Parked until the replay has landed, or the session's history would
+      // render after its newest turn.
+      if (!backfilled) {
+        parked.push(ev);
+        return;
+      }
+      handleLive(ev);
     };
+
     void invoke<SpawnResult>("chat_spawn", {
       sessionId: props.sessionId,
       tabId: props.tabId,
       agentId: props.agentId,
       cwd: props.cwd,
       resume: props.resume,
+      forkFrom: props.forkFrom ?? null,
       model: null,
       mode: null,
       effort: null,
@@ -602,6 +724,19 @@ export default function ChatView(props: {
         >
           Send to a new chat
         </Button>
+        {/* Only once there is something to branch from. A fork of a session
+            with no turns is just a new chat, and offering it as a fork would
+            promise history that does not exist. */}
+        <Show when={state.started && state.items.length > 0}>
+          <Button
+            size="sm"
+            title="Branch this conversation into a new session, keeping everything up to here"
+            disabled={refused()}
+            onClick={() => props.onForkFrom()}
+          >
+            Fork this chat
+          </Button>
+        </Show>
       </div>
 
       <MessageList

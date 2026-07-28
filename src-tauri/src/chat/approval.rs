@@ -1254,7 +1254,7 @@ mod tests {
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
-        let mut args = crate::chat::commands::build_args(chat, &session, false, None, None, None, &[]);
+        let mut args = crate::chat::commands::build_args(chat, &session, false, None, None, None, None, &[]);
         args.extend(settings);
 
         let mut child = std::process::Command::new(&chat.program)
