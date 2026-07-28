@@ -496,6 +496,85 @@ pub async fn chat_tool_before_state(
     }))
 }
 
+/// One file a tool call wrote, as a diff the card can render.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolDiff {
+    pub path: String,
+    /// Unified diff at git's own context width, or `None` when there is nothing
+    /// to diff against. `Some("")` is different and means the file is unchanged.
+    pub diff: Option<String>,
+    /// Whether this call created the file, so a creation renders as one rather
+    /// than as a large edit.
+    pub created: bool,
+}
+
+/// The diffs for one tool call's writes, computed on demand when a card expands.
+///
+/// Separate from `chat_tool_before_state`, which hands back raw content: a card
+/// wants hunks, and computing them in Rust keeps the object store, the context
+/// width and the hunk parser in one place instead of reimplementing git's
+/// grouping in TypeScript.
+#[tauri::command]
+pub async fn chat_tool_diff(
+    state: State<'_, ChatState>,
+    session_id: String,
+    tool_use_id: String,
+    cwd: String,
+) -> Result<Vec<ToolDiff>, String> {
+    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(Vec::new()) };
+    let captured = {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        guard.get(&tool_use_id).cloned()
+    };
+    let repo = PathBuf::from(&cwd);
+    Ok(captured
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| ToolDiff {
+            diff: snapshot::diff_against_now(&repo, &c.before, &c.path),
+            created: matches!(c.before, snapshot::BeforeState::Absent),
+            path: c.path,
+        })
+        .collect())
+}
+
+/// Undo one hunk of a tool call's edit, in the working tree.
+///
+/// Scoped to the before-state *this call* captured rather than to a checkpoint:
+/// a turn can write one file several times, and a checkpoint boundary would take
+/// all of those edits back when the user asked for one hunk of one of them.
+///
+/// The blast-radius guard runs in the frontend, where the chat tier's exact
+/// status lives (`revertGuard`); this command is the write itself.
+#[tauri::command]
+pub async fn chat_revert_tool_hunk(
+    state: State<'_, ChatState>,
+    session_id: String,
+    tool_use_id: String,
+    cwd: String,
+    path: String,
+    hunk_index: usize,
+    fingerprint: String,
+) -> Result<String, String> {
+    let cache = state
+        .0
+        .snapshots(&session_id)
+        .ok_or_else(|| "This chat is no longer running, so its captured before-states are gone.".to_string())?;
+    let captured = {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        guard.get(&tool_use_id).cloned()
+    };
+    let before = captured
+        .unwrap_or_default()
+        .into_iter()
+        .find(|c| c.path == path)
+        .map(|c| c.before)
+        .ok_or_else(|| "No before-state was captured for this call, so there is nothing to revert to.".to_string())?;
+    snapshot::revert_hunk(&PathBuf::from(&cwd), &before, &path, hunk_index, &fingerprint)
+        .map(str::to_string)
+}
+
 /// One file's before-state, resolved to content where there is content to
 /// resolve. The `before` discriminant is kept so a creation renders as a
 /// creation rather than as an empty file.

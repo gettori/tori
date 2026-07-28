@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { requestSend, composeHunkComment, type SessionTarget } from "../../utils/safeSend";
+import { hunkCommentBlocks } from "../../utils/chatCompose";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import Button from "../../components/Button/Button";
 import styles from "./HunkCommentInput.module.css";
@@ -33,7 +34,11 @@ export default function HunkCommentInput(props: {
     if (!target || !comment || sending()) return;
     setSending(true);
     const composed = composeHunkComment(target, props.filePath, props.startLine, props.endLine, comment);
-    const result = await requestSend({ ...target, text: composed });
+    const result = await requestSend({
+      ...target,
+      text: composed,
+      blocks: hunkCommentBlocks(props.filePath, props.startLine, props.endLine, comment),
+    });
     setSending(false);
     if (result.kind === "sent") {
       setText("");

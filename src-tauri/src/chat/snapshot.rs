@@ -112,6 +112,82 @@ pub fn read_back(repo: &Path, sha: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The unified-diff context width, which is git's default and deliberately so.
+///
+/// `-U` decides where hunk boundaries fall, so it is the size of the unit the
+/// user acts on, not a display preference: widening it to show more context
+/// would merge nearby edits into one un-revertable hunk. Same value the Changes
+/// panel renders with, so a hunk here is the same hunk there.
+/// See [[lesson_diff_context_is_hunk_granularity]].
+pub const DIFF_CONTEXT: u32 = 3;
+
+/// A unified diff between a captured before-state and what is on disk now.
+///
+/// Built out of the object store rather than out of temp files: the before-state
+/// is already a blob there, and `git hash-object` puts the current content
+/// beside it, so `git diff <blob> <blob>` produces exactly the hunks git itself
+/// would - same parser, same granularity, no temp-file paths leaking into the
+/// header.
+///
+/// `None` when there is nothing to diff against (a non-repo folder, an evicted
+/// entry, a capture that failed). The card degrades to offering the file rather
+/// than erroring, which is the same contract `read_back` has.
+pub fn diff_against_now(repo: &Path, before: &BeforeState, path: &str) -> Option<String> {
+    let before_sha = match before {
+        BeforeState::Blob { sha } => sha.clone(),
+        // A creation diffs against nothing, which is an empty blob rather than a
+        // missing one: every line reads as added, which is what a creation is.
+        BeforeState::Absent => empty_blob(repo)?,
+        BeforeState::Unavailable => return None,
+    };
+    // A file the tool deleted has no current content. Same empty blob, the other
+    // way round, so every line reads as removed.
+    let after_sha = if Path::new(path).exists() {
+        match capture(repo, path) {
+            BeforeState::Blob { sha } => sha,
+            _ => return None,
+        }
+    } else {
+        empty_blob(repo)?
+    };
+    if before_sha == after_sha {
+        return Some(String::new());
+    }
+
+    let out = Command::new("git")
+        .current_dir(repo)
+        .args(["diff", "--no-color", &format!("-U{DIFF_CONTEXT}"), &before_sha, &after_sha])
+        .output()
+        .ok()?;
+    // `git diff` between two blobs reports difference through stdout, not
+    // through a non-zero status, so an empty stdout really does mean no diff.
+    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The empty blob, written so it is certainly present in this repo's store.
+/// Its sha is a constant, but an object that has never been written cannot be
+/// diffed against.
+fn empty_blob(repo: &Path) -> Option<String> {
+    let mut child = Command::new("git")
+        .current_dir(repo)
+        .args(["hash-object", "-w", "--stdin"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .ok()?;
+    drop(child.stdin.take());
+    let out = child.wait_with_output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if sha.is_empty() {
+        None
+    } else {
+        Some(sha)
+    }
+}
+
 /// One session's before-states, keyed by `tool_use_id` and bounded.
 ///
 /// Bounded even though entries are tiny, because "tiny times unbounded" is still
@@ -173,6 +249,98 @@ pub fn capture_all(repo: &Path, tool: &str, input: &Value) -> Vec<Captured> {
         .collect()
 }
 
+/// What the UI is told when the diff it rendered no longer describes the file.
+///
+/// One string for both the missing-index and the wrong-fingerprint case, because
+/// they mean the same thing to a user: the hunk you clicked is not the hunk that
+/// is there now, so nothing was touched.
+const STALE: &str = "The file changed since this diff was rendered. Nothing was reverted.";
+
+/// Undo one hunk of a tool call's diff, in the working tree.
+///
+/// The diff is recomputed here rather than taken from the caller: a card can sit
+/// open while the agent writes the file again, and a positional apply against a
+/// stale render would revert a region the user never looked at. `fingerprint` is
+/// the hash the UI rendered, re-derived from the fresh diff by the same parser
+/// the Changes panel stages with ([[concept_hunk_level_staging]]); a mismatch
+/// applies nothing.
+///
+/// Reverse-applied to the working tree rather than to the index: this is an undo
+/// of an edit the user can see, not a staging operation, and `--cached` would
+/// leave the file on disk exactly as the agent wrote it.
+///
+/// Returns `"deleted"` when the whole file went away, `"reverted"` otherwise.
+pub fn revert_hunk(
+    repo: &Path,
+    before: &BeforeState,
+    path: &str,
+    hunk_index: usize,
+    fingerprint: &str,
+) -> Result<&'static str, String> {
+    let text = diff_against_now(repo, before, path)
+        .ok_or_else(|| "No before-state was captured for this call, so there is nothing to revert to.".to_string())?;
+    if text.is_empty() {
+        return Err("This file already matches its state before the call.".into());
+    }
+    let parsed = crate::patch::parse_patch(&text);
+    let hunk = parsed.hunks.get(hunk_index).ok_or_else(|| STALE.to_string())?;
+    if hunk.fingerprint != fingerprint {
+        return Err(STALE.into());
+    }
+
+    // A file this call created is undone by deleting it, not by reverse-applying
+    // its one hunk: the "before" of a creation is the file's absence, and a
+    // reverse apply would leave an empty file, which is a different thing.
+    if matches!(before, BeforeState::Absent) && parsed.hunks.len() == 1 {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        return Ok("deleted");
+    }
+
+    let rel = relative_to(repo, path)?;
+    // The diff is blob-vs-blob, so its preamble names two shas. `git apply`
+    // resolves the file out of that preamble, so it has to name the real path or
+    // the patch would target a file called `<sha>`.
+    let mut selected = parsed.clone();
+    selected.preamble = vec![format!("--- a/{rel}"), format!("+++ b/{rel}")];
+    let patch = crate::patch::build_patch(&selected, &[hunk_index], true)?;
+    apply_reverse(repo, &patch)?;
+    Ok("reverted")
+}
+
+/// `path` as `repo` sees it, refusing anything outside the tree: a tool can
+/// legitimately write outside the workspace, but a patch we apply must not.
+fn relative_to(repo: &Path, path: &str) -> Result<String, String> {
+    Path::new(path)
+        .strip_prefix(repo)
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|_| format!("{path} is outside this workspace, so it cannot be reverted from here."))
+}
+
+/// Feed a reverse patch to `git apply` on stdin, in the working tree.
+fn apply_reverse(repo: &Path, patch: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = Command::new("git")
+        .current_dir(repo)
+        .args(["apply", "--reverse", "--whitespace=nowarn", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "git apply took no input".to_string())?
+        .write_all(patch.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if stderr.is_empty() { STALE.to_string() } else { stderr })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +353,195 @@ mod tests {
         let ok = Command::new("git").current_dir(&dir).args(["init", "-q"]).status().unwrap();
         assert!(ok.success());
         dir
+    }
+
+    /// The card's whole job: two edits to one file in one turn are two
+    /// *different* diffs, each against the state that call actually found.
+    /// A card that diffed against HEAD would show the same thing twice.
+    #[test]
+    fn two_sequential_edits_render_two_distinct_diffs() {
+        let repo = temp_repo("two-diffs");
+        let file = repo.join("a.txt");
+        std::fs::write(&file, "one\ntwo\nthree\n").unwrap();
+        let path = file.to_string_lossy().into_owned();
+
+        // First call captures, then writes.
+        let before_1 = capture(&repo, &path);
+        std::fs::write(&file, "one\nTWO\nthree\n").unwrap();
+        let diff_1 = diff_against_now(&repo, &before_1, &path).unwrap();
+
+        // Second call captures what the first left behind.
+        let before_2 = capture(&repo, &path);
+        std::fs::write(&file, "one\nTWO\nTHREE\n").unwrap();
+        let diff_2 = diff_against_now(&repo, &before_2, &path).unwrap();
+
+        assert!(diff_1.contains("-two") && diff_1.contains("+TWO"), "{diff_1}");
+        assert!(!diff_1.contains("THREE"), "the first diff cannot know about the second edit: {diff_1}");
+        assert!(diff_2.contains("-three") && diff_2.contains("+THREE"), "{diff_2}");
+        assert!(!diff_2.contains("+TWO"), "the second diff is against what the first left: {diff_2}");
+        assert_ne!(diff_1, diff_2);
+    }
+
+    /// A creation is every line added, not a failure and not an empty diff.
+    #[test]
+    fn a_creation_diffs_against_nothing_and_reads_as_all_added() {
+        let repo = temp_repo("creation");
+        let file = repo.join("new.txt");
+        let path = file.to_string_lossy().into_owned();
+
+        let before = capture(&repo, &path);
+        assert_eq!(before, BeforeState::Absent);
+        std::fs::write(&file, "hello\n").unwrap();
+
+        let diff = diff_against_now(&repo, &before, &path).unwrap();
+        assert!(diff.contains("+hello"), "{diff}");
+        assert!(!diff.contains("-hello"), "{diff}");
+    }
+
+    /// A tool that wrote the same bytes back produces an empty diff, which is
+    /// different from having no diff to show.
+    #[test]
+    fn an_unchanged_file_is_an_empty_diff_not_an_unavailable_one() {
+        let repo = temp_repo("unchanged");
+        let file = repo.join("same.txt");
+        std::fs::write(&file, "x\n").unwrap();
+        let path = file.to_string_lossy().into_owned();
+
+        let before = capture(&repo, &path);
+        assert_eq!(diff_against_now(&repo, &before, &path), Some(String::new()));
+    }
+
+    /// A folder with no object store has nothing to diff against. The card says
+    /// so and offers the file rather than failing the turn.
+    #[test]
+    fn an_unavailable_capture_has_no_diff_rather_than_an_error() {
+        let repo = temp_repo("unavailable");
+        assert_eq!(diff_against_now(&repo, &BeforeState::Unavailable, "/nope.txt"), None);
+    }
+
+    /// `-U` is the size of the unit the user reverts, so it has to be git's own
+    /// default: widening it merges nearby edits into one un-revertable hunk.
+    /// See [[lesson_diff_context_is_hunk_granularity]].
+    #[test]
+    fn the_context_width_is_gits_default_so_a_hunk_is_what_git_would_stage() {
+        assert_eq!(DIFF_CONTEXT, 3);
+    }
+
+    /// A file with two edits far enough apart to be two hunks at `-U3`.
+    fn two_hunk_edit(name: &str) -> (std::path::PathBuf, std::path::PathBuf, BeforeState) {
+        let repo = temp_repo(name);
+        let file = repo.join("a.txt");
+        let original: String = (1..=20).map(|n| format!("line {n}\n")).collect();
+        std::fs::write(&file, &original).unwrap();
+        let path = file.to_string_lossy().into_owned();
+        let before = capture(&repo, &path);
+        let edited = original.replace("line 3\n", "LINE THREE\n").replace("line 17\n", "LINE SEVENTEEN\n");
+        std::fs::write(&file, edited).unwrap();
+        (repo, file, before)
+    }
+
+    fn hunks_of(repo: &Path, before: &BeforeState, path: &str) -> crate::patch::FilePatch {
+        crate::patch::parse_patch(&diff_against_now(repo, before, path).unwrap())
+    }
+
+    /// The point of per-hunk revert: one region goes back, the rest of the
+    /// call's work stays. A whole-file restore would take both.
+    #[test]
+    fn reverting_one_hunk_restores_that_region_and_leaves_the_other() {
+        let (repo, file, before) = two_hunk_edit("revert-one-hunk");
+        let path = file.to_string_lossy().into_owned();
+        let parsed = hunks_of(&repo, &before, &path);
+        assert_eq!(parsed.hunks.len(), 2, "the fixture must produce two hunks to be testing anything");
+
+        let outcome = revert_hunk(&repo, &before, &path, 0, &parsed.hunks[0].fingerprint).unwrap();
+        assert_eq!(outcome, "reverted");
+
+        let now = std::fs::read_to_string(&file).unwrap();
+        assert!(now.contains("line 3\n"), "the reverted region is back: {now}");
+        assert!(!now.contains("LINE THREE"), "{now}");
+        assert!(now.contains("LINE SEVENTEEN\n"), "the other hunk is untouched: {now}");
+    }
+
+    /// The second hunk's coordinates are the ones in the fresh diff, so
+    /// reverting it must not need the first to have gone first.
+    #[test]
+    fn reverting_the_second_hunk_alone_lands_at_the_right_offset() {
+        let (repo, file, before) = two_hunk_edit("revert-second-hunk");
+        let path = file.to_string_lossy().into_owned();
+        let parsed = hunks_of(&repo, &before, &path);
+
+        revert_hunk(&repo, &before, &path, 1, &parsed.hunks[1].fingerprint).unwrap();
+
+        let now = std::fs::read_to_string(&file).unwrap();
+        assert!(now.contains("line 17\n"), "{now}");
+        assert!(now.contains("LINE THREE\n"), "the first hunk is untouched: {now}");
+    }
+
+    /// A card can sit open while the agent writes the file again. The hash the
+    /// UI rendered is checked against a fresh diff, and a mismatch writes
+    /// nothing rather than reverting whatever now sits at that index.
+    #[test]
+    fn a_stale_fingerprint_reverts_nothing() {
+        let (repo, file, before) = two_hunk_edit("stale-fingerprint");
+        let path = file.to_string_lossy().into_owned();
+        let content = std::fs::read_to_string(&file).unwrap();
+
+        let err = revert_hunk(&repo, &before, &path, 0, "deadbeef").unwrap_err();
+        assert!(err.contains("Nothing was reverted"), "{err}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), content, "the file must be byte-identical");
+    }
+
+    /// An index past the end of the fresh diff is the same failure as a bad
+    /// hash: the render the click came from is gone.
+    #[test]
+    fn a_hunk_index_past_the_end_reverts_nothing() {
+        let (repo, file, before) = two_hunk_edit("stale-index");
+        let path = file.to_string_lossy().into_owned();
+        let err = revert_hunk(&repo, &before, &path, 9, "whatever").unwrap_err();
+        assert!(err.contains("Nothing was reverted"), "{err}");
+    }
+
+    /// The "before" of a creation is the file's absence, so undoing it is a
+    /// delete. Reverse-applying the hunk would leave an empty file, which is a
+    /// state the tool call never found.
+    #[test]
+    fn reverting_the_only_hunk_of_a_created_file_deletes_it() {
+        let repo = temp_repo("revert-creation");
+        let file = repo.join("new.txt");
+        let path = file.to_string_lossy().into_owned();
+        let before = capture(&repo, &path);
+        std::fs::write(&file, "hello\nworld\n").unwrap();
+
+        let parsed = hunks_of(&repo, &before, &path);
+        let outcome = revert_hunk(&repo, &before, &path, 0, &parsed.hunks[0].fingerprint).unwrap();
+        assert_eq!(outcome, "deleted");
+        assert!(!file.exists(), "undoing a creation removes the file");
+    }
+
+    /// A tool may legitimately write outside the workspace; a patch we apply
+    /// may not. Refused by name rather than applied relative to the wrong root.
+    #[test]
+    fn a_path_outside_the_workspace_is_refused() {
+        let repo = temp_repo("revert-outside");
+        let outside = std::env::temp_dir().join(format!("sway-outside-{}.txt", std::process::id()));
+        std::fs::write(&outside, "one\ntwo\n").unwrap();
+        let path = outside.to_string_lossy().into_owned();
+        let before = capture(&repo, &path);
+        std::fs::write(&outside, "one\nTWO\n").unwrap();
+
+        let parsed = hunks_of(&repo, &before, &path);
+        let err = revert_hunk(&repo, &before, &path, 0, &parsed.hunks[0].fingerprint).unwrap_err();
+        assert!(err.contains("outside this workspace"), "{err}");
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    /// Nothing was captured, so there is no state to go back to. Said plainly
+    /// rather than reverting to whatever the file happens to contain.
+    #[test]
+    fn reverting_without_a_before_state_says_so() {
+        let repo = temp_repo("revert-unavailable");
+        let err = revert_hunk(&repo, &BeforeState::Unavailable, "/nope.txt", 0, "x").unwrap_err();
+        assert!(err.contains("nothing to revert"), "{err}");
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   clearAwaitingTurn,
   discardQueue,
   enqueue,
+  filesWritten,
   hasEarlier,
   initialChat,
   isRunning,
@@ -417,5 +418,33 @@ describe("the permission mode control", () => {
     const s = initialChat("s1");
     expect(shownMode(s)).toBe("default");
     expect(modePending(s)).toBe(false);
+  });
+});
+
+describe("filesWritten", () => {
+  // What the gutter and the Changes panel refresh on, ahead of the watcher's
+  // debounce. Reading it off the events the transport already sends is what
+  // keeps it from becoming a second, drifting source of "what changed".
+  it("reports a tool call's write targets", () => {
+    expect(filesWritten(completed("t1", "toolu_1"))).toEqual(["/a"]);
+  });
+
+  it("reports a fileEdit's single path", () => {
+    expect(
+      filesWritten({
+        type: "fileEdit",
+        sessionId: "s1",
+        turnId: "t1",
+        toolUseId: "toolu_1",
+        path: "/a/b.ts",
+        kind: "modified",
+        beforeBlob: null,
+      }),
+    ).toEqual(["/a/b.ts"]);
+  });
+
+  it("reports nothing for the events that wrote nothing", () => {
+    expect(filesWritten(prompt("toolu_1"))).toEqual([]);
+    expect(filesWritten(started("t1", "toolu_1", "Read", { file_path: "/a" }))).toEqual([]);
   });
 });

@@ -9,15 +9,27 @@ import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, fol
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
+import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
 import { lspPluginFor } from "./lspClient";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics, problemsFromState } from "../../utils/diagnostics";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
+import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
 import { settings, zoom } from "../Settings/settingsStore";
-import { on as onEvent, emitWith, REFIT_PANES, TOAST, type ToastEvent } from "../../utils/events";
+import {
+  on as onEvent,
+  onWith,
+  emitWith,
+  AGENT_FILES_WRITTEN,
+  AGENT_WRITE_DEBOUNCE_MS,
+  REFIT_PANES,
+  TOAST,
+  type AgentFilesWritten,
+  type ToastEvent,
+} from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
 import styles from "./CodeEditor.module.css";
@@ -133,6 +145,19 @@ export default function CodeEditor(props: {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
   let unlistenFs: UnlistenFn | undefined;
+  let offAgentWrites: (() => void) | undefined;
+  // Coalesced across a burst: this event is per tool call, so a turn rewriting
+  // one open file forty times would otherwise re-read it forty times. The set
+  // accumulates rather than the last event winning, since a debounce drops the
+  // payloads it swallows.
+  const agentWritten = new Set<string>();
+  const flushAgentWrites = debounce(() => {
+    const paths = [...agentWritten];
+    agentWritten.clear();
+    for (const p of paths) {
+      if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
+    }
+  }, AGENT_WRITE_DEBOUNCE_MS);
   let offRefit: (() => void) | undefined;
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
@@ -330,7 +355,15 @@ export default function CodeEditor(props: {
     const startLine = doc.lineAt(sel.from).number;
     const endLine = doc.lineAt(sel.to).number;
     const mention = composeSelectionMention(t, shown, startLine, endLine);
-    await requestSend({ ...t, text: mention });
+    // The selected text rides along for a chat target, which can hold it as
+    // structure. A PTY target gets the mention alone, exactly as before: pasting
+    // the region's text into a prompt line is not something a terminal can do
+    // without breaking the insert-only, single-line contract.
+    await requestSend({
+      ...t,
+      text: mention,
+      blocks: selectionBlocks(shown, startLine, endLine, view.state.sliceDoc(sel.from, sel.to)),
+    });
     return true;
   }
 
@@ -470,6 +503,15 @@ export default function CodeEditor(props: {
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
       }
     });
+    // A chat session reporting its own writes, ~250ms before the watcher's
+    // debounce would. Same handler and the same isSelfWrite check, so the two
+    // routes cannot disagree; the watcher's echo re-runs it against a file that
+    // by then matches what is already loaded, which is a no-op rather than a
+    // second reload.
+    offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
+      for (const p of paths) agentWritten.add(p);
+      flushAgentWrites();
+    });
     // Re-measure when a pane is revealed: an editor that laid out while
     // display:none has a stale viewport until CodeMirror re-reads its geometry.
     offRefit = onEvent(REFIT_PANES, () => view?.requestMeasure());
@@ -516,6 +558,7 @@ export default function CodeEditor(props: {
 
   onCleanup(() => {
     unlistenFs?.();
+    offAgentWrites?.();
     offRefit?.();
     view?.destroy();
   });

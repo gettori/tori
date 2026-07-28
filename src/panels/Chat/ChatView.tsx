@@ -6,17 +6,31 @@ import Composer from "./Composer";
 import ModeSelector from "./ModeSelector";
 import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
+import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
+import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
+import { clearPending, dropPending, pendingFor, takePending } from "../../utils/chatCompose";
+import { folderActors } from "../../utils/folderActors";
+import { hunkRevertPermission } from "../../utils/hunkRevert";
 import { parseChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
-import { emitWith, FOCUS_SESSION_TAB, TOAST, type FocusSessionTab, type ToastEvent } from "../../utils/events";
+import {
+  emitWith,
+  AGENT_FILES_WRITTEN,
+  FOCUS_SESSION_TAB,
+  TOAST,
+  type AgentFilesWritten,
+  type FocusSessionTab,
+  type ToastEvent,
+} from "../../utils/events";
 import {
   applyEvent,
   chatStatus,
   clearAwaitingTurn,
   discardQueue,
   enqueue,
+  filesWritten,
   initialChat,
   isRunning,
   modePending,
@@ -73,6 +87,16 @@ export default function ChatView(props: {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [rules, setRules] = createSignal<ScopedRule[]>([]);
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+
+  function askConfirm(opts: ConfirmOpts): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+  function resolveConfirm(v: boolean) {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(v);
+  }
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
   const running = () => isRunning(state);
@@ -95,7 +119,13 @@ export default function ChatView(props: {
       const ev = parseChatEvent(raw);
       // An unrecognised frame is dropped, never thrown: a panel must not go
       // down mid-turn over a frame it did not expect.
-      if (ev) edit((s) => applyEvent(s, ev));
+      if (!ev) return;
+      edit((s) => applyEvent(s, ev));
+      // The session says which files it wrote, so the gutter and the Changes
+      // panel do not have to wait for the watcher to notice. The watcher's own
+      // event still arrives; both consumers are idempotent.
+      const written = filesWritten(ev);
+      if (written.length) emitWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, { paths: [...written] });
     };
     void invoke<SpawnResult>("chat_spawn", {
       sessionId: props.sessionId,
@@ -126,6 +156,9 @@ export default function ChatView(props: {
   // already ended, so this is safe on every unmount path.
   onCleanup(() => {
     dropLiveChat(props.sessionId);
+    // Chips belong to the composer that was showing them; a reopened tab must
+    // not inherit an attachment nobody can see the origin of any more.
+    clearPending(props.sessionId);
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
 
@@ -187,12 +220,22 @@ export default function ChatView(props: {
     ),
   );
 
+  // Attachments ride the turn that is actually sent. While a turn runs the typed
+  // text queues but the chips stay put and visible, because a queued message is
+  // sent later and silently emptying the composer of its attachments now would
+  // leave the user unable to see what the next turn is going to carry.
   function onSend(text: string) {
     if (running()) {
-      edit((s) => enqueue(s, text));
+      // Attachment-only is a valid thing to send but not a valid thing to
+      // queue: the queue carries text, so an empty entry would flush as an
+      // empty turn once the running one ends.
+      if (text) edit((s) => enqueue(s, text));
       return;
     }
-    void sendBlocks([{ type: "text", text }]);
+    const attached = takePending(props.sessionId);
+    const blocks: ContentBlock[] = text ? [...attached, { type: "text", text }] : attached;
+    if (!blocks.length) return;
+    void sendBlocks(blocks);
   }
 
   // Re-read rather than patched locally: the rule store is a file the hook
@@ -254,6 +297,58 @@ export default function ChatView(props: {
       });
       emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
     });
+  }
+
+  // Undo one hunk of an edit this session made.
+  //
+  // Gated by the same guard a whole-tree revert takes, because the hazard is the
+  // same and smaller only in size: an agent mid-turn in this folder may be
+  // writing the very file we are about to rewrite, and whichever write lands
+  // second wins silently. The actors are gathered at click time, which is what
+  // `folderActors` is built for - the detached tier costs a probe per off-tab
+  // session, so it must not run per event.
+  //
+  // The buffer refresh is not wired here on purpose: the revert writes the file
+  // on disk, and the editor reloads it through [[concept_fs_change_pipeline]]'s
+  // watcher, the same path a checkpoint revert takes.
+  async function onRevertHunk(ref: HunkRef): Promise<boolean> {
+    const permission = hunkRevertPermission(await folderActors(props.workspace), props.workspace);
+    if (permission.kind === "refuse") {
+      emitWith<ToastEvent>(TOAST, { message: permission.reason, kind: "error" });
+      return false;
+    }
+    const name = ref.path.split("/").pop() ?? ref.path;
+    const ok = await askConfirm({
+      title: `Revert this hunk of ${name}?`,
+      message:
+        permission.kind === "confirm"
+          ? `${permission.reason} Reverting this hunk writes to the file anyway.`
+          : "This rewrites that region of the file on disk, back to what the tool call found.",
+      confirmLabel: "Revert",
+      danger: true,
+    });
+    if (!ok) return false;
+    try {
+      const outcome = await invoke<string>("chat_revert_tool_hunk", {
+        sessionId: props.sessionId,
+        toolUseId: ref.toolUseId,
+        cwd: props.cwd,
+        path: ref.path,
+        hunkIndex: ref.hunkIndex,
+        fingerprint: ref.fingerprint,
+      });
+      // Undoing a creation removes the file, and the card's diff then reads as
+      // "unchanged" - true of the bytes, misleading about what happened. Saying
+      // which of the two it was is the difference between the two readings.
+      emitWith<ToastEvent>(TOAST, {
+        message: outcome === "deleted" ? `Removed ${name}, which this call created.` : `Reverted that hunk of ${name}.`,
+        kind: "info",
+      });
+      return true;
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+      return false;
+    }
   }
 
   function onInterrupt() {
@@ -328,19 +423,41 @@ export default function ChatView(props: {
         <RuleList rules={rules()} onRemove={onRemoveRule} />
       </div>
 
-      <MessageList items={state.items} streaming={running()} onAnswer={onAnswer} />
+      <MessageList
+        items={state.items}
+        streaming={running()}
+        sessionId={props.sessionId}
+        cwd={props.cwd}
+        onAnswer={onAnswer}
+        onRevertHunk={onRevertHunk}
+      />
 
       <Composer
         running={running()}
         queue={state.queue}
+        attachments={pendingFor(props.sessionId)}
         held={state.queueHeld}
         disabled={refused() || state.ended}
         onSend={onSend}
         onInterrupt={onInterrupt}
         onDropQueued={(id) => edit((s) => removeQueued(s, id))}
+        onDropAttachment={(id) => dropPending(props.sessionId, id)}
         onSendQueued={() => edit((s) => releaseQueue(s))}
         onDiscardQueued={() => edit((s) => discardQueue(s))}
       />
+
+      <Show when={confirmReq()}>
+        {(req) => (
+          <ConfirmDialog
+            title={req().title}
+            message={req().message}
+            confirmLabel={req().confirmLabel}
+            danger={req().danger}
+            onConfirm={() => resolveConfirm(true)}
+            onCancel={() => resolveConfirm(false)}
+          />
+        )}
+      </Show>
     </div>
   );
 }

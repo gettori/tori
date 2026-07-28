@@ -3,6 +3,7 @@ import { Send, Square } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import type { QueuedInput } from "./chatStore";
+import { chipLabel, type PendingBlock } from "../../utils/chatCompose";
 import styles from "./Chat.module.css";
 
 /**
@@ -18,24 +19,35 @@ import styles from "./Chat.module.css";
  * held rather than flushed (see `pendingFlush`), and the strip grows send-now
  * and discard actions, because a turn the user stopped must not fire the
  * messages they stopped it to prevent.
+ *
+ * Attachments (an editor selection, a hunk comment, a diagnostic) arrive as
+ * chips above the input and wait there. They are removable and nothing about
+ * their arrival sends anything: [[concept_safe_send]]'s insert-only contract is
+ * the same on this surface as on a terminal.
  */
 export default function Composer(props: {
   running: boolean;
   queue: readonly QueuedInput[];
+  attachments: readonly PendingBlock[];
   held: boolean;
   disabled: boolean;
   onSend: (text: string) => void;
   onInterrupt: () => void;
   onDropQueued: (id: string) => void;
+  onDropAttachment: (id: string) => void;
   onSendQueued: () => void;
   onDiscardQueued: () => void;
 }) {
   const [text, setText] = createSignal("");
   let input: HTMLTextAreaElement | undefined;
 
+  // A turn of nothing but a file reference is a real thing to send ("look at
+  // this"), so an attachment is enough on its own.
+  const hasContent = () => !!text().trim() || props.attachments.length > 0;
+
   function submit() {
     const value = text().trim();
-    if (!value || props.disabled) return;
+    if (!hasContent() || props.disabled) return;
     props.onSend(value);
     setText("");
     // The textarea grows with its content, so it has to be shrunk back by hand.
@@ -87,6 +99,22 @@ export default function Composer(props: {
           </Show>
         </div>
       </Show>
+      <Show when={props.attachments.length}>
+        <div class={styles.attachments}>
+          <For each={props.attachments}>
+            {(a) => (
+              <button
+                type="button"
+                class={styles.attachment}
+                title="Remove this attachment"
+                onClick={() => props.onDropAttachment(a.id)}
+              >
+                {chipLabel(a.block)}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
       <div class={styles.composerRow}>
         <textarea
           ref={input}
@@ -108,7 +136,7 @@ export default function Composer(props: {
           class={styles.sendButton}
           title={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
           aria-label={props.running ? "Stop" : "Send"}
-          disabled={props.disabled || (!props.running && !text().trim())}
+          disabled={props.disabled || (!props.running && !hasContent())}
           onClick={() => (props.running ? props.onInterrupt() : submit())}
         >
           <Icon icon={props.running ? Square : Send} />

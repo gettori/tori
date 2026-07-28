@@ -307,10 +307,207 @@
   font-size: var(--sway-text-sm);
 }
 
+/* The collapsed row is the whole disclosure control, so the whole row is the
+   hit target rather than a caret the user has to find. */
 .toolRow {
   display: flex;
   align-items: baseline;
   gap: var(--sway-space-3);
+  width: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolDuration {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+}
+
+.toolBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-2);
+  padding-top: var(--sway-space-2);
+  border-top: 1px solid var(--border-default);
+}
+
+.toolPaths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sway-space-2);
+}
+
+/* A path in a transcript that cannot be opened makes the reader do the lookup
+   by hand, so every one of them is a link into the editor. */
+.toolPath {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.toolPath:hover {
+  text-decoration: underline;
+}
+
+.toolBadge {
+  border-radius: var(--sway-radius-pill);
+  padding: 0 var(--sway-space-2);
+  color: var(--diff-added);
+  font-family: inherit;
+  font-size: var(--sway-text-xs);
+}
+
+.toolPre {
+  max-height: calc(320px * var(--ui-scale));
+  margin: 0;
+  padding: var(--sway-space-2);
+  overflow: auto;
+  border-radius: var(--sway-radius-sm);
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.toolCommand {
+  color: var(--fg-default);
+}
+
+.toolOutput {
+  color: var(--fg-muted);
+}
+
+.toolNote {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  line-height: 1.4;
+}
+
+/* ---- the inline diff ---- */
+
+.toolDiff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-2);
+}
+
+.hunk {
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  overflow: hidden;
+}
+
+.diffLine {
+  padding: 0 var(--sway-space-2);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* What the next turn will carry besides what is typed: a selection, a hunk
+   comment, a diagnostic. Removable, and never sent on its own. */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sway-space-2);
+  padding: 0 var(--sway-space-3) var(--sway-space-2);
+}
+
+.attachment {
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  padding: 0 var(--sway-space-2);
+  overflow: hidden;
+  background: var(--neutral-hover);
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  line-height: 1.8;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.attachment:hover {
+  border-color: var(--danger-fg);
+  color: var(--fg-default);
+}
+
+/* The header and its revert action share one strip: the action belongs to the
+   hunk, and a row of its own would read as belonging to the lines below it. */
+.hunkHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  background: var(--neutral-hover);
+}
+
+.hunkHeader {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hunkHeader:hover {
+  color: var(--fg-default);
+}
+
+.hunkRevert {
+  flex: none;
+  border: none;
+  padding: 0 var(--sway-space-2);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-ui);
+  font-size: var(--sway-text-xs);
+  cursor: pointer;
+}
+
+.hunkRevert:hover {
+  color: var(--danger-fg);
+}
+
+.hunkRevert:disabled {
+  color: var(--fg-muted);
+  cursor: default;
+}
+
+/* Same role tokens the Changes and Session panels use, so an added line is the
+   same colour wherever the user reads a diff. */
+.diffAdd {
+  color: var(--diff-added);
+}
+
+.diffDel {
+  color: var(--diff-deleted);
+}
+
+.diffCtx {
+  color: var(--fg-muted);
 }
 
 /* A blocked call must not read as work in progress. */
