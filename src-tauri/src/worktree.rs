@@ -174,7 +174,7 @@ fn pick_worktree_folder(container: &Path, branch: &str) -> Result<String, String
 /// Symlink each top-level entry of `<container>/.shared/` into a freshly created
 /// worktree, skipping names the worktree already has (a branch tracking the file
 /// is never clobbered). Bare-container convention; a no-op when `.shared/` is absent.
-fn link_shared(container: &Path, worktree: &Path) {
+pub(crate) fn link_shared(container: &Path, worktree: &Path) {
     let shared_dir = container.join(SHARED_DIR);
     let Ok(entries) = std::fs::read_dir(&shared_dir) else {
         return; // no .shared/ convention here
@@ -470,7 +470,7 @@ pub fn branch_status(repo: String, branch: String) -> Result<BranchStatus, Strin
 /// `git worktree remove --force` is always used, to drop the regenerable `.shared/`
 /// symlinks git would otherwise treat as untracked. Shared by `remove_worktree` and
 /// the delete-plus-branch variant; it does not emit (the caller does).
-fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
     if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
