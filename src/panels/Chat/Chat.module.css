@@ -239,6 +239,30 @@
   color: var(--fg-subtle);
 }
 
+/* Quiet until it is wanted. Rewinding is rare and destructive, so it earns no
+   permanent room in a byline that is otherwise just "who answered"; revealed on
+   hover of its own turn, and by keyboard focus so it is not mouse-only. */
+.turnRewind {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.turnHeader:hover .turnRewind,
+.turnRewind:focus-visible {
+  opacity: 1;
+}
+
+.turnRewind:hover {
+  color: var(--fg-default);
+}
+
 /* Assistant text is flat prose in the column, distinguished by nothing louder
    than its byline: the tool cards between turns already segment the flow. */
 .assistant {

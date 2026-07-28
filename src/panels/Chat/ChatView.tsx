@@ -100,11 +100,16 @@ import {
   CONTESTED_NOTICE,
   type ClaimOutcome,
 } from "../../utils/chatOwnership";
+import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
+import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
  *  error: it names the tab that holds the session, or the orphaned child. */
 type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null };
+
+/** One changed file as `checkpoint_turn_files` reports it. */
+type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boolean };
 
 /**
  * One chat session: the transport's events folded into `chatStore`, rendered,
@@ -130,6 +135,9 @@ export default function ChatView(props: {
    *  replayed here and the two diverge from that point; new turns never reach
    *  the original. */
   forkFrom?: string;
+  /** Set when this tab is a rewind of `forkFrom`: the checkpoint the tree was
+   *  put back to, which is also where the replayed history is cut. */
+  rewindTo?: number;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
@@ -140,6 +148,10 @@ export default function ChatView(props: {
    *  from a refused claim, where touching the contested session is the thing to
    *  avoid. */
   onForkFrom: () => string;
+  /** Carry this conversation into a new chat whose files, and whose replayed
+   *  history, stop at `promptTs`. Closes this tab: the rewind supersedes it, and
+   *  leaving both open would leave two tabs claiming to be the same work. */
+  onRewindFrom: (promptTs: number) => void;
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
@@ -155,6 +167,12 @@ export default function ChatView(props: {
   // here, which is exactly the span the in-memory before-states cover: a
   // resumed session's earlier turns left no capture behind.
   const [firstTurnTs, setFirstTurnTs] = createSignal<number | null>(null);
+  // The checkpoint behind each turn this tab ran, which is what makes that turn
+  // rewindable. Replayed turns are absent on purpose: their snapshot, if one was
+  // ever taken, belongs to whichever run took it, and offering to rewind to a
+  // tree state nothing recorded would fail at the revert with nothing on screen
+  // having warned it might.
+  const [turnStamps, setTurnStamps] = createSignal<Record<string, number>>({});
 
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
@@ -212,6 +230,14 @@ export default function ChatView(props: {
   let reconnect: (() => void) | undefined;
 
   onMount(() => {
+    // A rewound chat opens with the announcement already in the composer, so
+    // the turn the user actually wanted is that plus their instruction rather
+    // than a turn spent on the announcement alone. Only into an empty composer:
+    // a remount must not overwrite what they have since typed.
+    if (props.rewindTo && !draftFor(props.sessionId).trim()) {
+      setDraft(props.sessionId, rewindSeed());
+    }
+
     // Live events arriving before the backfill has been folded in would render
     // this session's history *after* its newest turn. They are parked here
     // until the replay lands, then drained in arrival order.
@@ -240,6 +266,17 @@ export default function ChatView(props: {
       sessionId: props.sessionId,
       fromSessionId: props.forkFrom ?? null,
       agentId: props.agentId,
+      // A rewind cuts the replay where the tree was put back to, so the
+      // conversation on screen and the files on disk agree. What the *agent*
+      // remembers is not cut, which is what the banner below exists to say.
+      //
+      // Only while this tab is still reading the session it rewound *from*.
+      // `--fork-session` copies the original conversation into the fork's own
+      // transcript, so once the tab is restored and resuming its own id, the
+      // same cut would fall in the middle of that copy and hide the turns run
+      // since the rewind. The banner survives the restart (`rewindTo` is
+      // persisted); the cut deliberately does not.
+      upToPromptTs: props.forkFrom ? (props.rewindTo ?? null) : null,
     })
       .then((raw) => {
         // Replayed history is folded straight in rather than through
@@ -299,8 +336,10 @@ export default function ChatView(props: {
       // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
       // edits, which is the only state reverting the turn can mean.
       if (ev.type === "turnStarted") {
-        turnTs = Math.floor(Date.now() / 1000);
-        if (firstTurnTs() === null) setFirstTurnTs(turnTs);
+        const at = Math.floor(Date.now() / 1000);
+        turnTs = at;
+        if (firstTurnTs() === null) setFirstTurnTs(at);
+        setTurnStamps((prev) => ({ ...prev, [ev.turnId]: at }));
         // No tool call outlives the turn that opened it, so anything still in
         // here is spent. Cleared per turn rather than never, which would grow
         // the map for as long as the panel is open.
@@ -657,6 +696,110 @@ export default function ChatView(props: {
     seedForSend(props.sessionId, props.onForkSession());
   }
 
+  /**
+   * Go back to how things were before a turn.
+   *
+   * Three things at once, and only two of them are clean. The tree goes back to
+   * that turn's checkpoint, scoped to what this session recorded writing, so a
+   * concurrent chat's work is left alone. The replay is cut at the same
+   * checkpoint, so the conversation on screen matches the files. But the
+   * conversation is carried on by a **fork**, spawned `--resume <old>
+   * --fork-session`, whose context is the whole original including the turns
+   * being undone - so the agent remembers writing files that are no longer
+   * there. That is stated in the confirm, again in the banner, and again in the
+   * message the new chat opens with; see `rewind.ts`.
+   *
+   * Refused mid-turn rather than queued. A revert lands as a write to the
+   * worktree, and the turn still running is the other writer.
+   */
+  async function onRewind(promptTs: number) {
+    if (running()) {
+      emitWith<ToastEvent>(TOAST, {
+        message: "This chat is mid-turn. Let it finish or interrupt it, then rewind.",
+        kind: "error",
+      });
+      return;
+    }
+    // Cumulative, because rewinding *to* a boundary undoes every turn since,
+    // not just the one whose header was clicked.
+    //
+    // Fails closed. An empty list here is indistinguishable from "nothing to
+    // warn about", so swallowing the error would run the rewind with the
+    // "another chat wrote this too" prompt silently skipped - the revert itself
+    // would still be scoped correctly by the backend, but the user would have
+    // been denied the decision this call exists to offer them.
+    let files: CheckpointFile[];
+    try {
+      files = await invoke<CheckpointFile[]>("checkpoint_turn_files", {
+        repoPath: props.workspace,
+        sessionId: props.sessionId,
+        promptTs,
+        cumulative: true,
+        others: chatsInFolder(props.workspace)
+          .map((c) => c.sessionId)
+          .filter((id) => id !== props.sessionId),
+      });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, {
+        message: `Could not work out which files that turn touched, so nothing was rewound: ${String(e)}`,
+        kind: "error",
+      });
+      return;
+    }
+
+    // Files the tree says changed that no session claims. The revert is scoped
+    // to what this one recorded, so these stay put - said before the fact,
+    // because "go back to here" reads as a promise that everything went back.
+    const orphans = files.filter((f) => f.unattributed).map((f) => f.path);
+    if (orphans.length) {
+      const go = await askConfirm({
+        title: `${orphans.length} file${orphans.length === 1 ? "" : "s"} will be left alone`,
+        message: `${orphans.join(", ")}\n\n${UNATTRIBUTED_NOTICE}\n\nThe rewind leaves these exactly as they are.`,
+        confirmLabel: "Rewind the rest",
+      });
+      if (!go) return;
+    }
+
+    const shared = files.filter((f) => f.shared_with?.length).map((f) => f.path);
+    let confirmedShared: string[] = [];
+    if (shared.length) {
+      const who = [...new Set(files.flatMap((f) => f.shared_with ?? []))];
+      const alsoRevert = await askConfirm({
+        title: `${shared.length} file${shared.length === 1 ? "" : "s"} also written by another chat`,
+        message: `${shared.join(", ")} ${shared.length === 1 ? "was" : "were"} also written by ${who.join(", ")}. Rewinding ${shared.length === 1 ? "it" : "them"} undoes that session's work too.`,
+        confirmLabel: "Rewind these too",
+        danger: true,
+      });
+      if (alsoRevert) confirmedShared = shared;
+    }
+
+    const ok = await askConfirm({
+      title: "Rewind to before this turn?",
+      message: `Every file this chat wrote from that turn on goes back to how it was. The current state is saved as a checkpoint first, so this is reversible.\n\n${REWIND_CAVEAT}`,
+      confirmLabel: "Rewind",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await invoke<unknown>("checkpoint_revert_tree", {
+        repoPath: props.workspace,
+        sessionId: props.sessionId,
+        promptTs,
+        shared: confirmedShared,
+      });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+      return;
+    }
+    // This session is being superseded, so anything it left claiming a turn is
+    // in flight has to go with it: a mark left behind would greet whoever
+    // reopens the old id with an interruption notice for a turn that was
+    // deliberately undone, long after the fact.
+    await invoke("chat_mark_turn", { sessionId: props.sessionId, turnId: null }).catch(() => {});
+    props.onRewindFrom(promptTs);
+  }
+
   // Undo one hunk of an edit this session made.
   //
   // Gated by the same guard a whole-tree revert takes, because the hazard is the
@@ -731,6 +874,16 @@ export default function ChatView(props: {
           <Button size="sm" onClick={() => markNoticed(props.workspace)}>
             Got it
           </Button>
+        </div>
+      </Show>
+
+      {/* The one part of a rewind that could not be undone: the fork carries the
+          original's whole context, so the agent remembers the turns that are no
+          longer above it. Persistent rather than dismissable - the gap lasts as
+          long as the session does. */}
+      <Show when={props.rewindTo}>
+        <div class={styles.banner}>
+          <span class={styles.bannerText}>{REWIND_BANNER}</span>
         </div>
       </Show>
 
@@ -871,6 +1024,8 @@ export default function ChatView(props: {
         }}
         onAnswer={onAnswer}
         onRevertHunk={onRevertHunk}
+        rewindTsFor={(turnId) => turnStamps()[turnId] ?? null}
+        onRewind={onRewind}
       />
       </Show>
 

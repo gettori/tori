@@ -163,6 +163,35 @@ fn summary_after(turns: &[TranscriptTurn], at: usize) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+/// How far back a rewind cuts the replay: the index of the turn carrying the
+/// prompt a checkpoint was taken for, so `&turns[..at]` is everything before it.
+///
+/// **Snapped to the nearest human prompt rather than cut at `ts < prompt_ts`.**
+/// A chat checkpoint is stamped with Sway's own clock at `turnStarted`
+/// (`checkpoints.ts:71`) while the transcript is stamped with the harness's, so
+/// one prompt carries two timestamps a second or two apart and a bare
+/// comparison lands on either side of it depending on which way they drifted.
+/// Snapping puts the cut on the boundary the user pointed at, and it can only
+/// ever fall *between* turns rather than inside one - a replay severed
+/// mid-turn would show a call with no result.
+///
+/// The summary the harness writes after a compaction is a `user` turn that the
+/// user never typed, so it is not a boundary anyone can mean; `events_from_turns`
+/// declines to render it as one for the same reason.
+///
+/// `None` when the transcript holds no prompt at all, which the caller reads as
+/// "nothing to cut at" and replays whole rather than showing an empty session.
+pub fn prompt_boundary(turns: &[TranscriptTurn], prompt_ts: u64) -> Option<usize> {
+    turns
+        .iter()
+        .enumerate()
+        .filter(|(at, t)| {
+            t.role == "user" && !turns.get(at.wrapping_sub(1)).is_some_and(is_compaction)
+        })
+        .min_by_key(|(_, t)| t.ts.abs_diff(prompt_ts))
+        .map(|(at, _)| at)
+}
+
 /// The id to replay a call under: the harness's own when the transcript has one,
 /// otherwise a synthetic one that at least stays unique within this replay.
 fn replay_id(block: &TranscriptBlock, seq: &mut usize) -> String {
@@ -191,7 +220,7 @@ fn take_call(open: &mut Vec<(String, String)>, block: &TranscriptBlock) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sessions::{text_block, tool_call_block, tool_result_block};
+    use crate::sessions::{compaction_block, text_block, tool_call_block, tool_result_block};
 
     fn turn(role: &str, blocks: Vec<TranscriptBlock>) -> TranscriptTurn {
         TranscriptTurn { role: role.into(), ts: 0, blocks }
@@ -438,5 +467,82 @@ mod tests {
             }
             other => panic!("expected a completed call, got {other:?}"),
         }
+    }
+
+    fn stamped(role: &str, ts: u64, text: &str) -> TranscriptTurn {
+        TranscriptTurn { role: role.into(), ts, blocks: vec![text_block("text", text.into())] }
+    }
+
+    #[test]
+    fn a_rewind_cuts_at_the_prompt_even_when_the_two_clocks_disagree() {
+        // The checkpoint says 1200; the transcript stamped the same prompt 1198,
+        // because Sway's `turnStarted` and the harness's write are two clocks.
+        // A `ts < prompt_ts` cut would keep that prompt and sever its turn.
+        let turns = vec![
+            stamped("user", 1000, "first"),
+            stamped("assistant", 1005, "done"),
+            stamped("user", 1198, "second"),
+            stamped("assistant", 1205, "done"),
+        ];
+        assert_eq!(prompt_boundary(&turns, 1200), Some(2));
+        // And when it drifted the other way.
+        let later = vec![stamped("user", 1000, "first"), stamped("user", 1202, "second")];
+        assert_eq!(prompt_boundary(&later, 1200), Some(1));
+    }
+
+    #[test]
+    fn a_rewind_never_cuts_inside_an_assistant_turn() {
+        // The nearest turn by raw timestamp is the assistant reply, but cutting
+        // there would replay a call whose result is on the far side of the cut.
+        let turns = vec![
+            stamped("user", 1000, "go"),
+            stamped("assistant", 1199, "working"),
+            stamped("user", 1400, "and again"),
+        ];
+        assert_eq!(prompt_boundary(&turns, 1200), Some(0));
+    }
+
+    #[test]
+    fn a_compaction_summary_is_not_a_boundary_a_rewind_can_land_on() {
+        // The summary is a `user` turn the user never typed, so nobody can mean
+        // it when they point at a turn to go back to.
+        let turns = vec![
+            stamped("user", 1000, "go"),
+            turn("assistant", vec![compaction_block(None, None, None)]),
+            stamped("user", 1200, "the summary the harness wrote"),
+            stamped("user", 1600, "carry on"),
+        ];
+        assert_eq!(prompt_boundary(&turns, 1200), Some(0));
+    }
+
+    #[test]
+    fn a_rewound_replay_renders_as_a_session_that_had_stopped_there() {
+        // The property the whole rewind rests on: a tab opened on the cut must
+        // show what a tab opened on a session that ended at the cut would show.
+        // It is not free - turn ids are numbered from the start of the replay,
+        // so a cut that renumbered them would give the rewound tab different
+        // ids for the same turns, and its scroll anchor and every upsert keyed
+        // on a turn id would land somewhere else.
+        let turns = vec![
+            stamped("user", 1000, "first"),
+            stamped("assistant", 1005, "done"),
+            stamped("user", 1200, "second"),
+            stamped("assistant", 1205, "also done"),
+        ];
+        let at = prompt_boundary(&turns, 1200).unwrap();
+        let cut = events_from_turns("s1", &turns[..at]);
+        let whole = events_from_turns("s1", &turns);
+        assert_eq!(cut, whole[..cut.len()]);
+        // And it really did cut: the second exchange is gone, not merely equal
+        // by both sides being empty.
+        assert!(!cut.is_empty() && cut.len() < whole.len());
+    }
+
+    #[test]
+    fn a_transcript_with_no_prompt_offers_no_boundary() {
+        // Read as "nothing to cut at", so the caller replays the session whole
+        // rather than opening it blank.
+        assert_eq!(prompt_boundary(&[], 1200), None);
+        assert_eq!(prompt_boundary(&[stamped("assistant", 1200, "hi")], 1200), None);
     }
 }
