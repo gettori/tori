@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { agents, findAgent } from "../../utils/agents";
 import { liveStatuses } from "../../utils/sessionStatus";
+import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import {
   emit,
   emitWith,
@@ -15,6 +16,8 @@ import {
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
+  STOP_CHAT,
+  type StopChat,
   type NewSession,
   type OpenTranscript,
   type SetRightMode,
@@ -149,6 +152,18 @@ export default function CommandPalette(props: {
         id: `view:${v.event}`,
         label: `View: Toggle ${v.label}`,
         run: () => emit(v.event),
+      });
+    }
+    // One row per chat that a stop would actually do something to, named. The
+    // hotkey covers the common case; this covers the case the hotkey refuses to
+    // guess at, which is several chats running at once (see `chatToStop`).
+    for (const c of stoppableChats(liveChats())) {
+      actionItems.push({
+        kind: "action",
+        id: `stop:${c.sessionId}`,
+        label: `Stop ${c.sessionName}`,
+        sub: c.status === "waitingForApproval" ? "Waiting for approval" : "Running a turn",
+        run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: c.sessionId }),
       });
     }
     actionItems.push({

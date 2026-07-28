@@ -7,6 +7,8 @@ import {
   TAB_JUMP,
   TAB_CYCLE,
   NEXT_WAITING_SESSION,
+  STOP_CHAT,
+  type StopChat,
   OPEN_PALETTE,
   OPEN_QUICK_OPEN,
   TOGGLE_SHORTCUTS,
@@ -244,6 +246,18 @@ export const BINDINGS: Binding[] = [
     scope: "global",
     match: cmdShift("a"),
     run: () => emit(NEXT_WAITING_SESSION),
+  },
+  {
+    id: "stop-chat",
+    keys: ["⌘", "."],
+    label: "Stop the running turn",
+    group: "session",
+    // Global, not window: stopping a runaway turn is the thing you most want to
+    // do while looking at something else, and a `window` binding would be
+    // swallowed the moment a terminal had focus.
+    scope: "global",
+    match: cmd("."),
+    run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: null }),
   },
 ];
 

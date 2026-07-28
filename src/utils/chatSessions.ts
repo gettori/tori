@@ -61,3 +61,39 @@ export function liveChatIds(): Set<string> {
 export function chatsInFolder(folderPath: string): LiveChat[] {
   return liveChats().filter((c) => c.folderPath === folderPath);
 }
+
+/** Would a stop do anything to this chat?
+ *
+ *  `waitingForApproval` counts: a chat blocked on a tool approval is still
+ *  mid-turn, and stopping is a reasonable answer to a prompt you do not want to
+ *  grant. Excluding it would make the one state where a user most wants out the
+ *  one state stop is unavailable in. */
+export function isStoppable(status: SessionStatus): boolean {
+  return status === "executing" || status === "waitingForApproval";
+}
+
+export function stoppableChats(chats: readonly LiveChat[]): LiveChat[] {
+  return chats.filter((c) => isStoppable(c.status));
+}
+
+/**
+ * Which chat an unqualified "stop" means, or null when the answer is not
+ * obvious.
+ *
+ * The whole point of the hotkey is to work from an unfocused pane, so it cannot
+ * resolve to "the chat that has focus". It resolves to the chat whose tab is on
+ * screen, and failing that to the only one running.
+ *
+ * **Returns null rather than guessing** when several are running and none is on
+ * screen. Stopping is destructive of work in progress and unrecoverable - the
+ * turn does not resume - so picking one of three by list order would sometimes
+ * silently kill the wrong one. The caller says so and points at the palette,
+ * where every running chat is named.
+ */
+export function chatToStop(chats: readonly LiveChat[]): LiveChat | null {
+  const running = stoppableChats(chats);
+  if (running.length === 0) return null;
+  const onScreen = running.find((c) => c.visible);
+  if (onScreen) return onScreen;
+  return running.length === 1 ? running[0] : null;
+}

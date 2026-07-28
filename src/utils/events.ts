@@ -36,6 +36,21 @@ export const TAB_CYCLE = "sway:tab-cycle";
 // approval" (Cmd+Shift+A). Consumed by Terminal.tsx.
 export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
 
+// Payload-carrying event: stop a chat's running turn (Cmd+.) or, from the
+// command palette, one named chat. Consumed by App.tsx, which owns the only
+// listener.
+//
+// It goes through the event bus and App rather than through the chat panel
+// because the point of the hotkey is to work while some *other* pane has focus,
+// and a stop that depends on the chat being focused is a stop button with extra
+// steps.
+//
+// `sessionId: null` means "work out which one": the palette always names a
+// session, the hotkey usually cannot. See `chatToStop` for the resolution and
+// for why it refuses to guess between several.
+export const STOP_CHAT = "sway:stop-chat";
+export type StopChat = { sessionId: string | null };
+
 // Opens the Cmd+K command palette. Consumed by App.tsx.
 export const OPEN_PALETTE = "sway:open-palette";
 

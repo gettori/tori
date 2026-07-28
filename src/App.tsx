@@ -15,6 +15,9 @@ import Icon from "./components/Icon/Icon";
 import { Settings as SettingsIcon } from "lucide-solid";
 import {
   on as onEvent,
+  onWith as onEventWith,
+  STOP_CHAT,
+  type StopChat,
   emit,
   emitWith,
   TOAST,
@@ -37,6 +40,7 @@ import {
   type LiveTab,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
+import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
 import { initSettings, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
@@ -266,6 +270,7 @@ function App() {
   let offFocusSearch: (() => void) | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
+  let offStopChat: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
@@ -291,6 +296,29 @@ function App() {
     // reveals of the right panel, so they un-hide the editor + file tree.
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, revealRightPanel);
     offSetRightMode = onEvent(SET_RIGHT_MODE, revealRightPanel);
+    // Stop, from Cmd+. or from a named palette row. Handled here rather than in
+    // the chat panel because the whole point is that it works while something
+    // else has focus - and `chat_interrupt` needs nothing from the panel but a
+    // session id.
+    offStopChat = onEventWith<StopChat>(STOP_CHAT, ({ sessionId }) => {
+      const target = sessionId ?? chatToStop(liveChats())?.sessionId ?? null;
+      if (!target) {
+        // Either nothing is running, or several are and none is on screen.
+        // `chatToStop` deliberately will not choose between them, since a stop
+        // cannot be undone - so say which case it is and where to be explicit.
+        const running = stoppableChats(liveChats());
+        emitWith<ToastEvent>(TOAST, {
+          message: running.length
+            ? `${running.length} chats are running. Pick one from the command palette (⌘K) or stop it from its own tab.`
+            : "Nothing is running.",
+          kind: "info",
+        });
+        return;
+      }
+      invoke("chat_interrupt", { sessionId: target }).catch((e) =>
+        emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
+      );
+    });
     // Collapse the rail to the intrinsic width of the top-left cluster (lights
     // + toggles), so a hidden sidebar still keeps the breadcrumb clear of them.
     // The cluster fills the rail (flex:1) to right-align the toggles, so its own
@@ -349,6 +377,7 @@ function App() {
     offToggleTerminal?.();
     offToggleEditor?.();
     offToggleFiletree?.();
+    offStopChat?.();
     offFocusSearch?.();
     offProjectSearch?.();
     offSetRightMode?.();

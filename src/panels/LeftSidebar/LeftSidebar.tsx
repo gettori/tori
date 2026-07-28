@@ -44,6 +44,7 @@ import {
   notePresence,
   markSessionAttended,
   liveCounts,
+  trayEntries,
   unattendedNeedsYouCount,
   shouldSuppressNotification,
   notifyNeedsYou,
@@ -60,13 +61,19 @@ import {
   dotFromStatus,
   setLiveStatuses,
   rollupStatuses,
-  STATUS_LABEL,
+  statusPresentation,
   type SessionStatus,
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
-import { computeSessionDot, type SessionDot } from "../../utils/sessionDot";
+import {
+  computeSessionDot,
+  dotCertainty,
+  type SessionDot,
+  type SessionDotInputs,
+  type StatusCertainty,
+} from "../../utils/sessionDot";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -560,15 +567,30 @@ export default function LeftSidebar(props: {
   // Detached sessions (no live tab) cap at the hollow running dot - working/
   // needs-you both need a real PTY to observe, which only a live tab has.
   // The decision itself lives in sessionDot.ts as a pure function so it can be
-  // pinned by a golden fixture; this closure only gathers its four inputs.
-  function sessionDot(id: string): SessionDot {
+  // pinned by a golden fixture; this closure only gathers its inputs.
+  //
+  // A chat session's own status is one of them, and it short-circuits the rest:
+  // the probe would report it running and the tail would be guessed at, both
+  // less certainly than the event stream already says.
+  function sessionDotInputs(id: string): SessionDotInputs {
     const tab = (props.liveTabs ?? []).find((t) => t.sessionId === id);
-    return computeSessionDot({
+    return {
+      chatStatus: liveChats().find((c) => c.sessionId === id)?.status,
       hasLiveTab: !!tab,
       running: probes()[id]?.running === true,
       ptyActivity: tab ? ptyActivity()[tab.id] : undefined,
       tailState: tailStates()[id],
-    });
+    };
+  }
+
+  function sessionDot(id: string): SessionDot {
+    return computeSessionDot(sessionDotInputs(id));
+  }
+
+  /** Whether this row's status was measured or inferred, for the marker the
+   *  row renders. Only the exact side is marked - see the row itself. */
+  function sessionCertainty(id: string): StatusCertainty {
+    return dotCertainty(sessionDotInputs(id));
   }
 
   // Reverse-lookup: which space/project owns a branch-unit's `folderPath`,
@@ -698,10 +720,18 @@ export default function LeftSidebar(props: {
   // Session-row status indicator: sits in the trailing time slot, replacing
   // ago(last_active) for any session with a detectable live status. A dead
   // session (status "none") keeps the plain ago time instead.
-  function statusIndicator(status: SessionStatus) {
+  //
+  // The exact tier wears a marker; the inferred tier renders exactly as it
+  // always has, down to the class string - see `statusPresentation` for why the
+  // marking goes on that side and not the other.
+  function statusIndicator(status: SessionStatus, certainty: StatusCertainty) {
     if (status === "none") return null;
+    const { title, exact } = statusPresentation(status, certainty);
+    const cls = exact
+      ? `${styles.statusIndicator} ${styles[status]} ${styles.exact}`
+      : `${styles.statusIndicator} ${styles[status]}`;
     return (
-      <span class={`${styles.statusIndicator} ${styles[status]}`} title={STATUS_LABEL[status]}>
+      <span class={cls} title={title}>
         {statusGlyph(status)}
       </span>
     );
@@ -774,14 +804,12 @@ export default function LeftSidebar(props: {
   createEffect(() => {
     const live = liveSessionDots();
     const { running, needsYou } = liveCounts(live);
-    const statuses = liveSessionStatuses();
-    const entries = statuses
-      .filter((l) => l.status !== "none")
-      .sort((a, b) => (a.status === "waitingForApproval" ? -1 : b.status === "waitingForApproval" ? 1 : 0))
-      .map((l) => ({
-        id: l.sessionId,
-        label: `${l.status === "waitingForApproval" ? "⚠ " : ""}${l.sessionName}${l.projectName ? ` (${l.projectName})` : ""}`,
-      }));
+    // Entries come from the *same* list as the counts, not from
+    // `liveSessionStatuses`. That list is deliberately PTY-only (see its note),
+    // which used to leave the tray counting a chat awaiting approval in its
+    // badge while omitting it from the menu - the one session you would open
+    // the tray to reach was the one entry missing from it.
+    const entries = trayEntries(live);
     invoke("update_tray", { running, needsYou, entries }).catch(() => {});
   });
   createEffect(() => {
@@ -2077,8 +2105,11 @@ export default function LeftSidebar(props: {
                   <Show when={isUnseen(viewStamps(), s, props.selected?.sessionId)}>
                     <span class={styles.unseenDot} title="New activity since you last looked" />
                   </Show>
-                  <Show when={statusIndicator(sessionStatus(s.id))} fallback={<span class={styles.when}>{ago(s.last_active)}</span>}>
-                    {statusIndicator(sessionStatus(s.id))}
+                  <Show
+                    when={statusIndicator(sessionStatus(s.id), sessionCertainty(s.id))}
+                    fallback={<span class={styles.when}>{ago(s.last_active)}</span>}
+                  >
+                    {statusIndicator(sessionStatus(s.id), sessionCertainty(s.id))}
                   </Show>
                 </div>
               );
