@@ -32,6 +32,13 @@ export type PersistedTab = {
   // id up front (the transport is spawned with `--session-id`), so there is no
   // window where a live chat has no id to restore against.
   sessionId?: string;
+  // Chat tabs that were rewound: the checkpoint the worktree was put back to.
+  // Kept across a relaunch so the tab still says the agent remembers turns that
+  // were undone, which stays true for the life of the session. `forkFrom` is
+  // deliberately *not* kept: the fork already happened and its conversation is
+  // in this session's own transcript, so a restore resumes rather than forking
+  // a second time.
+  rewindTo?: number;
 };
 
 export type WorkspaceTabs = {
@@ -53,6 +60,7 @@ export type OpenTabLike = {
   program: string;
   args: string[];
   sessionId?: string;
+  rewindTo?: number;
 };
 
 const isPersistable = (kind: string): kind is PersistedKind =>
@@ -78,6 +86,7 @@ export function toStore(
       program: t.program,
       args: t.args,
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
+      ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
     });
   }
   return out;
