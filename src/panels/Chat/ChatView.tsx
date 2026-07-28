@@ -2,6 +2,7 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } 
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
+import SessionDiffView from "./SessionDiffView";
 import SessionInfo from "./SessionInfo";
 import Composer from "./Composer";
 import PlanCard from "./PlanCard";
@@ -144,6 +145,16 @@ export default function ChatView(props: {
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [rules, setRules] = createSignal<ScopedRule[]>([]);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  // The transcript and the diff are two readings of one session, so they are a
+  // toggle rather than two places to be. The turn the reader was on is kept
+  // across the switch: coming back to the bottom of a long session would lose
+  // the place they left, which is the whole reason to look at the diff.
+  const [showDiff, setShowDiff] = createSignal(false);
+  const [anchorTurn, setAnchorTurn] = createSignal<string | null>(null);
+  // This run's first turn boundary. The diff view's attribution spans from
+  // here, which is exactly the span the in-memory before-states cover: a
+  // resumed session's earlier turns left no capture behind.
+  const [firstTurnTs, setFirstTurnTs] = createSignal<number | null>(null);
 
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
@@ -289,6 +300,7 @@ export default function ChatView(props: {
       // edits, which is the only state reverting the turn can mean.
       if (ev.type === "turnStarted") {
         turnTs = Math.floor(Date.now() / 1000);
+        if (firstTurnTs() === null) setFirstTurnTs(turnTs);
         // No tool call outlives the turn that opened it, so anything still in
         // here is spent. Cleared per turn rather than never, which would grow
         // the map for as long as the panel is open.
@@ -786,6 +798,17 @@ export default function ChatView(props: {
               <div class={styles.menuActions}>
                 <Button
                   size="sm"
+                  title={
+                    showDiff()
+                      ? "Back to the turn-by-turn transcript"
+                      : "See every file this session changed, as one diff per file"
+                  }
+                  onClick={() => setShowDiff(!showDiff())}
+                >
+                  {showDiff() ? "Show transcript" : "Show changes as a diff"}
+                </Button>
+                <Button
+                  size="sm"
                   title="Open a new chat and send what is in the composer to it"
                   onClick={onSendToNewSession}
                 >
@@ -819,11 +842,25 @@ export default function ChatView(props: {
         />
       </Show>
 
+      <Show
+        when={!showDiff()}
+        fallback={
+          <SessionDiffView
+            sessionId={props.sessionId}
+            cwd={props.cwd}
+            items={shownItems()}
+            live={state.started}
+            sinceTs={firstTurnTs()}
+          />
+        }
+      >
       <MessageList
         items={shownItems()}
         streaming={running()}
         sessionId={props.sessionId}
         cwd={props.cwd}
+        anchorTurnId={anchorTurn()}
+        onAnchor={setAnchorTurn}
         // The catalogue's display name when the resolved id matches one, the
         // raw id when it does not: an old id from a resumed transcript is
         // still better named than hidden.
@@ -835,6 +872,7 @@ export default function ChatView(props: {
         onAnswer={onAnswer}
         onRevertHunk={onRevertHunk}
       />
+      </Show>
 
       <PlanCard items={state.plan} />
 
