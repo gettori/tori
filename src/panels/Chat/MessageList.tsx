@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import { User } from "lucide-solid";
+import { CornerDownRight, User } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
@@ -231,13 +231,25 @@ export default function MessageList(props: {
       <For each={shown()}>
         {(item) => (
           <Switch>
+            {/* A steer is the same message from the same person, so it keeps the
+                user row rather than becoming a notice; it is marked, indented
+                and labelled because it landed *inside* the turn above it, and
+                reading it as an ordinary prompt would suggest the reply below
+                answers only that. It opens no turn group: `turnOpeners` counts
+                assistant-side rows only, so the turn it interrupted keeps its
+                one header. */}
             <Match when={item.kind === "user" && item}>
               {(it) => (
-                <div class={styles.userRow}>
+                <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
                   <span class={styles.userAvatar} aria-hidden="true">
-                    <Icon icon={User} size={13} />
+                    <Icon icon={it().steer ? CornerDownRight : User} size={13} />
                   </span>
-                  <div class={styles.userText}>{blockText(it().blocks)}</div>
+                  <div class={styles.userText}>
+                    <Show when={it().steer}>
+                      <span class={styles.steerLabel}>Steer</span>
+                    </Show>
+                    {blockText(it().blocks)}
+                  </div>
                 </div>
               )}
             </Match>

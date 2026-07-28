@@ -38,6 +38,7 @@ import type {
 } from "../../utils/chatTypes";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
 import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
+import type { ProbeState } from "../../utils/safeSend";
 import type { SessionStatus } from "../../utils/sessionStatus";
 
 /** How far back the message list renders before "load earlier" is offered. */
@@ -56,7 +57,11 @@ export type ChatFileEdit = {
   beforeBlob: string | null;
 };
 
-export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[] };
+/** `steer` marks a message delivered *into* a turn that was already running,
+ *  rather than one that opened a turn of its own. The transcript renders the
+ *  two differently, because reading a steer as an ordinary prompt would suggest
+ *  the reply below it answers only that. */
+export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean };
 export type TextItem = { kind: "text"; id: string; turnId: string; text: string };
 export type ThinkingItem = { kind: "thinking"; id: string; turnId: string; text: string };
 export type NoticeItem = { kind: "notice"; id: string; text: string; level: "info" | "error" };
@@ -155,7 +160,9 @@ export type ChatState = {
    *  round trip after Enter, and the queue would flush its whole backlog into
    *  that window instead of one turn at a time. */
   awaitingTurn: boolean;
-  /** Input typed while a turn was running, in the order it was typed. */
+  /** Input typed before the sent turn was acknowledged, in the order it was
+   *  typed. An *acknowledged* running turn takes input directly (`steerable`),
+   *  so this window is now the only one that queues. */
   queue: QueuedInput[];
   /** A cancelled turn parks the queue instead of flushing it: an interrupt
    *  reports as a completion, and flushing on it would send exactly the
@@ -552,7 +559,9 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       // turn or set `awaitingTurn` the way `pushUserTurn` does: replayed history
       // is finished, and marking it in flight would leave a reopened tab reading
       // as busy with nothing running.
-      push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks });
+      // Never a steer: the wire frame carries no such distinction, so a replayed
+      // steer reads as an ordinary message rather than being guessed at.
+      push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
       return;
     case "compacted": {
       // Inline, in place, because that is where the conversation's middle went.
@@ -694,8 +703,54 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
 /** Record what the user actually sent, so their turn appears immediately rather
  *  than only once the child echoes it back, and mark the turn as in flight. */
 export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
-  push(s, { kind: "user", id: nextId(s, "user"), blocks });
+  push(s, { kind: "user", id: nextId(s, "user"), blocks, steer: false });
   s.awaitingTurn = true;
+}
+
+/**
+ * Record a message delivered into the turn that is already running.
+ *
+ * Deliberately *not* `pushUserTurn`: `awaitingTurn` says "a turn was sent that
+ * the child has not acknowledged", and setting it here would make the composer
+ * read as busy waiting for a `turnStarted` that is never coming - the running
+ * turn already started, and a steer does not open a second one.
+ */
+export function pushSteer(s: ChatState, blocks: ContentBlock[]) {
+  push(s, { kind: "user", id: nextId(s, "steer"), blocks, steer: true });
+}
+
+/**
+ * Can a message be delivered *into* the running turn right now?
+ *
+ * Requires the child's own `turnStarted`, not merely `isRunning`. Between Enter
+ * and that acknowledgement there is no turn to steer yet, and a second `user`
+ * frame written into that window would race the first rather than redirect it.
+ * That window is what the queue is for, and it is the only thing still queuing
+ * now that a running turn takes input directly.
+ *
+ * Phase 2's spike 5 measured the delivery this gates: three trials of three,
+ * consumed before the next tool call. It is a behavioural observation against
+ * one CLI version, not a contract - if a later version starts buffering to turn
+ * end, this is the predicate to turn off.
+ */
+export function steerable(s: ChatState): boolean {
+  return s.activeTurnId !== null && !s.ended;
+}
+
+/**
+ * This session's answer to [[concept_safe_send]]'s probe, for a steer.
+ *
+ * A session blocked on a permission prompt is **refused**, not queued behind
+ * the prompt: the tool call is waiting on the user, and writing past the
+ * question would leave them answering something the agent has already been
+ * told to abandon. Same rule and same wording as the PTY route, which is why
+ * the gate is shared rather than reimplemented here.
+ *
+ * Never `not-ready`: `steerable` established a turn is running before this is
+ * consulted, so there is no becoming-ready to wait for.
+ */
+export function steerProbe(s: ChatState): ProbeState {
+  return pendingApprovals(s).length ? "blocked" : "ready";
 }
 
 /** The send never left. Roll back the in-flight mark so the composer is usable
@@ -736,8 +791,8 @@ export function settleBackfill(s: ChatState) {
   s.awaitingTurn = false;
 }
 
-/** Input typed while a turn was running. Queued, never dropped, and never sent
- *  from here: the flush driver decides. */
+/** Input typed before the sent turn was acknowledged. Queued, never dropped,
+ *  and never sent from here: the flush driver decides. */
 export function enqueue(s: ChatState, text: string): QueuedInput {
   const item = { id: nextId(s, "q"), text };
   s.queue.push(item);

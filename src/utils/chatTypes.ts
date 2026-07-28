@@ -305,6 +305,9 @@ export const CHAT_EVENT_TYPES = [
 
 export type ChatCommand =
   | { type: "sendTurn"; sessionId: string; blocks: ContentBlock[] }
+  /// The same content delivered *into* the running turn. Its own variant
+  /// because a queued mode or model switch must not be spent on it.
+  | { type: "steer"; sessionId: string; blocks: ContentBlock[] }
   | { type: "interrupt"; sessionId: string }
   | {
       type: "respondPermission";
@@ -324,6 +327,7 @@ export type ChatCommandType = ChatCommand["type"];
 
 export const CHAT_COMMAND_TYPES = [
   "sendTurn",
+  "steer",
   "interrupt",
   "respondPermission",
   "setMode",
@@ -405,6 +409,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
 
 export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; optional?: string[] }> = {
   sendTurn: { required: ["sessionId", "blocks"] },
+  steer: { required: ["sessionId", "blocks"] },
   interrupt: { required: ["sessionId"] },
   respondPermission: {
     required: ["sessionId", "toolUseId", "requestId", "decision", "scope", "reason"],

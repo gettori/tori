@@ -190,6 +190,11 @@ describe("chatTypes mirrors the Rust chat model", () => {
           // All three block shapes ride in one turn.
           expect(cmd.blocks.map((b) => b.type)).toEqual(["text", "image", "fileRef"]);
           break;
+        case "steer":
+          // Carries content like a turn, and is a distinct variant so a queued
+          // mode or model switch is not spent delivering it.
+          expect(cmd.blocks.map((b) => b.type)).toEqual(["text"]);
+          break;
         case "interrupt":
         case "close":
           expect(cmd.sessionId).toBe("s1");

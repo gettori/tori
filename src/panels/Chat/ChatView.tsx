@@ -37,6 +37,7 @@ import {
   hasSomethingToSend,
   historyFor,
   pendingFor,
+  restoreDraft,
   seedForSend,
   pushHistory,
   setDraft,
@@ -83,6 +84,7 @@ import {
   modelPending,
   pendingApprovals,
   pendingFlush,
+  pushSteer,
   pushUserTurn,
   releaseQueue,
   removeQueued,
@@ -93,6 +95,8 @@ import {
   selectMode,
   selectModel,
   settleBackfill,
+  steerable,
+  steerProbe,
   shownEffort,
   turnModel,
   shownMode,
@@ -111,6 +115,7 @@ import {
   type ClaimOutcome,
 } from "../../utils/chatOwnership";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
+import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import styles from "./Chat.module.css";
 
@@ -574,15 +579,69 @@ export default function ChatView(props: {
     ),
   );
 
-  // Attachments ride the turn that is actually sent. While a turn runs the typed
-  // text queues but the chips stay put and visible, because a queued message is
-  // sent later and silently emptying the composer of its attachments now would
-  // leave the user unable to see what the next turn is going to carry.
+  /**
+   * Deliver a message into the turn that is already running.
+   *
+   * Routed through [[concept_safe_send]]'s probe gate rather than straight at
+   * `chat_send`, so a session blocked on a permission prompt is refused with
+   * the same reason the PTY route gives instead of having a message written
+   * past the question the user still has to answer.
+   *
+   * The transcript row and the composer's attachments are both taken inside
+   * `write`, so a refusal leaves the chips where the user can still see them
+   * and puts no phantom row in the transcript.
+   *
+   * A steer that did not land puts the typed text **back** in the composer, per
+   * [[concept_safe_send]]'s own rule that a caller keeps the text on anything
+   * but "sent". This path needs it where the queue never did: `Composer.submit`
+   * clears the input the moment `onSend` returns, and a steer resolves long
+   * after that, so without this a session blocked on a permission prompt would
+   * refuse the message and eat it.
+   */
+  async function steer(text: string) {
+    // Before the gate, not inside `write`: bailing after the gate has committed
+    // would report "sent" for a message that was never composed.
+    if (!text && !pendingFor(props.sessionId).length) return;
+    const result = await sendWithProbeGate(text, {
+      probe: async () => steerProbe(state),
+      write: async (t) => {
+        const attached = takePending(props.sessionId);
+        const blocks: ContentBlock[] = t ? [...attached, { type: "text", text: t }] : attached;
+        // `chat_steer`, not `chat_send`: the latter also flushes a queued mode
+        // or model switch, and a steer must leave that for the turn it was
+        // promised to rather than spending it on one already running.
+        await invoke("chat_steer", { sessionId: props.sessionId, blocks });
+        edit((s) => pushSteer(s, blocks));
+      },
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    }).catch((e): SendResult | null => {
+      // Unlike a turn there is no `awaitingTurn` to roll back: the running turn
+      // is unaffected by a steer that never left, so this only has to say so.
+      // Null rather than a `SendResult`, because none of them is true here and
+      // claiming "sent" would be a lie the next branch reads.
+      edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false }));
+      return null;
+    });
+    if (result?.kind === "sent") return;
+    restoreDraft(props.sessionId, text);
+    if (result?.kind === "blocked") emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
+  }
+
+  // Attachments ride the message that is actually sent, whether it opens a turn
+  // or steers one. Only the pre-acknowledgement window still queues, and there
+  // the chips stay put and visible: a queued message is sent later, and silently
+  // emptying the composer now would leave the user unable to see what the next
+  // turn is going to carry.
   function onSend(text: string) {
     // Recorded on the way out whichever path it takes, since from the user's
-    // side both are "I sent that".
+    // side all three are "I sent that".
     pushHistory(props.sessionId, text);
     if (running()) {
+      if (steerable(state)) {
+        void steer(text);
+        return;
+      }
       // Attachment-only is a valid thing to send but not a valid thing to
       // queue: the queue carries text, so an empty entry would flush as an
       // empty turn once the running one ends.
@@ -1240,6 +1299,7 @@ export default function ChatView(props: {
 
       <Composer
         running={running()}
+        steering={steerable(state)}
         queue={state.queue}
         attachments={pendingFor(props.sessionId)}
         draft={draftFor(props.sessionId)}
