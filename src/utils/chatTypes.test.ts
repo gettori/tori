@@ -103,6 +103,13 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(ev.fastModeState).toBe("off");
           expect(ev.fastModeDisabledReason).toBe("sdk_opt_in_required");
           break;
+        case "sessionReady":
+          // The pre-turn liveness signal carries both catalogues, which is
+          // what puts the picker and the command menu on live data before the
+          // first message.
+          expect(ev.slashCommands[0]?.name).toBe("review");
+          expect(ev.models[0]?.value).toBe("sonnet");
+          break;
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();
           break;
