@@ -229,6 +229,23 @@ not guessed):
 - `{file}` - the session's transcript file path (only meaningful for an
   agent that resumes by file rather than by id, e.g. pi's `--session <path>`).
 
+**Write `running.pattern` against the chat command line, not just the terminal
+one.** `pgrep -f` matches the whole command line, and the two surfaces build
+different ones: a PTY tab runs `agent --resume <id>`, while a chat session runs
+`agent <chat.base_args...> --resume <id>` (or `--session-id <id>` for a new
+one). A pattern that assumes the flag sits right after the program name matches
+the terminal case and silently misses every chat, which makes those sessions
+invisible to the worktree-removal count, the delete warning and the revert
+guard. Allow for the intervening arguments, as the bundled claude adapter does:
+
+```toml
+pattern = 'claude ([^ ]+ )*(--resume|-r|--session-id) {id}'
+```
+
+The `([^ ]+ )*` matches whole argument tokens, so it spans the base args without
+also matching an unrelated process that merely mentions the id (a `tail` on the
+transcript, an editor with it open).
+
 ### Parser kinds
 
 `parser.kind` selects which built-in transcript parser turns this agent's

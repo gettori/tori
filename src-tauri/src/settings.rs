@@ -138,6 +138,106 @@ pub struct ChatPrefs {
     pub mode: Option<String>,
 }
 
+/// Which surface a single click on a sidebar session opens.
+///
+/// Chat is the default. `Agent` is the fallback that restores the pre-chat
+/// behaviour wholesale: the flip is a real behaviour change to a working tool,
+/// so it ships with a way back that is a setting rather than a downgrade.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DefaultSurface {
+    #[default]
+    Chat,
+    Agent,
+}
+
+/// Global chat preferences: what a new chat starts with and how the transcript
+/// renders.
+///
+/// **Separate from the per-project `chat` map** rather than nested inside it.
+/// Folding both into one `chat` key would change the shape of a field users
+/// already have on disk, and a section that fails to deserialize takes the
+/// whole file down to defaults with it (`load_from` has no per-section
+/// recovery), losing the user's theme over a chat preference.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatDefaults {
+    #[serde(default)]
+    pub default_surface: DefaultSurface,
+    /// Seeds a *new* chat in a project that has no remembered pick of its own;
+    /// `chat[project]` wins where it has one.
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Render assistant text as it streams. Off replaces the token-by-token
+    /// paint with one update per completed block.
+    #[serde(default = "yes")]
+    pub streaming: bool,
+    #[serde(default)]
+    pub density: TranscriptDensity,
+    /// Lines of tool output shown before a "show all" fold. Zero means no fold.
+    #[serde(default = "default_tool_output_lines")]
+    pub tool_output_lines: u32,
+    /// How long an approval prompt waits before Sway auto-denies it. Sway owns
+    /// this timeout so it always fires before claude's own hook timeout can.
+    #[serde(default = "default_approval_auto_deny_secs")]
+    pub approval_auto_deny_secs: u32,
+    /// Show Sway's own injected approval-hook events in the transcript. Off by
+    /// default: the matcher is all-tools, so it fires twice per tool call and
+    /// would bury the user's own hooks in noise.
+    #[serde(default)]
+    pub show_sway_hooks: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TranscriptDensity {
+    #[default]
+    Comfortable,
+    Compact,
+}
+
+fn yes() -> bool {
+    true
+}
+fn default_tool_output_lines() -> u32 {
+    20
+}
+fn default_approval_auto_deny_secs() -> u32 {
+    120
+}
+
+impl Default for ChatDefaults {
+    fn default() -> Self {
+        Self {
+            default_surface: DefaultSurface::default(),
+            model: None,
+            effort: None,
+            mode: None,
+            streaming: true,
+            density: TranscriptDensity::default(),
+            tool_output_lines: default_tool_output_lines(),
+            approval_auto_deny_secs: default_approval_auto_deny_secs(),
+            show_sway_hooks: false,
+        }
+    }
+}
+
+/// The harness binary this install drives.
+///
+/// `path` overrides discovery. Empty means "use the discovered one", which is
+/// the normal case; an override is for a user running a build that is not on
+/// the login shell's PATH.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Harness {
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -147,6 +247,10 @@ pub struct Settings {
     pub typography: Typography,
     #[serde(default)]
     pub checkpoints: Checkpoints,
+    #[serde(default)]
+    pub chat_defaults: ChatDefaults,
+    #[serde(default)]
+    pub harness: Harness,
     /// Keyed by project path. Untyped as a map rather than a list so a project
     /// that has never been opened simply has no entry, instead of needing one
     /// written before the first pick can be stored.
@@ -195,6 +299,18 @@ fn take_notice_with(settings: &Settings, state: &mut crate::onboarding::State) -
 #[tauri::command]
 pub fn get_settings() -> Settings {
     load_from(&settings_path())
+}
+
+/// The user's harness binary override, if they set a non-empty one.
+///
+/// Read from disk at each call rather than cached: the setting's whole purpose
+/// is to point at a different binary, and requiring a restart to try one would
+/// make it useless for exactly the debugging it exists for. A blank string is
+/// treated as unset so clearing the field in the UI restores discovery.
+pub fn harness_override() -> Option<String> {
+    let path = load_from(&settings_path()).harness.path?;
+    let trimmed = path.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 #[tauri::command]
@@ -265,6 +381,61 @@ mod tests {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("sway-settings-test-{n}-{seq}.json"))
+    }
+
+    #[test]
+    fn chat_defaults_and_harness_round_trip_through_the_file() {
+        let p = tmp_file();
+        let s = Settings {
+            chat_defaults: ChatDefaults {
+                default_surface: DefaultSurface::Agent,
+                model: Some("opus".into()),
+                effort: Some("high".into()),
+                mode: Some("plan".into()),
+                streaming: false,
+                density: TranscriptDensity::Compact,
+                tool_output_lines: 5,
+                approval_auto_deny_secs: 30,
+                show_sway_hooks: true,
+            },
+            harness: Harness { path: Some("/opt/claude".into()) },
+            ..Default::default()
+        };
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+    }
+
+    /// A settings file written before these sections existed must still load,
+    /// and must land on the documented defaults rather than on zeroes.
+    #[test]
+    fn a_file_without_the_new_sections_loads_on_the_documented_defaults() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{ "appearance": { "theme": "sway-dark" } }"#).unwrap();
+        let back = load_from(&p);
+        // Chat is the default surface: this is the flip.
+        assert_eq!(back.chat_defaults.default_surface, DefaultSurface::Chat);
+        // `#[serde(default)]` on a bool would give `false`; these have to come
+        // from the explicit defaults or streaming silently ships off.
+        assert!(back.chat_defaults.streaming);
+        assert_eq!(back.chat_defaults.tool_output_lines, 20);
+        assert_eq!(back.chat_defaults.approval_auto_deny_secs, 120);
+        // Sway's own hook noise stays folded until asked for.
+        assert!(!back.chat_defaults.show_sway_hooks);
+        assert_eq!(back.harness.path, None);
+        // And the section it did carry is untouched.
+        assert_eq!(back.appearance.theme, "sway-dark");
+    }
+
+    /// A partially-written section fills only its missing fields, so hand-editing
+    /// one key does not reset the rest to defaults.
+    #[test]
+    fn a_partial_chat_section_keeps_its_siblings_on_defaults() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{ "chatDefaults": { "defaultSurface": "agent" } }"#).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.chat_defaults.default_surface, DefaultSurface::Agent);
+        assert!(back.chat_defaults.streaming);
+        assert_eq!(back.chat_defaults.tool_output_lines, 20);
     }
 
     /// The picks are keyed per project and hold the `--model` **value**, not

@@ -40,9 +40,15 @@ export function liveCandidates(): RevertCandidate[] {
  *  pgrep probe. Their status tops out at "running" - a detached process can
  *  never report Executing.
  *
- *  A chat's child answers that same pgrep probe, so chat-hosted ids are excluded
- *  here: reporting one twice would downgrade a session whose exact status we
- *  have into an overridable "cannot verify". */
+ *  Chat-hosted ids are excluded here: reporting one twice would downgrade a
+ *  session whose exact status we have into an overridable "cannot verify".
+ *
+ *  The exclusion is what makes that correct, and it does not rest on the probe
+ *  agreeing. It used to be justified by "a chat's child answers that same pgrep
+ *  probe", which was measured false in Phase 12 - the adapter's pattern wanted
+ *  the flag adjacent to the program name, and a chat puts its base_args first,
+ *  so no chat matched at all. The pattern is fixed, but the reasoning here
+ *  deliberately no longer depends on it. */
 export async function detachedCandidates(folder: string): Promise<RevertCandidate[]> {
   const sessions = await invoke<SessionMeta[]>("list_sessions", { folder }).catch(() => [] as SessionMeta[]);
   const liveIds = new Set([...liveStatuses().map((s) => s.sessionId), ...liveChatIds()]);

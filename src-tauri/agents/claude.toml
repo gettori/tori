@@ -20,10 +20,22 @@ filename_pattern = '^(?P<id>.+)\.jsonl$'
 kind = "claude_jsonl"
 
 [running]
-# ERE for `pgrep -f`; matches a live `claude --resume <id>`/`-r <id>` process,
-# not merely any process whose command line contains the id (a `less`/`tail`
-# on the transcript file, an editor with it open).
-pattern = 'claude (--resume|-r) {id}'
+# ERE for `pgrep -f`; matches a live claude process driving this session id, not
+# merely any process whose command line contains the id (a `less`/`tail` on the
+# transcript file, an editor with it open).
+#
+# The `([^ ]+ )*` is load-bearing, and was measured rather than assumed. The
+# original `claude (--resume|-r) {id}` required the flag to sit immediately
+# after the program name, which is true of a PTY agent tab (`claude --resume
+# <id>`) but false of **every chat session**: the chat transport puts its
+# base_args first, so the real command line is `claude -p --input-format
+# stream-json ... --resume <id>`. Chats were therefore invisible to
+# `session_running`, and so to every guard built on it. A new chat was doubly
+# invisible, since it is started with `--session-id` and never `--resume`.
+#
+# Matching a run of whole argument tokens keeps the decoys out: a `tail` on
+# `~/.claude/projects/<p>/<id>.jsonl` has no flag token before the id.
+pattern = 'claude ([^ ]+ )*(--resume|-r|--session-id) {id}'
 
 [capabilities]
 # Empirically confirmed (2026-07-18, phase 2 capture): a real permission
@@ -61,6 +73,11 @@ base_args = [
   "--output-format", "stream-json",
   "--verbose",
   "--include-partial-messages",
+  # Puts the user's own hooks in the transcript in-band. Sway's injected
+  # approval hook rides the same stream and is folded away by default (it
+  # stamps its own output so it can be told apart; `hook_name` reports the
+  # tool, not the matcher, so the name cannot identify it).
+  "--include-hook-events",
 ]
 session_id_args = ["--session-id", "{id}"]
 resume_args = ["--resume", "{id}"]

@@ -230,7 +230,10 @@ pub async fn chat_spawn(
     let spec = StartSpec {
         session_id: session_id.clone(),
         cwd,
-        program: chat.program.clone(),
+        // The user's harness override wins over the adapter's program name.
+        // Read at spawn time rather than cached, so changing it in Settings
+        // applies to the next session started without restarting Sway.
+        program: crate::settings::harness_override().unwrap_or_else(|| chat.program.clone()),
         args,
         // Empty today. The map exists so multi-account support later changes
         // this one line rather than every signature between here and the child.
@@ -411,6 +414,27 @@ pub struct ScopedRule {
     pub tool: String,
     pub prefix: Option<String>,
     pub scope: PermissionScope,
+}
+
+/// Every MCP server configured for `cwd`, across Claude's three scopes.
+///
+/// Read straight from Claude's own files rather than from `system/init`, so the
+/// list is answerable before a session starts and includes servers that failed
+/// to connect (which init reports) *and* ones still pending approval (which it
+/// does not connect to at all).
+#[tauri::command]
+pub async fn chat_mcp_list(cwd: String) -> Result<Vec<super::mcp::McpEntry>, String> {
+    Ok(super::mcp::list_for(&cwd))
+}
+
+#[tauri::command]
+pub async fn chat_mcp_add(cwd: String, name: String, config: serde_json::Value) -> Result<Vec<super::mcp::McpEntry>, String> {
+    super::mcp::add_to_project(&cwd, &name, config)
+}
+
+#[tauri::command]
+pub async fn chat_mcp_remove(cwd: String, name: String) -> Result<Vec<super::mcp::McpEntry>, String> {
+    super::mcp::remove_from_project(&cwd, &name)
 }
 
 /// Every rule in force for this session, project-scoped ones marked as such.
