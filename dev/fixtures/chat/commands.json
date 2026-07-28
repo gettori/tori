@@ -22,6 +22,16 @@
     ]
   },
   {
+    "type": "steer",
+    "sessionId": "s1",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "stop reading, just summarise"
+      }
+    ]
+  },
+  {
     "type": "interrupt",
     "sessionId": "s1"
   },

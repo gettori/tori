@@ -563,6 +563,15 @@ pub enum ChatCommand {
         session_id: String,
         blocks: Vec<ContentBlock>,
     },
+    /// The same content delivered *into* a turn that is already running, rather
+    /// than opening one. Its own variant because it is not a turn: a queued
+    /// mode or model switch must not be spent on it, and a harness that cannot
+    /// take input mid-turn has to be able to refuse this while still accepting
+    /// [`Self::SendTurn`].
+    Steer {
+        session_id: String,
+        blocks: Vec<ContentBlock>,
+    },
     Interrupt {
         session_id: String,
     },
@@ -807,6 +816,10 @@ mod tests {
                     },
                 ],
             },
+            ChatCommand::Steer {
+                session_id: "s1".into(),
+                blocks: vec![ContentBlock::Text { text: "stop reading, just summarise".into() }],
+            },
             ChatCommand::Interrupt { session_id: "s1".into() },
             ChatCommand::RespondPermission {
                 session_id: "s1".into(),
@@ -889,6 +902,7 @@ mod tests {
         for cmd in &cmds {
             let _name = match cmd {
                 ChatCommand::SendTurn { .. } => "sendTurn",
+                ChatCommand::Steer { .. } => "steer",
                 ChatCommand::Interrupt { .. } => "interrupt",
                 ChatCommand::RespondPermission { .. } => "respondPermission",
                 ChatCommand::SetMode { .. } => "setMode",
@@ -896,7 +910,7 @@ mod tests {
                 ChatCommand::Close { .. } => "close",
             };
         }
-        assert_eq!(cmds.len(), 6, "every_command() must hold exactly one sample per variant");
+        assert_eq!(cmds.len(), 7, "every_command() must hold exactly one sample per variant");
     }
 
     /// The wire shape the TypeScript mirror is written against: tagged on

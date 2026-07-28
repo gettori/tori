@@ -61,6 +61,11 @@ export type ProbeState = "ready" | "blocked" | "not-ready";
 
 export type SendResult = { kind: "sent" } | { kind: "blocked" } | { kind: "timeout" };
 
+// What a caller tells the user when the gate refuses a blocked target. One
+// string rather than one per surface: the PTY route and the chat steer are
+// refused by the same rule, and two wordings would read as two different rules.
+export const BLOCKED_REASON = "Session is waiting for permission, answer it first.";
+
 export type SendDeps = {
   probe: () => Promise<ProbeState>;
   write: (text: string) => Promise<void>;

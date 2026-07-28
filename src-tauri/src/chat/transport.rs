@@ -93,6 +93,17 @@ pub trait AgentTransport: Send {
     /// Submit a user turn.
     fn send(&mut self, blocks: &[ContentBlock]) -> Result<(), String>;
 
+    /// Deliver a message into the turn that is already running.
+    ///
+    /// Separate from [`Self::send`] rather than a flag on it, because the two
+    /// differ in what they are allowed to carry: `send` also flushes whatever
+    /// mode or model switch is queued for the next turn, and a steer must not
+    /// spend that switch on a turn already under way. A harness that buffers
+    /// stdin to turn end has no honest implementation of this and should return
+    /// an error rather than degrade into a queued turn, which the caller cannot
+    /// tell apart from a steer that landed.
+    fn steer(&mut self, blocks: &[ContentBlock]) -> Result<(), String>;
+
     /// Ask the harness to abandon the running turn.
     fn interrupt(&mut self) -> Result<(), String>;
 
@@ -133,6 +144,9 @@ pub(crate) mod mock {
     pub struct MockTransport {
         pub started: Vec<StartSpec>,
         pub sent: Vec<Vec<ContentBlock>>,
+        /// Kept apart from `sent` so a test can assert which verb a caller used,
+        /// which is the whole point of the two being distinct.
+        pub steered: Vec<Vec<ContentBlock>>,
         pub interrupts: u32,
         pub closed: bool,
         sink: Option<Sink>,
@@ -146,6 +160,10 @@ pub(crate) mod mock {
         }
         fn send(&mut self, blocks: &[ContentBlock]) -> Result<(), String> {
             self.sent.push(blocks.to_vec());
+            Ok(())
+        }
+        fn steer(&mut self, blocks: &[ContentBlock]) -> Result<(), String> {
+            self.steered.push(blocks.to_vec());
             Ok(())
         }
         fn interrupt(&mut self) -> Result<(), String> {

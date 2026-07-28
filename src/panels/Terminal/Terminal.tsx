@@ -44,7 +44,7 @@ import {
 import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
-import { sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
+import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { liveStatuses } from "../../utils/sessionStatus";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
@@ -835,7 +835,7 @@ export default function Terminal(props: {
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     }).catch((): { kind: "timeout" } => ({ kind: "timeout" }));
     if (result.kind === "blocked") {
-      emitWith<ToastEvent>(TOAST, { message: "Session is waiting for permission, answer it first.", kind: "error" });
+      emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
     } else if (result.kind === "timeout") {
       emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session in time, try again.", kind: "error" });
     }

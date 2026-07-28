@@ -20,6 +20,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
   const result = render(() => (
     <Composer
       running={false}
+      steering={false}
       queue={[]}
       attachments={[]}
       commands={[]}
@@ -75,6 +76,16 @@ describe("Composer keys", () => {
     const { input, onSend } = setup();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  // What Enter does mid-turn changed, so the placeholder has to say which of the
+  // two it will do. It also must not present a steer as instant: Phase 2 measured
+  // 1.5s to 5.4s from the write to the model acting on it.
+  it("says whether typing steers this turn or queues for the next", () => {
+    expect(setup({ running: true, steering: true }).input.placeholder).toBe(
+      "Steer this turn, picked up at its next step",
+    );
+    expect(setup({ running: true, steering: false }).input.placeholder).toBe("Type to queue for the next turn");
   });
 });
 
@@ -306,6 +317,7 @@ describe("draft and history", () => {
     const { container, unmount } = render(() => (
       <Composer
         running={false}
+        steering={false}
         queue={[]}
         attachments={[]}
         commands={[]}
@@ -337,6 +349,7 @@ describe("draft and history", () => {
     const second = render(() => (
       <Composer
         running={false}
+        steering={false}
         queue={[]}
         attachments={[]}
         commands={[]}

@@ -276,6 +276,20 @@ pub async fn chat_send(
     state.0.send(&session_id, blocks)
 }
 
+/// Deliver a message into the turn already running, rather than opening one.
+///
+/// A separate command from [`chat_send`] because the transport treats the two
+/// differently: `send` also flushes a queued mode or model switch, which a
+/// steer must leave for the turn it was promised to.
+#[tauri::command]
+pub async fn chat_steer(
+    state: State<'_, ChatState>,
+    session_id: String,
+    blocks: Vec<ContentBlock>,
+) -> Result<(), String> {
+    state.0.steer(&session_id, blocks)
+}
+
 #[tauri::command]
 pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
     state.0.interrupt(&session_id)

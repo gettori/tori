@@ -281,6 +281,21 @@ impl AgentTransport for ClaudeTransport {
         self.write_frame(&turn_frame(blocks))
     }
 
+    /// The same `user` frame `send` ends with, and deliberately nothing else.
+    ///
+    /// No pending mode or model switch is flushed: those are promises about the
+    /// *next* turn, and a steer runs inside the current one. Taking them here
+    /// would apply a switch the user was told would wait, and worse, consume it
+    /// so the turn it was meant for never got it.
+    ///
+    /// Measured, not assumed: Phase 2's spike 5 wrote this frame mid-turn over
+    /// `--input-format stream-json` in three trials and the model acted on it
+    /// before its next tool call every time, at 1.5s to 5.4s. That is an
+    /// observation against claude 2.1.220 rather than a contract.
+    fn steer(&mut self, blocks: &[ContentBlock]) -> Result<(), String> {
+        self.write_frame(&turn_frame(blocks))
+    }
+
     fn interrupt(&mut self) -> Result<(), String> {
         let request_id = self.next_request_id();
         self.write_frame(&json!({
@@ -436,6 +451,36 @@ pub mod tests {
         t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
         assert_eq!(t.pending_mode, Some(PermissionMode::Plan));
         assert_eq!(t.pending_model, Some(("claude-opus-5".to_string(), Some(Effort::High))));
+    }
+
+    /// A steer runs inside the current turn, so it must leave a queued switch
+    /// alone. `send` *takes* the pending values, so had steering reused it the
+    /// switch would have been applied to a turn the user was told it would wait
+    /// for, and then been gone before the turn it was actually meant for.
+    ///
+    /// Asserted on the pending state rather than on the wire because there is no
+    /// child here to write to: both calls fail at the absent stdin, and what is
+    /// under test is what they consumed before reaching it.
+    #[test]
+    fn a_steer_leaves_a_queued_mode_or_model_switch_for_the_next_turn() {
+        let mut t = ClaudeTransport::new("s1");
+        t.set_mode(PermissionMode::Plan).unwrap();
+        t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
+
+        let blocks = [ContentBlock::Text { text: "stop reading, just summarise".to_string() }];
+        assert!(t.steer(&blocks).is_err(), "no child, so the write itself cannot succeed");
+        assert_eq!(t.pending_mode, Some(PermissionMode::Plan), "the steer must not spend the mode switch");
+        assert_eq!(
+            t.pending_model,
+            Some(("claude-opus-5".to_string(), Some(Effort::High))),
+            "nor the model switch"
+        );
+
+        // The turn the switches were queued for still takes them, which is what
+        // makes the steer's restraint a deferral rather than a loss.
+        let _ = t.send(&blocks);
+        assert_eq!(t.pending_mode, None);
+        assert_eq!(t.pending_model, None);
     }
 
     /// Every failure path in `start` relies on `abandon` actually ending the
@@ -694,6 +739,54 @@ pub mod tests {
             .unwrap_or(0);
         let hex = format!("{:032x}", nanos ^ ((std::process::id() as u128) << 96));
         format!("{}-{}-4{}-8{}-{}", &hex[0..8], &hex[8..12], &hex[13..16], &hex[17..20], &hex[20..32])
+    }
+
+    /// The steer reaches the child's stdin *while it is running*, which is the
+    /// half of Phase 2's spike 5 that lives in Sway rather than in the CLI.
+    ///
+    /// The spike established that claude acts on a mid-turn `user` frame before
+    /// its next tool call; what it could not establish is that Sway's own
+    /// `steer` still writes that frame once it stopped going through `send`.
+    /// So the child here is a stand-in that copies stdin to a file, and the
+    /// assertion is on the bytes that actually left the pipe.
+    #[test]
+    fn a_steer_writes_the_user_frame_to_the_live_childs_stdin() {
+        let dir = std::env::temp_dir().join(format!("sway-steer-{}-{}", std::process::id(), uuid_like()));
+        std::fs::create_dir_all(&dir).expect("create the scratch dir");
+        let log = dir.join("stdin.jsonl");
+
+        let mut t = ClaudeTransport::new("s-steer");
+        let spec = StartSpec {
+            session_id: "s-steer".into(),
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), format!("cat > '{}'", log.display())],
+            ..Default::default()
+        };
+        t.start(spec, new_sink(Box::new(|_| {}))).unwrap();
+        t.steer(&[ContentBlock::Text { text: "stop reading, just summarise".to_string() }])
+            .expect("the steer should reach a running child");
+
+        // Polled rather than slept on: `cat` writes as it reads, but when it gets
+        // there is the OS's business.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut written = String::new();
+        while std::time::Instant::now() < deadline {
+            written = std::fs::read_to_string(&log).unwrap_or_default();
+            if written.contains("summarise") {
+                break;
+            }
+            thread::sleep(std::time::Duration::from_millis(20));
+        }
+        t.close().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let steer = written
+            .lines()
+            .find(|l| l.contains("summarise"))
+            .unwrap_or_else(|| panic!("the steer never reached stdin; got: {written}"));
+        // A `user` frame, the same shape a turn takes: the CLI has no separate
+        // wire form for a steer, and inventing one would fail the turn.
+        assert!(steer.contains("\"type\":\"user\""), "the steer must ride the user frame: {steer}");
     }
 
     /// Unparseable stdout is reported without killing the session, because one

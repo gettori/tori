@@ -21,14 +21,20 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 // app. Same reason the tool-card tests build theirs by hand.
 function turn(n: number): ChatItem[] {
   return [
-    { kind: "user", id: `u${n}`, blocks: [{ type: "text", text: `question ${n}` }] },
+    { kind: "user", id: `u${n}`, blocks: [{ type: "text", text: `question ${n}` }], steer: false },
     { kind: "text", id: `t${n}`, turnId: `turn-${n}`, text: `answer ${n}` },
   ];
 }
 
 const ITEMS: ChatItem[] = [1, 2, 3].flatMap(turn);
 
-function list(over: { anchorTurnId?: string | null; onAnchor?: (id: string | null) => void } = {}) {
+function list(
+  over: {
+    items?: ChatItem[];
+    anchorTurnId?: string | null;
+    onAnchor?: (id: string | null) => void;
+  } = {},
+) {
   return (
     <MessageList
       items={ITEMS}
@@ -42,6 +48,33 @@ function list(over: { anchorTurnId?: string | null; onAnchor?: (id: string | nul
     />
   );
 }
+
+// A steer is delivered *into* a running turn, so the transcript has to show it
+// as an aside within that turn rather than as the next thing asked - otherwise
+// the reply below it reads as an answer to the steer alone.
+describe("a steer renders as an interjection", () => {
+  const STEERED: ChatItem[] = [
+    { kind: "user", id: "u1", blocks: [{ type: "text", text: "read every file" }], steer: false },
+    { kind: "text", id: "t1", turnId: "turn-1", text: "reading" },
+    { kind: "user", id: "s1", blocks: [{ type: "text", text: "stop, just summarise" }], steer: true },
+    { kind: "text", id: "t2", turnId: "turn-1", text: "summarising" },
+  ];
+
+  it("labels it and does not open a turn group of its own", () => {
+    const { container } = render(() => list({ items: STEERED }));
+    expect(container.textContent).toContain("Steer");
+    expect(container.textContent).toContain("stop, just summarise");
+    // One header for one turn: the steer interrupted `turn-1` and did not start
+    // a second one, so the transcript must not grow a second byline.
+    const ids = [...container.querySelectorAll("[data-turn-id]")].map((e) => (e as HTMLElement).dataset.turnId);
+    expect(ids).toEqual(["turn-1"]);
+  });
+
+  it("leaves an ordinary message unlabelled", () => {
+    const { container } = render(() => list());
+    expect(container.textContent).not.toContain("Steer");
+  });
+});
 
 describe("MessageList turn anchoring", () => {
   it("marks each turn so a reader's position can be named by turn, not by pixel", () => {

@@ -10,6 +10,7 @@ import {
   historyFor,
   hunkCommentBlocks,
   pushHistory,
+  restoreDraft,
   setDraft,
   offerToComposer,
   pendingFor,
@@ -225,6 +226,35 @@ describe("send to a new session", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
     expect(seedForSend(SESSION, TARGET)).toBe(true);
     expect(pendingFor(TARGET)).toHaveLength(1);
+  });
+});
+
+// A chat steer is the first send that can be refused *after* the composer has
+// already cleared itself: the session may be waiting on a permission prompt,
+// and that answer comes back long after Enter emptied the input. Without this
+// the refusal would eat the message it refused.
+describe("restoreDraft", () => {
+  const SESSION = "s-restore";
+  afterEach(() => clearComposer(SESSION));
+
+  it("puts back text whose send did not land", () => {
+    setDraft(SESSION, "stop, just summarise");
+    setDraft(SESSION, "");
+    restoreDraft(SESSION, "stop, just summarise");
+    expect(draftFor(SESSION)).toBe("stop, just summarise");
+  });
+
+  it("does not overwrite something typed during the round trip", () => {
+    // The newer text is what the user is looking at. The older one is still
+    // reachable through Up-arrow recall, so nothing is actually lost.
+    setDraft(SESSION, "a newer thought");
+    restoreDraft(SESSION, "stop, just summarise");
+    expect(draftFor(SESSION)).toBe("a newer thought");
+  });
+
+  it("restores nothing for an attachment-only send", () => {
+    restoreDraft(SESSION, "");
+    expect(draftFor(SESSION)).toBe("");
   });
 });
 
