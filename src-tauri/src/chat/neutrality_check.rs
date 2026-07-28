@@ -349,6 +349,8 @@ mod tests {
         match ev {
             ChatEvent::SessionStarted { .. } => "sessionStarted",
             ChatEvent::TurnStarted { .. } => "turnStarted",
+            ChatEvent::UserMessage { .. } => "userMessage",
+            ChatEvent::Compacted { .. } => "compacted",
             ChatEvent::TextDelta { .. } => "textDelta",
             ChatEvent::ThinkingDelta { .. } => "thinkingDelta",
             ChatEvent::ToolCallStarted { .. } => "toolCallStarted",

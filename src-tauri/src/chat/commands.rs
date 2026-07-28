@@ -44,20 +44,31 @@ fn make_transport(transport: ChatTransport, session_id: &str) -> Box<dyn AgentTr
 /// Order is load-bearing: the base args carry the stream-json protocol flags and
 /// everything after them selects behaviour, so a later `--model` cannot be
 /// swallowed by a flag that takes a value.
+#[allow(clippy::too_many_arguments)]
 pub fn build_args(
     chat: &ChatConfig,
     session_id: &str,
     resume: bool,
+    fork_from: Option<&str>,
     model: Option<&str>,
     mode: Option<&str>,
     effort: Option<&str>,
     extra_dirs: &[String],
 ) -> Vec<String> {
     let mut args = chat.base_args.clone();
-    // `--session-id` creates the id, `--resume` attaches to an existing one.
-    // Passing both would be contradictory, so this is an either/or.
-    let id_template = if resume { &chat.resume_args } else { &chat.session_id_args };
-    args.extend(agents::apply_chat_template(id_template, &[("id", session_id)]));
+    // Three ways to name the session, and exactly one applies: `--session-id`
+    // creates the id, `--resume` attaches to an existing one, and a fork reads
+    // one id while writing another. Passing more than one would be
+    // contradictory, so `fork_from` wins outright rather than layering.
+    if let Some(from) = fork_from {
+        args.extend(agents::apply_chat_template(
+            &chat.fork_args,
+            &[("from", from), ("id", session_id)],
+        ));
+    } else {
+        let id_template = if resume { &chat.resume_args } else { &chat.session_id_args };
+        args.extend(agents::apply_chat_template(id_template, &[("id", session_id)]));
+    }
     if let Some(model) = model {
         args.extend(chat.model_args_for(model).unwrap_or_default());
     }
@@ -85,6 +96,15 @@ pub struct SpawnResult {
     pub spawned: Option<Spawned>,
 }
 
+/// Open a chat session: create it, resume it, or fork it.
+///
+/// `fork_from` is the session being forked *from*, when this is a fork. It is a
+/// separate parameter from `session_id` because a fork is the one case where
+/// the id being read and the id being claimed differ: `session_id` is the new
+/// one, which Sway chooses and claims **before** starting the child. Measured
+/// against claude 2.1.220: `--resume <old> --fork-session --session-id <new>`
+/// honours the passed id and reports it back, so the claim can precede the
+/// process rather than chase it.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn chat_spawn(
@@ -94,6 +114,7 @@ pub async fn chat_spawn(
     agent_id: String,
     cwd: String,
     resume: bool,
+    fork_from: Option<String>,
     model: Option<String>,
     mode: Option<String>,
     effort: Option<String>,
@@ -198,6 +219,7 @@ pub async fn chat_spawn(
         chat,
         &session_id,
         resume,
+        fork_from.as_deref(),
         model.as_deref(),
         mode.as_deref(),
         effort.as_deref(),
@@ -591,6 +613,114 @@ pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Resu
     state.0.close(&session_id)
 }
 
+/// Replay a session's transcript as the events that rebuild it.
+///
+/// **Pulled by the panel rather than pushed through the live channel.** Backfill
+/// has to land before the first live event or the transcript renders out of
+/// order, and a return value is ordered by construction where two producers on
+/// one channel are not.
+///
+/// Works for a session Sway never ran: the file is the harness's own jsonl, and
+/// a PTY tab, an outside terminal and a chat tab all write the same one.
+///
+/// A session with no transcript yet returns no events rather than an error - a
+/// brand-new chat is the common case, not a failure.
+///
+/// `from_session_id` is the transcript to *read*; `session_id` is the session
+/// the events are stamped for. They differ for a fork, which shows the history
+/// it forked from under its own new id - stamping that history with the
+/// original's id would have every event dropped by the panel's own routing
+/// guard, and the fork would open blank.
+#[tauri::command]
+pub async fn chat_history(
+    session_id: String,
+    from_session_id: Option<String>,
+    agent_id: String,
+) -> Result<Vec<ChatEvent>, String> {
+    let source = from_session_id.as_deref().unwrap_or(&session_id);
+    let Some(path) = crate::sessions::transcript_path(source, &agent_id) else {
+        return Ok(Vec::new());
+    };
+    let turns = crate::sessions::transcript_turns(&path, &agent_id);
+    Ok(super::history::events_from_turns(&session_id, &turns))
+}
+
+// --- mid-turn quit recovery ------------------------------------------------
+//
+// A turn that was running when Sway went away leaves no trace the transcript can
+// be read for: the file simply stops, which is indistinguishable from a turn
+// that ended normally and from one still streaming. So Sway records its own
+// side - the turn it believes is open - and clears it on completion. Anything
+// still marked at the next launch was interrupted.
+//
+// Deliberately **not** derived from the transcript tail. `classify_tail` answers
+// "what was the last thing written", which a killed turn and a finished one can
+// share; only the writer knows whether it ever saw the end.
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenTurn {
+    pub session_id: String,
+    pub turn_id: String,
+}
+
+fn open_turn_path(session_id: &str) -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/chat-open-turn")
+        .join(format!("{session_id}.json"))
+}
+
+/// Mark a turn as open, or clear the mark when it completes.
+///
+/// Called on every `TurnStarted`/`TurnCompleted`, so the file exists for exactly
+/// as long as a turn is in flight. A crash leaves it behind, which is the whole
+/// signal.
+#[tauri::command]
+pub async fn chat_mark_turn(session_id: String, turn_id: Option<String>) -> Result<(), String> {
+    mark_turn(&session_id, turn_id)
+}
+
+/// The file half of `chat_mark_turn`, split out so it is testable without a
+/// Tauri app or an async runtime.
+fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
+    let path = open_turn_path(session_id);
+    let Some(turn_id) = turn_id else {
+        // Completion. A missing file is the normal case on a second clear, so
+        // absence is not an error.
+        if let Err(e) = std::fs::remove_file(&path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        return Ok(());
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(&OpenTurn { session_id: session_id.to_string(), turn_id })
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+/// The turn this session was running when Sway last went away, if any.
+///
+/// **Consumed, not merely read**: the mark is cleared as it is reported, so the
+/// interruption is announced exactly once. Left in place it would re-announce
+/// on every reopen, long after the user had dealt with it.
+#[tauri::command]
+pub async fn chat_take_interrupted_turn(session_id: String) -> Result<Option<OpenTurn>, String> {
+    Ok(take_interrupted_turn(&session_id))
+}
+
+/// The file half of `chat_take_interrupted_turn`. See `mark_turn` for why.
+fn take_interrupted_turn(session_id: &str) -> Option<OpenTurn> {
+    let path = open_turn_path(session_id);
+    let text = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    serde_json::from_str::<OpenTurn>(&text).ok()
+}
+
 /// What the startup reap found, delivered once, when the frontend is ready to
 /// show it.
 ///
@@ -626,11 +756,11 @@ mod tests {
     #[test]
     fn a_fresh_session_selects_its_own_id_and_a_resume_attaches_to_one() {
         let chat = claude_chat();
-        let fresh = build_args(chat, "abc-123", false, None, None, None, &[]);
+        let fresh = build_args(chat, "abc-123", false, None, None, None, None, &[]);
         assert!(fresh.windows(2).any(|w| w == ["--session-id", "abc-123"]));
         assert!(!fresh.iter().any(|a| a == "--resume"));
 
-        let resumed = build_args(chat, "abc-123", true, None, None, None, &[]);
+        let resumed = build_args(chat, "abc-123", true, None, None, None, None, &[]);
         assert!(resumed.windows(2).any(|w| w == ["--resume", "abc-123"]));
         assert!(!resumed.iter().any(|a| a == "--session-id"));
     }
@@ -640,7 +770,7 @@ mod tests {
     /// start.
     #[test]
     fn the_stream_json_protocol_flags_come_first() {
-        let args = build_args(claude_chat(), "s1", false, Some("claude-opus-5"), None, None, &[]);
+        let args = build_args(claude_chat(), "s1", false, None, Some("claude-opus-5"), None, None, &[]);
         let base = &claude_chat().base_args;
         assert_eq!(&args[..base.len()], base.as_slice());
     }
@@ -650,7 +780,7 @@ mod tests {
         let args = build_args(
             claude_chat(),
             "s1",
-            false,
+            false, None,
             Some("claude-opus-5"),
             Some("plan"),
             Some("high"),
@@ -661,12 +791,97 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--effort", "high"]));
     }
 
+    /// Pins the exact argv measured against claude 2.1.220: forking reads the
+    /// old id and *writes* the new one, and the CLI honours the id we pass.
+    /// Verified live - the fork answered from the original's context, reported
+    /// the id Sway chose, and the original transcript never saw the fork's turn.
+    #[test]
+    fn a_fork_reads_the_old_session_and_claims_the_new_one() {
+        let args = build_args(claude_chat(), "new-id", false, Some("old-id"), None, None, None, &[]);
+        assert!(args.windows(2).any(|w| w == ["--resume", "old-id"]));
+        assert!(args.windows(2).any(|w| w == ["--session-id", "new-id"]));
+        assert!(args.iter().any(|a| a == "--fork-session"));
+    }
+
+    /// The three ways to name a session are mutually exclusive. A fork that also
+    /// emitted a bare `--session-id`/`--resume` pair would be contradictory, and
+    /// a resume flag left in would reuse the id the fork exists to avoid.
+    #[test]
+    fn naming_a_session_picks_exactly_one_form() {
+        let fork = build_args(claude_chat(), "new-id", true, Some("old-id"), None, None, None, &[]);
+        // `resume: true` is ignored outright rather than layered on: a fork that
+        // also resumed in place would write into the session it forked from.
+        assert_eq!(fork.iter().filter(|a| *a == "--resume").count(), 1);
+        assert!(fork.windows(2).all(|w| w != ["--resume", "new-id"]));
+
+        let resumed = build_args(claude_chat(), "s1", true, None, None, None, None, &[]);
+        assert!(resumed.windows(2).any(|w| w == ["--resume", "s1"]));
+        assert!(!resumed.iter().any(|a| a == "--fork-session"));
+        assert!(!resumed.iter().any(|a| a == "--session-id"));
+
+        let fresh = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
+        assert!(fresh.windows(2).any(|w| w == ["--session-id", "s1"]));
+        assert!(!fresh.iter().any(|a| a == "--resume"));
+    }
+
+
+    /// Mid-turn quit recovery. The transcript cannot answer this: a killed turn
+    /// and a finished one both just stop, so Sway records its own side.
+    #[test]
+    fn an_open_turn_survives_a_quit_and_is_announced_exactly_once() {
+        let sid = format!("open-turn-test-{}", std::process::id());
+
+        // Nothing recorded yet: a session that never ran reports no interruption.
+        assert_eq!(take_interrupted_turn(&sid), None);
+
+        // A turn opens, and Sway goes away before it completes.
+        mark_turn(&sid, Some("turn-3".into())).unwrap();
+        let found = take_interrupted_turn(&sid);
+        assert_eq!(found.map(|o| o.turn_id), Some("turn-3".to_string()));
+
+        // Consumed on read, so reopening the tab again does not re-announce a
+        // turn the user has already dealt with.
+        assert_eq!(take_interrupted_turn(&sid), None);
+
+        let _ = std::fs::remove_file(open_turn_path(&sid));
+    }
+
+    #[test]
+    fn a_completed_turn_leaves_nothing_to_recover() {
+        let sid = format!("closed-turn-test-{}", std::process::id());
+
+        mark_turn(&sid, Some("turn-1".into())).unwrap();
+        mark_turn(&sid, None).unwrap();
+        assert_eq!(take_interrupted_turn(&sid), None);
+
+        // Clearing twice is normal (a completion after an interrupt) and is not
+        // an error.
+        mark_turn(&sid, None).unwrap();
+
+        let _ = std::fs::remove_file(open_turn_path(&sid));
+    }
+
+    /// Only the newest open turn matters: a second `turnStarted` replaces the
+    /// mark rather than accumulating, so recovery names the turn that was
+    /// actually running.
+    #[test]
+    fn a_later_turn_replaces_the_recorded_one() {
+        let sid = format!("replace-turn-test-{}", std::process::id());
+
+        mark_turn(&sid, Some("turn-1".into())).unwrap();
+        mark_turn(&sid, Some("turn-2".into())).unwrap();
+        let found = take_interrupted_turn(&sid);
+        assert_eq!(found.map(|o| o.turn_id), Some("turn-2".to_string()));
+
+        let _ = std::fs::remove_file(open_turn_path(&sid));
+    }
+
     #[test]
     fn each_extra_directory_gets_its_own_flag() {
         let args = build_args(
             claude_chat(),
             "s1",
-            false,
+            false, None,
             None,
             None,
             None,
@@ -682,7 +897,7 @@ mod tests {
     /// leaves the CLI on its own default.
     #[test]
     fn an_undeclared_model_or_mode_is_omitted_rather_than_guessed() {
-        let args = build_args(claude_chat(), "s1", false, Some("no-such-model"), Some("no-such-mode"), None, &[]);
+        let args = build_args(claude_chat(), "s1", false, None, Some("no-such-model"), Some("no-such-mode"), None, &[]);
         assert!(!args.iter().any(|a| a == "--model"));
         assert!(!args.iter().any(|a| a == "--permission-mode"));
     }

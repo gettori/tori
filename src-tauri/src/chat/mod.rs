@@ -24,6 +24,7 @@ pub mod approval;
 pub mod claude;
 pub mod claude_transport;
 pub mod commands;
+pub mod history;
 pub mod host;
 pub mod model;
 pub mod ownership;

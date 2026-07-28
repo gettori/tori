@@ -181,6 +181,12 @@ export function initialChat(sessionId: string): ChatState {
   };
 }
 
+/** Token counts as the notices show them. Same rounding as the context meter,
+ *  so one session never reports two different figures for one number. */
+function fmtTokens(tokens: number): string {
+  return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
+}
+
 function nextId(s: ChatState, prefix: string): string {
   s.seq += 1;
   return `${prefix}${s.seq}`;
@@ -342,6 +348,33 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       noteModel(s, ev.model);
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
+      return;
+    }
+    case "userMessage":
+      // A user turn the panel did not send. Deliberately does **not** touch the
+      // turn or set `awaitingTurn` the way `pushUserTurn` does: replayed history
+      // is finished, and marking it in flight would leave a reopened tab reading
+      // as busy with nothing running.
+      push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks });
+      return;
+    case "compacted": {
+      // Inline, in place, because that is where the conversation's middle went.
+      // A transcript that silently jumps is indistinguishable from one that
+      // lost turns to a bug, and the summary is the only record of what the
+      // model still knows.
+      const reclaimed =
+        ev.preTokens !== null && ev.postTokens !== null
+          ? ` (${fmtTokens(ev.preTokens)} to ${fmtTokens(ev.postTokens)})`
+          : "";
+      const how = ev.trigger === "auto" ? "automatically" : "manually";
+      push(s, {
+        kind: "notice",
+        id: nextId(s, "notice"),
+        // The summary is the harness's own text and is the useful half, so it
+        // is shown rather than collapsed behind a count.
+        text: `Compacted ${how}${reclaimed}.${ev.summary ? `\n\n${ev.summary}` : ""}`,
+        level: "info",
+      });
       return;
     }
     case "textDelta":

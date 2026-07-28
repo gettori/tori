@@ -54,6 +54,26 @@
     "permissionMode": "default"
   },
   {
+    "type": "userMessage",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "fix the bug"
+      }
+    ]
+  },
+  {
+    "type": "compacted",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "trigger": "manual",
+    "preTokens": 247408,
+    "postTokens": 9444,
+    "summary": "This session is being continued from a previous conversation"
+  },
+  {
     "type": "textDelta",
     "sessionId": "s1",
     "turnId": "t1",

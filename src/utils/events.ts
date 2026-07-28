@@ -125,6 +125,14 @@ export type AgentFilesWritten = { paths: string[] };
 // so the whole point (being there before it) survives.
 export const AGENT_WRITE_DEBOUNCE_MS = 100;
 
+// Payload-carrying event: a session's transcript was deleted, so any tab still
+// driving or displaying it must go. Emitted by the sidebar after the session's
+// child has been closed and its claim released, because a tab left open on a
+// deleted transcript would keep rendering history that no longer exists and
+// could still be typed at.
+export const SESSION_DELETED = "sway:session-deleted";
+export type SessionDeleted = { sessionId: string };
+
 // Payload-carrying event: open a session's transcript as a read-only virtual
 // tab in the editor's center pane. Emitted by the sidebar's session context menu.
 export const OPEN_TRANSCRIPT = "sway:open-transcript";

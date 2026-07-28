@@ -37,6 +37,13 @@
         "--resume",
         "{id}"
       ],
+      "fork_args": [
+        "--resume",
+        "{from}",
+        "--fork-session",
+        "--session-id",
+        "{id}"
+      ],
       "model_args": [
         "--model",
         "{model}"

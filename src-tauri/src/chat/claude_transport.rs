@@ -587,7 +587,7 @@ pub mod tests {
                 program: chat.program.clone(),
                 // Through the real arg builder, so a drift in the adapter's
                 // flags fails here rather than at runtime.
-                args: crate::chat::commands::build_args(chat, session_id, false, None, None, None, &[]),
+                args: crate::chat::commands::build_args(chat, session_id, false, None, None, None, None, &[]),
                 env: HashMap::new(),
             },
             sink,

@@ -88,15 +88,6 @@
   line-height: 1.4;
 }
 
-/* Turn attribution is cross-contaminated while two chats share this worktree.
-   Marked, not hidden: presenting a turn's file list as fact would be worse. */
-.attributionWarning {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
-  color: var(--attention-fg);
-  font-size: var(--sway-text-md);
-  line-height: 1.4;
-}
-
 .timelineActions {
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
@@ -171,4 +162,16 @@
 }
 .diffLine.meta {
   color: var(--fg-muted);
+}
+
+/* A file more than one live chat wrote this turn. Marked rather than resolved:
+   both sessions really did write it, so reverting is not only this session's
+   business. */
+.sharedMarker {
+  margin-left: var(--sway-space-2);
+  padding: 0 var(--sway-space-1);
+  border-radius: var(--sway-radius-sm);
+  background: var(--attention-subtle, var(--neutral-hover));
+  color: var(--attention-fg);
+  font-size: var(--sway-text-xs);
 }

@@ -156,8 +156,31 @@ impl ClaudeMapper {
     fn map_system(&mut self, frame: &Value) -> Vec<ChatEvent> {
         match frame["subtype"].as_str() {
             Some("init") => self.map_init(frame),
+            Some("compact_boundary") => self.map_compact_boundary(frame),
             _ => Vec::new(),
         }
+    }
+
+    /// A compaction boundary. The summary is not on this frame - measured, it is
+    /// the *next* user message - so this reports the reclaim and leaves the
+    /// summary to be stitched on by a reader that sees both.
+    ///
+    /// Sidechain (subagent) boundaries are skipped: they compact a subagent's
+    /// own context, not this conversation's, and showing one would report a
+    /// reclaim the user's transcript never had.
+    fn map_compact_boundary(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        if frame["isSidechain"].as_bool() == Some(true) {
+            return Vec::new();
+        }
+        let meta = &frame["compactMetadata"];
+        vec![ChatEvent::Compacted {
+            session_id: self.session_id.clone(),
+            turn_id: self.turn_id(),
+            trigger: meta["trigger"].as_str().map(str::to_string),
+            pre_tokens: meta["preTokens"].as_u64(),
+            post_tokens: meta["postTokens"].as_u64(),
+            summary: None,
+        }]
     }
 
     fn map_init(&mut self, frame: &Value) -> Vec<ChatEvent> {

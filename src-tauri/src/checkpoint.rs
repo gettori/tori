@@ -37,6 +37,83 @@ fn checkpoint_index_path(session_id: &str) -> PathBuf {
         .join(session_id)
 }
 
+// --- per-turn attribution -------------------------------------------------
+//
+// The snapshot above is a whole-tree `git add -A`, which was exact while a
+// worktree had at most one live agent and stopped being exact the moment several
+// chats could share one. Two sessions editing in the same interval both see the
+// other's files in "changes this turn", because the tree cannot say who wrote
+// what.
+//
+// Chat closes that gap with a measurement rather than a heuristic:
+// `ToolCallCompleted` carries **exactly** the paths that session wrote. Those
+// sets are recorded here per (session, turn) and intersected with the tree diff,
+// so the tree still decides *what changed* (catching Bash-driven writes a
+// path-argument parse would miss) while the events decide *whose change it was*.
+//
+// Written to disk rather than held in memory because the timeline browses turns
+// from earlier runs, and an in-memory set would make attribution silently
+// degrade to the old behaviour after a restart - the worst kind of regression,
+// since it looks identical to working.
+
+/// Where a session's per-turn touched-file sets live. One file per turn, named
+/// by the same `prompt_ts` that names the turn's checkpoint ref, so the two
+/// cannot drift apart.
+fn attribution_path(session_id: &str, prompt_ts: u64) -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/checkpoint-touched")
+        .join(session_id)
+        .join(format!("{prompt_ts}.json"))
+}
+
+/// Record that `session_id` wrote `files` during the turn at `prompt_ts`.
+///
+/// Additive: a turn makes many tool calls and each reports its own paths, so
+/// this merges rather than replaces. Paths are stored exactly as the events
+/// carry them (absolute), and normalized against the repo only at read time,
+/// where the repo root is known.
+#[tauri::command]
+pub fn checkpoint_note_touched(
+    session_id: String,
+    prompt_ts: u64,
+    files: Vec<String>,
+) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    let path = attribution_path(&session_id, prompt_ts);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut set = read_touched(&session_id, prompt_ts);
+    set.extend(files);
+    set.sort();
+    set.dedup();
+    let json = serde_json::to_string(&set).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+/// The paths a session reported writing during one turn. Empty for a turn
+/// nothing recorded, which is the PTY case and every turn from before this
+/// existed - see `attributed_files` for why that means "do not filter".
+fn read_touched(session_id: &str, prompt_ts: u64) -> Vec<String> {
+    std::fs::read_to_string(attribution_path(session_id, prompt_ts))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+        .unwrap_or_default()
+}
+
+/// Repo-relative form of an absolute path, for comparing against `git diff`
+/// output. A path outside the repo has no relative form and is dropped: it
+/// cannot appear in the tree diff anyway.
+fn relative_to(repo: &str, path: &str) -> Option<String> {
+    Path::new(path)
+        .strip_prefix(repo)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
 fn is_git_worktree(repo: &str) -> bool {
     Command::new("git")
         .arg("-C")
@@ -229,6 +306,15 @@ pub struct CheckpointFile {
     pub path: String,
     /// "added" | "modified" | "deleted"
     pub status: String,
+    /// Another live session also reported writing this file in an overlapping
+    /// turn.
+    ///
+    /// Surfaced rather than resolved, because there is no honest way to resolve
+    /// it: both sessions really did write the file, and picking one would be a
+    /// guess presented as a fact. A revert of a shared file is the dangerous
+    /// case, so it is marked here and confirmed at the point of revert.
+    #[serde(default)]
+    pub shared_with: Vec<String>,
 }
 
 fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
@@ -242,7 +328,11 @@ fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
                 'D' => "deleted",
                 _ => "modified",
             };
-            Some(CheckpointFile { path: path.to_string(), status: status.to_string() })
+            Some(CheckpointFile {
+                path: path.to_string(),
+                status: status.to_string(),
+                shared_with: Vec::new(),
+            })
         })
         .collect()
 }
@@ -273,11 +363,14 @@ fn diff_after(
 /// also contains the user's edits and any other session's, which is why the UI
 /// labels it "workspace since here" rather than attributing it.
 #[tauri::command]
+/// `others` names the sessions sharing this worktree, so a file more than one
+/// of them wrote is marked rather than silently attributed to whichever asked.
 pub fn checkpoint_turn_files(
     repo_path: String,
     session_id: String,
     prompt_ts: u64,
     cumulative: Option<bool>,
+    others: Option<Vec<String>>,
 ) -> Result<Vec<CheckpointFile>, String> {
     let checkpoints = list_checkpoints(&repo_path, &session_id);
     let before = tree_at_or_before(&checkpoints, prompt_ts);
@@ -286,7 +379,122 @@ pub fn checkpoint_turn_files(
         return Ok(Vec::new());
     }
     let out = git_capture(&repo_path, &["diff", "--name-status", &before, &after])?;
-    Ok(parse_name_status(&out))
+    Ok(attributed_files(
+        &repo_path,
+        &session_id,
+        prompt_ts,
+        parse_name_status(&out),
+        &others.unwrap_or_default(),
+    ))
+}
+
+/// Narrow a whole-tree diff to what *this* session wrote, and mark what it
+/// shares with another.
+///
+/// The tree says what changed; the session's own `ToolCallCompleted` events say
+/// what it wrote. Intersecting keeps the tree's coverage of writes no path
+/// parse would catch (a `Bash` heredoc) while dropping another session's
+/// concurrent edits.
+///
+/// **A turn with no recorded set is not filtered.** That is a PTY session, or
+/// any turn from before attribution existed, and an empty set there means "not
+/// measured", never "wrote nothing" - filtering on it would silently blank out
+/// every historical turn's file list.
+fn attributed_files(
+    repo: &str,
+    session_id: &str,
+    prompt_ts: u64,
+    changed: Vec<CheckpointFile>,
+    others: &[String],
+) -> Vec<CheckpointFile> {
+    let mine = touched_set(repo, session_id, prompt_ts);
+    let Some(mine) = mine else { return changed };
+
+    // Only sessions whose own turn overlaps this one can share a file, so each
+    // other session is checked at the turn it had running at `prompt_ts`.
+    let other_sets: Vec<(String, std::collections::HashSet<String>)> = others
+        .iter()
+        .filter(|id| id.as_str() != session_id)
+        .filter_map(|id| {
+            let ts = overlapping_turn(id, prompt_ts)?;
+            touched_set(repo, id, ts).map(|set| (id.clone(), set))
+        })
+        .collect();
+
+    changed
+        .into_iter()
+        .filter(|f| mine.contains(&f.path))
+        .map(|mut f| {
+            f.shared_with = other_sets
+                .iter()
+                .filter(|(_, set)| set.contains(&f.path))
+                .map(|(id, _)| id.clone())
+                .collect();
+            f
+        })
+        .collect()
+}
+
+/// This session's recorded writes for one turn, repo-relative, or `None` when
+/// nothing was recorded (see `attributed_files` for why the two differ).
+fn touched_set(repo: &str, session_id: &str, prompt_ts: u64) -> Option<std::collections::HashSet<String>> {
+    let files = read_touched(session_id, prompt_ts);
+    if files.is_empty() {
+        return None;
+    }
+    Some(files.iter().filter_map(|p| relative_to(repo, p)).collect())
+}
+
+/// Everything `session_id` recorded writing from the turn at `from` onward,
+/// repo-relative. `None` when it recorded nothing at all, which means "not
+/// measured" and leaves the revert unscoped (see `checkpoint_revert_tree`).
+///
+/// Cumulative because reverting *to* a boundary undoes every turn after it, so
+/// scoping to only that one turn's writes would leave the later turns' files
+/// untouched and the revert half-applied.
+fn touched_since(repo: &str, session_id: &str, from: u64) -> Option<std::collections::HashSet<String>> {
+    let dir = attribution_path(session_id, 0).parent()?.to_path_buf();
+    let mut out = std::collections::HashSet::new();
+    let mut saw_any = false;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let Some(ts) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.strip_suffix(".json"))
+            .and_then(|n| n.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        if ts < from {
+            continue;
+        }
+        saw_any = true;
+        out.extend(read_touched(session_id, ts).iter().filter_map(|p| relative_to(repo, p)));
+    }
+    saw_any.then_some(out)
+}
+
+/// The turn `other_session` had open at `at`: the latest turn it *recorded
+/// writes for* at or before that moment.
+///
+/// Read from the attribution files rather than from that session's checkpoint
+/// refs, because a checkpoint is skipped when it would duplicate the previous
+/// tree - so a session can legitimately have written files during a turn that
+/// has no ref of its own. Keying off the refs made the shared-file marker
+/// silently empty in exactly that case.
+fn overlapping_turn(other_session: &str, at: u64) -> Option<u64> {
+    let dir = attribution_path(other_session, 0).parent()?.to_path_buf();
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(|n| n.strip_suffix(".json"))
+                .and_then(|n| n.parse::<u64>().ok())
+        })
+        .filter(|ts| *ts <= at)
+        .max()
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
@@ -574,10 +782,25 @@ fn write_backstop(
 /// from PTY activity and the transcript tail, which only the frontend sees
 /// (see `revertGuard` in `src/utils/revertGuard.ts`).
 #[tauri::command]
+/// Undo a turn.
+///
+/// **Scoped to what this session actually wrote**, when it recorded that. The
+/// tree snapshot spans the whole worktree, so a bare tree-vs-tree restore in a
+/// worktree with two live chats would roll back the *other* session's
+/// concurrent edits as a side effect of undoing this one's turn - silently, and
+/// with no way for the user to have known.
+///
+/// `shared` names files another session also wrote, which the caller has already
+/// confirmed with the user: they are reverted, but only because that decision
+/// was made above rather than here.
+///
+/// A turn with no recorded set is unscoped, exactly as before. That is the PTY
+/// case, where the tree is the only evidence there is.
 pub fn checkpoint_revert_tree(
     repo_path: String,
     session_id: String,
     prompt_ts: u64,
+    shared: Option<Vec<String>>,
 ) -> Result<RevertOutcome, String> {
     if !is_git_worktree(&repo_path) {
         return Err("This folder isn't a git repository, so it has no checkpoints.".into());
@@ -600,10 +823,24 @@ pub fn checkpoint_revert_tree(
         &repo_path,
         &["diff", "--raw", "--no-abbrev", "--no-renames", &current, &target],
     )?;
+    // The turn's attributed set, cumulative over every turn from `prompt_ts`
+    // onward: reverting *to* a boundary undoes everything since, so the scope is
+    // everything this session wrote since, not just its next turn.
+    let mine = touched_since(&repo_path, &session_id, prompt_ts);
+    let shared: std::collections::HashSet<String> = shared.unwrap_or_default().into_iter().collect();
+
     let mut restored = Vec::new();
     let mut deleted = Vec::new();
     for line in raw.lines() {
         let Some(change) = parse_raw_change(line) else { continue };
+        // Another session's concurrent edit to a file this one never touched is
+        // left exactly where it is. Without this the undo would reach across
+        // sessions and nothing on screen would have said so.
+        if let Some(mine) = &mine {
+            if !mine.contains(&change.path) && !shared.contains(&change.path) {
+                continue;
+            }
+        }
         let abs = Path::new(&repo_path).join(&change.path);
         if change.dst_mode == "000000" {
             // Absent from the target tree: the revert removes it.
@@ -644,6 +881,12 @@ pub fn checkpoint_prune(repo_path: String, session_id: String) -> Result<(), Str
         }
     }
     let _ = std::fs::remove_file(checkpoint_index_path(&session_id));
+    // The per-turn attribution sets go with the refs they are named after.
+    // Left behind, they would attribute a future session that happened to reuse
+    // the id, and they are meaningless without the checkpoints anyway.
+    if let Some(dir) = attribution_path(&session_id, 0).parent() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
     Ok(())
 }
 
@@ -682,6 +925,143 @@ mod tests {
     fn cleanup(dir: &Path, session_id: &str) {
         std::fs::remove_dir_all(dir).ok();
         std::fs::remove_file(checkpoint_index_path(session_id)).ok();
+        if let Some(d) = attribution_path(session_id, 0).parent() {
+            std::fs::remove_dir_all(d).ok();
+        }
+    }
+
+    // --- per-turn attribution, the concurrent-worktree case ----------------
+    //
+    // The hazard these pin: a whole-tree `git add -A` snapshot cannot say which
+    // of two live sessions wrote a file, so before attribution each session's
+    // "changes this turn" included the other's edits.
+
+    /// Two chats editing different files in one worktree each see only their own.
+    #[test]
+    fn two_sessions_in_one_worktree_each_see_only_their_own_files() {
+        let (dir, a) = tmp_repo();
+        let b = format!("{a}-b");
+        let repo = dir.to_string_lossy().into_owned();
+
+        // Both sessions open a turn at the same boundary.
+        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot(b.clone(), repo.clone(), 100).unwrap();
+
+        // Each writes its own file, and each reports what it wrote.
+        std::fs::write(dir.join("a.txt"), "from a").unwrap();
+        std::fs::write(dir.join("b.txt"), "from b").unwrap();
+        checkpoint_note_touched(a.clone(), 100, vec![dir.join("a.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(b.clone(), 100, vec![dir.join("b.txt").to_string_lossy().into_owned()]).unwrap();
+
+        let for_a = checkpoint_turn_files(repo.clone(), a.clone(), 100, Some(true), Some(vec![b.clone()])).unwrap();
+        let for_b = checkpoint_turn_files(repo.clone(), b.clone(), 100, Some(true), Some(vec![a.clone()])).unwrap();
+
+        assert_eq!(for_a.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["a.txt"]);
+        assert_eq!(for_b.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["b.txt"]);
+        // Disjoint work is not shared work.
+        assert!(for_a[0].shared_with.is_empty());
+        assert!(for_b[0].shared_with.is_empty());
+
+        cleanup(&dir, &a);
+        cleanup(&dir, &b);
+    }
+
+    /// The case the plan calls out by name: both sessions wrote the same file.
+    /// It must appear in **both** turns, marked, rather than being silently
+    /// attributed to whichever asked first - both of them really did write it,
+    /// and picking one would be a guess presented as a fact.
+    #[test]
+    fn a_file_both_sessions_wrote_appears_in_both_with_a_shared_marker() {
+        let (dir, a) = tmp_repo();
+        let b = format!("{a}-b");
+        let repo = dir.to_string_lossy().into_owned();
+
+        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot(b.clone(), repo.clone(), 100).unwrap();
+
+        std::fs::write(dir.join("shared.txt"), "both touched this").unwrap();
+        std::fs::write(dir.join("only-a.txt"), "just a").unwrap();
+        let shared = dir.join("shared.txt").to_string_lossy().into_owned();
+        checkpoint_note_touched(a.clone(), 100, vec![shared.clone(), dir.join("only-a.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(b.clone(), 100, vec![shared.clone()]).unwrap();
+
+        let for_a = checkpoint_turn_files(repo.clone(), a.clone(), 100, Some(true), Some(vec![b.clone()])).unwrap();
+        let for_b = checkpoint_turn_files(repo.clone(), b.clone(), 100, Some(true), Some(vec![a.clone()])).unwrap();
+
+        let a_shared = for_a.iter().find(|f| f.path == "shared.txt").expect("shared file present for a");
+        let b_shared = for_b.iter().find(|f| f.path == "shared.txt").expect("shared file present for b");
+        assert_eq!(a_shared.shared_with, vec![b.clone()]);
+        assert_eq!(b_shared.shared_with, vec![a.clone()]);
+        // The file only one of them wrote is not marked.
+        let a_only = for_a.iter().find(|f| f.path == "only-a.txt").expect("a's own file present");
+        assert!(a_only.shared_with.is_empty());
+        assert!(!for_b.iter().any(|f| f.path == "only-a.txt"));
+
+        cleanup(&dir, &a);
+        cleanup(&dir, &b);
+    }
+
+    /// A turn nothing recorded is **not** filtered. That is every PTY session
+    /// and every turn from before attribution existed; treating an empty set as
+    /// "wrote nothing" would blank out their file lists entirely, which looks
+    /// exactly like a working feature reporting no changes.
+    #[test]
+    fn a_turn_with_no_recorded_writes_falls_back_to_the_whole_tree_diff() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("untracked-by-events.txt"), "written by a PTY agent").unwrap();
+
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
+        assert_eq!(files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["untracked-by-events.txt"]);
+
+        cleanup(&dir, &sid);
+    }
+
+    /// The tree still decides *what* changed. A file the session reported
+    /// writing but which ended the turn identical to how it started is not in
+    /// the diff, so it is not in the list either - the events narrow the tree's
+    /// answer, they do not replace it.
+    #[test]
+    fn attribution_narrows_the_tree_diff_rather_than_replacing_it() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("unchanged.txt"), "same").unwrap();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+
+        // Reported as written, but rewritten with identical content.
+        std::fs::write(dir.join("unchanged.txt"), "same").unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            vec![dir.join("unchanged.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
+
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
+        assert!(files.is_empty(), "a file whose content did not change is not a change");
+
+        cleanup(&dir, &sid);
+    }
+
+    #[test]
+    fn recorded_writes_accumulate_across_a_turns_tool_calls() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("one.txt"), "1").unwrap();
+        std::fs::write(dir.join("two.txt"), "2").unwrap();
+
+        // A turn makes many tool calls; each reports only its own paths.
+        checkpoint_note_touched(sid.clone(), 100, vec![dir.join("one.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(sid.clone(), 100, vec![dir.join("two.txt").to_string_lossy().into_owned()]).unwrap();
+
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
+        let mut names: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["one.txt", "two.txt"]);
+
+        cleanup(&dir, &sid);
     }
 
     #[test]
@@ -818,7 +1198,7 @@ mod tests {
         std::fs::write(dir.join("bash_written.txt"), "written by a shell redirect").unwrap();
         checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
 
-        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None).unwrap();
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "bash_written.txt");
         assert_eq!(files[0].status, "added");
@@ -832,7 +1212,7 @@ mod tests {
         checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("mid_turn.txt"), "still running").unwrap();
         // No next prompt boundary yet: the diff still reflects the live tree.
-        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None).unwrap();
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "mid_turn.txt");
         cleanup(&dir, &sid);
@@ -852,6 +1232,106 @@ mod tests {
         assert_eq!(action, "restored");
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "before");
         assert_eq!(std::fs::read_to_string(dir.join("untouched.txt")).unwrap(), "stays");
+        cleanup(&dir, &sid);
+    }
+
+
+    /// The blast radius the whole-tree snapshot used to have. Reverting session
+    /// A's turn must leave session B's concurrent edits to *other* files exactly
+    /// where they are - the snapshot spans the worktree, so without scoping the
+    /// undo silently rolls back work nobody asked it to.
+    #[test]
+    fn reverting_one_session_leaves_another_sessions_files_untouched() {
+        let (dir, a) = tmp_repo();
+        let b = format!("{a}-b");
+        let repo = dir.to_string_lossy().into_owned();
+
+        std::fs::write(dir.join("a.txt"), "a before").unwrap();
+        std::fs::write(dir.join("b.txt"), "b before").unwrap();
+        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+
+        // Both sessions write in the same interval; each reports its own paths.
+        std::fs::write(dir.join("a.txt"), "a after").unwrap();
+        std::fs::write(dir.join("b.txt"), "b after").unwrap();
+        checkpoint_note_touched(a.clone(), 100, vec![dir.join("a.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(b.clone(), 100, vec![dir.join("b.txt").to_string_lossy().into_owned()]).unwrap();
+
+        let out = checkpoint_revert_tree(repo.clone(), a.clone(), 100, None).unwrap();
+        assert_eq!(out.restored, ["a.txt"]);
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "a before");
+        // B's concurrent edit survives, which is the whole point.
+        assert_eq!(std::fs::read_to_string(dir.join("b.txt")).unwrap(), "b after");
+
+        cleanup(&dir, &a);
+        cleanup(&dir, &b);
+    }
+
+    /// A shared file is reverted only when the caller passes it, which it does
+    /// after confirming with the user. Left out, it is treated like any other
+    /// file this session does not solely own.
+    #[test]
+    fn a_shared_file_is_reverted_only_when_the_caller_confirmed_it() {
+        let (dir, a) = tmp_repo();
+        let b = format!("{a}-b");
+        let repo = dir.to_string_lossy().into_owned();
+
+        std::fs::write(dir.join("shared.txt"), "before").unwrap();
+        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("shared.txt"), "after").unwrap();
+
+        let shared_abs = dir.join("shared.txt").to_string_lossy().into_owned();
+        checkpoint_note_touched(a.clone(), 100, vec![shared_abs.clone()]).unwrap();
+        checkpoint_note_touched(b.clone(), 100, vec![shared_abs]).unwrap();
+
+        // Confirmed: it comes back.
+        let out = checkpoint_revert_tree(repo.clone(), a.clone(), 100, Some(vec!["shared.txt".into()])).unwrap();
+        assert_eq!(out.restored, ["shared.txt"]);
+        assert_eq!(std::fs::read_to_string(dir.join("shared.txt")).unwrap(), "before");
+
+        cleanup(&dir, &a);
+        cleanup(&dir, &b);
+    }
+
+    /// A PTY session records nothing, so its revert stays unscoped - the tree is
+    /// the only evidence there is, and scoping on an empty set would make revert
+    /// silently do nothing.
+    #[test]
+    fn a_session_that_recorded_nothing_reverts_the_whole_tree_as_before() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("f.txt"), "before").unwrap();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("f.txt"), "after").unwrap();
+
+        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        assert_eq!(out.restored, ["f.txt"]);
+        assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "before");
+
+        cleanup(&dir, &sid);
+    }
+
+    /// Reverting *to* a boundary undoes every turn after it, so the scope has to
+    /// span them. Scoping to only the target turn's own writes would leave later
+    /// turns' files on disk and the revert half-applied.
+    #[test]
+    fn reverting_to_a_boundary_scopes_across_every_later_turn() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("one.txt"), "before").unwrap();
+        std::fs::write(dir.join("two.txt"), "before").unwrap();
+        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+
+        // Turn at 100 wrote one.txt; a later turn at 200 wrote two.txt.
+        std::fs::write(dir.join("one.txt"), "after").unwrap();
+        checkpoint_note_touched(sid.clone(), 100, vec![dir.join("one.txt").to_string_lossy().into_owned()]).unwrap();
+        std::fs::write(dir.join("two.txt"), "after").unwrap();
+        checkpoint_note_touched(sid.clone(), 200, vec![dir.join("two.txt").to_string_lossy().into_owned()]).unwrap();
+
+        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let mut restored = out.restored.clone();
+        restored.sort();
+        assert_eq!(restored, ["one.txt", "two.txt"]);
+
         cleanup(&dir, &sid);
     }
 
@@ -897,13 +1377,13 @@ mod tests {
         std::fs::write(dir.join("by_the_user.txt"), "mine").unwrap();
 
         // Per-turn stays scoped to its own boundary pair.
-        let per_turn = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None).unwrap();
+        let per_turn = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
         assert_eq!(per_turn.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), vec!["turn1.txt"]);
 
         // Cumulative runs from that boundary to the working tree, so it also
         // carries later turns *and* the user's own edit - which is exactly why
         // the UI calls it "workspace since here" rather than the session's work.
-        let mut cumulative: Vec<String> = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true))
+        let mut cumulative: Vec<String> = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None)
             .unwrap()
             .into_iter()
             .map(|f| f.path)
@@ -925,7 +1405,7 @@ mod tests {
         std::fs::write(dir.join("added_later.txt"), "should vanish").unwrap();
         std::fs::remove_file(dir.join("keep.txt")).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100).unwrap();
+        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v1");
         assert_eq!(std::fs::read_to_string(dir.join("keep.txt")).unwrap(), "same");
@@ -946,7 +1426,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
         std::fs::write(dir.join("b.txt"), "new").unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100).unwrap();
+        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
         let backstop = out.backstop_ts.unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v1");
         assert!(!dir.join("b.txt").exists());
@@ -960,7 +1440,7 @@ mod tests {
         assert_eq!(entry.kind, "backstop");
 
         // Reverting to it undoes the revert.
-        checkpoint_revert_tree(repo.clone(), sid.clone(), backstop).unwrap();
+        checkpoint_revert_tree(repo.clone(), sid.clone(), backstop, None).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v2");
         assert_eq!(std::fs::read_to_string(dir.join("b.txt")).unwrap(), "new");
         cleanup(&dir, &sid);
@@ -979,7 +1459,7 @@ mod tests {
         checkpoint_snapshot(sid.clone(), repo.clone(), now - 60).unwrap();
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
 
-        let backstop = checkpoint_revert_tree(repo.clone(), sid.clone(), now - 60)
+        let backstop = checkpoint_revert_tree(repo.clone(), sid.clone(), now - 60, None)
             .unwrap()
             .backstop_ts
             .unwrap();
@@ -1020,7 +1500,7 @@ mod tests {
         let staged_before = git_capture(&repo, &["diff", "--cached", "--name-only"]).unwrap();
         std::fs::write(dir.join("reverted.txt"), "v2").unwrap();
 
-        checkpoint_revert_tree(repo.clone(), sid.clone(), 100).unwrap();
+        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.join("reverted.txt")).unwrap(), "v1");
         assert_eq!(
@@ -1050,7 +1530,7 @@ mod tests {
         checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(&script, "#!/bin/sh\necho v2\n").unwrap();
 
-        checkpoint_revert_tree(repo.clone(), sid.clone(), 100).unwrap();
+        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(&script).unwrap(), "#!/bin/sh\necho v1\n");
         #[cfg(unix)]
@@ -1068,7 +1548,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
         checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100).unwrap();
+        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
         assert_eq!(out.backstop_ts, None, "nothing changed, so nothing to back up");
         assert!(out.restored.is_empty() && out.deleted.is_empty());
         assert_eq!(list_checkpoints(&repo, &sid).len(), 1, "no ref spam");
@@ -1085,7 +1565,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "untouched").unwrap();
         let sid = format!("sess-revert-plain-{n}-{seq}");
         let repo = dir.to_string_lossy().into_owned();
-        assert!(checkpoint_revert_tree(repo, sid.clone(), 100).is_err());
+        assert!(checkpoint_revert_tree(repo, sid.clone(), 100, None).is_err());
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "untouched");
         cleanup(&dir, &sid);
     }

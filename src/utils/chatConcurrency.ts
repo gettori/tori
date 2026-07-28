@@ -7,13 +7,18 @@
 // snapshot also contains the other's edits. The real fix is per-turn attribution
 // from `toolCallCompleted.files`, which is a later phase.
 //
-// So this phase ships the interim rather than the silence: a one-time notice
-// when the second chat opens on a worktree, and an explicit unreliable marker on
-// that worktree's checkpoint timeline. Both are removed by the attribution work,
-// which is why the predicate lives here as one named thing rather than as an
-// inline `length > 1` at each site.
+// The attribution work has since landed: `checkpoint.rs` records each session's
+// own `toolCallCompleted.files` per turn and intersects them with the tree diff,
+// so a turn's file list and its revert are now scoped to what that session
+// actually wrote. **The unreliable marker is gone with it.**
+//
+// The one-time notice stays. It was never about attribution being wrong: the
+// working tree is genuinely shared state, and two agents editing one checkout
+// can still interleave writes to the same file, race each other's builds, and
+// see each other's half-finished work. Attribution says who wrote what; it does
+// not make concurrent editing of one tree safe, and no attribution scheme
+// would.
 import { createSignal } from "solid-js";
-import { chatsInFolder } from "./chatSessions";
 
 const LS_NOTICED = "sway.multiChatNotice";
 
@@ -53,18 +58,7 @@ export function shouldNotice(liveChatCount: number, folderPath: string, seen: Re
 }
 
 export const MULTI_CHAT_NOTICE =
-  "Another chat is already running in this worktree. They share one working tree, so until per-turn attribution lands, a checkpoint may include the other chat's edits.";
-
-/**
- * Is checkpoint turn-attribution trustworthy for this worktree right now?
- *
- * False whenever two chats are live in it. The timeline says so rather than
- * presenting cross-contaminated turns as fact. Removed by the phase that lands
- * real per-turn attribution.
- */
-export function attributionReliable(folderPath: string): boolean {
-  return chatsInFolder(folderPath).length <= 1;
-}
+  "Another chat is already running in this worktree. They share one working tree, so the two can edit the same files at the same time. Each turn's changes and reverts are attributed per session, but a shared file is marked rather than silently assigned to one.";
 
 /**
  * A label that tells one chat from the others already open on the same branch.
@@ -86,5 +80,3 @@ export function chatTabLabel(baseName: string, taken: readonly string[]): string
   }
 }
 
-export const ATTRIBUTION_UNRELIABLE_NOTE =
-  "Two chats are running in this worktree. Each checkpoint snapshots the whole tree, so a turn shown here may include the other chat's file changes.";

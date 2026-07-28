@@ -18,6 +18,8 @@ import {
   OPEN_TERMINAL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
+  SESSION_DELETED,
+  type SessionDeleted,
   SEND_TO_SESSION,
   SEND_TO_SESSION_RESULT,
   TOAST,
@@ -85,6 +87,10 @@ type OpenTerm = {
   sessionId?: string;
   // Chat tabs: is this session already on disk (a restore), or brand new?
   resume?: boolean;
+  // Chat tabs: the session this one was forked from. Its history is replayed
+  // into this new id, and the two diverge from that point. Distinct from
+  // `resume`, which continues writing the *same* session.
+  forkFrom?: string;
   // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
   // seconds. Used to attribute the session that appears afterward (see
   // `backfillFreshSessions`).
@@ -448,6 +454,17 @@ export default function Terminal(props: {
   });
   onCleanup(offPurge);
 
+  // A session's transcript was deleted: close whatever tab was driving it. The
+  // sidebar has already closed the child and released the claim, so this is
+  // only the tab. Left open, a chat tab would keep showing history that no
+  // longer exists on disk and would still accept typing into a dead session.
+  const offSessionDeleted = onWith<SessionDeleted>(SESSION_DELETED, ({ sessionId }) => {
+    for (const t of open()) {
+      if (t.sessionId === sessionId) closeId(t.id);
+    }
+  });
+  onCleanup(offSessionDeleted);
+
   // Chat children a crashed Sway left running. The backend refuses to reclaim
   // their session ids until they are gone, so without this the refusal would be
   // silent: the session simply would not open, with nothing saying why.
@@ -805,7 +822,21 @@ export default function Terminal(props: {
   // tab - it never needs the transcript-appears backfill to learn what it is.
   // Returns the minted session id, so a caller that wants to seed the new chat
   // (send-to-new-session) can address it before it mounts.
-  function spawnChat(workspace: string, cwd: string, baseName: string, agentId = "claude"): string {
+  /**
+   * Open a chat tab on a **new** session id.
+   *
+   * `forkFrom` makes it a fork: the new session replays that one's history and
+   * the two diverge from there. Without it the chat starts empty. Either way the
+   * id is new, which is what makes this the safe answer to a refused claim -
+   * a new id cannot collide with the one already held.
+   */
+  function spawnChat(
+    workspace: string,
+    cwd: string,
+    baseName: string,
+    agentId = "claude",
+    forkFrom?: string,
+  ): string {
     const sessionId = crypto.randomUUID();
     openOrActivate({
       id: `chat:${crypto.randomUUID()}`,
@@ -821,6 +852,7 @@ export default function Terminal(props: {
       program: agentId,
       args: [],
       sessionId,
+      forkFrom,
     });
     return sessionId;
   }
@@ -829,6 +861,60 @@ export default function Terminal(props: {
     const sel = props.selected;
     if (!sel) return;
     spawnChat(sel.folderPath, sel.folderPath, sel.projectName, agentId);
+  }
+
+  /**
+   * Continue an **existing** session in a chat tab: same session id, resumed
+   * rather than created, at the session's own recorded cwd.
+   *
+   * The session need not have come from a chat tab. A PTY agent tab and an
+   * outside `claude` write the same transcript the harness reads back on
+   * `--resume`, and Sway backfills from that same file, so a conversation
+   * started in a terminal continues here with its history intact.
+   *
+   * Focus-or-resume, like the PTY path: a session already open somewhere is
+   * focused rather than opened twice, because two drivers on one session id
+   * measurably corrupt its transcript.
+   */
+  async function continueInChat(sel: ResumeTarget, agentId = "claude") {
+    const sessionId = sel.sessionId;
+    if (!sessionId) return;
+    const existing = open().find((t) => t.sessionId === sessionId);
+    if (existing) {
+      focusTab(existing.workspace, existing.id);
+      return;
+    }
+    // A session someone else is already resuming cannot be driven from here:
+    // two writers on one id measurably corrupt the transcript. `chat_spawn`
+    // refuses correctly on its own, but only after a tab has been opened -
+    // checking first means the user is told instead of shown an empty tab
+    // wearing a refusal banner.
+    const running = await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(
+      () => false,
+    );
+    if (running) {
+      emitWith<ToastEvent>(TOAST, {
+        message: "That session is already running somewhere else. Close it there first, or fork it.",
+        kind: "error",
+      });
+      return;
+    }
+    openOrActivate({
+      id: `chat:${crypto.randomUUID()}`,
+      title: chatTabLabel(
+        sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
+        tabsIn(sel.folderPath)
+          .filter((t) => t.kind === "chat")
+          .map(tabTitle),
+      ),
+      cwd: sel.sessionCwd || sel.folderPath,
+      workspace: sel.folderPath,
+      kind: "chat",
+      program: agentId,
+      args: [],
+      sessionId,
+      resume: true,
+    });
   }
 
   function newSession(agentId: string, yolo = false) {
@@ -960,6 +1046,18 @@ export default function Terminal(props: {
                   // Chat leads the menu but does not yet replace the main
                   // button: the default flip is its own phase, behind a setting.
                   { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                  // Only for a session selection, since there is nothing to
+                  // continue from a bare branch. The session need not have been
+                  // started in chat: every surface writes the transcript this
+                  // resumes and backfills from.
+                  ...(props.selected?.sessionId
+                    ? [
+                        {
+                          label: "Continue this session in chat",
+                          onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                        },
+                      ]
+                    : []),
                   { label: findAgent("claude").label, onClick: () => newSession("claude") },
                   { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
                   { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
@@ -992,6 +1090,16 @@ export default function Terminal(props: {
                   onForkSession={() =>
                     spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)
                   }
+                  onForkFrom={() =>
+                    spawnChat(
+                      t.workspace,
+                      t.cwd,
+                      t.workspace.split("/").pop() || "chat",
+                      t.program,
+                      t.sessionId,
+                    )
+                  }
+                  forkFrom={t.forkFrom}
                 />
               }
             >

@@ -35,6 +35,8 @@ import {
   type LiveTab,
   type OpenTranscript,
   type TerminalTabFocused,
+  SESSION_DELETED,
+  type SessionDeleted,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { loadStamps, saveStamps, reconcileScan, markViewed, isUnseen, type Stamps } from "../../utils/unseen";
@@ -63,7 +65,7 @@ import {
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
-import { liveChats } from "../../utils/chatSessions";
+import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import { computeSessionDot, type SessionDot } from "../../utils/sessionDot";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
@@ -547,7 +549,11 @@ export default function LeftSidebar(props: {
         }),
       )
     ).filter((t): t is NonNullable<typeof t> => t != null);
-    if (ticks.length) await noteCheckpointTicks(ticks);
+    // Chat sessions checkpoint themselves off their own `turnStarted`, which is
+    // the real boundary rather than one inferred from a re-read prompt count.
+    // Passing them here keeps the poller's state current without letting it fire
+    // a second snapshot for a turn already captured.
+    if (ticks.length) await noteCheckpointTicks(ticks, liveChatIds());
   }
   createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshCheckpointTicks()));
 
@@ -1631,6 +1637,15 @@ export default function LeftSidebar(props: {
     });
     if (!ok) return;
     try {
+      // The child goes first, and it is what releases the ownership claim (see
+      // `ChatHost::close`). Deleting the file under a live session would leave
+      // it writing a transcript nothing lists and holding an id nothing can
+      // reclaim - `chat_close` is a no-op for a session that is not live, so
+      // this is safe for every session, chat or not.
+      await invoke("chat_close", { sessionId: s.id }).catch(() => {});
+      // Any tab driving it closes too, rather than sitting on a transcript that
+      // no longer exists.
+      emitWith<SessionDeleted>(SESSION_DELETED, { sessionId: s.id });
       await invoke("delete_session", { path: s.path });
       await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
       await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});

@@ -1276,6 +1276,20 @@ pub struct TranscriptBlock {
     pub tool_name: Option<String>,
     pub tool_input: Option<serde_json::Value>,
     pub is_error: Option<bool>,
+    /// The harness's own id for the call, when the transcript records one.
+    ///
+    /// Claude writes it on both halves (`tool_use.id` and
+    /// `tool_result.tool_use_id`), which is what lets a replayed transcript pair
+    /// a result with its call exactly rather than by position. pi's format
+    /// carries no id, so it stays `None` and the replay falls back to order.
+    pub tool_use_id: Option<String>,
+    /// Set only on a `compaction` block: how much context the compaction
+    /// reclaimed, and whether the user asked for it. `None` for every other
+    /// kind, and `None` individually when the transcript did not record that
+    /// half - a missing figure is not a zero.
+    pub compact_trigger: Option<String>,
+    pub pre_tokens: Option<u64>,
+    pub post_tokens: Option<u64>,
 }
 
 #[derive(Serialize, Clone)]
@@ -1296,15 +1310,21 @@ pub struct TranscriptPage {
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
-    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None }
+    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
-pub(crate) fn tool_call_block(name: String, input: serde_json::Value) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None }
+/// Where the conversation's middle was replaced by a summary. The summary text
+/// itself is the *next* user message, not part of this block.
+pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
+    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, compact_trigger: trigger, pre_tokens, post_tokens }
 }
 
-pub(crate) fn tool_result_block(name: Option<String>, text: String, is_error: bool) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error) }
+pub(crate) fn tool_call_block(name: String, input: serde_json::Value, tool_use_id: Option<String>) -> TranscriptBlock {
+    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, compact_trigger: None, pre_tokens: None, post_tokens: None }
+}
+
+pub(crate) fn tool_result_block(name: Option<String>, text: String, is_error: bool, tool_use_id: Option<String>) -> TranscriptBlock {
+    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 /// A tool_result's `content` is either a bare string or an array of text
@@ -1335,6 +1355,47 @@ fn stringify_content(content: &serde_json::Value) -> String {
 /// finding), and a `toolResult` role is its own top-level message (`content`,
 /// `isError`, `toolName`), not nested in the next turn - mapped to its own
 /// `"tool"`-role turn here.
+pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
+    parse_transcript_turns(path, agent)
+}
+
+/// Where an agent wrote this session's transcript, or `None` before it has
+/// written one.
+///
+/// Found by scanning the adapter's own discovery dir rather than by rebuilding
+/// the path from the cwd. The encoding of a cwd into a directory name is the
+/// harness's business and has changed before; the file that is *there* is not a
+/// guess. It also means a session moved between projects still resolves.
+///
+/// Two filename shapes are accepted because two harnesses write two: claude's
+/// `<id>.jsonl`, and pi's `<ts>_<id>.jsonl`.
+pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
+    let adapter = agents::find(agent)?;
+    let agents::Discovery::File { dir, .. } = &adapter.discovery else {
+        // A SQLite-backed harness has no per-session file; its transcript is
+        // read through its own locator, not through a path on disk.
+        return None;
+    };
+    let matches = |name: &str| {
+        let stem = name.strip_suffix(".jsonl").unwrap_or(name);
+        stem == session_id || stem.ends_with(&format!("_{session_id}"))
+    };
+    for project in std::fs::read_dir(dir).ok()?.flatten() {
+        if !project.path().is_dir() {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(project.path()) else {
+            continue;
+        };
+        for f in files.flatten() {
+            if f.file_name().to_str().is_some_and(matches) {
+                return Some(f.path().to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
 fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
     if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
         return crate::opencode::transcript_turns(&db_path, session_id);
@@ -1389,7 +1450,7 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                                 Some("toolCall") => {
                                     let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                                     let input = b.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
-                                    blocks.push(tool_call_block(name, input));
+                                    blocks.push(tool_call_block(name, input, None));
                                 }
                                 _ => {}
                             }
@@ -1403,7 +1464,7 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                     let name = msg.get("toolName").and_then(|n| n.as_str()).map(|s| s.to_string());
                     let text = msg.get("content").map(stringify_content).unwrap_or_default();
                     let is_error = msg.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
-                    turns.push(TranscriptTurn { role: "tool".into(), ts, blocks: vec![tool_result_block(name, text, is_error)] });
+                    turns.push(TranscriptTurn { role: "tool".into(), ts, blocks: vec![tool_result_block(name, text, is_error, None)] });
                 }
                 _ => {}
             }
@@ -1430,7 +1491,8 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                                     Some("tool_result") => {
                                         let text = b.get("content").map(stringify_content).unwrap_or_default();
                                         let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
-                                        blocks.push(tool_result_block(None, text, is_error));
+                                        let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
+                                        blocks.push(tool_result_block(None, text, is_error, id));
                                     }
                                     _ => {}
                                 }
@@ -1440,6 +1502,27 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                     if !blocks.is_empty() {
                         turns.push(TranscriptTurn { role: "user".into(), ts, blocks });
                     }
+                }
+                // A compaction boundary, kept as its own turn so a replayed
+                // transcript shows where its middle went rather than silently
+                // jumping. Sidechain boundaries belong to a subagent's context,
+                // not this conversation's, so they are skipped the same way the
+                // counts in `scan_counts` skip them.
+                Some("system")
+                    if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
+                        && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
+                {
+                    let m = v.get("compactMetadata");
+                    let get = |k: &str| m.and_then(|m| m.get(k)).and_then(|n| n.as_u64());
+                    turns.push(TranscriptTurn {
+                        role: "compaction".into(),
+                        ts,
+                        blocks: vec![compaction_block(
+                            m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
+                            get("preTokens"),
+                            get("postTokens"),
+                        )],
+                    });
                 }
                 Some("assistant") => {
                     let mut blocks = Vec::new();
@@ -1463,7 +1546,8 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                                 Some("tool_use") => {
                                     let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                                     let input = b.get("input").cloned().unwrap_or(serde_json::Value::Null);
-                                    blocks.push(tool_call_block(name, input));
+                                    let id = b.get("id").and_then(|i| i.as_str()).map(str::to_string);
+                                    blocks.push(tool_call_block(name, input, id));
                                 }
                                 _ => {}
                             }

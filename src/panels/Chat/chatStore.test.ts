@@ -116,9 +116,23 @@ const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"
 describe("replaying the captured fixture", () => {
   it("produces one item per rendered event, in arrival order", () => {
     const s = replay(FIXTURE);
-    // text, thinking, then a card each for toolu_1 (started), toolu_2 (fileEdit)
-    // and toolu_3 (permissionRequest), then the error and end notices.
-    expect(kinds(s)).toEqual(["text", "thinking", "tool", "tool", "tool", "notice", "notice"]);
+    // the replayed user turn, the compaction notice, text, thinking, then a
+    // card each for toolu_1 (started), toolu_2 (fileEdit) and toolu_3
+    // (permissionRequest), then the error and end notices.
+    expect(kinds(s)).toEqual([
+      "user",
+      "notice",
+      "text",
+      "thinking",
+      "tool",
+      "tool",
+      "tool",
+      "notice",
+      "notice",
+    ]);
+    // The compaction renders in place, carrying the figures and the summary.
+    expect((s.items[1] as { text: string }).text).toContain("Compacted manually (247k to 9k)");
+    expect((s.items[1] as { text: string }).text).toContain("continued from a previous conversation");
     expect(s.items.filter((i): i is ToolItem => i.kind === "tool").map((t) => t.toolUseId)).toEqual([
       "toolu_1",
       "toolu_2",
@@ -592,5 +606,59 @@ describe("model and effort switching", () => {
     expect(s.models).toHaveLength(1);
     expect(s.fastModeState).toBe("off");
     expect(s.fastModeDisabledReason).toBe("sdk_opt_in_required");
+  });
+});
+
+// Replayed history folds through the same reducer as a live stream, which is
+// the point: one renderer, so the path used less often cannot rot separately.
+describe("backfilled history", () => {
+  const userMsg = (turnId: string, text: string): ChatEvent => ({
+    type: "userMessage",
+    sessionId: "s1",
+    turnId,
+    blocks: [{ type: "text", text }],
+  });
+
+  it("renders a long conversation in order with its tool calls intact", () => {
+    // 50 prior turns, each a question, an answer and a tool call.
+    const events: ChatEvent[] = [];
+    for (let i = 1; i <= 50; i++) {
+      const t = `hist-turn-${i}`;
+      events.push(userMsg(t, `question ${i}`));
+      events.push(text(t, `answer ${i}`));
+      events.push(started(t, `toolu_${i}`, "Read"));
+      events.push(completed(t, `toolu_${i}`));
+    }
+    const s = replay(events);
+
+    expect(s.items).toHaveLength(150);
+    expect(kinds(s).slice(0, 6)).toEqual(["user", "text", "tool", "user", "text", "tool"]);
+    // In order, not merely present.
+    expect((s.items[0] as { blocks: { text: string }[] }).blocks[0].text).toBe("question 1");
+    expect((s.items[147] as { blocks: { text: string }[] }).blocks[0].text).toBe("question 50");
+    // Each call kept its own card and reached a settled state.
+    expect(Object.keys(s.toolIndex)).toHaveLength(50);
+    expect(tool(s, "toolu_50").state).toBe("ok");
+  });
+
+  it("does not leave a reopened tab reading as busy", () => {
+    // `pushUserTurn` sets awaitingTurn so the composer locks for the round trip.
+    // Replayed history is finished, so it must not.
+    const s = replay([userMsg("hist-turn-1", "an old question")]);
+    expect(s.awaitingTurn).toBe(false);
+    expect(isRunning(s)).toBe(false);
+  });
+
+  it("keeps replayed turns separate from the live ones that follow", () => {
+    const s = replay([userMsg("hist-turn-1", "old"), text("hist-turn-1", "old answer"), turnStarted("turn-1")]);
+    // The live turn is the active one; the replayed turn never reopens.
+    expect(s.activeTurnId).toBe("turn-1");
+    expect(s.turns["hist-turn-1"]).toBeDefined();
+  });
+
+  it("ignores history addressed to another session", () => {
+    const s = initialChat("other");
+    applyEvent(s, userMsg("hist-turn-1", "not yours"));
+    expect(s.items).toEqual([]);
   });
 });
