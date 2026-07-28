@@ -3,9 +3,14 @@ import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
+import PlanCard from "./PlanCard";
+import UsageReadout from "./UsageReadout";
+import ConnectionStatus from "./ConnectionStatus";
 import ModeSelector, { MODES } from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
+import { usageSummary } from "../../utils/chatUsage";
+import { rateLimitMessage } from "../../utils/chatRateLimit";
 import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
@@ -53,7 +58,9 @@ import {
 } from "../../utils/events";
 import {
   applyEvent,
+  beginReconnect,
   chatStatus,
+  connectionHealth,
   clearAwaitingTurn,
   discardQueue,
   enqueue,
@@ -157,6 +164,11 @@ export default function ChatView(props: {
     const r = refusal();
     return r && r.type === "orphaned" ? r : null;
   };
+
+  // Assigned by `onMount`'s `connect`, which owns the channel and the spawn
+  // arguments. Held out here so the connection control can reach it without
+  // lifting the whole event pipeline out of the closure it belongs in.
+  let reconnect: (() => void) | undefined;
 
   onMount(() => {
     // Live events arriving before the backfill has been folded in would render
@@ -268,51 +280,77 @@ export default function ChatView(props: {
       }
     }
 
-    const channel = new Channel<unknown>();
-    channel.onmessage = (raw) => {
-      const ev = parseChatEvent(raw);
-      // An unrecognised frame is dropped, never thrown: a panel must not go
-      // down mid-turn over a frame it did not expect.
-      if (!ev) return;
-      // Parked until the replay has landed, or the session's history would
-      // render after its newest turn.
-      if (!backfilled) {
-        parked.push(ev);
-        return;
-      }
-      handleLive(ev);
+    /**
+     * Start (or restart) the child and claim the session.
+     *
+     * Re-callable, because a reconnect is the same operation: a fresh
+     * `Channel` (one invoke, one channel), a fresh `chat_spawn`, a fresh claim.
+     * The host releases the claim when a child dies, so a reconnect re-takes it
+     * rather than contending with a ghost.
+     *
+     * `resume` is forced on for a reconnect whatever this tab was opened as: the
+     * session exists on disk by then, and starting it fresh would silently
+     * abandon the transcript the panel is still showing.
+     */
+    function connect(opts: { reconnect: boolean }) {
+      const channel = new Channel<unknown>();
+      channel.onmessage = (raw) => {
+        const ev = parseChatEvent(raw);
+        // An unrecognised frame is dropped, never thrown: a panel must not go
+        // down mid-turn over a frame it did not expect.
+        if (!ev) return;
+        // Parked until the replay has landed, or the session's history would
+        // render after its newest turn.
+        if (!backfilled) {
+          parked.push(ev);
+          return;
+        }
+        handleLive(ev);
+      };
+
+      void invoke<SpawnResult>("chat_spawn", {
+        sessionId: props.sessionId,
+        tabId: props.tabId,
+        agentId: props.agentId,
+        cwd: props.cwd,
+        resume: opts.reconnect ? true : props.resume,
+        // A reconnect is not a fork: the fork already happened, and asking for
+        // one again would branch the session a second time.
+        forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
+        model: null,
+        mode: null,
+        effort: null,
+        extraDirs: [],
+        onEvent: channel,
+      })
+        .then((res) => {
+          setOwnership(res.ownership);
+          if (res.ownership.type === "granted" && res.ownership.contested) {
+            emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
+          }
+          // A session opened by "send to a new chat" carries its first turn. Sent
+          // only once the claim came back granted: a refused claim has no child to
+          // send to, and the seed stays in the composer for the user to decide.
+          if (!opts.reconnect && res.ownership.type === "granted" && takeAutoSend(props.sessionId)) {
+            onSend(draftFor(props.sessionId));
+          }
+        })
+        .catch((e) => {
+          edit((s) =>
+            applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: true }),
+          );
+        });
+    }
+
+    reconnect = () => {
+      // Cleared before the invoke, so the control stops offering a reconnect
+      // that is already under way. A failed spawn drops it straight back to
+      // disconnected through the catch above.
+      edit((s) => beginReconnect(s));
+      connect({ reconnect: true });
     };
 
-    void invoke<SpawnResult>("chat_spawn", {
-      sessionId: props.sessionId,
-      tabId: props.tabId,
-      agentId: props.agentId,
-      cwd: props.cwd,
-      resume: props.resume,
-      forkFrom: props.forkFrom ?? null,
-      model: null,
-      mode: null,
-      effort: null,
-      extraDirs: [],
-      onEvent: channel,
-    })
-      .then((res) => {
-        setOwnership(res.ownership);
-        if (res.ownership.type === "granted" && res.ownership.contested) {
-          emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
-        }
-        // A session opened by "send to a new chat" carries its first turn. Sent
-        // only once the claim came back granted: a refused claim has no child to
-        // send to, and the seed stays in the composer for the user to decide.
-        if (res.ownership.type === "granted" && takeAutoSend(props.sessionId)) {
-          onSend(draftFor(props.sessionId));
-        }
-      })
-      .catch((e) => {
-        edit((s) =>
-          applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: true }),
-        );
-      });
+    connect({ reconnect: false });
   });
 
   // A closed tab ends the child. `chat_close` is a no-op for a session that
@@ -659,6 +697,17 @@ export default function ChatView(props: {
         </div>
       </Show>
 
+      {/* Only when a limit is actually in force. Every captured
+          `rate_limit_event` reports `allowed` and one fires per turn, so
+          rendering on the event would mean a banner that is always up. */}
+      <Show when={rateLimitMessage(state.rateLimit, Date.now())}>
+        {(message) => (
+          <div class={styles.banner}>
+            <span class={styles.bannerText}>{message()}</span>
+          </div>
+        )}
+      </Show>
+
       {/* An ownership refusal is an offer, not an error string: go to what
           holds the session, or start a fresh one beside it. */}
       <Show when={heldElsewhere()}>
@@ -715,6 +764,15 @@ export default function ChatView(props: {
           onSelectEffort={onSelectEffort}
         />
         <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
+        <UsageReadout summary={usageSummary(state)} />
+        {/* Not for a refused claim. No child was ever started there, so the
+            health would sit on "connecting" forever - a claim about a process
+            that is never coming - and a Reconnect button would offer to take a
+            session another tab holds. The refusal banner above already says
+            what happened and offers the two real ways out. */}
+        <Show when={!refused()}>
+          <ConnectionStatus health={connectionHealth(state)} onReconnect={() => reconnect?.()} />
+        </Show>
         <RuleList rules={rules()} onRemove={onRemoveRule} />
         <Button
           size="sm"
@@ -747,6 +805,8 @@ export default function ChatView(props: {
         onAnswer={onAnswer}
         onRevertHunk={onRevertHunk}
       />
+
+      <PlanCard items={state.plan} />
 
       <Composer
         running={running()}

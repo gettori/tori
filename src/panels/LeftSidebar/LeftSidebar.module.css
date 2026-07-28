@@ -488,6 +488,32 @@
   color: var(--status-running);
   opacity: 0.8;
 }
+/* The exact tier's marker: a hairline rule under the glyph, meaning Sway
+   measured this status from the session's own event stream rather than
+   inferring it from a probe and a transcript tail.
+
+   Only this side is marked. Marking the inferred side instead would restyle
+   every PTY agent tab and every external session - the rendering Phase 11
+   promised to leave alone and the golden status fixture exists to catch - so
+   the tiering is expressed by adding to the side that gained certainty.
+
+   Drawn as a pseudo-element rather than a border so it costs no layout: the
+   indicator sits in the row's fixed trailing slot, and a border would grow its
+   box and push the session name's ellipsis. */
+.statusIndicator.exact {
+  position: relative;
+}
+.statusIndicator.exact::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-2px * var(--ui-scale));
+  height: max(1px, calc(1px * var(--ui-scale)));
+  background: currentColor;
+  border-radius: 1px;
+  opacity: 0.75;
+}
 
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
    space's nearest rendered ancestor. Shows all four states, each with its own
