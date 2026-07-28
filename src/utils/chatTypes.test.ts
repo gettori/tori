@@ -95,6 +95,13 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "sessionStarted":
           expect(ev.slashCommands[0]?.name).toBe("review");
           expect(ev.permissionMode).toBe("bypassPermissions");
+          // The two model ids are separate fields on purpose; a mirror that
+          // collapsed them would let the picker compare the wrong one.
+          expect(ev.models[0]?.value).toBe("sonnet");
+          expect(ev.models[0]?.resolvedModel).toBe("claude-sonnet-5");
+          expect(ev.models[0]?.supportedEffortLevels).toContain("high");
+          expect(ev.fastModeState).toBe("off");
+          expect(ev.fastModeDisabledReason).toBe("sdk_opt_in_required");
           break;
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();

@@ -6,20 +6,28 @@ import {
   chatStatus,
   clearAwaitingTurn,
   discardQueue,
+  effortPending,
   enqueue,
   filesWritten,
   hasEarlier,
   initialChat,
   isRunning,
   modePending,
+  modelPending,
   pendingApprovals,
   pendingFlush,
   pushUserTurn,
   releaseQueue,
   removeQueued,
   resolveApproval,
+  revertEffortPick,
+  revertModelPick,
+  selectEffort,
   selectMode,
+  selectModel,
+  shownEffort,
   shownMode,
+  shownModelValue,
   takeForSend,
   windowed,
   type ChatItem,
@@ -45,12 +53,26 @@ const kinds = (s: ChatState) => s.items.map((i) => i.kind);
 const tool = (s: ChatState, toolUseId: string): ToolItem => s.items[s.toolIndex[toolUseId]] as ToolItem;
 
 // Minimal well-typed event builders, so a test says only what it is about.
-const turnStarted = (turnId: string): ChatEvent => ({
+const turnStarted = (turnId: string, model = "m"): ChatEvent => ({
   type: "turnStarted",
   sessionId: "s1",
   turnId,
-  model: "m",
+  model,
   permissionMode: "default",
+});
+const sessionStarted = (over: Partial<Extract<ChatEvent, { type: "sessionStarted" }>> = {}): ChatEvent => ({
+  type: "sessionStarted",
+  sessionId: "s1",
+  cwd: "/w",
+  model: "claude-sonnet-5",
+  permissionMode: "default",
+  tools: [],
+  slashCommands: [],
+  mcpServers: [],
+  models: [],
+  fastModeState: null,
+  fastModeDisabledReason: null,
+  ...over,
 });
 const text = (turnId: string, t: string): ChatEvent => ({ type: "textDelta", sessionId: "s1", turnId, text: t });
 const started = (turnId: string, toolUseId: string, name = "Edit", input: unknown = { file_path: "/a" }): ChatEvent => ({
@@ -446,5 +468,129 @@ describe("filesWritten", () => {
   it("reports nothing for the events that wrote nothing", () => {
     expect(filesWritten(prompt("toolu_1"))).toEqual([]);
     expect(filesWritten(started("t1", "toolu_1", "Read", { file_path: "/a" }))).toEqual([]);
+  });
+});
+
+// The switch that cannot be confirmed the obvious way.
+//
+// `system/init` reports `resolvedModel` and never the `value` that `--model`
+// takes, and several values resolve to one id. So every assertion here goes
+// through the resolved id; comparing the picked value against init's model
+// would report every successful switch as a failure.
+describe("model and effort switching", () => {
+  const HAIKU = { value: "haiku", resolvedModel: "claude-haiku-4-5-20251001" };
+  const SONNET = { value: "sonnet", resolvedModel: "claude-sonnet-5" };
+
+  // The real pair: the first `system/init` opens the session *and* starts turn
+  // one, so a session with no live turn is a state the transport never emits.
+  function live(): ChatState {
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted());
+    applyEvent(s, turnStarted("turn-1", "claude-sonnet-5"));
+    return s;
+  }
+
+  it("shows a pick at once but marks it pending until a turn confirms it", () => {
+    const s = live();
+    selectModel(s, HAIKU);
+    expect(shownModelValue(s)).toBe("haiku");
+    expect(modelPending(s)).toBe(true);
+    // Still the old session model: the CLI cannot switch mid-turn.
+    expect(s.model).toBe("claude-sonnet-5");
+
+    applyEvent(s, turnStarted("t2", "claude-haiku-4-5-20251001"));
+    expect(modelPending(s)).toBe(false);
+    expect(s.modelValue).toBe("haiku");
+    expect(s.model).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("keeps the pick pending while the session reports a different model", () => {
+    const s = live();
+    selectModel(s, HAIKU);
+    applyEvent(s, turnStarted("t2", "claude-sonnet-5"));
+    expect(modelPending(s)).toBe(true);
+    expect(s.modelValue).toBeNull();
+  });
+
+  it("confirms two values that share one resolved id, because nothing else can", () => {
+    // `default` and `sonnet` both resolve to claude-sonnet-5, so init cannot
+    // distinguish them. The boundary is treated as confirmation, which is the
+    // least wrong answer available - the alternative is a marker that never
+    // clears.
+    const s = live();
+    selectModel(s, SONNET);
+    applyEvent(s, turnStarted("t2", "claude-sonnet-5"));
+    expect(modelPending(s)).toBe(false);
+    expect(s.modelValue).toBe("sonnet");
+  });
+
+  it("treats re-picking the model in force as cancelling a pending switch", () => {
+    const s = live();
+    selectModel(s, SONNET);
+    applyEvent(s, turnStarted("t2", "claude-sonnet-5"));
+    selectModel(s, HAIKU);
+    expect(modelPending(s)).toBe(true);
+    selectModel(s, SONNET);
+    expect(modelPending(s)).toBe(false);
+    expect(shownModelValue(s)).toBe("sonnet");
+  });
+
+  it("applies effort at the next turn boundary, since nothing reports it back", () => {
+    const s = live();
+    selectEffort(s, "xhigh");
+    expect(shownEffort(s)).toBe("xhigh");
+    expect(effortPending(s)).toBe(true);
+    // A delta of the turn already running is not a boundary.
+    applyEvent(s, text("turn-1", "still going"));
+    expect(effortPending(s)).toBe(true);
+
+    applyEvent(s, turnStarted("t2"));
+    expect(effortPending(s)).toBe(false);
+    expect(s.effort).toBe("xhigh");
+  });
+
+  it("reverts a pick whose request never left, so the control stops promising", () => {
+    const s = live();
+    selectModel(s, HAIKU);
+    revertModelPick(s, "haiku");
+    expect(modelPending(s)).toBe(false);
+    expect(shownModelValue(s)).toBeNull();
+
+    selectEffort(s, "max");
+    revertEffortPick(s, "max");
+    expect(effortPending(s)).toBe(false);
+  });
+
+  it("does not let a late rejection drop a newer pick", () => {
+    const s = live();
+    selectModel(s, HAIKU);
+    selectModel(s, SONNET);
+    // The rejection of the first pick arrives after the second was made.
+    revertModelPick(s, "haiku");
+    expect(shownModelValue(s)).toBe("sonnet");
+  });
+
+  it("carries the catalogue and fast-mode state off the session start", () => {
+    const s = initialChat("s1");
+    applyEvent(
+      s,
+      sessionStarted({
+        models: [
+          {
+            value: "haiku",
+            resolvedModel: "claude-haiku-4-5-20251001",
+            displayName: "Haiku",
+            description: "Fastest",
+            supportsEffort: false,
+            supportedEffortLevels: [],
+          },
+        ],
+        fastModeState: "off",
+        fastModeDisabledReason: "sdk_opt_in_required",
+      }),
+    );
+    expect(s.models).toHaveLength(1);
+    expect(s.fastModeState).toBe("off");
+    expect(s.fastModeDisabledReason).toBe("sdk_opt_in_required");
   });
 });

@@ -26,6 +26,7 @@
 
 import type {
   ChatEvent,
+  ChatModelInfo,
   ContentBlock,
   FileEditKind,
   McpServer,
@@ -104,7 +105,29 @@ export type ChatState = {
    *  reports as a completion, and flushing on it would send exactly the
    *  messages the user pressed stop to prevent. */
   queueHeld: boolean;
+  /** The **resolved** model id the child reports (`claude-sonnet-5`), which is
+   *  not what `--model` takes and not what the picker selects on. */
   model: string | null;
+  /** The `--model` value last sent from the picker, and the only record of
+   *  *which* value is in force: several values resolve to one id, so the
+   *  session's own report cannot say. Null until something picks. */
+  modelValue: string | null;
+  /** A model picked that the next turn has not confirmed yet, carrying both
+   *  ids: the value is what was sent, the resolved id is what the next init has
+   *  to report for the pick to count as landed. */
+  pendingModel: { value: string; resolvedModel: string } | null;
+  /** The effort level in force, and one picked but not yet applied. Unlike the
+   *  model and the mode, **nothing on the wire reports effort back**, so the
+   *  applied value is what was last sent rather than what was confirmed. */
+  effort: string | null;
+  pendingEffort: string | null;
+  /** The live model catalogue from the handshake. Empty means "fall back to the
+   *  adapter table", not "no models". */
+  models: ChatModelInfo[];
+  /** `system/init`'s fast-mode state, and the harness's reason when it is
+   *  unavailable. */
+  fastModeState: string | null;
+  fastModeDisabledReason: string | null;
   /** The mode the session is actually in, as the child re-declares it on every
    *  turn. Never set from a click: a control that moved on its own would claim
    *  an effect the CLI cannot deliver mid-turn. */
@@ -139,6 +162,13 @@ export function initialChat(sessionId: string): ChatState {
     queue: [],
     queueHeld: false,
     model: null,
+    modelValue: null,
+    pendingModel: null,
+    effort: null,
+    pendingEffort: null,
+    models: [],
+    fastModeState: null,
+    fastModeDisabledReason: null,
     permissionMode: null,
     pendingMode: null,
     tools: [],
@@ -205,6 +235,19 @@ function touchTurn(s: ChatState, turnId: string) {
   s.turns[turnId] = { completed: false };
   s.activeTurnId = turnId;
   s.awaitingTurn = false;
+  // A new turn is the boundary the CLI applies a queued effort switch at, and
+  // **nothing on the wire reports effort back** the way init reports the model
+  // and the mode. So a pending level is taken as applied at the first boundary
+  // after it was sent rather than confirmed - which is the whole reason the
+  // control promises "from the next turn" and never "switched to".
+  //
+  // Here rather than in the `turnStarted` arm because a boundary is whatever
+  // first reveals a turn id this session has not seen, which is sometimes a
+  // delta that overtook its own `turnStarted`.
+  if (s.pendingEffort !== null) {
+    s.effort = s.pendingEffort;
+    s.pendingEffort = null;
+  }
 }
 
 /** Record the mode the child says it is in. The per-turn init re-emission is the
@@ -213,6 +256,26 @@ function touchTurn(s: ChatState, turnId: string) {
 function noteMode(s: ChatState, mode: PermissionMode) {
   s.permissionMode = mode;
   if (s.pendingMode === mode) s.pendingMode = null;
+}
+
+/**
+ * Record the **resolved** model id the child reports, and clear a pending pick
+ * once that id says the pick landed.
+ *
+ * The comparison goes through `resolvedModel` and never through the picked
+ * value, because init reports the former and never the latter: comparing the
+ * value would mark every successful switch as failed. That is also why a
+ * pending pick carries both halves - the fold would otherwise need the adapter
+ * table to resolve one, and threading config through the reducer to answer a
+ * question the picker already knew the answer to is how the two end up
+ * disagreeing about what was picked.
+ */
+function noteModel(s: ChatState, resolvedModel: string) {
+  s.model = resolvedModel;
+  if (s.pendingModel === null) return;
+  if (s.pendingModel.resolvedModel !== resolvedModel) return;
+  s.modelValue = s.pendingModel.value;
+  s.pendingModel = null;
 }
 
 function appendText(s: ChatState, turnId: string, text: string, thinking: boolean) {
@@ -263,17 +326,20 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
     case "sessionStarted": {
       // `system/init` re-emits every turn; only the first is a session start,
       // and treating a later one as one would reset the transcript mid-chat.
-      s.model = ev.model;
+      noteModel(s, ev.model);
       noteMode(s, ev.permissionMode);
       s.tools = ev.tools;
       s.slashCommands = ev.slashCommands;
       s.mcpServers = ev.mcpServers;
+      s.models = ev.models;
+      s.fastModeState = ev.fastModeState;
+      s.fastModeDisabledReason = ev.fastModeDisabledReason;
       if (s.started) return;
       s.started = true;
       return;
     }
     case "turnStarted": {
-      s.model = ev.model;
+      noteModel(s, ev.model);
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
       return;
@@ -482,6 +548,62 @@ export function shownMode(s: ChatState): PermissionMode {
  *  this one? */
 export function modePending(s: ChatState): boolean {
   return s.pendingMode !== null;
+}
+
+/**
+ * Record the user's model pick, the same way `selectMode` records a mode: shown
+ * at once, in force only when the next turn says so.
+ *
+ * Takes the whole entry rather than a value string because confirming the pick
+ * needs its `resolvedModel`, and asking the fold to look that up would put the
+ * catalogue in a second place.
+ */
+export function selectModel(s: ChatState, model: { value: string; resolvedModel: string }) {
+  // Re-picking what is already in force cancels a pending switch rather than
+  // queueing a no-op. Compared on the *value*, since that is what identifies a
+  // pick - two values can share `resolvedModel`, and comparing on that would
+  // silently swallow a real switch between them.
+  s.pendingModel = model.value === s.modelValue ? null : { ...model };
+}
+
+/** The model value the picker shows as selected, or null before anything has
+ *  been picked and no session model is known. */
+export function shownModelValue(s: ChatState): string | null {
+  return s.pendingModel?.value ?? s.modelValue;
+}
+
+export function modelPending(s: ChatState): boolean {
+  return s.pendingModel !== null;
+}
+
+/**
+ * Undo a pick whose request never left, so the control stops promising a switch
+ * the session will never make.
+ *
+ * Guarded on the value rather than clearing unconditionally: by the time a
+ * rejection comes back the user may have picked again, and dropping *that* pick
+ * would leave the picker showing a model nothing is going to apply.
+ */
+export function revertModelPick(s: ChatState, value: string) {
+  if (s.pendingModel?.value === value) s.pendingModel = null;
+}
+
+export function revertEffortPick(s: ChatState, effort: string) {
+  if (s.pendingEffort === effort) s.pendingEffort = null;
+}
+
+/** Record an effort pick. Nothing reports effort back, so there is no confirmed
+ *  value to compare against beyond the last one sent. */
+export function selectEffort(s: ChatState, effort: string) {
+  s.pendingEffort = effort === s.effort ? null : effort;
+}
+
+export function shownEffort(s: ChatState): string | null {
+  return s.pendingEffort ?? s.effort;
+}
+
+export function effortPending(s: ChatState): boolean {
+  return s.pendingEffort !== null;
 }
 
 /** Every card still blocked on the user. */
