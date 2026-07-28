@@ -262,52 +262,9 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 saved on.
               </div>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Default model</label>
-                <input
-                  class={`${styles.input} ${styles.text}`}
-                  value={settings.chatDefaults.model ?? ""}
-                  placeholder="the harness default"
-                  onChange={(e) => setChatDefaults({ model: e.currentTarget.value.trim() || null })}
-                />
-              </div>
-
-              <div class={styles.row}>
-                <label class={styles.label}>Default effort</label>
-                <div class={styles.control}>
-                  <select
-                    class={styles.select}
-                    value={settings.chatDefaults.effort ?? ""}
-                    onChange={(e) => setChatDefaults({ effort: e.currentTarget.value || null })}
-                  >
-                    <option value="">The harness default</option>
-                    <For each={["low", "medium", "high", "xhigh", "max"]}>
-                      {(level) => <option value={level}>{level}</option>}
-                    </For>
-                  </select>
-                </div>
-              </div>
-
-              <div class={styles.row}>
-                <label class={styles.label}>Default mode</label>
-                <div class={styles.control}>
-                  <select
-                    class={styles.select}
-                    value={settings.chatDefaults.mode ?? ""}
-                    onChange={(e) => setChatDefaults({ mode: e.currentTarget.value || null })}
-                  >
-                    <option value="">The harness default</option>
-                    <option value="default">Ask</option>
-                    <option value="acceptEdits">Accept edits</option>
-                    <option value="plan">Plan</option>
-                    <option value="bypassPermissions">Bypass</option>
-                  </select>
-                </div>
-              </div>
-              <div class={styles.hint}>
-                What a new chat starts with. A project that already has its own remembered picks
-                keeps them.
-              </div>
+              {/* No default model/effort/mode settings on purpose: a new chat
+                  opens on whatever the CLI itself would choose, and the
+                  composer's pickers change course mid-conversation. */}
 
               <div class={styles.row}>
                 <label class={styles.label}>Stream responses</label>
@@ -375,7 +332,7 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               </div>
 
               <div class={styles.row}>
-                <label class={styles.label}>Show Sway's approval hook</label>
+                <label class={styles.label}>Show every hook event</label>
                 <input
                   type="checkbox"
                   checked={settings.chatDefaults.showSwayHooks}
@@ -383,8 +340,8 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 />
               </div>
               <div class={styles.hint}>
-                Sway's own hook runs on every tool call and adds two transcript rows each time, so it
-                is folded away by default. Your own hooks always show.
+                Off, the transcript shows a hook only when it fails; a hook that ran as configured is
+                not news. On reveals every execution, Sway's own per-tool-call approval hook included.
               </div>
             </section>
 

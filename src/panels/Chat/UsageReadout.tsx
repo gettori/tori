@@ -3,8 +3,8 @@ import { fmtCost, fmtTokens, type UsageSummary } from "../../utils/chatUsage";
 import styles from "./Chat.module.css";
 
 /**
- * What the last turn cost and what the session has cost so far, in the controls
- * row beside the model.
+ * What the last turn cost and what the session has cost so far, in the status
+ * strip's overflow menu.
  *
  * Two figures rather than one because they answer different questions and get
  * confused for each other constantly: the turn figure is "was that reply
@@ -24,7 +24,7 @@ export default function UsageReadout(props: { summary: UsageSummary }) {
     <Show when={turn()}>
       {(t) => (
         <span
-          class={styles.modelNote}
+          class={styles.menuNote}
           title={
             `Last turn: ${fmtTokens(t().tokens)} tokens` +
             (t().cost === null ? "" : `, ${fmtCost(t().cost!)}`) +

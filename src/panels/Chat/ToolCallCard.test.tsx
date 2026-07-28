@@ -45,10 +45,11 @@ describe("ToolCallCard", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("renders a known tool collapsed, with its distinguishing argument", () => {
-    const { getByText } = mount(card());
+    const { getByText, queryByText } = mount(card());
     expect(getByText("Bash")).toBeTruthy();
     expect(getByText("ls -la")).toBeTruthy();
-    expect(getByText("Done")).toBeTruthy();
+    // A settled call already reads as done; the label would caption every row.
+    expect(queryByText("Done")).toBeNull();
   });
 
   // The renderer table's fallback is the common case: a plugin, an MCP server
