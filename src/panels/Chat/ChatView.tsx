@@ -26,6 +26,7 @@ import RuleList from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
+import { type SessionDetail } from "./SessionStats";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import {
   clearComposer,
@@ -237,9 +238,20 @@ export default function ChatView(props: {
     }
     return paths.size;
   });
-  const messageCount = createMemo(() =>
-    state.items.reduce((n, it) => n + (it.kind === "user" || it.kind === "text" ? 1 : 0), 0),
-  );
+  // The session's figures, from the same backend read the toolbar shows for a
+  // sidebar selection, so the two never disagree about this session. Refreshed
+  // when a turn completes rather than polled: a turn is exactly what moves these
+  // numbers, and the transcript is only written as one lands.
+  const [detail, setDetail] = createSignal<SessionDetail | null>(null);
+  function loadDetail() {
+    void invoke<SessionDetail | null>("chat_session_detail", {
+      sessionId: props.sessionId,
+      agentId: props.agentId,
+    })
+      .then(setDetail)
+      .catch(() => {});
+  }
+  createEffect(on(() => state.turnsCompleted, loadDetail));
   // Null until a turn completed: a zero would be a claim (see UsageReadout).
   const sessionTokens = () => {
     const summary = usageSummary({ ...state, promptsInTranscript: promptCount() });
@@ -1233,7 +1245,7 @@ export default function ChatView(props: {
           awaitingApproval={pendingApprovals(state).length > 0}
           files={touchedFiles()}
           tokens={sessionTokens()}
-          messages={messageCount()}
+          detail={detail()}
           onReconnect={() => reconnect?.()}
           menu={
             <div class={styles.menuBody}>

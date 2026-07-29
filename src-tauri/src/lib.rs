@@ -198,6 +198,7 @@ pub fn run() {
             chat::commands::chat_record_usage,
             chat::commands::chat_usage_totals,
             chat::commands::chat_prompt_count,
+            chat::commands::chat_session_detail,
             chat::commands::chat_set_budget_stop,
             chat::commands::chat_history,
             chat::commands::chat_mark_turn,

@@ -94,6 +94,12 @@
     --sway-text-2xl: calc(16px * var(--ui-scale));
     --sway-text-3xl: calc(18px * var(--ui-scale));
     --sway-text-4xl: calc(21px * var(--ui-scale));
+    /* Transcript prose. Deliberately *not* on the chrome ramp: it is set at
+       runtime from the terminal font size (see settingsStore.applySettings), so
+       a chat and a terminal read at one size. This default matches the 15px
+       terminal default, covering the first paint and anything that renders
+       these styles without the settings store. */
+    --chat-font-size: 15px;
     --sway-line-tight: 1.2;
     --sway-line-normal: 1.5;
 
