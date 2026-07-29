@@ -71,44 +71,85 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
       {...over}
     />
   ));
-  const selects = () => [...result.container.querySelectorAll("select")] as HTMLSelectElement[];
-  return { ...result, selects, onSelectModel, onSelectEffort };
+  // The pills are buttons in the container; their menus are portaled to the
+  // body, so rows are read off the document rather than off the render root.
+  const pills = () => [...result.container.querySelectorAll("button")] as HTMLButtonElement[];
+  const open = (i: number) => {
+    fireEvent.click(pills()[i]);
+    // The last one: menus are portaled to the body, and a menu another render
+    // in this file left behind is still a match for the first selector.
+    const menus = [...document.querySelectorAll('[role="menu"]')];
+    const menu = menus[menus.length - 1];
+    if (!menu) throw new Error("the pill opened no menu");
+    return menu as HTMLElement;
+  };
+  const rowNames = (menu: HTMLElement) =>
+    [...menu.children].map((row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent);
+  const pick = (menu: HTMLElement, name: string) => {
+    const row = [...menu.children].find(
+      (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === name,
+    );
+    if (!row) throw new Error(`no row named ${name}`);
+    fireEvent.click(row);
+  };
+  return { ...result, pills, open, rowNames, pick, onSelectModel, onSelectEffort };
 }
 
 describe("ModelPicker", () => {
   it("lists this machine's real models by display name", () => {
-    const { selects } = setup();
-    const options = [...selects()[0].options].map((o) => o.textContent);
-    expect(options).toContain("Default (recommended)");
-    expect(options).toContain("Sonnet");
-    expect(options).toContain("Haiku");
-    expect(options).toHaveLength(5);
+    const { open, rowNames } = setup();
+    const names = rowNames(open(0));
+    expect(names).toContain("Default (recommended)");
+    expect(names).toContain("Sonnet");
+    expect(names).toContain("Haiku");
+    // Five is under the flat limit, so the whole catalogue is on one page and
+    // there is no "More models" fold to click through.
+    expect(names).toHaveLength(5);
+    expect(names).not.toContain("More models");
+  });
+
+  it("carries each model's own description into its row", () => {
+    // The reason to reach for one model over another is the sentence the
+    // catalogue already ships; a list of bare names does not say which to pick.
+    const menu = setup().open(0);
+    expect(menu.textContent).toContain("Fastest for quick answers");
+  });
+
+  it("ticks only the selected row", () => {
+    const menu = setup({ value: "haiku" }).open(0);
+    const ticked = [...menu.children].filter((r) => r.textContent?.includes("Haiku"));
+    expect(ticked).toHaveLength(1);
   });
 
   it("renders a usable picker from the adapter table when there was no handshake", () => {
-    const { selects, onSelectModel } = setup({
+    const { pills, open, rowNames, pick, onSelectModel } = setup({
       models: pickableModels([], adapter),
       value: "claude-sonnet-5",
     });
-    const model = selects()[0];
-    expect(model.disabled).toBe(false);
-    expect([...model.options].map((o) => o.textContent)).toEqual(["Sonnet 5"]);
+    expect(pills()[0].disabled).toBe(false);
+    const menu = open(0);
+    expect(rowNames(menu)).toEqual(["Sonnet 5"]);
     // Usable means it can actually be picked, not just that it renders.
-    fireEvent.change(model, { target: { value: "claude-sonnet-5" } });
+    pick(menu, "Sonnet 5");
     expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ value: "claude-sonnet-5" }));
   });
 
   it("hides the effort control for a model declaring no levels, and shows all five for one that does", () => {
     // Measured: haiku omits the effort keys entirely.
-    expect(setup({ value: "haiku" }).selects()).toHaveLength(1);
+    expect(setup({ value: "haiku" }).pills()).toHaveLength(1);
 
-    const sonnet = setup({ value: "sonnet" }).selects();
-    expect(sonnet).toHaveLength(2);
-    // The leading blank is the unselectable "Default" placeholder: before a
-    // pick, the level in force is the CLI's own and Sway does not know it.
-    const levels = [...sonnet[1].options];
-    expect(levels[0].disabled).toBe(true);
-    expect(levels.slice(1).map((o) => o.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    const sonnet = setup({ value: "sonnet" });
+    expect(sonnet.pills()).toHaveLength(2);
+    expect(sonnet.rowNames(sonnet.open(1))).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("says Default for an effort nothing has reported, without offering it as a level", () => {
+    // Nothing on the wire reports effort back, so before a pick the level in
+    // force is the CLI's own and Sway does not know which it is. Naming one
+    // would be a claim; offering "Default" as a pick would send a bad flag.
+    const s = setup({ value: "sonnet", effort: null });
+    expect(s.pills()[1].textContent).toContain("Default");
+    expect(s.rowNames(s.open(1))).not.toContain("Default");
   });
 
   it("shows the context window only when one is declared", () => {
@@ -139,8 +180,8 @@ describe("ModelPicker", () => {
   });
 
   it("hands back the whole entry, so the caller has the resolved id a pick is confirmed by", () => {
-    const { selects, onSelectModel } = setup();
-    fireEvent.change(selects()[0], { target: { value: "haiku" } });
+    const { open, pick, onSelectModel } = setup();
+    pick(open(0), "Haiku");
     expect(onSelectModel).toHaveBeenCalledWith(
       expect.objectContaining({ value: "haiku", resolvedModel: "claude-haiku-4-5-20251001" }),
     );
