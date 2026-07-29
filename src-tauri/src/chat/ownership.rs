@@ -489,12 +489,18 @@ mod tests {
     /// A per-test claims store. Never the real one: a test run while Sway is
     /// open would otherwise rewrite `chat-claims.json` and drop a live session's
     /// claim out from under it.
+    /// A claims file in a directory of this test's own.
+    ///
+    /// One directory per test, not one per process. These run in parallel inside
+    /// a single process, so a shared `sway-claims-<pid>` directory means one
+    /// test's `remove_dir_all` cleanup deletes another test's store while it is
+    /// mid-write, and an atomic write's `rename` then fails into a discarded
+    /// error in `reap_at`. See the "Rust tests sharing a temp path keyed only on
+    /// process id race each other" gotcha.
     fn temp_store(name: &str) -> PathBuf {
-        let path = std::env::temp_dir()
-            .join(format!("sway-claims-{}", std::process::id()))
-            .join(format!("{name}.json"));
-        let _ = std::fs::remove_file(&path);
-        path
+        let dir = std::env::temp_dir().join(format!("sway-claims-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir.join("claims.json")
     }
 
     fn clear() -> Probe {
@@ -655,9 +661,10 @@ mod tests {
 
     #[test]
     fn write_read_back_and_removal_all_work_off_disk() {
-        let dir = std::env::temp_dir().join(format!("sway-claims-{}", std::process::id()));
-        let path = dir.join("chat-claims.json");
-        let _ = std::fs::remove_dir_all(&dir);
+        // Its own directory, since this test removes the whole thing at the end
+        // and its siblings run in parallel. See `temp_store`.
+        let path = temp_store("write-read-back");
+        let dir = path.parent().unwrap().to_path_buf();
 
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
@@ -685,9 +692,9 @@ mod tests {
     #[test]
     fn claims_are_replaced_by_rename_so_a_torn_write_cannot_empty_the_file() {
         use std::io::Read;
-        let dir = std::env::temp_dir().join(format!("sway-claims-atomic-{}", std::process::id()));
-        let path = dir.join("chat-claims.json");
-        let _ = std::fs::remove_dir_all(&dir);
+        let path = temp_store("atomic-rename");
+        let dir = path.parent().unwrap().to_path_buf();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
 
         let mut first = HashMap::new();
         record(&mut first, "s1", claim(Surface::Chat, "tab-a"));
@@ -714,7 +721,7 @@ mod tests {
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n != "chat-claims.json")
+            .filter(|n| *n != name)
             .collect();
         assert!(leftovers.is_empty(), "unexpected leftovers: {leftovers:?}");
 
