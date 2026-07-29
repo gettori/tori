@@ -8,11 +8,20 @@ import styles from "./Chat.module.css";
 
 /**
  * The one-line session readout above the transcript: what the session is doing
- * right now, the files it has touched, what it has spent, and the session's own
- * figures (model, prompts, turns, tool calls, context) on the same component the
+ * right now, the files it has touched, and the session's own figures (model,
+ * prompts, turns, tool calls, compactions, context) on the same component the
  * toolbar uses. Everything occasional - fork, send-to-new-chat, rules, what the
  * session loaded - lives behind the overflow menu on the right, so the strip
  * never grows into the wall of controls it replaced.
+ *
+ * **What it has spent is not here**, deliberately. The session token total used
+ * to sit in this row and it was the same figure `UsageReadout` shows in the
+ * menu, minus that one's cost, turn count and "counts only the turns this chat
+ * watched finish" caveat - so the strip carried the version most likely to be
+ * misread, on a resumed session where it undercounts. It also sat beside the
+ * context figure, which is a different measurement entirely (the latest turn's
+ * input against the window, not a sum over turns, and no output tokens), and
+ * two token numbers side by side invite being read as one.
  *
  * The elapsed clock is presentational: it starts from the moment this panel saw
  * the turn begin, which is what "how long has it been working" means to the
@@ -24,8 +33,6 @@ export default function StatusStrip(props: {
   awaitingApproval: boolean;
   /** Distinct files this session's tool calls touched. */
   files: number;
-  /** Session token total, preformatted, or null before any turn completed. */
-  tokens: string | null;
   /** This session's figures, or null before the transcript has been read (a
    *  chat with no turns yet has no file to read them from). */
   detail: SessionDetail | null;
@@ -107,10 +114,6 @@ export default function StatusStrip(props: {
         <span class={styles.stripItem}>
           {props.files} file{props.files === 1 ? "" : "s"}
         </span>
-      </Show>
-      <Show when={props.tokens}>
-        <span class={styles.stripSep} aria-hidden="true" />
-        <span class={styles.stripItem}>{props.tokens} tokens</span>
       </Show>
       <Show when={props.detail}>
         {(d) => (
