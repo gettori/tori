@@ -1041,6 +1041,46 @@ describe("the figures the status strip reads live", () => {
   });
 });
 
+describe("compactions", () => {
+  const compacted = (pre: number | null, post: number | null): ChatEvent => ({
+    type: "compacted",
+    sessionId: "s1",
+    turnId: "t1",
+    trigger: "auto",
+    preTokens: pre,
+    postTokens: post,
+    summary: null,
+  });
+
+  it("counts each one and totals what they reclaimed", () => {
+    const s = initialChat("s1");
+    expect(s.compactions).toBe(0);
+    applyEvent(s, compacted(180_000, 40_000));
+    applyEvent(s, compacted(190_000, 50_000));
+    expect(s.compactions).toBe(2);
+    expect(s.compactionReclaimed).toBe(280_000);
+  });
+
+  // Unknown is not zero, and the half-reported case is what proves it: treating
+  // a missing `postTokens` as 0 would claim the compaction reclaimed the entire
+  // context. It still counts as a compaction, because it happened.
+  it("counts a half-reported compaction without guessing what it reclaimed", () => {
+    const s = initialChat("s1");
+    applyEvent(s, compacted(180_000, null));
+    applyEvent(s, compacted(null, null));
+    expect(s.compactions).toBe(2);
+    expect(s.compactionReclaimed).toBe(0);
+  });
+
+  // The harness has reported a post larger than the pre; that is not a negative
+  // reclaim, it is a figure to ignore rather than to subtract from the total.
+  it("never subtracts from the total", () => {
+    const s = initialChat("s1");
+    applyEvent(s, compacted(40_000, 90_000));
+    expect(s.compactionReclaimed).toBe(0);
+  });
+});
+
 describe("the context window the session reports", () => {
   const withUsage = (models: Record<string, unknown>): ChatEvent => ({
     ...(turnDone("t1", "completed") as Extract<ChatEvent, { type: "turnCompleted" }>),

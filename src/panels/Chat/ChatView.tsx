@@ -11,7 +11,7 @@ import StatusStrip from "./StatusStrip";
 import ModeSelector, { BYPASS_STILL_APPROVED, needsPermissiveCaveat } from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
-import { fmtTokens, turnTokens, usageSummary } from "../../utils/chatUsage";
+import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
 import {
   approaching,
@@ -259,11 +259,6 @@ export default function ChatView(props: {
       .catch(() => {});
   }
   createEffect(on(() => state.turnsCompleted, loadDetail));
-  // Null until a turn completed: a zero would be a claim (see UsageReadout).
-  const sessionTokens = () => {
-    const summary = usageSummary({ ...state, promptsInTranscript: promptCount() });
-    return summary.turn ? fmtTokens(summary.session.tokens) : null;
-  };
   // A refused claim means no child was started, so nothing may be typed at it.
   // Narrowed so the banners below read their own fields without casting.
   const refusal = () => refusalOf(ownership());
@@ -940,6 +935,9 @@ export default function ChatView(props: {
    *     reading is the whole answer rather than a delta to add to the file's.
    *   - **prompts and tool calls** are counted off `items`, which replay seeds
    *     with the session's earlier turns, so the count is complete.
+   *   - **compactions** are counted as their events arrive, and replay emits
+   *     `compacted` for a resumed session's earlier ones too, so that count is
+   *     complete for the same reason.
    *
    * **Turns deliberately stays scanned.** `turnsCompleted` counts this run
    * only: replayed history carries no turn frames, so overriding with it would
@@ -955,6 +953,8 @@ export default function ChatView(props: {
       context_tokens: live ?? scanned.context_tokens,
       prompt_count: promptsSent(state),
       tool_count: toolCallsSeen(state),
+      compaction_count: state.compactions,
+      compaction_reclaimed: state.compactionReclaimed,
     };
   };
 
@@ -1334,7 +1334,6 @@ export default function ChatView(props: {
           running={running()}
           awaitingApproval={pendingApprovals(state).length > 0}
           files={touchedFiles()}
-          tokens={sessionTokens()}
           detail={liveDetail()}
           contextWindow={stripWindow()}
           onReconnect={() => reconnect?.()}
