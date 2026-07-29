@@ -111,6 +111,7 @@ describe("end to end through the store", () => {
     models: [],
     fastModeState: null,
     fastModeDisabledReason: null,
+    account: null,
   };
 
   // No synthetic status anywhere: real events -> chatStore -> chatStatus is the

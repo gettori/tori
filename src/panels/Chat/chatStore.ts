@@ -25,6 +25,7 @@
 //     whenever anything else is appended.
 
 import type {
+  ChatAccount,
   ChatEvent,
   ChatModelInfo,
   ContentBlock,
@@ -195,6 +196,10 @@ export type ChatState = {
    *  unavailable. */
   fastModeState: string | null;
   fastModeDisabledReason: string | null;
+  /** Who the session is signed in as. Null until the handshake answers, and
+   *  forever for a session that never handshook - which renders as nothing
+   *  rather than as a guessed tier. */
+  account: ChatAccount | null;
   /** The mode the session is actually in, as the child re-declares it on every
    *  turn. Never set from a click: a control that moved on its own would claim
    *  an effect the CLI cannot deliver mid-turn. */
@@ -273,6 +278,7 @@ export function initialChat(sessionId: string): ChatState {
     models: [],
     fastModeState: null,
     fastModeDisabledReason: null,
+    account: null,
     permissionMode: null,
     pendingMode: null,
     tools: [],
@@ -497,6 +503,10 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.models = ev.models;
       s.fastModeState = ev.fastModeState;
       s.fastModeDisabledReason = ev.fastModeDisabledReason;
+      // Guarded like the catalogues below and for the same reason: this event
+      // re-fires every turn, and the account has one source (the handshake), so
+      // a later frame that never saw it must not erase what the first delivered.
+      if (ev.account) s.account = ev.account;
       if (s.started) return;
       s.started = true;
       return;
@@ -508,6 +518,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.ready = true;
       if (ev.slashCommands.length) s.slashCommands = ev.slashCommands;
       if (ev.models.length) s.models = ev.models;
+      if (ev.account) s.account = ev.account;
       return;
     }
     case "turnStarted": {

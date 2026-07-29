@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::model::{
-    ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, SlashCommand,
+    ChatAccount, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, SlashCommand,
     ToolStatus, TurnOutcome, Usage,
 };
 
@@ -67,6 +67,10 @@ pub struct ClaudeMapper {
     /// never the list of what could be picked. Empty for a session that never
     /// handshook, which the picker reads as "fall back to the adapter table".
     model_catalogue: Vec<ChatModelInfo>,
+    /// The account from the same control response, held the same way. `None`
+    /// for a session that never handshook, which every consumer reads as
+    /// "unknown" rather than as an account with empty fields.
+    account: Option<ChatAccount>,
     /// Whether the answered handshake was already reported as `SessionReady`.
     /// Once, like `session_open`: a later control response (a set_model ack, an
     /// interrupt ack) proves nothing the first one did not.
@@ -98,10 +102,10 @@ impl ClaudeMapper {
     }
 
     /// Absorb the `initialize` control response, the only place command
-    /// descriptions, argument hints and the model catalogue exist.
+    /// descriptions, argument hints, the model catalogue and the account exist.
     ///
-    /// The two catalogues are absorbed independently: a response carrying one
-    /// and not the other must not discard what it does carry.
+    /// All three are absorbed independently: a response carrying one and not
+    /// the others must not discard what it does carry.
     pub fn absorb_control_response(&mut self, frame: &Value) {
         let inner = &frame["response"]["response"];
         if let Some(commands) = inner["commands"].as_array() {
@@ -142,6 +146,18 @@ impl ClaudeMapper {
                     })
                 })
                 .collect();
+        }
+        // Presence of the object is the signal, not the presence of any one
+        // field: a plan with no organization is still a known account, and
+        // rendering hangs off "did the handshake answer" rather than off
+        // whether every string came back non-empty. `email` is read past
+        // deliberately; see `ChatAccount`.
+        if let Some(account) = inner["account"].as_object() {
+            self.account = Some(ChatAccount {
+                subscription_type: account["subscriptionType"].as_str().unwrap_or_default().to_string(),
+                organization: account["organization"].as_str().unwrap_or_default().to_string(),
+                api_provider: account["apiProvider"].as_str().unwrap_or_default().to_string(),
+            });
         }
     }
 
@@ -193,6 +209,7 @@ impl ClaudeMapper {
             session_id: self.session_id.clone(),
             slash_commands: self.command_catalogue.clone(),
             models: self.model_catalogue.clone(),
+            account: self.account.clone(),
         }]
     }
 
@@ -320,6 +337,7 @@ impl ClaudeMapper {
                     models: self.model_catalogue.clone(),
                     fast_mode_state,
                     fast_mode_disabled_reason,
+                    account: self.account.clone(),
                     extra,
                 },
                 ChatEvent::TurnStarted {
@@ -1103,6 +1121,54 @@ mod tests {
             "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
         }));
         assert!(m.map(control).is_empty(), "a control response after init re-reported ready");
+    }
+
+    /// The account rides the handshake, and rides it onto the first
+    /// `system/init` too: a resumed panel that missed the ready event still has
+    /// to know which plan and provider it is on, since the context window
+    /// depends on the provider and nothing else on the wire reports it.
+    #[test]
+    fn the_account_rides_both_the_handshake_and_the_session_start() {
+        let control = &fixture("initialize")[0];
+        let mut m = ClaudeMapper::new("s1");
+
+        let ready = match m.map(control).as_slice() {
+            [ChatEvent::SessionReady { account, .. }] => account.clone(),
+            other => panic!("expected exactly one SessionReady, got {other:?}"),
+        };
+        let ready = ready.expect("the handshake carried an account and it did not ride SessionReady");
+        // Asserted on the provider rather than on the plan or the organization:
+        // those are whoever captured the fixture, while `firstParty` is the
+        // value Phase 5's window resolution actually branches on.
+        assert_eq!(ready.api_provider, "firstParty");
+        assert!(!ready.subscription_type.is_empty(), "the subscription type was dropped");
+
+        let started = m.map(&serde_json::json!({
+            "type": "system", "subtype": "init", "model": "m", "permissionMode": "default",
+            "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
+        }));
+        match started.first() {
+            Some(ChatEvent::SessionStarted { account, .. }) => {
+                assert_eq!(account.as_ref(), Some(&ready), "the account did not survive onto SessionStarted");
+            }
+            other => panic!("expected SessionStarted, got {other:?}"),
+        }
+    }
+
+    /// A session that never handshook has no account, and must say so rather
+    /// than inventing one made of empty strings: "we never asked" and "a plan
+    /// with no name" are different answers, and only one of them renders.
+    #[test]
+    fn a_session_that_never_handshook_reports_no_account() {
+        let mut m = ClaudeMapper::new("s1");
+        let started = m.map(&serde_json::json!({
+            "type": "system", "subtype": "init", "model": "m", "permissionMode": "default",
+            "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
+        }));
+        match started.first() {
+            Some(ChatEvent::SessionStarted { account, .. }) => assert_eq!(*account, None),
+            other => panic!("expected SessionStarted, got {other:?}"),
+        }
     }
 
     /// A session that opened without ever handshaking (a resumed child whose

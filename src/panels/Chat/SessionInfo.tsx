@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import type { McpServer } from "../../utils/chatTypes";
+import type { ChatAccount, McpServer } from "../../utils/chatTypes";
 import type { ChatPlugin } from "../../utils/chatCapabilities";
 import Button from "../../components/Button/Button";
 import styles from "./Chat.module.css";
@@ -37,6 +37,14 @@ export default function SessionInfo(props: {
   skills: readonly string[];
   agents: readonly string[];
   plugins: readonly ChatPlugin[];
+  /** Who the session is signed in as, or null when the handshake never
+   *  happened. Rendered here rather than in the status strip: the strip's stats
+   *  row is fed by a transcript scan on its own refresh cadence, and mixing a
+   *  handshake fact into it would put two sources behind one row.
+   *
+   *  Required, unlike `cwd`: absence is the meaning here, so an omittable prop
+   *  would let "nobody passed it" render identically to "we were never told". */
+  account: ChatAccount | null;
   /** The session's cwd, used to locate the project `.mcp.json`. Omitted in
    *  tests that only exercise the read-only rendering. */
   cwd?: string;
@@ -94,6 +102,7 @@ export default function SessionInfo(props: {
   const empty = createMemo(
     () =>
       !props.cwd &&
+      !props.account &&
       props.mcpServers.length === 0 &&
       props.skills.length === 0 &&
       props.agents.length === 0 &&
@@ -120,6 +129,32 @@ export default function SessionInfo(props: {
         </button>
         <Show when={open()}>
           <div class={styles.sessionInfoBody}>
+            {/* Only when the handshake answered. A session that never
+                handshook shows no Account section at all rather than a blank
+                one or a guessed tier: "we were never told" is not a plan. Each
+                line is guarded separately for the same reason, since the
+                harness can name an account without naming an organization. */}
+            <Show when={props.account}>
+              {(a) => (
+                <section>
+                  <h4>Account</h4>
+                  <p>
+                    <Show when={a().subscriptionType}>{(plan) => <strong>{plan()}</strong>}</Show>
+                    {/* The separator belongs to whichever line is not first, so
+                        it is conditioned on both: an account naming only an
+                        organization must not open with a stray "·". */}
+                    <Show when={a().organization}>
+                      {(org) => (
+                        <span>
+                          {a().subscriptionType ? " · " : ""}
+                          {org()}
+                        </span>
+                      )}
+                    </Show>
+                  </p>
+                </section>
+              )}
+            </Show>
             <Show when={props.mcpServers.length}>
               <section>
                 <h4>MCP servers</h4>
