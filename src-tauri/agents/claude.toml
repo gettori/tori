@@ -104,9 +104,13 @@ effort_levels = ["low", "medium", "high", "xhigh", "max"]
 supports_thinking = true
 supports_images = true
 # The live catalogue carries no fast-mode flag; the only thing the CLI says is
-# the `/fast` command describing itself as "Toggle fast mode (Opus 5)". Declared
-# here so the control has a source at all - PHASE 3 MUST PROVE THIS BY PROBE and
-# correct it if the measurement disagrees.
+# the `/fast` command describing itself as "Toggle fast mode (Opus 5)". Probed
+# since: the model claim holds and is moot here, because fast mode cannot be
+# reached over stream-json at all - `/fast on` on this very model answers "Fast
+# mode is not available in the Agent SDK" and `fast_mode_state` never leaves
+# "off" (dev/fixtures/claude/fast-mode.jsonl). So nothing renders from this
+# today; it is the model-scope half of the answer, kept for the day the SDK is
+# opted in, at which point that fixture's scenario fails and says so.
 fast_mode = true
 
 [[chat.models]]
