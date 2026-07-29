@@ -224,6 +224,13 @@ export type ChatState = {
    *  unavailable. */
   fastModeState: string | null;
   fastModeDisabledReason: string | null;
+  /** Compactions this session has been through, and the tokens they reclaimed.
+   *  Counted here rather than read back from the transcript scan because the
+   *  replay emits `compacted` for a resumed session's earlier ones too, so the
+   *  store's count is complete as well as live - unlike turns, which replayed
+   *  history carries no frames for. */
+  compactions: number;
+  compactionReclaimed: number;
   /** Context windows the harness reported, keyed by every id it named them
    *  under, accumulated across turns. The authoritative source: it is measured
    *  per model and per provider by the session itself. Empty until the first
@@ -312,6 +319,8 @@ export function initialChat(sessionId: string): ChatState {
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,
+    compactions: 0,
+    compactionReclaimed: 0,
     contextWindows: {},
     permissionMode: null,
     pendingMode: null,
@@ -609,6 +618,13 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
       return;
     case "compacted": {
+      s.compactions += 1;
+      // Only when the harness reported both ends. A compaction that named
+      // neither reclaimed an unknown amount, not zero, and adding zero would
+      // quietly understate the total.
+      if (ev.preTokens !== null && ev.postTokens !== null) {
+        s.compactionReclaimed += Math.max(0, ev.preTokens - ev.postTokens);
+      }
       // Inline, in place, because that is where the conversation's middle went.
       // A transcript that silently jumps is indistinguishable from one that
       // lost turns to a bug, and the summary is the only record of what the
