@@ -17,7 +17,7 @@
 //
 // So a live model's window is looked up in the adapter table by `resolvedModel`,
 // and a model with no declared window reports null rather than a guess.
-import type { ChatConfig, ChatModel } from "./agents";
+import type { ChatConfig, ChatMode, ChatModel } from "./agents";
 import type { ChatModelInfo, Usage } from "./chatTypes";
 
 export type PickableModel = {
@@ -39,6 +39,10 @@ export type PickableModel = {
   /** False for a model that came from the adapter table because the handshake
    *  did not happen. Surfaced so the picker can say the list may be stale. */
   live: boolean;
+  /** Whether this model has a fast mode to toggle. Adapter-declared and looked
+   *  up by `resolvedModel`, exactly like `contextWindow`, because the live
+   *  catalogue declares no such flag. */
+  fastMode: boolean;
 };
 
 /**
@@ -69,6 +73,13 @@ export function contextWindowFor(chat: ChatConfig | null, resolvedModel: string)
   return chat?.models.find((m) => m.id === resolvedModel)?.context_window ?? null;
 }
 
+/** Whether the adapter declares a fast mode for a resolved model id. Same
+ *  lookup as the window, and for the same reason: the live catalogue has no
+ *  flag for it, so the adapter is the only source. */
+export function fastModeFor(chat: ChatConfig | null, resolvedModel: string): boolean {
+  return chat?.models.find((m) => m.id === resolvedModel)?.fast_mode ?? false;
+}
+
 function fromAdapter(m: ChatModel): PickableModel {
   // The adapter table names models by their resolved id, so `value` and
   // `resolvedModel` are the same string here. That is not a special case to
@@ -82,6 +93,7 @@ function fromAdapter(m: ChatModel): PickableModel {
     effortLevels: m.effort_levels,
     contextWindow: m.context_window,
     live: false,
+    fastMode: m.fast_mode ?? false,
   };
 }
 
@@ -105,6 +117,7 @@ export function pickableModels(live: readonly ChatModelInfo[], chat: ChatConfig 
       effortLevels: m.supportsEffort ? m.supportedEffortLevels : [],
       contextWindow: contextWindowFor(chat, m.resolvedModel),
       live: true,
+      fastMode: fastModeFor(chat, m.resolvedModel),
     }));
   }
   return (chat?.models ?? []).map(fromAdapter);
@@ -158,14 +171,74 @@ export function selectedModel(
  * Effort is dropped the same way when the restored model does not offer it -
  * including when there is no restored model at all, since the level would then
  * be attached to whatever the session happened to start with.
+ *
+ * **Mode is dropped on the same rule**, and it is the one that has actually
+ * moved: modes used to be four hardcoded strings that no catalogue could
+ * contradict, so a stored one was always "valid". Now that they come from the
+ * adapter, a settings file can name a mode this harness does not declare - a
+ * project pinned to `bypassPermissions` opened against a harness whose modes are
+ * `auto_edit|yolo`. Dropping it here is what makes the picker show what the
+ * session is really running; the backend downgrade (`ChatConfig::resolve_mode`)
+ * is the same decision made again where the args are built, for a stored mode
+ * that never passes through here at all.
  */
 export function restoredPicks(
   models: readonly PickableModel[],
-  prefs: { model?: string | null; effort?: string | null },
-): { model: PickableModel | null; effort: string | null } {
+  prefs: { model?: string | null; effort?: string | null; mode?: string | null },
+  chat: ChatConfig | null = null,
+): { model: PickableModel | null; effort: string | null; mode: string | null } {
   const model = models.find((m) => m.value === prefs.model) ?? null;
   const effort = model && prefs.effort && model.effortLevels.includes(prefs.effort) ? prefs.effort : null;
-  return { model, effort };
+  const modes = capabilitiesFor(model, chat).modes;
+  const mode = prefs.mode && modes.some((m) => m.id === prefs.mode) ? prefs.mode : null;
+  return { model, effort, mode };
+}
+
+/** What a session may be switched to, once the model has had its say. */
+export type Capabilities = {
+  /** Empty hides the thinking control rather than rendering an inert one. */
+  effortLevels: string[];
+  /** The modes on offer, as the adapter declares them. Never a literal list. */
+  modes: ChatMode[];
+  /** Whether a fast-mode control has any business existing for this model. */
+  fastMode: boolean;
+};
+
+/**
+ * What this model, on this harness, can actually be asked for.
+ *
+ * **The intersection of two sources, because neither alone is sufficient.** The
+ * adapter says what the *harness* supports (Claude has permission modes at all;
+ * Codex names its own at runtime). The live catalogue says what *this model*
+ * supports, and the two genuinely disagree: every Claude model reports
+ * `supportsEffort` and `supportsAdaptiveThinking` except Haiku, which declares
+ * none of them. A control offered from the adapter alone would render inert for
+ * Haiku; one offered from the model alone could not exist before a handshake.
+ *
+ * `model` is null before anything is known, which yields the harness's own
+ * capabilities minus everything model-scoped - the honest answer for a session
+ * whose model has not been reported yet.
+ */
+export function capabilitiesFor(model: PickableModel | null, chat: ChatConfig | null): Capabilities {
+  return {
+    effortLevels: model?.effortLevels ?? [],
+    modes: chat?.modes ?? [],
+    fastMode: model?.fastMode ?? false,
+  };
+}
+
+/**
+ * The mode a session runs when nothing is restored: the one the adapter marks,
+ * else its first.
+ *
+ * Positional rather than the literal `"default"` on the miss. Sway used to fall
+ * back to that string, which is Claude's spelling of the idea and not a
+ * universal one - Gemini's permissive-by-omission mode shares the name by
+ * coincidence, and a Codex profile need not contain the word at all.
+ */
+export function defaultMode(chat: ChatConfig | null): ChatMode | null {
+  const modes = chat?.modes ?? [];
+  return modes.find((m) => m.default) ?? modes[0] ?? null;
 }
 
 /**

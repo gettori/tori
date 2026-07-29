@@ -124,8 +124,26 @@ pub struct ChatModel {
     pub effort_levels: Vec<String>,
     #[serde(default)]
     pub supports_thinking: bool,
+    /// Whether this model has a fast mode to toggle.
+    ///
+    /// Adapter-declared because the live catalogue has no flag for it: the only
+    /// signal the CLI gives is the `/fast` command describing itself as
+    /// "Toggle fast mode (Opus 5)". **Phase 3 owns proving this by probe** and
+    /// must correct whatever is declared here if the measurement disagrees.
+    #[serde(default)]
+    pub fast_mode: bool,
     #[serde(default)]
     pub supports_images: bool,
+}
+
+/// What a requested mode resolved to, and what it displaced if anything.
+///
+/// `downgraded_from` is `Some` exactly when the session is not running the mode
+/// that was asked for, which is the one case the user has to be told about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedMode {
+    pub id: String,
+    pub downgraded_from: Option<String>,
 }
 
 /// A permission mode and the args that select it.
@@ -135,6 +153,15 @@ pub struct ChatMode {
     pub label: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// The mode a session runs when nothing else is chosen, and what an
+    /// unresolvable mode downgrades to.
+    ///
+    /// Declared rather than assumed: Sway used to fall back to the literal
+    /// `"default"`, which is Claude's spelling and nobody else's. Gemini's
+    /// permissive-by-omission mode is also called `default`, but Codex's
+    /// profiles are named at runtime and need not include that word at all.
+    #[serde(default, rename = "default")]
+    pub is_default: bool,
 }
 
 /// An effort level and the args that select it.
@@ -209,6 +236,41 @@ impl ChatConfig {
             return Some(mode.args.clone());
         }
         Some(apply_chat_template(&self.mode_args, &[("mode", mode_id)]))
+    }
+
+    /// The mode this adapter runs when nothing else is chosen.
+    ///
+    /// The `default = true` marker when one is set, else the first declared
+    /// mode. Falling back to *position* rather than to the literal `"default"`
+    /// keeps the Claude spelling out of a neutral resolver: an adapter that
+    /// forgot the marker still gets a real mode of its own, not one named after
+    /// another harness's vocabulary.
+    pub fn default_mode(&self) -> Option<&ChatMode> {
+        self.modes.iter().find(|m| m.is_default).or_else(|| self.modes.first())
+    }
+
+    /// Which mode a session will actually run, given what was asked for.
+    ///
+    /// **A mode Sway cannot resolve downgrades; it never fails the spawn.** The
+    /// requested id reaches here from a settings file that outlived the adapter
+    /// that declared it - a mode removed from the TOML, or a project pinned to
+    /// one a different harness offered. Refusing to start would strand that
+    /// session permanently behind a file the user cannot see, and the failure
+    /// would arrive as a dead child rather than as an explanation.
+    ///
+    /// Returns the id to run and, when it is not the one asked for, the one
+    /// that was. The caller says so; this only decides.
+    pub fn resolve_mode(&self, requested: Option<&str>) -> Option<ResolvedMode> {
+        // A declared mode is itself. Anything else - an id the adapter dropped,
+        // or no request at all - lands on the default, and only a request that
+        // was displaced counts as a downgrade worth reporting.
+        if let Some(id) = requested.filter(|id| self.modes.iter().any(|m| &m.id == id)) {
+            return Some(ResolvedMode { id: id.to_string(), downgraded_from: None });
+        }
+        self.default_mode().map(|m| ResolvedMode {
+            id: m.id.clone(),
+            downgraded_from: requested.map(str::to_string),
+        })
     }
 
     /// The args that select `effort_id`. Same precedence as `mode_args_for`.
@@ -1162,6 +1224,151 @@ args = ["--effort", "low"]
             chat.effort_args_for("low"),
             Some(vec!["--effort".to_string(), "low".to_string()])
         );
+    }
+
+    /// A harness whose modes are named nothing like Claude's, used wherever a
+    /// resolver has to be shown not to have Claude's vocabulary baked in.
+    /// These are Gemini's real `--approval-mode` values, and none of them is
+    /// the literal `"default"` that Sway used to fall back to.
+    const FOREIGN_MODES: &str = r#"
+[[chat.modes]]
+id = "yolo"
+label = "Yolo"
+
+[[chat.modes]]
+id = "auto_edit"
+label = "Auto edit"
+default = true
+"#;
+
+    fn foreign_chat() -> ChatConfig {
+        // The declared modes replace the table's, rather than adding to it, so
+        // nothing Claude-shaped survives into the fixture.
+        let table = CHAT_TABLE.replace(
+            "[[chat.modes]]\nid = \"plan\"\nlabel = \"Plan\"\nargs = [\"--permission-mode\", \"plan\"]\n",
+            "",
+        );
+        let a = load_adapter_str(&v2_with_chat(&format!("{table}{FOREIGN_MODES}")), "foreign").expect("parses");
+        a.chat.expect("a chat table")
+    }
+
+    /// The fallback must be the mode the *adapter* nominates, never the literal
+    /// `"default"`: that string is Claude's spelling, and a resolver carrying it
+    /// would quietly pick nothing at all on a harness that does not use it.
+    #[test]
+    fn the_default_mode_is_the_one_the_adapter_marks() {
+        let chat = foreign_chat();
+        assert_eq!(chat.default_mode().map(|m| m.id.as_str()), Some("auto_edit"));
+        assert!(!chat.modes.iter().any(|m| m.id == "default"), "the fixture must not contain Claude's spelling");
+
+        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let claude_chat = claude.chat.expect("a chat table");
+        assert_eq!(claude_chat.default_mode().map(|m| m.id.as_str()), Some("default"));
+        assert_eq!(
+            claude_chat.modes.iter().filter(|m| m.is_default).count(),
+            1,
+            "exactly one mode may be the default, or which one wins is positional luck"
+        );
+    }
+
+    /// An adapter that never set the marker still resolves to a real mode of
+    /// its own rather than to nothing.
+    #[test]
+    fn an_adapter_with_no_marked_default_falls_back_to_its_first_mode() {
+        let chat = load_adapter_str(&v2_with_chat(CHAT_TABLE), "test").expect("parses").chat.expect("chat");
+        assert!(!chat.modes.iter().any(|m| m.is_default));
+        assert_eq!(chat.default_mode().map(|m| m.id.as_str()), Some("plan"));
+    }
+
+    /// The case a settings file produces: a stored mode the adapter no longer
+    /// declares. It must downgrade to the adapter's default and *say* it did -
+    /// failing the spawn would strand the session behind a file the user
+    /// cannot see, and downgrading silently would leave the control showing a
+    /// mode the session is not in.
+    #[test]
+    fn an_undeclared_mode_downgrades_to_the_adapters_default_and_reports_it() {
+        let chat = foreign_chat();
+
+        let stale = chat.resolve_mode(Some("bypassPermissions")).expect("a downgrade still resolves");
+        assert_eq!(stale.id, "auto_edit");
+        assert_eq!(stale.downgraded_from.as_deref(), Some("bypassPermissions"));
+
+        // A declared mode passes through untouched and reports no downgrade,
+        // so the notice cannot fire on the ordinary path.
+        let fine = chat.resolve_mode(Some("yolo")).expect("a declared mode resolves");
+        assert_eq!(fine.id, "yolo");
+        assert_eq!(fine.downgraded_from, None);
+    }
+
+    /// The spawn still happens, and on the *right* flags: the downgrade is only
+    /// worth anything if the args that reach the child are the default's.
+    #[test]
+    fn a_session_with_a_stale_stored_mode_still_starts_on_the_default() {
+        let chat = foreign_chat();
+        let args = crate::chat::commands::build_args(
+            &chat,
+            "s1",
+            false,
+            None,
+            None,
+            Some("bypassPermissions"),
+            None,
+            &[],
+        );
+        assert!(
+            args.windows(2).any(|w| w == ["--permission-mode", "auto_edit"]),
+            "expected the adapter's default mode in {args:?}"
+        );
+        assert!(!args.iter().any(|a| a == "bypassPermissions"), "the dropped mode must not reach the child");
+    }
+
+    /// **The guard that replaces the `PermissionMode` enum**, relocated to the
+    /// one place it can actually fail.
+    ///
+    /// A mode used to be an enum variant, so an id nobody supported could not be
+    /// written down. It is a string now, which accepts every typo, and the
+    /// obvious replacement - checking each declared id against a known set at
+    /// load time - cannot fail: every id in the TOML is "known" by construction,
+    /// because the TOML is what declares them. Only the binary can say whether
+    /// an id is accepted, so this asks it.
+    ///
+    /// Not `#[ignore]`d, unlike the tests that drive a real conversation: this
+    /// spawns `--version`, which parses the args and exits. No tokens, no
+    /// network, milliseconds. It skips only when the binary is absent, so a
+    /// machine without `claude` still gets a green suite.
+    ///
+    /// The args come from `mode_args_for` rather than a hardcoded
+    /// `--permission-mode`, so this probes what Sway would really send.
+    #[test]
+    fn every_declared_mode_is_one_the_cli_accepts() {
+        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let chat = claude.chat.expect("claude ships a chat table");
+
+        // `--version` on a bare program name, as the cheapest possible check
+        // that the binary is both present and runnable.
+        if std::process::Command::new(&chat.program).arg("--version").output().is_err() {
+            eprintln!("skipping: `{}` is not on PATH", chat.program);
+            return;
+        }
+
+        assert!(!chat.modes.is_empty(), "an adapter with no declared mode has nothing to probe");
+        for m in &chat.modes {
+            let args = chat.mode_args_for(&m.id).expect("a declared mode resolves its own args");
+            let out = std::process::Command::new(&chat.program)
+                .args(&args)
+                .arg("--version")
+                .output()
+                .expect("the binary was just shown to run");
+            assert!(
+                out.status.success(),
+                "`{} {} --version` failed ({}), so mode `{}` is declared but not accepted: {}",
+                chat.program,
+                args.join(" "),
+                out.status,
+                m.id,
+                String::from_utf8_lossy(&out.stderr).trim(),
+            );
+        }
     }
 
     /// Models carry no per-entry override, so the template is the only source,

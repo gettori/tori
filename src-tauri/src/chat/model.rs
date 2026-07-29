@@ -36,18 +36,38 @@ fn extra_is_empty(e: &Extra) -> bool {
 // Supporting types
 // ---------------------------------------------------------------------------
 
-/// The four permission modes, mapped to `--permission-mode`.
+/// A permission mode, as the id its own harness names it.
 ///
-/// Note that Sway's own `PreToolUse` approval gate runs *ahead* of all of them,
-/// so `BypassPermissions` here does not mean unsupervised: hooks run first in
-/// the permission chain, which is exactly what makes the gate authoritative.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PermissionMode {
-    Default,
-    AcceptEdits,
-    Plan,
-    BypassPermissions,
+/// **A string rather than an enum, and deliberately so.** Sway used to
+/// enumerate Claude's four modes as variants, which made the neutral model
+/// carry one harness's vocabulary: Gemini's `--approval-mode` speaks
+/// `default|auto_edit|yolo|plan`, and Codex does not have a fixed set at all -
+/// it lists its permission profiles *at runtime* over `permissionProfile/list`.
+/// No fixed enum can represent that, so the mode is whatever the adapter
+/// declares and Sway passes it through without opinion.
+///
+/// The guard the enum used to provide is not free, and is not replaced by
+/// anything in this type. A string accepts every typo, so what a declared mode
+/// is checked against is the **real CLI**: see `modes_the_cli_accepts` in
+/// `crate::agents`, which spawns the binary once per declared mode. See also
+/// the `gotchas.md` entry on enum-to-string neutrality.
+///
+/// Note that Sway's own `PreToolUse` approval gate runs *ahead* of every mode
+/// any harness has, so a permissive one does not mean unsupervised: hooks run
+/// first in claude's permission chain, which is what makes the gate
+/// authoritative.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PermissionMode(String);
+
+impl PermissionMode {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// The five measured effort levels accepted by `--effort`.
@@ -619,7 +639,7 @@ mod tests {
                 session_id: "s1".into(),
                 cwd: "/tmp/w".into(),
                 model: "claude-sonnet-5".into(),
-                permission_mode: PermissionMode::BypassPermissions,
+                permission_mode: PermissionMode::new("bypassPermissions"),
                 tools: vec!["Bash".into(), "Edit".into()],
                 slash_commands: vec![SlashCommand {
                     name: "review".into(),
@@ -666,7 +686,7 @@ mod tests {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
                 model: "claude-sonnet-5".into(),
-                permission_mode: PermissionMode::Default,
+                permission_mode: PermissionMode::new("default"),
                 extra: Extra::new(),
             },
             ChatEvent::UserMessage {
@@ -831,7 +851,7 @@ mod tests {
             },
             ChatCommand::SetMode {
                 session_id: "s1".into(),
-                mode: PermissionMode::Plan,
+                mode: PermissionMode::new("plan"),
             },
             ChatCommand::SetModel {
                 session_id: "s1".into(),
@@ -960,7 +980,7 @@ mod tests {
             session_id: "s1".into(),
             turn_id: "t1".into(),
             model: "m".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             extra: HashMap::from([
                 ("ttftMs".into(), serde_json::json!(1575)),
                 ("modelUsage".into(), serde_json::json!({ "claude-sonnet-5": { "outputTokens": 205 } })),
