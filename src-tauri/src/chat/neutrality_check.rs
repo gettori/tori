@@ -99,7 +99,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             session_id: sid(),
             cwd: "/tmp/w".into(),
             model: "gpt-5-codex".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             tools: vec![],
             slash_commands: vec![],
             mcp_servers: vec![],
@@ -114,7 +114,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             session_id: sid(),
             cwd: "/tmp/w".into(),
             model: "gpt-5-codex".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             tools: vec![],
             slash_commands: vec![],
             mcp_servers: vec![],
@@ -129,7 +129,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             session_id: "s2".into(),
             cwd: "/tmp/w".into(),
             model: "gpt-5-codex".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             tools: vec![],
             slash_commands: vec![],
             mcp_servers: vec![],
@@ -155,7 +155,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             session_id: sid(),
             turn_id: tid(),
             model: "gpt-5-codex".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             extra: Default::default(),
         },
         CodexEvent::TurnCompleted => ChatEvent::TurnCompleted {
@@ -315,7 +315,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             cwd: "/tmp/w".into(),
             model: "gemini-2.5-pro".into(),
-            permission_mode: PermissionMode::Default,
+            permission_mode: PermissionMode::new("default"),
             tools: vec![],
             slash_commands: vec![],
             mcp_servers: vec![],
@@ -326,11 +326,18 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
         },
         // A mode change lands on the same field the next turn reports, which is
         // how Claude confirms a mode switch took effect too.
+        //
+        // The mode is Gemini's own `auto_edit`, not Claude's `acceptEdits`.
+        // While `PermissionMode` was an enum this arm had to say `AcceptEdits`,
+        // because Claude's four variants were the only vocabulary the model
+        // had - a Gemini event was recorded under a Claude name and the check
+        // still passed. That substitution is what made the enum a neutrality
+        // leak rather than a neutrality guard.
         AcpSessionUpdate::CurrentModeUpdate => ChatEvent::TurnStarted {
             session_id: sid(),
             turn_id: tid(),
             model: "gemini-2.5-pro".into(),
-            permission_mode: PermissionMode::AcceptEdits,
+            permission_mode: PermissionMode::new("auto_edit"),
             extra: Default::default(),
         },
     }
@@ -515,6 +522,67 @@ mod tests {
             acp_unmapped <= 1,
             "{acp_unmapped} acp variants have no normalized target; the model has drifted Claude-ward"
         );
+    }
+
+    /// **The check that replaces what the `PermissionMode` enum used to do.**
+    ///
+    /// The enum was a compile-time guard: a harness whose modes were not
+    /// Claude's four could not be expressed, so the drift showed up as a build
+    /// error. A `String` has the opposite property - it accepts every
+    /// vocabulary, which is the point, and therefore *nothing fails to compile
+    /// when one goes missing*. Replacing the enum silently disarmed the guard,
+    /// because compiling is exactly what a string guarantees.
+    ///
+    /// So the guard becomes a test, and it has to assert the thing a string
+    /// cannot: that a foreign mode reaches the far side **unchanged**. A
+    /// resolver that normalized, lowercased, or mapped-to-nearest would still
+    /// compile and would still pass a test that only checked "some mode came
+    /// out".
+    #[test]
+    fn a_foreign_mode_vocabulary_survives_the_model_unchanged() {
+        // Gemini's real `--approval-mode` values. None of them is one of the
+        // four the enum had, and `auto_edit` is deliberately the near-miss of
+        // Claude's `acceptEdits`: a mapper quietly folding one into the other
+        // is the exact failure this catches.
+        for id in ["auto_edit", "yolo", "default", "plan"] {
+            let mode = PermissionMode::new(id);
+            assert_eq!(mode.as_str(), id, "the model altered a mode it was merely carrying");
+
+            // Across serde too, since the frontend reads these and a rename or
+            // a case convention there would be just as silent.
+            let wire = serde_json::to_string(&mode).expect("a mode serializes");
+            assert_eq!(wire, format!("\"{id}\""), "a mode must cross the boundary as its own id");
+            let back: PermissionMode = serde_json::from_str(&wire).expect("a mode deserializes");
+            assert_eq!(back, mode);
+        }
+
+        // And the mapper above must actually be exercising a foreign one, or
+        // this file could go back to Claude-only vocabulary without failing.
+        let foreign = map_acp(AcpSessionUpdate::CurrentModeUpdate);
+        match foreign {
+            ChatEvent::TurnStarted { permission_mode, .. } => {
+                assert_eq!(
+                    permission_mode.as_str(),
+                    "auto_edit",
+                    "the ACP mapping records a Gemini mode under a Claude name"
+                );
+            }
+            other => panic!("expected TurnStarted, got {other:?}"),
+        }
+    }
+
+    /// A mode Claude reports that this build has never heard of must survive
+    /// the mapper, not be folded into the strictest known one.
+    ///
+    /// The enum forced that fold, and it was wrong in the one direction that
+    /// matters: a session actually running `dontAsk` was reported as
+    /// `default`, telling the user the agent would ask before acting when it
+    /// would do the opposite.
+    #[test]
+    fn an_unknown_mode_is_not_downgraded_on_the_way_through() {
+        let unknown = PermissionMode::new("dontAsk");
+        assert_ne!(unknown, PermissionMode::new("default"));
+        assert_eq!(unknown.as_str(), "dontAsk");
     }
 
     /// `FileEdit` has no arm in either mapper above, which is correct rather

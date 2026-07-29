@@ -22,12 +22,20 @@ export type ChatModel = {
   effort_levels: string[];
   supports_thinking: boolean;
   supports_images: boolean;
+  // Whether this model has a fast mode to toggle. Adapter-declared because the
+  // live catalogue has no flag for it; Phase 3 proves it by probe.
+  fast_mode?: boolean;
 };
 
 export type ChatMode = {
   id: string;
   label: string;
   args: string[];
+  // The mode a session runs when nothing is chosen, and what an unresolvable
+  // one downgrades to. Declared rather than assumed: "default" is Claude's
+  // spelling, and a resolver carrying it picks nothing on a harness that names
+  // its modes otherwise.
+  default?: boolean;
 };
 
 export type ChatEffort = {

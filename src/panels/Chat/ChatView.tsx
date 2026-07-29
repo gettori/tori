@@ -53,6 +53,7 @@ import { checkpointChatTurn } from "../../utils/checkpoints";
 import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
   contextTokens,
+  defaultMode,
   pickableModels,
   selectedModel,
   type PickableModel,
@@ -893,7 +894,10 @@ export default function ChatView(props: {
   // gave us one, the adapter's table when it did not. `pickableModels` owns
   // that choice so the picker, the effort control and the meter cannot each
   // decide it differently.
-  const models = () => pickableModels(state.models, findAgent(props.agentId).chat ?? null);
+  // One accessor for the adapter's chat table, so the model list, the mode
+  // fallback and the capability resolver cannot each reach for it differently.
+  const chatConfig = () => findAgent(props.agentId).chat ?? null;
+  const models = () => pickableModels(state.models, chatConfig());
 
   // The entry the picker shows as selected. Resolved through the catalogue
   // rather than read straight off the store, because before the first pick the
@@ -912,6 +916,11 @@ export default function ChatView(props: {
     selectedModel(models(), shownModelValue(state), state.model ?? detail()?.model ?? null) ??
     models().find((m) => m.value === "default") ??
     null;
+
+  // The mode the pill shows: the session's own, else the mode the *adapter*
+  // nominates. Never the literal "default", which is Claude's spelling and
+  // names nothing on a harness whose modes are `auto_edit|yolo`.
+  const shownModeValue = () => shownMode(state, defaultMode(chatConfig())?.id ?? null);
 
   function onSelectModel(model: PickableModel) {
     edit((s) => selectModel(s, model));
@@ -1392,7 +1401,8 @@ export default function ChatView(props: {
               onSelectEffort={onSelectEffort}
             />
             <ModeSelector
-              mode={shownMode(state)}
+              mode={shownModeValue()}
+              chat={chatConfig()}
               pending={modePending(state)}
               disabled={refused() || state.ended}
               onSelect={onSelectMode}
@@ -1402,7 +1412,7 @@ export default function ChatView(props: {
         // Bypass names itself after something Sway does not actually let it do,
         // so the guard stays a visible line rather than a tooltip.
         notice={
-          <Show when={shownMode(state) === "bypassPermissions"}>
+          <Show when={shownModeValue() === "bypassPermissions"}>
             <div class={styles.composerNotice}>{BYPASS_STILL_APPROVED}</div>
           </Show>
         }

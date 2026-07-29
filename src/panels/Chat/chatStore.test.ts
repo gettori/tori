@@ -558,10 +558,19 @@ describe("the permission mode control", () => {
     expect(shownMode(s)).toBe("default");
   });
 
-  it("falls back to default before the session has said anything", () => {
+  // The fallback is the caller's to supply, because it is the *adapter's*
+  // declared default. Returning the literal "default" here, as this once did,
+  // named a mode that exists only in Claude's vocabulary: on a harness whose
+  // modes are `auto_edit|yolo` the pill would show a value absent from its own
+  // menu.
+  it("falls back to the adapter's declared default before the session has said anything", () => {
     const s = initialChat("s1");
-    expect(shownMode(s)).toBe("default");
+    expect(shownMode(s, "auto_edit")).toBe("auto_edit");
     expect(modePending(s)).toBe(false);
+  });
+
+  it("knows no mode at all when nothing has been said and no default is declared", () => {
+    expect(shownMode(initialChat("s1"))).toBeNull();
   });
 });
 

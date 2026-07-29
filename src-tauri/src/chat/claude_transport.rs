@@ -263,7 +263,10 @@ impl AgentTransport for ClaudeTransport {
             let _ = self.write_frame(&json!({
                 "type": "control_request",
                 "request_id": request_id,
-                "request": { "subtype": "set_permission_mode", "mode": mode_wire(mode) },
+                // The id as its adapter declared it: the transport is the layer
+                // that knows this harness's spelling, and for Claude the
+                // declared id *is* the wire value.
+                "request": { "subtype": "set_permission_mode", "mode": mode.as_str() },
             }));
         }
         if let Some((model, effort)) = self.pending_model.take() {
@@ -345,15 +348,6 @@ impl AgentTransport for ClaudeTransport {
 
     fn child_pid(&self) -> Option<u32> {
         self.child.as_ref().map(|c| c.id())
-    }
-}
-
-fn mode_wire(mode: PermissionMode) -> &'static str {
-    match mode {
-        PermissionMode::Default => "default",
-        PermissionMode::AcceptEdits => "acceptEdits",
-        PermissionMode::Plan => "plan",
-        PermissionMode::BypassPermissions => "bypassPermissions",
     }
 }
 
@@ -447,9 +441,9 @@ pub mod tests {
     #[test]
     fn mode_and_model_are_queued_for_the_next_turn() {
         let mut t = ClaudeTransport::new("s1");
-        t.set_mode(PermissionMode::Plan).unwrap();
+        t.set_mode(PermissionMode::new("plan")).unwrap();
         t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
-        assert_eq!(t.pending_mode, Some(PermissionMode::Plan));
+        assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")));
         assert_eq!(t.pending_model, Some(("claude-opus-5".to_string(), Some(Effort::High))));
     }
 
@@ -464,12 +458,12 @@ pub mod tests {
     #[test]
     fn a_steer_leaves_a_queued_mode_or_model_switch_for_the_next_turn() {
         let mut t = ClaudeTransport::new("s1");
-        t.set_mode(PermissionMode::Plan).unwrap();
+        t.set_mode(PermissionMode::new("plan")).unwrap();
         t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
 
         let blocks = [ContentBlock::Text { text: "stop reading, just summarise".to_string() }];
         assert!(t.steer(&blocks).is_err(), "no child, so the write itself cannot succeed");
-        assert_eq!(t.pending_mode, Some(PermissionMode::Plan), "the steer must not spend the mode switch");
+        assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")), "the steer must not spend the mode switch");
         assert_eq!(
             t.pending_model,
             Some(("claude-opus-5".to_string(), Some(Effort::High))),

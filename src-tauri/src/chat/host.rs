@@ -286,7 +286,7 @@ impl ChatHost {
             ChatCommand::RespondPermission { tool_use_id, request_id, decision, scope, reason, .. } => {
                 t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref())
             }
-            ChatCommand::SetMode { mode, .. } => t.set_mode(*mode),
+            ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
             ChatCommand::SetModel { model, effort, .. } => t.set_model(model, *effort),
             ChatCommand::Close { .. } => {
                 drop(t);
@@ -847,7 +847,7 @@ mod tests {
 
         host.send("s1", vec![ContentBlock::Text { text: "hello".into() }]).unwrap();
         host.interrupt("s1").unwrap();
-        host.set_mode("s1", PermissionMode::Plan).unwrap();
+        host.set_mode("s1", PermissionMode::new("plan")).unwrap();
         host.set_model("s1", "claude-opus-5", Some(Effort::High)).unwrap();
 
         // Close goes through the host's own teardown, not straight to the
