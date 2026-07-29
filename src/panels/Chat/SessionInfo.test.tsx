@@ -20,6 +20,7 @@ const props = (over: Partial<Parameters<typeof SessionInfo>[0]> = {}) => ({
   skills: [] as string[],
   agents: [] as string[],
   plugins: [] as { name: string; version: string | null; source: string | null; path: string | null }[],
+  account: null,
   ...over,
 });
 
@@ -33,6 +34,46 @@ describe("SessionInfo", () => {
   beforeEach(() => {
     invoked.mockReset();
     invoked.mockResolvedValue([]);
+  });
+
+  it("names the plan and the organization the handshake reported", () => {
+    const { container } = render(() => (
+      <SessionInfo
+        {...props({ account: { subscriptionType: "Claude Pro", organization: "Acme", apiProvider: "firstParty" } })}
+      />
+    ));
+    open(container);
+    expect(container.textContent).toContain("Claude Pro");
+    expect(container.textContent).toContain("Acme");
+  });
+
+  // The account has one source, the `initialize` handshake, so a session that
+  // skipped it knows nothing rather than knowing a free tier. Rendering a
+  // guessed or blank plan would be a claim about the user's billing.
+  it("shows no account section at all when the handshake did not happen", () => {
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()], account: null })} />);
+    open(container);
+    expect(container.textContent).not.toContain("Account");
+  });
+
+  // The harness can name an account without naming an organization, and an
+  // empty string next to a separator reads as a rendering bug.
+  it("omits the organization line when the account carries none", () => {
+    const { container } = render(() => (
+      <SessionInfo {...props({ account: { subscriptionType: "Claude Max", organization: "", apiProvider: "" } })} />
+    ));
+    open(container);
+    expect(container.textContent).toContain("Claude Max");
+    expect(container.textContent).not.toContain("·");
+  });
+
+  it("does not open with a separator when only an organization is named", () => {
+    const { container } = render(() => (
+      <SessionInfo {...props({ account: { subscriptionType: "", organization: "Acme", apiProvider: "" } })} />
+    ));
+    open(container);
+    expect(container.textContent).toContain("Acme");
+    expect(container.textContent).not.toContain("·");
   });
 
   it("renders nothing for a session that loaded none of it", () => {

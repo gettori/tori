@@ -206,6 +206,7 @@ describe("a live chat blocks a real tree revert", () => {
       models: [],
       fastModeState: null,
       fastModeDisabledReason: null,
+      account: null,
     });
     register(state);
     expect(revertGuard(liveCandidates(), { folderPath: REPO }).allow).toBe(true);

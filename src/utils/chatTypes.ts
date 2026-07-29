@@ -85,6 +85,23 @@ export type ChatModelInfo = {
   supportsAutoMode: boolean;
 };
 
+/// Who the session is signed in as, from the `initialize` handshake, which is
+/// its only source. `null` wherever it appears means the handshake did not
+/// happen, which is why every field can be trusted once the object exists.
+///
+/// No `email`: the response carries one and nothing here reads it, so it is
+/// dropped at the Rust boundary rather than carried into the UI.
+export type ChatAccount = {
+  /// The harness's own wording, e.g. `Claude Pro`. Rendered as-is; a plan Sway
+  /// has never seen should read as itself rather than as "unknown".
+  subscriptionType: string;
+  organization: string;
+  /// `firstParty` for the Anthropic API, else a gateway. Load-bearing beyond
+  /// display: the context window depends on it for models whose id does not
+  /// say which window they get.
+  apiProvider: string;
+};
+
 export type Usage = {
   inputTokens: number;
   outputTokens: number;
@@ -142,6 +159,8 @@ export type ChatEvent =
       /// reason, which the toggle renders instead of an inert control.
       fastModeState: string | null;
       fastModeDisabledReason: string | null;
+      /// From the handshake, not from `system/init`. Null when there was none.
+      account: ChatAccount | null;
       extra?: Extra;
     }
   /// The child answered the `initialize` handshake: alive and talking, but no
@@ -153,6 +172,9 @@ export type ChatEvent =
       sessionId: string;
       slashCommands: SlashCommand[];
       models: ChatModelInfo[];
+      /// Carried here as well as on `sessionStarted` because this event can
+      /// arrive a whole turn earlier, and the handshake is the only source.
+      account: ChatAccount | null;
     }
   /// One hook execution, from the in-band `hook_started`/`hook_response` frames
   /// that `--include-hook-events` turns on. One event per **frame**: a hook
@@ -377,11 +399,12 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "models",
       "fastModeState",
       "fastModeDisabledReason",
+      "account",
     ],
     optional: ["extra"],
   },
   sessionReady: {
-    required: ["sessionId", "slashCommands", "models"],
+    required: ["sessionId", "slashCommands", "models", "account"],
   },
   hookFired: {
     required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],

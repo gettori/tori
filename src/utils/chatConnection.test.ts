@@ -16,6 +16,7 @@ const started: ChatEvent = {
   models: [],
   fastModeState: null,
   fastModeDisabledReason: null,
+  account: null,
 };
 
 const turn = (turnId: string): ChatEvent => ({

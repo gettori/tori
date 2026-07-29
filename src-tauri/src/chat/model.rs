@@ -195,6 +195,36 @@ pub struct ChatModelInfo {
     pub supports_auto_mode: bool,
 }
 
+/// Who the session is signed in as, from the `initialize` handshake.
+///
+/// Measured: like the model catalogue, this exists **only** in that control
+/// response, never on `system/init`. So a session that never handshook has no
+/// account at all, which is why every consumer takes an `Option` rather than a
+/// struct of empty strings - "we did not ask" and "no organization" are
+/// different answers and only one of them is worth rendering.
+///
+/// **`email` is deliberately not carried.** The response has one; nothing here
+/// needs it, and a personal identifier that no consumer reads is a field that
+/// only ever leaks - into a fixture, a log line, or a bug report. Multi-account
+/// profiles may need it later, and can add it then with a reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatAccount {
+    /// As the harness words it, e.g. `Claude Pro`, `Claude Max`. Passed through
+    /// rather than parsed into a tier: the strings are the CLI's to change, and
+    /// a plan Sway has never seen should render as itself, not as "unknown".
+    #[serde(default)]
+    pub subscription_type: String,
+    #[serde(default)]
+    pub organization: String,
+    /// `firstParty` for the Anthropic API, else a gateway (Bedrock, Vertex).
+    /// Load-bearing beyond display: the extended context window depends on it,
+    /// because several models run 1M on first-party and less elsewhere without
+    /// saying so in their id.
+    #[serde(default)]
+    pub api_provider: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServer {
@@ -325,6 +355,10 @@ pub enum ChatEvent {
         fast_mode_state: Option<String>,
         #[serde(default)]
         fast_mode_disabled_reason: Option<String>,
+        /// Who this session is signed in as, from the handshake. `None` when it
+        /// did not happen, which reads as "unknown" rather than "no account".
+        #[serde(default)]
+        account: Option<ChatAccount>,
         #[serde(default, skip_serializing_if = "extra_is_empty")]
         extra: Extra,
     },
@@ -348,6 +382,12 @@ pub enum ChatEvent {
         /// which the picker reads as "fall back to the adapter table".
         #[serde(default)]
         models: Vec<ChatModelInfo>,
+        /// The account the same response named. Carried here as well as on
+        /// `SessionStarted` because this event can arrive a whole turn earlier
+        /// and is the point of it: the handshake is the only source, so waiting
+        /// for the first `system/init` would hold back data already in hand.
+        #[serde(default)]
+        account: Option<ChatAccount>,
     },
 
     /// One hook execution, from the in-band `hook_started`/`hook_response`
@@ -676,6 +716,11 @@ mod tests {
                 }],
                 fast_mode_state: Some("off".into()),
                 fast_mode_disabled_reason: Some("sdk_opt_in_required".into()),
+                account: Some(ChatAccount {
+                    subscription_type: "Claude Pro".into(),
+                    organization: "Acme".into(),
+                    api_provider: "firstParty".into(),
+                }),
                 extra: extra(),
             },
             ChatEvent::SessionReady {
@@ -695,6 +740,11 @@ mod tests {
                     supported_effort_levels: vec!["low".into(), "high".into()],
                     supports_auto_mode: true,
                 }],
+                account: Some(ChatAccount {
+                    subscription_type: "Claude Pro".into(),
+                    organization: "Acme".into(),
+                    api_provider: "firstParty".into(),
+                }),
             },
             ChatEvent::TurnStarted {
                 session_id: "s1".into(),

@@ -102,6 +102,12 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(ev.models[0]?.supportedEffortLevels).toContain("high");
           expect(ev.fastModeState).toBe("off");
           expect(ev.fastModeDisabledReason).toBe("sdk_opt_in_required");
+          // `CHAT_EVENT_KEYS` compares only the event's own top-level keys, so
+          // a rename *inside* `ChatAccount` would slip past it. Read every
+          // field here instead: `undefined` on a renamed one fails the compare.
+          expect(ev.account?.subscriptionType).toBe("Claude Pro");
+          expect(ev.account?.organization).toBe("Acme");
+          expect(ev.account?.apiProvider).toBe("firstParty");
           break;
         case "sessionReady":
           // The pre-turn liveness signal carries both catalogues, which is
@@ -109,6 +115,9 @@ describe("chatTypes mirrors the Rust chat model", () => {
           // first message.
           expect(ev.slashCommands[0]?.name).toBe("review");
           expect(ev.models[0]?.value).toBe("sonnet");
+          // Carried a turn earlier than `sessionStarted`, and the handshake is
+          // its only source, so this is where it first reaches the UI.
+          expect(ev.account?.apiProvider).toBe("firstParty");
           break;
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();

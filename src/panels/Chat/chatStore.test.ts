@@ -82,6 +82,7 @@ const sessionStarted = (over: Partial<Extract<ChatEvent, { type: "sessionStarted
   models: [],
   fastModeState: null,
   fastModeDisabledReason: null,
+  account: null,
   ...over,
 });
 const text = (turnId: string, t: string): ChatEvent => ({ type: "textDelta", sessionId: "s1", turnId, text: t });
@@ -935,11 +936,13 @@ describe("the answered handshake (sessionReady)", () => {
     supportedEffortLevels: ["low", "high"],
     supportsAutoMode: true,
   };
+  const ACCOUNT = { subscriptionType: "Claude Pro", organization: "Acme", apiProvider: "firstParty" };
   const ready = (over: Partial<Extract<ChatEvent, { type: "sessionReady" }>> = {}): ChatEvent => ({
     type: "sessionReady",
     sessionId: "s1",
     slashCommands: [{ name: "review", description: "Multi-lens code review", argumentHint: null, aliases: [] }],
     models: [MODEL],
+    account: ACCOUNT,
     ...over,
   });
 
@@ -977,12 +980,38 @@ describe("the answered handshake (sessionReady)", () => {
     expect(connectionHealth(s)).toBe("connected");
   });
 
+  it("folds the account in and reads it back", () => {
+    const s = initialChat("s1");
+    expect(s.account).toBeNull();
+    applyEvent(s, ready());
+    expect(s.account).toEqual(ACCOUNT);
+  });
+
+  // The handshake is the account's only source, and `sessionStarted` re-fires
+  // every turn, so an unguarded assignment would blank it on turn two.
+  it("keeps the account when a later frame carries none", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    applyEvent(s, sessionStarted());
+    expect(s.account).toEqual(ACCOUNT);
+  });
+
   it("is cleared by a reconnect, whose new child has answered nothing yet", () => {
     const s = initialChat("s1");
     applyEvent(s, ready());
     beginReconnect(s);
     expect(connectionHealth(s)).toBe("connecting");
     expect(chatStatus(s)).toBe("running");
+  });
+});
+
+describe("a session that never handshook", () => {
+  // The `initialize` response is the account's only source, so a session that
+  // skipped it knows nothing rather than knowing a free tier.
+  it("has no account at all", () => {
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted());
+    expect(s.account).toBeNull();
   });
 });
 

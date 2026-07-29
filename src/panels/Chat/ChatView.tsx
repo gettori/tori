@@ -1327,6 +1327,7 @@ export default function ChatView(props: {
                 skills={state.skills}
                 agents={state.agents}
                 plugins={state.plugins}
+                account={state.account}
                 cwd={props.cwd}
               />
             </div>
