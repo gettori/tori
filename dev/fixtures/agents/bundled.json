@@ -106,37 +106,73 @@
         {
           "id": "default",
           "label": "Ask",
+          "hint": "Standard behavior, prompts for dangerous operations.",
           "args": [
             "--permission-mode",
             "default"
           ],
+          "requires": null,
+          "permissive_caveat": false,
           "default": true
         },
         {
           "id": "acceptEdits",
           "label": "Accept edits",
+          "hint": "Auto-accept file edit operations.",
           "args": [
             "--permission-mode",
             "acceptEdits"
           ],
+          "requires": null,
+          "permissive_caveat": false,
           "default": false
         },
         {
           "id": "plan",
           "label": "Plan",
+          "hint": "Planning mode, no actual tool execution.",
           "args": [
             "--permission-mode",
             "plan"
           ],
+          "requires": null,
+          "permissive_caveat": false,
+          "default": false
+        },
+        {
+          "id": "auto",
+          "label": "Auto",
+          "hint": "Use a model classifier to approve/deny permission prompts.",
+          "args": [
+            "--permission-mode",
+            "auto"
+          ],
+          "requires": "supportsAutoMode",
+          "permissive_caveat": false,
+          "default": false
+        },
+        {
+          "id": "dontAsk",
+          "label": "Don't ask",
+          "hint": "Don't prompt for permissions, deny if not pre-approved.",
+          "args": [
+            "--permission-mode",
+            "dontAsk"
+          ],
+          "requires": null,
+          "permissive_caveat": false,
           "default": false
         },
         {
           "id": "bypassPermissions",
           "label": "Bypass",
+          "hint": "Bypass all permission checks.",
           "args": [
             "--permission-mode",
             "bypassPermissions"
           ],
+          "requires": null,
+          "permissive_caveat": true,
           "default": false
         }
       ],

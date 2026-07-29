@@ -43,6 +43,9 @@ export type PickableModel = {
    *  up by `resolvedModel`, exactly like `contextWindow`, because the live
    *  catalogue declares no such flag. */
   fastMode: boolean;
+  /** Whether this model honours `--permission-mode auto`. From the live
+   *  catalogue, which omits the key entirely for a model that lacks it. */
+  supportsAutoMode: boolean;
 };
 
 /**
@@ -94,6 +97,10 @@ function fromAdapter(m: ChatModel): PickableModel {
     contextWindow: m.context_window,
     live: false,
     fastMode: m.fast_mode ?? false,
+    // The adapter table declares no capability flags of its own, and a session
+    // reading from it never handshook. Claiming a capability here would be a
+    // guess about a model this build has only a hand-maintained row for.
+    supportsAutoMode: false,
   };
 }
 
@@ -118,6 +125,7 @@ export function pickableModels(live: readonly ChatModelInfo[], chat: ChatConfig 
       contextWindow: contextWindowFor(chat, m.resolvedModel),
       live: true,
       fastMode: fastModeFor(chat, m.resolvedModel),
+      supportsAutoMode: m.supportsAutoMode,
     }));
   }
   return (chat?.models ?? []).map(fromAdapter);
@@ -222,9 +230,64 @@ export type Capabilities = {
 export function capabilitiesFor(model: PickableModel | null, chat: ChatConfig | null): Capabilities {
   return {
     effortLevels: model?.effortLevels ?? [],
-    modes: chat?.modes ?? [],
+    // A mode declaring `requires` is offered only to a model that declares that
+    // capability. This is the half that has to be a filter rather than a
+    // passthrough: measured on claude 2.1.220, `--permission-mode auto` on a
+    // model without `supportsAutoMode` exits 0 and silently runs `default`, so
+    // an ungated row would let someone pick a mode the session is not in with
+    // nothing on the wire to contradict it.
+    //
+    // A mode requiring a capability is hidden while the model is unknown, since
+    // "not known to support it" is the same answer as "does not support it" for
+    // anything that would otherwise be silently ignored.
+    modes: (chat?.modes ?? []).filter((m) => !m.requires || capabilities(model).has(m.requires)),
     fastMode: model?.fastMode ?? false,
   };
+}
+
+/**
+ * The capabilities a model has, keyed by the name the live catalogue uses, so
+ * an adapter's `requires` can be written in the harness's own terms.
+ *
+ * `supportsEffort` is derived from the level list rather than read from a flag
+ * of that name, because `pickableModels` has already folded the two together:
+ * the flag and the list can disagree only by the list being absent, and the
+ * list is what a control would render.
+ */
+function capabilities(model: PickableModel | null): Set<string> {
+  const flags = new Set<string>();
+  if (!model) return flags;
+  if (model.effortLevels.length > 0) flags.add("supportsEffort");
+  if (model.supportsAutoMode) flags.add("supportsAutoMode");
+  return flags;
+}
+
+/**
+ * The mode to move to when switching to `model`, or null to keep the current
+ * one.
+ *
+ * **The gate is only worth anything if the model control cannot walk around
+ * it.** A mode can be gated on a capability (`auto` needs `supportsAutoMode`),
+ * and hiding its row is enough right up until the user picks it on a model that
+ * has the capability and then switches to one that does not. The row disappears
+ * and the session is still asking for the mode, which the CLI accepts, exits 0
+ * on, and silently runs as something else.
+ *
+ * This is the same rule the effort level already follows on a model switch. It
+ * is a separate function only because mode does not ride the model command and
+ * so needs its own request.
+ */
+export function modeAfterModelSwitch(
+  model: PickableModel | null,
+  chat: ChatConfig | null,
+  current: string | null,
+): string | null {
+  if (current === null) return null;
+  const allowed = capabilitiesFor(model, chat).modes;
+  if (allowed.some((m) => m.id === current)) return null;
+  // The default among what is still offered, rather than the adapter's default
+  // outright: a gated default would put us straight back in this position.
+  return (allowed.find((m) => m.default) ?? allowed[0])?.id ?? null;
 }
 
 /**

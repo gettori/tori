@@ -24,6 +24,7 @@ function machineModels(): ChatModelInfo[] {
       description: (m.description as string) ?? "",
       supportsEffort: (m.supportsEffort as boolean) ?? false,
       supportedEffortLevels: (m.supportedEffortLevels as string[]) ?? [],
+      supportsAutoMode: false,
     }),
   );
 }

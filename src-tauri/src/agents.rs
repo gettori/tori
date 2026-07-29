@@ -151,8 +151,40 @@ pub struct ResolvedMode {
 pub struct ChatMode {
     pub id: String,
     pub label: String,
+    /// One line on what this mode does, rendered on the menu row.
+    ///
+    /// Claude's are the CLI's own wording, read out of the `--permission-mode`
+    /// description it embeds, rather than paraphrased: a mode is a statement
+    /// about what the agent may do unattended, and that is the wrong place to
+    /// improvise.
+    #[serde(default)]
+    pub hint: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// A per-model capability this mode needs, named as the live catalogue
+    /// names it (`supportsAutoMode`). A model that does not declare it does not
+    /// get the row.
+    ///
+    /// Declared rather than keyed on the mode's id, because the gate is not a
+    /// property of the *word* "auto": another harness could gate a differently
+    /// named mode on a differently named flag, and hardcoding the pair here
+    /// would be one more Claude-shaped assumption in a neutral resolver.
+    ///
+    /// Measured on claude 2.1.220: `--permission-mode auto` on a model without
+    /// `supportsAutoMode` exits 0 and silently reports `permissionMode` as
+    /// `default`. Nothing on the wire objects, so the gate has to be here.
+    #[serde(default)]
+    pub requires: Option<String>,
+    /// Whether picking this mode should carry Sway's "it still asks" caveat.
+    ///
+    /// Adapter-declared rather than keyed on the literal `"bypassPermissions"`,
+    /// because the caveat is a fact about **Sway**, not about Claude: the
+    /// `PreToolUse` hook runs first in the permission chain whatever the
+    /// harness, so a call matching no allow rule stops at Sway's gate even in
+    /// a mode whose whole name promises otherwise. A harness calling its
+    /// permissive mode `yolo` needs the same warning.
+    #[serde(default)]
+    pub permissive_caveat: bool,
     /// The mode a session runs when nothing else is chosen, and what an
     /// unresolvable mode downgrades to.
     ///
@@ -1123,9 +1155,27 @@ args = ["--effort", "low"]
         let haiku = chat.models.iter().find(|m| m.label == "Haiku 4.5").expect("haiku present");
         assert!(haiku.effort_levels.is_empty());
 
-        // The four permission modes, spelled exactly as --permission-mode takes.
+        // The six modes --permission-mode both accepts *and honours*, spelled
+        // exactly as it takes them. `manual` is deliberately absent: the CLI
+        // accepts it but documents it as an alias for `default`, and reports
+        // `default` at init, so a row for it would duplicate one.
         let modes: Vec<&str> = chat.modes.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(modes, vec!["default", "acceptEdits", "plan", "bypassPermissions"]);
+        assert_eq!(modes, vec!["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]);
+        assert!(!modes.contains(&"manual"), "`manual` is an alias for `default`, not a mode of its own");
+        assert!(
+            chat.modes.iter().all(|m| !m.hint.is_empty()),
+            "a mode with no hint renders a menu row that does not say what it does"
+        );
+
+        // `auto` is gated on the capability the live catalogue reports, because
+        // a model lacking it runs `default` instead without saying so.
+        let auto = chat.modes.iter().find(|m| m.id == "auto").expect("auto declared");
+        assert_eq!(auto.requires.as_deref(), Some("supportsAutoMode"));
+
+        // Exactly one mode carries the caveat, and it is the permissive one.
+        let caveated: Vec<&str> =
+            chat.modes.iter().filter(|m| m.permissive_caveat).map(|m| m.id.as_str()).collect();
+        assert_eq!(caveated, vec!["bypassPermissions"]);
 
         // The five measured effort levels.
         let levels: Vec<&str> = chat.effort.iter().map(|e| e.id.as_str()).collect();

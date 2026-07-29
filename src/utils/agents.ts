@@ -30,7 +30,18 @@ export type ChatModel = {
 export type ChatMode = {
   id: string;
   label: string;
+  // One line on what this mode does, rendered on the menu row. Claude's are the
+  // CLI's own wording rather than a paraphrase.
+  hint: string;
   args: string[];
+  // A per-model capability this mode needs, named as the live catalogue names
+  // it (`supportsAutoMode`). Declared rather than keyed on the mode's id: the
+  // gate is not a property of the word "auto".
+  requires?: string | null;
+  // Whether this mode carries Sway's "it still asks" caveat. Adapter-declared
+  // because the caveat is about Sway's own approval hook, which runs ahead of
+  // whatever a harness calls its permissive mode.
+  permissive_caveat?: boolean;
   // The mode a session runs when nothing is chosen, and what an unresolvable
   // one downgrades to. Declared rather than assumed: "default" is Claude's
   // spelling, and a resolver carrying it picks nothing on a harness that names
