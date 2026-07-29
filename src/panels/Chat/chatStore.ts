@@ -38,6 +38,7 @@ import type {
   Usage,
 } from "../../utils/chatTypes";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
+import { reportedWindows } from "../../utils/chatModels";
 import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
 import type { ProbeState } from "../../utils/safeSend";
 import type { SessionStatus } from "../../utils/sessionStatus";
@@ -196,6 +197,11 @@ export type ChatState = {
    *  unavailable. */
   fastModeState: string | null;
   fastModeDisabledReason: string | null;
+  /** Context windows the harness reported, keyed by every id it named them
+   *  under, accumulated across turns. The authoritative source: it is measured
+   *  per model and per provider by the session itself. Empty until the first
+   *  turn completes, which is what the adapter's declared figure covers. */
+  contextWindows: Record<string, number>;
   /** Who the session is signed in as. Null until the handshake answers, and
    *  forever for a session that never handshook - which renders as nothing
    *  rather than as a guessed tier. */
@@ -279,6 +285,7 @@ export function initialChat(sessionId: string): ChatState {
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,
+    contextWindows: {},
     permissionMode: null,
     pendingMode: null,
     tools: [],
@@ -671,6 +678,10 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.lastUsage = ev.usage;
       s.lastTurnUsage = ev.usage;
       s.lastCostUsd = ev.costUsd;
+      // Merged rather than replaced: a turn reports only the models it touched,
+      // so the model that ran the *previous* turn would drop out of a straight
+      // assignment and take its window with it.
+      Object.assign(s.contextWindows, reportedWindows(ev.extra));
       // Safe from double counting because a repeated `turnCompleted` returned
       // above: this runs exactly once per turn id.
       addUsage(s.totalUsage, ev.usage);

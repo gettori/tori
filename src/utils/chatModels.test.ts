@@ -1,12 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   capabilitiesFor,
+  contextPercent,
   contextTokens,
   contextWindowFor,
   defaultMode,
   modeAfterModelSwitch,
   pickLanded,
   pickableModels,
+  reportedWindows,
   restoredPicks,
   selectedModel,
 } from "./chatModels";
@@ -406,5 +408,76 @@ describe("contextWindowFor", () => {
     expect(contextWindowFor(null, "claude-sonnet-5")).toBeNull();
     expect(contextWindowFor(adapter(), "claude-opus-5")).toBeNull();
     expect(contextWindowFor(adapter(), "claude-sonnet-5")).toBe(200000);
+  });
+
+  // The whole point of the order. The adapter figure is hand-maintained and was
+  // measurably wrong (200k written down for a model the harness runs at 1M), so
+  // the session's own report has to win rather than tie.
+  it("prefers what the session reported over what the adapter declares", () => {
+    expect(contextWindowFor(adapter(), "claude-sonnet-5", { "claude-sonnet-5": 1_000_000 })).toBe(1_000_000);
+  });
+
+  it("falls back to the adapter before any turn has reported one", () => {
+    expect(contextWindowFor(adapter(), "claude-sonnet-5", {})).toBe(200000);
+  });
+
+  it("reports nothing for a model no source knows, rather than a guessed window", () => {
+    expect(contextWindowFor(adapter(), "some-model-nobody-declared", {})).toBeNull();
+  });
+});
+
+describe("reportedWindows", () => {
+  // The exact shape measured on `result.modelUsage`.
+  const usage = {
+    modelUsage: {
+      "claude-haiku-4-5-20251001": { contextWindow: 200000, canonicalModel: "claude-haiku-4-5" },
+      "claude-sonnet-5": { contextWindow: 1_000_000, canonicalModel: "claude-sonnet-5" },
+    },
+  };
+
+  it("reads the window the harness reported for each model", () => {
+    expect(reportedWindows(usage)["claude-sonnet-5"]).toBe(1_000_000);
+  });
+
+  // The dated key and the canonical id are different strings, and `system/init`
+  // may report back either, so a lookup has to succeed under both.
+  it("keys a window under the canonical id as well as the dated one", () => {
+    const w = reportedWindows(usage);
+    expect(w["claude-haiku-4-5-20251001"]).toBe(200000);
+    expect(w["claude-haiku-4-5"]).toBe(200000);
+  });
+
+  it("is empty for a turn that reported no usage at all", () => {
+    expect(reportedWindows(undefined)).toEqual({});
+    expect(reportedWindows({})).toEqual({});
+  });
+
+  // A malformed or zero window is not a window. Taking it would put a zero
+  // denominator behind a percentage.
+  it("ignores an entry with no usable window", () => {
+    expect(reportedWindows({ modelUsage: { a: { contextWindow: 0 }, b: { contextWindow: "big" }, c: null } })).toEqual(
+      {},
+    );
+  });
+});
+
+describe("contextPercent", () => {
+  it("is the share of the window in use", () => {
+    expect(contextPercent(50_000, 200_000)).toBe(25);
+  });
+
+  it("is null when either number is missing, so no meter renders", () => {
+    expect(contextPercent(null, 200_000)).toBeNull();
+    expect(contextPercent(50_000, null)).toBeNull();
+  });
+
+  // The symptom that started this: a meter reading 187%. Usage above the window
+  // is a contradiction, so the resolver reports "unknown" rather than clamping
+  // to a full bar, which would read as a session about to compact.
+  it("reports nothing when usage exceeds the window, rather than clamping to 100", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(contextPercent(374_000, 200_000)).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("exceeds the resolved window"));
+    warn.mockRestore();
   });
 });
