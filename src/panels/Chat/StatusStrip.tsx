@@ -2,7 +2,7 @@ import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid
 import { Ellipsis } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
-import SessionStats, { ensureModelCaps, type SessionDetail } from "./SessionStats";
+import SessionStats, { type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
 import styles from "./Chat.module.css";
 
@@ -29,14 +29,14 @@ export default function StatusStrip(props: {
   /** This session's figures, or null before the transcript has been read (a
    *  chat with no turns yet has no file to read them from). */
   detail: SessionDetail | null;
+  /** The window the one resolver produced for the session's model, or null.
+   *  Threaded through rather than resolved in the stats row, so this strip and
+   *  the composer meter never disagree about the denominator. */
+  contextWindow: number | null;
   onReconnect: () => void;
   /** The overflow menu's contents; the strip owns only the open/close state. */
   menu: JSX.Element;
 }) {
-  // The context percentage needs the model's window; the fetch is shared and
-  // fires once per app run whichever surface asks for it first.
-  ensureModelCaps();
-
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [elapsed, setElapsed] = createSignal(0);
   let root: HTMLDivElement | undefined;
@@ -116,7 +116,7 @@ export default function StatusStrip(props: {
         {(d) => (
           <>
             <span class={styles.stripSep} aria-hidden="true" />
-            <SessionStats detail={d()} />
+            <SessionStats detail={d()} contextWindow={props.contextWindow} />
           </>
         )}
       </Show>

@@ -53,6 +53,7 @@ import { checkpointChatTurn } from "../../utils/checkpoints";
 import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
   capabilitiesFor,
+  contextPercent,
   contextTokens,
   defaultMode,
   modeAfterModelSwitch,
@@ -748,12 +749,12 @@ export default function ChatView(props: {
   function spend(): Spend {
     const totals = spent();
     const usage = state.lastUsage;
-    const window = shownModel()?.contextWindow ?? null;
     return {
       sessionUsd: totals?.session.costUsd ?? null,
       projectUsd: totals?.project.costUsd ?? null,
-      contextPercent:
-        window && usage ? ((contextTokens(usage) ?? 0) / window) * 100 : null,
+      // One resolver for both meters and for the ceiling, so a session cannot
+      // be stopped against one denominator while the strip draws another.
+      contextPercent: contextPercent(contextTokens(usage), shownModel()?.contextWindow ?? null),
     };
   }
 
@@ -899,7 +900,7 @@ export default function ChatView(props: {
   // One accessor for the adapter's chat table, so the model list, the mode
   // fallback and the capability resolver cannot each reach for it differently.
   const chatConfig = () => findAgent(props.agentId).chat ?? null;
-  const models = () => pickableModels(state.models, chatConfig());
+  const models = () => pickableModels(state.models, chatConfig(), state.contextWindows);
 
   // The entry the picker shows as selected. Resolved through the catalogue
   // rather than read straight off the store, because before the first pick the
@@ -1284,6 +1285,7 @@ export default function ChatView(props: {
           files={touchedFiles()}
           tokens={sessionTokens()}
           detail={detail()}
+          contextWindow={shownModel()?.contextWindow ?? null}
           onReconnect={() => reconnect?.()}
           menu={
             <div class={styles.menuBody}>
