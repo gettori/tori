@@ -106,6 +106,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             models: vec![],
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
+            account: None,
             extra: Default::default(),
         },
         // Resuming re-establishes the same session, so it is a start too; the
@@ -121,6 +122,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             models: vec![],
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
+            account: None,
             extra: Default::default(),
         },
         // A fork is a *different* session id, so it is that new session
@@ -136,6 +138,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             models: vec![],
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
+            account: None,
             extra: Default::default(),
         },
         // Compaction changes what the context holds, which the UI reads as a
@@ -322,6 +325,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             models: vec![],
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
+            account: None,
             extra: Default::default(),
         },
         // A mode change lands on the same field the next turn reports, which is

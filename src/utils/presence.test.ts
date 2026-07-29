@@ -156,6 +156,7 @@ describe("chats alongside PTY agents", () => {
     models: [],
     fastModeState: null,
     fastModeDisabledReason: null,
+    account: null,
   });
 
   const asks = (sessionId: string, toolUseId: string): ChatEvent => ({
