@@ -760,6 +760,7 @@ describe("model and effort switching", () => {
             description: "Fastest",
             supportsEffort: false,
             supportedEffortLevels: [],
+            supportsAutoMode: false,
           },
         ],
         fastModeState: "off",
@@ -932,6 +933,7 @@ describe("the answered handshake (sessionReady)", () => {
     description: "Balanced",
     supportsEffort: true,
     supportedEffortLevels: ["low", "high"],
+    supportsAutoMode: true,
   };
   const ready = (over: Partial<Extract<ChatEvent, { type: "sessionReady" }>> = {}): ChatEvent => ({
     type: "sessionReady",

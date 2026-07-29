@@ -8,7 +8,7 @@ import Composer from "./Composer";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
-import ModeSelector, { BYPASS_STILL_APPROVED } from "./ModeSelector";
+import ModeSelector, { BYPASS_STILL_APPROVED, needsPermissiveCaveat } from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
 import { fmtTokens, turnTokens, usageSummary } from "../../utils/chatUsage";
@@ -52,8 +52,10 @@ import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessio
 import { checkpointChatTurn } from "../../utils/checkpoints";
 import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
+  capabilitiesFor,
   contextTokens,
   defaultMode,
+  modeAfterModelSwitch,
   pickableModels,
   selectedModel,
   type PickableModel,
@@ -922,6 +924,10 @@ export default function ChatView(props: {
   // names nothing on a harness whose modes are `auto_edit|yolo`.
   const shownModeValue = () => shownMode(state, defaultMode(chatConfig())?.id ?? null);
 
+  // What this model, on this harness, can actually be asked for. One resolver
+  // feeds all three pills, so they cannot disagree about what is on offer.
+  const offered = () => capabilitiesFor(shownModel(), chatConfig());
+
   function onSelectModel(model: PickableModel) {
     edit((s) => selectModel(s, model));
     // Effort is sent with the model because that is how the command carries it:
@@ -929,6 +935,17 @@ export default function ChatView(props: {
     // rather than sent and blamed on the model switch.
     const effort = model.effortLevels.includes(shownEffort(state) ?? "") ? shownEffort(state) : null;
     applyModelChange(model.value, effort, () => edit((s) => revertModelPick(s, model.value)));
+
+    // A mode the new model does not offer is dropped on the same rule, but it
+    // needs a request of its own: mode does not ride the model command.
+    //
+    // Without this the gate is walkable from one control away. Picking `auto`
+    // on Sonnet and then switching to Haiku removes the row from the menu but
+    // leaves the session still asking for `auto`, which the CLI accepts, exits
+    // 0 on, and silently runs as `default` - the pill promising a mode the
+    // session is not in, which is the failure this phase exists to remove.
+    const next = modeAfterModelSwitch(model, chatConfig(), shownModeValue());
+    if (next !== null) onSelectMode(next);
   }
 
   function onSelectEffort(effort: string) {
@@ -1402,7 +1419,7 @@ export default function ChatView(props: {
             />
             <ModeSelector
               mode={shownModeValue()}
-              chat={chatConfig()}
+              modes={offered().modes}
               pending={modePending(state)}
               disabled={refused() || state.ended}
               onSelect={onSelectMode}
@@ -1412,7 +1429,7 @@ export default function ChatView(props: {
         // Bypass names itself after something Sway does not actually let it do,
         // so the guard stays a visible line rather than a tooltip.
         notice={
-          <Show when={shownModeValue() === "bypassPermissions"}>
+          <Show when={needsPermissiveCaveat(chatConfig(), shownModeValue())}>
             <div class={styles.composerNotice}>{BYPASS_STILL_APPROVED}</div>
           </Show>
         }

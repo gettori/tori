@@ -138,6 +138,7 @@ impl ClaudeMapper {
                             .as_array()
                             .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                             .unwrap_or_default(),
+                        supports_auto_mode: m["supportsAutoMode"].as_bool().unwrap_or(false),
                     })
                 })
                 .collect();

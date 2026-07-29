@@ -4,12 +4,13 @@ import {
   contextTokens,
   contextWindowFor,
   defaultMode,
+  modeAfterModelSwitch,
   pickLanded,
   pickableModels,
   restoredPicks,
   selectedModel,
 } from "./chatModels";
-import type { ChatConfig } from "./agents";
+import type { ChatConfig, ChatMode } from "./agents";
 import type { ChatModelInfo } from "./chatTypes";
 
 // The shape of the real thing, trimmed to what these functions read. Written by
@@ -60,6 +61,7 @@ function live(): ChatModelInfo[] {
       description: "Sonnet 5",
       supportsEffort: true,
       supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      supportsAutoMode: true,
     },
     {
       value: "sonnet",
@@ -68,6 +70,7 @@ function live(): ChatModelInfo[] {
       description: "Sonnet 5",
       supportsEffort: true,
       supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      supportsAutoMode: true,
     },
     {
       value: "haiku",
@@ -76,6 +79,7 @@ function live(): ChatModelInfo[] {
       description: "Fastest",
       supportsEffort: false,
       supportedEffortLevels: [],
+      supportsAutoMode: false,
     },
   ];
 }
@@ -145,7 +149,18 @@ describe("selectedModel", () => {
     expect(selectedModel(models, null, "claude-sonnet-5")?.value).toBe("sonnet");
     // An entry whose value *is* the resolved id wins outright.
     const withExact = pickableModels(
-      [...live(), { value: "claude-sonnet-5", resolvedModel: "claude-sonnet-5", displayName: "Sonnet 5", description: "", supportsEffort: false, supportedEffortLevels: [] }],
+      [
+        ...live(),
+        {
+          value: "claude-sonnet-5",
+          resolvedModel: "claude-sonnet-5",
+          displayName: "Sonnet 5",
+          description: "",
+          supportsEffort: false,
+          supportedEffortLevels: [],
+          supportsAutoMode: false,
+        },
+      ],
       adapter(),
     );
     expect(selectedModel(withExact, null, "claude-sonnet-5")?.value).toBe("claude-sonnet-5");
@@ -217,7 +232,7 @@ describe("restoredPicks", () => {
 
   it("restores a mode the adapter still declares", () => {
     const chat = adapter();
-    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
     const models = pickableModels(live(), chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat).mode).toBe("plan");
   });
@@ -229,8 +244,8 @@ describe("restoredPicks", () => {
   it("drops a mode the adapter does not declare", () => {
     const chat = adapter();
     chat.modes = [
-      { id: "auto_edit", label: "Auto edit", args: [], default: true },
-      { id: "yolo", label: "Yolo", args: [] },
+      { id: "auto_edit", label: "Auto edit", hint: "", args: [], default: true },
+      { id: "yolo", label: "Yolo", hint: "", args: [] },
     ];
     const models = pickableModels(live(), chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "bypassPermissions" }, chat).mode).toBeNull();
@@ -242,7 +257,7 @@ describe("capabilitiesFor", () => {
   // the intersection load-bearing rather than a passthrough of the adapter.
   it("offers nothing model-scoped for a model that declares nothing", () => {
     const chat = adapter();
-    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
     const models = pickableModels(live(), chat);
     const haiku = models.find((m) => m.value === "haiku")!;
 
@@ -255,7 +270,7 @@ describe("capabilitiesFor", () => {
 
   it("offers everything for a model that declares everything", () => {
     const chat = adapter();
-    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
     chat.models[0].fast_mode = true;
     const models = pickableModels(live(), chat);
     const sonnet = models.find((m) => m.value === "sonnet")!;
@@ -268,11 +283,61 @@ describe("capabilitiesFor", () => {
 
   it("offers nothing model-scoped before a model is known", () => {
     const chat = adapter();
-    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
     const caps = capabilitiesFor(null, chat);
     expect(caps.effortLevels).toEqual([]);
     expect(caps.fastMode).toBe(false);
     expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
+  });
+});
+
+describe("modeAfterModelSwitch", () => {
+  const GATED: ChatMode[] = [
+    { id: "default", label: "Ask", hint: "", args: [], default: true },
+    { id: "auto", label: "Auto", hint: "", args: [], requires: "supportsAutoMode" },
+  ];
+
+  function gatedAdapter(): ChatConfig {
+    const chat = adapter();
+    chat.modes = GATED;
+    return chat;
+  }
+
+  // The hole this closes: the row is hidden for a model without the capability,
+  // but hiding it does nothing about a mode already in force. Measured on
+  // claude 2.1.220, a session asking for `auto` on such a model exits 0 and
+  // runs `default`, so nothing downstream would report the disagreement.
+  it("drops a gated mode when moving to a model that cannot honour it", () => {
+    const chat = gatedAdapter();
+    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    expect(modeAfterModelSwitch(haiku, chat, "auto")).toBe("default");
+  });
+
+  it("keeps the mode when the new model can honour it", () => {
+    const chat = gatedAdapter();
+    const sonnet = pickableModels(live(), chat).find((m) => m.value === "sonnet")!;
+    expect(modeAfterModelSwitch(sonnet, chat, "auto")).toBeNull();
+  });
+
+  it("leaves an ungated mode alone whatever the model", () => {
+    const chat = gatedAdapter();
+    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    expect(modeAfterModelSwitch(haiku, chat, "default")).toBeNull();
+  });
+
+  it("has nothing to say when no mode is in force", () => {
+    expect(modeAfterModelSwitch(null, gatedAdapter(), null)).toBeNull();
+  });
+
+  // A gated default would send us straight back here on the next switch.
+  it("falls back within what is still offered, not to a gated default", () => {
+    const chat = adapter();
+    chat.modes = [
+      { id: "auto", label: "Auto", hint: "", args: [], default: true, requires: "supportsAutoMode" },
+      { id: "plan", label: "Plan", hint: "", args: [] },
+    ];
+    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    expect(modeAfterModelSwitch(haiku, chat, "auto")).toBe("plan");
   });
 });
 
@@ -283,8 +348,8 @@ describe("defaultMode", () => {
   it("is the mode the adapter marks, whatever it is called", () => {
     const chat = adapter();
     chat.modes = [
-      { id: "yolo", label: "Yolo", args: [] },
-      { id: "auto_edit", label: "Auto edit", args: [], default: true },
+      { id: "yolo", label: "Yolo", hint: "", args: [] },
+      { id: "auto_edit", label: "Auto edit", hint: "", args: [], default: true },
     ];
     expect(defaultMode(chat)?.id).toBe("auto_edit");
   });
@@ -292,8 +357,8 @@ describe("defaultMode", () => {
   it("falls back to the first declared mode, not to a name", () => {
     const chat = adapter();
     chat.modes = [
-      { id: "yolo", label: "Yolo", args: [] },
-      { id: "auto_edit", label: "Auto edit", args: [] },
+      { id: "yolo", label: "Yolo", hint: "", args: [] },
+      { id: "auto_edit", label: "Auto edit", hint: "", args: [] },
     ];
     expect(defaultMode(chat)?.id).toBe("yolo");
   });

@@ -181,6 +181,18 @@ pub struct ChatModelInfo {
     /// control rather than rendering an inert one.
     #[serde(default)]
     pub supported_effort_levels: Vec<String>,
+    /// Whether this model honours `--permission-mode auto`.
+    ///
+    /// Carried because the CLI will not say so at runtime: measured on 2.1.220,
+    /// a model without it accepts the flag, exits 0, and silently reports
+    /// `permissionMode: "default"`. Without this flag the picker would offer a
+    /// mode the session is not in and nothing would contradict it.
+    ///
+    /// Absent means false. The catalogue omits these keys entirely for a model
+    /// that lacks the capability rather than declaring them false, which is the
+    /// same shape `supported_effort_levels` already relies on.
+    #[serde(default)]
+    pub supports_auto_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -660,6 +672,7 @@ mod tests {
                     description: "Balanced".into(),
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
+                    supports_auto_mode: true,
                 }],
                 fast_mode_state: Some("off".into()),
                 fast_mode_disabled_reason: Some("sdk_opt_in_required".into()),
@@ -680,6 +693,7 @@ mod tests {
                     description: "Balanced".into(),
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
+                    supports_auto_mode: true,
                 }],
             },
             ChatEvent::TurnStarted {

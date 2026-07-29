@@ -125,12 +125,23 @@ effort_levels = []
 supports_thinking = false
 supports_images = true
 
-# The four permission modes. Sway's own PreToolUse hook runs ahead of all of
-# them, so `bypassPermissions` still prompts for a tool matching no allow
-# rule - hooks run first in claude's permission chain.
+# The six permission modes `--permission-mode` accepts and honours. Sway's own
+# PreToolUse hook runs ahead of all of them, so `bypassPermissions` still
+# prompts for a tool matching no allow rule - hooks run first in claude's
+# permission chain, which is what `permissive_caveat` below says.
+#
+# `manual` is deliberately absent. The CLI accepts it, but its own help calls it
+# "an alias for 'default'" and the wire agrees: `--permission-mode manual`
+# reports `permissionMode: "default"` at init. A row for it would be a second
+# way to pick a mode already on the list.
+#
+# Hints are the CLI's own wording, from the `--permission-mode` description it
+# embeds. A mode says what the agent may do without asking, so the description
+# is quoted rather than improvised.
 [[chat.modes]]
 id = "default"
 label = "Ask"
+hint = "Standard behavior, prompts for dangerous operations."
 args = ["--permission-mode", "default"]
 # What a session runs when nothing is chosen, and what an unresolvable mode
 # downgrades to. Marked rather than assumed: "default" is Claude's spelling,
@@ -140,17 +151,42 @@ default = true
 [[chat.modes]]
 id = "acceptEdits"
 label = "Accept edits"
+hint = "Auto-accept file edit operations."
 args = ["--permission-mode", "acceptEdits"]
 
 [[chat.modes]]
 id = "plan"
 label = "Plan"
+hint = "Planning mode, no actual tool execution."
 args = ["--permission-mode", "plan"]
+
+[[chat.modes]]
+id = "auto"
+label = "Auto"
+hint = "Use a model classifier to approve/deny permission prompts."
+args = ["--permission-mode", "auto"]
+# Measured: a model that does not declare `supportsAutoMode` (haiku declares
+# none of the capability flags) accepts this flag, exits 0, and silently runs
+# `default` instead. Nothing on the wire objects, so the row is hidden here
+# rather than offered and quietly ignored.
+requires = "supportsAutoMode"
+
+[[chat.modes]]
+id = "dontAsk"
+label = "Don't ask"
+hint = "Don't prompt for permissions, deny if not pre-approved."
+args = ["--permission-mode", "dontAsk"]
 
 [[chat.modes]]
 id = "bypassPermissions"
 label = "Bypass"
+hint = "Bypass all permission checks."
 args = ["--permission-mode", "bypassPermissions"]
+# Said wherever this mode is reachable, because its name is a promise Sway
+# deliberately does not keep. Declared per-mode rather than keyed on the id in
+# the frontend: the caveat is about Sway's own approval hook, which runs ahead
+# of whatever the harness calls its permissive mode.
+permissive_caveat = true
 
 # The five levels `--effort` accepts, confirmed present on this CLI.
 [[chat.effort]]
