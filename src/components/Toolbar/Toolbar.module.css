@@ -42,51 +42,6 @@
   max-width: calc(280px * var(--ui-scale));
 }
 
-.tbStats {
-  display: inline-flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  font-size: var(--sway-text-md);
-  white-space: nowrap;
-  color: var(--fg-muted);
-}
-
-/* Vertical rule between the session title and the counts. As its own flex
-   child, the container's gap spaces it equally on both sides. */
-.tbDivider {
-  flex: none;
-  align-self: stretch;
-  width: 1px;
-  background: var(--border-default);
-}
-
-.tbStats .statModel {
-  letter-spacing: 0.02em;
-}
-
-/* Each metric: icon + value, all the same muted tone as the model. */
-.tbStats .stat {
-  display: inline-flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* All four metric icons are SVGs; one fixed box keeps them uniform. */
-.tbStats .statIco {
-  flex: none;
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
-  opacity: 0.9;
-}
-
-.tbStats .statSep {
-  color: var(--fg-muted);
-  font-size: var(--sway-text-4xl);
-  line-height: 1;
-}
-
 .tbCrumb {
   display: flex;
   align-items: center;

@@ -2,13 +2,15 @@ import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid
 import { Ellipsis } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
+import SessionStats, { ensureModelCaps, type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
 import styles from "./Chat.module.css";
 
 /**
  * The one-line session readout above the transcript: what the session is doing
- * right now, and the three numbers worth a glance (files touched, tokens,
- * messages). Everything occasional - fork, send-to-new-chat, rules, what the
+ * right now, the files it has touched, what it has spent, and the session's own
+ * figures (model, prompts, turns, tool calls, context) on the same component the
+ * toolbar uses. Everything occasional - fork, send-to-new-chat, rules, what the
  * session loaded - lives behind the overflow menu on the right, so the strip
  * never grows into the wall of controls it replaced.
  *
@@ -24,12 +26,17 @@ export default function StatusStrip(props: {
   files: number;
   /** Session token total, preformatted, or null before any turn completed. */
   tokens: string | null;
-  /** User and assistant messages in the transcript. */
-  messages: number;
+  /** This session's figures, or null before the transcript has been read (a
+   *  chat with no turns yet has no file to read them from). */
+  detail: SessionDetail | null;
   onReconnect: () => void;
   /** The overflow menu's contents; the strip owns only the open/close state. */
   menu: JSX.Element;
 }) {
+  // The context percentage needs the model's window; the fetch is shared and
+  // fires once per app run whichever surface asks for it first.
+  ensureModelCaps();
+
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [elapsed, setElapsed] = createSignal(0);
   let root: HTMLDivElement | undefined;
@@ -105,11 +112,13 @@ export default function StatusStrip(props: {
         <span class={styles.stripSep} aria-hidden="true" />
         <span class={styles.stripItem}>{props.tokens} tokens</span>
       </Show>
-      <Show when={props.messages > 0}>
-        <span class={styles.stripSep} aria-hidden="true" />
-        <span class={styles.stripItem}>
-          {props.messages} message{props.messages === 1 ? "" : "s"}
-        </span>
+      <Show when={props.detail}>
+        {(d) => (
+          <>
+            <span class={styles.stripSep} aria-hidden="true" />
+            <SessionStats detail={d()} />
+          </>
+        )}
       </Show>
       <div class={styles.stripSpacer} />
       <button

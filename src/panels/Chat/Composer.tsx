@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, onMount, type JSX } from "solid-js";
 import { ArrowUp, Plus, Square } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -15,6 +15,11 @@ import {
 } from "../../utils/composerCompletion";
 import type { SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
+
+/** How tall the composer grows before it scrolls instead. Nine lines is enough
+ *  to hold a paragraph-length prompt in view while leaving most of the pane to
+ *  the conversation it is about. */
+const MAX_ROWS = 9;
 
 /**
  * The input.
@@ -109,6 +114,35 @@ export default function Composer(props: {
   // this"), so an attachment is enough on its own.
   const hasContent = () => !!text().trim() || props.attachments.length > 0;
 
+  // Auto-grow: one line at rest, nine at most, then it scrolls.
+  //
+  // The size is written as `rows`, not as a pixel height, because rows is
+  // denominated in line boxes: change the chat font size (or zoom) with a draft
+  // sitting in the composer and the box re-flows to suit on its own. A pixel
+  // height measured at the old font is simply wrong at the new one, and nothing
+  // would recompute it until the next keystroke.
+  //
+  // It still has to *measure*, because a prompt is mostly prose without hard
+  // newlines and only layout knows how many lines it soft-wrapped to. Shrinking
+  // to one row first is what makes scrollHeight report the content rather than
+  // the box it is already filling.
+  function fit() {
+    if (!input) return;
+    input.rows = 1;
+    const style = getComputedStyle(input);
+    const line = parseFloat(style.lineHeight);
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (!Number.isFinite(line) || line <= 0) return;
+    const lines = Math.round((input.scrollHeight - padding) / line);
+    input.rows = Math.min(MAX_ROWS, Math.max(1, lines));
+  }
+
+  // A draft restored when the tab comes back can be many lines long, and it
+  // would otherwise paint as the one row `rows="1"` asks for.
+  onMount(() => {
+    if (text()) fit();
+  });
+
   const fileHits = createMemo(() => {
     const t = token();
     return t?.kind === "file" ? rank(files(), t.query, (f) => f) : [];
@@ -146,6 +180,7 @@ export default function Composer(props: {
     input.value = next;
     input.setSelectionRange(caret, caret);
     input.focus();
+    fit();
   }
 
   function accept() {
@@ -232,7 +267,7 @@ export default function Composer(props: {
     setHistoryIndex(-1);
     closeMenu();
     // The textarea grows with its content, so it has to be shrunk back by hand.
-    if (input) input.style.height = "";
+    if (input) input.rows = 1;
   }
 
   // Up at the very start of the input walks back through what was sent, the
@@ -249,6 +284,7 @@ export default function Composer(props: {
     if (input) {
       input.value = value;
       input.setSelectionRange(value.length, value.length);
+      fit();
     }
     return true;
   }
@@ -447,9 +483,7 @@ export default function Composer(props: {
             setText(e.currentTarget.value);
             setHistoryIndex(-1);
             syncToken();
-            // Auto-grow to the content, capped in CSS.
-            e.currentTarget.style.height = "";
-            e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+            fit();
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}

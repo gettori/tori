@@ -471,6 +471,29 @@ pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u
     Ok(tail.count)
 }
 
+/// This chat session's figures, resolved from its id rather than from a path.
+///
+/// The same payload the toolbar shows for a sidebar selection, deliberately: the
+/// chat's status strip and the toolbar are usually describing the *same session*
+/// at the same moment, and two derivations of "prompts" that disagreed by one
+/// would be worse than showing neither. `transcript_path` is the resolution the
+/// replay uses, so the figures and the conversation on screen come off one file.
+///
+/// `None` when the session has no transcript on disk yet (a brand-new chat, or a
+/// SQLite-backed harness that keeps no per-session file), which the panel renders
+/// as no figures rather than as zeroes it cannot stand behind.
+#[tauri::command]
+pub fn chat_session_detail(
+    touched: tauri::State<crate::sessions::TouchedIndex>,
+    session_id: String,
+    agent_id: String,
+) -> Result<Option<crate::sessions::SessionDetail>, String> {
+    let Some(path) = crate::sessions::transcript_path(&session_id, &agent_id) else {
+        return Ok(None);
+    };
+    crate::sessions::session_detail(touched, path, agent_id).map(Some)
+}
+
 /// This session's persisted total, for a panel that has just reopened.
 #[tauri::command]
 pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<UsageTotals, String> {

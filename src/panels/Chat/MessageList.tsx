@@ -1,6 +1,4 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import { CornerDownRight, User } from "lucide-solid";
-import Icon from "../../components/Icon/Icon";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
@@ -113,15 +111,18 @@ export default function MessageList(props: {
 
   const shown = createMemo(() => windowed(props.items, limit()));
 
-  // The item ids that open their turn: the first assistant-side row of each
-  // turn carries the "who answered" header, the way one reply gets one byline
-  // rather than every bubble repeating it.
+  const turnIdOf = (it: ChatItem) =>
+    it.kind === "text" || it.kind === "thinking" || it.kind === "tool" ? it.turnId : null;
+
+  // The item ids that open their turn. There is no visible byline any more - a
+  // reply is obviously the reply, and repeating "Claude" above every tool call
+  // was the loudest thing on screen - but a turn still needs one row carrying
+  // its id, because that is what scroll anchoring and the model line hang off.
   const turnOpeners = createMemo(() => {
     const openers = new Map<string, string>();
     const seen = new Set<string>();
     for (const it of shown()) {
-      const turnId =
-        it.kind === "text" || it.kind === "thinking" ? it.turnId : it.kind === "tool" ? it.turnId : null;
+      const turnId = turnIdOf(it);
       if (!turnId || seen.has(turnId)) continue;
       seen.add(turnId);
       openers.set(it.id, turnId);
@@ -129,37 +130,59 @@ export default function MessageList(props: {
     return openers;
   });
 
-  const TurnHeader = (p: { itemId: string }) => {
-    const turnId = () => turnOpeners().get(p.itemId);
-    return (
-      <Show when={turnId()}>
-        {(id) => (
-          <div class={styles.turnHeader} data-turn-id={id()}>
-            <span class={styles.turnDot} aria-hidden="true" />
-            <span class={styles.turnAgent}>Claude</span>
-            <Show when={props.modelLabelFor(id())}>
-              {(label) => <span class={styles.turnModel}>{label()}</span>}
-            </Show>
-            {/* On the turn's own header because the checkpoint behind it is the
-                tree as it stood *before* this turn ran, which is exactly what
-                "go back to here" has to mean for the undo to include this
-                turn's edits. */}
-            <Show when={props.rewindTsFor?.(id())}>
-              {(ts) => (
-                <button
-                  type="button"
-                  class={styles.turnRewind}
-                  title="Put the files back to how they were before this turn, and carry the conversation into a new chat"
-                  onClick={() => props.onRewind?.(ts())}
-                >
-                  Rewind to here
-                </button>
-              )}
-            </Show>
-          </div>
-        )}
-      </Show>
-    );
+  // The prompt that started each turn, so "rewind to here" can sit on the
+  // message the reader would point at when they say "here" rather than in a
+  // byline. A steer lands inside a turn already running, so it starts none.
+  const promptTurns = createMemo(() => {
+    const map = new Map<string, string>();
+    let pending: string | null = null;
+    for (const it of shown()) {
+      if (it.kind === "user") {
+        if (!it.steer) pending = it.id;
+        continue;
+      }
+      const turnId = turnIdOf(it);
+      if (!turnId) continue;
+      if (pending) map.set(pending, turnId);
+      pending = null;
+    }
+    return map;
+  });
+
+  // Which turns announce their model: only the ones that changed it. Naming the
+  // model on every turn is the same repetition the byline was, and the fact
+  // worth seeing is the switch, not the steady state.
+  const modelLines = createMemo(() => {
+    const lines = new Map<string, string>();
+    let last: string | null = null;
+    for (const [itemId, turnId] of turnOpeners()) {
+      const label = props.modelLabelFor(turnId);
+      if (!label) continue;
+      if (label !== last) lines.set(itemId, label);
+      last = label;
+    }
+    return lines;
+  });
+
+  // Zero height: it exists to carry the turn id, not to take up room. The
+  // negative bottom margin cancels the flex gap it would otherwise open.
+  const TurnAnchor = (p: { itemId: string }) => (
+    <Show when={turnOpeners().get(p.itemId)}>
+      {(id) => (
+        <>
+          <div class={styles.turnAnchor} data-turn-id={id()} />
+          <Show when={modelLines().get(p.itemId)}>{(label) => <div class={styles.turnModel}>{label()}</div>}</Show>
+        </>
+      )}
+    </Show>
+  );
+
+  // The checkpoint behind a prompt is the tree as it stood *before* the turn it
+  // started, which is exactly what "go back to here" has to mean for the undo
+  // to include that turn's edits.
+  const rewindTsForPrompt = (userItemId: string) => {
+    const turnId = promptTurns().get(userItemId);
+    return turnId ? props.rewindTsFor?.(turnId) ?? null : null;
   };
 
   // Within a few pixels of the bottom counts as being at the bottom: sub-pixel
@@ -231,20 +254,30 @@ export default function MessageList(props: {
       <For each={shown()}>
         {(item) => (
           <Switch>
-            {/* A steer is the same message from the same person, so it keeps the
-                user row rather than becoming a notice; it is marked, indented
-                and labelled because it landed *inside* the turn above it, and
-                reading it as an ordinary prompt would suggest the reply below
-                answers only that. It opens no turn group: `turnOpeners` counts
-                assistant-side rows only, so the turn it interrupted keeps its
-                one header. */}
+            {/* The one side of the conversation that gets a bubble, held to the
+                right: with no bylines left, the shape and the side are what say
+                who is speaking, and prompts are the landmarks a reader scrolls
+                back to. A steer is the same person, so it keeps the bubble; it
+                is inset and labelled because it landed *inside* the turn above
+                it, and reading it as an ordinary prompt would suggest the reply
+                below answers only that. It opens no turn group: `turnOpeners`
+                counts assistant-side rows only. */}
             <Match when={item.kind === "user" && item}>
               {(it) => (
                 <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
-                  <span class={styles.userAvatar} aria-hidden="true">
-                    <Icon icon={it().steer ? CornerDownRight : User} size={13} />
-                  </span>
-                  <div class={styles.userText}>
+                  <div class={styles.userBubble}>
+                    <Show when={rewindTsForPrompt(it().id)}>
+                      {(ts) => (
+                        <button
+                          type="button"
+                          class={styles.userRewind}
+                          title="Put the files back to how they were before this prompt, and carry the conversation into a new chat"
+                          onClick={() => props.onRewind?.(ts())}
+                        >
+                          Rewind to here
+                        </button>
+                      )}
+                    </Show>
                     <Show when={it().steer}>
                       <span class={styles.steerLabel}>Steer</span>
                     </Show>
@@ -256,7 +289,7 @@ export default function MessageList(props: {
             <Match when={item.kind === "text" && item}>
               {(it) => (
                 <>
-                  <TurnHeader itemId={it().id} />
+                  <TurnAnchor itemId={it().id} />
                   <div class={styles.assistant} innerHTML={renderMarkdown(it().text)} />
                 </>
               )}
@@ -264,7 +297,7 @@ export default function MessageList(props: {
             <Match when={item.kind === "thinking" && item}>
               {(it) => (
                 <>
-                  <TurnHeader itemId={it().id} />
+                  <TurnAnchor itemId={it().id} />
                   <ThinkingBlock text={it().text} />
                 </>
               )}
@@ -278,7 +311,7 @@ export default function MessageList(props: {
             <Match when={item.kind === "tool" && item}>
               {(it) => (
                 <>
-                  <TurnHeader itemId={it().id} />
+                  <TurnAnchor itemId={it().id} />
                   <ToolCallCard
                     card={it()}
                     sessionId={props.sessionId}

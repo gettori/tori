@@ -167,6 +167,12 @@ export function applySettings(s: Settings) {
   st.setProperty("--ui-scale", String(uiScale(s.typography.uiFontSize, z)));
   st.setProperty("--editor-font-family", s.typography.editorFontFamily);
   st.setProperty("--editor-font-size", `${editorFontSizePx(s.typography.editorFontSize, z)}px`);
+  // Transcript prose rides the *terminal's* size, not the chrome's. A chat and a
+  // terminal are the same activity in this app - reading what a CLI said back -
+  // so the two panes have to read at one size, and the size a user reaches for
+  // when text is too small to read output in is the terminal's. Only the size:
+  // the transcript stays in the UI face, since it is prose, not a cell grid.
+  st.setProperty("--chat-font-size", `${terminalFontSizePx(s.typography.terminalFontSize, z)}px`);
   st.setProperty("--ui-line-height", String(s.typography.lineHeight));
 }
 
