@@ -1,7 +1,7 @@
-import { Show, createSignal } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { Show } from "solid-js";
 import { ArrowDown, Brain, FoldVertical, Pencil, RefreshCw, Wrench } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
+import { contextPercent } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
 
 /**
@@ -43,53 +43,6 @@ function modelLabel(model: string | null): string {
     .replace(/-\d{8}$/, "");
 }
 
-// Accurate context windows fetched from OpenRouter (cached in the backend), keyed
-// by OpenRouter model id. Loaded once; until it arrives, lookups miss and the
-// static fallback applies. Reading the signal inside the render keeps the strip
-// reactive, so the percentage corrects itself the moment the caps land.
-const [modelCaps, setModelCaps] = createSignal<Record<string, number>>({});
-let capsRequested = false;
-export function ensureModelCaps() {
-  if (capsRequested) return;
-  capsRequested = true;
-  invoke<Record<string, number>>("model_context_caps").then(setModelCaps).catch(() => {});
-}
-
-// Offline/unmatched fallback, by model family. Values mirror OpenRouter so a
-// network miss stays close to the truth; the first matching key wins.
-const STATIC_CAPS: [string, number][] = [
-  ["gemini", 1_000_000],
-  ["gpt-5", 400_000],
-  ["gpt-4.1", 1_000_000],
-  ["gpt-4o", 128_000],
-  ["gpt-4-turbo", 128_000],
-  ["qwen", 1_000_000],
-  ["kimi", 262_144],
-  ["moonshot", 262_144],
-  ["deepseek", 131_072],
-  ["minimax", 204_800],
-];
-function staticCap(id: string): number {
-  const m = id.toLowerCase();
-  // Sonnet/Opus are 1M today; haiku and other Claudes stay at 200k.
-  if (m.includes("sonnet") || m.includes("opus")) return 1_000_000;
-  if (m.includes("claude")) return 200_000;
-  for (const [key, cap] of STATIC_CAPS) if (m.includes(key)) return cap;
-  return 200_000;
-}
-
-function contextWindow(model: string | null): number {
-  const id = model || "";
-  const caps = modelCaps();
-  // pi stores bare anthropic ids (claude-sonnet-4.6); OpenRouter keys them
-  // anthropic/...; the API style uses dashes (claude-sonnet-4-6) vs dots.
-  const dotted = id.replace(/-(\d+)-(\d+)(?=$|-)/, "-$1.$2");
-  for (const cand of [id, `anthropic/${id}`, `anthropic/${dotted}`, dotted]) {
-    if (caps[cand]) return caps[cand];
-  }
-  return staticCap(id);
-}
-
 // Context as a pie gauge that fills with actual usage (top, clockwise).
 function CtxGauge(props: { pct: number }) {
   const p = () => Math.max(0, Math.min(1, props.pct / 100));
@@ -110,9 +63,18 @@ function CtxGauge(props: { pct: number }) {
   );
 }
 
-export default function SessionStats(props: { detail: SessionDetail }) {
-  const window = () => contextWindow(props.detail.model);
-  const pct = () => (props.detail.context_tokens / window()) * 100;
+export default function SessionStats(props: {
+  detail: SessionDetail;
+  /** The window the one resolver produced for this session's model, or null
+   *  when no source knew one. Passed in rather than resolved here so the strip
+   *  and the composer meter cannot show two denominators for one model. */
+  contextWindow: number | null;
+}) {
+  // Resolved upstream and passed in, never worked out here: one resolver owns
+  // every step, including the non-Claude catalogue lookup, so this row and the
+  // composer meter cannot reach different answers for one model.
+  const window = () => props.contextWindow;
+  const pct = () => contextPercent(props.detail.context_tokens, window());
   return (
     <span class={styles.stats}>
       <Show when={props.detail.model}>
@@ -155,10 +117,27 @@ export default function SessionStats(props: { detail: SessionDetail }) {
         </span>
         <span class={styles.statSep}>·</span>
       </Show>
-      <span class={styles.stat} title={`Context: ${Math.round(pct())}% of ${fmt(window())}`}>
-        <CtxGauge pct={pct()} />
-        {fmt(props.detail.context_tokens)}/{fmt(window())}
-      </span>
+      {/* Nothing at all when no source knows the window, and nothing when the
+          usage contradicts it: a percentage is a claim, and neither case
+          supports one. */}
+      <Show when={window()}>
+        {(w) => (
+          <span
+            class={styles.stat}
+            title={
+              pct() === null
+                ? `Context: ${fmt(props.detail.context_tokens)} used, window unknown`
+                : `Context: ${Math.round(pct()!)}% of ${fmt(w())}`
+            }
+          >
+            {/* Withheld with the percentage: an empty gauge beside numbers
+                that visibly exceed the window would be a second wrong claim,
+                reading as "nothing used". */}
+            <Show when={pct() !== null}>{(_) => <CtxGauge pct={pct()!} />}</Show>
+            {fmt(props.detail.context_tokens)}/{fmt(w())}
+          </span>
+        )}
+      </Show>
     </span>
   );
 }

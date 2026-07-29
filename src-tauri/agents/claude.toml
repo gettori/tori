@@ -93,13 +93,19 @@ effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
 
-# Context windows are the published figures for these models; the meter only
-# renders when a window is declared, so an unknown model shows no denominator
-# rather than a wrong one.
+# Context windows here are the **pre-first-turn** answer only. A completed turn
+# reports the real window per model and per provider in `result.modelUsage`, and
+# that overrides these the moment it lands; the meter renders nothing at all for
+# a model no source knows, rather than a wrong denominator.
+#
+# These were wrong until measured. Both Sonnet 5 and Opus 5 said 200000 while
+# the harness reports 1000000 for each (dev/fixtures/claude/plain-turn.jsonl and
+# fast-mode.jsonl, provider `firstParty`). That is exactly the drift the live
+# reading exists to end, so treat a figure here as provisional, not as a fact.
 [[chat.models]]
 id = "claude-opus-5"
 label = "Opus 5"
-context_window = 200000
+context_window = 1000000
 effort_levels = ["low", "medium", "high", "xhigh", "max"]
 supports_thinking = true
 supports_images = true
@@ -116,7 +122,7 @@ fast_mode = true
 [[chat.models]]
 id = "claude-sonnet-5"
 label = "Sonnet 5"
-context_window = 200000
+context_window = 1000000
 effort_levels = ["low", "medium", "high", "xhigh", "max"]
 supports_thinking = true
 supports_images = true

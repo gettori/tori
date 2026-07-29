@@ -65,7 +65,7 @@
         {
           "id": "claude-opus-5",
           "label": "Opus 5",
-          "context_window": 200000,
+          "context_window": 1000000,
           "effort_levels": [
             "low",
             "medium",
@@ -80,7 +80,7 @@
         {
           "id": "claude-sonnet-5",
           "label": "Sonnet 5",
-          "context_window": 200000,
+          "context_window": 1000000,
           "effort_levels": [
             "low",
             "medium",

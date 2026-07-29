@@ -1005,6 +1005,33 @@ describe("the answered handshake (sessionReady)", () => {
   });
 });
 
+describe("the context window the session reports", () => {
+  const withUsage = (models: Record<string, unknown>): ChatEvent => ({
+    ...(turnDone("t1", "completed") as Extract<ChatEvent, { type: "turnCompleted" }>),
+    extra: { modelUsage: models },
+  });
+
+  it("folds a completed turn's reported windows into the store", () => {
+    const s = initialChat("s1");
+    expect(s.contextWindows).toEqual({});
+    applyEvent(s, withUsage({ "claude-sonnet-5": { contextWindow: 1_000_000, canonicalModel: "claude-sonnet-5" } }));
+    expect(s.contextWindows["claude-sonnet-5"]).toBe(1_000_000);
+  });
+
+  // A turn reports only the models it touched, so a straight assignment would
+  // drop the model that ran the previous turn and take its window with it.
+  it("keeps a window a later turn did not mention", () => {
+    const s = initialChat("s1");
+    applyEvent(s, withUsage({ "claude-opus-5": { contextWindow: 1_000_000 } }));
+    applyEvent(s, {
+      ...(turnDone("t2", "completed") as Extract<ChatEvent, { type: "turnCompleted" }>),
+      extra: { modelUsage: { "claude-haiku-4-5": { contextWindow: 200000 } } },
+    });
+    expect(s.contextWindows["claude-opus-5"]).toBe(1_000_000);
+    expect(s.contextWindows["claude-haiku-4-5"]).toBe(200000);
+  });
+});
+
 describe("a session that never handshook", () => {
   // The `initialize` response is the account's only source, so a session that
   // skipped it knows nothing rather than knowing a free tier.

@@ -12,11 +12,15 @@
 //     (what `--model` takes) and `resolvedModel` (what `system/init` reports
 //     back) as separate fields, because several values resolve to one id.
 //   - The **adapter table** (`[[chat.models]]`) is hand-maintained TOML. It is
-//     the fallback for a session that never handshook, and it is the *only*
-//     declared source of context windows - the live catalogue has none.
+//     the fallback for a session that never handshook, and the provisional
+//     source of a context window before any turn has reported one.
+//   - A **completed turn** reports the real window, per model and per provider,
+//     in `modelUsage`. It is the authority and it cannot drift, being the
+//     running session describing itself; it just does not exist until turn one
+//     ends. See `contextWindowFor` for the order the three combine in.
 //
-// So a live model's window is looked up in the adapter table by `resolvedModel`,
-// and a model with no declared window reports null rather than a guess.
+// A model no source knows a window for reports null rather than a guess.
+import { foreignWindow } from "./modelCaps";
 import type { ChatConfig, ChatMode, ChatModel } from "./agents";
 import type { ChatModelInfo, Usage } from "./chatTypes";
 
@@ -70,10 +74,112 @@ export function contextTokens(usage: Usage | null): number | null {
   return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
 }
 
-/** The window the adapter declares for a resolved model id, or null. The live
- *  catalogue carries no window, so this is the only source of one. */
-export function contextWindowFor(chat: ChatConfig | null, resolvedModel: string): number | null {
-  return chat?.models.find((m) => m.id === resolvedModel)?.context_window ?? null;
+/**
+ * The windows the **harness itself reported**, keyed by every id it named them
+ * under, from a completed turn's `modelUsage`.
+ *
+ * Measured: every `result` frame carries
+ * `modelUsage[<id>] = { contextWindow, canonicalModel, provider, ... }`. That
+ * is the authoritative answer and it needs no rule of ours: it already accounts
+ * for the model, the provider and whatever the account is entitled to, and it
+ * cannot drift, because it is the running session describing itself.
+ *
+ * Both the map key and `canonicalModel` are recorded, because they differ: the
+ * key can be dated (`claude-haiku-4-5-20251001`) while `canonicalModel` is not
+ * (`claude-haiku-4-5`), and either may be what `system/init` reports back.
+ *
+ * The map holds every model a turn touched, not just the one that was picked -
+ * a sonnet turn also bills haiku for its side work - so callers must look up
+ * the model they mean rather than taking the only entry.
+ */
+export function reportedWindows(extra: Record<string, unknown> | undefined): Record<string, number> {
+  const usage = extra?.modelUsage;
+  if (!usage || typeof usage !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [id, raw] of Object.entries(usage as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as { contextWindow?: unknown; canonicalModel?: unknown };
+    if (typeof entry.contextWindow !== "number" || entry.contextWindow <= 0) continue;
+    out[id] = entry.contextWindow;
+    if (typeof entry.canonicalModel === "string" && entry.canonicalModel) {
+      out[entry.canonicalModel] = entry.contextWindow;
+    }
+  }
+  return out;
+}
+
+/**
+ * The context window for a resolved model id, from the best source that knows
+ * one, or null when none does.
+ *
+ * The order is the point:
+ *
+ *   1. **What the session reported** (`reported`). Measured per model and per
+ *      provider by the harness that is running the turn, so it beats anything
+ *      written down here. It only exists once a turn has completed, which is
+ *      why there is a step 2 at all.
+ *   2. **What the adapter declares.** A hand-maintained figure, and therefore
+ *      the one that can be wrong: the rows for Sonnet 5 and Opus 5 both said
+ *      200k while the harness reported 1M for each. It survives as the
+ *      *pre-first-turn* answer only, and step 1 overrides it the moment a turn
+ *      lands rather than the two disagreeing forever.
+ *   3. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
+ *      Claude id never reaches it: the two steps above are closer to the truth
+ *      than a third party's idea of the same number, and a Claude id arriving
+ *      here means neither knew, which is an answer rather than a cue to guess.
+ *   4. **Nothing.** No guess by family, no rounding to a familiar number. A
+ *      meter with an invented denominator reads as a measurement.
+ *
+ * Note what is deliberately *not* a step: the `[1m]` suffix some catalogue
+ * values carry (`claude-fable-5[1m]`). It is real but redundant - the session
+ * reports the same fact directly - and parsing an id for meaning is how a
+ * resolver acquires a vendor's naming convention as a dependency.
+ */
+export function contextWindowFor(
+  chat: ChatConfig | null,
+  resolvedModel: string,
+  reported: Readonly<Record<string, number>> = {},
+): number | null {
+  return (
+    reported[resolvedModel] ??
+    chat?.models.find((m) => m.id === resolvedModel)?.context_window ??
+    foreignWindow(resolvedModel)
+  );
+}
+
+/**
+ * How much of the window is spoken for, or **null when the answer would be a
+ * lie**.
+ *
+ * Above 100% is not a percentage to clamp, it is a contradiction: the session
+ * cannot have used more context than it has, so one of the two numbers is
+ * wrong and the window is by far the likelier candidate. A meter that clamped
+ * would render a full bar and look like a session on the edge of compaction,
+ * which is a specific and alarming claim to make out of a bookkeeping error.
+ * Reporting nothing says "we do not know", which is the truth.
+ */
+export function contextPercent(used: number | null, window: number | null): number | null {
+  if (used === null || window === null || window <= 0) return null;
+  if (used > window) {
+    // Keyed on the window alone, not on the message: `used` grows every turn,
+    // so including it would add an entry per turn instead of collapsing a
+    // persistent condition to the one line it is.
+    warnOnce(
+      String(window),
+      `context usage ${used} exceeds the resolved window ${window}; the window is wrong, so no percentage is shown`,
+    );
+    return null;
+  }
+  return (used / window) * 100;
+}
+
+// One line per distinct window. The condition holds for every turn once it
+// starts, so logging per render would bury the console in one repeated fact.
+const warned = new Set<string>();
+function warnOnce(key: string, message: string) {
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(message);
 }
 
 /** Whether the adapter declares a fast mode for a resolved model id. Same
@@ -112,7 +218,14 @@ function fromAdapter(m: ChatModel): PickableModel {
  * the TOML into it would re-offer a model the CLI no longer has purely because
  * a hand-maintained file still mentions it.
  */
-export function pickableModels(live: readonly ChatModelInfo[], chat: ChatConfig | null): PickableModel[] {
+export function pickableModels(
+  live: readonly ChatModelInfo[],
+  chat: ChatConfig | null,
+  /** Windows the running session reported, from `reportedWindows`. Empty
+   *  before the first turn completes, which is the adapter table's whole
+   *  remaining job. */
+  reported: Readonly<Record<string, number>> = {},
+): PickableModel[] {
   if (live.length > 0) {
     return live.map((m) => ({
       value: m.value,
@@ -122,7 +235,7 @@ export function pickableModels(live: readonly ChatModelInfo[], chat: ChatConfig 
       // `supportsEffort` and the level list can disagree only by being absent;
       // the levels are what the control renders, so they are what decides.
       effortLevels: m.supportsEffort ? m.supportedEffortLevels : [],
-      contextWindow: contextWindowFor(chat, m.resolvedModel),
+      contextWindow: contextWindowFor(chat, m.resolvedModel, reported),
       live: true,
       fastMode: fastModeFor(chat, m.resolvedModel),
       supportsAutoMode: m.supportsAutoMode,

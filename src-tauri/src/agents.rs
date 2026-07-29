@@ -1150,6 +1150,22 @@ args = ["--effort", "low"]
             chat.models.iter().all(|m| m.context_window.is_some()),
             "a declared model without a context window would render a meter with no denominator"
         );
+        // The figures themselves, because this table was measurably wrong: Opus 5
+        // and Sonnet 5 both declared 200000 while the harness reports 1000000 for
+        // each on `result.modelUsage` (dev/fixtures/claude/plain-turn.jsonl,
+        // fast-mode.jsonl). These are the pre-first-turn answer only - a completed
+        // turn overrides them - but a wrong provisional figure is still what the
+        // user reads until their first turn lands.
+        let window_of = |id: &str| {
+            chat.models
+                .iter()
+                .find(|m| m.id == id)
+                .unwrap_or_else(|| panic!("{id} is not declared"))
+                .context_window
+        };
+        assert_eq!(window_of("claude-opus-5"), Some(1_000_000));
+        assert_eq!(window_of("claude-sonnet-5"), Some(1_000_000));
+        assert_eq!(window_of("claude-haiku-4-5-20251001"), Some(200_000));
         // Haiku declares no effort levels, which is what hides the control
         // rather than rendering an inert one.
         let haiku = chat.models.iter().find(|m| m.label == "Haiku 4.5").expect("haiku present");
