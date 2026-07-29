@@ -27,8 +27,8 @@
 }
 
 /* ---- the status strip ----
-   One quiet line: status + clock, then the session's three figures, mono like
-   every number surface in the app, separated by hairlines. */
+   One quiet line: status + clock, the files touched and tokens spent as mono
+   figures, then the session's own stats row, separated by hairlines. */
 
 .strip {
   position: relative;
@@ -155,6 +155,46 @@
   line-height: 1.4;
 }
 
+/* ---- the session figures in the status strip ----
+   Model, prompts, turns, tool calls, and how much of the context window is
+   spoken for. Sized off the chrome ramp like the rest of the strip. */
+
+.stats {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+
+.statModel {
+  letter-spacing: 0.02em;
+}
+
+/* Each metric: icon + value, all the same muted tone as the model. */
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every metric icon is an SVG; one fixed box keeps them uniform. */
+.statIco {
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+  opacity: 0.9;
+}
+
+.statSep {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-4xl);
+  line-height: 1;
+}
+
 /* ---- transcript ---- */
 
 .list {
@@ -162,7 +202,11 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: calc(24px * var(--ui-scale)) calc(24px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  /* Asymmetric on purpose: assistant prose starts at the left edge and wants the
+     wider margin, while the right side holds the prompt bubbles and the
+     scrollbar, which read better tucked in tighter. */
+  padding: calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale))
+    calc(20px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
@@ -174,38 +218,33 @@
   padding-bottom: calc(8px * var(--ui-scale));
 }
 
-/* A user turn is a row with a small avatar, not a bubble: the transcript reads
-   as one column, and the avatar is what says who is speaking. */
+/* A prompt is the only thing in the transcript that gets a bubble, and it is
+   held to the right: the reply is everything else, so the side and the shape
+   carry what a byline used to say. The fill is the shell colour, a step darker
+   than the pane it sits on, so a prompt reads as inset into the conversation
+   rather than as another card on top of it. */
 .userRow {
   display: flex;
-  align-items: flex-start;
-  gap: calc(12px * var(--ui-scale));
+  justify-content: flex-end;
   margin-top: calc(12px * var(--ui-scale));
 }
 
-.userAvatar {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(26px * var(--ui-scale));
-  height: calc(26px * var(--ui-scale));
-  border-radius: 50%;
-  background: var(--neutral-hover);
-  color: var(--fg-muted);
-}
-
-.userText {
+.userBubble {
+  position: relative;
   min-width: 0;
-  padding-top: calc(3px * var(--ui-scale));
+  max-width: min(85%, calc(640px * var(--ui-scale)));
+  padding: calc(8px * var(--ui-scale)) calc(13px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-lg);
+  background: var(--canvas-default);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--chat-font-size);
   line-height: 1.6;
 }
 
-.userText :global(code) {
+.userBubble :global(code) {
   font-family: var(--sway-font-mono);
   font-size: 0.9em;
   background: var(--neutral-hover);
@@ -214,81 +253,68 @@
 }
 
 /* A steer: the same person's message, delivered into the turn above it rather
-   than opening one of its own. Indented and tightened so it reads as an aside
-   within that turn, not as the next thing asked. */
+   than opening one of its own. Inset from the right edge and tightened so it
+   reads as an aside within that turn, not as the next thing asked. */
 .steerRow {
   margin-top: calc(6px * var(--ui-scale));
-  margin-left: calc(20px * var(--ui-scale));
+  margin-right: calc(20px * var(--ui-scale));
 }
-.steerRow .userAvatar {
-  width: calc(20px * var(--ui-scale));
-  height: calc(20px * var(--ui-scale));
-}
-.steerRow .userText {
-  padding-top: 0;
-  font-size: var(--sway-text-md);
+.steerRow .userBubble {
+  font-size: calc(var(--chat-font-size) - 1px);
 }
 .steerLabel {
   margin-right: calc(6px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: calc(var(--chat-font-size) - 2px);
 }
 
-/* The reply's byline: who answered, once per turn. */
-.turnHeader {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  margin-top: calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
-  color: var(--fg-muted);
+/* Zero-height marker carrying the turn id for scroll anchoring. The negative
+   margin cancels the flex gap it would otherwise open in the column. */
+.turnAnchor {
+  height: 0;
+  margin-bottom: calc(-12px * var(--ui-scale));
 }
 
-.turnDot {
-  flex: none;
-  width: calc(12px * var(--ui-scale));
-  height: calc(12px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-  background: var(--brand-default);
-}
-
-.turnAgent {
-  color: var(--fg-muted);
-}
-
+/* Named only on the turn that changed it. */
 .turnModel {
   color: var(--fg-subtle);
+  font-size: calc(var(--chat-font-size) - 2px);
 }
 
 /* Quiet until it is wanted. Rewinding is rare and destructive, so it earns no
-   permanent room in a byline that is otherwise just "who answered"; revealed on
-   hover of its own turn, and by keyboard focus so it is not mouse-only. */
-.turnRewind {
-  margin-left: auto;
+   permanent room next to the prompt; revealed on hover of that prompt, and by
+   keyboard focus so it is not mouse-only. */
+.userRewind {
+  position: absolute;
+  top: calc(7px * var(--ui-scale));
+  right: calc(100% + 10px * var(--ui-scale));
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+  white-space: nowrap;
   color: var(--fg-subtle);
   cursor: pointer;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.turnHeader:hover .turnRewind,
-.turnRewind:focus-visible {
+.userRow:hover .userRewind,
+.userRewind:focus-visible {
   opacity: 1;
 }
 
-.turnRewind:hover {
+.userRewind:hover {
   color: var(--fg-default);
 }
 
-/* Assistant text is flat prose in the column, distinguished by nothing louder
-   than its byline: the tool cards between turns already segment the flow. */
+/* Assistant text is flat prose filling the column: the prompt bubbles above it
+   and the tool cards between turns already segment the flow. */
 .assistant {
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--chat-font-size);
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -344,7 +370,7 @@
 .cursor {
   align-self: flex-start;
   width: calc(7px * var(--ui-scale));
-  height: var(--sway-text-lg);
+  height: var(--chat-font-size);
   background: var(--fg-muted);
   animation: chatBlink 1s steps(2, start) infinite;
 }
@@ -1016,7 +1042,7 @@
 
 .composer {
   flex: none;
-  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale));
 }
 
 /* The drop target is the whole composer, so an image can be dropped on the
@@ -1034,6 +1060,11 @@
 }
 
 .composerBox {
+  /* The input's own padding. Named because the bar below aligns its contents to
+     the same horizontal inset the caret sits at. */
+  --input-pad-top: calc(12px * var(--ui-scale));
+  --input-pad-bottom: calc(12px * var(--ui-scale));
+  --input-pad-x: calc(12px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   background: var(--canvas-input);
@@ -1049,18 +1080,33 @@
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
+/* One line at rest, nine at most, then it scrolls. The line count itself lives
+   in `Composer`'s MAX_ROWS, written to the `rows` attribute: rows is measured in
+   line boxes, so the cap follows the chat font size and the zoom for free and
+   there is no px arithmetic here to keep in step with it.
+
+   The `40vh` is only a backstop. Nine lines is a ratio, and at high zoom it
+   resolves to a box that would swallow the pane the conversation is in: at zoom
+   3 with a 24px terminal font, nine lines is over 1000px. It bites nowhere near
+   default settings. */
 .input {
-  flex: 1;
+  /* `flex: none`, emphatically not `flex: 1`. The box is a *column* flex
+     container, so `flex: 1` means `flex-basis: 0%` on the main (vertical) axis,
+     and a flex item whose basis is 0 ignores its own height: the textarea sat
+     at one row no matter how many rows it was given. */
+  flex: none;
   min-width: 0;
-  max-height: calc(180px * var(--ui-scale));
+  max-height: 40vh;
+  overflow-y: auto;
   resize: none;
   border: none;
   border-radius: var(--sway-radius-xl) var(--sway-radius-xl) 0 0;
-  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  padding: var(--input-pad-top) var(--input-pad-x) var(--input-pad-bottom);
   background: transparent;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  /* The same size the text will be once it is a bubble in the transcript. */
+  font-size: var(--chat-font-size);
   line-height: 1.5;
 }
 
@@ -1076,12 +1122,14 @@
   color: var(--fg-subtle);
 }
 
+/* Aligned to the input's own left inset, so the attach button and the chips
+   start on the same vertical line the caret does. */
 .composerBar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) var(--input-pad-x);
 }
 
 .composerSpacer {
