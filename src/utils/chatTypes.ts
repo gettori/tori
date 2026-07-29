@@ -10,11 +10,18 @@
 // Rust module docs for why. `extra` is optional here because serde omits it
 // when empty.
 
-/// The four permission modes, mapped to `--permission-mode`.
+/// A permission mode, as the id its own harness names it.
 ///
-/// Sway's own approval hook runs ahead of all of them, so `bypassPermissions`
-/// does not mean unsupervised.
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
+/// **Deliberately `string` and not a union**, mirroring the Rust newtype. The
+/// union used to list Claude's four, which made a shared type carry one
+/// harness's vocabulary: Gemini's `--approval-mode` speaks `auto_edit|yolo`,
+/// and Codex has no fixed set at all - it lists its profiles at runtime. What a
+/// mode is checked against is the adapter's `[[chat.modes]]` declaration, and
+/// beneath that the real CLI; see `capabilitiesFor` in `utils/chatModels.ts`.
+///
+/// Sway's own approval hook runs ahead of every mode any harness has, so a
+/// permissive one does not mean unsupervised.
+export type PermissionMode = string;
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 

@@ -309,7 +309,7 @@ impl ClaudeMapper {
                     session_id: self.session_id.clone(),
                     cwd: frame["cwd"].as_str().unwrap_or_default().to_string(),
                     model: model.clone(),
-                    permission_mode: mode,
+                    permission_mode: mode.clone(),
                     tools: frame["tools"]
                         .as_array()
                         .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
@@ -554,13 +554,20 @@ impl ClaudeMapper {
 // Field helpers
 // ---------------------------------------------------------------------------
 
+/// The mode `system/init` reported, carried through as the CLI spelled it.
+///
+/// A mode this build has never heard of is **kept**, not folded into
+/// `default`. The enum this replaced had to guess, and guessed at the strictest
+/// mode, which was the safe answer to the wrong question: reporting `default`
+/// for a session actually running `dontAsk` tells the user the opposite of the
+/// truth about what the agent may do without asking. Passing the id through
+/// means the status shows what the CLI said, and an id Sway cannot resolve to a
+/// declared mode is handled where that is decidable - see `ChatConfig::mode_args_for`.
+///
+/// Absent stays `default`, which is the Claude literal on purpose: this is the
+/// Claude mapper, and it is what the CLI itself falls back to.
 fn permission_mode(raw: Option<&str>) -> PermissionMode {
-    match raw {
-        Some("acceptEdits") => PermissionMode::AcceptEdits,
-        Some("plan") => PermissionMode::Plan,
-        Some("bypassPermissions") => PermissionMode::BypassPermissions,
-        _ => PermissionMode::Default,
-    }
+    PermissionMode::new(raw.unwrap_or("default"))
 }
 
 fn camel(snake: &str) -> String {
@@ -1210,12 +1217,19 @@ mod tests {
 
     #[test]
     fn permission_mode_round_trips_from_the_wire_spelling() {
-        assert_eq!(permission_mode(Some("bypassPermissions")), PermissionMode::BypassPermissions);
-        assert_eq!(permission_mode(Some("acceptEdits")), PermissionMode::AcceptEdits);
-        assert_eq!(permission_mode(Some("plan")), PermissionMode::Plan);
-        assert_eq!(permission_mode(Some("default")), PermissionMode::Default);
-        // An unknown mode must fall back to the strictest, never be guessed at.
-        assert_eq!(permission_mode(Some("newModeInV3")), PermissionMode::Default);
-        assert_eq!(permission_mode(None), PermissionMode::Default);
+        for wire in ["bypassPermissions", "acceptEdits", "plan", "default"] {
+            assert_eq!(permission_mode(Some(wire)).as_str(), wire);
+        }
+        assert_eq!(permission_mode(None).as_str(), "default");
+    }
+
+    /// The enum version folded anything it did not recognise into `Default`,
+    /// which reported the *strictest* mode for a session that might be running
+    /// the most permissive one. A mode this build has not heard of is now
+    /// carried through, so the status says what the CLI said.
+    #[test]
+    fn a_mode_this_build_does_not_know_is_carried_not_downgraded() {
+        assert_eq!(permission_mode(Some("dontAsk")).as_str(), "dontAsk");
+        assert_eq!(permission_mode(Some("newModeInV3")).as_str(), "newModeInV3");
     }
 }

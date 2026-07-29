@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { contextTokens, contextWindowFor, pickLanded, pickableModels, restoredPicks, selectedModel } from "./chatModels";
+import {
+  capabilitiesFor,
+  contextTokens,
+  contextWindowFor,
+  defaultMode,
+  pickLanded,
+  pickableModels,
+  restoredPicks,
+  selectedModel,
+} from "./chatModels";
 import type { ChatConfig } from "./agents";
 import type { ChatModelInfo } from "./chatTypes";
 
@@ -178,6 +187,7 @@ describe("restoredPicks", () => {
     expect(restoredPicks(models, { model: "sonnet", effort: "xhigh" })).toEqual({
       model: expect.objectContaining({ value: "sonnet" }),
       effort: "xhigh",
+      mode: null,
     });
   });
 
@@ -185,7 +195,11 @@ describe("restoredPicks", () => {
     const models = pickableModels(live(), adapter());
     // Re-sending it would open every session with an error, and the picker
     // still has the session's resolved model to show.
-    expect(restoredPicks(models, { model: "opus-3", effort: "high" })).toEqual({ model: null, effort: null });
+    expect(restoredPicks(models, { model: "opus-3", effort: "high" })).toEqual({
+      model: null,
+      effort: null,
+      mode: null,
+    });
   });
 
   it("drops an effort level the restored model does not offer", () => {
@@ -194,7 +208,98 @@ describe("restoredPicks", () => {
   });
 
   it("restores nothing from an empty preference", () => {
-    expect(restoredPicks(pickableModels(live(), adapter()), {})).toEqual({ model: null, effort: null });
+    expect(restoredPicks(pickableModels(live(), adapter()), {})).toEqual({
+      model: null,
+      effort: null,
+      mode: null,
+    });
+  });
+
+  it("restores a mode the adapter still declares", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    const models = pickableModels(live(), chat);
+    expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat).mode).toBe("plan");
+  });
+
+  // The case a settings file produces once modes come from the adapter rather
+  // than from four hardcoded strings: a project pinned to a Claude mode, opened
+  // against a harness whose modes are Gemini's. The stored mode is dropped and
+  // the session still starts.
+  it("drops a mode the adapter does not declare", () => {
+    const chat = adapter();
+    chat.modes = [
+      { id: "auto_edit", label: "Auto edit", args: [], default: true },
+      { id: "yolo", label: "Yolo", args: [] },
+    ];
+    const models = pickableModels(live(), chat);
+    expect(restoredPicks(models, { model: "sonnet", mode: "bypassPermissions" }, chat).mode).toBeNull();
+  });
+});
+
+describe("capabilitiesFor", () => {
+  // Haiku declares none of the per-model capability flags, which is what makes
+  // the intersection load-bearing rather than a passthrough of the adapter.
+  it("offers nothing model-scoped for a model that declares nothing", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    const models = pickableModels(live(), chat);
+    const haiku = models.find((m) => m.value === "haiku")!;
+
+    const caps = capabilitiesFor(haiku, chat);
+    expect(caps.effortLevels).toEqual([]);
+    expect(caps.fastMode).toBe(false);
+    // Modes are a property of the harness, not of the model, so they survive.
+    expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
+  });
+
+  it("offers everything for a model that declares everything", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    chat.models[0].fast_mode = true;
+    const models = pickableModels(live(), chat);
+    const sonnet = models.find((m) => m.value === "sonnet")!;
+
+    const caps = capabilitiesFor(sonnet, chat);
+    expect(caps.effortLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(caps.fastMode).toBe(true);
+    expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
+  });
+
+  it("offers nothing model-scoped before a model is known", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", args: [] }];
+    const caps = capabilitiesFor(null, chat);
+    expect(caps.effortLevels).toEqual([]);
+    expect(caps.fastMode).toBe(false);
+    expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
+  });
+});
+
+describe("defaultMode", () => {
+  // The fallback must never be the literal "default": that is Claude's spelling
+  // of the idea, and a resolver carrying it picks nothing at all on a harness
+  // whose modes are named otherwise.
+  it("is the mode the adapter marks, whatever it is called", () => {
+    const chat = adapter();
+    chat.modes = [
+      { id: "yolo", label: "Yolo", args: [] },
+      { id: "auto_edit", label: "Auto edit", args: [], default: true },
+    ];
+    expect(defaultMode(chat)?.id).toBe("auto_edit");
+  });
+
+  it("falls back to the first declared mode, not to a name", () => {
+    const chat = adapter();
+    chat.modes = [
+      { id: "yolo", label: "Yolo", args: [] },
+      { id: "auto_edit", label: "Auto edit", args: [] },
+    ];
+    expect(defaultMode(chat)?.id).toBe("yolo");
+  });
+
+  it("has no answer for an adapter declaring no modes", () => {
+    expect(defaultMode(adapter())).toBeNull();
   });
 });
 

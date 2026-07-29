@@ -860,10 +860,19 @@ export function selectMode(s: ChatState, mode: PermissionMode) {
   s.pendingMode = mode === s.permissionMode ? null : mode;
 }
 
-/** The mode the control shows as selected: the pick if there is one, otherwise
- *  what the session is actually in. */
-export function shownMode(s: ChatState): PermissionMode {
-  return s.pendingMode ?? s.permissionMode ?? "default";
+/**
+ * The mode the control shows as selected: the pick if there is one, otherwise
+ * what the session is actually in.
+ *
+ * `fallback` is the adapter's declared default, used only before a session has
+ * reported a mode. It is a parameter rather than the literal `"default"` this
+ * used to return, because that string is *Claude's* spelling: on a harness
+ * whose modes are `auto_edit|yolo` it names no mode at all, so the pill would
+ * show a value absent from its own menu. A caller with no adapter yet passes
+ * null and gets null, which renders as "no mode known" rather than as a guess.
+ */
+export function shownMode(s: ChatState, fallback: PermissionMode | null = null): PermissionMode | null {
+  return s.pendingMode ?? s.permissionMode ?? fallback;
 }
 
 /** Is the shown mode a promise about the next turn rather than a fact about

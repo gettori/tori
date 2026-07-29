@@ -73,8 +73,15 @@ pub fn build_args(
     if let Some(model) = model {
         args.extend(chat.model_args_for(model).unwrap_or_default());
     }
-    if let Some(mode) = mode {
-        args.extend(chat.mode_args_for(mode).unwrap_or_default());
+    // Resolved rather than looked up, so a mode the adapter no longer declares
+    // starts the session on the adapter's default instead of contributing no
+    // args at all. The bare `unwrap_or_default()` this replaced meant a stale
+    // stored mode silently produced a session running something else, with the
+    // picker still showing the mode that had been dropped.
+    // Only when a mode was actually asked for: no pick stays no flag, leaving
+    // the CLI on its own default rather than Sway asserting one.
+    if let Some(resolved) = mode.and_then(|m| chat.resolve_mode(Some(m))) {
+        args.extend(chat.mode_args_for(&resolved.id).unwrap_or_default());
     }
     if let Some(effort) = effort {
         args.extend(chat.effort_args_for(effort).unwrap_or_default());
@@ -263,6 +270,27 @@ pub async fn chat_spawn(
         }
     };
     host.install_bridge(&session_id, SessionBridge::new(server, snapshots, &session_id));
+
+    // Said only once the session is actually up, and only when the mode that
+    // was asked for is not the mode it is running. Non-fatal on purpose: the
+    // session works, but the user chose something it is not doing, and a
+    // control silently showing the wrong mode is the failure this prevents.
+    if let Some(asked) = mode.as_deref() {
+        if let Some(from) = chat.resolve_mode(Some(asked)).and_then(|r| r.downgraded_from.map(|f| (f, r.id))) {
+            let (asked, running) = from;
+            host.emitter()(
+                &session_id,
+                ChatEvent::SessionError {
+                    session_id: session_id.clone(),
+                    message: format!(
+                        "{} no longer offers the `{asked}` permission mode, so this session is running `{running}`.",
+                        adapter.label
+                    ),
+                    fatal: false,
+                },
+            );
+        }
+    }
 
     Ok(SpawnResult { ownership, spawned: Some(spawned) })
 }
@@ -1225,13 +1253,39 @@ mod tests {
         assert_eq!(args.iter().filter(|a| *a == "--add-dir").count(), 2);
     }
 
-    /// An unknown selection is dropped rather than passed through: sending
+    /// An unknown model is dropped rather than passed through: sending
     /// `--model not-a-model` would fail the whole session, where omitting it
     /// leaves the CLI on its own default.
     #[test]
-    fn an_undeclared_model_or_mode_is_omitted_rather_than_guessed() {
-        let args = build_args(claude_chat(), "s1", false, None, Some("no-such-model"), Some("no-such-mode"), None, &[]);
+    fn an_undeclared_model_is_omitted_rather_than_guessed() {
+        let args = build_args(claude_chat(), "s1", false, None, Some("no-such-model"), None, None, &[]);
         assert!(!args.iter().any(|a| a == "--model"));
+    }
+
+    /// **A mode is not treated like a model, on purpose.**
+    ///
+    /// Both would be safe to omit, in that the CLI would fall back to its own
+    /// default either way. The difference is that a mode is a claim about what
+    /// the agent may do *without asking*, and the picker shows one: omitting it
+    /// silently leaves the session on a default while the control still
+    /// displays the mode that was dropped, which is the one disagreement here
+    /// that could matter. So an unresolvable mode resolves to the adapter's
+    /// declared default and is asserted explicitly, and `chat_spawn` says so.
+    #[test]
+    fn an_undeclared_mode_downgrades_to_the_adapters_default_rather_than_vanishing() {
+        let args = build_args(claude_chat(), "s1", false, None, None, Some("no-such-mode"), None, &[]);
+        assert!(
+            args.windows(2).any(|w| w == ["--permission-mode", "default"]),
+            "expected the adapter's declared default in {args:?}"
+        );
+        assert!(!args.iter().any(|a| a == "no-such-mode"), "the unresolvable mode must not reach the child");
+    }
+
+    /// No pick stays no flag: Sway asserting a mode nobody chose would be a
+    /// different session from the one the CLI would have started.
+    #[test]
+    fn no_mode_at_all_passes_no_mode_flag() {
+        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(!args.iter().any(|a| a == "--permission-mode"));
     }
 

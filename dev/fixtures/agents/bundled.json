@@ -74,6 +74,7 @@
             "max"
           ],
           "supports_thinking": true,
+          "fast_mode": true,
           "supports_images": true
         },
         {
@@ -88,6 +89,7 @@
             "max"
           ],
           "supports_thinking": true,
+          "fast_mode": false,
           "supports_images": true
         },
         {
@@ -96,6 +98,7 @@
           "context_window": 200000,
           "effort_levels": [],
           "supports_thinking": false,
+          "fast_mode": false,
           "supports_images": true
         }
       ],
@@ -106,7 +109,8 @@
           "args": [
             "--permission-mode",
             "default"
-          ]
+          ],
+          "default": true
         },
         {
           "id": "acceptEdits",
@@ -114,7 +118,8 @@
           "args": [
             "--permission-mode",
             "acceptEdits"
-          ]
+          ],
+          "default": false
         },
         {
           "id": "plan",
@@ -122,7 +127,8 @@
           "args": [
             "--permission-mode",
             "plan"
-          ]
+          ],
+          "default": false
         },
         {
           "id": "bypassPermissions",
@@ -130,7 +136,8 @@
           "args": [
             "--permission-mode",
             "bypassPermissions"
-          ]
+          ],
+          "default": false
         }
       ],
       "effort": [

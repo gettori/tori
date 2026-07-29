@@ -103,6 +103,11 @@ context_window = 200000
 effort_levels = ["low", "medium", "high", "xhigh", "max"]
 supports_thinking = true
 supports_images = true
+# The live catalogue carries no fast-mode flag; the only thing the CLI says is
+# the `/fast` command describing itself as "Toggle fast mode (Opus 5)". Declared
+# here so the control has a source at all - PHASE 3 MUST PROVE THIS BY PROBE and
+# correct it if the measurement disagrees.
+fast_mode = true
 
 [[chat.models]]
 id = "claude-sonnet-5"
@@ -127,6 +132,10 @@ supports_images = true
 id = "default"
 label = "Ask"
 args = ["--permission-mode", "default"]
+# What a session runs when nothing is chosen, and what an unresolvable mode
+# downgrades to. Marked rather than assumed: "default" is Claude's spelling,
+# and the resolver that reads this must not carry it to another harness.
+default = true
 
 [[chat.modes]]
 id = "acceptEdits"

@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { SlidersHorizontal } from "lucide-solid";
 import Picker, { PickerOption } from "./Picker";
+import type { ChatConfig } from "../../utils/agents";
 import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 
@@ -35,13 +36,23 @@ export const MODES: { value: PermissionMode; label: string; hint: string }[] = [
 export const BYPASS_STILL_APPROVED = "Sway still asks: its approval hook runs ahead of Claude's permission modes.";
 
 export default function ModeSelector(props: {
-  mode: PermissionMode;
+  /** Null before the session has reported one and with no adapter default to
+   *  stand in, which shows as "Mode" rather than as a mode it is not in. */
+  mode: PermissionMode | null;
+  /** The adapter's declaration, the source of the fallback and of the label
+   *  for a mode this build does not hardcode. Phase 2 makes it the source of
+   *  the rows too. */
+  chat: ChatConfig | null;
   /** True while the shown mode is a pick that has not taken effect yet. */
   pending: boolean;
   disabled: boolean;
   onSelect: (mode: PermissionMode) => void;
 }) {
+  // The adapter first, so a mode the CLI reports but this build never hardcoded
+  // still gets its declared label instead of falling through to a raw id.
+  const declared = () => props.chat?.modes.find((m) => m.id === props.mode) ?? null;
   const current = () => MODES.find((m) => m.value === props.mode);
+  const label = () => declared()?.label ?? current()?.label ?? props.mode ?? "Mode";
   const title = () =>
     [current()?.hint, props.mode === "bypassPermissions" ? BYPASS_STILL_APPROVED : null].filter(Boolean).join(" ");
 
@@ -49,7 +60,7 @@ export default function ModeSelector(props: {
     <>
       <Picker
         icon={SlidersHorizontal}
-        value={current()?.label ?? "Default"}
+        value={label()}
         ariaLabel="Permission mode"
         title={title()}
         disabled={props.disabled}
