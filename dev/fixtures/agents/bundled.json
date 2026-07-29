@@ -93,6 +93,21 @@
           "supports_images": true
         },
         {
+          "id": "claude-fable-5",
+          "label": "Fable 5",
+          "context_window": 1000000,
+          "effort_levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "supports_thinking": true,
+          "fast_mode": false,
+          "supports_images": true
+        },
+        {
           "id": "claude-haiku-4-5-20251001",
           "label": "Haiku 4.5",
           "context_window": 200000,

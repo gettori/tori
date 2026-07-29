@@ -128,6 +128,18 @@ supports_thinking = true
 supports_images = true
 
 [[chat.models]]
+id = "claude-fable-5"
+label = "Fable 5"
+# 1M is **inferred from the catalogue value's `[1m]` suffix**, not measured:
+# nothing here has run a Fable turn. It is the weakest figure in this table and
+# is marked so deliberately. A completed turn reports the real number and
+# overrides it, so the inference only ever governs a session's first turn.
+context_window = 1000000
+effort_levels = ["low", "medium", "high", "xhigh", "max"]
+supports_thinking = true
+supports_images = true
+
+[[chat.models]]
 id = "claude-haiku-4-5-20251001"
 label = "Haiku 4.5"
 context_window = 200000

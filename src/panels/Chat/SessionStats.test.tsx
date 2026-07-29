@@ -63,6 +63,13 @@ describe("SessionStats", () => {
     expect(container.textContent).toContain("50k/1.0M");
   });
 
+  // The figure people actually read at a glance, beside the tokens it is
+  // derived from rather than instead of them.
+  it("shows the share of the window in brackets", () => {
+    const { container } = render(() => <SessionStats detail={detail()} contextWindow={200_000} />);
+    expect(container.textContent).toContain("50k/200k (25%)");
+  });
+
   // The failure this phase exists to end: nothing knows the window, so the
   // strip used to fall back to a family guess and draw a denominator anyway.
   it("shows no context stat at all when no source knows the window", () => {
@@ -85,6 +92,9 @@ describe("SessionStats", () => {
     const stat = [...container.querySelectorAll("span")].find((s) => s.title.startsWith("Context:"));
     expect(stat?.title).toContain("window unknown");
     expect(stat?.title).not.toContain("187%");
+    // Withheld alongside the gauge: a percentage above 100 is the claim this
+    // guard exists to refuse, so it must not reappear in the brackets.
+    expect(container.textContent).not.toContain("%");
     warn.mockRestore();
   });
 

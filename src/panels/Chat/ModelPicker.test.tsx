@@ -63,7 +63,6 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
       models={pickableModels(machineModels(), adapter)}
       value="sonnet"
       effort={null}
-      contextTokens={null}
       modelPending={false}
       effortPending={false}
       disabled={false}
@@ -153,24 +152,12 @@ describe("ModelPicker", () => {
     expect(s.rowNames(s.open(1))).not.toContain("Default");
   });
 
-  it("shows the context window only when one is declared", () => {
-    // The live catalogue carries no window; the adapter declares one for
-    // sonnet's resolved id and nothing for haiku's.
-    expect(setup({ value: "sonnet" }).getByText("200k context")).toBeTruthy();
-    expect(setup({ value: "haiku" }).queryByText(/context$/)).toBeNull();
-  });
-
-  it("meters usage against the window, and renders no meter without one", () => {
-    const used = setup({ value: "sonnet", contextTokens: 50000 });
-    expect(used.getByTitle("25% of 200k context used")).toBeTruthy();
-    // The figures render as separate text nodes, so this reads the row.
-    expect(used.container.textContent).toContain("50k/200k");
-
-    // No declared window means no denominator, so no meter at all - not a
-    // meter against a number nothing declared.
-    const noWindow = setup({ value: "haiku", contextTokens: 50000 });
-    expect(noWindow.container.textContent).not.toContain("50k");
-    expect(noWindow.container.querySelectorAll("span[title]")).toHaveLength(0);
+  // The context readout deliberately does not live here. It sits in the status
+  // strip, which is the one place the session's figures are read, and having it
+  // in both put the same number in two rows that update on different sources.
+  it("carries no context readout, which belongs to the status strip", () => {
+    expect(setup({ value: "sonnet" }).queryByText(/context/)).toBeNull();
+    expect(setup({ value: "sonnet" }).container.textContent).not.toContain("200k");
   });
 
   it("promises the next turn rather than claiming a switch took effect", () => {
