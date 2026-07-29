@@ -135,6 +135,9 @@ const REQUIRES = {
   interrupt: ["result/error_during_execution", "result/success"],
   "hook-denied": ["system/hook_started", "system/hook_response", "user/tool_result"],
   "image-turn": ["assistant/text", "result/success"],
+  // A set cannot say "twice", so this only pins that both turns' shapes are
+  // here at all; that there are two inits is asserted in the scenario body.
+  "fast-mode": ["system/init", "assistant/text", "result/success"],
 };
 
 // The frame kinds a run produced, deduplicated and sorted. Order is deliberately
@@ -497,6 +500,48 @@ const SCENARIOS = {
     ]);
     await p.waitForResult();
     await p.close();
+    return p;
+  },
+
+  // Fast mode is refused over this transport, and the refusal is the fixture's
+  // whole point. `/fast` is in the slash-command catalogue describing itself as
+  // "Toggle fast mode (Opus 5)", so it looks like a control Sway could ship;
+  // sending it on Opus 5 - the model it names - answers "Fast mode is not
+  // available in the Agent SDK" and leaves `fast_mode_state: "off"` on both the
+  // sending turn's `system/init` and the next one's. Measured identically on
+  // `sonnet`, which is what makes this a property of the transport rather than
+  // of the model.
+  //
+  // The vocabulary check cannot see this: a working toggle and a refusal emit
+  // the same frame kinds. So the measurement is asserted here instead, and it
+  // fails loudly if a later CLI opts the SDK in - which is the day Sway should
+  // ship the toggle this scenario currently says it must not.
+  //
+  // OPERATOR NOTE: this is the only scenario that pins a model, so it is the
+  // only one that needs Opus access on the running account. A failure here that
+  // mentions the model rather than fast mode is that, not wire-format drift.
+  "fast-mode": async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch, extraArgs: ["--model", "opus"] });
+    p.sendTurn("/fast on");
+    const toggled = await p.waitForResult();
+    // A second turn, because `system/init` fires once per turn at turn open, so
+    // a state change landing late would show up here and nowhere else.
+    p.sendTurn("Reply with exactly the word: after. Do not use any tools.");
+    await p.waitForResult();
+    await p.close();
+
+    const inits = p.events.filter((e) => e.type === "system" && e.subtype === "init");
+    if (inits.length < 2) throw new Error(`expected an init per turn, saw ${inits.length}`);
+    const changed = inits.filter((e) => e.fast_mode_state !== "off");
+    if (changed.length) {
+      throw new Error(
+        `fast_mode_state moved to ${JSON.stringify(changed[0].fast_mode_state)} - the SDK is now opted in and ` +
+          `FastModeStatus should become a toggle; re-read this scenario's note`,
+      );
+    }
+    if (!/not available in the Agent SDK/i.test(String(toggled.result ?? ""))) {
+      throw new Error(`the refusal text changed: ${JSON.stringify(String(toggled.result ?? "").slice(0, 200))}`);
+    }
     return p;
   },
 };
