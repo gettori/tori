@@ -19,8 +19,10 @@ import {
   modelPending,
   pendingApprovals,
   pendingFlush,
+  promptsSent,
   pushSteer,
   pushUserTurn,
+  toolCallsSeen,
   reasoningFor,
   releaseQueue,
   removeQueued,
@@ -1002,6 +1004,40 @@ describe("the answered handshake (sessionReady)", () => {
     beginReconnect(s);
     expect(connectionHealth(s)).toBe("connecting");
     expect(chatStatus(s)).toBe("running");
+  });
+});
+
+describe("the figures the status strip reads live", () => {
+  // The strip used to take all of these from a transcript re-scan triggered by
+  // the same turnCompleted the store folds, so it rendered the previous turn's
+  // numbers. These come off the items instead, which have no such lag.
+  it("counts prompts and tool calls off the store, replayed history included", () => {
+    const s = replay(FIXTURE);
+    expect(promptsSent(s)).toBe(s.items.filter((it) => it.kind === "user").length);
+    expect(toolCallsSeen(s)).toBe(s.items.filter((it) => it.kind === "tool").length);
+    expect(promptsSent(s)).toBeGreaterThan(0);
+  });
+
+  it("counts a steer as a prompt, the way the transcript records it", () => {
+    const s = initialChat("s1");
+    pushUserTurn(s, [{ type: "text", text: "one" }]);
+    pushSteer(s, [{ type: "text", text: "two" }]);
+    expect(promptsSent(s)).toBe(2);
+  });
+
+  // A tool call is announced twice on two unsynchronised channels; the card is
+  // keyed by toolUseId, so the count must not double.
+  it("counts a tool call once even though two channels announce it", () => {
+    const s = initialChat("s1");
+    applyEvent(s, started("t1", "call-1"));
+    applyEvent(s, prompt("call-1", "req-1"));
+    expect(toolCallsSeen(s)).toBe(1);
+  });
+
+  it("counts nothing for a session with no turns", () => {
+    const s = initialChat("s1");
+    expect(promptsSent(s)).toBe(0);
+    expect(toolCallsSeen(s)).toBe(0);
   });
 });
 

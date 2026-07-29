@@ -30,9 +30,6 @@ export default function ModelPicker(props: {
    *  reported, and the transcript's own model all meet. */
   value: string | null;
   effort: string | null;
-  /** Context the conversation currently occupies, or null before any turn has
-   *  reported usage. Rendered only against a declared window. */
-  contextTokens: number | null;
   modelPending: boolean;
   effortPending: boolean;
   disabled: boolean;
@@ -111,30 +108,6 @@ export default function ModelPicker(props: {
         </Picker>
       </Show>
 
-      {/* Only when a window is declared. Nothing declares one for every model,
-          and a meter with an invented denominator is worse than no meter: it
-          would read as a measurement. */}
-      <Show when={current()?.contextWindow != null}>
-        {(() => {
-          const window = () => current()!.contextWindow!;
-          const used = () => props.contextTokens;
-          const pct = () => Math.min(100, Math.round(((used() ?? 0) / window()) * 100));
-          return (
-            <span
-              class={styles.barNote}
-              title={used() === null ? undefined : `${pct()}% of ${fmtTokens(window())} context used`}
-            >
-              <Show when={used() !== null} fallback={`${fmtTokens(window())} context`}>
-                <span class={styles.contextMeter} aria-hidden="true">
-                  <span class={styles.contextMeterFill} style={{ width: `${pct()}%` }} />
-                </span>
-                {fmtTokens(used()!)}/{fmtTokens(window())}
-              </Show>
-            </span>
-          );
-        })()}
-      </Show>
-
       <Show when={props.modelPending || props.effortPending}>
         <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
       </Show>
@@ -146,8 +119,4 @@ export default function ModelPicker(props: {
       </Show>
     </>
   );
-}
-
-function fmtTokens(tokens: number): string {
-  return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
 }

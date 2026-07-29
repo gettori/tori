@@ -1166,6 +1166,10 @@ args = ["--effort", "low"]
         assert_eq!(window_of("claude-opus-5"), Some(1_000_000));
         assert_eq!(window_of("claude-sonnet-5"), Some(1_000_000));
         assert_eq!(window_of("claude-haiku-4-5-20251001"), Some(200_000));
+        // Inferred from the `[1m]` suffix on its catalogue value rather than
+        // measured, unlike the three above. Pinned so the inference is at least
+        // visible when someone finally measures it.
+        assert_eq!(window_of("claude-fable-5"), Some(1_000_000));
         // Haiku declares no effort levels, which is what hides the control
         // rather than rendering an inert one.
         let haiku = chat.models.iter().find(|m| m.label == "Haiku 4.5").expect("haiku present");

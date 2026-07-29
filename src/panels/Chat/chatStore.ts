@@ -120,6 +120,33 @@ export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeIte
  * The setting reveals everything, and nothing is ever dropped from the state,
  * so the toggle works on a session already in progress.
  */
+/**
+ * Human prompts this store holds, replayed history included.
+ *
+ * Counted off the items rather than read back from the transcript scan, which
+ * lags a turn: the scan is triggered by the same `turnCompleted` the store
+ * folds in memory, but the CLI has not necessarily flushed that turn to disk
+ * yet. Steers count, because a steer is a message the person sent and the
+ * transcript records it as one.
+ *
+ * Nothing is ever dropped from `items` (the render window is a view, not
+ * storage), so this is a total rather than a count of what is on screen.
+ */
+export function promptsSent(s: ChatState): number {
+  return s.items.reduce((n, it) => n + (it.kind === "user" ? 1 : 0), 0);
+}
+
+/**
+ * Tool calls this store has seen, replayed history included.
+ *
+ * One per `toolUseId`, which is what a tool card is keyed by, so a call
+ * announced twice (the permission prompt and the assistant frame race) counts
+ * once. Same reason as `promptsSent` for not asking the scan.
+ */
+export function toolCallsSeen(s: ChatState): number {
+  return s.items.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
+}
+
 export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean): ChatItem[] {
   if (showAllHooks) return items.slice();
   return items.filter((it) => it.kind !== "hook" || (!it.swayOwned && hookFailed(it)));
