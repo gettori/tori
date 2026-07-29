@@ -128,9 +128,26 @@ describe("selectedModel", () => {
     expect(selectedModel(models, null, "claude-haiku-4-5-20251001")?.value).toBe("haiku");
   });
 
+  it("names the model rather than the alias when several values share a resolution", () => {
+    const models = pickableModels(live(), adapter());
+    // `default` is listed first and resolves to the same id as `sonnet`. Taking
+    // the first match showed "Default (recommended)" on a fresh session while
+    // every other readout named the real model.
+    expect(selectedModel(models, null, "claude-sonnet-5")?.value).toBe("sonnet");
+    // An entry whose value *is* the resolved id wins outright.
+    const withExact = pickableModels(
+      [...live(), { value: "claude-sonnet-5", resolvedModel: "claude-sonnet-5", displayName: "Sonnet 5", description: "", supportsEffort: false, supportedEffortLevels: [] }],
+      adapter(),
+    );
+    expect(selectedModel(withExact, null, "claude-sonnet-5")?.value).toBe("claude-sonnet-5");
+    // An explicit pick still wins over both, including picking the alias.
+    expect(selectedModel(models, "default", "claude-sonnet-5")?.value).toBe("default");
+  });
+
   it("ignores a picked value the catalogue no longer offers", () => {
     const models = pickableModels(live(), adapter());
-    expect(selectedModel(models, "gone", "claude-sonnet-5")?.value).toBe("default");
+    // Falls back to the resolution, and names the model rather than the alias.
+    expect(selectedModel(models, "gone", "claude-sonnet-5")?.value).toBe("sonnet");
     expect(selectedModel(models, "gone", null)).toBeNull();
   });
 });

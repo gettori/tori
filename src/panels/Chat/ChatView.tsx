@@ -899,7 +899,19 @@ export default function ChatView(props: {
   // rather than read straight off the store, because before the first pick the
   // only thing known is the *resolved* id the session reported, which is not a
   // `--model` value and would leave the control blank.
-  const shownModel = () => selectedModel(models(), shownModelValue(state), state.model);
+  //
+  // Three sources, most specific first. The transcript's own model is the one
+  // that matters on a resumed session: `state.model` is only set by a
+  // `system/init` this tab saw, so a chat reopened on an existing session knew
+  // nothing and fell back to naming the `default` alias - the pill read
+  // "Default (recommended)" while the toolbar, reading the same transcript,
+  // read "fable-5". Only when all three are silent is the catalogue's default
+  // entry the honest answer: a session started without `--model` is running it
+  // by definition.
+  const shownModel = () =>
+    selectedModel(models(), shownModelValue(state), state.model ?? detail()?.model ?? null) ??
+    models().find((m) => m.value === "default") ??
+    null;
 
   function onSelectModel(model: PickableModel) {
     edit((s) => selectModel(s, model));
@@ -1364,12 +1376,10 @@ export default function ChatView(props: {
         // they sit together in the bar under the input.
         controls={
           <>
-            <ModeSelector
-              mode={shownMode(state)}
-              pending={modePending(state)}
-              disabled={refused() || state.ended}
-              onSelect={onSelectMode}
-            />
+            {/* Model, then its thinking level, then the mode. The order is the
+                dependency: the effort levels on offer are a property of the
+                selected model, so the control that decides them comes first,
+                and the mode - which no model constrains - sits at the end. */}
             <ModelPicker
               models={models()}
               value={shownModel()?.value ?? null}
@@ -1380,6 +1390,12 @@ export default function ChatView(props: {
               disabled={refused() || state.ended}
               onSelectModel={onSelectModel}
               onSelectEffort={onSelectEffort}
+            />
+            <ModeSelector
+              mode={shownMode(state)}
+              pending={modePending(state)}
+              disabled={refused() || state.ended}
+              onSelect={onSelectMode}
             />
           </>
         }

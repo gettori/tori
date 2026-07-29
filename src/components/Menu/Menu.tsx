@@ -24,6 +24,10 @@ export function MenuRow(props: {
   disabled?: boolean;
   danger?: boolean;
   warn?: boolean;
+  /** For a row that leads somewhere *inside* the menu (a second page of
+   *  options) rather than committing a choice. Closing on that click would
+   *  shut the menu the row was navigating within. */
+  keepOpen?: boolean;
   children: JSX.Element;
 }) {
   const close = useContext(MenuCloseContext);
@@ -33,7 +37,7 @@ export function MenuRow(props: {
       classList={{ [styles.danger]: !!props.danger, [styles.warn]: !!props.warn, [styles.disabled]: !!props.disabled }}
       onClick={() => {
         if (props.disabled) return;
-        close();
+        if (!props.keepOpen) close();
         props.onClick?.();
       }}
     >
@@ -53,6 +57,12 @@ export default function Menu(props: {
   onClose: () => void;
   items?: MenuItem[];
   anchorEl?: HTMLElement;
+  /** Treat `y` as the edge the menu should sit *above* rather than below. For a
+   *  control near the bottom of the window (the composer's), where opening
+   *  downward means the clamp drags the menu back over the control that opened
+   *  it. Still clamped, so a menu taller than the space above it stays on
+   *  screen. */
+  openAbove?: boolean;
   children?: JSX.Element;
 }) {
   let el: HTMLDivElement | undefined;
@@ -73,7 +83,7 @@ export default function Menu(props: {
       const r = el.getBoundingClientRect();
       const pad = 6;
       let left = openedAt.x;
-      let top = openedAt.y;
+      let top = props.openAbove ? openedAt.y - r.height : openedAt.y;
       if (left + r.width > window.innerWidth - pad) left = window.innerWidth - r.width - pad;
       if (top + r.height > window.innerHeight - pad) top = window.innerHeight - r.height - pad;
       setPos({ left: Math.max(pad, left), top: Math.max(pad, top) });

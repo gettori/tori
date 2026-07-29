@@ -129,8 +129,19 @@ export function selectedModel(
     if (exact) return exact;
   }
   if (resolvedModel !== null) {
-    const byResolved = models.find((m) => m.resolvedModel === resolvedModel);
-    if (byResolved) return byResolved;
+    const matches = models.filter((m) => m.resolvedModel === resolvedModel);
+    // Several values share one resolution, and they are not equally informative:
+    // `default` and `fable-5` both resolve to the same id, but only one of them
+    // tells the reader what is running. Taking the first match named the alias,
+    // so a fresh session showed "Default" while the toolbar showed "fable-5" for
+    // the very same model. Prefer the entry that names the model: an exact
+    // value/id match first, then any value that is not the generic alias.
+    return (
+      matches.find((m) => m.value === resolvedModel) ??
+      matches.find((m) => m.value !== "default") ??
+      matches[0] ??
+      null
+    );
   }
   return null;
 }
