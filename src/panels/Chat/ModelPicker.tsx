@@ -1,6 +1,6 @@
-import { For, Show } from "solid-js";
-import { ChevronDown } from "lucide-solid";
-import Icon from "../../components/Icon/Icon";
+import { For, Show, createMemo, createSignal } from "solid-js";
+import { Brain, ChartNoAxesColumn } from "lucide-solid";
+import Picker, { PickerMore, PickerOption } from "./Picker";
 import type { PickableModel } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
 
@@ -16,9 +16,18 @@ import styles from "./Chat.module.css";
  * next turn boundary, so until one passes, the pick is a promise - the same
  * rule `ModeSelector` follows, and for the same measured reason.
  */
+
+/** How many models the menu shows before the rest move to a second page. Set
+ *  above the size of a real catalogue (this machine's Claude offers five) so the
+ *  common case is one flat list: a "More models" row hiding a single entry is
+ *  a fold that costs a click and saves nothing. */
+const FLAT_LIMIT = 7;
+
 export default function ModelPicker(props: {
   models: readonly PickableModel[];
-  /** The `--model` value shown as selected, or null before anything is known. */
+  /** The `--model` value shown as selected, or null when nothing is known. The
+   *  caller resolves this: `ChatView` is where the pick, the id `system/init`
+   *  reported, and the transcript's own model all meet. */
   value: string | null;
   effort: string | null;
   /** Context the conversation currently occupies, or null before any turn has
@@ -30,82 +39,76 @@ export default function ModelPicker(props: {
   onSelectModel: (model: PickableModel) => void;
   onSelectEffort: (effort: string) => void;
 }) {
-  // Before any pick, a session started without `--model` is running the
-  // catalogue's own default entry by definition, so that entry is shown as
-  // selected rather than a placeholder: "Starting..." on an idle chat read as
-  // a control that never finished loading. A catalogue with no default entry
-  // keeps the placeholder, because naming one would be a guess.
-  const shownValue = () => props.value ?? props.models.find((m) => m.value === "default")?.value ?? null;
-  const current = () => props.models.find((m) => m.value === shownValue()) ?? null;
+  const [showAll, setShowAll] = createSignal(false);
+  const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
   // The adapter table is a hand-maintained fallback, so a list drawn from it is
   // worth saying so about rather than presenting as this machine's truth.
   const stale = () => props.models.length > 0 && !props.models[0].live;
 
+  // The selected model is always on the first page even when it sorts past the
+  // limit: a menu whose checkmark is on a page you have to go looking for reads
+  // as though nothing is selected.
+  const firstPage = createMemo(() => {
+    if (props.models.length <= FLAT_LIMIT) return props.models;
+    const head = props.models.slice(0, FLAT_LIMIT);
+    const sel = current();
+    return sel && !head.includes(sel) ? [...head.slice(0, FLAT_LIMIT - 1), sel] : head;
+  });
+  const hasMore = () => props.models.length > firstPage().length;
+
   return (
     <>
-      <label class={styles.pill} classList={{ [styles.pillPending]: props.modelPending }} title="Model">
-        <span class={styles.pillValue}>
-          {current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
-        </span>
-        <span class={styles.pillCaret} aria-hidden="true">
-          <Icon icon={ChevronDown} size={13} />
-        </span>
-        <select
-          class={styles.pillSelect}
-          aria-label="Model"
-          disabled={props.disabled || props.models.length === 0}
-          value={shownValue() ?? ""}
-          onChange={(e) => {
-            const picked = props.models.find((m) => m.value === e.currentTarget.value);
-            if (picked) props.onSelectModel(picked);
-          }}
-        >
-          {/* Only while nothing can be shown as selected: a placeholder that
-              stayed selectable would be a pick that resolves to nothing. */}
-          <Show when={shownValue() === null}>
-            <option value="" disabled>
-              {props.models.length === 0 ? "No models" : "Default"}
-            </option>
-          </Show>
-          <For each={props.models}>
-            {(m) => (
-              <option value={m.value} title={m.description}>
-                {m.label}
-              </option>
-            )}
-          </For>
-        </select>
-      </label>
+      <Picker
+        icon={Brain}
+        value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
+        ariaLabel="Model"
+        title={current()?.description || "Model"}
+        disabled={props.disabled || props.models.length === 0}
+        pending={props.modelPending}
+        onClose={() => setShowAll(false)}
+      >
+        <For each={showAll() ? props.models : firstPage()}>
+          {(m) => (
+            <PickerOption
+              label={m.label}
+              description={m.description}
+              selected={m.value === props.value}
+              onSelect={() => props.onSelectModel(m)}
+            />
+          )}
+        </For>
+        <Show when={hasMore() && !showAll()}>
+          <div class={styles.pickSep} />
+          <PickerMore label="More models" onOpen={() => setShowAll(true)} />
+        </Show>
+      </Picker>
 
       {/* Hidden, not disabled: a model with no effort levels has no control to
           offer, and an inert one reads as a broken control. */}
       <Show when={levels().length > 0}>
-        <label class={styles.pill} classList={{ [styles.pillPending]: props.effortPending }} title="Thinking effort">
-          <span class={styles.pillPrefix}>Thinking:</span>
-          <span class={styles.pillValue}>{props.effort ?? "Default"}</span>
-          <span class={styles.pillCaret} aria-hidden="true">
-            <Icon icon={ChevronDown} size={13} />
-          </span>
-          <select
-            class={styles.pillSelect}
-            aria-label="Thinking effort"
-            disabled={props.disabled}
-            value={props.effort ?? ""}
-            onChange={(e) => props.onSelectEffort(e.currentTarget.value)}
-          >
-            {/* Nothing on the wire reports effort back, so before a pick the
-                level in force is the CLI's own default and Sway does not know
-                which it is. Saying "Default" is honest; naming a level would
-                not be. */}
-            <Show when={props.effort === null}>
-              <option value="" disabled>
-                Default
-              </option>
-            </Show>
-            <For each={levels()}>{(level) => <option value={level}>{level}</option>}</For>
-          </select>
-        </label>
+        <Picker
+          icon={ChartNoAxesColumn}
+          prefix="Thinking:"
+          /* Nothing on the wire reports effort back, so before a pick the level
+             in force is the CLI's own default and Sway does not know which it
+             is. Saying "Default" is honest; naming a level would not be. */
+          value={props.effort ?? "Default"}
+          ariaLabel="Thinking effort"
+          title="Thinking effort"
+          disabled={props.disabled}
+          pending={props.effortPending}
+        >
+          <For each={levels()}>
+            {(level) => (
+              <PickerOption
+                label={level}
+                selected={level === props.effort}
+                onSelect={() => props.onSelectEffort(level)}
+              />
+            )}
+          </For>
+        </Picker>
       </Show>
 
       {/* Only when a window is declared. Nothing declares one for every model,

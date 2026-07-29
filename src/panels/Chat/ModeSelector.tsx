@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
-import { ChevronDown } from "lucide-solid";
-import Icon from "../../components/Icon/Icon";
+import { SlidersHorizontal } from "lucide-solid";
+import Picker, { PickerOption } from "./Picker";
 import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 
@@ -12,9 +12,10 @@ import styles from "./Chat.module.css";
  * two controls writing one piece of session state is how they end up
  * disagreeing about which mode the session is in.
  *
- * A pill select rather than a segmented row: the control lives in the composer
- * now, where the mode is changed occasionally mid-conversation, not studied
- * before starting one. The hints ride the options and the pill's tooltip.
+ * A pill in the composer, because the mode is changed occasionally mid
+ * conversation rather than studied before starting one. Each mode's hint rides
+ * its own row now instead of a tooltip on a native `<option>`, which nothing
+ * ever showed.
  */
 export const MODES: { value: PermissionMode; label: string; hint: string }[] = [
   { value: "default", label: "Default", hint: "Claude asks before acting outside its allowances." },
@@ -42,46 +43,30 @@ export default function ModeSelector(props: {
 }) {
   const current = () => MODES.find((m) => m.value === props.mode);
   const title = () =>
-    [current()?.hint, props.mode === "bypassPermissions" ? BYPASS_STILL_APPROVED : null]
-      .filter(Boolean)
-      .join(" ");
+    [current()?.hint, props.mode === "bypassPermissions" ? BYPASS_STILL_APPROVED : null].filter(Boolean).join(" ");
 
   return (
     <>
-      {/* A chip drawn by us with the native select stretched invisibly over
-          it: the app's look on the closed control, the platform's menu and
-          keyboard handling on the open one. */}
-      <label
-        class={styles.pill}
-        classList={{
-          [styles.pillAttention]: props.mode === "bypassPermissions",
-          [styles.pillPending]: props.pending,
-        }}
+      <Picker
+        icon={SlidersHorizontal}
+        value={current()?.label ?? "Default"}
+        ariaLabel="Permission mode"
         title={title()}
+        disabled={props.disabled}
+        pending={props.pending}
+        attention={props.mode === "bypassPermissions"}
       >
-        <span class={styles.pillValue}>{current()?.label}</span>
-        <span class={styles.pillCaret} aria-hidden="true">
-          <Icon icon={ChevronDown} size={13} />
-        </span>
-        <select
-          class={styles.pillSelect}
-          aria-label="Permission mode"
-          disabled={props.disabled}
-          value={props.mode}
-          onChange={(e) => {
-            const picked = MODES.find((m) => m.value === e.currentTarget.value);
-            if (picked) props.onSelect(picked.value);
-          }}
-        >
-          <For each={MODES}>
-            {(m) => (
-              <option value={m.value} title={m.hint}>
-                {m.label}
-              </option>
-            )}
-          </For>
-        </select>
-      </label>
+        <For each={MODES}>
+          {(m) => (
+            <PickerOption
+              label={m.label}
+              description={m.hint}
+              selected={m.value === props.mode}
+              onSelect={() => props.onSelect(m.value)}
+            />
+          )}
+        </For>
+      </Picker>
       {/* Never "switched to X": the CLI applies a mode at a turn boundary, and
           a control that claimed otherwise would be wrong for the rest of the
           running turn - which is exactly the turn the user is worried about. */}
