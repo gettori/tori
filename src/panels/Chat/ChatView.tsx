@@ -55,6 +55,7 @@ import {
   capabilitiesFor,
   contextPercent,
   contextTokens,
+  contextWindowFor,
   defaultMode,
   modeAfterModelSwitch,
   pickableModels,
@@ -90,6 +91,7 @@ import {
   modelPending,
   pendingApprovals,
   pendingFlush,
+  promptsSent,
   pushSteer,
   pushUserTurn,
   releaseQueue,
@@ -108,6 +110,7 @@ import {
   shownMode,
   shownModelValue,
   takeForSend,
+  toolCallsSeen,
   visibleItems,
   type ChatState,
   type QueuedInput,
@@ -920,6 +923,54 @@ export default function ChatView(props: {
     models().find((m) => m.value === "default") ??
     null;
 
+  /**
+   * The session's figures with the live ones overlaid on the scanned ones.
+   *
+   * `chat_session_detail` re-reads the transcript **file**, and it is triggered
+   * by the same `turnCompleted` that the store folds in memory - but the CLI
+   * has not necessarily flushed that turn to disk yet, so the scan comes back
+   * describing the turn *before* the one that just landed. The store has no such
+   * lag: `lastUsage` is the turn's own reported usage.
+   *
+   * So the scan stays the baseline (it is the only thing that knows a resumed
+   * session's earlier turns) and the store overrides it wherever the store is
+   * both live and complete:
+   *
+   *   - **context** is the latest turn's input, not a total, so the newest
+   *     reading is the whole answer rather than a delta to add to the file's.
+   *   - **prompts and tool calls** are counted off `items`, which replay seeds
+   *     with the session's earlier turns, so the count is complete.
+   *
+   * **Turns deliberately stays scanned.** `turnsCompleted` counts this run
+   * only: replayed history carries no turn frames, so overriding with it would
+   * make a resumed session's turn count collapse to however many turns this
+   * window has watched, which is worse than a turn stale.
+   */
+  const liveDetail = () => {
+    const scanned = detail();
+    if (!scanned) return null;
+    const live = contextTokens(state.lastUsage);
+    return {
+      ...scanned,
+      context_tokens: live ?? scanned.context_tokens,
+      prompt_count: promptsSent(state),
+      tool_count: toolCallsSeen(state),
+    };
+  };
+
+  // The window for the model the **stats row is describing**, which is the one
+  // the transcript says ran - not `shownModel()`, the one currently selected in
+  // the picker. The two differ after a mid-session switch, where dividing the
+  // historical figures by the new model's window would be simply wrong, and for
+  // any model the picker offers but the adapter table has no row for
+  // (`claude-fable-5`), where reading the selection produced no window at all
+  // and silently dropped the whole stat.
+  const stripWindow = () => {
+    const ran = detail()?.model;
+    if (ran) return contextWindowFor(chatConfig(), ran, state.contextWindows);
+    return shownModel()?.contextWindow ?? null;
+  };
+
   // The mode the pill shows: the session's own, else the mode the *adapter*
   // nominates. Never the literal "default", which is Claude's spelling and
   // names nothing on a harness whose modes are `auto_edit|yolo`.
@@ -1284,8 +1335,8 @@ export default function ChatView(props: {
           awaitingApproval={pendingApprovals(state).length > 0}
           files={touchedFiles()}
           tokens={sessionTokens()}
-          detail={detail()}
-          contextWindow={shownModel()?.contextWindow ?? null}
+          detail={liveDetail()}
+          contextWindow={stripWindow()}
           onReconnect={() => reconnect?.()}
           menu={
             <div class={styles.menuBody}>
@@ -1413,7 +1464,6 @@ export default function ChatView(props: {
               models={models()}
               value={shownModel()?.value ?? null}
               effort={shownEffort(state)}
-              contextTokens={contextTokens(state.lastUsage)}
               modelPending={modelPending(state)}
               effortPending={effortPending(state)}
               disabled={refused() || state.ended}

@@ -135,6 +135,11 @@ export default function SessionStats(props: {
                 reading as "nothing used". */}
             <Show when={pct() !== null}>{(_) => <CtxGauge pct={pct()!} />}</Show>
             {fmt(props.detail.context_tokens)}/{fmt(w())}
+            {/* Shown beside the raw figures rather than instead of them: the
+                percentage is the one people read at a glance, the tokens are
+                what they check it against. Absent with the gauge when the two
+                numbers contradict each other, for the same reason. */}
+            <Show when={pct() !== null}>{(_) => <> ({Math.round(pct()!)}%)</>}</Show>
           </span>
         )}
       </Show>
