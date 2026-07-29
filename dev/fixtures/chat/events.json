@@ -37,7 +37,8 @@
         "supportedEffortLevels": [
           "low",
           "high"
-        ]
+        ],
+        "supportsAutoMode": true
       }
     ],
     "fastModeState": "off",
@@ -69,7 +70,8 @@
         "supportedEffortLevels": [
           "low",
           "high"
-        ]
+        ],
+        "supportsAutoMode": true
       }
     ]
   },

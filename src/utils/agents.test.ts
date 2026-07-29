@@ -128,10 +128,38 @@ describe("the bundled chat tables", () => {
     expect(chat.base_args).toContain("stream-json");
   });
 
-  it("carries the four permission modes and the five effort levels", () => {
+  it("carries the six permission modes and the five effort levels", () => {
     const chat = claude.chat as ChatConfig;
-    expect(chat.modes.map((m) => m.id)).toEqual(["default", "acceptEdits", "plan", "bypassPermissions"]);
+    // The six `--permission-mode` both accepts and honours. `manual` is
+    // deliberately absent: the CLI takes it, but its own help calls it an alias
+    // for `default` and init reports `default`, so a row would duplicate one.
+    expect(chat.modes.map((m) => m.id)).toEqual([
+      "default",
+      "acceptEdits",
+      "plan",
+      "auto",
+      "dontAsk",
+      "bypassPermissions",
+    ]);
     expect(chat.effort.map((e) => e.id)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  // The menu renders these, so a mode without one is a row that does not say
+  // what it does. They are the CLI's own wording, not a paraphrase.
+  it("gives every mode a hint, and reads the label from the TOML", () => {
+    const chat = claude.chat as ChatConfig;
+    expect(chat.modes.every((m) => m.hint.length > 0)).toBe(true);
+    // The drift this settles: the TOML said "Ask" while a constant in
+    // ModeSelector said "Default" for the same mode. The TOML now wins, and
+    // there is no second list to disagree with it.
+    expect(chat.modes.find((m) => m.id === "default")?.label).toBe("Ask");
+    expect(chat.modes.find((m) => m.id === "auto")?.hint).toContain("classifier");
+  });
+
+  it("gates auto on the capability the catalogue reports, and flags the permissive mode", () => {
+    const chat = claude.chat as ChatConfig;
+    expect(chat.modes.find((m) => m.id === "auto")?.requires).toBe("supportsAutoMode");
+    expect(chat.modes.filter((m) => m.permissive_caveat).map((m) => m.id)).toEqual(["bypassPermissions"]);
   });
 });
 
@@ -169,7 +197,7 @@ describe("mode/effort/model arg resolution", () => {
   it("fills the table template for an entry with no args of its own", () => {
     const bare: ChatConfig = {
       ...chat,
-      modes: [{ id: "plan", label: "Plan", args: [] }],
+      modes: [{ id: "plan", label: "Plan", hint: "", args: [] }],
       effort: [{ id: "low", label: "Low", args: [] }],
     };
     expect(modeArgsFor(bare, "plan")).toEqual(["--permission-mode", "plan"]);

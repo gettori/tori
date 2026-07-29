@@ -79,6 +79,10 @@ export type ChatModelInfo = {
   /// Empty for a model with no effort control, which hides the control rather
   /// than rendering an inert one.
   supportedEffortLevels: string[];
+  /// Whether this model honours `--permission-mode auto`. Measured: a model
+  /// without it accepts the flag, exits 0, and silently runs `default`, so
+  /// nothing at runtime would contradict an ungated row.
+  supportsAutoMode: boolean;
 };
 
 export type Usage = {
