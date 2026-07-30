@@ -7,8 +7,9 @@ import OverflowTabBar from "../../components/OverflowTabBar";
 import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
 import Tab from "../../components/Tab/Tab";
+import TabMark from "./TabMark";
 import Button from "../../components/Button/Button";
-import { X, ChevronDown, SquareTerminal, MessageCircleQuestion } from "lucide-solid";
+import { X, ChevronDown, SquareTerminal } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -45,7 +46,7 @@ import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
-import { liveStatuses } from "../../utils/sessionStatus";
+import { liveStatuses, type SessionStatus } from "../../utils/sessionStatus";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -1028,12 +1029,21 @@ export default function Terminal(props: {
     closeId(id);
   }
 
-  /** Is this tab a chat blocked on an approval? Read from the live-chat
-   *  registry, which the chat's own event stream fills, so it is exact rather
-   *  than inferred from PTY quiet. */
+  /** What a chat tab's session is doing, from the live-chat registry, which the
+   *  chat's own event stream fills - so it is exact rather than inferred from
+   *  PTY quiet. Null for every tab that is not a chat, and for a chat whose
+   *  panel has not registered yet. */
+  function chatStatus(t: OpenTerm): SessionStatus | null {
+    if (t.kind !== "chat") return null;
+    return liveChats().find((c) => c.tabId === t.id)?.status ?? null;
+  }
+
+  /** Is this tab a chat blocked on an approval? A budget stop blocks the same
+   *  way and is worded the same way in the tooltip: both mean the session is
+   *  waiting on a person. */
   function blockedChat(t: OpenTerm): boolean {
-    if (t.kind !== "chat") return false;
-    return liveChats().some((c) => c.tabId === t.id && c.status === "waitingForApproval");
+    const s = chatStatus(t);
+    return s === "waitingForApproval" || s === "budgetStopped";
   }
 
   // The bar reorders only the active workspace's tabs (the subset it was given).
@@ -1065,15 +1075,13 @@ export default function Terminal(props: {
             title={blockedChat(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
             closeLabel="Close"
             onClose={(e) => close(t.id, e)}
+            // A chat's state is true whether or not you are looking at it, so
+            // the tab carries it: without this a background chat waiting on an
+            // approval is indistinguishable from one still working. It rides on
+            // the provider mark rather than on a glyph of its own, so a tab
+            // going quiet does not change shape in a strip being scanned.
+            icon={t.kind === "chat" ? <TabMark agentId={t.program} status={chatStatus(t)} /> : undefined}
           >
-            {/* A blocked chat is blocked whether or not you are looking at it,
-                so the tab says so: without it a background chat waiting on an
-                approval is indistinguishable from one still working. */}
-            <Show when={blockedChat(t)}>
-              <span class={styles.termTabBlocked} aria-label="Waiting for approval">
-                <Icon icon={MessageCircleQuestion} />
-              </span>
-            </Show>
             {tabTitle(t)}
           </Tab>
         )}
