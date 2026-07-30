@@ -126,6 +126,67 @@ pub(crate) fn is_command_envelope(text: &str) -> bool {
     .any(|tag| t.starts_with(tag))
 }
 
+/// The body of the first closed `<tag>…</tag>` pair in `text`.
+fn tag_body<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(&open)? + open.len();
+    let end = text[start..].find(&close)? + start;
+    Some(&text[start..end])
+}
+
+/// Two different things land under the user's role wearing the same `<command-*>`
+/// markup, and only one of them is a prompt:
+///
+/// - a **client-side command** (`/clear`, `/model`, `/login`) - the harness runs
+///   it locally, prefixes it with `<local-command-caveat>` ("DO NOT respond to
+///   these messages") and files its result as `<local-command-stdout>`;
+/// - a **skill invocation** (`/plan …`, `/gg`) - no caveat, and the text the
+///   person typed after the command name sits in `<command-args>`.
+///
+/// The caveat is what separates them, so it is tracked rather than the tag order
+/// (which the harness varies). Without the split, a session opened with
+/// `/model haiku` would take that as its title over the `hello` typed next.
+fn is_local_command_caveat(text: &str) -> bool {
+    text.trim_start().starts_with("<local-command-caveat>")
+}
+
+/// A client-side command's own output: the harness talking to itself.
+fn is_local_command_output(text: &str) -> bool {
+    let t = text.trim_start();
+    t.starts_with("<local-command-stdout>") || t.starts_with("<local-command-stderr>")
+}
+
+/// The envelope a slash command is filed under. The three tags appear in either
+/// order depending on how the command was invoked, so any of them opens one.
+fn is_command_invocation(text: &str) -> bool {
+    let t = text.trim_start();
+    ["<command-name>", "<command-message>", "<command-args>"]
+        .iter()
+        .any(|tag| t.starts_with(tag))
+}
+
+/// What the person typed to invoke a skill, reassembled from the envelope:
+/// `/plan tidy the sidebar` out of `<command-name>/plan</command-name>` plus
+/// `<command-args>tidy the sidebar</command-args>`. A command with no args is
+/// the whole of what they typed (`/gg`), so it stands alone. `None` when the
+/// envelope names no command, which leaves the session untitled rather than
+/// titled with a fragment of markup.
+///
+/// Only titles are recovered this way. `is_human_prompt` still excludes the
+/// envelope from the prompt *counts*, and deliberately so: a title identifies a
+/// session, a count measures a conversation.
+fn command_prompt(text: &str) -> Option<String> {
+    let name = tag_body(text, "command-name")?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    match tag_body(text, "command-args").unwrap_or("").trim() {
+        "" => Some(name.to_string()),
+        args => Some(format!("{name} {args}")),
+    }
+}
+
 pub(crate) fn clean_title(raw: &str) -> String {
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
@@ -144,6 +205,11 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
     let mut cwd: Option<String> = None;
     let mut branch: Option<String> = None;
     let mut title: Option<String> = None;
+    // Whether the last message carrying text was a `<local-command-caveat>`, which
+    // disclaims the envelope directly after it. Recomputed per message rather than
+    // latched, so a caveat can only ever mark the envelope it introduces: a `/clear`
+    // is skipped without also silencing the `/plan` further down the same head.
+    let mut after_local_caveat = false;
 
     for line in reader.lines().take(HEAD_LINES).map_while(Result::ok) {
         let v: serde_json::Value = match serde_json::from_str(&line) {
@@ -163,17 +229,29 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
                 }
             }
         }
-        if title.is_none()
-            && v.get("type").and_then(|t| t.as_str()) == Some("user")
-            && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true)
-        {
+        // The caveat is filed under the user's role *and* marked `isMeta`, so the
+        // meta filter has to sit inside these branches rather than above them.
+        if title.is_none() && v.get("type").and_then(|t| t.as_str()) == Some("user") {
             if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
                 if let Some(text) = extract_text(content) {
                     let trimmed = text.trim();
-                    // Skip slash-command envelopes and tool-result noise.
-                    if !trimmed.is_empty() && !trimmed.starts_with('<') {
+                    let is_meta = v.get("isMeta").and_then(|m| m.as_bool()) == Some(true);
+                    let is_caveat = is_local_command_caveat(trimmed);
+                    if is_caveat {
+                        // Marks only the next message, so nothing to do here.
+                    } else if is_local_command_output(trimmed) {
+                        // A client-side command's output, never a prompt.
+                    } else if is_command_invocation(trimmed) {
+                        if !after_local_caveat && !is_meta {
+                            title = command_prompt(trimmed).map(|p| clean_title(&p));
+                        }
+                    } else if !is_meta && !trimmed.is_empty() && !trimmed.starts_with('<') {
+                        // Something a person typed. Other markup (a pasted
+                        // snippet, a harness `<system_instruction>`) is not a
+                        // title, and tool-result turns carry no text at all.
                         title = Some(clean_title(trimmed));
                     }
+                    after_local_caveat = is_caveat;
                 }
             }
         }
@@ -1770,7 +1848,7 @@ pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::UNIX_EPOCH;
+    use std::time::{Duration, UNIX_EPOCH};
 
     fn tmp_file(name: &str, contents: &str) -> PathBuf {
         let n = SystemTime::now()
@@ -1831,6 +1909,84 @@ mod tests {
         assert_eq!(r.prompt_count, 1);
         assert_eq!(r.turn_count, 1);
         assert_eq!(r.tool_count, 1);
+    }
+
+    /// Parse a committed transcript head from `dev/fixtures/sessions/`. Resolved
+    /// from `CARGO_MANIFEST_DIR`, never from `$HOME`: a scanner test that read the
+    /// developer's own `~/.claude/projects` would pass or fail per machine.
+    fn session_fixture(name: &str) -> SessionMeta {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/sessions")
+            .join(format!("{name}.jsonl"));
+        let t = UNIX_EPOCH + Duration::from_secs(1_775_000_000);
+        parse_session(&path, t, t, "claude")
+            .unwrap_or_else(|| panic!("fixture {name} parses"))
+    }
+
+    /// Titles for the real head shapes in `dev/fixtures/sessions/`. This began as
+    /// a characterization of the old extractor, which returned `(untitled session)`
+    /// for the two slash-command openers below even though both transcripts carry
+    /// the prompt; it is inverted here onto the recovered titles.
+    ///
+    /// The two `local-command-*` fixtures are the pair that carries the rule: an
+    /// envelope introduced by `<local-command-caveat>` is a client-side command and
+    /// never a title, even when it has args (`/model haiku`), while an envelope with
+    /// no caveat is a skill the person invoked, which *is* what they typed.
+    #[test]
+    fn claude_titles_recover_a_slash_command_opener_and_skip_local_commands() {
+        // The ordinary path, unchanged.
+        assert_eq!(
+            session_fixture("plain-prompt").title,
+            "Reply with exactly the word: one. Do not use any tools."
+        );
+        // The prompt sits in `<command-args>`, not in the envelope's own text.
+        assert_eq!(
+            session_fixture("slash-opener-with-args").title,
+            "/plan we can add new group but tere is no way to delete a group."
+        );
+        // `/clear` is skipped as local; the `/gg` after it carries no args, so the
+        // command itself is the whole of what the person typed.
+        assert_eq!(session_fixture("clear-then-slash-opener").title, "/gg");
+        // A local command with args still yields to the message typed after it.
+        assert_eq!(session_fixture("local-command-then-prompt").title, "hello");
+    }
+
+    /// A session that only ever ran a client-side command has nothing a person
+    /// said in it. It must stay untitled rather than surface a fragment of the
+    /// envelope (`/model`, or worse `<command-name>`), which would read as if the
+    /// user had typed it.
+    #[test]
+    fn claude_title_stays_empty_for_a_contentless_session() {
+        assert_eq!(session_fixture("local-command-only").title, "(untitled session)");
+    }
+
+    /// The degradation paths behind that promise. A malformed envelope must yield
+    /// nothing, because the alternative is a title made of raw markup: whatever
+    /// `command_prompt` returns is shown to the user as their own words.
+    #[test]
+    fn command_prompt_needs_a_named_command_and_a_closed_args_tag() {
+        assert_eq!(
+            command_prompt("<command-name>/plan</command-name><command-args>tidy up</command-args>")
+                .as_deref(),
+            Some("/plan tidy up")
+        );
+        // No args tag, and an empty one, are both just the command.
+        assert_eq!(command_prompt("<command-name>/gg</command-name>").as_deref(), Some("/gg"));
+        assert_eq!(
+            command_prompt("<command-name>/gg</command-name><command-args></command-args>").as_deref(),
+            Some("/gg")
+        );
+        // Unclosed args: the body cannot be read, so the command stands alone
+        // rather than swallowing the rest of the message.
+        assert_eq!(
+            command_prompt("<command-name>/plan</command-name><command-args>tidy up").as_deref(),
+            Some("/plan")
+        );
+        // Nothing nameable: untitled beats a fragment of markup.
+        assert_eq!(command_prompt("<command-message>plan</command-message>"), None);
+        assert_eq!(command_prompt("<command-name></command-name>"), None);
+        assert_eq!(command_prompt("<command-name>/plan"), None);
     }
 
     #[test]
