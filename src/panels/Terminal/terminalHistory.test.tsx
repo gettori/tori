@@ -87,7 +87,6 @@ const session = (id: string) => ({
   last_active: Math.floor(Date.now() / 1000),
   created_at: 1,
   name: null,
-  archived: false,
   agent: "claude",
 });
 

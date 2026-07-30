@@ -42,7 +42,6 @@ pub struct SessionMeta {
     /// check, since mtime updates on every turn).
     pub created_at: u64,
     pub name: Option<String>,
-    pub archived: bool,
     /// Which agent produced the session: "claude" or "pi".
     pub agent: String,
 }
@@ -271,7 +270,6 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
         last_active: epoch_secs(mtime),
         created_at: epoch_secs(created),
         name: None,
-        archived: false,
         agent: agent_id.to_string(),
     })
 }
@@ -439,7 +437,6 @@ fn parse_pi_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agen
         last_active: epoch_secs(mtime),
         created_at: epoch_secs(created),
         name: None,
-        archived: false,
         agent: agent_id.to_string(),
     })
 }
@@ -497,7 +494,6 @@ pub fn list_sessions(
         .map(|mut s| {
             if let Some(o) = overlay.get(&s.id) {
                 s.name = o.name.clone();
-                s.archived = o.archived;
             }
             s
         })
@@ -644,14 +640,22 @@ pub fn folder_historical(
     }
 }
 
-// --- rename/archive overlay (Claude has no native rename) ---
+// --- rename overlay (Claude has no native rename) ---
 
+/// Renames, and nothing else. An overlay written before archiving was removed
+/// also carries an `archived` key; serde ignores unknown fields, so such a file
+/// still parses and every rename in it survives (see
+/// gotchas#serde-ignores-unknown-fields-so-a-version-field-alone-cannot-gate-a-format
+/// - the same property that makes a version field useless as a gate is what
+/// makes this migration free). The residual key is **pruned on the next write**
+/// rather than kept: `save_overlay` re-serializes the whole map from this
+/// struct, so the first rename anywhere drops it for every session at once.
+/// Keeping it would mean carrying a field nothing reads for as long as the file
+/// lives.
 #[derive(Serialize, Deserialize, Clone, Default)]
 struct Overlay {
     #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
-    archived: bool,
 }
 
 fn overlay_path() -> PathBuf {
@@ -685,15 +689,6 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     // fires no filesystem event. Notify explicitly so every listener refreshes,
     // not just the caller: the sidebar tree AND the terminal tab titles, which
     // otherwise keep the name they were created with (an un-refreshed rename).
-    let _ = app.emit("sessions://changed", ());
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_session_archived(app: AppHandle, id: String, archived: bool) -> Result<(), String> {
-    let mut map = load_overlay();
-    map.entry(id).or_default().archived = archived;
-    save_overlay(&map)?;
     let _ = app.emit("sessions://changed", ());
     Ok(())
 }
@@ -1959,7 +1954,6 @@ mod tests {
             last_active,
             created_at: last_active,
             name: None,
-            archived: false,
             agent: agent.into(),
         }
     }
@@ -2780,5 +2774,29 @@ mod tests {
         assert_eq!(tail.count, 2);
         assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:04.000Z").unwrap());
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// Archiving is gone, but every overlay file already on disk still carries
+    /// its `archived` keys. Serde ignores unknown fields, so the renames beside
+    /// them survive untouched; the key itself is pruned by the next write,
+    /// because `save_overlay` re-serializes the map from the current struct.
+    #[test]
+    fn an_overlay_written_before_archiving_was_removed_keeps_its_renames() {
+        let on_disk = r#"{
+          "sess-a": { "name": "the good one", "archived": true },
+          "sess-b": { "name": null, "archived": false },
+          "sess-c": { "archived": true }
+        }"#;
+        let map: HashMap<String, Overlay> = serde_json::from_str(on_disk).unwrap();
+
+        assert_eq!(map["sess-a"].name.as_deref(), Some("the good one"));
+        assert_eq!(map["sess-b"].name, None);
+        assert_eq!(map["sess-c"].name, None);
+
+        // What the next `set_session_name` would write back: the renames, and
+        // no residue of a flag nothing reads any more.
+        let round_tripped = serde_json::to_string(&map).unwrap();
+        assert!(round_tripped.contains("the good one"));
+        assert!(!round_tripped.contains("archived"));
     }
 }

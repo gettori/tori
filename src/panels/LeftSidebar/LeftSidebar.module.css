@@ -12,10 +12,10 @@
   user-select: none;
   min-height: 0;
   min-width: 0;
-  /* Where a branch/worktree name begins (sub1 indent). Shared so a selected
-     session's inset pill can start on the same x and read as nested. */
+  /* Where a branch/worktree name begins (sub1 indent). Shared so the branch
+     row's own hover pill and gold rail segment start on the same x. */
   --branch-label-x: calc(34px * var(--ui-scale));
-  /* One indent level: sub1 to sub2, and branch depth to attempt depth. */
+  /* One indent level: branch depth to attempt depth. */
   --nest-step: calc(12px * var(--ui-scale));
 }
 
@@ -198,58 +198,24 @@
   z-index: 3;
   background: var(--canvas-default);
 }
+/* Sticky for the sake of a fan-out group header, which is a `.row.branch` with
+   attempt rows under it. An ordinary branch row is a leaf now, so it is a
+   one-row node with nothing to scroll under itself, and this costs it nothing.
+   Kept on the shared class rather than split, since the two look identical and
+   the geometry below is written once for both. */
 .row.branch {
   position: sticky;
   top: calc(30px * var(--ui-scale));
   /* Opaque only from the label inward; the strip to the left of the label (where
      the branch-graph rail lives) stays transparent so the rail shows through and
-     branches stay connected, even while this header is pinned. Scrolling session
-     content is indented past the label, so the opaque half still hides it. */
+     branches stay connected, even while this header is pinned. The attempt rows
+     that scroll under it are indented past the label, so the opaque half still
+     hides them. */
   background: linear-gradient(
     to right,
     transparent var(--branch-label-x),
     var(--canvas-default) var(--branch-label-x)
   );
-}
-
-/* Session hover + selection share one inset fill slot that begins where the
-   branch name starts (--branch-label-x), so neither reaches the row's far left
-   and both read as nested under the branch. The fill sits behind the row content
-   (z-index -1); the row owns a stacking context (z-index 0) so it stays above
-   the row background but below the text, and the full-width row hover is
-   suppressed so only the inset fill shows. */
-.row.session {
-  z-index: 0;
-}
-.row.session::before {
-  content: "";
-  position: absolute;
-  left: var(--branch-label-x);
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: -1;
-  border-radius: var(--sway-radius-md);
-  background: transparent;
-}
-.row.session:hover,
-.row.session.menuActive {
-  background: transparent;
-}
-.row.session:hover::before,
-.row.session.menuActive::before {
-  background: var(--neutral-hover);
-}
-.row.session.sel::before {
-  background: var(--brand-subtle);
-}
-
-/* Agent mark: neutral (monochrome) on an unselected session so the row reads
-   calm, and its true Claude/pi brand colour only on the selected session. The
-   `.seti-icon` fill is `currentColor`, so overriding `color` recolours it; the
-   `:not(.sel)` rule outranks the global `.claude-icon`/`.pi-icon` tint. */
-.row.session:not(.sel) :global(.seti-icon) {
-  color: var(--fg-muted);
 }
 
 /* ---- Git-branch graph (branch/worktree level) ----
@@ -268,8 +234,8 @@
   --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
 }
 
-/* The vertical rail. Spans the node's full height so it passes behind an
-   expanded branch's sessions and meets the next branch with no gap. */
+/* The vertical rail. Spans the node's full height so it passes behind a group's
+   attempts and meets the next branch with no gap. */
 .branchNode::before {
   content: "";
   position: absolute;
@@ -287,31 +253,21 @@
   height: calc(10px * var(--ui-scale));
 }
 
-/* Selected unit: gild the whole node rail (the full-height ::before), so the
-   highlight runs down past every session in the branch, not just the branch row.
-   The branch row's own gold segment (.row.branch.sel::before) sits on the same x
-   and just overlaps the top of this. */
+/* Selected unit: gild the node rail (the full-height ::before). The branch row's
+   own gold segment (.row.branch.sel::before) sits on the same x and just
+   overlaps the top of this. */
 .branchNode.railSel::before {
   width: calc(2px * var(--ui-scale));
   background: var(--brand-bar);
 }
 
-/* The last branch normally truncates its rail to the elbow. When it is selected
-   AND expanded, its sessions need the rail beside them, so let the rail span the
-   node again (down to the last session); a collapsed last branch keeps the stub. */
-.branchNode.railSel.railOpen:last-child::before {
-  bottom: 0;
-  height: auto;
-}
-
 /* ---- Attempt groups (one level deeper than a branch) ----
    A fan-out group is a branch node whose children are branch nodes: the group
-   header sits at branch depth, each attempt one step in, and an attempt's
-   sessions one step further. Nothing here re-implements the rail; the branch
-   machinery is entirely variable-driven, so an attempt node just re-anchors
-   those three variables one --nest-step to the right and the same rules draw
-   the deeper rail, elbow, hover pill and session inset. Declared after
-   .branchNode (equal specificity) so the overrides win. */
+   header sits at branch depth and each attempt one step in. Nothing here
+   re-implements the rail; the branch machinery is entirely variable-driven, so
+   an attempt node just re-anchors those three variables one --nest-step to the
+   right and the same rules draw the deeper rail, elbow and hover pill. Declared
+   after .branchNode (equal specificity) so the overrides win. */
 .attemptNode {
   --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
   --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
@@ -330,9 +286,8 @@
    is never jammed against the pill edge) and never reaches the far left. Sits
    behind the content; the row owns a stacking context for the z-index -1 fill.
    The selected state repurposes this same ::before as the gold rail segment.
-   z-index (2) also lifts the sticky branch header above the session rows that
-   scroll beneath it, and still gives the z-index:-1 ::before its stacking
-   context. */
+   z-index (2) also lifts a stuck group header above the attempt rows scrolling
+   beneath it, and still gives the z-index:-1 ::before its stacking context. */
 .row.branch {
   z-index: 2;
 }
@@ -386,28 +341,19 @@
 }
 
 .row.project .label,
-.row.branch.sel .label,
-.row.session.sel .label {
+.row.branch.sel .label {
   color: var(--fg-default);
 }
 
-.row.branch .label,
-.row.session .label {
+.row.branch .label {
   color: var(--fg-muted);
 }
 
-.row.session.sel .label {
-  color: var(--fg-default);
-}
-
-/* Indent levels, both expressed from --branch-label-x so a nested node (see
-   .attemptNode) shifts its whole subtree by overriding that one variable. At the
-   top level these are 34px·s and 46px·s, as they always were. */
+/* The one indent level left, expressed from --branch-label-x so a nested node
+   (see .attemptNode) shifts its whole subtree by overriding that one variable.
+   At the top level this is 34px·s, as it always was. */
 .row.sub1 {
   padding-left: var(--branch-label-x);
-}
-.row.sub2 {
-  padding-left: calc(var(--branch-label-x) + var(--nest-step));
 }
 
 .row.dim {
@@ -472,73 +418,13 @@
   margin-left: auto;
 }
 
-/* Antigravity-style per-state status indicator (Phase 1): sits in the trailing
-   time slot (see .row.session .when below), replacing ago(last_active) for any
-   session with a detectable live status; a dead session keeps the ago time.
-   Icon-only now (no text label) - the title still carries the human label, and
-   each state gets its own playful hue (see the --status-* tokens) so the four
-   glyphs read at a glance. executing = active PTY; waitingForApproval = quiet
-   PTY + a pending tool_use in the transcript tail (Finding A floor); idle = a
-   live tab with a confirmed-running, quiet agent; running = confirmed running
-   with no open tab (resumed elsewhere). */
-.statusIndicator {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: calc(3px * var(--ui-scale));
-  /* Never shrink: it is icon-only (fixed-size glyph), so letting it shrink would
-     squeeze its box below the glyph and the row's overflow:hidden would clip the
-     icon off the right edge. Like .when/.badge, it holds its width and the label
-     ellipsizes instead. */
-  flex: 0 0 auto;
-  font-size: var(--sway-text-sm);
-}
 /* CSS-sized status glyph (the numeric Lucide size is dropped) so it tracks
-   --ui-scale; the same size feeds the rollup bubble below. */
-.statusIndicator :global(svg),
+   --ui-scale. Only the rollup bubble carries one now: a per-session indicator
+   belonged to a session row, and those are the History dropdown's rows. */
 .statusBubbleItem :global(svg) {
   flex: none;
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));
-}
-.statusIndicator.executing {
-  color: var(--status-progress);
-}
-.statusIndicator.waitingForApproval {
-  color: var(--status-needs-you);
-}
-.statusIndicator.idle {
-  color: var(--status-idle);
-}
-.statusIndicator.running {
-  color: var(--status-running);
-  opacity: 0.8;
-}
-/* The exact tier's marker: a hairline rule under the glyph, meaning Sway
-   measured this status from the session's own event stream rather than
-   inferring it from a probe and a transcript tail.
-
-   Only this side is marked. Marking the inferred side instead would restyle
-   every PTY agent tab and every external session - the rendering Phase 11
-   promised to leave alone and the golden status fixture exists to catch - so
-   the tiering is expressed by adding to the side that gained certainty.
-
-   Drawn as a pseudo-element rather than a border so it costs no layout: the
-   indicator sits in the row's fixed trailing slot, and a border would grow its
-   box and push the session name's ellipsis. */
-.statusIndicator.exact {
-  position: relative;
-}
-.statusIndicator.exact::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(-2px * var(--ui-scale));
-  height: max(1px, calc(1px * var(--ui-scale)));
-  background: currentColor;
-  border-radius: 1px;
-  opacity: 0.75;
 }
 
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
@@ -588,20 +474,9 @@
   padding: 1px calc(2px * var(--ui-scale));
 }
 
-.row.session .when {
-  margin-left: auto;
-  padding-left: calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-sm);
-  color: var(--fg-muted);
-  flex: 0 0 auto;
-  /* The ago() column ticks in place ("9m" -> "10m"), so proportional figures
-     would shift the whole right edge of the row on every refresh. */
-  font-variant-numeric: tabular-nums;
-}
-
-/* Mismatch flag: a session/branch whose recorded branch is not the working
-   tree's current checkout (plain repos only). Pushed to the right, before the
-   timestamp. The generic `.hint` variant marks branchless (pi) sessions. */
+/* Row flag, pushed to the right: the `stub` mark on an empty .bare container
+   and a fan-out group's attempt count. The generic `.hint` variant is the
+   quieter of the two. */
 .row .badge {
   margin-left: auto;
   flex: 0 0 auto;
@@ -612,67 +487,9 @@
   background: var(--brand-subtle);
 }
 
-.row .badge + .when {
-  margin-left: calc(6px * var(--ui-scale));
-}
-
-/* Touched-file count, selected session row only. Same trailing-cluster
-   push-right convention as .badge/.when: margin-left:auto by default (so it's
-   pushed right when nothing precedes it), overridden to a fixed gap once a
-   badge (or this element itself, for .when) already did the push. */
-.row .touchedCount {
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: var(--sway-text-sm);
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-.row .badge + .touchedCount {
-  margin-left: calc(6px * var(--ui-scale));
-}
-.row .touchedCount + .when {
-  margin-left: calc(6px * var(--ui-scale));
-}
-
-/* The live-status glyph shares the trailing cluster's push-right convention:
-   margin-left:auto only when it leads, a fixed gap once a badge / touched-count /
-   unseen-dot already claimed the auto and pushed the cluster right. Without this
-   two auto margins would split the free space and drift the pair apart. */
-.row .badge + .statusIndicator,
-.row .touchedCount + .statusIndicator,
-.row .unseenDot + .statusIndicator {
-  margin-left: calc(6px * var(--ui-scale));
-}
-
-/* Unseen-changes dot: this session has been active since you last looked at it.
-   Deliberately a bare filled circle, so it does not read as a member of the
-   status vocabulary (glyph + label, see .statusIndicator) and never joins the
-   collapsed-ancestor rollup. Never rendered on the selected row. Same trailing
-   -cluster push-right convention as .badge/.touchedCount. */
-.row .unseenDot {
-  margin-left: auto;
-  flex: 0 0 auto;
-  width: calc(7px * var(--ui-scale));
-  height: calc(7px * var(--ui-scale));
-  border-radius: 50%;
-  background: var(--brand-default);
-}
-.row .badge + .unseenDot {
-  margin-left: calc(6px * var(--ui-scale));
-}
-.row .unseenDot + .when {
-  margin-left: calc(6px * var(--ui-scale));
-}
-
 .row .badge.hint {
   color: var(--fg-muted);
   background: var(--neutral-subtle);
-}
-
-/* "Historical" sub-section: sessions predating a recreated folder, with an inline
-   Adopt affordance. */
-.row.historical .label {
-  font-style: italic;
 }
 
 /* ---- Space bar (Arc-style spaces) ----

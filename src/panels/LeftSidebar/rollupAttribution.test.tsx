@@ -46,7 +46,6 @@ const session = (id: string, branch: string) => ({
   last_active: 1_700_000_000,
   created_at: 1_700_000_000,
   name: null,
-  archived: false,
   agent: "claude",
 });
 
