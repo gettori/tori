@@ -80,7 +80,13 @@
 
     /* ---- Type ---- */
     --sway-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-    --sway-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
+    /* The bundled Nerd Font sits at the *end*, as a glyph fallback rather than
+       the face: agent output pasted from a shell carries powerline separators
+       and devicons, and a box instead of one is the bug. Browsers fall back per
+       character, so code in the transcript keeps rendering in SF Mono and only
+       the glyphs nothing else has come from the bundle. */
+    --sway-font-mono:
+      ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", "JetBrainsMono Nerd Font Mono", monospace;
     /* Type ramp. Every step folds --ui-scale, so the whole chrome type system
        tracks the UI font size (and Cmd +/- zoom) from one multiplier. Each base
        is the px that step renders at the default UI size (--ui-scale = 1); the
