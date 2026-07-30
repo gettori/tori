@@ -3,7 +3,7 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { agents, findAgent } from "../../utils/agents";
-import { liveStatuses } from "../../utils/sessionStatus";
+import { liveSessionStatuses } from "../../utils/sessionActivity";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import {
   emit,
@@ -103,8 +103,8 @@ export default function CommandPalette(props: {
   }
 
   const items = createMemo((): PaletteItem[] => {
-    const liveIds = new Set(liveStatuses().map((s) => s.sessionId));
-    const sessionItems: SessionItem[] = liveStatuses().map((s) => ({
+    const liveIds = new Set(liveSessionStatuses().map((s) => s.sessionId));
+    const sessionItems: SessionItem[] = liveSessionStatuses().map((s) => ({
       kind: "session",
       id: `live:${s.sessionId}`,
       label: s.sessionName || s.sessionId.slice(0, 8),

@@ -120,7 +120,9 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { sessions, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { liveStatuses, setLiveStatuses } = await import("../../utils/sessionStatus");
+const { liveSessionStatuses, resetSessionActivityForTests } = await import(
+  "../../utils/sessionActivity"
+);
 
 const listedFolders = () =>
   bridge.calls.filter((c) => c.cmd === "list_sessions").map((c) => String(c.args.folder));
@@ -133,7 +135,7 @@ const probedIds = () =>
 describe("what the sidebar can see without being expanded", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
-    setLiveStatuses([]);
+    resetSessionActivityForTests();
     bridge.calls.length = 0;
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
@@ -181,7 +183,7 @@ describe("what the sidebar can see without being expanded", () => {
     expect(sessions()[MAIN]?.map((s) => s.id)).toEqual(["live-1", "detached-1"]);
     // And the join still resolves, which is what the notification depends on.
     await waitFor(() =>
-      expect(liveStatuses().map((s) => s.sessionId)).toEqual(["live-1"]),
+      expect(liveSessionStatuses().map((s) => s.sessionId)).toEqual(["live-1"]),
     );
   });
 
@@ -212,7 +214,7 @@ describe("what the sidebar can see without being expanded", () => {
     bridge.handlers["sessions://changed"]({ payload: null });
 
     await waitFor(() =>
-      expect(liveStatuses().find((s) => s.sessionId === "live-1")?.status).toBe(
+      expect(liveSessionStatuses().find((s) => s.sessionId === "live-1")?.status).toBe(
         "waitingForApproval",
       ),
     );

@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -48,33 +48,18 @@ import {
   isUnseen,
   type Stamps,
 } from "../../utils/unseen";
-import {
-  notePresence,
-  markSessionAttended,
-  liveCounts,
-  trayEntries,
-  unattendedNeedsYouCount,
-  shouldSuppressNotification,
-  notifyNeedsYou,
-  onNeedsYouNotificationClick,
-  lastTransition,
-  attended,
-  type LiveSessionDot,
-} from "../../utils/presence";
+import { onNeedsYouNotificationClick } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
 import { findAgent, resumeCommand } from "../../utils/agents";
 import { copyText } from "../../utils/clipboard";
 import {
-  statusFromDot,
-  dotFromStatus,
-  setLiveStatuses,
   rollupStatuses,
   statusPresentation,
   type SessionStatus,
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
-import { liveChatIds, liveChats } from "../../utils/chatSessions";
+import { liveChatIds } from "../../utils/chatSessions";
 import {
   sessions,
   historical,
@@ -88,13 +73,21 @@ import {
   type SessionMeta,
   type FolderScan,
 } from "../../utils/sessionStore";
+import { type StatusCertainty } from "../../utils/sessionDot";
 import {
-  computeSessionDot,
-  dotCertainty,
-  type SessionDot,
-  type SessionDotInputs,
-  type StatusCertainty,
-} from "../../utils/sessionDot";
+  noteLiveTabs,
+  noteFolderOwners,
+  noteAttention,
+  probeBatch,
+  probeSession,
+  probeActive,
+  notePtyActivity,
+  refreshTailStates,
+  sessionStatus,
+  sessionCertainty,
+  liveSessionStatuses,
+} from "../../utils/sessionActivity";
+import { belongsToUnit } from "../../utils/unitAttribution";
 import { settings as appSettings } from "../Settings/settingsStore";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import PiIcon from "../../seti/PiIcon";
@@ -193,9 +186,6 @@ type Branch = { name: string; current: boolean };
 type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
 type Space = { name: string; path: string; projects: Project[]; external: boolean; icon?: string };
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
-
-// Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
-type TailState = "working" | "done" | "blocked-candidate";
 
 export type Selection = {
   spaceName: string;
@@ -479,86 +469,35 @@ export default function LeftSidebar(props: {
     return tabs.length + detached.length;
   }
 
-  // Per-session probe cache for the row status dot: last known `session_running`
-  // result, keyed by session id, plus the agent used (so a later re-probe of a
-  // detached session doesn't need a sessions() lookup). Solid = a live tab AND
-  // the probe confirms running; hollow = no live tab but the probe confirms
-  // running elsewhere; none otherwise (including "never probed"). Probing is
-  // trigger-driven only (row selection, sessions://changed, window focus) -
-  // never a periodic pgrep.
-  const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
+  // The probe, PTY activity and transcript tail all live in `sessionActivity`
+  // now: the tray, the dock badge and Phase 5's History panel need the same
+  // composition, and none of them should have to mount a sidebar for it. What
+  // stays here is feeding it the four things it cannot derive.
+  createEffect(() => noteLiveTabs(props.liveTabs ?? []));
+  createEffect(() =>
+    noteFolderOwners(
+      Object.fromEntries(
+        (config()?.spaces ?? []).flatMap((g) =>
+          g.projects.flatMap((p) =>
+            p.branchUnits.map((u) => [u.folderPath, { spaceName: g.name, projectName: p.name }]),
+          ),
+        ),
+      ),
+    ),
+  );
+  // Attention, the one input the store cannot see for itself: it is the sidebar
+  // that knows what is selected, and this component that owns the window-focus
+  // listener. Everything downstream of it - what counts as attended, which
+  // needs-you edge is worth a notification, the tray and the dock badge - lives
+  // in `sessionActivity` now.
+  const [windowFocused, setWindowFocused] = createSignal(true);
+  createEffect(() => noteAttention(props.selected?.sessionId ?? null, windowFocused()));
 
-  const probeSession = (id: string, agent: string) => probeBatch([{ id, agent }]);
-
-  // Probe a set of sessions at once. Every id asked about is recorded, including
-  // the ones that came back absent, so a session that has since exited flips to
-  // false rather than keeping its last answer.
-  async function probeBatch(want: readonly { id: string; agent: string }[]) {
-    const running = new Set(
-      await invoke<string[]>("sessions_running", { sessions: want }).catch(() => [] as string[]),
-    );
-    setProbes((m) => {
-      const next = { ...m };
-      for (const w of want) next[w.id] = { agent: w.agent, running: running.has(w.id) };
-      return next;
-    });
-  }
-
-  // Working/needs-you pulse (Finding A floor), live-tab sessions only. PTY
-  // activity is keyed by the *tab* id (pty_spawn's id), not the session id -
-  // `pty://activity` fires per hosted shell, so it's cross-referenced via
-  // liveTabs below. Transcript-tail state is keyed by session id and comes
-  // from `session_tail_state`, refreshed on sessions://changed and whenever
-  // the set of live tabs changes (a freshly resumed session may already be
-  // mid-tool-call before any new transcript write happens).
-  const [ptyActivity, setPtyActivity] = createSignal<Record<string, "active" | "quiet">>({});
-  const [tailStates, setTailStates] = createSignal<Record<string, TailState>>({});
-
-  async function refreshTailStates() {
-    const live = (props.liveTabs ?? []).filter((t) => t.kind === "agent" && t.sessionId);
-    if (!live.length) return;
-    const allSessions = Object.values(sessions()).flat();
-    const updates: Record<string, TailState> = {};
-    await Promise.all(
-      live.map(async (t) => {
-        const meta = allSessions.find((s) => s.id === t.sessionId);
-        if (!meta) return;
-        const agent = meta.agent === "pi" ? "pi" : "claude";
-        const state = await invoke<TailState>("session_tail_state", { id: meta.id, path: meta.path, agent }).catch(
-          () => null,
-        );
-        if (state) updates[t.sessionId!] = state;
-      }),
-    );
-    if (Object.keys(updates).length) setTailStates((m) => ({ ...m, ...updates }));
-  }
   // Both halves of the join are triggers. The store used to fill only on an
   // expansion the user drove, so `liveTabs` alone was a workable stand-in for
   // "something changed"; now the store fills on its own, and a tab whose session
   // arrives after the tab did would never get its first tail read.
   createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshTailStates()));
-
-  // Re-read one session's tail state on demand. Used off a PTY liveness edge:
-  // the hooks-status file carrying claude's ground-truth status isn't
-  // file-watched, so without this the UI only refreshes on a transcript write
-  // (now trailing-debounced), leaving a stale `blocked-candidate` pinned after
-  // the user answers - which flaps the dot needsYou<->working on every TUI
-  // redraw and re-fires the notification each time.
-  async function refreshTailStateForSession(sessionId: string) {
-    const t = (props.liveTabs ?? []).find((t) => t.kind === "agent" && t.sessionId === sessionId);
-    if (!t) return;
-    const meta = Object.values(sessions())
-      .flat()
-      .find((s) => s.id === sessionId);
-    if (!meta) return;
-    const agent = meta.agent === "pi" ? "pi" : "claude";
-    const state = await invoke<TailState>("session_tail_state", {
-      id: meta.id,
-      path: meta.path,
-      agent,
-    }).catch(() => null);
-    if (state) setTailStates((m) => ({ ...m, [sessionId]: state }));
-  }
 
   // Turn-level checkpoints (Finding E): snapshot the working tree at each new
   // human prompt, live-tab sessions only, gated by the checkpoints setting.
@@ -594,125 +533,9 @@ export default function LeftSidebar(props: {
   createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshCheckpointTicks()));
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
-  // needs-you both need a real PTY to observe, which only a live tab has.
-  // The decision itself lives in sessionDot.ts as a pure function so it can be
-  // pinned by a golden fixture; this closure only gathers its inputs.
-  //
-  // A chat session's own status is one of them, and it short-circuits the rest:
-  // the probe would report it running and the tail would be guessed at, both
-  // less certainly than the event stream already says.
-  function sessionDotInputs(id: string): SessionDotInputs {
-    const tab = (props.liveTabs ?? []).find((t) => t.sessionId === id);
-    return {
-      chatStatus: liveChats().find((c) => c.sessionId === id)?.status,
-      hasLiveTab: !!tab,
-      running: probes()[id]?.running === true,
-      ptyActivity: tab ? ptyActivity()[tab.id] : undefined,
-      tailState: tailStates()[id],
-    };
-  }
-
-  function sessionDot(id: string): SessionDot {
-    return computeSessionDot(sessionDotInputs(id));
-  }
-
-  /** Whether this row's status was measured or inferred, for the marker the
-   *  row renders. Only the exact side is marked - see the row itself. */
-  function sessionCertainty(id: string): StatusCertainty {
-    return dotCertainty(sessionDotInputs(id));
-  }
-
-  // Reverse-lookup: which space/project owns a branch-unit's `folderPath`,
-  // for presence display metadata (notification/tray text) and status rollup.
-  function projectForFolder(folderPath: string): { spaceName: string; projectName: string } | null {
-    for (const g of config()?.spaces ?? []) {
-      for (const p of g.projects) {
-        if (p.branchUnits.some((u) => u.folderPath === folderPath)) {
-          return { spaceName: g.name, projectName: p.name };
-        }
-      }
-    }
-    return null;
-  }
-
-  // Antigravity-style status vocabulary layered onto the existing dot
-  // composition (Phase 1): a pure remap, no new inputs.
-  function sessionStatus(id: string): SessionStatus {
-    return statusFromDot(sessionDot(id));
-  }
-
-  // Presence (phase 3): every live agent session's composed dot state +
-  // display metadata, recomputed whenever any of its inputs change. Shared by
-  // the tracker (notePresence), the tray, and the dock badge below, so they
-  // can't drift by rebuilding this list independently three times.
-  const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
-    const allSessions = Object.values(sessions()).flat();
-    const live: LiveSessionDot[] = [];
-    for (const t of props.liveTabs ?? []) {
-      if (t.kind !== "agent" || !t.sessionId) continue;
-      const meta = allSessions.find((s) => s.id === t.sessionId);
-      const proj = projectForFolder(t.workspace);
-      live.push({
-        sessionId: t.sessionId,
-        dot: sessionDot(t.sessionId),
-        sessionName: meta?.name || meta?.title || t.sessionId,
-        projectName: proj?.projectName ?? "",
-        folderPath: t.workspace,
-        tabId: t.id,
-      });
-    }
-    // The chat tier, which needs none of the composition above: its own event
-    // stream says when a turn is running and when a tool call is blocked. Fed
-    // into the same list so an approval waiting in a chat raises the same OS
-    // notification and the same dock badge a blocked PTY agent does.
-    //
-    // Only this list, deliberately - `liveSessionStatuses` below stays
-    // PTY-only, because `folderActors` already merges the chat tier into the
-    // revert guard and adding chats here as well would report each of them
-    // twice.
-    for (const c of liveChats()) {
-      const proj = projectForFolder(c.folderPath);
-      live.push({
-        sessionId: c.sessionId,
-        dot: dotFromStatus(c.status),
-        sessionName: c.sessionName,
-        projectName: proj?.projectName ?? "",
-        folderPath: c.folderPath,
-        tabId: c.tabId,
-      });
-    }
-    return live;
-  });
-
-  // Same join, in the Antigravity status vocabulary, covering every live-tab
-  // session across every space (not just the active one) - the shared store
-  // future consumers (palette, next-waiting hotkey) and this row's bubbling
-  // rollup both read from here.
-  const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
-    const allSessions = Object.values(sessions()).flat();
-    const live: LiveSessionStatus[] = [];
-    for (const t of props.liveTabs ?? []) {
-      if (t.kind !== "agent" || !t.sessionId) continue;
-      const meta = allSessions.find((s) => s.id === t.sessionId);
-      const proj = projectForFolder(t.workspace);
-      live.push({
-        sessionId: t.sessionId,
-        status: sessionStatus(t.sessionId),
-        sessionName: meta?.name || meta?.title || t.sessionId,
-        spaceName: proj?.spaceName ?? "",
-        projectName: proj?.projectName ?? "",
-        folderPath: t.workspace,
-        tabId: t.id,
-      });
-    }
-    return live;
-  });
-
-  // Feed the tracker on every relevant change, so the OS notification/tray/
-  // badge (all outside this component) share one source of truth instead of
-  // re-deriving it independently.
-  createEffect(() => notePresence(liveSessionDots()));
-  createEffect(() => setLiveStatuses(liveSessionStatuses()));
+  // needs-you both need a real PTY to observe, which only a live tab has. The
+  // composition, and the two live lists built on it, are `sessionActivity`'s
+  // now; what remains here is rendering them.
 
   // Rollup helper: the per-state counts among every live session that matches
   // `pred`, for a collapsed branch/project row or a non-active space tile's
@@ -722,12 +545,35 @@ export default function LeftSidebar(props: {
     return rollupStatuses(liveSessionStatuses().filter(pred));
   }
 
-  // Branch/project-row rollup: `sessionIds` is the exact set unitSessionsAll
-  // (or a union of it) computed for that row, so a plain project's sibling
-  // branch units - which share one `folderPath` and are told apart only by
-  // recorded branch - never cross-attribute a session to the wrong row.
-  function bubbleForIds(sessionIds: Set<string>) {
-    return bubbleFor((s) => sessionIds.has(s.sessionId));
+  // Does this live session belong to `u`? Keyed off the status list's own
+  // recorded branch rather than off a per-row session array, so the rollup no
+  // longer depends on the rows existing - which is what Phase 6 deletes. A
+  // plain project's sibling branch units share one `folderPath` and are told
+  // apart only by that branch, so `belongsToUnit` is the whole of the answer.
+  function statusInUnit(s: LiveSessionStatus, p: Project, u: BranchUnit) {
+    return (
+      s.folderPath === u.folderPath &&
+      belongsToUnit({ agent: s.agent, branch: s.recordedBranch }, u, p.branchUnits)
+    );
+  }
+
+  // Whether a session's own row is on screen, mirroring `sessionVisible` for
+  // the status list. A row that is showing carries its own status, so counting
+  // it on an ancestor too would report it twice - hence `hiddenOnly` on an
+  // expanded row.
+  //
+  // `sessionName` falls back to the session id where `sessionText` falls back
+  // to "", but the scanner always writes a title (an empty one becomes
+  // "(untitled session)"), so the fallback only fires for a status with no
+  // session in the store at all - which has no row to be visible in either.
+  function statusVisible(s: LiveSessionStatus) {
+    return !q() || s.sessionName.toLowerCase().includes(q());
+  }
+
+  function bubbleForUnits(p: Project, us: readonly BranchUnit[], hiddenOnly: boolean) {
+    return bubbleFor(
+      (s) => us.some((u) => statusInUnit(s, p, u)) && (!hiddenOnly || !statusVisible(s)),
+    );
   }
 
   // Per-state icon for a session row (Antigravity 2.0 style): the icon always
@@ -769,7 +615,8 @@ export default function LeftSidebar(props: {
   // Collapsed/hidden-ancestor rollup badge: Waiting first (it always wins the
   // row), then Executing, each with an xN count when more than one session
   // shares the state. Renders nothing when neither count is present.
-  function statusBubble(r: Rollup) {
+  function statusBubble(r: Rollup | null) {
+    if (!r) return null;
     if (!r.waitingForApproval && !r.executing && !r.idle && !r.running) return null;
     return (
       <span class={styles.statusBubble}>
@@ -800,52 +647,6 @@ export default function LeftSidebar(props: {
       </span>
     );
   }
-
-  const [windowFocused, setWindowFocused] = createSignal(true);
-  // Chats whose tab is the one on screen. A chat that blocks in the pane you are
-  // watching needs no notification, and the sidebar selection cannot tell us
-  // that: a chat's session id is minted before its transcript exists, so
-  // clicking its tab resolves only as far as its branch.
-  const onScreenChats = () => new Set(liveChats().filter((c) => c.visible).map((c) => c.sessionId));
-  // A session reads as attended once it's both the sidebar's current
-  // selection and the window has focus - the same "you're looking at it"
-  // signal focusOrResume already uses to bring a tab to the front.
-  createEffect(() => {
-    const sel = props.selected;
-    if (sel?.sessionId && windowFocused()) markSessionAttended(sel.sessionId);
-  });
-
-  // OS notification on the needs-you rising edge, suppressed if you're
-  // already looking at that exact session when it blocks.
-  createEffect(
-    on(lastTransition, (event) => {
-      if (!event) return;
-      if (shouldSuppressNotification(event, props.selected?.sessionId, windowFocused(), onScreenChats())) return;
-      void notifyNeedsYou(event);
-    }),
-  );
-
-  // Tray + dock badge, recomputed from the same live-session list. Both are
-  // cheap, infrequent (agent state transitions, not PTY bytes), so a plain
-  // rebuild-on-change is simpler than an incremental update. The tray reads
-  // the same status vocabulary and Waiting-first ordering as the sidebar
-  // (adversary F5), not a re-derived dot scheme.
-  createEffect(() => {
-    const live = liveSessionDots();
-    const { running, needsYou } = liveCounts(live);
-    // Entries come from the *same* list as the counts, not from
-    // `liveSessionStatuses`. That list is deliberately PTY-only (see its note),
-    // which used to leave the tray counting a chat awaiting approval in its
-    // badge while omitting it from the menu - the one session you would open
-    // the tray to reach was the one entry missing from it.
-    const entries = trayEntries(live);
-    invoke("update_tray", { running, needsYou, entries }).catch(() => {});
-  });
-  createEffect(() => {
-    invoke("set_badge_count", { count: unattendedNeedsYouCount(liveSessionDots(), attended()) }).catch(
-      () => {},
-    );
-  });
 
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
   // and select it exactly as clicking its sidebar row would - the notification
@@ -914,31 +715,6 @@ export default function LeftSidebar(props: {
     selectBranchByFolder(d.folderPath);
   }
 
-  // Re-probe every session whose dot could currently be non-"none": every live
-  // tab's session (catches solid -> none, e.g. a Ctrl+C exit-to-shell) and every
-  // previously-confirmed detached session (catches hollow -> none, e.g. it
-  // exited). Called from sessions://changed and window focus only.
-  function probeActive() {
-    const seen = new Set<string>();
-    const want: { id: string; agent: string }[] = [];
-    for (const t of props.liveTabs ?? []) {
-      if (!t.sessionId || seen.has(t.sessionId)) continue;
-      seen.add(t.sessionId);
-      want.push({
-        id: t.sessionId,
-        agent: t.agent ?? probes()[t.sessionId]?.agent ?? "claude",
-      });
-    }
-    for (const [id, p] of Object.entries(probes())) {
-      if (p.running && !seen.has(id)) {
-        seen.add(id);
-        want.push({ id, agent: p.agent });
-      }
-    }
-    // One call for the whole set: this fires on every sessions://changed, so a
-    // probe per session made a busy window pay a subprocess per open tab.
-    if (want.length > 0) void probeBatch(want);
-  }
 
   // Touched-file count for the *selected* session only, fetched via its own
   // session_detail call on selection - deliberately independent of Toolbar's
@@ -2395,16 +2171,7 @@ export default function LeftSidebar(props: {
           <Show when={u.isCurrent}>
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
-          {statusBubble(
-            bubbleForIds(
-              new Set(
-                (!uopen()
-                  ? unitSessionsAll(p, u)
-                  : unitSessionsAll(p, u).filter((s) => !sessionVisible(s))
-                ).map((s) => s.id),
-              ),
-            ),
-          )}
+          {statusBubble(bubbleForUnits(p, [u], uopen()))}
           <RowChevron open={uopen()} />
         </div>
         <Show when={uopen()}>
@@ -2440,10 +2207,6 @@ export default function LeftSidebar(props: {
     const units = () => grp.members.map(attemptUnit);
     // Same rollup rule as a branch row: everything under a closed group, and
     // only what the search filter hides under an open one.
-    const rolledUp = () => {
-      const all = units().flatMap((u) => unitSessionsAll(p, u));
-      return new Set((open() ? all.filter((s) => !sessionVisible(s)) : all).map((s) => s.id));
-    };
     return (
       <div class={`node ${styles.branchNode}`} classList={{ [styles.railOpen]: open() }}>
         <div
@@ -2463,7 +2226,7 @@ export default function LeftSidebar(props: {
           >
             {grp.members.length === 1 ? "1 attempt" : `${grp.members.length} attempts`}
           </span>
-          {statusBubble(bubbleForIds(rolledUp()))}
+          {statusBubble(bubbleForUnits(p, units(), open()))}
           <RowChevron open={open()} />
         </div>
         <Show when={open()}>
@@ -2472,21 +2235,6 @@ export default function LeftSidebar(props: {
           </For>
         </Show>
       </div>
-    );
-  }
-
-  // The plain unit that owns re-homed sessions: the current checkout, else the
-  // branchless folder fallback (detached/unborn HEAD), else the first plain unit.
-  // A key (branch, or a sentinel for the branchless unit) identifies it uniquely,
-  // since a plain project's units share one folder and differ only by branch.
-  const plainUnitKey = (u: BranchUnit) => u.branch ?? "\0folder";
-  function fallbackHome(p: Project): BranchUnit | null {
-    const plain = p.branchUnits.filter((u) => u.kind === "plain");
-    return (
-      plain.find((u) => u.isCurrent) ??
-      plain.find((u) => u.branch == null) ??
-      plain[0] ??
-      null
     );
   }
 
@@ -2502,19 +2250,9 @@ export default function LeftSidebar(props: {
   // status-bubble rollup below, which needs the sessions a search filter
   // hides too (unitSessions layers that filter on top for rendering).
   function unitSessionsAll(p: Project, u: BranchUnit): SessionMeta[] {
-    const all = (sessions()[u.folderPath] ?? []).filter((s) => !s.archived);
-    if (u.kind !== "plain") return all;
-    const visible = new Set(
-      p.branchUnits.filter((x) => x.kind === "plain" && x.branch).map((x) => x.branch),
-    );
-    const home = fallbackHome(p);
-    const isHome = home != null && plainUnitKey(u) === plainUnitKey(home);
-    return all.filter((s) => {
-      if (s.agent === "pi") return isHome;
-      const b = s.branch || "";
-      if (b && visible.has(b)) return (u.branch || "") === b;
-      return isHome; // orphaned recorded branch (or branchless claude): re-home
-    });
+    return (sessions()[u.folderPath] ?? [])
+      .filter((s) => !s.archived)
+      .filter((s) => belongsToUnit(s, u, p.branchUnits));
   }
 
   function unitSessions(p: Project, u: BranchUnit): SessionMeta[] {
@@ -2588,17 +2326,7 @@ export default function LeftSidebar(props: {
     });
     unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
       "pty://activity",
-      (e) => {
-        const prev = ptyActivity()[e.payload.id];
-        setPtyActivity((m) => ({ ...m, [e.payload.id]: e.payload.state }));
-        // A liveness edge is exactly when the agent's status can flip, and the
-        // hooks-status file that carries claude's truth isn't file-watched, so
-        // this edge is our refresh trigger (see refreshTailStateForSession).
-        if (prev !== e.payload.state) {
-          const tab = (props.liveTabs ?? []).find((t) => t.id === e.payload.id);
-          if (tab?.sessionId) void refreshTailStateForSession(tab.sessionId);
-        }
-      },
+      (e) => notePtyActivity(e.payload.id, e.payload.state),
     );
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
@@ -2791,16 +2519,13 @@ export default function LeftSidebar(props: {
                   <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} /></span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
-                    bubbleForIds(
-                      new Set(
-                        (!popen()
-                          ? allUnits().flatMap((u) => unitSessionsAll(p, u))
-                          : plainDir()
-                            ? unitSessionsAll(p, folderUnit()).filter((s) => !sessionVisible(s))
-                            : []
-                        ).map((s) => s.id),
-                      ),
-                    ),
+                    !popen()
+                      ? bubbleForUnits(p, allUnits(), false)
+                      : plainDir()
+                        ? bubbleForUnits(p, [folderUnit()], true)
+                        // An expanded git project has branch rows of its own,
+                        // and each already carries its unit's bubble.
+                        : null,
                   )}
                   <RowChevron open={popen()} />
                 </div>

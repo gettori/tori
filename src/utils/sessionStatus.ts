@@ -1,10 +1,10 @@
-// Shared Antigravity-style status vocabulary + rollup primitives (Phase 1).
-// LeftSidebar.tsx still owns the actual composition (dot = f(probe, ptyActivity,
-// tailState)); this module turns that dot into the four detectable states Sway
-// can show, and exposes the composed list as a signal so a future consumer
-// (command palette, next-waiting hotkey) can read every live-tab session's
-// status without re-deriving it or being scoped to the active space.
-import { createSignal } from "solid-js";
+// The shared status vocabulary: the four states Sway can detect, what to call
+// them, and the rollup arithmetic over a set of them. Pure and stateless.
+//
+// The composed list itself belongs to `sessionActivity`, which owns the probe,
+// PTY-activity and tail-state inputs it is built from. Keeping the vocabulary
+// separate is what lets `sessionDot` depend on it without depending on any of
+// that machinery.
 // Type-only, so the pair stays a one-way value dependency (sessionDot imports
 // `dotFromStatus` from here) rather than a runtime import cycle.
 import type { SessionDot, StatusCertainty } from "./sessionDot";
@@ -98,6 +98,15 @@ export type LiveSessionStatus = {
   projectName: string;
   folderPath: string;
   tabId: string;
+  /** The branch the session's transcript recorded, joined from the session
+   *  store rather than read off the tab: a tab descriptor carries no branch,
+   *  and without one a plain repo's sibling branch units - which share a single
+   *  `folderPath` - cannot tell their sessions apart. Absent for a session with
+   *  no transcript yet, and for one that recorded no branch. */
+  recordedBranch?: string;
+  /** Joined from the same place, for the one attribution case that turns on it:
+   *  a branchless (pi) session's files are whatever the checkout currently is. */
+  agent?: string;
 };
 
 export type Rollup = {
@@ -121,13 +130,11 @@ export function rollupStatuses(sessions: { status: SessionStatus }[]): Rollup {
   return r;
 }
 
-const [liveStatuses, setLiveStatusesSignal] = createSignal<LiveSessionStatus[]>([]);
-export { liveStatuses };
-
-/// Called reactively by LeftSidebar (the sole owner of the underlying probe/
-/// activity/tail-state composition) with every live-tab session's current
-/// status, so any other component can read it without re-subscribing to that
-/// composition itself.
-export function setLiveStatuses(list: LiveSessionStatus[]) {
-  setLiveStatusesSignal(list);
-}
+// The composed list itself lives in `sessionActivity`, which owns the probe,
+// PTY-activity and tail-state inputs it is built from. This module stays the
+// pure vocabulary: the states, their labels, and the rollup arithmetic over
+// them. It used to also hold a published *copy* of the list, written by
+// LeftSidebar on every change, because the composition lived in that component
+// and nothing else could reach it. A copy is one tick behind its source and one
+// more place for the two to disagree, so with the composition in a store of its
+// own there is nothing left for it to do.

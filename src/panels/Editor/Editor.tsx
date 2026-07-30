@@ -65,7 +65,7 @@ import {
   type EditingIndication,
 } from "../../utils/editingNow";
 import { folderActors } from "../../utils/folderActors";
-import { liveStatuses } from "../../utils/sessionStatus";
+import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite } from "../../utils/selfWrites";
 import { ensureLsp } from "./lspClient";
@@ -408,10 +408,7 @@ export default function Editor(props: {
   // The actor set is refreshed on the same cadence as the touched fetch, never
   // per fs event: the detached tier costs a `session_running` probe per off-tab
   // session, which is fine once a turn and far too much per file write.
-  const selectedExecuting = () => {
-    const id = props.selected?.sessionId;
-    return !!id && liveStatuses().some((s) => s.sessionId === id && s.status === "executing");
-  };
+  const selectedExecuting = () => shouldPollAccumulatedDiff(props.selected?.sessionId);
 
   // null until the probe lands: gathering is async, so there is a window after a
   // selection change where we do not know who else is live here. isSoleLiveActor

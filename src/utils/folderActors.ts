@@ -8,8 +8,8 @@
 // probe, so callers gather deliberately (at click time, or on a turn boundary)
 // rather than per event.
 import { invoke } from "@tauri-apps/api/core";
-import { liveStatuses } from "./sessionStatus";
-import { liveChatIds, liveChats } from "./chatSessions";
+import { liveSessionStatuses } from "./sessionActivity";
+import { liveChatIds } from "./chatSessions";
 import type { RevertCandidate } from "./revertGuard";
 
 type SessionMeta = { id: string; agent: string; cwd: string; name?: string; title?: string };
@@ -18,21 +18,16 @@ type SessionMeta = { id: string; agent: string; cwd: string; name?: string; titl
  *  probes: PTY agent tabs (composed from activity + transcript tail) and chat
  *  tabs (reported by the transport's own event stream). */
 export function liveCandidates(): RevertCandidate[] {
-  const pty = liveStatuses().map((s) => ({
+  // Both tiers, from one list. `liveStatuses` used to be PTY-only, so this
+  // unioned the chats in itself; now the status store merges them, and doing it
+  // again here would report every chat twice.
+  return liveSessionStatuses().map((s) => ({
     sessionId: s.sessionId,
     sessionName: s.sessionName,
     folderPath: s.folderPath,
     status: s.status,
     hasLiveTab: true,
   }));
-  const chat = liveChats().map((c) => ({
-    sessionId: c.sessionId,
-    sessionName: c.sessionName,
-    folderPath: c.folderPath,
-    status: c.status,
-    hasLiveTab: true,
-  }));
-  return [...pty, ...chat];
 }
 
 /** Every session rooted in this folder that Sway cannot see inside: found by
@@ -51,7 +46,7 @@ export function liveCandidates(): RevertCandidate[] {
  *  deliberately no longer depends on it. */
 export async function detachedCandidates(folder: string): Promise<RevertCandidate[]> {
   const sessions = await invoke<SessionMeta[]>("list_sessions", { folder }).catch(() => [] as SessionMeta[]);
-  const liveIds = new Set([...liveStatuses().map((s) => s.sessionId), ...liveChatIds()]);
+  const liveIds = new Set([...liveSessionStatuses().map((s) => s.sessionId), ...liveChatIds()]);
   const offTab = sessions.filter((s) => !liveIds.has(s.id));
   if (offTab.length === 0) return [];
   // One batch probe, not one per off-tab session: a folder with dozens of
