@@ -14,14 +14,11 @@ import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import ImageView, { isImagePath } from "./ImageView";
-import TranscriptViewer from "./TranscriptViewer";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
 import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
-import ClaudeIcon from "../../seti/ClaudeIcon";
-import PiIcon from "../../seti/PiIcon";
 import Icon from "../../components/Icon/Icon";
 import {
   X,
@@ -43,13 +40,11 @@ import {
   on as onEvent,
   onWith,
   OPEN_IN_EDITOR,
-  OPEN_TRANSCRIPT,
   PURGE_UNDER_PATH,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
   type OpenInEditor,
-  type OpenTranscript,
   type PurgeUnderPath,
   type LiveTab,
   type SetRightMode,
@@ -72,16 +67,10 @@ import { ensureLsp } from "./lspClient";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
-type FileTab = { kind: "file"; path: string; name: string };
-type TranscriptTab = {
-  kind: "transcript";
-  id: string;
-  sessionPath: string;
-  agent: "claude" | "pi";
-  name: string;
-  cwd: string;
-};
-type Tab = FileTab | TranscriptTab;
+// Every editor tab is a file now that the transcript viewer is gone, so a tab
+// *is* its path: `tabId` and `FileTab.path` are the same string, and the tab
+// bar's `idOf` is what still names the mapping.
+type FileTab = { path: string; name: string };
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
 // filtered list hands OverflowTabBar the same object references on every read:
@@ -100,8 +89,8 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   docs: { mode: "docs", label: "Docs", icon: BookOpen },
 };
 
-function tabId(t: Tab): string {
-  return t.kind === "file" ? t.path : `transcript:${t.id}`;
+function tabId(t: FileTab): string {
+  return t.path;
 }
 
 function basename(path: string): string {
@@ -139,7 +128,7 @@ export default function Editor(props: {
       title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
-  const [tabs, setTabs] = createSignal<Tab[]>([]);
+  const [tabs, setTabs] = createSignal<FileTab[]>([]);
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
   const [rightMode, setRightMode] = createSignal<RightMode>("files");
@@ -195,19 +184,19 @@ export default function Editor(props: {
   >(null);
   let gotoNonce = 0;
 
-  const filePaths = () => tabs().filter((t): t is FileTab => t.kind === "file").map((t) => t.path);
+  const filePaths = () => tabs().map((t) => t.path);
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   const isImageTab = () => {
     const t = activeTab();
-    return t?.kind === "file" && isImagePath(t.path);
+    return t != null && isImagePath(t.path);
   };
   const isMarkdownTab = () => {
     const t = activeTab();
-    return t?.kind === "file" && t.path.toLowerCase().endsWith(".md");
+    return t != null && t.path.toLowerCase().endsWith(".md");
   };
   const isSvgTab = () => {
     const t = activeTab();
-    return t?.kind === "file" && t.path.toLowerCase().endsWith(".svg");
+    return t != null && t.path.toLowerCase().endsWith(".svg");
   };
   // Tabs that carry a source-vs-render toggle: Markdown renders to HTML, SVG
   // renders to its image. Everything else edits in place with no toggle.
@@ -223,10 +212,6 @@ export default function Editor(props: {
       return next;
     });
   }
-  const activeTranscript = () => {
-    const t = activeTab();
-    return t && t.kind === "transcript" ? t : null;
-  };
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
@@ -309,25 +294,16 @@ export default function Editor(props: {
   );
 
   function openFile(path: string) {
-    if (!tabs().some((t) => t.kind === "file" && t.path === path)) {
-      setTabs([...tabs(), { kind: "file", path, name: basename(path) }]);
+    if (!tabs().some((t) => t.path === path)) {
+      setTabs([...tabs(), { path, name: basename(path) }]);
     }
     setActiveId(path);
-  }
-
-  // Opened from the sidebar's session context menu (see OPEN_TRANSCRIPT below).
-  // Read-only, so there is never a dirty prompt on close.
-  function openTranscript(id: string, sessionPath: string, agent: "claude" | "pi", name: string, cwd: string) {
-    if (!tabs().some((t) => t.kind === "transcript" && t.id === id)) {
-      setTabs([...tabs(), { kind: "transcript", id, sessionPath, agent, name, cwd }]);
-    }
-    setActiveId(`transcript:${id}`);
   }
 
   async function closeTab(id: string) {
     const tab = tabs().find((t) => tabId(t) === id);
     if (!tab) return;
-    if (tab.kind === "file" && dirty()[tab.path]) {
+    if (dirty()[tab.path]) {
       const ok = await askConfirm({
         title: `Discard unsaved changes to ${tab.name}?`,
         message: "The edits in this tab will be lost.",
@@ -338,19 +314,17 @@ export default function Editor(props: {
     }
     const remaining = tabs().filter((t) => tabId(t) !== id);
     setTabs(remaining);
-    if (tab.kind === "file") {
-      setDirty((d) => {
-        const next = { ...d };
-        delete next[tab.path];
-        return next;
-      });
-      setPreviewOn((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
+    setDirty((d) => {
+      const next = { ...d };
+      delete next[tab.path];
+      return next;
+    });
+    setPreviewOn((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     if (activeId() === id) {
       setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
@@ -508,8 +482,8 @@ export default function Editor(props: {
   // the question (the deleted-file conflict's "take disk" choice), so a
   // discard prompt here would ask the same thing twice.
   function forceCloseFile(path: string) {
-    if (!tabs().some((t) => t.kind === "file" && t.path === path)) return;
-    const remaining = tabs().filter((t) => !(t.kind === "file" && t.path === path));
+    if (!tabs().some((t) => t.path === path)) return;
+    const remaining = tabs().filter((t) => t.path !== path);
     setTabs(remaining);
     setDirty((d) => {
       const next = { ...d };
@@ -526,16 +500,15 @@ export default function Editor(props: {
   }
 
   // A space is being deleted: force-close every open tab rooted under it, without
-  // the per-file dirty prompt (the folder is going away regardless). A
-  // transcript tab is "under" a path when its session's transcript file is.
+  // the per-file dirty prompt (the folder is going away regardless).
   function purgeUnder(path: string) {
-    const goneTabs = tabs().filter((t) => isUnderPath(t.kind === "file" ? t.path : t.sessionPath, path));
+    const goneTabs = tabs().filter((t) => isUnderPath(t.path, path));
     if (!goneTabs.length) return;
     const goneIds = new Set(goneTabs.map(tabId));
     setTabs((ts) => ts.filter((t) => !goneIds.has(tabId(t))));
     setDirty((d) => {
       const next = { ...d };
-      for (const t of goneTabs) if (t.kind === "file") delete next[t.path];
+      for (const t of goneTabs) delete next[t.path];
       return next;
     });
     if (activeId() && goneIds.has(activeId()!)) {
@@ -546,7 +519,6 @@ export default function Editor(props: {
 
   let offTouched: UnlistenFn | undefined;
   let offOpen: (() => void) | undefined;
-  let offTranscript: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
@@ -563,10 +535,6 @@ export default function Editor(props: {
       if (!d?.path) return;
       openFile(d.path);
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
-    });
-    offTranscript = onWith<OpenTranscript>(OPEN_TRANSCRIPT, (d) => {
-      if (!d?.id || !d.sessionPath) return;
-      openTranscript(d.id, d.sessionPath, d.agent, d.name, d.cwd);
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
@@ -624,7 +592,6 @@ export default function Editor(props: {
     clearTimeout(quietTimer);
     offTouched?.();
     offOpen?.();
-    offTranscript?.();
     offPurge?.();
     offClose?.();
     offFollow?.();
@@ -646,31 +613,26 @@ export default function Editor(props: {
             <Tab
               active={tabId(t) === activeId()}
               onClick={() => setActiveId(tabId(t))}
-              title={t.kind === "file" ? t.path : t.name}
-              draggable={t.kind === "file"}
+              title={t.path}
+              draggable={true}
               onDragStart={(e) => {
-                if (t.kind !== "file") return;
                 e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
                 e.dataTransfer?.setData("text/plain", t.path);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
               }}
-              icon={
-                <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
-                  <FileIcon name={t.name} />
-                </Show>
-              }
+              icon={<FileIcon name={t.name} />}
               trailing={
                 <>
-                  <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
+                  <Show when={isTouched(t.path) || isEditingNow(t.path)}>
                     <span
                       class={styles.tabTouched}
-                      classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
-                      title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                      classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
+                      title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
                     >
                       ●
                     </span>
                   </Show>
-                  <Show when={t.kind === "file" && dirty()[t.path]}>
+                  <Show when={dirty()[t.path]}>
                     <span class="tab-dirty">●</span>
                   </Show>
                 </>
@@ -683,20 +645,18 @@ export default function Editor(props: {
           )}
           renderMenuItem={(t) => (
             <>
-              <Show when={t.kind === "file"} fallback={t.kind === "transcript" && t.agent === "pi" ? <PiIcon /> : <ClaudeIcon />}>
-                <FileIcon name={t.name} />
-              </Show>
+              <FileIcon name={t.name} />
               <span class="tab-name">{t.name}</span>
-              <Show when={t.kind === "file" && (isTouched(t.path) || isEditingNow(t.path))}>
+              <Show when={isTouched(t.path) || isEditingNow(t.path)}>
                 <span
                   class={styles.tabTouched}
-                  classList={{ [styles.tabEditing]: t.kind === "file" && isEditingNow(t.path) }}
-                  title={t.kind === "file" && isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                  classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
+                  title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
                 >
                   ●
                 </span>
               </Show>
-              <Show when={t.kind === "file" && dirty()[t.path]}>
+              <Show when={dirty()[t.path]}>
                 <span class="tab-dirty">●</span>
               </Show>
               <button
@@ -752,7 +712,7 @@ export default function Editor(props: {
           }
         >
           <CodeEditor
-            activePath={activeTab()?.kind === "file" && !isImageTab() && !showingPreview() ? activeId() : null}
+            activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
             openPaths={filePaths()}
             projectRoot={root()}
             goto={gotoTarget()}
@@ -770,18 +730,6 @@ export default function Editor(props: {
               <ImageView path={activeId()!} />
             </Show>
           </Show>
-        </Show>
-        <Show when={activeTranscript()}>
-          {(t) => (
-            <TranscriptViewer
-              class={styles.transcriptOverlay}
-              sessionPath={t().sessionPath}
-              agent={t().agent}
-              sessionId={t().id}
-              repoPath={t().cwd}
-              liveTabs={props.liveTabs ?? []}
-            />
-          )}
         </Show>
       </div>
       <Show when={filetreeOn()}>

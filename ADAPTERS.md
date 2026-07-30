@@ -250,7 +250,8 @@ transcript, an editor with it open).
 
 `parser.kind` selects which built-in transcript parser turns this agent's
 session data into Sway's session model (prompt/turn/tool counts, touched
-files, the transcript viewer). Parser kinds are implemented in Sway itself,
+files, the chat panel's replay of an existing session, the needs-you tail
+state). Parser kinds are implemented in Sway itself,
 not user-authorable - a user adapter can only *reference* one of:
 
 - `claude_jsonl` - Claude Code's transcript shape (`type: "user"/"assistant"`
