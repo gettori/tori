@@ -874,6 +874,43 @@
   color: var(--danger-fg);
 }
 
+/* The long half of a notice (a compaction summary), folded away. The trigger
+   is quieter than the line above it: it is an offer, not news. */
+.noticeDetails {
+  margin-top: calc(4px * var(--ui-scale));
+  text-align: left;
+}
+
+.noticeDetails > summary {
+  color: var(--fg-subtle);
+  cursor: pointer;
+  font-size: var(--sway-text-md);
+  list-style: none;
+  text-align: center;
+}
+
+.noticeDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.noticeDetails > summary::before {
+  content: "▸ ";
+}
+
+.noticeDetails[open] > summary::before {
+  content: "▾ ";
+}
+
+/* Wraps and stays readable at length: the summary is prose, not a status line,
+   so it gets a measure rather than the centred single line's treatment. */
+.noticeDetailsBody {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  max-width: calc(680px * var(--ui-scale));
+  padding-top: calc(6px * var(--ui-scale));
+  white-space: pre-wrap;
+}
+
 /* What the session loaded: MCP servers, skills, agents, plugins. Lives in the
    overflow menu; a disclosure there rather than permanent chrome. */
 .sessionInfo {
