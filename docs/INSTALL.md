@@ -58,7 +58,7 @@ files; it is what the **Open Anyway** button does under the hood.
   under Privacy & Security too, and the right-click-Open trick still works
   there.
 - **Apple Silicon or Intel.** The DMG carries a universal binary.
-- **At least one agent CLI installed**, such as Claude Code, pi, or opencode.
+- **At least one agent CLI installed.** Claude Code ships supported; see ADAPTERS.md to add another.
   Sway drives the agents you already have; it does not bundle one. After first
   launch, Settings > Agents shows which ones it found.
 - **Node.js**, if you want the bundled TypeScript language server to run.
@@ -87,4 +87,4 @@ under a single directory, `~/.config/sway/`:
 One cache lives outside it: `~/Library/Caches/sway/`, holding the published
 model list the context meter reads. Deleting both directories removes every
 trace. Sway never touches your agent
-CLIs' own session data, so your Claude/pi/opencode transcripts are unaffected.
+CLIs' own session data, so your agent transcripts are unaffected.

@@ -63,7 +63,7 @@ const OTHER_VENDOR = /gpt|openai|^o\d|gemini|llama|mistral|qwen|deepseek|grok|ki
  *
  * The model id is asked first and the agent second, because they answer
  * different questions: a harness can run a model that is not its vendor's
- * (opencode driving Claude, a Claude session pointed at a router), so the id on
+ * (a harness driving Claude, a Claude session pointed at a router), so the id on
  * the wire is the better witness whenever there is one. The agent id covers the
  * two cases the id cannot: a session before its first `system/init`, where the
  * pill says "Default" and the adapter is all we know, and a short alias like

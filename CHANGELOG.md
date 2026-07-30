@@ -15,9 +15,10 @@ First public release. macOS only, unsigned (see
 
 ### Agents
 
-- Data-driven agent adapters: Claude, pi, and opencode ship bundled, and any
-  agent CLI can be added by dropping a `schema_version = 1` TOML into
-  `~/.config/sway/agents/`. See `ADAPTERS.md`.
+- Data-driven agent adapters: Claude ships bundled, and any agent CLI can be
+  added by dropping a `schema_version = 1` TOML into `~/.config/sway/agents/`.
+  See `ADAPTERS.md`. (This release also bundled `pi` and `opencode`; both were
+  removed in a later one.)
 - An **Agents** section in Settings showing, per adapter, whether its CLI is
   installed, which version, where sessions are read from, and what Sway can do
   with it. Binaries resolve against the login-shell PATH, so an agent installed

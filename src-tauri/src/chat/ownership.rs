@@ -954,7 +954,7 @@ mod tests {
                 tab_id: "t2".into(),
                 child_pid: Some(4343),
                 sway_pid: 4_000_000,
-                agent: "pi".into(),
+                agent: "gemini".into(),
             },
         );
 
@@ -969,13 +969,13 @@ mod tests {
             asked,
             vec![
                 ("claude".to_string(), "s-claude".to_string(), 4242),
-                ("pi".to_string(), "s-other".to_string(), 4343),
+                ("gemini".to_string(), "s-other".to_string(), 4343),
             ],
             "each claim must be probed with the agent it recorded"
         );
         // And the agent travels onto the orphan, so terminating it re-checks the
         // same pattern the classification used.
-        assert!(found.iter().any(|r| matches!(r, Reaped::Orphan { agent, .. } if agent == "pi")));
+        assert!(found.iter().any(|r| matches!(r, Reaped::Orphan { agent, .. } if agent == "gemini")));
     }
 
     /// A claims file written before the agent field existed must still load.

@@ -88,7 +88,7 @@ fn parse_version(output: &str) -> Option<String> {
 }
 
 /// Compare a running version against the adapter's `verified_against`. Both
-/// sides go through `parse_version` so `"opencode 1.18.3"` compares equal to a
+/// sides go through `parse_version` so `"claude 1.18.3"` compares equal to a
 /// CLI printing `"1.18.3"`.
 fn compare(running: Option<&str>, verified: Option<&str>) -> BinaryStatus {
     match (running, verified.and_then(parse_version)) {
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn parses_a_single_line_version() {
         assert_eq!(parse_version("1.18.3\n"), Some("1.18.3".into()));
-        assert_eq!(parse_version("opencode 1.18.3"), Some("1.18.3".into()));
+        assert_eq!(parse_version("claude 1.18.3"), Some("1.18.3".into()));
         assert_eq!(parse_version("v2.0.1"), Some("2.0.1".into()));
         assert_eq!(parse_version("1.0.0 (Claude Code)"), Some("1.0.0".into()));
         // Leading/trailing blank lines are noise, not a second line.
@@ -182,8 +182,8 @@ mod tests {
 
     #[test]
     fn compare_matches_across_the_verified_against_prefix() {
-        assert_eq!(compare(Some("1.18.3"), Some("opencode 1.18.3")), BinaryStatus::VersionMatch);
-        assert_eq!(compare(Some("1.18.4"), Some("opencode 1.18.3")), BinaryStatus::VersionDrift);
+        assert_eq!(compare(Some("1.18.3"), Some("claude 1.18.3")), BinaryStatus::VersionMatch);
+        assert_eq!(compare(Some("1.18.4"), Some("claude 1.18.3")), BinaryStatus::VersionDrift);
         // An adapter that declares nothing to compare against is never drift.
         assert_eq!(compare(Some("1.18.3"), None), BinaryStatus::VersionUnknown);
     }

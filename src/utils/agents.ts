@@ -1,11 +1,20 @@
 // Mirrors src-tauri/src/agents.rs's `AgentAdapter` (the JSON `list_agents`
 // returns). Backend-only fields (discovery dir, filename regex) aren't
 // exposed; everything else the frontend needs to launch/resume an agent
-// without hardcoding "claude"/"pi" lives here.
+// without hardcoding an agent id lives here.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
-export type ParserKind = "claude_jsonl" | "pi_jsonl" | "opencode_sqlite";
+export type ParserKind = "claude_jsonl";
+
+/** A registered adapter's id, as `list_agents` reports it.
+ *
+ *  An alias over `string` rather than a union of the ids that ship, because the
+ *  registry is open: a user TOML in `~/.config/sway/agents/` adds an id Sway
+ *  has never heard of, and this id is what selects that adapter's parser kind
+ *  and pgrep pattern on the backend. A closed union here would compile fine and
+ *  quietly probe every user adapter with claude's pattern. */
+export type AgentId = string;
 
 // A closed set, mirroring the Rust enum: a transport is a backend module
 // implementing a wire protocol, so a TOML can only select one that exists.
@@ -87,11 +96,11 @@ export type Agent = {
   running_pattern: string;
   pty_quiet_ms: number;
   // Null for a PTY-only agent, which is the normal case rather than a
-  // degraded one: pi and opencode ship without a chat transport.
+  // degraded one: a PTY-only adapter ships without a chat transport.
   chat?: ChatConfig | null;
 };
 
-// Matches the bundled claude/pi/opencode TOML (src-tauri/agents/*.toml) so
+// Matches the bundled TOML (src-tauri/agents/*.toml) so
 // the first paint - before `list_agents` resolves - looks identical to the
 // pre-registry hardcoded behavior, and so a failed `invoke` degrades to that
 // same shape.
@@ -121,30 +130,6 @@ export const FALLBACK_AGENTS: Agent[] = [
     // unresolved agent as not-yet-chat-capable rather than guessing.
     chat: null,
   },
-  {
-    id: "pi",
-    label: "Pi",
-    program: "pi",
-    base_args: [],
-    yolo_args: [],
-    resume_args: ["--session", "{file}"],
-    parser_kind: "pi_jsonl",
-    running_pattern: "pi --session .*{id}",
-    pty_quiet_ms: 2000,
-    chat: null,
-  },
-  {
-    id: "opencode",
-    label: "opencode",
-    program: "opencode",
-    base_args: [],
-    yolo_args: ["--auto"],
-    resume_args: ["--session", "{id}"],
-    parser_kind: "opencode_sqlite",
-    running_pattern: "opencode.*--session {id}",
-    pty_quiet_ms: 2000,
-    chat: null,
-  },
 ];
 
 const [agents, setAgents] = createSignal<Agent[]>(FALLBACK_AGENTS);
@@ -161,6 +146,18 @@ export function ensureAgentsLoaded() {
 
 export function findAgent(id: string): Agent {
   return agents().find((a) => a.id === id) ?? FALLBACK_AGENTS[0];
+}
+
+/** The adapter id behind a launch binary.
+ *
+ *  A terminal tab records what it spawned, which is a program name; every
+ *  backend probe wants the adapter *id*, and the two are only the same word by
+ *  convention. The chat binary is checked too, since an adapter may drive chat
+ *  through a different executable than its PTY tab. Falls back to the program
+ *  itself, which is the id for every adapter that names them alike. */
+export function agentIdForProgram(program: string): AgentId {
+  const a = agents().find((x) => x.program === program || x.chat?.program === program);
+  return a?.id ?? program;
 }
 
 // Whether this agent can be opened as a structured chat session rather than a

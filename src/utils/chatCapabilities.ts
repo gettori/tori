@@ -96,7 +96,7 @@ const TIERS: Record<ChatTransport, ChatTier> = {
 };
 
 /** A PTY-only adapter, and the honest answer before `list_agents` resolves. Not
- *  a degraded tier: pi and opencode ship no chat transport at all, so every
+ *  a degraded tier: a PTY-only adapter ships no chat transport at all, so every
  *  value is `none` rather than unknown. */
 export const NO_CHAT_TIER: ChatTier = { rewind: "none", steer: "none", steerCost: null, hooks: false };
 

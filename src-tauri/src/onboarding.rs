@@ -84,11 +84,6 @@ fn has_any_session(adapter: &AgentAdapter) -> bool {
                 }
             })
         }
-        // An empty DB file is created by opencode on first run, so existence
-        // alone would be a false positive; a real session gives it size.
-        Discovery::Sqlite { db_path } => {
-            std::fs::metadata(db_path).map(|m| m.len() > 0).unwrap_or(false)
-        }
     }
 }
 

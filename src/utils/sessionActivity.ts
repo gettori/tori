@@ -159,7 +159,7 @@ export async function refreshTailStates() {
     live.map(async (t) => {
       const meta = all.find((s) => s.id === t.sessionId);
       if (!meta) return;
-      const agent = meta.agent === "pi" ? "pi" : "claude";
+      const agent = meta.agent ?? "claude";
       const state = await invoke<TailState>("session_tail_state", {
         id: meta.id,
         path: meta.path,
@@ -179,7 +179,7 @@ export async function refreshTailStateForSession(sessionId: string) {
     .flat()
     .find((s) => s.id === sessionId);
   if (!meta) return;
-  const agent = meta.agent === "pi" ? "pi" : "claude";
+  const agent = meta.agent ?? "claude";
   const state = await invoke<TailState>("session_tail_state", {
     id: meta.id,
     path: meta.path,

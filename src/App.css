@@ -26,12 +26,6 @@
   color: var(--agent-claude);
 }
 
-/* Pi session mark (sidebar): a distinct tint so the two agents read apart at a
-   glance. The inline SVG fills with currentColor. */
-.pi-icon {
-  color: var(--agent-pi);
-}
-
 /* Design tokens (the 10 chrome vars + font-family) moved to src/styles/tokens.css
    and src/styles/base.css; the box-sizing reset moved to src/styles/reset.css. */
 
