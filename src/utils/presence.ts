@@ -189,16 +189,21 @@ export async function notifyNeedsYou(event: NeedsYouEvent) {
 }
 
 let notificationClickListenerStarted = false;
+let notificationClickHandler: ((sessionId: string) => void) | null = null;
 
-/// Wires a click handler for needs-you notifications, once per app run.
+/// Wires a click handler for needs-you notifications. The plugin listener is
+/// installed once per app run, but the handler behind it is replaced on every
+/// call, so a re-registration (a remount, or a second test rendering the
+/// sidebar) reaches the live component rather than a disposed one.
 /// `onAction` is the notification plugin's general interaction callback (both
 /// a registered action button and a plain body click are expected to reach
 /// it); this reads back the `extra.sessionId` set in `notifyNeedsYou`.
 export function onNeedsYouNotificationClick(handler: (sessionId: string) => void) {
+  notificationClickHandler = handler;
   if (notificationClickListenerStarted) return;
   notificationClickListenerStarted = true;
   void onAction((notification) => {
     const sessionId = (notification as { extra?: Record<string, unknown> }).extra?.sessionId;
-    if (typeof sessionId === "string") handler(sessionId);
+    if (typeof sessionId === "string") notificationClickHandler?.(sessionId);
   });
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reconcileScan, markViewed, isUnseen, stampKey, type Stamps } from "./unseen";
+import { reconcileScan, sameStamps, markViewed, isUnseen, stampKey, type Stamps } from "./unseen";
 
 const s = (id: string, cwd: string, last_active: number, agent = "claude") => ({ id, agent, cwd, last_active });
 
@@ -65,5 +65,23 @@ describe("isUnseen", () => {
   it("clears once the session is marked viewed", () => {
     const after = markViewed(stamps, s("1", "/w/a", 300), 400);
     expect(isUnseen(after, s("1", "/w/a", 300), null)).toBe(false);
+  });
+});
+
+describe("sameStamps", () => {
+  const stamps: Stamps = { "claude:1": { at: 200, cwd: "/w/a" } };
+
+  // A fold that changed nothing still returns a fresh object, so the caller
+  // needs a value comparison to skip re-serializing the whole map. Session
+  // scans now cover every branch-unit folder in a space, so "nothing changed"
+  // is the common case, not the rare one.
+  it("sees a fold that changed nothing as unchanged", () => {
+    expect(sameStamps(stamps, reconcileScan(stamps, "/w/a", [s("1", "/w/a", 100)], 500))).toBe(true);
+  });
+
+  it("sees a new stamp, a moved one, and a dropped one as changes", () => {
+    expect(sameStamps(stamps, reconcileScan(stamps, "/w/b", [s("2", "/w/b", 100)], 500))).toBe(false);
+    expect(sameStamps(stamps, reconcileScan(stamps, "/w/a", [s("1", "/w/a2", 100)], 500))).toBe(false);
+    expect(sameStamps(stamps, reconcileScan(stamps, "/w/a", [], 500))).toBe(false);
   });
 });
