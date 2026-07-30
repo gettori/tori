@@ -1,5 +1,5 @@
-import { For, onCleanup, onMount, createSignal, createContext, useContext, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { For, createContext, useContext, type JSX } from "solid-js";
+import Popover from "../Popover/Popover";
 import styles from "./Menu.module.css";
 
 // A menu entry: an action row, or a visual separator. Covers the flat cases
@@ -46,11 +46,12 @@ export function MenuRow(props: {
   );
 }
 
-// The one portaled, viewport-overflow-safe menu. Positioned at (x, y) with edge
-// clamping (flip back from the right/bottom edge rather than overflow), and
-// escape / outside-click close. Feed a flat `items` list, or custom rows as
-// children (<MenuRow>). Pass `anchorEl` for a toggle button so an outside-click
-// on the button doesn't fight the button's own open/close.
+// The menu surface: a <Popover> opened at (x, y), left-aligned, carrying menu
+// chrome and menu semantics. Positioning, viewport clamping, and escape /
+// outside-click close all belong to Popover; what is here is what makes a menu
+// a menu. Feed a flat `items` list, or custom rows as children (<MenuRow>).
+// Pass `anchorEl` for a toggle button so an outside-click on the button doesn't
+// fight the button's own open/close.
 export default function Menu(props: {
   x: number;
   y: number;
@@ -65,73 +66,32 @@ export default function Menu(props: {
   openAbove?: boolean;
   children?: JSX.Element;
 }) {
-  let el: HTMLDivElement | undefined;
-  const [pos, setPos] = createSignal({ left: props.x, top: props.y });
-
-  // The menu's own size is known only after mount, so clamp it into the viewport
-  // then (flip back from the right/bottom edge rather than overflow).
-  //
-  // The opening position is read here, not inside the frame callback: the owner
-  // renders this from a signal it clears on close (`menu()!.x`), so an item
-  // chosen before the frame ran would leave the callback reading a position that
-  // no longer exists. Clamping to where the menu actually opened is also the
-  // only correct answer.
-  onMount(() => {
-    const openedAt = { x: props.x, y: props.y };
-    requestAnimationFrame(() => {
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const pad = 6;
-      let left = openedAt.x;
-      let top = props.openAbove ? openedAt.y - r.height : openedAt.y;
-      if (left + r.width > window.innerWidth - pad) left = window.innerWidth - r.width - pad;
-      if (top + r.height > window.innerHeight - pad) top = window.innerHeight - r.height - pad;
-      setPos({ left: Math.max(pad, left), top: Math.max(pad, top) });
-    });
-  });
-
-  function onDocMouseDown(e: MouseEvent) {
-    const t = e.target as Node;
-    if (el?.contains(t) || props.anchorEl?.contains(t)) return;
-    props.onClose();
-  }
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") props.onClose();
-  }
-  onMount(() => {
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-  });
-  onCleanup(() => {
-    document.removeEventListener("mousedown", onDocMouseDown);
-    document.removeEventListener("keydown", onKeyDown);
-  });
-
   return (
-    <Portal>
+    <Popover
+      // A menu opens at a cursor, which is a zero-width anchor.
+      anchor={{ left: props.x, right: props.x, top: props.y }}
+      openAbove={props.openAbove}
+      anchorEl={props.anchorEl}
+      onClose={props.onClose}
+      class={styles.menu}
+      role="menu"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <MenuCloseContext.Provider value={props.onClose}>
-        <div
-          ref={el}
-          class={styles.menu}
-          role="menu"
-          style={{ left: `${pos().left}px`, top: `${pos().top}px` }}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          {props.children ?? (
-            <For each={props.items ?? []}>
-              {(it) =>
-                "separator" in it ? (
-                  <div class={styles.menuSep} />
-                ) : (
-                  <MenuRow onClick={it.onClick} danger={it.danger} warn={it.warn} disabled={it.disabled}>
-                    {it.label}
-                  </MenuRow>
-                )
-              }
-            </For>
-          )}
-        </div>
+        {props.children ?? (
+          <For each={props.items ?? []}>
+            {(it) =>
+              "separator" in it ? (
+                <div class={styles.menuSep} />
+              ) : (
+                <MenuRow onClick={it.onClick} danger={it.danger} warn={it.warn} disabled={it.disabled}>
+                  {it.label}
+                </MenuRow>
+              )
+            }
+          </For>
+        )}
       </MenuCloseContext.Provider>
-    </Portal>
+    </Popover>
   );
 }

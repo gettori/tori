@@ -1,9 +1,9 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import Chevron from "../../components/Chevron/Chevron";
 import Button from "../../components/Button/Button";
 import Menu, { type MenuItem } from "../../components/Menu/Menu";
+import Popover from "../../components/Popover/Popover";
 import TabMark from "./TabMark";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import { sessions, historical, checkHistorical, markAdopted, type SessionMeta } from "../../utils/sessionStore";
@@ -26,9 +26,8 @@ import styles from "./HistoryPanel.module.css";
  * everything else is history, so it falls into `last_active` eras. A session is
  * in exactly one of the two.
  *
- * **Portalled.** The tab bar is `overflow: hidden` (it has to be, or a long tab
- * strip would scroll instead of collapsing into `+N`), so a panel rendered
- * inside it is clipped to the bar's own height.
+ * **A `<Popover>`**, right-aligned to the History button, which is what puts it
+ * on the same portalling, clamping and dismissal as every menu in the app.
  */
 export default function HistoryPanel(props: {
   /** The branch-unit folder whose sessions this lists. */
@@ -46,7 +45,6 @@ export default function HistoryPanel(props: {
 }) {
   let el: HTMLDivElement | undefined;
   let searchEl: HTMLInputElement | undefined;
-  const [pos, setPos] = createSignal({ left: props.anchor.left, top: props.anchor.top });
   const [query, setQuery] = createSignal("");
   const [histOpen, setHistOpen] = createSignal(false);
   const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -67,34 +65,12 @@ export default function HistoryPanel(props: {
     onCleanup(() => returnTo?.focus?.());
   });
 
-  // Right-aligned to the button, then clamped in from the viewport edge once the
-  // panel's real width is known - the same two-step the shared Menu uses.
-  onMount(() => {
-    requestAnimationFrame(() => {
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const pad = 6;
-      const left = Math.min(props.anchor.right - r.width, window.innerWidth - r.width - pad);
-      setPos({ left: Math.max(pad, left), top: props.anchor.top });
-    });
-  });
-
-  function onDocMouseDown(e: MouseEvent) {
-    const t = e.target as Node;
-    // The context menu is portalled somewhere else in the DOM, so a click inside
-    // it is outside `el` and would otherwise close the panel underneath it.
-    if (el?.contains(t) || props.anchorEl?.contains(t) || menu()) return;
-    props.onClose();
-  }
   // Arrow keys and Enter, so `role="option"` is a description of how the list
   // works rather than a claim about it. Bound at the document while the panel is
   // open (it is the only thing on screen that arrows should mean anything to),
-  // which is also what lets them work from inside the search field.
+  // which is also what lets them work from inside the search field. Escape is
+  // Popover's, along with the outside click.
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      props.onClose();
-      return;
-    }
     const rows = visibleRows();
     if (!rows.length) return;
     if (e.key === "ArrowDown") step(e, 1, rows.length);
@@ -113,14 +89,8 @@ export default function HistoryPanel(props: {
       el?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }),
     );
   }
-  onMount(() => {
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-  });
-  onCleanup(() => {
-    document.removeEventListener("mousedown", onDocMouseDown);
-    document.removeEventListener("keydown", onKeyDown);
-  });
+  onMount(() => document.addEventListener("keydown", onKeyDown));
+  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
 
   const label = (s: SessionMeta) => s.name || s.title;
   const q = () => query().trim().toLowerCase();
@@ -217,16 +187,23 @@ export default function HistoryPanel(props: {
   );
 
   return (
-    <Portal>
+    <>
       {/* The dialog is the panel; only the scrolling list is a listbox. A search
           field and a disclosure header are not options, and a listbox whose
           children are neither is one a screen reader reads back wrong. */}
-      <div
-        ref={el}
+      <Popover
+        ref={(node) => (el = node)}
+        anchor={props.anchor}
+        align="end"
+        anchorEl={props.anchorEl}
+        // A row's context menu is portalled elsewhere, so a click or Escape
+        // inside it is "outside" this panel and would close the thing the menu
+        // belongs to.
+        dismissable={!menu()}
+        onClose={props.onClose}
         class={styles.panel}
         role="dialog"
         aria-label="Session history"
-        style={{ left: `${pos().left}px`, top: `${pos().top}px` }}
       >
         <div class={styles.head}>
           <div class={styles.crumb} title={props.folder}>
@@ -293,11 +270,14 @@ export default function HistoryPanel(props: {
             <div class={styles.empty}>{q() ? "No sessions match" : "No sessions here yet"}</div>
           </Show>
         </div>
-      </div>
+      </Popover>
 
+      {/* A sibling, not a child: `.panel` is `overflow: hidden` and carries its
+          own z-index, so a menu nested inside it would be both clipped and
+          trapped under the panel's stacking context. */}
       <Show when={menu()}>
         <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={() => setMenu(null)} />
       </Show>
-    </Portal>
+    </>
   );
 }
