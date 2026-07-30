@@ -85,7 +85,11 @@ export const DEFAULT_SETTINGS: Settings = {
     uiFontSize: 15,
     editorFontFamily: '"SF Mono", Menlo, Monaco, monospace',
     editorFontSize: 15,
-    terminalFontFamily: '"SF Mono", Menlo, Monaco, monospace',
+    // Mirrors `default_terminal_font_family` in src-tauri/src/settings.rs: the
+    // bundled Nerd Font (public/fonts) first, the platform's monospace behind
+    // it. Only used before the backend's settings arrive; the file is the
+    // source of truth.
+    terminalFontFamily: '"JetBrainsMono Nerd Font Mono", "SF Mono", Menlo, Monaco, monospace',
     terminalFontSize: 15,
     lineHeight: 1.5,
   },

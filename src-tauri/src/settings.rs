@@ -78,9 +78,19 @@ pub struct Typography {
     pub line_height: f32,
 }
 
+/// The bundled Nerd Font first, the platform's own monospace behind it. Sway
+/// ships the file (public/fonts, docs/FONTS.md), so this default resolves on a machine with no
+/// patched font installed - which is the point: a prompt full of powerline
+/// separators and devicons should not depend on what the user happened to
+/// `brew install`.
 fn default_terminal_font_family() -> String {
-    "\"SF Mono\", Menlo, Monaco, monospace".into()
+    "\"JetBrainsMono Nerd Font Mono\", \"SF Mono\", Menlo, Monaco, monospace".into()
 }
+
+/// What this default used to be. An install still carrying it verbatim never
+/// chose it - the value is just the old default written out - so it moves to
+/// the new one. A user who typed their own family keeps it.
+const LEGACY_TERMINAL_FONT_FAMILY: &str = "\"SF Mono\", Menlo, Monaco, monospace";
 
 fn default_terminal_font_size() -> u16 {
     15
@@ -270,6 +280,12 @@ fn load_from(path: &Path) -> Settings {
     if let Some(id) = migrate_theme_id(&settings.appearance.theme) {
         settings.appearance.theme = id.into();
     }
+    // Same "map on read" shape as the theme migration, and for the same reason:
+    // a user who never opens Settings still gets the bundled font, and the file
+    // is rewritten whenever they next save.
+    if settings.typography.terminal_font_family == LEGACY_TERMINAL_FONT_FAMILY {
+        settings.typography.terminal_font_family = default_terminal_font_family();
+    }
     settings
 }
 
@@ -403,6 +419,44 @@ mod tests {
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+    }
+
+    /// Sway now bundles JetBrainsMono Nerd Font Mono, so the terminal default
+    /// names it. An install still carrying the previous default never chose
+    /// that value - it is just the old default written to disk - so it moves,
+    /// the same way a VS Code-era theme id does.
+    #[test]
+    fn the_old_terminal_font_default_moves_to_the_bundled_one() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
+                 "editorFontFamily": "\"SF Mono\", Menlo, Monaco, monospace", "editorFontSize": 15,
+                 "terminalFontFamily": "\"SF Mono\", Menlo, Monaco, monospace", "terminalFontSize": 15,
+                 "lineHeight": 1.5 } }"#,
+        )
+        .unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.typography.terminal_font_family, default_terminal_font_family());
+        assert!(back.typography.terminal_font_family.contains("JetBrainsMono Nerd Font Mono"));
+        // Only the terminal moves: the editor's identical value was left alone
+        // on purpose, since nothing bundled changes what an editor should use.
+        assert_eq!(back.typography.editor_font_family, "\"SF Mono\", Menlo, Monaco, monospace");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// A family the user typed is theirs. The migration matches the old default
+    /// verbatim precisely so it cannot touch a real choice - including one that
+    /// merely mentions the same fonts in a different order.
+    #[test]
+    fn a_chosen_terminal_font_is_left_alone() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
+             "editorFontFamily": "Menlo", "editorFontSize": 15,
+             "terminalFontFamily": "Menlo, \"SF Mono\", monospace", "terminalFontSize": 15,
+             "lineHeight": 1.5 } }"#).unwrap();
+        assert_eq!(load_from(&p).typography.terminal_font_family, "Menlo, \"SF Mono\", monospace");
+        let _ = std::fs::remove_file(&p);
     }
 
     /// A settings file written before these sections existed must still load,

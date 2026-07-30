@@ -9,6 +9,50 @@
   src: url("/inter.woff2") format("woff2");
 }
 
+/* JetBrainsMono Nerd Font Mono, bundled (public/fonts; docs/FONTS.md records its
+   provenance, licence and how to regenerate). Shipped rather than left to the user's own
+   install so a prompt built out of Nerd Font glyphs renders on every machine.
+
+   Four real styles rather than two: the terminal is where ANSI italics actually
+   show up, and a synthesised oblique on a fixed grid is the one place faux
+   styling is obvious.
+
+   `font-display: block` on purpose, against Inter's `swap`. A terminal measures
+   one cell of this font and lays its whole grid on that measurement, so painting
+   a fallback first means painting a grid that then has to be rebuilt; a short
+   invisible period is cheaper than a reflow of everything on screen. */
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/jetbrains-mono-nerd-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("/fonts/jetbrains-mono-nerd-bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/jetbrains-mono-nerd-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  font-style: italic;
+  font-weight: 700;
+  font-display: block;
+  src: url("/fonts/jetbrains-mono-nerd-bold-italic.woff2") format("woff2");
+}
+
 /* Base element defaults that read from the token layer. The UI font-family used
    to live on App.css :root; it moves here so tokens.css owns the value. */
 @layer base {

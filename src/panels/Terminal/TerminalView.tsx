@@ -13,6 +13,7 @@ import { dispatchHotkey } from "../../utils/hotkeys";
 import { findAgent } from "../../utils/agents";
 import { refusalMessage, refusalOf, type ClaimOutcome, type Refusal } from "../../utils/chatOwnership";
 import { settings, terminalFontSize } from "../Settings/settingsStore";
+import { ensureFontLoaded } from "../../utils/fontLoad";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
@@ -177,6 +178,11 @@ export default function TerminalView(props: {
   }
 
   onMount(async () => {
+    // Before anything measures a cell. xterm lays its grid on one measurement of
+    // this font and tells the pty the resulting size, so measuring the fallback
+    // while the bundled face is still loading gets both wrong at once.
+    await ensureFontLoaded(settings.typography.terminalFontFamily, terminalFontSize());
+
     term = new Terminal({
       fontFamily: settings.typography.terminalFontFamily,
       fontSize: terminalFontSize(),
@@ -343,6 +349,11 @@ export default function TerminalView(props: {
       term.options.fontSize = size;
       term.options.fontFamily = family;
       fitNow();
+      // A family typed in Settings can be one the page has not loaded yet, and
+      // the fit above then measured whatever was available. Fit again once the
+      // face is real; a font already loaded resolves on the spot and this is a
+      // second fit of the same numbers.
+      void ensureFontLoaded(family, size).then(fitNow);
     }
   });
 
