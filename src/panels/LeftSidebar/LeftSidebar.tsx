@@ -39,7 +39,15 @@ import {
   type SessionDeleted,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
-import { loadStamps, saveStamps, reconcileScan, markViewed, isUnseen, type Stamps } from "../../utils/unseen";
+import {
+  loadStamps,
+  saveStamps,
+  reconcileScan,
+  sameStamps,
+  markViewed,
+  isUnseen,
+  type Stamps,
+} from "../../utils/unseen";
 import {
   notePresence,
   markSessionAttended,
@@ -67,6 +75,19 @@ import {
   type Rollup,
 } from "../../utils/sessionStatus";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
+import {
+  sessions,
+  historical,
+  fetchSessions,
+  trackFolders,
+  refreshSessions,
+  checkHistorical,
+  markAdopted,
+  findSession,
+  onFolderScan,
+  type SessionMeta,
+  type FolderScan,
+} from "../../utils/sessionStore";
 import {
   computeSessionDot,
   dotCertainty,
@@ -172,18 +193,6 @@ type Branch = { name: string; current: boolean };
 type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
 type Space = { name: string; path: string; projects: Project[]; external: boolean; icon?: string };
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
-type SessionMeta = {
-  id: string;
-  path: string;
-  cwd: string;
-  branch: string;
-  title: string;
-  last_active: number;
-  created_at: number;
-  name: string | null;
-  archived: boolean;
-  agent?: string;
-};
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -263,11 +272,6 @@ export default function LeftSidebar(props: {
     setToasts((ts) => [...ts, { id: ++toastSeq, message, kind }]);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
-  // Sessions keyed by branch-unit folderPath (the cwd anchor).
-  const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
-  // Per-folder "historical" flag: sessions predating a recreated folder, hidden
-  // under a collapsed "Historical" section until adopted.
-  const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
   // "Last viewed" stamps behind the unseen-changes dot (see utils/unseen.ts).
   const [viewStamps, setViewStamps] = createSignal<Stamps>(loadStamps());
   // Per-project "has an origin remote" flag: gates whether Attach Existing
@@ -528,7 +532,11 @@ export default function LeftSidebar(props: {
     );
     if (Object.keys(updates).length) setTailStates((m) => ({ ...m, ...updates }));
   }
-  createEffect(on(() => props.liveTabs, () => void refreshTailStates()));
+  // Both halves of the join are triggers. The store used to fill only on an
+  // expansion the user drove, so `liveTabs` alone was a workable stand-in for
+  // "something changed"; now the store fills on its own, and a tab whose session
+  // arrives after the tab did would never get its first tail read.
+  createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshTailStates()));
 
   // Re-read one session's tail state on demand. Used off a PTY liveness edge:
   // the hooks-status file carrying claude's ground-truth status isn't
@@ -842,24 +850,31 @@ export default function LeftSidebar(props: {
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
   // and select it exactly as clicking its sidebar row would - the notification
   // click handler and the tray's per-session menu entries both focus this way.
-  function selectSessionById(sessionId: string): boolean {
-    // Raw sessions()[folderPath], not the search-filtered unitSessions(p, u) -
-    // a notification/tray click must still focus a session the sidebar's
-    // current search query happens to be hiding.
-    let hit: { folderPath: string; s: SessionMeta } | undefined;
-    for (const [folderPath, list] of Object.entries(sessions())) {
-      const s = list.find((s) => s.id === sessionId);
-      if (s) {
-        hit = { folderPath, s };
-        break;
-      }
-    }
+  async function selectSessionById(sessionId: string): Promise<boolean> {
+    if (selectFromStore(sessionId)) return true;
+    // A tray or notification click carries an id and nothing else, and must
+    // work whether or not the sidebar ever opened that folder. The live tab
+    // hosting the session is what knows where it lives, so on a miss list that
+    // one folder and try again rather than sweeping every space.
+    const tab = (props.liveTabs ?? []).find((t) => t.sessionId === sessionId);
+    if (!tab) return false;
+    await fetchSessions(tab.workspace);
+    return selectFromStore(sessionId);
+  }
+
+  // The store lookup on its own, so the retry above is one call rather than a
+  // copy of the walk.
+  function selectFromStore(sessionId: string): boolean {
+    // The raw store, not the search-filtered unitSessions(p, u) - a
+    // notification/tray click must still focus a session the sidebar's current
+    // search query happens to be hiding.
+    const hit = findSession(sessionId);
     if (!hit) return false;
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
-        const u = p.branchUnits.find((u) => u.folderPath === hit!.folderPath);
+        const u = p.branchUnits.find((u) => u.folderPath === hit.folder);
         if (u) {
-          void selectSession(g, p, u, hit!.s);
+          void selectSession(g, p, u, hit.session);
           return true;
         }
       }
@@ -894,7 +909,7 @@ export default function LeftSidebar(props: {
       // verdict an expansion does; without it a recreated folder's ghosts would
       // render as ordinary rows here and collapsed everywhere else.
       void checkHistorical(d.folderPath);
-      if (selectSessionById(d.sessionId)) return;
+      if (await selectSessionById(d.sessionId)) return;
     }
     selectBranchByFolder(d.folderPath);
   }
@@ -2028,89 +2043,95 @@ export default function LeftSidebar(props: {
   // resurrects a badge the user already cleared. Takes the whole batch at once
   // because refreshSessions rescans every folder, and a per-folder write would
   // re-serialize the entire map once per workspace on every sessions://changed.
-  function noteScans(scans: readonly { folder: string; list: SessionMeta[] }[]) {
+  function noteScans(scans: readonly FolderScan[]) {
     const now = Math.floor(Date.now() / 1000);
-    let next = viewStamps();
+    const prev = viewStamps();
+    let next = prev;
     for (const { folder, list } of scans) next = reconcileScan(next, folder, list, now);
+    // A scan now covers every branch-unit folder in the space rather than only
+    // the expanded ones, so most events fold to exactly the map already held.
+    // Writing that back would re-serialize every stamp for no change.
+    if (sameStamps(prev, next)) return;
     setViewStamps(next);
     saveStamps(next);
   }
 
-  // Listing only. Deliberately does *not* ask for the historical verdict:
-  // `folder_historical` auto-adopts and writes adopted.json, so folding it in
-  // here means merely listing a folder silently adopts it. That is harmless
-  // while fetching follows expansion, and wrong the moment it does not - a
-  // folder the user never opened would lose its ghost protection before they
-  // ever saw it. `checkHistorical` is the deliberate call.
-  async function fetchSessions(folderPath: string) {
-    try {
-      const s = await invoke<SessionMeta[]>("list_sessions", { folder: folderPath });
-      noteScans([{ folder: folderPath, list: s }]);
-      setSessions({ ...sessions(), [folderPath]: s });
-    } catch {
-      setSessions({ ...sessions(), [folderPath]: [] });
+  // The detached tier: every session a scan turned up that no live tab and no
+  // chat is hosting. Without this a session started outside Sway stays invisible
+  // until someone clicks its row, because nothing else ever probes it.
+  function sweepDetached(scans: readonly FolderScan[]) {
+    const hosted = new Set<string>(liveChatIds());
+    for (const t of props.liveTabs ?? []) if (t.sessionId) hosted.add(t.sessionId);
+    const want: { id: string; agent: string }[] = [];
+    const seen = new Set<string>();
+    for (const { list } of scans) {
+      for (const s of list) {
+        if (hosted.has(s.id) || seen.has(s.id)) continue;
+        seen.add(s.id);
+        want.push({ id: s.id, agent: s.agent === "pi" ? "pi" : "claude" });
+      }
     }
+    // One batched pgrep for the whole sweep. Probing per session would be a
+    // subprocess per transcript on disk, paid again on every sessions://changed.
+    if (want.length > 0) void probeBatch(want);
   }
 
-  // Flag a recreated folder whose sessions predate it (auto-adopting, and
-  // persisting, when they clearly belong to it). Called only where the
-  // Historical section is actually about to be shown, because the answer is
-  // written to disk.
-  async function checkHistorical(folderPath: string) {
-    try {
-      const hist = await invoke<boolean>("folder_historical", { folder: folderPath });
-      setHistorical({ ...historical(), [folderPath]: hist });
-    } catch {
-      /* leave the folder unflagged; it renders as an ordinary listing */
-    }
-  }
+  onCleanup(
+    onFolderScan((scans) => {
+      noteScans(scans);
+      sweepDetached(scans);
+    }),
+  );
+
+  // What the store must cover, from two independent sources:
+  //   * every branch-unit in the active space, so the data does not wait on the
+  //     tree being expanded at the right node;
+  //   * the folder of every live tab, whatever space it belongs to, because a
+  //     tab survives a space switch and its needs-you pipeline must survive it
+  //     too.
+  // `on` runs its body untracked, which is what keeps reading the store inside
+  // trackFolders from re-triggering this on its own write.
+  createEffect(
+    on(
+      () => [activeSpace(), props.liveTabs] as const,
+      ([space, tabs]) => {
+        void trackFolders([
+          ...(space?.projects ?? []).flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
+          ...(tabs ?? []).map((t) => t.workspace),
+        ]);
+      },
+    ),
+  );
 
   // Adopt a historical folder's sessions: they move to the normal listing and the
   // choice persists across restarts.
   async function adoptFolder(u: BranchUnit) {
     try {
       await invoke("adopt_path", { path: u.folderPath });
-      setHistorical({ ...historical(), [u.folderPath]: false });
+      markAdopted(u.folderPath);
     } catch (e) {
       setError(String(e));
     }
   }
 
-  async function refreshSessions() {
-    const updated: Record<string, SessionMeta[]> = { ...sessions() };
-    // Only folders that actually rescanned may prune; a failed scan keeps its
-    // stale list and must not be read as "these sessions are gone".
-    const scanned: { folder: string; list: SessionMeta[] }[] = [];
-    for (const folder of Object.keys(updated)) {
-      try {
-        updated[folder] = await invoke<SessionMeta[]>("list_sessions", { folder });
-        scanned.push({ folder, list: updated[folder] });
-      } catch {
-        /* keep stale */
-      }
-    }
-    noteScans(scanned);
-    setSessions(updated);
-  }
-
-  // After config loads, re-hydrate sessions for restored-open branch-units.
-  async function restoreOpen(cfg: ResolvedConfig) {
+  // After config loads, re-ask the historical verdict for restored-open
+  // branch-units. Listing is no longer part of this: the store covers every
+  // branch-unit in the space whether or not its row is open. The verdict still
+  // follows expansion, because it writes to disk and only a surface actually
+  // showing the Historical section has the right to adopt.
+  function restoreOpen(cfg: ResolvedConfig) {
     for (const g of cfg.spaces) {
       for (const p of g.projects) {
         // A non-git folder anchors sessions on the project row (pkey), not a branch
-        // node (ukey), so re-hydrate it when the project itself is open.
+        // node (ukey), so re-check it when the project itself is open.
         if (projectKind(p) === "plain-dir") {
           if (expanded().has(pkey(g, p)) && p.branchUnits[0]) {
-            await fetchSessions(p.branchUnits[0].folderPath);
             void checkHistorical(p.branchUnits[0].folderPath);
           }
           continue;
         }
         for (const u of p.branchUnits) {
-          if (expanded().has(ukey(g, p, u))) {
-            await fetchSessions(u.folderPath);
-            void checkHistorical(u.folderPath);
-          }
+          if (expanded().has(ukey(g, p, u))) void checkHistorical(u.folderPath);
         }
       }
     }
@@ -2554,10 +2575,15 @@ export default function LeftSidebar(props: {
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
     const cfg = config();
-    if (cfg) await restoreOpen(cfg);
+    if (cfg) restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => {
-      refreshSessions().then(() => refreshTailStates());
+      // No explicit tail re-read: the tail-state effect now triggers on the
+      // store as well as on liveTabs, so a refresh that changed something
+      // already drives one, and a refresh that changed nothing has nothing to
+      // re-read - a tail only moves when its transcript does, which is what
+      // raised this event.
+      void refreshSessions();
       probeActive();
     });
     unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
@@ -2576,8 +2602,10 @@ export default function LeftSidebar(props: {
     );
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
-    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) => selectSessionById(e.payload));
-    onNeedsYouNotificationClick((sessionId) => selectSessionById(sessionId));
+    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) =>
+      void selectSessionById(e.payload),
+    );
+    onNeedsYouNotificationClick((sessionId) => void selectSessionById(sessionId));
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
     // transcript write, if any, may already have been debounced away).
