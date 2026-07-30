@@ -234,7 +234,6 @@
 
     /* agent */
     --agent-claude: #d97757;
-    --agent-pi: #6cb6ff;
 
     /* scrim */
     --scrim-default: rgba(0, 0, 0, 0.45);
@@ -395,7 +394,6 @@
 
     /* agent */
     --agent-claude: #c2562f;
-    --agent-pi: #0969da;
 
     /* scrim */
     --scrim-default: rgba(23, 23, 23, 0.3);

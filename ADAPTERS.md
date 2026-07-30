@@ -1,39 +1,36 @@
 # Agent adapters
 
-Sway drives every CLI coding agent (Claude, pi, opencode, and anything you
-add) through one abstraction: the **agent adapter**. An adapter describes how
-to launch an agent, where its session transcripts live, how to tell a live
-process apart from a stray `less` on the same file, and which built-in parser
-turns its transcript into Sway's session model.
+Sway drives every CLI coding agent through one abstraction: the **agent
+adapter**. An adapter describes how to launch an agent, where its session
+transcripts live, how to tell a live process apart from a stray `less` on the
+same file, and which built-in parser turns its transcript into Sway's session
+model.
 
-Three adapters ship bundled (`claude`, `pi`, `opencode`). You can add your
-own, or whole-replace a bundled one, by dropping a TOML file into
-`~/.config/sway/agents/`.
+One adapter ships bundled (`claude`). You add your own, or whole-replace the
+bundled one, by dropping a TOML file into `~/.config/sway/agents/`.
 
-> **Schema stability: v2 (stable), v1 still loads.** v1 was validated end to
-> end by three real agents with genuinely different transcript conventions
-> (claude/pi: one jsonl file per session; opencode: every session's
-> messages/parts live as rows in one shared SQLite DB). **v2 is purely
-> additive**: it adds the optional `[chat]` table describing how to drive an
-> agent as a structured chat session instead of a PTY. An existing
-> `schema_version = 1` file keeps working untouched and simply reports no chat
-> transport, so there is nothing to migrate. Breaking changes go through a
-> deprecation period rather than landing silently.
+> **Schema stability: v2 (stable), v1 still loads.** **v2 is purely additive**:
+> it adds the optional `[chat]` table describing how to drive an agent as a
+> structured chat session instead of a PTY. An existing `schema_version = 1`
+> file keeps working untouched and simply reports no chat transport, so there
+> is nothing to migrate. Breaking changes go through a deprecation period
+> rather than landing silently.
 
 ## Supported agents
 
-- **claude**, **pi**, **opencode** ship bundled and are fully wired (list,
-  launch, resume, the working/needs-you dot, touched files, the transcript
-  viewer).
-- **codex and gemini are not supported** as of this writing - not because
-  their conventions are unusual, but because verifying them against real,
-  freshly-generated sessions was blocked by CLI auth on the machine that
-  wrote this adapter set (codex had no stored login; gemini-cli's free-tier
-  OAuth for "Gemini Code Assist for individuals" is currently rejected
-  server-side by Google, a backend policy change, not a local config issue).
-  Nothing in the schema below rules them out - a `schema_version = 1` TOML in
-  `~/.config/sway/agents/` can add either today, following the same pattern
-  `opencode.toml` used. Revisit in a future release once auth is sorted out.
+**claude** ships bundled and is fully wired: list, launch, resume, the
+working/needs-you dot, touched files, the History dropdown, and the native
+chat surface.
+
+Nothing else ships. That is a packaging decision, not a limit of the schema:
+everything below is what an adapter needs, and adding one is a file drop plus
+a restart. The one thing a TOML cannot supply is a **parser kind** for an
+agent whose transcript shape differs from claude's, which needs Rust (see
+[Parser kinds](#parser-kinds)). Sway once bundled two more adapters, and what
+that proved is worth keeping in mind when you write your own: an agent whose
+tools never block on a permission prompt wants `needs_you = false`, and an
+agent that keeps every session in one shared database rather than a file per
+session needs both a new parser kind and a new `discovery.backend`.
 
 ## File location and loading
 
@@ -65,10 +62,9 @@ yolo_args = []           # optional, default []; extra args for "skip permission
 resume_args = []        # required; template for resuming a session - see placeholders below
 
 [discovery]
-backend = "file"                # optional, default "file"; "file" or "sqlite" - see below
+backend = "file"                # optional, default "file"; "file" is the only backend today - see below
 dir = "..."                     # required when backend = "file"; session-transcript root (~ expands to $HOME)
 filename_pattern = '...'        # required when backend = "file"; regex with a named `id` capture group
-db_path = "..."                 # required when backend = "sqlite"; path to the shared session DB (~ expands to $HOME)
 
 [parser]
 kind = "..."     # required; must be one of the implemented kinds below
@@ -117,8 +113,8 @@ args = []                 # optional; the args that select this level
 An adapter with a `[chat]` table can be driven as a **structured chat
 session**: one long-lived child speaking a streaming protocol, rendered as
 messages, tool cards and inline diffs, rather than a TUI in a PTY. Omitting
-the table is the normal case, not a degraded one - `pi` and `opencode` ship
-without one and are fully functional as PTY agents.
+the table is the normal case, not a degraded one: an adapter without one is
+fully functional as a PTY agent.
 
 `transport` is a **closed enum**, for the same reason `parser.kind` is: a
 transport is a Rust module implementing a specific wire protocol, so a TOML
@@ -198,36 +194,28 @@ auto-execute (no observable blocked-and-quiet state to verify the join
 against) - its dot then caps at working instead of showing a possibly-false
 amber.
 
-Empirically measured for the bundled adapters (2026-07-18, real PTY capture,
+Empirically measured for the bundled adapter (2026-07-18, real PTY capture,
 not guessed):
 
 - **claude**: a genuine permission prompt (`--permission-mode plan`, "Would
   you like to proceed?") leaves the PTY silent for 9s+ while waiting; a 20s
   Bash tool run stays noisy throughout (spinner redraws every <=0.62s).
   `needs_you = true`.
-- **pi**: its built-in bash/write/edit tools never block on a permission
-  prompt at all (confirmed - a Bash command ran immediately, no gate), so
-  there's nothing to verify the "blocked is quiet" half of the join against.
-  A trailing tool_use plus a quiet PTY for pi means "still running" or
-  "hung", not "waiting on you". `needs_you = false` until pi grows a
-  permission-gated mode.
-- **opencode**: verified against a real interactive TUI session (a scripted
-  pty, not headless `opencode run`) driving its default `build` agent through
-  a bash tool call. No permission prompt ever rendered (grepping the full
-  captured byte stream for approval-dialog language found zero matches), and
-  the TUI redraws a spinner continuously (~0.04-0.05s cadence) for the entire
-  turn - never silent while working, so there's no blocked-and-quiet state to
-  join against either. `needs_you = false`. Caveat: only `bash` was
-  exercised; a stricter permission profile or a different opencode agent
-  config could behave differently.
+
+**Measure it, do not assume it.** Two kinds of agent both defeat the join and
+look nothing alike: one whose tools auto-execute with no permission gate (so
+it never blocks), and one whose TUI redraws a spinner continuously (so it is
+never quiet while working). Capture a real PTY session, drive a tool call, and
+look for a genuinely silent stretch while it waits on you. If you cannot find
+one, set `needs_you = false` and the dot caps at working.
 
 ### `{id}` / `{file}` placeholders
 
 `launch.resume_args` and `running.pattern` are templates. Sway substitutes:
 
 - `{id}` - the session id.
-- `{file}` - the session's transcript file path (only meaningful for an
-  agent that resumes by file rather than by id, e.g. pi's `--session <path>`).
+- `{file}` - the session's transcript file path, for an agent that resumes by
+  file rather than by id (`--session <path>` rather than `--resume <id>`).
 
 **Write `running.pattern` against the chat command line, not just the terminal
 one.** `pgrep -f` matches the whole command line, and the two surfaces build
@@ -254,37 +242,34 @@ files, the chat panel's replay of an existing session, the needs-you tail
 state). Parser kinds are implemented in Sway itself,
 not user-authorable - a user adapter can only *reference* one of:
 
-- `claude_jsonl` - Claude Code's transcript shape (`type: "user"/"assistant"`
-  at the top level of each `.jsonl` line).
-- `pi_jsonl` - pi's transcript shape (`type: "message"`, `message.role` of
-  `user`/`assistant`/`toolResult`, one `.jsonl` line per turn).
-- `opencode_sqlite` - opencode's shape: no per-session file at all. Every
-  session's turns are `message` rows (`data.role: "user"/"assistant"`) joined
-  to their `part` rows (`data.type: "text"/"tool"/...`) in one shared SQLite
-  DB (see `discovery.backend = "sqlite"` below). Only pairs with that backend.
+- `claude_jsonl` - Claude Code's transcript shape: `type: "user"/"assistant"`
+  at the top level of each `.jsonl` line, `message.content` an array of
+  `text`/`thinking`/`tool_use` blocks, and a `tool_result` block riding inside
+  the *next* user turn's content.
 
-Adding a new parser kind (for an agent with a genuinely different transcript
-shape) requires a Sway code change, not just a TOML file.
+That is the only kind today, and it is a closed Rust enum rather than a config
+string precisely so this stays honest: a TOML naming an unimplemented kind is
+rejected at load rather than half-working. **Adding a kind is a Sway code
+change**, in `sessions.rs`'s transcript readers - the compiler names every site
+that has to answer for a new variant.
 
 ### `discovery.backend`
 
-Two backends, chosen per adapter:
+One backend today:
 
-- **`"file"`** (default): the agent writes one file per session under a
-  directory tree. `dir` is the session-transcript root; `filename_pattern` is
-  matched against each file's *name* (not its full path) inside every
-  immediate subdirectory of `dir` (Sway's own layout is
-  `<dir>/<encoded-cwd>/<session-file>`, mirroring claude/pi). Must contain a
-  named capture group called `id`, used as a fallback session id when the
-  transcript's own content doesn't yield one.
-- **`"sqlite"`**: the agent keeps every session (across every project on the
-  machine) as rows in one shared SQLite DB - `db_path` points at it. There is
-  no per-session file and no filename pattern; the session id lives in a DB
-  column instead. Sway opens this DB strictly read-only and never writes to
-  it - deleting an adapter's session goes through the agent's own CLI (e.g.
-  `opencode session delete <id>`), never a raw SQL statement. Only pairs with
-  `parser.kind = "opencode_sqlite"` today, but the backend itself is generic:
-  a future DB-backed agent can reuse it once it gets its own parser kind.
+- **`"file"`** (default, and the only value accepted): the agent writes one
+  file per session under a directory tree. `dir` is the session-transcript
+  root; `filename_pattern` is matched against each file's *name* (not its full
+  path) inside every immediate subdirectory of `dir` (Sway's layout is
+  `<dir>/<encoded-cwd>/<session-file>`). Must contain a named capture group
+  called `id`, used as a fallback session id when the transcript's own content
+  doesn't yield one.
+
+Like `parser.kind`, this is a closed Rust enum. An agent that keeps every
+session as rows in one shared database rather than a file per session needs a
+new variant here, because discovery, deletion, mtime and the file watcher all
+have to answer differently for it - and the compiler will say so at each of
+them.
 
 ## Example: a from-scratch third-party adapter
 
@@ -318,7 +303,7 @@ pty_quiet_ms = 2000
 ```
 
 Save this as `~/.config/sway/agents/gemini.toml` and restart Sway; a "+
-Gemini" launch option appears alongside Claude, pi, and opencode.
+Gemini" launch option appears alongside Claude.
 
 ## Whole-replacing a bundled adapter
 

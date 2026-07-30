@@ -333,8 +333,6 @@ mod tests {
 
     #[test]
     fn non_claude_agent_gets_no_extra_args() {
-        assert!(agent_hook_launch_args("pi".to_string()).is_empty());
-        assert!(agent_hook_launch_args("opencode".to_string()).is_empty());
         assert!(agent_hook_launch_args("unknown-agent".to_string()).is_empty());
     }
 

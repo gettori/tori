@@ -77,7 +77,7 @@ describe("chatPlugins", () => {
 // measured doing, so these test the *values*, not the presence of the keys.
 describe("the chat tier", () => {
   it("reports the PTY-only tier for an agent with no chat transport", () => {
-    // Not "unknown" and not a degraded Claude: pi and opencode ship no chat
+    // Not "unknown" and not a degraded Claude: a PTY-only adapter ships no chat
     // transport at all, so every value is a plain no.
     expect(chatTier(null)).toEqual(NO_CHAT_TIER);
     expect(chatTier(undefined)).toEqual(NO_CHAT_TIER);

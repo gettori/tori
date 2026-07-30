@@ -92,7 +92,6 @@ export type PaletteColors = {
 
   // ---- Agent marks (third-party brand hues; theme adjusts lightness only) ----
   agentClaude: Hex;
-  agentPi: Hex;
 
   // ---- Overlays ----
   /** Modal scrim base, washed by alpha. */
@@ -203,7 +202,7 @@ export const PALETTE_KEYS: (keyof PaletteColors)[] = [
   "danger", "dangerStrong", "attention", "attentionStrong", "success", "successStrong", "info", "fillTint",
   "diffAdded", "diffModified", "diffDeleted",
   "diagError", "diagWarning", "diagInfo", "diagHint",
-  "agentClaude", "agentPi",
+  "agentClaude",
   "scrimTint", "shadowTint", "glowTint",
   "statusProgress", "statusNeedsYou", "statusIdle", "statusRunning",
   "brand", "brandStrong", "brandTint", "brandOn",

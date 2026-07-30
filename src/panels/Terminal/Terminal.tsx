@@ -43,7 +43,7 @@ import {
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
+import { agents, ensureAgentsLoaded, findAgent, agentIdForProgram, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
@@ -434,7 +434,7 @@ export default function Terminal(props: {
         workspace: o.workspace,
         kind: o.kind,
         sessionId: o.sessionId,
-        agent: o.kind === "agent" || o.kind === "chat" ? (o.program === "pi" ? "pi" : "claude") : undefined,
+        agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
       })),
     ),
   );
@@ -647,7 +647,7 @@ export default function Terminal(props: {
     focusTab(t.workspace, t.id);
   }
 
-  // A fresh `+Claude`/`+Pi` tab carries no sessionId until its transcript
+  // A fresh `+Claude` tab carries no sessionId until its transcript
   // appears (Sway can't invent the id before the CLI writes it) - the
   // "fresh-session double-open" gap: clicking that session's sidebar row can't
   // find the tab. Attribute it here, but only in the unambiguous case: exactly
@@ -736,7 +736,7 @@ export default function Terminal(props: {
   );
 
   // Extra launch args a Sway-launched session gets that an externally-typed
-  // `claude`/`pi`/`opencode` invocation never would (Phase 3): today just
+  // registered adapter invocation never would (Phase 3): today just
   // claude's injected `--settings <json>` (crate::hooks), which scopes
   // hook-driven status to sessions this function actually spawned/resumed.
   async function hookArgs(agentId: string): Promise<string[]> {
@@ -887,7 +887,7 @@ export default function Terminal(props: {
 
   // A new session starts in the branch-unit folder (already the right checkout).
   // Launch args come from the adapter: base args, plus its yolo args when asked
-  // (claude's skip permission prompts; pi's is empty - it launches yolo already),
+  // (claude's skip permission prompts; an adapter may declare none),
   // plus any Sway-launched-only hook args (Phase 3).
   async function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
     const a = findAgent(agentId);
@@ -1222,7 +1222,6 @@ export default function Terminal(props: {
                         ]
                       : []),
                     { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
-                    { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
                   ]}
                 />
               </Show>

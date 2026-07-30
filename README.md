@@ -11,11 +11,10 @@
 <p align="center">A cockpit for the coding agents you already run.</p>
 
 Sway is a macOS app that puts every agent session you have going into one
-window: a tree of sessions grouped by project and branch, a real terminal per
-session, an editor with LSP, and a review panel that stages and commits what
-the agent wrote. It does not bundle an agent and it is not tied to one. Claude,
-pi, and opencode ship supported out of the box, and any other CLI agent is a
-TOML file away.
+window: a tree of projects and branches, a real terminal per session, an editor
+with LSP, and a review panel that stages and commits what the agent wrote. It
+does not bundle an agent and it is not tied to one. Claude ships supported out
+of the box, and any other CLI agent is a TOML file away.
 
 ## Why
 
@@ -51,8 +50,6 @@ import a VS Code theme file.
 | Agent | Sessions read from | Status detection |
 | --- | --- | --- |
 | **Claude** (`claude`) | `~/.claude/projects` | Hook-driven, plus transcript and process state |
-| **Pi** (`pi`) | `~/.pi/agent/sessions` | Transcript and process state |
-| **opencode** | `~/.local/share/opencode/opencode.db` | Transcript and process state |
 
 Sway drives the agent CLIs you have installed; it does not ship one. After
 first launch, **Settings > Agents** shows which ones it found, at what version,

@@ -171,7 +171,6 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
 
   // Brand marks rather than text: a mark only has to be identifiable.
   "agent.claude": graphic(["canvas.default", "canvas.card", "canvas.head"]),
-  "agent.pi": graphic(["canvas.default", "canvas.card", "canvas.head"]),
 
   "scrim.default": exempt("a scrim exists to dim what is behind it; it carries no foreground of its own"),
   "scrim.soft": exempt("as scrim.default, one step lighter"),

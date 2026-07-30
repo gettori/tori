@@ -2,7 +2,6 @@ import { createSignal, createEffect, on, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
-import PiIcon from "../../seti/PiIcon";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
@@ -59,7 +58,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
                 <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
                 <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                 <span class={`${styles.crumb} ${styles.leaf}`}>
-                  <Show when={sel()!.agent === "pi"} fallback={<ClaudeIcon />}><PiIcon /></Show>
+                  <ClaudeIcon />
                   {displayName()}
                 </span>
               </Show>

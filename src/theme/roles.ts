@@ -122,7 +122,6 @@ export const ROLES: Role[] = [
   { id: "diag.hint", cssVar: "--diag-hint", group: "diag" },
 
   { id: "agent.claude", cssVar: "--agent-claude", group: "agent" },
-  { id: "agent.pi", cssVar: "--agent-pi", group: "agent" },
 
   { id: "scrim.default", cssVar: "--scrim-default", group: "scrim" },
   { id: "scrim.soft", cssVar: "--scrim-soft", group: "scrim" },
@@ -272,7 +271,6 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "diag.hint": p.diagHint,
 
     "agent.claude": p.agentClaude,
-    "agent.pi": p.agentPi,
 
     "scrim.default": alpha(p.scrimTint, v({ dark: 0.45, light: 0.3 })),
     "scrim.soft": alpha(p.scrimTint, v({ dark: 0.35, light: 0.22 })),
