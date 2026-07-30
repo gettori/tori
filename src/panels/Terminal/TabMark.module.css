@@ -36,6 +36,31 @@
   color: var(--attention-fg);
 }
 
+/* The exact tier's marker: a hairline rule under the mark, meaning Sway measured
+   this status from the session's own event stream rather than inferring it from
+   a probe, PTY quiet and a transcript tail. Only this side is marked, the same
+   rule and the same drawing as the sidebar's status indicator - marking the
+   inferred side instead would restyle every PTY agent tab, which is the
+   rendering that predates chat and the one the golden fixture protects.
+
+   A pseudo-element rather than a border, so it costs the tab strip no layout.
+   The bare rule is what makes the class name exist to be applied at all: a
+   selector that only ever appears with `::after` is not exported. */
+.exact {
+  position: relative;
+}
+.exact::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-2px * var(--ui-scale));
+  height: max(1px, calc(1px * var(--ui-scale)));
+  background: currentColor;
+  border-radius: 1px;
+  opacity: 0.75;
+}
+
 /* The shape half of the signal, so "needs you" is not carried by colour alone.
    Ringed in the tab's own background so it reads as sitting on top of the mark
    rather than as part of the glyph. */
