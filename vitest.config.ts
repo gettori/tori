@@ -28,7 +28,13 @@ const solidResolve = {
   resolve: { conditions: ["browser", "development"] },
   ssr: { resolve: { conditions: ["browser", "development"] } },
 };
-const inlineSolid = { deps: { inline: ["lucide-solid", "solid-js"] } };
+// Patterns, not bare names: a bare "solid-js" leaves `solid-js/web` externalized,
+// which loads a *second* copy of Solid ("You appear to have multiple instances of
+// Solid"). The two copies do not share a reactive graph, so a `<Portal>` created
+// by one is not disposed when the other's root is - and a portalled dropdown
+// would survive `cleanup` into the next test, which is precisely what
+// `src/test/domSetup.ts` exists to prevent.
+const inlineSolid = { deps: { inline: [/lucide-solid/, /solid-js/] } };
 
 export default defineConfig({
   test: {
