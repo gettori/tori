@@ -1336,6 +1336,7 @@ export default function ChatView(props: {
           files={touchedFiles()}
           detail={liveDetail()}
           contextWindow={stripWindow()}
+          agentId={props.agentId}
           onReconnect={() => reconnect?.()}
           menu={
             <div class={styles.menuBody}>
@@ -1462,6 +1463,7 @@ export default function ChatView(props: {
             <ModelPicker
               models={models()}
               value={shownModel()?.value ?? null}
+              agentId={props.agentId}
               effort={shownEffort(state)}
               modelPending={modelPending(state)}
               effortPending={effortPending(state)}

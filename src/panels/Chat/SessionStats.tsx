@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
-import { ArrowDown, Brain, FoldVertical, Pencil, RefreshCw, Wrench } from "lucide-solid";
+import { ArrowDown, FoldVertical, Pencil, RefreshCw, Wrench } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
+import { providerIcon } from "../../components/Icon/ProviderIcon";
 import { contextPercent } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
 
@@ -69,6 +70,10 @@ export default function SessionStats(props: {
    *  when no source knew one. Passed in rather than resolved here so the strip
    *  and the composer meter cannot show two denominators for one model. */
   contextWindow: number | null;
+  /** The adapter behind the session, used only when the transcript's model id
+   *  does not name a vendor on its own. Optional for the same reason as in the
+   *  composer's picker: no adapter named, no vendor claimed. */
+  agentId?: string;
 }) {
   // Resolved upstream and passed in, never worked out here: one resolver owns
   // every step, including the non-Claude catalogue lookup, so this row and the
@@ -79,7 +84,7 @@ export default function SessionStats(props: {
     <span class={styles.stats}>
       <Show when={props.detail.model}>
         <span class={`${styles.stat} ${styles.statModel}`} title="Model">
-          <Icon icon={Brain} class={styles.statIco} />
+          <Icon icon={providerIcon(props.detail.model, props.agentId)} class={styles.statIco} />
           {modelLabel(props.detail.model)}
         </span>
         <span class={styles.statSep}>·</span>
