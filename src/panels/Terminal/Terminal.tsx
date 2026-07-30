@@ -46,7 +46,8 @@ import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
-import { liveStatuses, type SessionStatus } from "../../utils/sessionStatus";
+import { type SessionStatus } from "../../utils/sessionStatus";
+import { liveSessionStatuses } from "../../utils/sessionActivity";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -447,7 +448,7 @@ export default function Terminal(props: {
   // approval" (Phase 1's shared status store), across every workspace/space,
   // cycling from whichever waiting session (if any) is currently focused.
   const offNextWaiting = onEvent(NEXT_WAITING_SESSION, () => {
-    const waiting = liveStatuses().filter((s) => s.status === "waitingForApproval");
+    const waiting = liveSessionStatuses().filter((s) => s.status === "waitingForApproval");
     if (!waiting.length) return;
     const idx = waiting.findIndex((w) => w.tabId === visibleId());
     const next = waiting[(idx + 1) % waiting.length];
