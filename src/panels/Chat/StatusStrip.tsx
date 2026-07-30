@@ -40,6 +40,9 @@ export default function StatusStrip(props: {
    *  Threaded through rather than resolved in the stats row, so this strip and
    *  the composer meter never disagree about the denominator. */
   contextWindow: number | null;
+  /** Passed straight to the stats row, which shows the provider's mark beside
+   *  the model and needs the adapter for ids that do not name a vendor. */
+  agentId?: string;
   onReconnect: () => void;
   /** The overflow menu's contents; the strip owns only the open/close state. */
   menu: JSX.Element;
@@ -119,7 +122,7 @@ export default function StatusStrip(props: {
         {(d) => (
           <>
             <span class={styles.stripSep} aria-hidden="true" />
-            <SessionStats detail={d()} contextWindow={props.contextWindow} />
+            <SessionStats detail={d()} contextWindow={props.contextWindow} agentId={props.agentId} />
           </>
         )}
       </Show>
