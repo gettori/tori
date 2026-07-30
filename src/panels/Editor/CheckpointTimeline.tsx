@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
-import { liveStatuses } from "../../utils/sessionStatus";
+import { liveSessionStatuses } from "../../utils/sessionActivity";
 import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder } from "../../utils/chatSessions";
@@ -106,7 +106,7 @@ export default function CheckpointTimeline(props: {
   const executingHere = () => {
     const folder = props.folderPath;
     if (!folder) return [];
-    return liveStatuses().filter((s) => s.status === "executing" && isUnderPath(s.folderPath, folder));
+    return liveSessionStatuses().filter((s) => s.status === "executing" && isUnderPath(s.folderPath, folder));
   };
 
   async function loadEntries() {
