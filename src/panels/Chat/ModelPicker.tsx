@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { Brain, ChartNoAxesColumn } from "lucide-solid";
+import { ChartNoAxesColumn } from "lucide-solid";
+import { providerIcon } from "../../components/Icon/ProviderIcon";
 import Picker, { PickerMore, PickerOption } from "./Picker";
 import type { PickableModel } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
@@ -29,6 +30,10 @@ export default function ModelPicker(props: {
    *  caller resolves this: `ChatView` is where the pick, the id `system/init`
    *  reported, and the transcript's own model all meet. */
   value: string | null;
+  /** The adapter driving this session, so the pill can still show a provider
+   *  mark before any model id has been reported. Optional: a caller that does
+   *  not name one gets the generic glyph rather than a guessed vendor. */
+  agentId?: string;
   effort: string | null;
   modelPending: boolean;
   effortPending: boolean;
@@ -57,7 +62,7 @@ export default function ModelPicker(props: {
   return (
     <>
       <Picker
-        icon={Brain}
+        icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
         value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
         ariaLabel="Model"
         title={current()?.description || "Model"}
