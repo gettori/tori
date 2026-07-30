@@ -55,6 +55,15 @@ export function reconcileScan(
   return next;
 }
 
+/** Whether two stamp maps say the same thing. A fold that changed nothing still
+ *  returns a fresh object, so identity cannot answer this, and the caller needs
+ *  the answer to skip a whole-map re-serialize rather than pay one per scan. */
+export function sameStamps(a: Stamps, b: Stamps): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((k) => b[k] !== undefined && a[k].at === b[k].at && a[k].cwd === b[k].cwd);
+}
+
 // Stamp a session as looked-at. Called both when it becomes the selection and
 // when it stops being one, so activity that landed while it was open is covered.
 export function markViewed(stamps: Stamps, s: { id: string; agent?: string; cwd: string }, now: number): Stamps {

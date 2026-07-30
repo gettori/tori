@@ -93,9 +93,12 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
+const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 
 describe("fan-out groups in the tree", () => {
   beforeEach(() => {
+    // The session map is a module-level store now, so it outlives a render.
+    resetSessionStoreForTests();
     bridge.calls.length = 0;
     bridge.promoteProblems = [];
     // jsdom has no layout, so the picker's keyboard-nav scroll is a no-op here.
