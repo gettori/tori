@@ -145,9 +145,11 @@ describe("replaying the captured fixture", () => {
       "notice",
       "hook",
     ]);
-    // The compaction renders in place, carrying the figures and the summary.
-    expect((s.items[1] as { text: string }).text).toContain("Compacted manually (247k to 9k)");
-    expect((s.items[1] as { text: string }).text).toContain("continued from a previous conversation");
+    // The compaction renders in place. The line carries the figures; the
+    // summary rides along as details, folded away rather than inline.
+    const boundary = s.items[1] as { text: string; details?: string };
+    expect(boundary.text).toBe("Compacted manually (247k to 9k).");
+    expect(boundary.details).toContain("continued from a previous conversation");
     expect(s.items.filter((i): i is ToolItem => i.kind === "tool").map((t) => t.toolUseId)).toEqual([
       "toolu_1",
       "toolu_2",

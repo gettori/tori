@@ -304,7 +304,21 @@ export default function MessageList(props: {
             </Match>
             <Match when={item.kind === "notice" && item}>
               {(it) => (
-                <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>{it().text}</div>
+                <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>
+                  {it().text}
+                  {/* Closed by default: the line is the news, the details are
+                      what you go looking for afterwards. A plain `<details>`
+                      because it needs no state of its own - one open summary
+                      does not concern the rest of the transcript. */}
+                  <Show when={it().details}>
+                    {(d) => (
+                      <details class={styles.noticeDetails}>
+                        <summary>Summary</summary>
+                        <div class={styles.noticeDetailsBody}>{d()}</div>
+                      </details>
+                    )}
+                  </Show>
+                </div>
               )}
             </Match>
             <Match when={item.kind === "hook" && item}>{(it) => <HookRow item={it()} />}</Match>
