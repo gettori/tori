@@ -127,7 +127,10 @@
     --sway-radius-sm: 3px;
     --sway-radius-md: 8px;
     --sway-radius-lg: 10px;
-    --sway-radius-xl: 12px; /* the floating work-card */
+    /* Every surface that floats over the app: dialog, modal, popover, menu,
+       toast, and the work-card. One radius for the whole tier, because they
+       are the same kind of object to the eye whatever the code calls them. */
+    --sway-radius-xl: 12px;
     --sway-radius-pill: 999px;
 
     /* ---- Border widths ---- */

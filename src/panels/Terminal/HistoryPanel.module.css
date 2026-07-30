@@ -10,11 +10,27 @@
   z-index: 900;
   display: flex;
   flex-direction: column;
-  width: calc(340px * var(--ui-scale));
+  /* One inset for every row, heading and header in the panel, so the left edge
+     of a session title lines up with the search field above it and the eye has
+     a single vertical rule to follow down a 47-row list. */
+  --pad-x: calc(12px * var(--ui-scale));
+  /* The highlight is inset from the panel edge by half the content inset, so a
+     selected row reads as a pill inside the panel rather than a band across it,
+     while its text still starts on the same rule as everything else. */
+  --row-inset: calc(6px * var(--ui-scale));
+  width: calc(360px * var(--ui-scale));
+  /* A ceiling, not a fixed height: a folder with two sessions gets a panel two
+     rows tall rather than a mostly-empty box. Still clamped to the viewport, so
+     a short window shrinks it further instead of running it off screen. */
   max-height: min(60vh, calc(520px * var(--ui-scale)));
+  /* The sidebar's own base size (LeftSidebar.module.css `.tree`), set on the
+     container and inherited by rows for the same reason it is there: a session
+     title is a session title whichever surface lists it. Anything that steps
+     down from it does so explicitly below. */
+  font-size: var(--sway-text-xl);
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--sway-radius-xl);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   -webkit-user-select: none;
@@ -24,30 +40,58 @@
 .head {
   display: flex;
   flex-direction: column;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale)) var(--pad-x);
   border-bottom: 1px solid var(--border-default);
 }
 
 /* Where you are, stated rather than navigable: the panel is scoped to one
    branch-unit folder and cannot change it, so this is a label, not a control. */
 .crumb {
+  display: flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
   color: var(--fg-subtle);
   font-size: var(--sway-text-sm);
   white-space: nowrap;
   overflow: hidden;
+}
+
+.crumbPart {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* The menubar's separator (Toolbar.module.css `.crumbSep`), so the two places
+   that spell out where you are spell it the same way. */
+.crumbSep {
+  flex: 0 0 auto;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+
+/* The sidebar's filter field, to the pixel (LeftSidebar.module.css `.searchInput`):
+   both are a filter over a list of the same things, and two filters that look
+   different read as two different controls. */
 .search {
-  background: var(--canvas-input);
+  background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--sway-radius-md);
   color: var(--fg-default);
+  caret-color: var(--brand-default);
   font: inherit;
-  font-size: var(--sway-text-sm);
-  padding: calc(4px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+.search::placeholder {
+  color: var(--fg-subtle);
+  opacity: 1;
 }
 .search:focus {
   border-color: var(--brand-default);
@@ -55,20 +99,28 @@
 
 .list {
   overflow-y: auto;
-  padding: calc(4px * var(--ui-scale)) 0;
+  padding: calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
 }
 
 /* An era heading, or the Historical disclosure. Never rendered for an empty
-   group, so the headings themselves say how much history there is. */
+   group, so the headings themselves say how much history there is.
+
+   The vertical padding is asymmetric on purpose: the gap above separates a
+   heading from the previous group, the gap below only ties it to its own first
+   row, so the two must not match or every era reads as one run of rows with a
+   label floating in it. The first heading gives its top gap back to `.list`. */
 .section {
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(9px * var(--ui-scale)) calc(3px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) var(--pad-x) calc(5px * var(--ui-scale));
   color: var(--fg-subtle);
   font-size: var(--sway-text-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.section:first-child {
+  padding-top: calc(2px * var(--ui-scale));
 }
 
 .historical {
@@ -80,20 +132,27 @@
 .row {
   display: flex;
   align-items: center;
-  gap: calc(2px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  gap: calc(7px * var(--ui-scale));
+  /* Inset by `--row-inset`, padded by the remainder, so the pill sits inside the
+     panel while the label still starts at `--pad-x` like every heading. */
+  margin: 0 var(--row-inset);
+  padding: calc(7px * var(--ui-scale)) calc(var(--pad-x) - var(--row-inset));
+  border-radius: var(--sway-radius-md);
   cursor: pointer;
   overflow: hidden;
 }
 .row:hover {
-  background: var(--neutral-hover);
+  background: var(--neutral-subtle);
 }
 
-/* Where the arrow keys are. Distinct from hover, since the two can be on
-   different rows at once and the keyboard's is the one Enter acts on. */
-.rowActive {
+/* Where the arrow keys are. Still distinct from hover, since the two sit on
+   different rows at once and the keyboard's is the one Enter acts on - but by
+   weight of fill rather than by a left rail, which a rounded pill has nowhere
+   to put. The stronger fill is the keyboard's, because that is the row that
+   acts. */
+.rowActive,
+.rowActive:hover {
   background: var(--neutral-hover);
-  box-shadow: inset calc(2px * var(--ui-scale)) 0 0 var(--brand-default);
 }
 
 .rowLabel {
@@ -102,21 +161,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: var(--sway-text-sm);
 }
 
 /* Holds its width so the label is what truncates: with 20 sessions titled `/gg`
-   the time is the only thing telling two rows apart. */
+   the time is the only thing telling two rows apart. One step below the title
+   it belongs to, because it answers a second question, not the first. */
 .rowWhen {
   flex: 0 0 auto;
-  margin-left: calc(6px * var(--ui-scale));
+  margin-left: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--sway-text-md);
   font-variant-numeric: tabular-nums;
 }
 
 .empty {
-  padding: calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) var(--pad-x);
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
 }

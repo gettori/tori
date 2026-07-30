@@ -18,7 +18,7 @@
   flex-direction: column;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--sway-radius-xl);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
 }

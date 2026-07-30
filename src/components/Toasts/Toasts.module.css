@@ -20,7 +20,7 @@
   background: var(--canvas-head);
   border: 1px solid var(--border-default);
   border-left: 3px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--sway-radius-xl);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
   animation: toast-in 140ms ease-out;

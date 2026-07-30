@@ -1,6 +1,8 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronRight } from "lucide-solid";
 import Chevron from "../../components/Chevron/Chevron";
+import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import Menu, { type MenuItem } from "../../components/Menu/Menu";
 import Popover from "../../components/Popover/Popover";
@@ -32,8 +34,10 @@ import styles from "./HistoryPanel.module.css";
 export default function HistoryPanel(props: {
   /** The branch-unit folder whose sessions this lists. */
   folder: string;
-  /** Where you are, stated rather than navigable: the panel cannot change it. */
-  breadcrumb: string;
+  /** Where you are, stated rather than navigable: the panel cannot change it.
+   *  Segments rather than a joined string, so the separator is the menubar's
+   *  chevron rather than a character baked into the text. */
+  breadcrumb: readonly string[];
   /** Sessions this workspace currently has open in a tab. */
   openSessionIds: readonly string[];
   /** The History button's rect, in viewport coordinates. */
@@ -207,7 +211,16 @@ export default function HistoryPanel(props: {
       >
         <div class={styles.head}>
           <div class={styles.crumb} title={props.folder}>
-            {props.breadcrumb}
+            <For each={props.breadcrumb}>
+              {(part, i) => (
+                <>
+                  <Show when={i() > 0}>
+                    <Icon icon={ChevronRight} class={styles.crumbSep} />
+                  </Show>
+                  <span class={styles.crumbPart}>{part}</span>
+                </>
+              )}
+            </For>
           </div>
           <input
             ref={searchEl}

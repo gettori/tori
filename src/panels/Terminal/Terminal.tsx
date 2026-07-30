@@ -357,7 +357,7 @@ export default function Terminal(props: {
   // portalled to <body> and anchored to the caret because the tab bar clips
   // overflow, which would otherwise hide a menu rendered inside it.
   const [menuOpen, setMenuOpen] = createSignal(false);
-  const [menuPos, setMenuPos] = createSignal({ left: 0, top: 0 });
+  const [menuPos, setMenuPos] = createSignal({ left: 0, right: 0, top: 0 });
   let splitEl: HTMLDivElement | undefined;
   let caretEl: HTMLButtonElement | undefined;
 
@@ -368,7 +368,7 @@ export default function Terminal(props: {
     }
     if (caretEl) {
       const r = caretEl.getBoundingClientRect();
-      setMenuPos({ left: r.right, top: r.bottom + 4 });
+      setMenuPos({ left: r.left, right: r.right, top: r.bottom + 12 });
     }
     setMenuOpen(true);
   }
@@ -386,7 +386,7 @@ export default function Terminal(props: {
     }
     if (historyEl) {
       const r = historyEl.getBoundingClientRect();
-      setHistoryAnchor({ left: r.left, right: r.right, top: r.bottom + 4 });
+      setHistoryAnchor({ left: r.left, right: r.right, top: r.bottom + 12 });
     }
     setHistoryOpen(true);
   }
@@ -417,11 +417,11 @@ export default function Terminal(props: {
 
   // Where the panel says you are. The selection carries the names when it is
   // pointed here; otherwise the folder's own tail is all there is to say.
-  const historyCrumb = () => {
+  const historyCrumb = (): string[] => {
     const ws = activeWorkspace() ?? "";
     const sel = props.selected;
-    if (sel && sel.folderPath === ws) return `${sel.spaceName} / ${sel.projectName} / ${sel.branch}`;
-    return ws.split("/").filter(Boolean).slice(-2).join(" / ");
+    if (sel && sel.folderPath === ws) return [sel.spaceName, sel.projectName, sel.branch];
+    return ws.split("/").filter(Boolean).slice(-2);
   };
 
   // Surface the live tabs (id + workspace + kind + soft sessionId + agent) so
@@ -1186,6 +1186,7 @@ export default function Terminal(props: {
               <Show when={menuOpen()}>
                 <Menu
                   x={menuPos().left}
+                  right={menuPos().right}
                   y={menuPos().top}
                   anchorEl={splitEl}
                   onClose={() => setMenuOpen(false)}
