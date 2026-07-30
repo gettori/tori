@@ -14,6 +14,7 @@ import {
   type Typography,
 } from "./settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID } from "../../theme";
+import { primaryFamily } from "../../utils/fontLoad";
 import Button from "../../components/Button/Button";
 import styles from "./Settings.module.css";
 
@@ -25,11 +26,10 @@ const UI_FONT_FALLBACK = '-apple-system, BlinkMacSystemFont, "SF Pro Text", syst
 const EDITOR_FONT_FALLBACK = "Menlo, Monaco, monospace";
 const TERMINAL_FONT_FALLBACK = "Menlo, Monaco, monospace";
 
-/** The first family in a CSS font stack, unquoted, for display in the input. */
-function primaryFamily(stack: string): string {
-  const first = stack.split(",")[0]?.trim() ?? "";
-  return first.replace(/^["']|["']$/g, "");
-}
+// `primaryFamily` (the first family in a stack, unquoted, which is what this
+// input shows) is shared with the terminal's font-load wait: both have to read
+// a stack the same way, and two parsers would eventually disagree about one
+// with quotes in it.
 
 /** Rebuild a full stack from a user-entered primary name plus the surface's
  *  fallbacks. A blank entry falls back to the stack alone (no leading comma).
@@ -206,6 +206,12 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                     })
                   }
                 />
+              </div>
+              {/* Worth naming: it is the one family here that needs no install,
+                  and its exact spelling is not guessable. */}
+              <div class={styles.hint}>
+                JetBrainsMono Nerd Font Mono ships with Sway, so its icon glyphs render without a
+                font install. Any family on this machine works too.
               </div>
               <div class={styles.row}>
                 <label class={styles.label}>Terminal font size</label>
