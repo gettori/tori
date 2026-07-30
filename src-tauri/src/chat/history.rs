@@ -146,8 +146,9 @@ fn is_compaction(turn: &TranscriptTurn) -> bool {
 }
 
 /// The summary the harness wrote for the compaction at `at`: the text of the
-/// user turn immediately following it. `None` when the transcript ends at the
-/// boundary, which happens for a session compacted and then closed.
+/// user turn immediately following it, with the framing around it removed.
+/// `None` when the transcript ends at the boundary, which happens for a session
+/// compacted and then closed.
 fn summary_after(turns: &[TranscriptTurn], at: usize) -> Option<String> {
     let next = turns.get(at + 1)?;
     if next.role != "user" {
@@ -160,7 +161,44 @@ fn summary_after(turns: &[TranscriptTurn], at: usize) -> Option<String> {
         .filter_map(|b| b.text.clone())
         .collect::<Vec<_>>()
         .join("\n");
+    let text = strip_continuation_framing(&text);
     (!text.is_empty()).then_some(text)
+}
+
+/// Openings and closings of the continuation *prompt* the harness wraps its
+/// summary in. The summary itself is worth showing - it is the only record of
+/// what the model still remembers across the boundary - but it arrives inside
+/// instructions written to the model ("Resume directly", "do not acknowledge
+/// the summary") and a path to a `.jsonl` on disk. That is one machine talking
+/// to another, and rendering it in a conversation reads as though someone said
+/// it.
+///
+/// Matched on the harness's own sentences rather than on structure, because
+/// there is no structure: it is one prose blob. A wording we do not know stays
+/// whole, which is the safe direction - a summary with its framing still on is
+/// noisy, a summary cut in the wrong place has lost content.
+const FRAMING_HEAD: &str = "This session is being continued from a previous conversation";
+const FRAMING_TAILS: [&str; 3] = [
+    "If you need specific details from before compaction",
+    "Continue the conversation from where it left off",
+    "Please continue the conversation from where we left it off",
+];
+
+fn strip_continuation_framing(text: &str) -> String {
+    let mut body = text.trim();
+    // Only when the preamble is actually there, and only up to the label it
+    // ends with: a summary that opens differently keeps every word.
+    if body.starts_with(FRAMING_HEAD) {
+        if let Some(at) = body.find("Summary:") {
+            body = body[at + "Summary:".len()..].trim_start();
+        }
+    }
+    // The earliest closing wins: the instructions run to the end of the message,
+    // so anything after the first one is more of the same.
+    if let Some(at) = FRAMING_TAILS.iter().filter_map(|t| body.find(t)).min() {
+        body = body[..at].trim_end();
+    }
+    body.trim().to_string()
 }
 
 /// How far back a rewind cuts the replay: the index of the turn carrying the
@@ -389,6 +427,105 @@ mod tests {
             }
             other => panic!("expected a started call, got {other:?}"),
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The summary arrives wrapped in a prompt the harness wrote *to the
+    /// model*: a preamble explaining what a compaction is, and a closing that
+    /// tells it to resume without acknowledging any of this, with a path to a
+    /// jsonl on disk. Rendering that in a conversation reads as though someone
+    /// said it. Wording taken from a real compacted transcript.
+    #[test]
+    fn a_compaction_summary_arrives_without_the_harnesss_instructions() {
+        let raw = concat!(
+            "This session is being continued from a previous conversation that ran out of context. ",
+            "The summary below covers the earlier portion of the conversation. Summary: ",
+            "1. Primary Request and Intent: the user asked for a detailed summary. ",
+            "2. Key Technical Concepts: Sway chat UI project. ",
+            "If you need specific details from before compaction (like exact code snippets), ",
+            "read the full transcript at: /Users/x/.claude/projects/p/ff243892.jsonl ",
+            "Continue the conversation from where it left off without asking the user any further questions.",
+        );
+        let out = strip_continuation_framing(raw);
+        assert!(out.starts_with("1. Primary Request and Intent"), "got {out:?}");
+        assert!(out.ends_with("Sway chat UI project."), "got {out:?}");
+        assert!(!out.contains(".jsonl"));
+        assert!(!out.contains("without asking the user"));
+    }
+
+    /// A wording we do not know keeps every word: a summary with its framing
+    /// still attached is noisy, one cut in the wrong place has lost content.
+    #[test]
+    fn an_unrecognised_summary_is_left_whole() {
+        let raw = "Here is what happened earlier: we fixed the parser and shipped it.";
+        assert_eq!(strip_continuation_framing(raw), raw);
+    }
+
+    /// Measured against a real transcript: running `/model haiku` writes three
+    /// user-role records (the caveat, the command envelope, the command's own
+    /// stdout) and none of them is something the person typed. Replaying them
+    /// showed the harness's markup as the user's own messages, and counted each
+    /// one as a prompt - a session with two real prompts reporting five.
+    #[test]
+    fn a_slash_command_is_not_replayed_as_something_the_user_typed() {
+        let dir = std::env::temp_dir().join(format!("sway-cmd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("commands.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"type":"user","timestamp":"2026-07-28T10:00:00Z","message":{"role":"user","content":"start the migration"}}"#,
+                "\n",
+                r#"{"type":"user","isMeta":true,"timestamp":"2026-07-28T10:01:00Z","message":{"role":"user","content":"<local-command-caveat>Caveat: The messages below were generated by the user while running local commands.</local-command-caveat>"}}"#,
+                "\n",
+                r#"{"type":"user","timestamp":"2026-07-28T10:01:01Z","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>haiku</command-args>"}}"#,
+                "\n",
+                r#"{"type":"user","timestamp":"2026-07-28T10:01:02Z","message":{"role":"user","content":"<local-command-stdout>Set model to haiku (claude-haiku-4-5-20251001)</local-command-stdout>"}}"#,
+                "\n",
+                r#"{"type":"user","timestamp":"2026-07-28T10:02:00Z","message":{"role":"user","content":"carry on"}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
+        let events = events_from_turns("s1", &turns);
+        assert_eq!(kinds(&events), ["user", "user"]);
+        let texts: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => Some(blocks.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec![
+                vec![ContentBlock::Text { text: "start the migration".into() }],
+                vec![ContentBlock::Text { text: "carry on".into() }],
+            ]
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The exclusion is the opening tag, not a leading `<`: a question about
+    /// markup is still a question the user asked.
+    #[test]
+    fn a_prompt_that_merely_starts_with_markup_is_still_the_users() {
+        let dir = std::env::temp_dir().join(format!("sway-markup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("markup.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"type":"user","timestamp":"2026-07-28T10:00:00Z","message":{"role":"user","content":"<svg viewBox=\"0 0 24 24\"> - why does this not scale?"}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
+        assert_eq!(kinds(&events_from_turns("s1", &turns)), ["user"]);
         let _ = std::fs::remove_file(&path);
     }
 

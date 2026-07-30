@@ -97,6 +97,35 @@ pub(crate) fn is_human_prompt(content: &serde_json::Value) -> bool {
     }
 }
 
+/// True for the markup a harness files under the user's own role when a slash
+/// command runs: the command envelope (`<command-name>/model</command-name>`
+/// and its `-message`/`-args` siblings), the command's own output
+/// (`<local-command-stdout>`), and the caveat that introduces both.
+///
+/// **The person typed `/model haiku`, not this.** The harness wrote the markup
+/// for its own consumption and never showed it to them, so replaying it puts
+/// words in their mouth - and a transcript that does that also counts them,
+/// which is how a session with three prompts came to report seven. Excluded
+/// from the replay for the same reason `is_human_prompt` excludes it from the
+/// counts: it is plumbing, not conversation.
+///
+/// Matched on the opening tag rather than on a leading `<`, so a prompt that
+/// genuinely starts with markup (a pasted snippet, an XML question) is still
+/// the user's message.
+pub(crate) fn is_command_envelope(text: &str) -> bool {
+    let t = text.trim_start();
+    [
+        "<command-name>",
+        "<command-message>",
+        "<command-args>",
+        "<local-command-stdout>",
+        "<local-command-stderr>",
+        "<local-command-caveat>",
+    ]
+    .iter()
+    .any(|tag| t.starts_with(tag))
+}
+
 pub(crate) fn clean_title(raw: &str) -> String {
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
@@ -1492,7 +1521,7 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                     let mut blocks = Vec::new();
                     if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
                         if let Some(s) = content.as_str() {
-                            if !s.trim().is_empty() {
+                            if !s.trim().is_empty() && !is_command_envelope(s) {
                                 blocks.push(text_block("text", s.to_string()));
                             }
                         } else if let Some(arr) = content.as_array() {
@@ -1500,7 +1529,9 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
                                 match b.get("type").and_then(|t| t.as_str()) {
                                     Some("text") => {
                                         if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                            blocks.push(text_block("text", t.to_string()));
+                                            if !is_command_envelope(t) {
+                                                blocks.push(text_block("text", t.to_string()));
+                                            }
                                         }
                                     }
                                     Some("tool_result") => {
