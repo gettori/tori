@@ -21,7 +21,6 @@ const session = (id: string, lastActive: number, over: Record<string, unknown> =
   last_active: lastActive,
   created_at: lastActive,
   name: null,
-  archived: false,
   agent: "claude",
   ...over,
 });
@@ -131,7 +130,10 @@ describe("what the History dropdown lists", () => {
   });
 
   it("renders no heading for an era nothing fell into", async () => {
-    bridge.listings[REPO] = [session("today", now() - HOUR), session("old", now() - 90 * DAY)];
+    // `now()` rather than an hour ago: the eras break on local midnight, so a
+    // fixture an hour old lands in "Yesterday" for any run between 00:00 and
+    // 01:00. Only the current second is Today by construction.
+    bridge.listings[REPO] = [session("today", now()), session("old", now() - 90 * DAY)];
     await open();
     expect(sections()).toEqual(["Today", "Older"]);
   });
