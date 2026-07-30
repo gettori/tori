@@ -1,11 +1,10 @@
 // Session discovery for every registered agent adapter, merged by folder.
 //
-// Claude sessions live at ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl;
-// pi sessions live at ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<id>.jsonl. Both
-// encoded dir names are lossy, so we read `cwd` (and Claude's `gitBranch`) from
-// inside each file rather than decoding the folder name. Pi has no branch.
-// These paths, and the claude/pi split itself, are now `agents::registry()`
-// data rather than hardcoded here - see agents.rs.
+// Claude sessions live at ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl.
+// The encoded dir name is lossy, so we read `cwd` and `gitBranch` from inside
+// each file rather than decoding the folder name. That path is
+// `agents::registry()` data rather than hardcoded here - see agents.rs, and
+// nothing in this file names an agent.
 //
 // Scanning reads only the head of each file (cwd/branch/first prompt appear
 // early) and caches by mtime, so repeat scans are cheap. `list_sessions(folder)`
@@ -42,7 +41,7 @@ pub struct SessionMeta {
     /// check, since mtime updates on every turn).
     pub created_at: u64,
     pub name: Option<String>,
-    /// Which agent produced the session: "claude" or "pi".
+    /// Which agent produced the session: the adapter id it was discovered under.
     pub agent: String,
 }
 
@@ -84,7 +83,7 @@ fn extract_text(content: &serde_json::Value) -> Option<String> {
 
 /// True only for a message a human actually typed: it has visible text (so
 /// tool-result and tool-use-only turns, whose content carries no text block,
-/// are excluded) and isn't a slash-command/tag envelope (`<...>`) or pi's
+/// are excluded) and isn't a slash-command/tag envelope (`<...>`) or a
 /// `[Context]` block. Used to count prompts, not raw transcript turns.
 pub(crate) fn is_human_prompt(content: &serde_json::Value) -> bool {
     match extract_text(content) {
@@ -286,12 +285,6 @@ fn parse_by_adapter(
 ) -> Option<SessionMeta> {
     match adapter.parser_kind {
         agents::ParserKind::ClaudeJsonl => parse_session(path, mtime, created, &adapter.id),
-        agents::ParserKind::PiJsonl => parse_pi_session(path, mtime, created, &adapter.id),
-        // Never actually reached: a `Discovery::Sqlite` adapter's sessions
-        // are enumerated straight from the DB in `ensure_index`, not via a
-        // file-tree walk that would call this function. Kept only so the
-        // match stays exhaustive for a hypothetical direct caller.
-        agents::ParserKind::OpencodeSqlite => None,
     }
 }
 
@@ -345,100 +338,13 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
                     }
                 }
             }
-            agents::Discovery::Sqlite { db_path } => {
-                // One shared DB across every project - list every session,
-                // not a directory tree, and filter by cwd at the caller
-                // (`filter_sort`) the same way file-backed adapters already do.
-                for row in crate::opencode::list_sessions(db_path) {
-                    let key = PathBuf::from(crate::opencode::make_locator(db_path, &row.id));
-                    let mtime = crate::opencode::epoch_ms_to_system_time(row.time_updated);
-                    seen.push(key.clone());
-
-                    let fresh = cache.get(&key).map(|e| e.mtime == mtime).unwrap_or(false);
-                    if !fresh {
-                        let meta = Some(crate::opencode::to_session_meta(&row, &adapter.id, db_path));
-                        cache.insert(key, CacheEntry { mtime, meta });
-                    }
-                }
-            }
         }
     }
 
-    // Drop entries whose files (or opencode rows) disappeared.
+    // Drop entries whose files disappeared.
     cache.retain(|k, _| seen.contains(k));
 
     cache.values().filter_map(|e| e.meta.clone()).collect()
-}
-
-/// Parse a pi session: head line carries `id`/`cwd`/`timestamp`; the title comes
-/// from the first real user message in a bounded window, falling back to an
-/// id-slice for an empty session. last_active uses the file mtime (a better
-/// "last activity" signal than the head timestamp, and no ISO parse needed).
-fn parse_pi_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_id: &str) -> Option<SessionMeta> {
-    let file = std::fs::File::open(path).ok()?;
-    let reader = BufReader::new(file);
-
-    let mut cwd: Option<String> = None;
-    let mut id: Option<String> = None;
-    let mut title: Option<String> = None;
-
-    for line in reader.lines().take(HEAD_LINES).map_while(Result::ok) {
-        let v: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        match v.get("type").and_then(|t| t.as_str()) {
-            Some("session") => {
-                if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
-                    cwd = Some(c.to_string());
-                }
-                if let Some(i) = v.get("id").and_then(|i| i.as_str()) {
-                    id = Some(i.to_string());
-                }
-            }
-            Some("message") if title.is_none() => {
-                let msg = v.get("message");
-                if msg.and_then(|m| m.get("role")).and_then(|r| r.as_str()) == Some("user") {
-                    if let Some(content) = msg.and_then(|m| m.get("content")) {
-                        if let Some(text) = extract_text(content) {
-                            let trimmed = text.trim();
-                            // Skip skill/tool envelopes and pi's [Context] blocks.
-                            if !trimmed.is_empty()
-                                && !trimmed.starts_with('<')
-                                && !trimmed.starts_with("[Context]")
-                            {
-                                title = Some(clean_title(trimmed));
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-        if cwd.is_some() && id.is_some() && title.is_some() {
-            break;
-        }
-    }
-
-    let cwd = cwd?;
-    // Prefer the head id; fall back to the `<ts>_<id>` filename stem.
-    let id = id.or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))?;
-    let title = title.unwrap_or_else(|| {
-        let slice: String = id.chars().take(8).collect();
-        format!("pi session {slice}")
-    });
-
-    Some(SessionMeta {
-        id,
-        path: path.to_string_lossy().into_owned(),
-        cwd,
-        branch: String::new(),
-        title,
-        last_active: epoch_secs(mtime),
-        created_at: epoch_secs(created),
-        name: None,
-        agent: agent_id.to_string(),
-    })
 }
 
 /// Does a session's recorded `cwd` belong to `folder` (the folder itself or a
@@ -697,14 +603,6 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
 /// frontend confirms first.
 #[tauri::command]
 pub fn delete_session(path: String) -> Result<(), String> {
-    if let Some((_db_path, session_id)) = crate::opencode::parse_locator(&path) {
-        // Shells out to opencode's own `session delete`, mirroring
-        // `session_running`'s pgrep approach - never writes to the shared
-        // DB directly, so opencode's own cascade/consistency rules apply.
-        let program =
-            agents::find("opencode").map(|a| a.program.clone()).unwrap_or_else(|| "opencode".to_string());
-        return crate::opencode::delete_session_via_cli(&program, session_id);
-    }
     std::fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
@@ -827,12 +725,11 @@ pub struct SessionDetail {
     pub output_tokens: u64,
     pub context_tokens: u64,
     pub model: Option<String>,
-    /// Times this session was compacted (Claude `compact_boundary` markers, pi
-    /// `type:"compaction"` events). 0 for opencode, which has no such concept.
+    /// Times this session was compacted (Claude `compact_boundary` markers).
     pub compaction_count: u32,
     /// Context tokens reclaimed across those compactions, where the transcript
-    /// records both pre and post sizes (Claude). 0 means unknown (pi records no
-    /// post-token), never "zero reclaimed".
+    /// records both pre and post sizes. 0 means unknown, never "zero
+    /// reclaimed".
     pub compaction_reclaimed: u64,
     /// Distinct files this session wrote, created, or deleted (reads excluded).
     pub touched_count: u32,
@@ -853,12 +750,10 @@ pub(crate) struct RawCounts {
 }
 
 /// Single linear pass over a transcript, producing every non-touched count.
-/// Handles both transcript shapes: Claude tags user/assistant at the top level
-/// with a `{output,input,cache_*}_tokens` usage; pi wraps each turn in a
-/// `type:"message"` envelope with `message.role` and a `{input,output,cacheRead,
-/// cacheWrite}` usage. Dispatch is by each record's `type` (Claude and pi type
-/// strings don't overlap), so no agent hint is needed. Pure - takes a reader,
-/// touches no Tauri state - so the counts are unit-testable directly.
+/// Claude tags user/assistant at the top level with a
+/// `{output,input,cache_*}_tokens` usage. Dispatch is by each record's `type`,
+/// so no agent hint is needed. Pure - takes a reader, touches no Tauri state -
+/// so the counts are unit-testable directly.
 pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
     let mut prompt_count = 0u32;
     let mut turn_count = 0u32;
@@ -908,45 +803,6 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
                     }
                 }
             }
-            // pi: the turn lives under a `message` envelope.
-            Some("message") => {
-                let msg = match v.get("message") {
-                    Some(m) => m,
-                    None => continue,
-                };
-                let role = msg.get("role").and_then(|r| r.as_str());
-                if role == Some("user") {
-                    if let Some(c) = msg.get("content") {
-                        if is_human_prompt(c) {
-                            prompt_count += 1;
-                        }
-                    }
-                }
-                // pi logs one toolResult per tool call (mirrors the assistant's
-                // toolCall blocks); counting these is the tool-call total.
-                if role == Some("toolResult") {
-                    tool_count += 1;
-                }
-                if role == Some("assistant") {
-                    turn_count += 1;
-                    if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
-                        model = Some(m.to_string());
-                    }
-                    if let Some(u) = msg.get("usage") {
-                        let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
-                        output_tokens += get("output");
-                        // Last assistant turn's input reflects current context size.
-                        context_tokens = get("input") + get("cacheRead") + get("cacheWrite");
-                    }
-                }
-            }
-            // pi: an explicit mid-session model switch. It can land after the
-            // last assistant turn, so this (in file order) is the current model.
-            Some("model_change") => {
-                if let Some(m) = v.get("modelId").and_then(|m| m.as_str()) {
-                    model = Some(m.to_string());
-                }
-            }
             // Claude: a compaction boundary. Skip sidechain (subagent) records so
             // only top-level compactions count, matching ccstatusline. Reclaimed
             // is summed only when both pre and post token sizes are present.
@@ -962,11 +818,6 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
                         }
                     }
                 }
-            }
-            // pi: a compaction event. Records tokens before but no post size, so
-            // it lifts the count without contributing to reclaimed.
-            Some("compaction") => {
-                compaction_count += 1;
             }
             _ => {}
         }
@@ -985,17 +836,14 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
 }
 
 /// Read the full transcript once (only on selection) for counts and tokens,
-/// then attach the touched-file count (which rides its own cache). opencode
-/// splits off to a SQLite path. The per-line scan lives in `scan_counts`.
+/// then attach the touched-file count (which rides its own cache). The
+/// per-line scan lives in `scan_counts`.
 #[tauri::command]
 pub fn session_detail(
     touched: State<TouchedIndex>,
     path: String,
     agent: String,
 ) -> Result<SessionDetail, String> {
-    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
-        return Ok(crate::opencode::session_counts(&db_path, session_id));
-    }
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let raw = scan_counts(BufReader::new(file));
 
@@ -1149,23 +997,6 @@ fn classify_claude_tool(name: &str, input: Option<&serde_json::Value>) -> Option
     }
 }
 
-fn pi_tool_path(args: &serde_json::Value) -> Option<String> {
-    args.get("path").and_then(|v| v.as_str()).map(|s| s.to_string())
-}
-
-/// pi `toolCall` -> (path, op). Grounded in real local transcripts: tool names
-/// are lowercase (unlike Claude's), and write/edit/read all carry
-/// `arguments.path`.
-fn classify_pi_tool(name: &str, args: Option<&serde_json::Value>) -> Option<(String, TouchOp)> {
-    match name {
-        "write" => pi_tool_path(args?).map(|p| (p, TouchOp::Create)),
-        "edit" => pi_tool_path(args?).map(|p| (p, TouchOp::Edit)),
-        "read" => pi_tool_path(args?).map(|p| (p, TouchOp::Read)),
-        "bash" => infer_bash_touch(args?.get("command")?.as_str()?),
-        _ => None,
-    }
-}
-
 /// Parse a `timestamp` field (RFC3339, always `Z`-suffixed in both agents'
 /// transcripts) into epoch seconds. No chrono/time dependency: a minimal
 /// fixed-format parser using the standard civil-to-days-since-epoch algorithm
@@ -1202,15 +1033,18 @@ fn parse_rfc3339_secs(s: &str) -> Option<u64> {
 /// list (not an error) when the file can't be opened - touched data is
 /// supplementary, so a session that vanished mid-read just shows nothing.
 fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
-    if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
-        return crate::opencode::touched_files(&db_path, session_id);
-    }
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
     };
     let reader = BufReader::new(file);
-    let kind = agents::parser_kind_for(agent);
+    // One parser kind ships. An exhaustive match rather than an ignored value:
+    // adding a kind makes this arm non-exhaustive, so every reader of a
+    // transcript has to answer for the new shape before it compiles. This is
+    // what "a reintroduced locator would not compile" rests on.
+    match agents::parser_kind_for(agent) {
+        agents::ParserKind::ClaudeJsonl => {}
+    }
 
     let mut cwd: Option<String> = None;
     let mut acc: HashMap<String, TouchAcc> = HashMap::new();
@@ -1232,43 +1066,20 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
             .and_then(parse_rfc3339_secs)
             .unwrap_or(0);
 
-        if kind == agents::ParserKind::PiJsonl {
-            if v.get("type").and_then(|t| t.as_str()) != Some("message") {
+        if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+            continue;
+        }
+        let Some(arr) = v.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array())
+        else {
+            continue;
+        };
+        for block in arr {
+            if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
                 continue;
             }
-            let Some(msg) = v.get("message") else { continue };
-            if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
-                continue;
-            }
-            let Some(arr) = msg.get("content").and_then(|c| c.as_array()) else { continue };
-            for block in arr {
-                if block.get("type").and_then(|t| t.as_str()) != Some("toolCall") {
-                    continue;
-                }
-                let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                if let Some((raw_path, op)) = classify_pi_tool(name, block.get("arguments")) {
-                    record_touch(&mut acc, normalize_touch_path(&raw_path, cwd_str), op, ts);
-                }
-            }
-        } else {
-            if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
-                continue;
-            }
-            let Some(arr) = v
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-            else {
-                continue;
-            };
-            for block in arr {
-                if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
-                    continue;
-                }
-                let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                if let Some((raw_path, op)) = classify_claude_tool(name, block.get("input")) {
-                    record_touch(&mut acc, normalize_touch_path(&raw_path, cwd_str), op, ts);
-                }
+            let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            if let Some((raw_path, op)) = classify_claude_tool(name, block.get("input")) {
+                record_touch(&mut acc, normalize_touch_path(&raw_path, cwd_str), op, ts);
             }
         }
     }
@@ -1301,14 +1112,8 @@ pub struct TouchedIndex(Mutex<HashMap<PathBuf, TouchedCacheEntry>>);
 /// touched panel (phase 3) already warmed the cache, or vice versa.
 fn touched_files_cached(index: &TouchedIndex, path: &str, agent: &str) -> Vec<TouchedFile> {
     let p = PathBuf::from(path);
-    // A sqlite locator isn't a real file - `std::fs::metadata` would always
-    // fail and freeze the cache at UNIX_EPOCH, never invalidating. Use the
-    // session's own `time_updated` instead.
-    let mtime = if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
-        crate::opencode::mtime_for(&db_path, session_id)
-    } else {
-        std::fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
-    };
+    let mtime =
+        std::fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
 
     let mut cache = match index.0.lock() {
         Ok(c) => c,
@@ -1379,12 +1184,6 @@ fn watch_dirs() -> Vec<PathBuf> {
         .iter()
         .map(|a| match &a.discovery {
             agents::Discovery::File { dir, .. } => dir.clone(),
-            // No per-session file to watch - watch the DB's parent dir, so a
-            // write to `opencode.db`/`opencode.db-wal` still fires the
-            // debounced `sessions://changed` refetch.
-            agents::Discovery::Sqlite { db_path } => {
-                db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| db_path.clone())
-            }
         })
         .collect()
 }
@@ -1486,8 +1285,8 @@ pub struct TranscriptBlock {
     ///
     /// Claude writes it on both halves (`tool_use.id` and
     /// `tool_result.tool_use_id`), which is what lets a replayed transcript pair
-    /// a result with its call exactly rather than by position. pi's format
-    /// carries no id, so it stays `None` and the replay falls back to order.
+    /// a result with its call exactly rather than by position. A format that
+    /// carries no id leaves this `None` and the replay falls back to order.
     pub tool_use_id: Option<String>,
     /// Set only on a `compaction` block: how much context the compaction
     /// reclaimed, and whether the user asked for it. `None` for every other
@@ -1500,7 +1299,7 @@ pub struct TranscriptBlock {
 
 #[derive(Serialize, Clone)]
 pub struct TranscriptTurn {
-    /// "user" | "assistant" | "tool" (pi's standalone toolResult message)
+    /// "user" | "assistant" | "tool" (a standalone tool-result message)
     pub role: String,
     pub ts: u64,
     pub blocks: Vec<TranscriptBlock>,
@@ -1546,12 +1345,8 @@ fn stringify_content(content: &serde_json::Value) -> String {
 /// array of `text`/`thinking`/`tool_use` blocks (a `tool_result` block rides
 /// inside the *next* user turn's content). Grounded in this session's own live
 /// transcript: also confirmed `tool_use` keys (`name`,`input`) and `tool_result`
-/// keys (`content`,`is_error`). pi: `type:"message"`, `message.role` of
-/// `user`/`assistant`/`toolResult`; an assistant's `toolCall` blocks carry
-/// `name`/`arguments` (lowercase names, matching phase 2's touched-files
-/// finding), and a `toolResult` role is its own top-level message (`content`,
-/// `isError`, `toolName`), not nested in the next turn - mapped to its own
-/// `"tool"`-role turn here.
+/// keys (`content`,`is_error`). An adapter with a different transcript shape
+/// needs a new `ParserKind` and a branch here - see ADAPTERS.md.
 pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
     parse_transcript_turns(path, agent)
 }
@@ -1565,7 +1360,7 @@ pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
 /// guess. It also means a session moved between projects still resolves.
 ///
 /// Two filename shapes are accepted because two harnesses write two: claude's
-/// `<id>.jsonl`, and pi's `<ts>_<id>.jsonl`.
+/// `<id>.jsonl`.
 pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
     let adapter = agents::find(agent)?;
     let agents::Discovery::File { dir, .. } = &adapter.discovery else {
@@ -1594,15 +1389,15 @@ pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
 }
 
 fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
-    if let Some((db_path, session_id)) = crate::opencode::parse_locator(path) {
-        return crate::opencode::transcript_turns(&db_path, session_id);
-    }
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
     };
     let reader = BufReader::new(file);
-    let kind = agents::parser_kind_for(agent);
+    // See `extract_touched_files` on why the kind is matched exhaustively.
+    match agents::parser_kind_for(agent) {
+        agents::ParserKind::ClaudeJsonl => {}
+    }
     let mut turns = Vec::new();
 
     for line in reader.lines().map_while(Result::ok) {
@@ -1616,148 +1411,97 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
             .and_then(parse_rfc3339_secs)
             .unwrap_or(0);
 
-        if kind == agents::ParserKind::PiJsonl {
-            if v.get("type").and_then(|t| t.as_str()) != Some("message") {
-                continue;
-            }
-            let Some(msg) = v.get("message") else { continue };
-            match msg.get("role").and_then(|r| r.as_str()) {
-                Some("user") => {
-                    if let Some(content) = msg.get("content") {
-                        if let Some(text) = extract_text(content) {
-                            turns.push(TranscriptTurn { role: "user".into(), ts, blocks: vec![text_block("text", text)] });
-                        }
-                    }
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("user") => {
+                if v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
+                    continue;
                 }
-                Some("assistant") => {
-                    let mut blocks = Vec::new();
-                    if let Some(arr) = msg.get("content").and_then(|c| c.as_array()) {
+                let mut blocks = Vec::new();
+                if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
+                    if let Some(s) = content.as_str() {
+                        if !s.trim().is_empty() && !is_command_envelope(s) {
+                            blocks.push(text_block("text", s.to_string()));
+                        }
+                    } else if let Some(arr) = content.as_array() {
                         for b in arr {
                             match b.get("type").and_then(|t| t.as_str()) {
                                 Some("text") => {
                                     if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                        blocks.push(text_block("text", t.to_string()));
-                                    }
-                                }
-                                Some("thinking") => {
-                                    if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
-                                        blocks.push(text_block("thinking", t.to_string()));
-                                    }
-                                }
-                                Some("toolCall") => {
-                                    let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                                    let input = b.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
-                                    blocks.push(tool_call_block(name, input, None));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    if !blocks.is_empty() {
-                        turns.push(TranscriptTurn { role: "assistant".into(), ts, blocks });
-                    }
-                }
-                Some("toolResult") => {
-                    let name = msg.get("toolName").and_then(|n| n.as_str()).map(|s| s.to_string());
-                    let text = msg.get("content").map(stringify_content).unwrap_or_default();
-                    let is_error = msg.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
-                    turns.push(TranscriptTurn { role: "tool".into(), ts, blocks: vec![tool_result_block(name, text, is_error, None)] });
-                }
-                _ => {}
-            }
-        } else {
-            match v.get("type").and_then(|t| t.as_str()) {
-                Some("user") => {
-                    if v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
-                        continue;
-                    }
-                    let mut blocks = Vec::new();
-                    if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
-                        if let Some(s) = content.as_str() {
-                            if !s.trim().is_empty() && !is_command_envelope(s) {
-                                blocks.push(text_block("text", s.to_string()));
-                            }
-                        } else if let Some(arr) = content.as_array() {
-                            for b in arr {
-                                match b.get("type").and_then(|t| t.as_str()) {
-                                    Some("text") => {
-                                        if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                            if !is_command_envelope(t) {
-                                                blocks.push(text_block("text", t.to_string()));
-                                            }
+                                        if !is_command_envelope(t) {
+                                            blocks.push(text_block("text", t.to_string()));
                                         }
                                     }
-                                    Some("tool_result") => {
-                                        let text = b.get("content").map(stringify_content).unwrap_or_default();
-                                        let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
-                                        let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
-                                        blocks.push(tool_result_block(None, text, is_error, id));
-                                    }
-                                    _ => {}
                                 }
-                            }
-                        }
-                    }
-                    if !blocks.is_empty() {
-                        turns.push(TranscriptTurn { role: "user".into(), ts, blocks });
-                    }
-                }
-                // A compaction boundary, kept as its own turn so a replayed
-                // transcript shows where its middle went rather than silently
-                // jumping. Sidechain boundaries belong to a subagent's context,
-                // not this conversation's, so they are skipped the same way the
-                // counts in `scan_counts` skip them.
-                Some("system")
-                    if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
-                        && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
-                {
-                    let m = v.get("compactMetadata");
-                    let get = |k: &str| m.and_then(|m| m.get(k)).and_then(|n| n.as_u64());
-                    turns.push(TranscriptTurn {
-                        role: "compaction".into(),
-                        ts,
-                        blocks: vec![compaction_block(
-                            m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
-                            get("preTokens"),
-                            get("postTokens"),
-                        )],
-                    });
-                }
-                Some("assistant") => {
-                    let mut blocks = Vec::new();
-                    if let Some(arr) = v
-                        .get("message")
-                        .and_then(|m| m.get("content"))
-                        .and_then(|c| c.as_array())
-                    {
-                        for b in arr {
-                            match b.get("type").and_then(|t| t.as_str()) {
-                                Some("text") => {
-                                    if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                        blocks.push(text_block("text", t.to_string()));
-                                    }
-                                }
-                                Some("thinking") => {
-                                    if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
-                                        blocks.push(text_block("thinking", t.to_string()));
-                                    }
-                                }
-                                Some("tool_use") => {
-                                    let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                                    let input = b.get("input").cloned().unwrap_or(serde_json::Value::Null);
-                                    let id = b.get("id").and_then(|i| i.as_str()).map(str::to_string);
-                                    blocks.push(tool_call_block(name, input, id));
+                                Some("tool_result") => {
+                                    let text = b.get("content").map(stringify_content).unwrap_or_default();
+                                    let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                                    let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
+                                    blocks.push(tool_result_block(None, text, is_error, id));
                                 }
                                 _ => {}
                             }
                         }
                     }
-                    if !blocks.is_empty() {
-                        turns.push(TranscriptTurn { role: "assistant".into(), ts, blocks });
+                }
+                if !blocks.is_empty() {
+                    turns.push(TranscriptTurn { role: "user".into(), ts, blocks });
+                }
+            }
+            // A compaction boundary, kept as its own turn so a replayed
+            // transcript shows where its middle went rather than silently
+            // jumping. Sidechain boundaries belong to a subagent's context,
+            // not this conversation's, so they are skipped the same way the
+            // counts in `scan_counts` skip them.
+            Some("system")
+                if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
+                    && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
+            {
+                let m = v.get("compactMetadata");
+                let get = |k: &str| m.and_then(|m| m.get(k)).and_then(|n| n.as_u64());
+                turns.push(TranscriptTurn {
+                    role: "compaction".into(),
+                    ts,
+                    blocks: vec![compaction_block(
+                        m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
+                        get("preTokens"),
+                        get("postTokens"),
+                    )],
+                });
+            }
+            Some("assistant") => {
+                let mut blocks = Vec::new();
+                if let Some(arr) = v
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array())
+                {
+                    for b in arr {
+                        match b.get("type").and_then(|t| t.as_str()) {
+                            Some("text") => {
+                                if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
+                                    blocks.push(text_block("text", t.to_string()));
+                                }
+                            }
+                            Some("thinking") => {
+                                if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
+                                    blocks.push(text_block("thinking", t.to_string()));
+                                }
+                            }
+                            Some("tool_use") => {
+                                let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                                let input = b.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                                let id = b.get("id").and_then(|i| i.as_str()).map(str::to_string);
+                                blocks.push(tool_call_block(name, input, id));
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                _ => {}
+                if !blocks.is_empty() {
+                    turns.push(TranscriptTurn { role: "assistant".into(), ts, blocks });
+                }
             }
+            _ => {}
         }
     }
 
@@ -1805,10 +1549,12 @@ fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
 /// overriding the transcript-tail guess with claude's own ground-truth
 /// signal; falls back to the tail join when no hook file exists yet (a
 /// session just launched) or names an event with no mapped status.
-/// Otherwise, an agent whose `needs_you` capability is off (its
-/// blocked-quiet join was never verified, e.g. pi - see ADAPTERS.md) never
-/// reports `blocked-candidate` from the tail join, collapsing to `working`
-/// instead, so its dot caps at working rather than risking a false amber.
+/// Otherwise, an agent whose `needs_you` capability is off (its blocked-quiet
+/// join was never verified - see ADAPTERS.md) never reports
+/// `blocked-candidate` from the tail join, collapsing to `working` instead, so
+/// its dot caps at working rather than risking a false amber. No bundled
+/// adapter turns it off today; a user adapter that cannot claim the join is
+/// what `gate_tail` is still here for.
 #[tauri::command]
 pub fn session_tail_state(id: String, path: String, agent: String) -> Result<TailState, String> {
     let tail = classify_tail(&parse_transcript_turns(&path, &agent));
@@ -1831,18 +1577,25 @@ pub fn session_tail_state(id: String, path: String, agent: String) -> Result<Tai
         }
     }
     let needs_you_capable = agents::find(&agent).map(|a| a.needs_you).unwrap_or(true);
+    Ok(gate_tail(tail, needs_you_capable))
+}
+
+/// The needs-you capability gate, pulled out so it stays testable. It reads
+/// the registry nowhere, which is the point: with one bundled adapter, and that
+/// one capable, there is no adapter a test could pass in to exercise the off
+/// case through `session_tail_state`.
+fn gate_tail(tail: TailState, needs_you_capable: bool) -> TailState {
     if tail == TailState::BlockedCandidate && !needs_you_capable {
-        Ok(TailState::Working)
+        TailState::Working
     } else {
-        Ok(tail)
+        tail
     }
 }
 
 // --- Checkpoint prompt-boundary detection (Finding E) ---
 //
 // Genuine human prompts only (reuses `is_human_prompt`, the same filter
-// `session_detail`'s prompt_count uses), agent-agnostic via the same
-// claude/pi branch other transcript readers use. The count lets a caller
+// `session_detail`'s prompt_count uses). The count lets a caller
 // detect a rising edge (a *new* prompt arrived) without re-deriving it from
 // raw turns; `last_ts` is the transcript timestamp a checkpoint snapshot is
 // keyed by.
@@ -1859,12 +1612,12 @@ pub struct PromptTail {
 /// tracking timestamps itself.
 #[tauri::command]
 pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, String> {
-    if let Some((db_path, session_id)) = crate::opencode::parse_locator(&path) {
-        return Ok(crate::opencode::prompt_tail(&db_path, session_id));
-    }
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
-    let kind = agents::parser_kind_for(&agent);
+    // See `extract_touched_files` on why the kind is matched exhaustively.
+    match agents::parser_kind_for(&agent) {
+        agents::ParserKind::ClaudeJsonl => {}
+    }
     let mut count = 0u32;
     let mut last_ts = 0u64;
 
@@ -1879,17 +1632,10 @@ pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, St
             .and_then(parse_rfc3339_secs)
             .unwrap_or(0);
 
-        let content = if kind == agents::ParserKind::PiJsonl {
-            (v.get("type").and_then(|t| t.as_str()) == Some("message")
-                && v.get("message").and_then(|m| m.get("role")).and_then(|r| r.as_str()) == Some("user"))
-            .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
-            .flatten()
-        } else {
-            (v.get("type").and_then(|t| t.as_str()) == Some("user")
-                && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true))
-            .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
-            .flatten()
-        };
+        let content = (v.get("type").and_then(|t| t.as_str()) == Some("user")
+            && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true))
+        .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
+        .flatten();
 
         if content.map(|c| is_human_prompt(&c)).unwrap_or(false) {
             count += 1;
@@ -1947,22 +1693,6 @@ mod tests {
         assert_eq!(r.turn_count, 1);
         assert_eq!(r.tool_count, 1);
         assert_eq!(r.model.as_deref(), Some("claude-opus-4-8"));
-    }
-
-    #[test]
-    fn scan_counts_pi_counts_compaction_without_reclaimed() {
-        let body = r#"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"Fix the bug"}]}}
-{"type":"message","message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"output":10,"input":5,"cacheRead":0,"cacheWrite":0}}}
-{"type":"message","message":{"role":"toolResult","content":[]}}
-{"type":"compaction","id":"c1","tokensBefore":900,"fromHook":false}
-"#;
-        let r = scan_counts(std::io::Cursor::new(body));
-        // pi records no post-token, so count lifts but reclaimed stays 0 (unknown).
-        assert_eq!(r.compaction_count, 1);
-        assert_eq!(r.compaction_reclaimed, 0);
-        assert_eq!(r.prompt_count, 1);
-        assert_eq!(r.turn_count, 1);
-        assert_eq!(r.tool_count, 1);
     }
 
     /// Parse a committed transcript head from `dev/fixtures/sessions/`. Resolved
@@ -2044,37 +1774,6 @@ mod tests {
     }
 
     #[test]
-    fn pi_session_parses_head_skips_envelopes_and_titles() {
-        let body = r#"{"type":"session","version":3,"id":"abc123def456","timestamp":"2026-05-07T14:50:04.610Z","cwd":"/Users/x/proj/wt"}
-{"type":"model_change","modelId":"m"}
-{"type":"message","message":{"role":"user","content":[{"type":"text","text":"<skill name=\"foo\">noise</skill>"}]}}
-{"type":"message","message":{"role":"user","content":[{"type":"text","text":"[Context] file:///x/proj/wt/a.ts"}]}}
-{"type":"message","message":{"role":"user","content":[{"type":"text","text":"  Fix the parser bug  "}]}}
-"#;
-        let p = tmp_file("2026-05-07T14-50-04_abc123def456.jsonl", body);
-        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now(), "pi").expect("parsed");
-        assert_eq!(s.agent, "pi");
-        assert_eq!(s.id, "abc123def456");
-        assert_eq!(s.cwd, "/Users/x/proj/wt");
-        // Envelope + [Context] skipped; first real user message wins, trimmed.
-        assert_eq!(s.title, "Fix the parser bug");
-        // sessionFile path is carried.
-        assert!(s.path.ends_with("abc123def456.jsonl"));
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn pi_empty_session_falls_back_to_id_slice() {
-        let body =
-            "{\"type\":\"session\",\"id\":\"0123456789abcdef\",\"cwd\":\"/Users/x/proj\"}\n";
-        let p = tmp_file("ts_0123456789abcdef.jsonl", body);
-        let s = parse_pi_session(&p, SystemTime::now(), SystemTime::now(), "pi").expect("parsed");
-        assert_eq!(s.cwd, "/Users/x/proj");
-        assert_eq!(s.title, "pi session 01234567"); // first 8 chars of the id
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
     fn cwd_matches_exact_and_nested_only() {
         assert!(cwd_matches("/a/b", "/a/b")); // exact
         assert!(cwd_matches("/a/b/", "/a/b")); // trailing slash normalized
@@ -2087,16 +1786,16 @@ mod tests {
     fn filter_sort_merges_agents_under_folder_newest_first() {
         let all = vec![
             meta("claude-root", "/p/wt", "claude", 100),
-            meta("pi-nested", "/p/wt/src", "pi", 300),
+            meta("other-agent-nested", "/p/wt/src", "gemini", 300),
             meta("claude-old", "/p/wt", "claude", 50),
             meta("other", "/p/elsewhere", "claude", 999), // excluded
         ];
         let got = filter_sort(all, "/p/wt");
         let ids: Vec<&str> = got.iter().map(|s| s.id.as_str()).collect();
         // Excludes the non-matching folder; sorted newest-first.
-        assert_eq!(ids, vec!["pi-nested", "claude-root", "claude-old"]);
-        // Both agents are merged under the one folder.
-        assert!(got.iter().any(|s| s.agent == "pi"));
+        assert_eq!(ids, vec!["other-agent-nested", "claude-root", "claude-old"]);
+        // A user adapter's sessions merge under the same folder as the built-in's.
+        assert!(got.iter().any(|s| s.agent == "gemini"));
         assert!(got.iter().any(|s| s.agent == "claude"));
     }
 
@@ -2281,24 +1980,13 @@ mod tests {
     }
 
     #[test]
-    fn session_pattern_pi_matches_session_file_not_transcript_view() {
-        let id = "0123456789abcdef";
-        let pat = session_pattern("pi", id);
-        assert!(ere_matches(
-            &pat,
-            "pi --session /Users/x/.pi/agent/sessions/-Users-x-proj/2026-05-07T14-50-04_0123456789abcdef.jsonl"
-        ));
-        assert!(!ere_matches(
-            &pat,
-            "less /Users/x/.pi/agent/sessions/-Users-x-proj/2026-05-07T14-50-04_0123456789abcdef.jsonl"
-        ));
-    }
-
-    #[test]
-    fn watch_dirs_covers_both_agent_roots() {
+    /// One adapter ships, so one directory is watched. The count is the claim:
+    /// a stale root left behind would make the watcher create and watch a
+    /// directory for an agent that no longer exists.
+    fn watch_dirs_covers_every_agent_root() {
         let dirs = watch_dirs();
-        assert!(dirs.iter().any(|p| p.ends_with(".claude/projects")));
-        assert!(dirs.iter().any(|p| p.ends_with(".pi/agent/sessions")));
+        assert_eq!(dirs.len(), 1, "one bundled adapter, one watched root: {dirs:?}");
+        assert!(dirs[0].ends_with(".claude/projects"));
     }
 
     #[test]
@@ -2429,26 +2117,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_touched_files_pi_maps_lowercase_tools_and_keeps_write_over_later_read() {
-        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-12T10:00:00.000Z"}
-{"type":"message","timestamp":"2026-07-12T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"write","arguments":{"path":"/Users/y/proj/out.txt","content":"hi"}}]}}
-{"type":"message","timestamp":"2026-07-12T10:00:10.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"2","name":"read","arguments":{"path":"/Users/y/proj/out.txt"}}]}}
-"#;
-        let p = tmp_file("pi_touch.jsonl", body);
-        let files = extract_touched_files(p.to_str().unwrap(), "pi");
-
-        assert_eq!(files.len(), 1);
-        let f = &files[0];
-        assert_eq!(f.path, "/Users/y/proj/out.txt");
-        // A later Read never downgrades the earlier write - still shows Create.
-        assert_eq!(f.op, TouchOp::Create);
-        assert_eq!(f.count, 2);
-        assert!(f.last_ts > f.first_ts);
-
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
     fn touched_files_cached_returns_cached_entry_when_mtime_matches() {
         let body = "{\"type\":\"session\",\"id\":\"real\",\"cwd\":\"/x\"}\n";
         let p = tmp_file("cache_hit.jsonl", body);
@@ -2473,7 +2141,7 @@ mod tests {
             );
         }
 
-        let files = touched_files_cached(&index, p.to_str().unwrap(), "pi");
+        let files = touched_files_cached(&index, p.to_str().unwrap(), "claude");
         // The fake cached entry came back untouched - a re-parse would have
         // returned nothing (the fixture has no tool calls at all).
         assert_eq!(files.len(), 1);
@@ -2485,8 +2153,8 @@ mod tests {
 
     #[test]
     fn touched_files_cached_reparses_when_mtime_is_stale() {
-        let body = r#"{"type":"session","id":"real","cwd":"/y","timestamp":"2026-07-12T10:00:00.000Z"}
-{"type":"message","timestamp":"2026-07-12T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"write","arguments":{"path":"/y/real.txt"}}]}}
+        let body = r#"{"type":"user","cwd":"/y","timestamp":"2026-07-12T10:00:00.000Z","message":{"content":"write it"}}
+{"type":"assistant","cwd":"/y","timestamp":"2026-07-12T10:00:05.000Z","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/y/real.txt"}}]}}
 "#;
         let p = tmp_file("cache_stale.jsonl", body);
 
@@ -2508,7 +2176,7 @@ mod tests {
             );
         }
 
-        let files = touched_files_cached(&index, p.to_str().unwrap(), "pi");
+        let files = touched_files_cached(&index, p.to_str().unwrap(), "claude");
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "/y/real.txt"); // re-parsed the real fixture, not the stale cache
 
@@ -2545,32 +2213,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_transcript_turns_pi_maps_toolcall_and_standalone_toolresult() {
-        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-12T10:00:00.000Z"}
-{"type":"message","timestamp":"2026-07-12T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"add a test"}]}}
-{"type":"message","timestamp":"2026-07-12T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"on it"},{"type":"toolCall","id":"1","name":"write","arguments":{"path":"/Users/y/proj/t.rs"}}]}}
-{"type":"message","timestamp":"2026-07-12T10:00:08.000Z","message":{"role":"toolResult","toolCallId":"1","toolName":"write","content":"ok","isError":false}}
-"#;
-        let p = tmp_file("pi_transcript.jsonl", body);
-        let turns = parse_transcript_turns(p.to_str().unwrap(), "pi");
-
-        // The `session` line carries no turn; the 3 message lines parse in order.
-        assert_eq!(turns.len(), 3);
-        assert_eq!(turns[0].role, "user");
-        assert_eq!(turns[1].role, "assistant");
-        assert_eq!(turns[1].blocks[1].kind, "tool_call");
-        assert_eq!(turns[1].blocks[1].tool_name.as_deref(), Some("write"));
-
-        // pi's toolResult is a standalone message, mapped to its own "tool" turn.
-        assert_eq!(turns[2].role, "tool");
-        assert_eq!(turns[2].blocks[0].kind, "tool_result");
-        assert_eq!(turns[2].blocks[0].tool_name.as_deref(), Some("write"));
-        assert_eq!(turns[2].blocks[0].text.as_deref(), Some("ok"));
-
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
     fn session_tail_state_claude_pending_tool_use_is_blocked_candidate() {
         let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"run the tests"}}
 {"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"text","text":"On it."},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}
@@ -2595,33 +2237,14 @@ mod tests {
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
-    #[test]
-    fn session_tail_state_pi_pending_tool_use_is_capability_gated_to_working() {
-        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-18T10:00:00.000Z"}
-{"type":"message","timestamp":"2026-07-18T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"run the tests"}]}}
-{"type":"message","timestamp":"2026-07-18T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"On it."},{"type":"toolCall","id":"1","name":"bash","arguments":{"command":"npm test"}}]}}
-"#;
-        let p = tmp_file("pi_tail_pending.jsonl", body);
-        // The raw transcript shape is identical to claude's blocked-candidate case,
-        // but pi's needs_you capability is off (findings.md: pi's built-in tools
-        // never observably block), so the join collapses to working instead of
-        // risking a false amber.
-        assert_eq!(session_tail_state("no-hook-file-3".into(), p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Working);
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn session_tail_state_pi_final_text_is_done() {
-        let body = r#"{"type":"session","id":"pi1","cwd":"/Users/y/proj","timestamp":"2026-07-18T10:00:00.000Z"}
-{"type":"message","timestamp":"2026-07-18T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"what does main.rs do?"}]}}
-{"type":"message","timestamp":"2026-07-18T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"read","arguments":{"path":"/Users/y/proj/main.rs"}}]}}
-{"type":"message","timestamp":"2026-07-18T10:00:06.000Z","message":{"role":"toolResult","toolCallId":"1","toolName":"read","content":"fn main() {}","isError":false}}
-{"type":"message","timestamp":"2026-07-18T10:00:08.000Z","message":{"role":"assistant","content":[{"type":"text","text":"It's an empty entry point."}]}}
-"#;
-        let p = tmp_file("pi_tail_done.jsonl", body);
-        // Done doesn't depend on the needs_you capability at all.
-        assert_eq!(session_tail_state("no-hook-file-4".into(), p.to_str().unwrap().to_string(), "pi".into()).unwrap(), TailState::Done);
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+#[test]
+    fn the_needs_you_gate_caps_an_unverified_adapter_at_working() {
+        // A user adapter whose blocked-quiet join was never verified must never
+        // reach amber off the tail alone; everything else passes through.
+        assert_eq!(gate_tail(TailState::BlockedCandidate, false), TailState::Working);
+        assert_eq!(gate_tail(TailState::BlockedCandidate, true), TailState::BlockedCandidate);
+        assert_eq!(gate_tail(TailState::Done, false), TailState::Done);
+        assert_eq!(gate_tail(TailState::Working, false), TailState::Working);
     }
 
     #[test]
@@ -2723,20 +2346,6 @@ mod tests {
         // A tool_result envelope and a [Context] block are not human prompts.
         assert_eq!(tail.count, 2);
         assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:05.000Z").unwrap());
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn prompt_tail_counts_only_genuine_human_text_pi() {
-        let body = r#"{"type":"message","timestamp":"2026-07-18T10:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"first prompt"}]}}
-{"type":"message","timestamp":"2026-07-18T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"1","name":"read","arguments":{"path":"/p/a.txt"}}]}}
-{"type":"message","timestamp":"2026-07-18T10:00:03.000Z","message":{"role":"toolResult","toolCallId":"1","toolName":"read","content":"a","isError":false}}
-{"type":"message","timestamp":"2026-07-18T10:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"second prompt"}]}}
-"#;
-        let p = tmp_file("prompt_tail_pi.jsonl", body);
-        let tail = session_prompt_tail(p.to_str().unwrap().to_string(), "pi".into()).unwrap();
-        assert_eq!(tail.count, 2);
-        assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:04.000Z").unwrap());
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 

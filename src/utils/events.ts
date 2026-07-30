@@ -1,5 +1,6 @@
 // Lightweight window-event bus for cross-component actions.
 import type { ContentBlock } from "./chatTypes";
+import type { AgentId } from "./agents";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -13,7 +14,7 @@ export type LiveTab = {
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.
-  agent?: "claude" | "pi";
+  agent?: AgentId;
 };
 
 export const FOCUS_SEARCH = "sway:focus-search";
@@ -176,9 +177,9 @@ export type OpenTerminal = {
 // spawn (id/title/yolo conventions), so the sidebar only names the target.
 export const NEW_SESSION = "sway:new-session";
 // `agent` is any registered adapter id (Terminal.tsx's spawnSession treats it
-// as opaque, looking it up via findAgent), not just the original claude/pi
+// as opaque, looking it up via findAgent), not just the bundled
 // pair - the command palette's "new session per registered agent" needs the
-// full registry, e.g. opencode or a user-added adapter.
+// full registry, e.g. a user-added adapter.
 export type NewSession = { folderPath: string; projectName: string; agent?: string };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a

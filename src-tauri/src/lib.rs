@@ -13,7 +13,6 @@ mod launch;
 mod lsp;
 mod model;
 mod onboarding;
-mod opencode;
 pub mod palette;
 mod patch;
 mod presence;

@@ -1,7 +1,7 @@
-// Agent adapter registry: what used to be "claude"/"pi" string branches
-// scattered through sessions.rs is now data. Three adapters ship bundled
-// (agents/claude.toml, agents/pi.toml, agents/opencode.toml, embedded at
-// compile time); a user can add or whole-replace an adapter by dropping a
+// Agent adapter registry: what used to be per-agent string branches scattered
+// through sessions.rs is now data. One adapter ships bundled
+// (agents/claude.toml, embedded at compile time); a user can add or
+// whole-replace an adapter by dropping a
 // `schema_version = 1` or `= 2` TOML file into `~/.config/sway/agents/`. See
 // ADAPTERS.md for the schema. v2 is purely additive: it adds the optional
 // `[chat]` table describing how to drive the agent as a structured chat
@@ -80,32 +80,26 @@ impl ChatTransport {
 #[serde(rename_all = "snake_case")]
 pub enum ParserKind {
     ClaudeJsonl,
-    PiJsonl,
-    /// opencode's transcript isn't a file at all: every session's messages
-    /// live as rows in one shared SQLite DB (`discovery.backend = "sqlite"`).
-    /// See `crate::opencode` for the query layer.
-    OpencodeSqlite,
 }
 
 impl ParserKind {
     fn from_str(s: &str) -> Option<Self> {
         match s {
             "claude_jsonl" => Some(Self::ClaudeJsonl),
-            "pi_jsonl" => Some(Self::PiJsonl),
-            "opencode_sqlite" => Some(Self::OpencodeSqlite),
             _ => None,
         }
     }
 }
 
-/// Where an adapter's sessions live and how to find them. Every bundled/user
-/// adapter today is `File` (claude, pi); `Sqlite` exists because opencode has
-/// no per-session file - every session's messages/parts are rows in one
-/// shared DB covering every project on the machine (see ADAPTERS.md).
+/// Where an adapter's sessions live and how to find them.
+///
+/// One variant, and an enum rather than a struct on purpose: a backend that is
+/// not a directory of per-session files (a shared database, say) has to declare
+/// itself here, and every reader has to answer for it, rather than being smuggled
+/// in as a specially-shaped path.
 #[derive(Debug, Clone)]
 pub enum Discovery {
     File { dir: PathBuf, filename_regex: Regex },
-    Sqlite { db_path: PathBuf },
 }
 
 /// One model a chat-capable adapter can run.
@@ -350,14 +344,14 @@ pub struct AgentAdapter {
     /// on the tail-join floor.
     pub hooks: bool,
     /// The agent CLI version this adapter's conventions were empirically
-    /// captured against (e.g. `"opencode 1.18.3"`), echoed in ADAPTERS.md.
+    /// captured against (e.g. `"claude 2.1.220"`), echoed in ADAPTERS.md.
     /// Optional: not every adapter carries one.
     pub verified_against: Option<String>,
     /// The `[chat]` table, or `None` for an adapter with no chat transport.
     ///
-    /// `None` is the normal case, not a degraded one: pi and opencode are
-    /// PTY-only and stay fully functional that way, and every v1 adapter
-    /// reports `None` without changing behaviour.
+    /// `None` is the normal case, not a degraded one: a PTY-only adapter is
+    /// fully functional that way, and every v1 adapter reports `None` without
+    /// changing behaviour.
     pub chat: Option<ChatConfig>,
     /// Where this adapter was loaded from: `"bundled:<id>"` for a built-in, or
     /// the absolute path of the user TOML that defined (or whole-replaced) it.
@@ -430,12 +424,10 @@ struct LaunchToml {
 struct DiscoveryToml {
     #[serde(default = "default_backend")]
     backend: String,
-    /// Required when `backend = "file"` (the default).
+    /// Required when `backend = "file"` (the default, and the only one today).
     dir: Option<String>,
     /// Required when `backend = "file"`.
     filename_pattern: Option<String>,
-    /// Required when `backend = "sqlite"`.
-    db_path: Option<String>,
 }
 
 fn default_backend() -> String {
@@ -558,7 +550,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 
     let parser_kind = ParserKind::from_str(&raw.parser.kind).ok_or_else(|| {
         format!(
-            "{source}: unknown parser kind `{}` (expected claude_jsonl, pi_jsonl, or opencode_sqlite)",
+            "{source}: unknown parser kind `{}` (expected claude_jsonl)",
             raw.parser.kind
         )
     })?;
@@ -580,16 +572,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             }
             Discovery::File { dir: expand_tilde(&dir), filename_regex }
         }
-        "sqlite" => {
-            let db_path = raw.discovery.db_path.ok_or_else(|| {
-                format!("{source}: discovery.db_path is required for backend = \"sqlite\"")
-            })?;
-            Discovery::Sqlite { db_path: expand_tilde(&db_path) }
-        }
         other => {
-            return Err(format!(
-                "{source}: unknown discovery.backend `{other}` (expected file or sqlite)"
-            ))
+            return Err(format!("{source}: unknown discovery.backend `{other}` (expected file)"))
         }
     };
 
@@ -675,8 +659,6 @@ pub fn apply_chat_template(template: &[String], vars: &[(&str, &str)]) -> Vec<St
 }
 
 const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
-const BUILTIN_PI: &str = include_str!("../agents/pi.toml");
-const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
 
 fn user_agents_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/sway/agents")
@@ -688,14 +670,13 @@ fn user_agents_dir() -> PathBuf {
 /// is never silently swallowed: it's logged loudly (naming the problem) and
 /// the id it would have overridden keeps its previous (built-in or
 /// earlier-loaded) entry, so one broken file can't make an agent disappear.
+///
+/// One built-in ships today. The loop stays a loop: what makes this a registry
+/// is that nothing downstream knows how many adapters there are.
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
 
-    for (source, text) in [
-        ("bundled:claude", BUILTIN_CLAUDE),
-        ("bundled:pi", BUILTIN_PI),
-        ("bundled:opencode", BUILTIN_OPENCODE),
-    ] {
+    for (source, text) in [("bundled:claude", BUILTIN_CLAUDE)] {
         match load_adapter_str(text, source) {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
@@ -748,14 +729,13 @@ pub fn registry() -> &'static [AgentAdapter] {
 }
 
 impl AgentAdapter {
-    /// The on-disk location this adapter discovers sessions from: a directory
-    /// for the `File` backend, the DB file for `Sqlite`. The health cards
-    /// report whether it exists, which is the difference between "the agent is
-    /// installed but you have never run it" and "something is misconfigured".
+    /// The on-disk location this adapter discovers sessions from. The health
+    /// cards report whether it exists, which is the difference between "the
+    /// agent is installed but you have never run it" and "something is
+    /// misconfigured".
     pub fn discovery_path(&self) -> &Path {
         match &self.discovery {
             Discovery::File { dir, .. } => dir,
-            Discovery::Sqlite { db_path } => db_path,
         }
     }
 
@@ -888,25 +868,14 @@ mod tests {
         assert!(claude.needs_you);
         // Phase 3: claude's hook-driven status mechanism is verified and wired.
         assert!(claude.hooks);
+    }
 
-        let pi = load_adapter_str(BUILTIN_PI, "bundled:pi").expect("pi parses");
-        assert_eq!(pi.id, "pi");
-        assert_eq!(pi.program, "pi");
-        assert_eq!(pi.parser_kind, ParserKind::PiJsonl);
-        // Empirically confirmed (phase 2): pi's built-in tools never block on
-        // permission, so there is no genuine blocked-quiet state to verify the
-        // join against; needs-you stays off per the plan's contingency.
-        assert!(!pi.needs_you);
-
-        let opencode = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
-        assert_eq!(opencode.id, "opencode");
-        assert_eq!(opencode.parser_kind, ParserKind::OpencodeSqlite);
-        assert!(matches!(opencode.discovery, Discovery::Sqlite { .. }));
-        // Empirically confirmed (phase 2, real pty capture): no permission
-        // prompt gates opencode's default agent, and the TUI never goes
-        // quiet while working - no blocked-quiet state to verify against.
-        assert!(!opencode.needs_you);
-        assert_eq!(opencode.verified_against.as_deref(), Some("opencode 1.18.3"));
+    /// The registry mechanism is the point, not the count. One built-in ships,
+    /// and nothing downstream may assume that number.
+    #[test]
+    fn exactly_one_adapter_ships_bundled() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        assert_eq!(reg.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), vec!["claude"]);
     }
 
     #[test]
@@ -916,32 +885,7 @@ mod tests {
         assert_eq!(a.resume_args, vec!["--resume", "{id}"]);
         match &a.discovery {
             Discovery::File { filename_regex, .. } => assert!(filename_regex.is_match("abc.jsonl")),
-            Discovery::Sqlite { .. } => panic!("expected a file-backed discovery"),
         }
-    }
-
-    #[test]
-    fn sqlite_backend_requires_db_path() {
-        const TOML: &str = r#"
-schema_version = 1
-id = "x"
-label = "X"
-
-[launch]
-program = "x"
-resume_args = ["--session", "{id}"]
-
-[discovery]
-backend = "sqlite"
-
-[parser]
-kind = "opencode_sqlite"
-
-[running]
-pattern = 'x --session {id}'
-"#;
-        let err = load_adapter_str(TOML, "test").unwrap_err();
-        assert!(err.contains("db_path"), "error should mention db_path: {err}");
     }
 
     #[test]
@@ -986,9 +930,24 @@ pattern = 'claude-beta (--resume|-r) {id}'
         let claude = reg.iter().find(|a| a.id == "claude").expect("claude present");
         assert_eq!(claude.program, "claude-beta");
         assert_eq!(claude.label, "Claude (custom)");
-        // pi is untouched by an override that only names claude.
-        let pi = reg.iter().find(|a| a.id == "pi").expect("pi present");
-        assert_eq!(pi.program, "pi");
+        // Replaced, not duplicated: an override is one entry for that id.
+        assert_eq!(reg.iter().filter(|a| a.id == "claude").count(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The reason only one adapter ships bundled is that adding one is a file
+    /// drop, not a code change. A user TOML naming a fresh id registers beside
+    /// the built-in rather than replacing it.
+    #[test]
+    fn a_user_toml_for_a_new_id_registers_alongside_the_builtin() {
+        let dir = tmp_dir();
+        std::fs::write(dir.join("gemini.toml"), VALID_MINIMAL).unwrap();
+
+        let reg = build_registry_from(&dir);
+        let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["claude", "x"]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1029,7 +988,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
     }
 
     /// A v2 adapter that simply has no chat surface is the normal case, not a
-    /// degraded one - pi and opencode stay PTY-only.
+    /// degraded one - a PTY-only adapter is fully functional.
     #[test]
     fn a_v2_adapter_without_a_chat_table_also_reports_none() {
         let text = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 2", 1);
@@ -1203,16 +1162,6 @@ args = ["--effort", "low"]
         assert!(chat.effort.iter().all(|e| !e.args.is_empty()), "an effort level must carry args");
     }
 
-    /// pi and opencode stay PTY-only, and that has to be true of what ships,
-    /// not just of the loader.
-    #[test]
-    fn the_other_bundled_adapters_declare_no_chat_transport() {
-        for (source, text) in [("bundled:pi", BUILTIN_PI), ("bundled:opencode", BUILTIN_OPENCODE)] {
-            let a = load_adapter_str(text, source).expect("parses");
-            assert!(a.chat.is_none(), "{source} must stay PTY-only");
-        }
-    }
-
     /// Emit the resolved bundled adapters for `src/utils/agents.test.ts`.
     ///
     /// `agents.ts` keeps a hand-maintained `FALLBACK_AGENTS` list so the first
@@ -1223,12 +1172,8 @@ args = ["--effort", "low"]
     /// real wire shape, not a restatement of it.
     #[test]
     fn emit_bundled_adapters_for_the_typescript_fallback() {
-        let mut adapters: Vec<AgentAdapter> = [
-            ("bundled:claude", BUILTIN_CLAUDE),
-            ("bundled:pi", BUILTIN_PI),
-            ("bundled:opencode", BUILTIN_OPENCODE),
-        ]
-        .into_iter()
+        let mut adapters: Vec<AgentAdapter> = [("bundled:claude", BUILTIN_CLAUDE)]
+            .into_iter()
         .map(|(source, text)| load_adapter_str(text, source).expect("bundled adapter parses"))
         .collect();
         adapters.sort_by(|a, b| a.id.cmp(&b.id));

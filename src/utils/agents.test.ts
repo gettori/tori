@@ -33,20 +33,20 @@ describe("resumeCommand", () => {
   });
 
   it("fills {file} for a file-addressed adapter", () => {
-    expect(resumeCommand(agent("pi", ["--session", "{file}"]), { id: "abc", file: "/s/abc.jsonl" })).toBe(
-      "pi --session /s/abc.jsonl",
+    expect(resumeCommand(agent("otheragent", ["--session", "{file}"]), { id: "abc", file: "/s/abc.jsonl" })).toBe(
+      "otheragent --session /s/abc.jsonl",
     );
   });
 
   it("quotes a path with a space, so the pasted command survives shell re-parsing", () => {
-    expect(resumeCommand(agent("pi", ["--session", "{file}"]), { id: "a", file: "/My Docs/a.jsonl" })).toBe(
-      "pi --session '/My Docs/a.jsonl'",
+    expect(resumeCommand(agent("otheragent", ["--session", "{file}"]), { id: "a", file: "/My Docs/a.jsonl" })).toBe(
+      "otheragent --session '/My Docs/a.jsonl'",
     );
   });
 
   it("quotes an embedded single quote", () => {
-    expect(resumeCommand(agent("pi", ["--session", "{file}"]), { id: "a", file: "/it's/a.jsonl" })).toBe(
-      `pi --session '/it'\\''s/a.jsonl'`,
+    expect(resumeCommand(agent("otheragent", ["--session", "{file}"]), { id: "a", file: "/it's/a.jsonl" })).toBe(
+      `otheragent --session '/it'\\''s/a.jsonl'`,
     );
   });
 
@@ -108,11 +108,12 @@ describe("the bundled chat tables", () => {
   const resolved = bundled as unknown as Agent[];
   const claude = resolved.find((a) => a.id === "claude")!;
 
-  it("makes claude chat-capable and leaves the others PTY-only", () => {
+  it("makes claude chat-capable, and treats a table-less adapter as PTY-only", () => {
     expect(chatCapable(claude)).toBe(true);
-    for (const id of ["pi", "opencode"]) {
-      expect(chatCapable(resolved.find((a) => a.id === id)!), `${id} should stay PTY-only`).toBe(false);
-    }
+    // A user adapter with no [chat] table is the PTY-only case now that claude
+    // is the only bundled one. `chatCapable` must answer for it without
+    // guessing, since a chat launch would otherwise have no transport.
+    expect(chatCapable({ ...claude, chat: null })).toBe(false);
   });
 
   it("mirrors the transport and every arg template", () => {

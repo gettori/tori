@@ -72,7 +72,6 @@ pub struct PaletteColors {
 
     // Agent marks
     pub agent_claude: String,
-    pub agent_pi: String,
 
     // Overlays
     pub scrim_tint: String,
@@ -230,7 +229,6 @@ impl PaletteColors {
             ("diagInfo", &self.diag_info),
             ("diagHint", &self.diag_hint),
             ("agentClaude", &self.agent_claude),
-            ("agentPi", &self.agent_pi),
             ("scrimTint", &self.scrim_tint),
             ("shadowTint", &self.shadow_tint),
             ("glowTint", &self.glow_tint),

@@ -175,7 +175,7 @@ export type Selection = {
   agent?: string;
   sessionId?: string;
   sessionPath?: string;
-  // What pi resumes with (`pi --session <file>`); equals sessionPath.
+  // What a file-addressed adapter resumes with; equals sessionPath.
   sessionFile?: string;
   // The session's recorded cwd: where a resume should spawn (Phase 4).
   sessionCwd?: string;
@@ -432,7 +432,7 @@ export default function LeftSidebar(props: {
     // One batch probe for the whole folder: probing each off-tab session on its
     // own is a subprocess per session, which a busy folder pays on every count.
     const detached = await invoke<string[]>("sessions_running", {
-      sessions: offTab.map((s) => ({ id: s.id, agent: s.agent === "pi" ? "pi" : "claude" })),
+      sessions: offTab.map((s) => ({ id: s.id, agent: s.agent ?? "claude" })),
     }).catch(() => [] as string[]);
     return tabs.length + detached.length;
   }
@@ -482,7 +482,7 @@ export default function LeftSidebar(props: {
         live.map(async (t) => {
           const meta = allSessions.find((s) => s.id === t.sessionId);
           if (!meta) return null;
-          const agent = meta.agent === "pi" ? "pi" : "claude";
+          const agent = meta.agent ?? "claude";
           const tail = await invoke<{ count: number; last_ts: number }>("session_prompt_tail", {
             path: meta.path,
             agent,
@@ -521,7 +521,7 @@ export default function LeftSidebar(props: {
   function statusInUnit(s: LiveSessionStatus, p: Project, u: BranchUnit) {
     return (
       s.folderPath === u.folderPath &&
-      belongsToUnit({ agent: s.agent, branch: s.recordedBranch }, u, p.branchUnits)
+      belongsToUnit({ branch: s.recordedBranch }, u, p.branchUnits)
     );
   }
 
@@ -1693,7 +1693,7 @@ export default function LeftSidebar(props: {
       for (const s of list) {
         if (hosted.has(s.id) || seen.has(s.id)) continue;
         seen.add(s.id);
-        want.push({ id: s.id, agent: s.agent === "pi" ? "pi" : "claude" });
+        want.push({ id: s.id, agent: s.agent ?? "claude" });
       }
     }
     // One batched pgrep for the whole sweep. Probing per session would be a
@@ -1792,8 +1792,8 @@ export default function LeftSidebar(props: {
   }
 
   async function selectSession(g: Space, p: Project, u: BranchUnit, s: SessionMeta) {
-    // A Claude session wants its recorded branch checked out; pi has no branch.
-    const target = s.agent === "pi" ? null : s.branch || u.branch;
+    // A session wants its recorded branch checked out, when it recorded one.
+    const target = s.branch || u.branch;
     if (!(await ensureBranch(p, u, target))) return;
     props.onSelect({
       spaceName: g.name,
@@ -1812,7 +1812,7 @@ export default function LeftSidebar(props: {
     });
     // Probe on selection so the status reflects this session immediately, not
     // just on the next sessions://changed/window-focus trigger.
-    void probeSession(s.id, s.agent === "pi" ? "pi" : "claude");
+    void probeSession(s.id, s.agent ?? "claude");
   }
 
   // A branch-unit reads as selected when it is the direct selection OR when a

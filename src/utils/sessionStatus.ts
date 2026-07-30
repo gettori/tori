@@ -105,7 +105,7 @@ export type LiveSessionStatus = {
    *  no transcript yet, and for one that recorded no branch. */
   recordedBranch?: string;
   /** Joined from the same place, for the one attribution case that turns on it:
-   *  a branchless (pi) session's files are whatever the checkout currently is. */
+   *  a branchless session's files are whatever the checkout currently is. */
   agent?: string;
 };
 

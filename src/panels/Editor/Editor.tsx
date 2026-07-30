@@ -788,7 +788,7 @@ export default function Editor(props: {
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel
               path={props.selected!.sessionPath ?? null}
-              agent={props.selected!.agent === "pi" ? "pi" : "claude"}
+              agent={props.selected!.agent ?? "claude"}
               cwd={props.selected!.sessionCwd ?? null}
               projectRoot={root()}
               selfSessionId={props.selected!.sessionId ?? null}

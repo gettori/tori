@@ -1,8 +1,8 @@
-// Accurate per-model context windows, sourced from OpenRouter. pi routes to
-// many providers and its model ids are OpenRouter-format (`provider/model`),
-// and OpenRouter publishes `context_length` per model. We fetch that list once
-// a day, cache it to disk, and serve it to the toolbar so the "ctx X/cap (%)"
-// readout reflects the real window of whatever model a session is on.
+// Accurate per-model context windows, sourced from OpenRouter, which
+// publishes `context_length` per model and covers ids in `provider/model`
+// form. We fetch that list once a day, cache it to disk, and serve it to the
+// toolbar so the "ctx X/cap (%)" readout reflects the real window of whatever
+// model a session is on.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

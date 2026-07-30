@@ -2,6 +2,7 @@ import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "s
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, type LiveTab } from "../../utils/events";
+import type { AgentId } from "../../utils/agents";
 import { isUnderPath } from "../../utils/pathScope";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { SessionTarget } from "../../utils/safeSend";
@@ -43,7 +44,7 @@ function diffLineClass(line: string): string {
  *  (bounded to the live-tab set - no historical parse fan-out). */
 export default function SessionPanel(props: {
   path: string | null;
-  agent: "claude" | "pi";
+  agent: AgentId;
   cwd: string | null;
   projectRoot: string | null;
   selfSessionId: string | null;
@@ -96,7 +97,7 @@ export default function SessionPanel(props: {
     const counts: Record<string, number> = {};
     await Promise.all(
       live.map(async (m) => {
-        const agent = m.agent === "pi" ? "pi" : "claude";
+        const agent = m.agent ?? "claude";
         const tf = await invoke<TouchedFile[]>("session_touched_files", { path: m.path, agent }).catch(
           () => [] as TouchedFile[],
         );

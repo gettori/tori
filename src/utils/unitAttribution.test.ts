@@ -9,8 +9,8 @@ describe("belongsToUnit", () => {
   // is anchored there is its, whatever branch the transcript happens to name.
   it("gives a worktree everything in its folder", () => {
     const u = worktree("feat");
-    expect(belongsToUnit({ agent: "claude", branch: "main" }, u, [u])).toBe(true);
-    expect(belongsToUnit({ agent: "claude", branch: null }, u, [u])).toBe(true);
+    expect(belongsToUnit({ branch: "main" }, u, [u])).toBe(true);
+    expect(belongsToUnit({ branch: null }, u, [u])).toBe(true);
   });
 
   // The hard case: siblings share one folder and differ only by recorded
@@ -19,10 +19,10 @@ describe("belongsToUnit", () => {
     const main = plain("main", true);
     const feat = plain("feat");
     const units = [main, feat];
-    expect(belongsToUnit({ agent: "claude", branch: "feat" }, feat, units)).toBe(true);
-    expect(belongsToUnit({ agent: "claude", branch: "feat" }, main, units)).toBe(false);
-    expect(belongsToUnit({ agent: "claude", branch: "main" }, main, units)).toBe(true);
-    expect(belongsToUnit({ agent: "claude", branch: "main" }, feat, units)).toBe(false);
+    expect(belongsToUnit({ branch: "feat" }, feat, units)).toBe(true);
+    expect(belongsToUnit({ branch: "feat" }, main, units)).toBe(false);
+    expect(belongsToUnit({ branch: "main" }, main, units)).toBe(true);
+    expect(belongsToUnit({ branch: "main" }, feat, units)).toBe(false);
   });
 
   // The branch was deleted, or HEAD went detached: no visible unit matches. The
@@ -32,31 +32,22 @@ describe("belongsToUnit", () => {
     const main = plain("main", true);
     const feat = plain("feat");
     const units = [main, feat];
-    const orphan = { agent: "claude", branch: "deleted-branch" };
+    const orphan = { branch: "deleted-branch" };
     expect(belongsToUnit(orphan, main, units)).toBe(true);
     expect(belongsToUnit(orphan, feat, units)).toBe(false);
   });
 
-  // pi records no branch at all, and a claude session can record none either.
-  // Their files are whatever the checkout currently is, so they park there too.
+  // A session can record no branch at all: an older scan, or one started
+  // outside a repo. Its files are whatever the checkout currently is, so it
+  // parks there. Every shape of "no branch" has to reach the same answer.
   it("parks a branchless session on the checkout", () => {
     const main = plain("main", true);
     const feat = plain("feat");
     const units = [main, feat];
-    for (const s of [{ agent: "pi" }, { agent: "claude", branch: "" }, { agent: "claude" }]) {
+    for (const s of [{}, { branch: "" }, { branch: null }]) {
       expect(belongsToUnit(s, main, units)).toBe(true);
       expect(belongsToUnit(s, feat, units)).toBe(false);
     }
-  });
-
-  // A pi session ignores its own recorded branch even when one would match,
-  // because the branch is not what decides where its files are.
-  it("keeps a pi session on the checkout even when its branch has a unit", () => {
-    const main = plain("main", true);
-    const feat = plain("feat");
-    const units = [main, feat];
-    expect(belongsToUnit({ agent: "pi", branch: "feat" }, feat, units)).toBe(false);
-    expect(belongsToUnit({ agent: "pi", branch: "feat" }, main, units)).toBe(true);
   });
 });
 

@@ -32,7 +32,7 @@ describe("providerIcon", () => {
   it("uses the adapter when no model has been reported yet", () => {
     expect(isBrandMark(null, "claude")).toBe(true);
     expect(isBrandMark("", "claude")).toBe(true);
-    expect(isBrandMark(null, "opencode")).toBe(false);
+    expect(isBrandMark(null, "some-other-agent")).toBe(false);
     expect(isBrandMark(null)).toBe(false);
   });
 

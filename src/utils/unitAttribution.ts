@@ -19,15 +19,16 @@
 //     detached, so no visible unit matches it. The session re-homes onto the
 //     fallback rather than disappearing: history is never dropped just because
 //     a branch was.
-//   * **a branchless session** - pi records no branch at all, and its files are
-//     whatever the checkout currently is, so it parks on the fallback too.
+//   * **a branchless session** - the transcript recorded no branch (an older
+//     scan, or a session started outside a repo), and its files are whatever
+//     the checkout currently is, so it parks on the fallback too.
 
 /** The parts of a branch-unit this rule reads. */
 export type AttributableUnit = { kind: string; branch: string | null; isCurrent: boolean };
 
-/** The parts of a session this rule reads. Both are optional because a session
- *  may have recorded no branch, and an older scan may carry no agent. */
-export type AttributableSession = { agent?: string; branch?: string | null };
+/** The part of a session this rule reads. Optional because a session may have
+ *  recorded no branch at all. */
+export type AttributableSession = { branch?: string | null };
 
 /** A key that tells a plain project's units apart. They share one folder, so
  *  the branch is the identity, with a sentinel for the branchless unit
@@ -51,11 +52,10 @@ export function belongsToUnit(
   if (unit.kind !== "plain") return true;
   const home = fallbackHome(siblings);
   const isHome = home != null && plainUnitKey(unit) === plainUnitKey(home);
-  if (session.agent === "pi") return isHome;
   const b = session.branch || "";
   const visible = new Set(
     siblings.filter((x) => x.kind === "plain" && x.branch).map((x) => x.branch),
   );
   if (b && visible.has(b)) return (unit.branch || "") === b;
-  return isHome; // orphaned recorded branch, or a branchless claude session
+  return isHome; // orphaned recorded branch, or a branchless session
 }

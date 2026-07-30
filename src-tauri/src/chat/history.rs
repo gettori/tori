@@ -35,9 +35,9 @@ const TOOL_PREFIX: &str = "hist-tool-";
 pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<ChatEvent> {
     let mut events = Vec::new();
     // Calls awaiting their result, oldest first. Claude records an id on both
-    // halves so the match is exact; pi records none, and for it this queue is
-    // the fallback - a result pairs with the oldest call still open, which is
-    // the order a single-threaded harness produces them in.
+    // halves so the match is exact; a transcript recording none falls back to
+    // order - a result pairs with the oldest call still open, which is the
+    // order a single-threaded harness produces them in.
     let mut open_calls: Vec<(String, String)> = Vec::new();
     let mut seq = 0usize;
 
@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn a_transcript_without_ids_pairs_by_order() {
-        // pi records no tool ids at all, so the fallback has to hold.
+        // A transcript recording no tool ids at all still has to pair up.
         let turns = vec![
             turn("assistant", vec![tool_call_block("Read".into(), serde_json::json!({}), None)]),
             turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None)]),

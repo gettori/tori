@@ -235,45 +235,5 @@
       ]
     },
     "source": "bundled:claude"
-  },
-  {
-    "id": "opencode",
-    "label": "opencode",
-    "program": "opencode",
-    "base_args": [],
-    "yolo_args": [
-      "--auto"
-    ],
-    "resume_args": [
-      "--session",
-      "{id}"
-    ],
-    "parser_kind": "opencode_sqlite",
-    "running_pattern": "opencode.*--session {id}",
-    "pty_quiet_ms": 2000,
-    "needs_you": false,
-    "hooks": false,
-    "verified_against": "opencode 1.18.3",
-    "chat": null,
-    "source": "bundled:opencode"
-  },
-  {
-    "id": "pi",
-    "label": "Pi",
-    "program": "pi",
-    "base_args": [],
-    "yolo_args": [],
-    "resume_args": [
-      "--session",
-      "{file}"
-    ],
-    "parser_kind": "pi_jsonl",
-    "running_pattern": "pi --session .*{id}",
-    "pty_quiet_ms": 2000,
-    "needs_you": false,
-    "hooks": false,
-    "verified_against": null,
-    "chat": null,
-    "source": "bundled:pi"
   }
 ]
