@@ -8,8 +8,9 @@ import Menu from "../../components/Menu/Menu";
 import Icon from "../../components/Icon/Icon";
 import Tab from "../../components/Tab/Tab";
 import TabMark from "./TabMark";
+import HistoryPanel from "./HistoryPanel";
 import Button from "../../components/Button/Button";
-import { X, ChevronDown, SquareTerminal } from "lucide-solid";
+import { X, ChevronDown, SquareTerminal, History, CircleDashed } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -47,7 +48,9 @@ import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { type SessionStatus } from "../../utils/sessionStatus";
-import { liveSessionStatuses } from "../../utils/sessionActivity";
+import type { StatusCertainty } from "../../utils/sessionDot";
+import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
+import { sessions } from "../../utils/sessionStore";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -382,6 +385,59 @@ export default function Terminal(props: {
     }
     setMenuOpen(true);
   }
+
+  // --- History dropdown -------------------------------------------------------
+
+  const [historyOpen, setHistoryOpen] = createSignal(false);
+  const [historyAnchor, setHistoryAnchor] = createSignal({ left: 0, right: 0, top: 0 });
+  let historyEl: HTMLButtonElement | undefined;
+
+  function toggleHistory() {
+    if (historyOpen()) {
+      setHistoryOpen(false);
+      return;
+    }
+    if (historyEl) {
+      const r = historyEl.getBoundingClientRect();
+      setHistoryAnchor({ left: r.left, right: r.right, top: r.bottom + 4 });
+    }
+    setHistoryOpen(true);
+  }
+
+  // Which of this workspace's sessions are open in a tab: History lists those
+  // first, whatever their age, and everything else falls into time buckets.
+  const openSessionIds = () =>
+    workspaceTabs()
+      .map((t) => t.sessionId)
+      .filter((id): id is string => !!id);
+
+  // Sessions running in this folder that no tab of ours hosts - an agent someone
+  // started in a terminal outside Sway, or one left behind by a closed tab.
+  // Their whole visibility is this badge, since the panel they live in is shut.
+  // A detached session caps at "running" by construction (working and needs-you
+  // both need a PTY to observe), so this is a count rather than a rollup.
+  //
+  // Memoized: it composes a status per session in the folder (47 of them, on
+  // this machine's worst case) and the button reads it four times over.
+  // Archived sessions are excluded for the same reason the panel does not list
+  // them - a badge for a row that is not there is a badge you cannot act on.
+  const detachedLive = createMemo(() => {
+    const ws = activeWorkspace();
+    if (!ws) return 0;
+    const hosted = new Set(open().map((t) => t.sessionId));
+    return (sessions()[ws] ?? []).filter(
+      (s) => !s.archived && !hosted.has(s.id) && sessionStatus(s.id) !== "none",
+    ).length;
+  });
+
+  // Where the panel says you are. The selection carries the names when it is
+  // pointed here; otherwise the folder's own tail is all there is to say.
+  const historyCrumb = () => {
+    const ws = activeWorkspace() ?? "";
+    const sel = props.selected;
+    if (sel && sel.folderPath === ws) return `${sel.spaceName} / ${sel.projectName} / ${sel.branch}`;
+    return ws.split("/").filter(Boolean).slice(-2).join(" / ");
+  };
 
   // Surface the live tabs (id + workspace + kind + soft sessionId + agent) so
   // the sidebar can count what's running for its confirms and probe the right
@@ -1039,11 +1095,31 @@ export default function Terminal(props: {
     return liveChats().find((c) => c.tabId === t.id)?.status ?? null;
   }
 
-  /** Is this tab a chat blocked on an approval? A budget stop blocks the same
+  /** Does this tab host a session at all? Shell and command tabs do not, and
+   *  get no mark rather than a resting one for a session they will never have. */
+  const marksSession = (t: OpenTerm) => t.kind === "chat" || t.kind === "agent";
+
+  /** What that tab's session is doing.
+   *
+   *  Null for an agent tab whose transcript has not appeared yet (it carries no
+   *  session id until then) and for a chat whose panel has not registered - both
+   *  render the resting mark rather than nothing, so the strip does not twitch
+   *  as a session starts. */
+  function tabStatus(t: OpenTerm): SessionStatus | null {
+    if (t.kind === "chat") return chatStatus(t);
+    return t.sessionId ? sessionStatus(t.sessionId) : null;
+  }
+
+  /** On which tier. A chat's own event stream states its status outright; a PTY
+   *  agent tab's is composed from a pgrep probe, PTY quiet and a transcript
+   *  tail, which is the same answer the sidebar has always shown for it. */
+  const tabCertainty = (t: OpenTerm): StatusCertainty => (t.kind === "chat" ? "exact" : "inferred");
+
+  /** Is this tab's session blocked on an approval? A budget stop blocks the same
    *  way and is worded the same way in the tooltip: both mean the session is
    *  waiting on a person. */
-  function blockedChat(t: OpenTerm): boolean {
-    const s = chatStatus(t);
+  function blockedTab(t: OpenTerm): boolean {
+    const s = marksSession(t) ? tabStatus(t) : null;
     return s === "waitingForApproval" || s === "budgetStopped";
   }
 
@@ -1073,15 +1149,19 @@ export default function Terminal(props: {
           <Tab
             active={visibleId() === t.id}
             onClick={() => selectTab(t)}
-            title={blockedChat(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
+            title={blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
             closeLabel="Close"
             onClose={(e) => close(t.id, e)}
-            // A chat's state is true whether or not you are looking at it, so
-            // the tab carries it: without this a background chat waiting on an
-            // approval is indistinguishable from one still working. It rides on
-            // the provider mark rather than on a glyph of its own, so a tab
+            // A session's state is true whether or not you are looking at it, so
+            // the tab carries it: without this a background session waiting on
+            // an approval is indistinguishable from one still working. It rides
+            // on the provider mark rather than on a glyph of its own, so a tab
             // going quiet does not change shape in a strip being scanned.
-            icon={t.kind === "chat" ? <TabMark agentId={t.program} status={chatStatus(t)} /> : undefined}
+            icon={
+              marksSession(t) ? (
+                <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} />
+              ) : undefined
+            }
           >
             {tabTitle(t)}
           </Tab>
@@ -1095,74 +1175,116 @@ export default function Terminal(props: {
           </>
         )}
         trailing={
-          <div class={styles.termNewSplit} ref={splitEl}>
-            {/* Main half: quick new shell (terminal icon). Caret half: launch an
-                agent session from a fixed three-option menu. */}
+          <>
+            <div class={styles.termNewSplit} ref={splitEl}>
+              {/* Main half: quick new shell (terminal icon). Caret half: launch an
+                  agent session from a fixed three-option menu. */}
+              <button
+                class={`${styles.termNew} ${styles.termNewMain}`}
+                disabled={!props.selected}
+                title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+                onClick={newShell}
+              >
+                <Icon icon={SquareTerminal} />
+              </button>
+              <button
+                ref={caretEl}
+                class={`${styles.termNew} ${styles.termNewCaret}`}
+                disabled={!props.selected}
+                title="Launch an agent session"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen()}
+                onClick={toggleMenu}
+              >
+                <Icon icon={ChevronDown} class={styles.termNewChevron} />
+              </button>
+              <Show when={menuOpen()}>
+                <Menu
+                  x={menuPos().left}
+                  y={menuPos().top}
+                  anchorEl={splitEl}
+                  onClose={() => setMenuOpen(false)}
+                  items={[
+                    // The user's default surface leads, and the other one sits
+                    // directly under it: whichever way the setting points, the
+                    // other route stays a single click from this menu.
+                    ...(settings.chatDefaults.defaultSurface === "agent"
+                      ? [
+                          { label: findAgent("claude").label, onClick: () => newSession("claude") },
+                          { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                        ]
+                      : [
+                          { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                          { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                        ]),
+                    // Only for a session selection, since there is nothing to
+                    // continue from a bare branch. The session need not have been
+                    // started in chat: every surface writes the transcript this
+                    // resumes and backfills from.
+                    ...(props.selected?.sessionId
+                      ? [
+                          {
+                            label: "Continue this session in chat",
+                            onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                          },
+                          // The counterpart route for a session selection, so the
+                          // PTY surface is reachable for an existing session and
+                          // not only for a new one.
+                          {
+                            label: "Continue this session in terminal",
+                            onClick: () => void focusOrResume(props.selected!),
+                          },
+                        ]
+                      : []),
+                    { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+                    { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
+                  ]}
+                />
+              </Show>
+            </div>
+            {/* Session navigation, at the surface the sessions run in rather than
+                in a tree you have to find them in. Last in the trailing cluster,
+                so the launch control keeps the position muscle memory has. */}
             <button
-              class={`${styles.termNew} ${styles.termNewMain}`}
-              disabled={!props.selected}
-              title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
-              onClick={newShell}
+              ref={historyEl}
+              class={`${styles.termNew} ${styles.termHistory}`}
+              disabled={!activeWorkspace()}
+              title="Session history"
+              aria-haspopup="dialog"
+              aria-expanded={historyOpen()}
+              onClick={toggleHistory}
             >
-              <Icon icon={SquareTerminal} />
+              <Icon icon={History} />
+              <Show when={detachedLive()}>
+                <span
+                  class={styles.termHistoryBadge}
+                  title={
+                    detachedLive() === 1
+                      ? "1 session running here with no tab open"
+                      : `${detachedLive()} sessions running here with no tab open`
+                  }
+                >
+                  <Icon icon={CircleDashed} />
+                  <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+                </span>
+              </Show>
             </button>
-            <button
-              ref={caretEl}
-              class={`${styles.termNew} ${styles.termNewCaret}`}
-              disabled={!props.selected}
-              title="Launch an agent session"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen()}
-              onClick={toggleMenu}
-            >
-              <Icon icon={ChevronDown} class={styles.termNewChevron} />
-            </button>
-            <Show when={menuOpen()}>
-              <Menu
-                x={menuPos().left}
-                y={menuPos().top}
-                anchorEl={splitEl}
-                onClose={() => setMenuOpen(false)}
-                items={[
-                  // The user's default surface leads, and the other one sits
-                  // directly under it: whichever way the setting points, the
-                  // other route stays a single click from this menu.
-                  ...(settings.chatDefaults.defaultSurface === "agent"
-                    ? [
-                        { label: findAgent("claude").label, onClick: () => newSession("claude") },
-                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
-                      ]
-                    : [
-                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
-                        { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
-                      ]),
-                  // Only for a session selection, since there is nothing to
-                  // continue from a bare branch. The session need not have been
-                  // started in chat: every surface writes the transcript this
-                  // resumes and backfills from.
-                  ...(props.selected?.sessionId
-                    ? [
-                        {
-                          label: "Continue this session in chat",
-                          onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                        },
-                        // The counterpart route for a session selection, so the
-                        // PTY surface is reachable for an existing session and
-                        // not only for a new one.
-                        {
-                          label: "Continue this session in terminal",
-                          onClick: () => void focusOrResume(props.selected!),
-                        },
-                      ]
-                    : []),
-                  { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
-                  { label: `${findAgent("pi").label} (yolo)`, onClick: () => newSession("pi", true) },
-                ]}
-              />
-            </Show>
-          </div>
+          </>
         }
       />
+
+      <Show when={historyOpen() && activeWorkspace()}>
+        {(ws) => (
+          <HistoryPanel
+            folder={ws()}
+            breadcrumb={historyCrumb()}
+            openSessionIds={openSessionIds()}
+            anchor={historyAnchor()}
+            anchorEl={historyEl}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
+      </Show>
 
       <div class={styles.termStage}>
         {/* Every tab is always mounted (CSS-hidden unless it is the visible one),

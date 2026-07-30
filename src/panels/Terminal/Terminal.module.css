@@ -78,6 +78,51 @@
   border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
 }
 
+/* The History dropdown's button. Its own rounded box beside the launch split,
+   and the anchor the panel positions against. `position: relative` is what the
+   detached-sessions badge hangs off. */
+.termHistory {
+  align-self: center;
+  position: relative;
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: var(--sway-radius-md);
+  margin-left: calc(4px * var(--ui-scale));
+}
+
+.termHistory svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.termHistory[aria-expanded="true"] {
+  color: var(--fg-default);
+  border-color: var(--brand-default);
+}
+
+/* Sessions running in this folder with no tab open. The only place they are
+   visible while the panel is shut, so it sits on the button rather than inside
+   the list it would open. Same hue as the sidebar's "running" rollup, because
+   it is the same fact about the same sessions. */
+.termHistoryBadge {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  right: calc(-3px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1px * var(--ui-scale));
+  padding: 0 calc(2px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--canvas-card);
+  color: var(--status-running);
+  font-size: var(--sway-text-xs);
+  line-height: 1;
+}
+
+.termHistoryBadge svg {
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+}
+
 /* Lucide chevron-down caret; flips 180° when the launch menu is open. */
 .termNewChevron {
   display: inline-flex;

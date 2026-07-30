@@ -4,15 +4,18 @@ import TabMark from "./TabMark";
 import type { SessionStatus } from "../../utils/sessionStatus";
 
 /** The mark's own element, which carries the state classes. */
-function mark(status: SessionStatus | null) {
-  const { container } = render(() => <TabMark agentId="claude" status={status} />);
+function mark(status: SessionStatus | null, certainty?: "exact" | "inferred") {
+  const { container } = render(() => (
+    <TabMark agentId="claude" status={status} certainty={certainty} />
+  ));
   return container.firstElementChild as HTMLElement;
 }
 
 /** CSS modules hash class names, so the states are compared by *difference*
  *  rather than by literal name: what matters is that two states do not render
  *  identically, not what the generated string is. */
-const classes = (status: SessionStatus | null) => mark(status).className;
+const classes = (status: SessionStatus | null, certainty?: "exact" | "inferred") =>
+  mark(status, certainty).className;
 
 describe("a chat tab's provider mark", () => {
   it("keeps one glyph across idle and working, and changes only its treatment", () => {
@@ -51,5 +54,30 @@ describe("a chat tab's provider mark", () => {
   it("renders the resting mark for a tab with no status yet", () => {
     expect(mark(null).querySelector("svg")).not.toBeNull();
     expect(classes(null)).toBe(classes("idle"));
+  });
+});
+
+// The mark is worn by chat tabs, PTY agent tabs and History's rows now, and
+// only one of those knows its status rather than guessing it. Marking the exact
+// side (never the inferred one) is what keeps the PTY tab rendering as it
+// always has while the marker still means something where it appears.
+describe("the certainty tier a mark claims", () => {
+  it("marks the measured side and says so, and leaves the inferred side alone", () => {
+    expect(mark("executing", "exact").getAttribute("title")).toBe("Executing (measured)");
+    expect(mark("executing", "inferred").getAttribute("title")).toBe("Executing");
+    expect(classes("executing", "exact")).not.toBe(classes("executing", "inferred"));
+  });
+
+  // A caller that forgets is claiming nothing, which is both the safer answer
+  // and the rendering every non-chat surface already had.
+  it("infers by default rather than claiming a measurement", () => {
+    expect(classes("idle")).toBe(classes("idle", "inferred"));
+  });
+
+  // The tier is orthogonal to the state: a measured session that is waiting
+  // still gets the badge, and an inferred one that is waiting still gets it.
+  it("keeps the needs-you badge on both tiers", () => {
+    expect(mark("waitingForApproval", "exact").childElementCount).toBe(2);
+    expect(mark("waitingForApproval", "inferred").childElementCount).toBe(2);
   });
 });

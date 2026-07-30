@@ -38,6 +38,21 @@ describe("computeVisibleCount", () => {
     expect(computeVisibleCount([500, 600], 100, R({ count: 40 }))).toBe(1);
   });
 
+  // The History button widened the pinned trailing cluster. The bar must answer
+  // that by showing fewer tabs and collapsing the rest into `+N` - the one thing
+  // it must never do is scroll, which is what makes the reserve load-bearing
+  // rather than cosmetic.
+  it("gives back tabs when the trailing cluster grows, rather than overflowing the bar", () => {
+    const extents = [100, 200, 300, 400];
+    const before = computeVisibleCount(extents, 500, R({ trailing: 60, count: 40 }));
+    const after = computeVisibleCount(extents, 500, R({ trailing: 110, count: 40 }));
+    expect(before).toBe(4); // everything fits beside the narrower cluster
+    expect(after).toBeLessThan(before); // the wider one costs a tab
+    // And what it costs still fits: the last visible tab's right edge is inside
+    // what the bar has left after the cluster and the `+N` button.
+    expect(extents[after - 1]).toBeLessThanOrEqual(500 - 110 - 40);
+  });
+
   it("off-by-one: a tab exactly on the edge counts as fitting", () => {
     expect(computeVisibleCount([100, 200], 200, R())).toBe(2); // 200 <= 200
     expect(computeVisibleCount([100, 201], 200, R({ count: 0 }))).toBe(1); // 201 > 200, overflow

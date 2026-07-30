@@ -1,0 +1,122 @@
+/* The History dropdown: every session anchored on the workspace on screen.
+   Portalled to <body>, so these are viewport coordinates - the tab bar it hangs
+   off is overflow:hidden and would clip it to a single row's height. */
+
+/* The dialog is the panel; only the scrolling list inside it is the listbox. */
+.panel {
+  position: fixed;
+  /* Below <Menu>'s 1000, so a row's own context menu still lands on top of the
+     panel that opened it. */
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  width: calc(340px * var(--ui-scale));
+  max-height: min(60vh, calc(520px * var(--ui-scale)));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Where you are, stated rather than navigable: the panel is scoped to one
+   branch-unit folder and cannot change it, so this is a label, not a control. */
+.crumb {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search {
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-sm);
+  padding: calc(4px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  outline: none;
+}
+.search:focus {
+  border-color: var(--brand-default);
+}
+
+.list {
+  overflow-y: auto;
+  padding: calc(4px * var(--ui-scale)) 0;
+}
+
+/* An era heading, or the Historical disclosure. Never rendered for an empty
+   group, so the headings themselves say how much history there is. */
+.section {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(9px * var(--ui-scale)) calc(3px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.historical {
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  cursor: pointer;
+  overflow: hidden;
+}
+.row:hover {
+  background: var(--neutral-hover);
+}
+
+/* Where the arrow keys are. Distinct from hover, since the two can be on
+   different rows at once and the keyboard's is the one Enter acts on. */
+.rowActive {
+  background: var(--neutral-hover);
+  box-shadow: inset calc(2px * var(--ui-scale)) 0 0 var(--brand-default);
+}
+
+.rowLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--sway-text-sm);
+}
+
+/* Holds its width so the label is what truncates: with 20 sessions titled `/gg`
+   the time is the only thing telling two rows apart. */
+.rowWhen {
+  flex: 0 0 auto;
+  margin-left: calc(6px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+}

@@ -148,6 +148,16 @@ export const AGENT_WRITE_DEBOUNCE_MS = 100;
 export const SESSION_DELETED = "sway:session-deleted";
 export type SessionDeleted = { sessionId: string };
 
+// Payload-carrying event: a History row was acted on. The dropdown lives in the
+// terminal pane and reaches none of what these actions need - the selection
+// chain with its plain-repo checkout guard, the rename prompt, the delete
+// confirm - all of which the sidebar already owns and already has tests for. So
+// History names the session and what to do with it, and the sidebar answers
+// exactly as its own row would. One event rather than three keeps that seam a
+// single thing to find.
+export const SESSION_ACTION = "sway:session-action";
+export type SessionAction = { sessionId: string; action: "open" | "rename" | "delete" };
+
 // Payload-carrying event: open a session's transcript as a read-only virtual
 // tab in the editor's center pane. Emitted by the sidebar's session context menu.
 export const OPEN_TRANSCRIPT = "sway:open-transcript";

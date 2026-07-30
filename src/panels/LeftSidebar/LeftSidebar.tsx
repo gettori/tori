@@ -37,8 +37,11 @@ import {
   type TerminalTabFocused,
   SESSION_DELETED,
   type SessionDeleted,
+  SESSION_ACTION,
+  type SessionAction,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { ago } from "../../utils/relativeTime";
 import {
   loadStamps,
   saveStamps,
@@ -218,17 +221,6 @@ function loadActiveSpace(): string | null {
   } catch {
     return null;
   }
-}
-
-function ago(epochSecs: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000) - epochSecs);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
 }
 
 function loadExpanded(): Set<string> {
@@ -715,6 +707,26 @@ export default function LeftSidebar(props: {
     selectBranchByFolder(d.folderPath);
   }
 
+  // A History row was acted on. The dropdown has no access to the selection
+  // chain (and so to `ensureBranch`'s plain-repo checkout guard), the rename
+  // prompt or the delete confirm, so it names the session and the sidebar does
+  // exactly what its own row does - one implementation of each action rather
+  // than a second copy in the terminal pane.
+  async function runSessionAction(d: SessionAction) {
+    if (d.action === "open") {
+      await selectSessionById(d.sessionId);
+      return;
+    }
+    const hit = findSession(d.sessionId);
+    if (!hit) return;
+    if (d.action === "rename") await renameSession(hit.session);
+    else await deleteSession(hit.session);
+  }
+
+  // Registered in the body rather than in the async `onMount` below: this is a
+  // window listener that needs no await, and the awaits in there are a window
+  // during which a click in the History panel would land on nobody.
+  onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
 
   // Touched-file count for the *selected* session only, fetched via its own
   // session_detail call on selection - deliberately independent of Toolbar's
