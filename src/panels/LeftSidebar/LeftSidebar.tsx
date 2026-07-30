@@ -465,15 +465,14 @@ export default function LeftSidebar(props: {
     const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path }).catch(
       () => [] as SessionMeta[],
     );
-    let detached = 0;
-    await Promise.all(
-      nested.map(async (s) => {
-        if (tabSessions.has(s.id) || !isUnderPath(s.cwd, path)) return;
-        const agent = s.agent === "pi" ? "pi" : "claude";
-        if (await invoke<boolean>("session_running", { id: s.id, agent }).catch(() => false)) detached++;
-      }),
-    );
-    return tabs.length + detached;
+    const offTab = nested.filter((s) => !tabSessions.has(s.id) && isUnderPath(s.cwd, path));
+    if (offTab.length === 0) return tabs.length;
+    // One batch probe for the whole folder: probing each off-tab session on its
+    // own is a subprocess per session, which a busy folder pays on every count.
+    const detached = await invoke<string[]>("sessions_running", {
+      sessions: offTab.map((s) => ({ id: s.id, agent: s.agent === "pi" ? "pi" : "claude" })),
+    }).catch(() => [] as string[]);
+    return tabs.length + detached.length;
   }
 
   // Per-session probe cache for the row status dot: last known `session_running`
@@ -485,9 +484,20 @@ export default function LeftSidebar(props: {
   // never a periodic pgrep.
   const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
 
-  async function probeSession(id: string, agent: string) {
-    const running = await invoke<boolean>("session_running", { id, agent }).catch(() => false);
-    setProbes((m) => ({ ...m, [id]: { agent, running } }));
+  const probeSession = (id: string, agent: string) => probeBatch([{ id, agent }]);
+
+  // Probe a set of sessions at once. Every id asked about is recorded, including
+  // the ones that came back absent, so a session that has since exited flips to
+  // false rather than keeping its last answer.
+  async function probeBatch(want: readonly { id: string; agent: string }[]) {
+    const running = new Set(
+      await invoke<string[]>("sessions_running", { sessions: want }).catch(() => [] as string[]),
+    );
+    setProbes((m) => {
+      const next = { ...m };
+      for (const w of want) next[w.id] = { agent: w.agent, running: running.has(w.id) };
+      return next;
+    });
   }
 
   // Working/needs-you pulse (Finding A floor), live-tab sessions only. PTY
@@ -880,6 +890,10 @@ export default function LeftSidebar(props: {
   async function focusFromTerminalTab(d: TerminalTabFocused) {
     if (d.sessionId) {
       await fetchSessions(d.folderPath);
+      // This reveals the folder's session list, so it owes the same historical
+      // verdict an expansion does; without it a recreated folder's ghosts would
+      // render as ordinary rows here and collapsed everywhere else.
+      void checkHistorical(d.folderPath);
       if (selectSessionById(d.sessionId)) return;
     }
     selectBranchByFolder(d.folderPath);
@@ -891,17 +905,24 @@ export default function LeftSidebar(props: {
   // exited). Called from sessions://changed and window focus only.
   function probeActive() {
     const seen = new Set<string>();
+    const want: { id: string; agent: string }[] = [];
     for (const t of props.liveTabs ?? []) {
       if (!t.sessionId || seen.has(t.sessionId)) continue;
       seen.add(t.sessionId);
-      void probeSession(t.sessionId, t.agent ?? probes()[t.sessionId]?.agent ?? "claude");
+      want.push({
+        id: t.sessionId,
+        agent: t.agent ?? probes()[t.sessionId]?.agent ?? "claude",
+      });
     }
     for (const [id, p] of Object.entries(probes())) {
       if (p.running && !seen.has(id)) {
         seen.add(id);
-        void probeSession(id, p.agent);
+        want.push({ id, agent: p.agent });
       }
     }
+    // One call for the whole set: this fires on every sessions://changed, so a
+    // probe per session made a busy window pay a subprocess per open tab.
+    if (want.length > 0) void probeBatch(want);
   }
 
   // Touched-file count for the *selected* session only, fetched via its own
@@ -2015,16 +2036,32 @@ export default function LeftSidebar(props: {
     saveStamps(next);
   }
 
+  // Listing only. Deliberately does *not* ask for the historical verdict:
+  // `folder_historical` auto-adopts and writes adopted.json, so folding it in
+  // here means merely listing a folder silently adopts it. That is harmless
+  // while fetching follows expansion, and wrong the moment it does not - a
+  // folder the user never opened would lose its ghost protection before they
+  // ever saw it. `checkHistorical` is the deliberate call.
   async function fetchSessions(folderPath: string) {
     try {
       const s = await invoke<SessionMeta[]>("list_sessions", { folder: folderPath });
       noteScans([{ folder: folderPath, list: s }]);
       setSessions({ ...sessions(), [folderPath]: s });
-      // Flag a recreated folder whose sessions predate it (auto-adopts otherwise).
+    } catch {
+      setSessions({ ...sessions(), [folderPath]: [] });
+    }
+  }
+
+  // Flag a recreated folder whose sessions predate it (auto-adopting, and
+  // persisting, when they clearly belong to it). Called only where the
+  // Historical section is actually about to be shown, because the answer is
+  // written to disk.
+  async function checkHistorical(folderPath: string) {
+    try {
       const hist = await invoke<boolean>("folder_historical", { folder: folderPath });
       setHistorical({ ...historical(), [folderPath]: hist });
     } catch {
-      setSessions({ ...sessions(), [folderPath]: [] });
+      /* leave the folder unflagged; it renders as an ordinary listing */
     }
   }
 
@@ -2065,11 +2102,15 @@ export default function LeftSidebar(props: {
         if (projectKind(p) === "plain-dir") {
           if (expanded().has(pkey(g, p)) && p.branchUnits[0]) {
             await fetchSessions(p.branchUnits[0].folderPath);
+            void checkHistorical(p.branchUnits[0].folderPath);
           }
           continue;
         }
         for (const u of p.branchUnits) {
-          if (expanded().has(ukey(g, p, u))) await fetchSessions(u.folderPath);
+          if (expanded().has(ukey(g, p, u))) {
+            await fetchSessions(u.folderPath);
+            void checkHistorical(u.folderPath);
+          }
         }
       }
     }
@@ -2317,6 +2358,7 @@ export default function LeftSidebar(props: {
           onClick={() => {
             toggle(ukey(g, p, u));
             fetchSessions(u.folderPath);
+            void checkHistorical(u.folderPath);
             selectUnit(g, p, u);
           }}
           onContextMenu={(e) =>
@@ -2710,6 +2752,7 @@ export default function LeftSidebar(props: {
                     toggle(pkey(g, p));
                     if (plainDir() && folderUnit()) {
                       fetchSessions(folderUnit().folderPath);
+                      void checkHistorical(folderUnit().folderPath);
                       selectUnit(g, p, folderUnit());
                     }
                   }}

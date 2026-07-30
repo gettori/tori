@@ -5,12 +5,15 @@ const sessions = [
   { id: "detached", agent: "claude", cwd: "/work/repo", name: "someone's terminal" },
 ];
 
-// `list_sessions` sees every transcript on disk, and `session_running`'s pgrep
-// answers for a chat's child exactly as it does for a terminal's.
+// `list_sessions` sees every transcript on disk, and the batched pgrep answers
+// for a chat's child exactly as it does for a terminal's. `sessions_running`
+// returns the subset of ids that are live, so echoing the ids it was asked
+// about is "everything is running".
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => {
+  invoke: (cmd: string, args?: { sessions?: { id: string }[] }) => {
     if (cmd === "list_sessions") return Promise.resolve(sessions);
-    if (cmd === "session_running") return Promise.resolve(true);
+    if (cmd === "sessions_running")
+      return Promise.resolve((args?.sessions ?? []).map((s) => s.id));
     return Promise.resolve(null);
   },
 }));
