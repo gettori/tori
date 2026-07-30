@@ -1,0 +1,307 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+
+// The History dropdown is the only way to reach a session once the sidebar's
+// rows are gone, so what is asserted here is mostly *reach*: every session in
+// the folder appears exactly once, nothing outside the folder appears at all,
+// and each row can still do what its sidebar row could.
+const REPO = "/root/work/repo";
+const OTHER = "/root/work/other";
+
+const HOUR = 3_600;
+const DAY = 86_400;
+const now = () => Math.floor(Date.now() / 1000);
+
+const session = (id: string, lastActive: number, over: Record<string, unknown> = {}) => ({
+  id,
+  path: `${REPO}/.t/${id}.jsonl`,
+  cwd: REPO,
+  branch: "main",
+  title: id,
+  last_active: lastActive,
+  created_at: lastActive,
+  name: null,
+  archived: false,
+  agent: "claude",
+  ...over,
+});
+
+const bridge = vi.hoisted(() => ({
+  calls: [] as { cmd: string; args: Record<string, unknown> }[],
+  listings: {} as Record<string, unknown[]>,
+  historical: false,
+  running: [] as string[],
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (cmd: string, args: Record<string, unknown>) => {
+    bridge.calls.push({ cmd, args: args ?? {} });
+    if (cmd === "list_sessions") return Promise.resolve(bridge.listings[String(args.folder)] ?? []);
+    if (cmd === "folder_historical") return Promise.resolve(bridge.historical);
+    if (cmd === "sessions_running") return Promise.resolve(bridge.running);
+    if (cmd === "session_tail_state") return Promise.resolve("done");
+    return Promise.resolve(null);
+  },
+}));
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: () => Promise.resolve(false),
+  requestPermission: () => Promise.resolve("denied"),
+  sendNotification: () => {},
+  onAction: () => Promise.resolve(() => {}),
+}));
+
+const { default: HistoryPanel } = await import("./HistoryPanel");
+const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
+const { noteLiveTabs, probeBatch, resetSessionActivityForTests } = await import(
+  "../../utils/sessionActivity"
+);
+const { SESSION_ACTION } = await import("../../utils/events");
+
+// The panel portals itself to <body>, which the shared `cleanup` does not
+// reach, so each mount is disposed by hand rather than left for the next test
+// to count as its own rows.
+let mounted: ReturnType<typeof render> | null = null;
+function unmountPanel() {
+  mounted?.unmount();
+  mounted = null;
+}
+
+/** Mount the panel over a seeded store, the way the tab bar opens it. */
+async function open(folder = REPO, openSessionIds: string[] = []) {
+  await trackFolders([REPO, OTHER]);
+  bridge.calls.length = 0;
+  mounted = render(() => (
+    <HistoryPanel
+      folder={folder}
+      breadcrumb="work / repo / main"
+      openSessionIds={openSessionIds}
+      anchor={{ left: 100, right: 300, top: 40 }}
+      onClose={() => {}}
+    />
+  ));
+  return mounted;
+}
+
+/** The panel's rows, in render order, by the session name each carries. */
+const rowLabels = () => screen.queryAllByRole("option").map((r) => r.getAttribute("title") ?? "");
+/** The scrolling list, which is the listbox inside the dialog. */
+const listEl = () => document.querySelector('[role="listbox"]')!;
+/** Its section headings, which are the era names and the Historical disclosure. */
+const sections = () =>
+  Array.from(listEl().children)
+    .filter((d) => d.getAttribute("role") !== "option")
+    .map((d) => d.textContent ?? "");
+
+const actions: { sessionId: string; action: string }[] = [];
+const noteAction = (e: Event) => actions.push((e as CustomEvent).detail);
+
+describe("what the History dropdown lists", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    actions.length = 0;
+    bridge.calls.length = 0;
+    bridge.historical = false;
+    bridge.running = [];
+    bridge.listings = { [REPO]: [], [OTHER]: [] };
+    window.addEventListener(SESSION_ACTION, noteAction);
+  });
+  afterEach(() => {
+    unmountPanel();
+    window.removeEventListener(SESSION_ACTION, noteAction);
+  });
+
+  // The scale it has to survive: this machine has a 47-session folder, which is
+  // where "one flat list" stops being readable and a session listed twice stops
+  // being noticeable.
+  it("shows every session in the folder exactly once, live ones above the eras", async () => {
+    const many = Array.from({ length: 47 }, (_, i) =>
+      // Spread across every era so no bucket is empty by accident.
+      session(`s${i}`, now() - i * 18 * HOUR),
+    );
+    bridge.listings[REPO] = many;
+    await open(REPO, ["s3", "s20"]);
+
+    const labels = rowLabels();
+    expect(labels).toHaveLength(47);
+    expect(new Set(labels).size).toBe(47);
+    // The two open ones lead, whatever their age - s20 is two weeks old.
+    expect(labels.slice(0, 2)).toEqual(["s3", "s20"]);
+    expect(sections()[0]).toBe("Open now");
+  });
+
+  it("renders no heading for an era nothing fell into", async () => {
+    bridge.listings[REPO] = [session("today", now() - HOUR), session("old", now() - 90 * DAY)];
+    await open();
+    expect(sections()).toEqual(["Today", "Older"]);
+  });
+
+  // The degenerate case, and the one a first-run user actually sees: a single
+  // session they just started. Five era headings over one row would be noise.
+  it("shows one row and no era headings for a lone live session", async () => {
+    bridge.listings[REPO] = [session("only", now())];
+    await open(REPO, ["only"]);
+    expect(rowLabels()).toHaveLength(1);
+    expect(sections()).toEqual(["Open now"]);
+  });
+
+  // Branch-scoped by construction: the panel hangs off the tab bar, which is
+  // already showing one workspace's tabs.
+  it("lists nothing from another folder", async () => {
+    bridge.listings[REPO] = [session("mine", now())];
+    bridge.listings[OTHER] = [session("theirs", now(), { cwd: OTHER })];
+    await open();
+    expect(rowLabels()).toEqual(["mine"]);
+  });
+
+  it("filters both sections by the search field", async () => {
+    bridge.listings[REPO] = [
+      session("alpha", now(), { name: "alpha" }),
+      session("beta", now() - 3 * DAY, { name: "beta" }),
+    ];
+    await open(REPO, ["alpha"]);
+    expect(rowLabels()).toHaveLength(2);
+
+    fireEvent.input(screen.getByLabelText("Search sessions"), { target: { value: "bet" } });
+    expect(rowLabels()).toEqual(["beta"]);
+  });
+
+  // The bar is overflow:hidden - it has to be, or a long tab strip would scroll
+  // instead of collapsing into `+N` - so a panel rendered inside it is clipped
+  // to one row's height (gotcha: overflow-hidden on a positioned bar clips its
+  // own dropdown).
+  it("renders outside the container it was mounted in", async () => {
+    bridge.listings[REPO] = [session("s", now())];
+    const { container } = await open();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+});
+
+describe("what a History row can do", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    actions.length = 0;
+    bridge.calls.length = 0;
+    bridge.historical = false;
+    bridge.running = [];
+    bridge.listings = { [REPO]: [session("s1", now())], [OTHER]: [] };
+    window.addEventListener(SESSION_ACTION, noteAction);
+  });
+  afterEach(() => {
+    unmountPanel();
+    window.removeEventListener(SESSION_ACTION, noteAction);
+  });
+
+  // The panel reaches none of what opening a session needs - the selection
+  // chain, and with it `ensureBranch`'s plain-repo checkout guard - so it names
+  // the session and the sidebar answers exactly as its own row would.
+  it("asks for the session by id rather than selecting it itself", async () => {
+    await open();
+    fireEvent.click(screen.getAllByRole("option")[0]);
+    expect(actions).toEqual([{ sessionId: "s1", action: "open" }]);
+  });
+
+  // `role="option"` is a claim about how the list works, so the arrows have to
+  // make it true. Enter opens whichever row they landed on.
+  it("walks the rows with the arrow keys and opens on Enter", async () => {
+    bridge.listings[REPO] = [session("first", now()), session("second", now() - DAY)];
+    await open();
+    const selected = () =>
+      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+    expect(selected()?.getAttribute("title")).toBe("first");
+
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    expect(selected()?.getAttribute("title")).toBe("second");
+
+    fireEvent.keyDown(document, { key: "Enter" });
+    expect(actions).toEqual([{ sessionId: "second", action: "open" }]);
+  });
+
+  // Narrowing the list must not leave the highlight past the end of it, or
+  // Enter opens whatever happens to be at a stale index.
+  it("pulls the highlight back when the search narrows the list under it", async () => {
+    bridge.listings[REPO] = [session("alpha", now()), session("beta", now() - DAY)];
+    await open();
+    fireEvent.keyDown(document, { key: "ArrowDown" }); // on "beta"
+
+    fireEvent.input(screen.getByLabelText("Search sessions"), { target: { value: "alph" } });
+    fireEvent.keyDown(document, { key: "Enter" });
+    expect(actions).toEqual([{ sessionId: "alpha", action: "open" }]);
+  });
+
+  it("offers rename and delete, and nothing else", async () => {
+    await open();
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    const items = Array.from(document.querySelectorAll('[role="menu"] > div'))
+      .map((d) => d.textContent ?? "")
+      .filter(Boolean);
+    expect(items).toEqual(["Rename…", "Delete"]);
+
+    fireEvent.click(screen.getByText("Delete"));
+    expect(actions).toEqual([{ sessionId: "s1", action: "delete" }]);
+  });
+
+  // TabMark's rule, not the sidebar's four-glyph one: these rows are scanned,
+  // and a row that changes shape when a session goes quiet pulls the eye to the
+  // wrong one. Only the state that is a request gets a second element.
+  it("keeps its shape between idle and executing, and badges only a request", async () => {
+    bridge.running = ["s1"];
+    noteLiveTabs([
+      { id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude" },
+    ]);
+    await probeBatch([{ id: "s1", agent: "claude" }]);
+    await open();
+
+    const glyph = () => screen.getAllByRole("option")[0].firstElementChild!;
+    const idle = glyph().className;
+    expect(glyph().childElementCount).toBe(1);
+
+    const { notePtyActivity } = await import("../../utils/sessionActivity");
+    notePtyActivity("tab-1", "active");
+    await waitFor(() => expect(glyph().className).not.toBe(idle));
+    expect(glyph().childElementCount).toBe(1); // still one glyph: no shape change
+  });
+});
+
+describe("a folder recreated over old sessions", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    bridge.calls.length = 0;
+    bridge.historical = true;
+    bridge.running = [];
+    bridge.listings = { [REPO]: [session("ghost", now() - 40 * DAY)], [OTHER]: [] };
+  });
+  afterEach(unmountPanel);
+
+  it("collapses its ghosts behind one line, and adopts them on request", async () => {
+    await open();
+    await waitFor(() => expect(screen.getByText("Historical (1)")).toBeTruthy());
+    expect(rowLabels()).toHaveLength(0); // collapsed: the header, not the rows
+
+    fireEvent.click(screen.getByText("Historical (1)"));
+    expect(rowLabels()).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("Adopt"));
+    await waitFor(() =>
+      expect(bridge.calls.some((c) => c.cmd === "adopt_path" && c.args.path === REPO)).toBe(true),
+    );
+    // Adopted: the section is gone and the sessions are ordinary history now.
+    await waitFor(() => expect(screen.queryByText("Historical (1)")).toBeNull());
+    expect(sections()).toEqual(["Older"]);
+  });
+
+  // The verdict auto-adopts and writes adopted.json, so asking it about the
+  // wrong folder permanently disables that folder's ghost protection. The panel
+  // may ask about exactly the one it is showing.
+  it("asks the verdict for its own folder and for no other", async () => {
+    await open(REPO);
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "folder_historical")).toBe(true));
+    const asked = bridge.calls
+      .filter((c) => c.cmd === "folder_historical")
+      .map((c) => String(c.args.folder));
+    expect(new Set(asked)).toEqual(new Set([REPO]));
+  });
+});
