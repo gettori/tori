@@ -72,7 +72,7 @@ async function open(folder = REPO, openSessionIds: string[] = []) {
   mounted = render(() => (
     <HistoryPanel
       folder={folder}
-      breadcrumb="work / repo / main"
+      breadcrumb={["work", "repo", "main"]}
       openSessionIds={openSessionIds}
       anchor={{ left: 100, right: 300, top: 40 }}
       onClose={() => {}}

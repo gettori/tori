@@ -55,6 +55,11 @@ export function MenuRow(props: {
 export default function Menu(props: {
   x: number;
   y: number;
+  /** The right edge of the control this hangs off, when it has width. Defaults
+   *  to `x`, which is the cursor case. Only read once a menu end-aligns; it is
+   *  here so a caller anchored on a button can describe the button's real span
+   *  rather than collapsing it to a point. */
+  right?: number;
   onClose: () => void;
   items?: MenuItem[];
   anchorEl?: HTMLElement;
@@ -68,8 +73,8 @@ export default function Menu(props: {
 }) {
   return (
     <Popover
-      // A menu opens at a cursor, which is a zero-width anchor.
-      anchor={{ left: props.x, right: props.x, top: props.y }}
+      // A cursor is a zero-width anchor; a button hands over its own span.
+      anchor={{ left: props.x, right: props.right ?? props.x, top: props.y }}
       openAbove={props.openAbove}
       anchorEl={props.anchorEl}
       onClose={props.onClose}
