@@ -19,7 +19,7 @@
     background: var(--canvas-card);
     color: var(--fg-default);
     border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border-radius: var(--sway-radius-xl);
     box-shadow: var(--shadow-lg);
     font-family: var(--sway-font-ui);
   }

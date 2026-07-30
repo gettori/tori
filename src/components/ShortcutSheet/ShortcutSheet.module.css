@@ -18,7 +18,7 @@
     flex-direction: column;
     background: var(--canvas-card);
     border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border-radius: var(--sway-radius-xl);
     box-shadow: var(--shadow-lg);
   }
   /* Focused programmatically on open (see ShortcutSheet.tsx), so suppress the

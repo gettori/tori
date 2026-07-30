@@ -13,7 +13,7 @@
   user-select: none;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--sway-radius-xl);
   box-shadow: var(--shadow-md);
 }
 
