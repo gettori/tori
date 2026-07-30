@@ -115,3 +115,39 @@ describe("MessageList turn anchoring", () => {
     expect(anchor()).toBe(left);
   });
 });
+
+// A compaction summary is the harness's own text, several hundred words of it,
+// and it used to sit inline in the middle of the conversation. The boundary is
+// what the reader needs at a glance; the summary is what they go looking for
+// afterwards, so only one of the two is open.
+describe("a compaction shows its line and folds the summary", () => {
+  const COMPACTED: ChatItem[] = [
+    { kind: "user", id: "u1", blocks: [{ type: "text", text: "start the migration" }], steer: false },
+    {
+      kind: "notice",
+      id: "n1",
+      text: "Compacted manually (32k to 4k).",
+      level: "info",
+      details: "1. Primary Request and Intent: the user asked for the migration.",
+    },
+  ];
+
+  it("puts the summary behind a closed disclosure", () => {
+    const { container } = render(() => list({ items: COMPACTED }));
+    expect(container.textContent).toContain("Compacted manually (32k to 4k).");
+
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    // Closed on arrival: the summary must not push the conversation down the
+    // page every time a session that has compacted is reopened.
+    expect(details!.open).toBe(false);
+    expect(details!.textContent).toContain("Primary Request and Intent");
+  });
+
+  it("renders no disclosure for a notice that is only its line", () => {
+    const items: ChatItem[] = [{ kind: "notice", id: "n1", text: "Session ended.", level: "info" }];
+    const { container } = render(() => list({ items }));
+    expect(container.textContent).toContain("Session ended.");
+    expect(container.querySelector("details")).toBeNull();
+  });
+});

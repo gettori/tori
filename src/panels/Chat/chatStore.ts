@@ -66,7 +66,17 @@ export type ChatFileEdit = {
 export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean };
 export type TextItem = { kind: "text"; id: string; turnId: string; text: string };
 export type ThinkingItem = { kind: "thinking"; id: string; turnId: string; text: string };
-export type NoticeItem = { kind: "notice"; id: string; text: string; level: "info" | "error" };
+/** `details` is the long half of a notice, shown behind a disclosure: the line
+ *  itself has to stay readable at a glance in the middle of a conversation, and
+ *  a compaction summary is several hundred words. Absent on a notice that is
+ *  only its line. */
+export type NoticeItem = {
+  kind: "notice";
+  id: string;
+  text: string;
+  level: "info" | "error";
+  details?: string;
+};
 export type ToolItem = {
   kind: "tool";
   id: string;
@@ -637,10 +647,14 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       push(s, {
         kind: "notice",
         id: nextId(s, "notice"),
-        // The summary is the harness's own text and is the useful half, so it
-        // is shown rather than collapsed behind a count.
-        text: `Compacted ${how}${reclaimed}.${ev.summary ? `\n\n${ev.summary}` : ""}`,
+        text: `Compacted ${how}${reclaimed}.`,
         level: "info",
+        // Kept, but folded away. It is the harness's own text and the only
+        // record of what the model still remembers past the boundary, so
+        // dropping it would lose the one thing a reader might come back for -
+        // and it is several hundred words, which inline is a wall the
+        // conversation has to be scrolled past every time.
+        details: ev.summary ?? undefined,
       });
       return;
     }
