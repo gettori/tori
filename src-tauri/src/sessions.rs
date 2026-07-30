@@ -725,6 +725,11 @@ fn session_pattern(agent: &str, id: &str) -> String {
 }
 
 /// Is a live `agent` process currently resuming session `id`?
+///
+/// One subprocess per call, so it is for the single-session callers only (a tab
+/// about to spawn, a guard on one folder). Anything asking about a *set* of
+/// sessions must use `sessions_running`, whose cost does not scale with the
+/// number of ids.
 #[tauri::command]
 pub fn session_running(id: String, agent: String) -> Result<bool, String> {
     let pattern = session_pattern(&agent, &id);
@@ -732,6 +737,88 @@ pub fn session_running(id: String, agent: String) -> Result<bool, String> {
     Ok(out
         .map(|o| o.status.success() && !o.stdout.is_empty())
         .unwrap_or(false))
+}
+
+/// One session to probe: an id is only meaningful against the agent that owns it.
+#[derive(Deserialize)]
+pub struct SessionRef {
+    pub id: String,
+    pub agent: String,
+}
+
+/// The command lines of every live process that looks like a session of `agent`.
+///
+/// One `pgrep` for the whole agent rather than one per id, driven by the
+/// adapter's own running pattern with the id slot generalized to "one argument
+/// token". Reusing that pattern is what keeps this from assuming anything new
+/// about the agent: it already encodes what a live session of this agent looks
+/// like, so a user-added adapter whose program is spelled nothing like its id
+/// still works.
+///
+/// `-lf`, not `-af`. On BSD/macOS `pgrep -a` means "include process ancestors"
+/// and prints bare pids; `-l` combined with `-f` is what prints the full
+/// argument list this has to match against.
+fn agent_command_lines(agent: &str) -> Vec<String> {
+    let any_session = session_pattern(agent, "[^ ]+");
+    let out = match Command::new("pgrep").args(["-lf", &any_session]).output() {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.split_once(' ').map(|(_pid, cmd)| cmd.to_string()))
+        .collect()
+}
+
+/// Which of `ids` a live `agent` process is driving, given command lines already
+/// in hand. Pure, so the matching is tested against captured `pgrep` output
+/// instead of whatever happens to be running on the machine.
+fn running_ids(agent: &str, ids: &[String], command_lines: &[String]) -> Vec<String> {
+    ids.iter()
+        .filter(|id| match regex::Regex::new(&session_pattern(agent, id)) {
+            Ok(re) => command_lines.iter().any(|l| re.is_match(l)),
+            // An id that will not compile into a pattern matches nothing rather
+            // than everything: a session wrongly reported dead costs a redundant
+            // spawn, one wrongly reported alive loses the user's work.
+            Err(_) => false,
+        })
+        .cloned()
+        .collect()
+}
+
+/// Which of `sessions` have a live agent process driving them, as the subset of
+/// ids that are running.
+///
+/// Spawns one `pgrep` per *registered agent*, never one per id. The folder sweep
+/// this exists for asks about every session in a folder at once, and at one
+/// subprocess per id a 47-session folder costs 47 spawns; throttling only
+/// spreads that out rather than removing it.
+/// Group `sessions` by agent, then resolve each agent's ids against the command
+/// lines `lines_for` returns for it. Split from the command so that "one lookup
+/// per agent, whatever the number of ids" is a property a test can observe
+/// rather than infer from the source.
+///
+/// The ids are de-duplicated: callers count the returned list
+/// (`tabs.length + detached`), so a repeated id would read as two live sessions.
+fn resolve_running(sessions: Vec<SessionRef>, lines_for: impl Fn(&str) -> Vec<String>) -> Vec<String> {
+    let mut by_agent: HashMap<String, Vec<String>> = HashMap::new();
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    for s in sessions {
+        if seen.insert((s.agent.clone(), s.id.clone())) {
+            by_agent.entry(s.agent).or_default().push(s.id);
+        }
+    }
+    let mut running = Vec::new();
+    for (agent, ids) in by_agent {
+        let lines = lines_for(&agent);
+        running.extend(running_ids(&agent, &ids, &lines));
+    }
+    running
+}
+
+#[tauri::command]
+pub fn sessions_running(sessions: Vec<SessionRef>) -> Result<Vec<String>, String> {
+    Ok(resolve_running(sessions, agent_command_lines))
 }
 
 #[derive(Serialize)]
@@ -2064,6 +2151,32 @@ mod tests {
         assert!(!st.paths.contains("/p/c"));
     }
 
+    /// Listing a folder must not adopt it. `folder_verdict` returns `AutoAdopt`
+    /// for a folder whose sessions all postdate it, and `folder_historical` then
+    /// persists that to adopted.json - so a listing that reached the verdict
+    /// would pre-adopt folders the user never opened, permanently disabling the
+    /// ghost protection for every one of them.
+    ///
+    /// Asserted against the source because the write is two calls down
+    /// (`folder_historical` -> `adopt` -> `save_adopted`) and `list_sessions`
+    /// takes a Tauri `State`, which a unit test cannot hand it.
+    #[test]
+    fn listing_a_folder_never_reaches_the_adopting_verdict() {
+        let source = include_str!("sessions.rs");
+        let body = source
+            .split_once("pub fn list_sessions(")
+            .expect("list_sessions exists")
+            .1;
+        // Up to the next top-level item, which is the adopted-paths section.
+        let body = body.split_once("\n// ---").expect("section follows").0;
+        for forbidden in ["folder_verdict", "folder_historical", "adopt(", "save_adopted"] {
+            assert!(
+                !body.contains(forbidden),
+                "list_sessions reaches {forbidden}; listing a folder must not persist an adoption"
+            );
+        }
+    }
+
     #[test]
     fn verdict_adopted_when_in_set_or_no_sessions() {
         let mut set = HashSet::new();
@@ -2106,6 +2219,98 @@ mod tests {
         // A transcript merely opened in `less` must NOT match - the bare-uuid
         // pgrep collision this pattern replaces.
         assert!(!ere_matches(&pat, "less /Users/x/.claude/projects/-Users-x-proj/abc-123-def.jsonl"));
+    }
+
+    /// The batch probe's matching half, against real `pgrep -lf` output captured
+    /// on macOS (pids stripped, home path redacted). One chat session is live;
+    /// the two PTY-style ids are not, and the decoys are processes that merely
+    /// mention an id.
+    ///
+    /// The live line carries its id **twice** (once after `--resume`, once inside
+    /// the `--settings` path), which is why the pattern has to anchor on an
+    /// argument token rather than just containing the id.
+    #[test]
+    fn running_ids_resolves_a_batch_against_captured_pgrep_output() {
+        let live = "ff243892-6e71-469f-913c-7e9c39d4916f";
+        let pty = "0c7aeea2-b79a-4ce7-8819-c10b3a1b0dd5";
+        let dead = "22748218-3a63-4c8c-9012-11338279bf8e";
+        let lines: Vec<String> = [
+            format!(
+                "claude -p --input-format stream-json --output-format stream-json --verbose \
+                 --include-partial-messages --include-hook-events --resume {live} \
+                 --settings /Users/dev/.config/sway/chat-settings/{live}.json"
+            ),
+            format!("claude --resume {pty}"),
+            // Decoys: neither is an agent driving the session.
+            format!("tail -f /Users/dev/.claude/projects/-Users-dev-proj/{dead}.jsonl"),
+            "node /Users/dev/.claude/plugins/cache/context-mode/start.mjs".to_string(),
+        ]
+        .to_vec();
+
+        let ids = vec![live.to_string(), pty.to_string(), dead.to_string()];
+        let running = running_ids("claude", &ids, &lines);
+        assert_eq!(running, vec![live.to_string(), pty.to_string()]);
+
+        // A chat started with --session-id rather than --resume is equally live.
+        let fresh = "9b09f95f-b189-401b-9f1a-278933f19bb9";
+        let chat = vec![format!("claude -p --input-format stream-json --session-id {fresh}")];
+        assert_eq!(
+            running_ids("claude", &[fresh.to_string()], &chat),
+            vec![fresh.to_string()]
+        );
+
+        // Nothing running resolves every id to not-running, without erroring.
+        assert!(running_ids("claude", &ids, &[]).is_empty());
+    }
+
+    /// The property the batch call exists for, observed rather than inferred:
+    /// one process lookup per *agent*, however many ids are asked about, and a
+    /// repeated id answered once.
+    #[test]
+    fn resolve_running_looks_up_once_per_agent_and_dedupes_ids() {
+        let a = "ff243892-6e71-469f-913c-7e9c39d4916f";
+        let b = "0c7aeea2-b79a-4ce7-8819-c10b3a1b0dd5";
+        let dead = "22748218-3a63-4c8c-9012-11338279bf8e";
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+
+        let sessions: Vec<SessionRef> = [(a, "claude"), (b, "claude"), (dead, "claude"), (a, "claude")]
+            .iter()
+            .map(|(id, agent)| SessionRef { id: id.to_string(), agent: agent.to_string() })
+            .collect();
+
+        let mut running = resolve_running(sessions, |agent| {
+            asked.borrow_mut().push(agent.to_string());
+            vec![format!("claude --resume {a}"), format!("claude -p --session-id {b}")]
+        });
+        running.sort();
+
+        // Four ids over one agent cost exactly one lookup, and `a` asked twice
+        // is answered once, so a caller counting the list cannot double-count.
+        assert_eq!(asked.borrow().as_slice(), ["claude"]);
+        let mut expected = vec![a.to_string(), b.to_string()];
+        expected.sort();
+        assert_eq!(running, expected);
+    }
+
+    /// The signature is the other half of that guarantee: a caller cannot fall
+    /// back to per-id probing without changing it.
+    #[test]
+    fn sessions_running_takes_a_list_so_spawns_do_not_scale_with_ids() {
+        let source = include_str!("sessions.rs");
+        assert!(
+            source.contains("pub fn sessions_running(sessions: Vec<SessionRef>)"),
+            "the batch probe must take a list of sessions, not one id"
+        );
+        // The single-id `pgrep` belongs to `session_running` alone. A third call
+        // site would mean some path went back to probing per session.
+        //
+        // Assembled rather than written out, so this line is not itself a match.
+        let call_site = format!("Command::new(\"{}\")", "pgrep");
+        assert_eq!(
+            source.matches(&call_site).count(),
+            2,
+            "expected exactly two pgrep call sites: the single probe and the batch one"
+        );
     }
 
     #[test]
