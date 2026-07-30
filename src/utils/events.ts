@@ -158,11 +158,6 @@ export type SessionDeleted = { sessionId: string };
 export const SESSION_ACTION = "sway:session-action";
 export type SessionAction = { sessionId: string; action: "open" | "rename" | "delete" };
 
-// Payload-carrying event: open a session's transcript as a read-only virtual
-// tab in the editor's center pane. Emitted by the sidebar's session context menu.
-export const OPEN_TRANSCRIPT = "sway:open-transcript";
-export type OpenTranscript = { id: string; sessionPath: string; agent: "claude" | "pi"; name: string; cwd: string };
-
 // Payload-carrying event: open a terminal tab running a specific command (used
 // by clone / bare-worktree bootstrap, which need native git progress + auth).
 // When rediscoverOnExit is set, the terminal area re-discovers on process exit.

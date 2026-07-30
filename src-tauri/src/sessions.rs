@@ -1463,14 +1463,16 @@ pub fn sessions_watch_start(
 
 // --- Transcript viewer ---
 //
-// A per-agent-agnostic turn list for the read-only transcript viewer. Reuses
-// `extract_text` (title/prompt extraction) and `parse_rfc3339_secs` (touched-
-// files timestamps) rather than re-deriving either, and mirrors the same
-// per-line, per-agent dispatch shape as `session_detail`/`extract_touched_files`.
-// Grounded in real local transcripts (see block-shape doc comments below), the
-// same practice phase 2 used for the touched-files tool mapping.
-
-const TRANSCRIPT_PAGE: usize = 40;
+// A per-agent-agnostic turn list. Reuses `extract_text` (title/prompt
+// extraction) and `parse_rfc3339_secs` (touched-files timestamps) rather than
+// re-deriving either, and mirrors the same per-line, per-agent dispatch shape
+// as `session_detail`/`extract_touched_files`. Grounded in real local
+// transcripts (see block-shape doc comments below), the same practice phase 2
+// used for the touched-files tool mapping.
+//
+// The read-only transcript viewer this was first written for is gone; the chat
+// panel's replay (`chat_session_detail`) and the needs-you tail state are what
+// read these turns now, and both take the whole list rather than a page of it.
 
 #[derive(Serialize, Clone)]
 pub struct TranscriptBlock {
@@ -1502,15 +1504,6 @@ pub struct TranscriptTurn {
     pub role: String,
     pub ts: u64,
     pub blocks: Vec<TranscriptBlock>,
-}
-
-#[derive(Serialize)]
-pub struct TranscriptPage {
-    /// Newest-first within this page.
-    pub turns: Vec<TranscriptTurn>,
-    /// Pass back to `session_transcript` to fetch the preceding (older) window;
-    /// `None` once the oldest turn has been returned.
-    pub next_cursor: Option<usize>,
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
@@ -1769,26 +1762,6 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
     }
 
     turns
-}
-
-/// Tail-first pagination over `parse_transcript_turns`: `cursor` is the index
-/// (into the chronological array) of the oldest turn already returned; the
-/// first call (`cursor: None`) starts at the end. Re-parses the full file on
-/// every call (no cache) - the viewer opens deliberately, unlike the touched
-/// panel/row count which fire on every selection.
-#[tauri::command]
-pub fn session_transcript(
-    path: String,
-    agent: String,
-    cursor: Option<usize>,
-) -> Result<TranscriptPage, String> {
-    let all = parse_transcript_turns(&path, &agent);
-    let end = cursor.unwrap_or(all.len()).min(all.len());
-    let start = end.saturating_sub(TRANSCRIPT_PAGE);
-    let mut turns: Vec<TranscriptTurn> = all[start..end].to_vec();
-    turns.reverse();
-    let next_cursor = if start > 0 { Some(start) } else { None };
-    Ok(TranscriptPage { turns, next_cursor })
 }
 
 // --- Needs-you floor: transcript-tail state (Finding A, Tier 3 floor) ---
@@ -2715,8 +2688,10 @@ mod tests {
     }
 
     #[test]
-    fn session_transcript_cursor_returns_preceding_window() {
-        // 3 user turns, one per line, oldest-first.
+    fn transcript_turns_are_chronological() {
+        // The viewer that paged this list tail-first is gone; every reader left
+        // (chat replay, the needs-you tail) takes the whole list and depends on
+        // it arriving oldest-first.
         let body = (0..3)
             .map(|i| {
                 format!(
@@ -2726,22 +2701,11 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         let p = tmp_file("cursor.jsonl", &body);
-        let path = p.to_str().unwrap();
 
-        // First page (no cursor) is capped by TRANSCRIPT_PAGE (3 turns fit in
-        // one page), so it returns everything newest-first with no next cursor.
-        let page = session_transcript(path.to_string(), "claude".to_string(), None).unwrap();
-        assert_eq!(page.turns.len(), 3);
-        assert_eq!(page.turns[0].blocks[0].text.as_deref(), Some("turn 2")); // newest first
-        assert_eq!(page.next_cursor, None);
-
-        // A cursor mid-way returns exactly the preceding window, oldest turn
-        // excluded from the next page's tail (start == 0 => no further cursor).
-        let page2 = session_transcript(path.to_string(), "claude".to_string(), Some(2)).unwrap();
-        assert_eq!(page2.turns.len(), 2);
-        assert_eq!(page2.turns[0].blocks[0].text.as_deref(), Some("turn 1"));
-        assert_eq!(page2.turns[1].blocks[0].text.as_deref(), Some("turn 0"));
-        assert_eq!(page2.next_cursor, None);
+        let turns = transcript_turns(p.to_str().unwrap(), "claude");
+        assert_eq!(turns.len(), 3);
+        assert_eq!(turns[0].blocks[0].text.as_deref(), Some("turn 0"));
+        assert_eq!(turns[2].blocks[0].text.as_deref(), Some("turn 2"));
 
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }

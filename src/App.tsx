@@ -471,7 +471,6 @@ function App() {
       <Show when={paletteOpen()}>
         <CommandPalette
           selected={selected()}
-          onSelect={setSelected}
           onOpenSettings={() => setSettingsOpen(true)}
           onClose={() => setPaletteOpen(false)}
         />
