@@ -278,6 +278,7 @@ pub fn run() {
             sessions::set_session_archived,
             sessions::delete_session,
             sessions::session_running,
+            sessions::sessions_running,
             sessions::adopt_path,
             sessions::seed_adopted,
             sessions::folder_historical,

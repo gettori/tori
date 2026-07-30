@@ -129,6 +129,21 @@ describe("fan-out groups in the tree", () => {
     }
   });
 
+  // Expanding a group loads its units' sessions so the group can roll them up.
+  // That is a listing, not a surface that shows the Historical section, and it
+  // must not reach the verdict: `folder_historical` auto-adopts and writes
+  // adopted.json, so a fetch that adopted would strip ghost protection from
+  // folders the user never opened, before they ever saw them.
+  it("loads an attempt group's sessions without adopting their folders", async () => {
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
+
+    fireEvent.click(await screen.findByText(GOAL));
+    await waitFor(() => expect(screen.getByText("try-1")).toBeTruthy());
+
+    expect(bridge.calls.some((c) => c.cmd === "list_sessions")).toBe(true);
+    expect(bridge.calls.filter((c) => c.cmd === "folder_historical")).toEqual([]);
+  });
+
   it("creates one group of attempts from the project's own action", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
     const project = (await screen.findByText("repo")).parentElement!;

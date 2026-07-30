@@ -4,9 +4,9 @@
 // blocks on: one definition of "actor", so the two features can never disagree
 // about whether a folder is busy.
 //
-// The detached tier costs a `list_sessions` plus a `session_running` probe per
-// off-tab session, so callers gather deliberately (at click time, or on a turn
-// boundary) rather than per event.
+// The detached tier costs a `list_sessions` plus one batched `sessions_running`
+// probe, so callers gather deliberately (at click time, or on a turn boundary)
+// rather than per event.
 import { invoke } from "@tauri-apps/api/core";
 import { liveStatuses } from "./sessionStatus";
 import { liveChatIds, liveChats } from "./chatSessions";
@@ -53,18 +53,20 @@ export async function detachedCandidates(folder: string): Promise<RevertCandidat
   const sessions = await invoke<SessionMeta[]>("list_sessions", { folder }).catch(() => [] as SessionMeta[]);
   const liveIds = new Set([...liveStatuses().map((s) => s.sessionId), ...liveChatIds()]);
   const offTab = sessions.filter((s) => !liveIds.has(s.id));
-  const probes = await Promise.all(
-    offTab.map(async (s) => ({
-      session: s,
-      running: await invoke<boolean>("session_running", { id: s.id, agent: s.agent }).catch(() => false),
-    })),
+  if (offTab.length === 0) return [];
+  // One batch probe, not one per off-tab session: a folder with dozens of
+  // sessions would otherwise be dozens of subprocesses on a single click.
+  const running = new Set(
+    await invoke<string[]>("sessions_running", {
+      sessions: offTab.map((s) => ({ id: s.id, agent: s.agent })),
+    }).catch(() => [] as string[]),
   );
-  return probes
-    .filter((p) => p.running)
-    .map((p) => ({
-      sessionId: p.session.id,
-      sessionName: p.session.name || p.session.title || p.session.id.slice(0, 8),
-      folderPath: p.session.cwd,
+  return offTab
+    .filter((s) => running.has(s.id))
+    .map((s) => ({
+      sessionId: s.id,
+      sessionName: s.name || s.title || s.id.slice(0, 8),
+      folderPath: s.cwd,
       status: "running" as const,
       hasLiveTab: false,
     }));
