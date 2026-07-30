@@ -35,7 +35,6 @@ type SessionMeta = {
   branch: string;
   title: string;
   name?: string | null;
-  archived: boolean;
   agent?: string;
 };
 
@@ -92,7 +91,7 @@ export default function CommandPalette(props: {
     const folder = props.selected?.folderPath;
     if (folder) {
       invoke<SessionMeta[]>("list_sessions", { folder })
-        .then((list) => setProjectSessions(list.filter((s) => !s.archived)))
+        .then(setProjectSessions)
         .catch(() => setProjectSessions([]));
     }
   });
@@ -230,7 +229,6 @@ export default function CommandPalette(props: {
         folderPath: sel.folderPath,
         branch: sel.branch,
         projectKind: sel.projectKind,
-        recordedBranch: session.branch || undefined,
         agent: session.agent,
         sessionId: session.id,
         sessionPath: session.path,

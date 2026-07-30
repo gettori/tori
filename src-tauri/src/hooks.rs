@@ -290,7 +290,6 @@ mod tests {
                 last_active: 500, // newer than the outdated file's `at`
                 created_at: 0,
                 name: None,
-                archived: false,
                 agent: "claude".to_string(),
             },
             SessionMeta {
@@ -302,7 +301,6 @@ mod tests {
                 last_active: 1, // older than the fresh file's `at`
                 created_at: 0,
                 name: None,
-                archived: false,
                 agent: "claude".to_string(),
             },
         ];

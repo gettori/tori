@@ -56,14 +56,14 @@ const session = (id: string, cwd: string) => ({
   last_active: 1_700_000_000,
   created_at: 1_700_000_000,
   name: null,
-  archived: false,
   agent: "claude",
 });
 
 // `live-1` is hosted by a tab; `detached-1` is the session started outside Sway
-// that nothing would ever probe without the folder sweep.
+// that nothing would ever probe without the folder sweep; `chat-1` is a native
+// chat's transcript, on disk like any other.
 const LISTINGS: Record<string, ReturnType<typeof session>[]> = {
-  [MAIN]: [session("live-1", MAIN), session("detached-1", MAIN)],
+  [MAIN]: [session("live-1", MAIN), session("detached-1", MAIN), session("chat-1", MAIN)],
   [FEAT]: [],
   [SOLO]: [],
 };
@@ -120,7 +120,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { sessions, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { liveSessionStatuses, resetSessionActivityForTests } = await import(
+const { liveSessionStatuses, sessionStatus, resetSessionActivityForTests } = await import(
   "../../utils/sessionActivity"
 );
 
@@ -180,7 +180,7 @@ describe("what the sidebar can see without being expanded", () => {
     fireEvent.click(await screen.findByTitle("other"));
     await waitFor(() => expect(sessions()[SOLO]).toBeTruthy());
 
-    expect(sessions()[MAIN]?.map((s) => s.id)).toEqual(["live-1", "detached-1"]);
+    expect(sessions()[MAIN]?.map((s) => s.id)).toEqual(["live-1", "detached-1", "chat-1"]);
     // And the join still resolves, which is what the notification depends on.
     await waitFor(() =>
       expect(liveSessionStatuses().map((s) => s.sessionId)).toEqual(["live-1"]),
@@ -221,22 +221,53 @@ describe("what the sidebar can see without being expanded", () => {
   });
 
   // Nothing else probes a session Sway is not hosting, so without the sweep an
-  // agent someone started in a terminal is invisible until its row is clicked.
-  // The rows are opened here only so the verdict is readable: the probe that
-  // produced it ran off the folder scan, before anything was clicked.
+  // agent someone started in a terminal is invisible until something asks after
+  // it. Read `sessionStatus` rather than a row: the sidebar lists no sessions
+  // any more, and a detached session is deliberately absent from
+  // `liveSessionStatuses` (which is tabs and chats, the things with a row to
+  // roll up to). This per-session verdict is what the History button's badge
+  // counts, and it is the only place the detached tier surfaces.
   it("reports an off-tab session as running without anyone clicking it", async () => {
-    localStorage.setItem(
-      "sway.expanded.v1",
-      JSON.stringify(["p:work/repo", "u:work/repo/main"]),
-    );
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
     await waitFor(() => expect(probedIds()).toContain("detached-1"));
-    // Scoped to the row, so this is the detached session's own verdict and not
-    // a rollup badge on an ancestor that happens to say the same word. The row
-    // and its editable label share the title, and document order puts the row
-    // (the outer one) first.
-    const row = (await screen.findAllByTitle("detached-1"))[0];
-    await waitFor(() => expect(row.querySelector('[title="Running"]')).toBeTruthy());
+    await waitFor(() => expect(sessionStatus("detached-1")).toBe("running"));
+  });
+
+  // Tab focus is the whole of how a session becomes the selection now: there is
+  // no session row left to click. Both tab kinds have to fill `Selection`
+  // completely, or the editor's Session panel (sessionId/sessionPath/sessionCwd)
+  // and its accumulated-diff view (folderPath + sessionPath) go blank on focus.
+  it.each([
+    ["a PTY agent tab", "live-1"],
+    ["a chat tab", "chat-1"],
+  ])("populates the whole selection from %s's focus alone", async (_label, sessionId) => {
+    const picked: (Record<string, unknown> | null)[] = [];
+    render(() => (
+      <LeftSidebar
+        selected={null}
+        onSelect={(s) => picked.push(s as Record<string, unknown> | null)}
+        liveTabs={liveTabs}
+      />
+    ));
+    await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
+
+    window.dispatchEvent(
+      new CustomEvent("sway:terminal-tab-focused", { detail: { folderPath: MAIN, sessionId } }),
+    );
+
+    const last = () => picked[picked.length - 1];
+    await waitFor(() => expect(last()?.sessionId).toBe(sessionId));
+    expect(last()).toMatchObject({
+      spaceName: "work",
+      projectName: "repo",
+      projectPath: "/root/work/repo",
+      folderPath: MAIN,
+      branch: "main",
+      sessionId,
+      sessionPath: `${MAIN}/.transcripts/${sessionId}.jsonl`,
+      sessionCwd: MAIN,
+      agent: "claude",
+    });
   });
 });

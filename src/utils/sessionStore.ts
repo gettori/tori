@@ -31,7 +31,6 @@ export type SessionMeta = {
   last_active: number;
   created_at: number;
   name: string | null;
-  archived: boolean;
   agent?: string;
 };
 
@@ -42,15 +41,16 @@ const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
 export { sessions };
 
 // Per-folder "historical" flag: sessions predating a recreated folder, hidden
-// under a collapsed "Historical" section until adopted.
+// under a collapsed "Historical" section until adopted. That section lives in
+// the terminal pane's History dropdown, which is also the only caller of
+// `checkHistorical` - see its note below on why that matters.
 const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
 export { historical };
 
 // Observers of "these folders just rescanned". They get the lists themselves,
-// not just the fact that the map changed, because both current observers need
-// per-folder granularity: the unseen stamps may only prune within a folder that
-// actually rescanned, and the detached-tier probe wants exactly the sessions
-// that scan turned up.
+// not just the fact that the map changed, because that granularity is what the
+// detached-tier probe needs: exactly the sessions this scan turned up, and no
+// re-probe of the ones it did not.
 const observers = new Set<(scans: readonly FolderScan[]) => void>();
 
 /** Watch folder scans. Returns its own unsubscribe, for `onCleanup`. */
@@ -113,8 +113,8 @@ export async function refreshSessions() {
 // serial because the store now covers every branch-unit in the space rather
 // than only the expanded ones, so a serial pass would grow with the tree; the
 // backing scanner is head-only and mtime-cached, so a repeat pass is cheap.
-// One write, and one `announce`, because an observer that persists (the unseen
-// stamps) would otherwise re-serialize its whole map once per folder.
+// One write, and one `announce`, so an observer pays for the batch once rather
+// than once per folder (the detached sweep would otherwise re-probe per scan).
 async function fill(folders: readonly string[], seedEmpty: boolean) {
   const next: Record<string, SessionMeta[]> = {};
   const scans: FolderScan[] = [];

@@ -126,9 +126,7 @@ export default function HistoryPanel(props: {
   const q = () => query().trim().toLowerCase();
 
   const listed = createMemo(() =>
-    (sessions()[props.folder] ?? [])
-      .filter((s) => !s.archived)
-      .filter((s) => !q() || label(s).toLowerCase().includes(q())),
+    (sessions()[props.folder] ?? []).filter((s) => !q() || label(s).toLowerCase().includes(q())),
   );
 
   const isOpen = (s: SessionMeta) => props.openSessionIds.includes(s.id);

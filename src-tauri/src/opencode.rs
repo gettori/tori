@@ -108,7 +108,6 @@ pub fn to_session_meta(row: &RawSession, agent_id: &str, db_path: &Path) -> Sess
         last_active: (row.time_updated.max(0) / 1000) as u64,
         created_at: (row.time_created.max(0) / 1000) as u64,
         name: None,
-        archived: false,
         agent: agent_id.to_string(),
     }
 }

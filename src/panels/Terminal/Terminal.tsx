@@ -419,14 +419,12 @@ export default function Terminal(props: {
   //
   // Memoized: it composes a status per session in the folder (47 of them, on
   // this machine's worst case) and the button reads it four times over.
-  // Archived sessions are excluded for the same reason the panel does not list
-  // them - a badge for a row that is not there is a badge you cannot act on.
   const detachedLive = createMemo(() => {
     const ws = activeWorkspace();
     if (!ws) return 0;
     const hosted = new Set(open().map((t) => t.sessionId));
     return (sessions()[ws] ?? []).filter(
-      (s) => !s.archived && !hosted.has(s.id) && sessionStatus(s.id) !== "none",
+      (s) => !hosted.has(s.id) && sessionStatus(s.id) !== "none",
     ).length;
   });
 

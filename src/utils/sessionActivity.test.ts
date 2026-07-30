@@ -61,7 +61,6 @@ const meta = (id: string, branch: string, agent = "claude") => ({
   last_active: 1,
   created_at: 1,
   name: null,
-  archived: false,
   agent,
 });
 

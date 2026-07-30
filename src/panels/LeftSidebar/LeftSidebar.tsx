@@ -14,7 +14,6 @@ import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import Toasts, { type Toast } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
-import EditableLabel from "../../components/EditableLabel/EditableLabel";
 import {
   on as onEvent,
   onWith,
@@ -26,14 +25,12 @@ import {
   NEW_SESSION,
   PURGE_UNDER_PATH,
   TOAST,
-  OPEN_TRANSCRIPT,
   TERMINAL_TAB_FOCUSED,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
   type ToastEvent,
   type LiveTab,
-  type OpenTranscript,
   type TerminalTabFocused,
   SESSION_DELETED,
   type SessionDeleted,
@@ -41,42 +38,24 @@ import {
   type SessionAction,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
-import { ago } from "../../utils/relativeTime";
-import {
-  loadStamps,
-  saveStamps,
-  reconcileScan,
-  sameStamps,
-  markViewed,
-  isUnseen,
-  type Stamps,
-} from "../../utils/unseen";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
-import { findAgent, resumeCommand } from "../../utils/agents";
-import { copyText } from "../../utils/clipboard";
 import {
   rollupStatuses,
-  statusPresentation,
-  type SessionStatus,
   type LiveSessionStatus,
   type Rollup,
 } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
 import {
   sessions,
-  historical,
   fetchSessions,
   trackFolders,
   refreshSessions,
-  checkHistorical,
-  markAdopted,
   findSession,
   onFolderScan,
   type SessionMeta,
   type FolderScan,
 } from "../../utils/sessionStore";
-import { type StatusCertainty } from "../../utils/sessionDot";
 import {
   noteLiveTabs,
   noteFolderOwners,
@@ -86,15 +65,10 @@ import {
   probeActive,
   notePtyActivity,
   refreshTailStates,
-  sessionStatus,
-  sessionCertainty,
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
 import { settings as appSettings } from "../Settings/settingsStore";
-import ClaudeIcon from "../../seti/ClaudeIcon";
-import PiIcon from "../../seti/PiIcon";
-import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import {
@@ -198,8 +172,6 @@ export type Selection = {
   folderPath: string;
   branch: string;
   projectKind: string;
-  // The session's own recorded branch (Claude) for the mismatch badge.
-  recordedBranch?: string;
   agent?: string;
   sessionId?: string;
   sessionPath?: string;
@@ -209,7 +181,6 @@ export type Selection = {
   sessionCwd?: string;
   sessionTitle?: string;
   sessionName?: string | null;
-  sessionArchived?: boolean;
 };
 
 const LS_EXPANDED = "sway.expanded.v1";
@@ -223,10 +194,17 @@ function loadActiveSpace(): string | null {
   }
 }
 
+// Two of the four key prefixes are gone with the session rows: `u:` (a branch
+// unit, a leaf now) and `h:` (its Historical sub-section, the History panel's
+// business). They are dropped on load rather than migrated, so the next toggle
+// writes the set back without them; a stored set that is never touched again
+// simply keeps a few strings nothing reads.
+const DEAD_KEY = /^[uh]:/;
+
 function loadExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(LS_EXPANDED);
-    if (raw) return new Set<string>(JSON.parse(raw));
+    if (raw) return new Set<string>((JSON.parse(raw) as string[]).filter((k) => !DEAD_KEY.test(k)));
   } catch {
     // ignore
   }
@@ -254,8 +232,6 @@ export default function LeftSidebar(props: {
     setToasts((ts) => [...ts, { id: ++toastSeq, message, kind }]);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
-  // "Last viewed" stamps behind the unseen-changes dot (see utils/unseen.ts).
-  const [viewStamps, setViewStamps] = createSignal<Stamps>(loadStamps());
   // Per-project "has an origin remote" flag: gates whether Attach Existing
   // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
   // Keyed by project path.
@@ -549,62 +525,15 @@ export default function LeftSidebar(props: {
     );
   }
 
-  // Whether a session's own row is on screen, mirroring `sessionVisible` for
-  // the status list. A row that is showing carries its own status, so counting
-  // it on an ancestor too would report it twice - hence `hiddenOnly` on an
-  // expanded row.
-  //
-  // `sessionName` falls back to the session id where `sessionText` falls back
-  // to "", but the scanner always writes a title (an empty one becomes
-  // "(untitled session)"), so the fallback only fires for a status with no
-  // session in the store at all - which has no row to be visible in either.
-  function statusVisible(s: LiveSessionStatus) {
-    return !q() || s.sessionName.toLowerCase().includes(q());
+  // No session has a row of its own any more, so a rollup is never a second
+  // report of something already on screen: the row that shows it is the only
+  // place it appears. Whether to count at all is now purely a question of which
+  // *rows* are rendered, which each call site knows.
+  function bubbleForUnits(p: Project, us: readonly BranchUnit[]) {
+    return bubbleFor((s) => us.some((u) => statusInUnit(s, p, u)));
   }
 
-  function bubbleForUnits(p: Project, us: readonly BranchUnit[], hiddenOnly: boolean) {
-    return bubbleFor(
-      (s) => us.some((u) => statusInUnit(s, p, u)) && (!hiddenOnly || !statusVisible(s)),
-    );
-  }
-
-  // Per-state icon for a session row (Antigravity 2.0 style): the icon always
-  // renders, the label sits alongside it and is the part that truncates first
-  // at narrow widths (title carries the full label regardless).
-  function statusGlyph(status: SessionStatus) {
-    switch (status) {
-      case "executing":
-        return <Icon icon={ChevronsLeftRightEllipsis} />;
-      case "waitingForApproval":
-        return <Icon icon={MessageCircleQuestion} />;
-      case "idle":
-        return <Icon icon={Check} />;
-      case "running":
-        return <Icon icon={CircleDashed} />;
-    }
-  }
-
-  // Session-row status indicator: sits in the trailing time slot, replacing
-  // ago(last_active) for any session with a detectable live status. A dead
-  // session (status "none") keeps the plain ago time instead.
-  //
-  // The exact tier wears a marker; the inferred tier renders exactly as it
-  // always has, down to the class string - see `statusPresentation` for why the
-  // marking goes on that side and not the other.
-  function statusIndicator(status: SessionStatus, certainty: StatusCertainty) {
-    if (status === "none") return null;
-    const { title, exact } = statusPresentation(status, certainty);
-    const cls = exact
-      ? `${styles.statusIndicator} ${styles[status]} ${styles.exact}`
-      : `${styles.statusIndicator} ${styles[status]}`;
-    return (
-      <span class={cls} title={title}>
-        {statusGlyph(status)}
-      </span>
-    );
-  }
-
-  // Collapsed/hidden-ancestor rollup badge: Waiting first (it always wins the
+  // Rollup badge: Waiting first (it always wins the
   // row), then Executing, each with an xN count when more than one session
   // shares the state. Renders nothing when neither count is present.
   function statusBubble(r: Rollup | null) {
@@ -658,9 +587,6 @@ export default function LeftSidebar(props: {
   // The store lookup on its own, so the retry above is one call rather than a
   // copy of the walk.
   function selectFromStore(sessionId: string): boolean {
-    // The raw store, not the search-filtered unitSessions(p, u) - a
-    // notification/tray click must still focus a session the sidebar's current
-    // search query happens to be hiding.
     const hit = findSession(sessionId);
     if (!hit) return false;
     for (const g of config()?.spaces ?? []) {
@@ -693,15 +619,12 @@ export default function LeftSidebar(props: {
 
   // The reverse of a sidebar selection driving the terminal: the user clicked a
   // terminal tab, so move our selection to match. Load the owning folder's
-  // sessions first (a collapsed branch may not have them yet), then select the
-  // session; fall back to selecting the branch if it can't be resolved.
+  // sessions first (the store may not hold a folder outside the active space
+  // yet), then select the session; fall back to selecting the branch if it
+  // can't be resolved.
   async function focusFromTerminalTab(d: TerminalTabFocused) {
     if (d.sessionId) {
       await fetchSessions(d.folderPath);
-      // This reveals the folder's session list, so it owes the same historical
-      // verdict an expansion does; without it a recreated folder's ghosts would
-      // render as ordinary rows here and collapsed everywhere else.
-      void checkHistorical(d.folderPath);
       if (await selectSessionById(d.sessionId)) return;
     }
     selectBranchByFolder(d.folderPath);
@@ -723,33 +646,23 @@ export default function LeftSidebar(props: {
     else await deleteSession(hit.session);
   }
 
-  // Registered in the body rather than in the async `onMount` below: this is a
-  // window listener that needs no await, and the awaits in there are a window
-  // during which a click in the History panel would land on nobody.
+  // Every window listener is registered here in the body, not in the async
+  // `onMount` below. None of them needs an await, and the five awaited Tauri
+  // `listen` calls in there are a window during which an event fired at startup
+  // lands on nobody. Tab focus is the one that made this load-bearing: with the
+  // sidebar's session rows gone it is the *only* thing that turns a session into
+  // the selection, so dropping one leaves the editor's Session panel blank with
+  // nothing left to click to fix it.
   onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
-
-  // Touched-file count for the *selected* session only, fetched via its own
-  // session_detail call on selection - deliberately independent of Toolbar's
-  // own session_detail poll (matches the probes-cache precedent above: each
-  // component fetches what it needs). null until the fetch resolves, so a
-  // stale count from the previously-selected session never flashes on the row.
-  const [touchedCount, setTouchedCount] = createSignal<number | null>(null);
-  // Guards against an out-of-order response: a slower fetch for a
-  // previously-selected (larger) session resolving after a newer, faster one
-  // must not overwrite the count with stale data.
-  let touchedCountFor: string | null = null;
-
-  async function loadTouchedCount(s: SessionMeta) {
-    touchedCountFor = s.id;
-    setTouchedCount(null);
-    const agent = s.agent === "pi" ? "pi" : "claude";
-    const detail = await invoke<{ touched_count: number }>(
-      "session_detail",
-      { path: s.path, agent },
-    ).catch(() => null);
-    if (touchedCountFor !== s.id) return; // a newer selection already started its own fetch
-    setTouchedCount(detail?.touched_count ?? null);
-  }
+  onCleanup(
+    onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
+  );
+  onCleanup(onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error")));
+  onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
+  // Deferred to the next frame so focus lands after the sidebar is revealed
+  // (App un-hides it on the same event; a synchronous focus would hit a
+  // display:none element and be dropped).
+  onCleanup(onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus())));
 
   function openDeleteSpace(g: Space) {
     setDeleteReq({
@@ -1594,11 +1507,7 @@ export default function LeftSidebar(props: {
     }
   }
 
-  // --- session overlay actions (rename/archive/delete) ---
-
-  // Which session row is being inline-renamed (double-click), if any. The row
-  // suspends its drag while editing so text selection in the field works.
-  const [editingSessionId, setEditingSessionId] = createSignal<string | null>(null);
+  // --- session actions, reached from the History dropdown ---
 
   // Persist a session name (null clears it, reverting to the title). set_session_name
   // now emits sessions://changed, so the terminal tab + any other listener refresh
@@ -1617,24 +1526,6 @@ export default function LeftSidebar(props: {
     const name = await askText("Rename session:", s.name ?? s.title);
     if (name === null) return; // cancelled
     await applySessionName(s, name);
-  }
-
-  async function archiveSession(s: SessionMeta) {
-    const archiving = !s.archived;
-    try {
-      await invoke("set_session_archived", { id: s.id, archived: archiving });
-      // Prune this session's checkpoint refs + scratch index, and its claude
-      // hook status file (Phase 3, a no-op for a non-claude session), on
-      // archive (not on un-archive - a restored session has nothing left to
-      // prune anyway).
-      if (archiving) {
-        await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
-        await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
-      }
-      await refreshSessions();
-    } catch (e) {
-      setError(String(e));
-    }
   }
 
   async function deleteSession(s: SessionMeta) {
@@ -1783,65 +1674,11 @@ export default function LeftSidebar(props: {
     { label: "Promote this attempt", warn: true, onClick: () => promoteAttempt(p, u, a) },
   ];
 
-  function openTranscript(s: SessionMeta) {
-    emitWith<OpenTranscript>(OPEN_TRANSCRIPT, {
-      id: s.id,
-      sessionPath: s.path,
-      agent: s.agent === "pi" ? "pi" : "claude",
-      name: s.name || s.title,
-      cwd: s.cwd,
-    });
-  }
-
-  // Copy to the clipboard and say so, since a copy has no other visible effect.
-  async function copyAndToast(what: string, text: string) {
-    if (await copyText(text)) setError(`Copied ${what}`, "info");
-    else setError(`Could not copy ${what} to the clipboard`);
-  }
-
-  const sessionMenu = (g: Space, p: Project, u: BranchUnit, s: SessionMeta): MenuItem[] => {
-    // Resume-less adapters get no resume item at all rather than a disabled one:
-    // there is no command to copy (see ADAPTERS.md, empty `resume_args`).
-    const resume = resumeCommand(findAgent(s.agent ?? "claude"), { id: s.id, file: s.path });
-    return [
-      { label: "New session", onClick: () => startSession(g, p, u) },
-      { separator: true },
-      { label: "Open transcript", onClick: () => openTranscript(s) },
-      { label: "Rename…", onClick: () => renameSession(s) },
-      { label: s.archived ? "Unarchive" : "Archive", onClick: () => archiveSession(s) },
-      { separator: true },
-      ...(resume ? [{ label: "Copy resume command", onClick: () => void copyAndToast("resume command", resume) }] : []),
-      { label: "Copy session id", onClick: () => void copyAndToast("session id", s.id) },
-      { label: "Copy working directory", onClick: () => void copyAndToast("working directory", s.cwd) },
-      { label: "Copy transcript path", onClick: () => void copyAndToast("transcript path", s.path) },
-      { separator: true },
-      { label: "Delete", danger: true, onClick: () => deleteSession(s) },
-    ];
-  };
-
   function toggle(key: string) {
     const next = new Set(expanded());
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setExpanded(next);
-  }
-
-  // Fold one or more folder scans into the unseen stamps: stamp-on-first-sight,
-  // then prune within each scanned folder only. Persisted so a relaunch never
-  // resurrects a badge the user already cleared. Takes the whole batch at once
-  // because refreshSessions rescans every folder, and a per-folder write would
-  // re-serialize the entire map once per workspace on every sessions://changed.
-  function noteScans(scans: readonly FolderScan[]) {
-    const now = Math.floor(Date.now() / 1000);
-    const prev = viewStamps();
-    let next = prev;
-    for (const { folder, list } of scans) next = reconcileScan(next, folder, list, now);
-    // A scan now covers every branch-unit folder in the space rather than only
-    // the expanded ones, so most events fold to exactly the map already held.
-    // Writing that back would re-serialize every stamp for no change.
-    if (sameStamps(prev, next)) return;
-    setViewStamps(next);
-    saveStamps(next);
   }
 
   // The detached tier: every session a scan turned up that no live tab and no
@@ -1864,12 +1701,7 @@ export default function LeftSidebar(props: {
     if (want.length > 0) void probeBatch(want);
   }
 
-  onCleanup(
-    onFolderScan((scans) => {
-      noteScans(scans);
-      sweepDetached(scans);
-    }),
-  );
+  onCleanup(onFolderScan(sweepDetached));
 
   // What the store must cover, from two independent sources:
   //   * every branch-unit in the active space, so the data does not wait on the
@@ -1891,44 +1723,13 @@ export default function LeftSidebar(props: {
     ),
   );
 
-  // Adopt a historical folder's sessions: they move to the normal listing and the
-  // choice persists across restarts.
-  async function adoptFolder(u: BranchUnit) {
-    try {
-      await invoke("adopt_path", { path: u.folderPath });
-      markAdopted(u.folderPath);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // After config loads, re-ask the historical verdict for restored-open
-  // branch-units. Listing is no longer part of this: the store covers every
-  // branch-unit in the space whether or not its row is open. The verdict still
-  // follows expansion, because it writes to disk and only a surface actually
-  // showing the Historical section has the right to adopt.
-  function restoreOpen(cfg: ResolvedConfig) {
-    for (const g of cfg.spaces) {
-      for (const p of g.projects) {
-        // A non-git folder anchors sessions on the project row (pkey), not a branch
-        // node (ukey), so re-check it when the project itself is open.
-        if (projectKind(p) === "plain-dir") {
-          if (expanded().has(pkey(g, p)) && p.branchUnits[0]) {
-            void checkHistorical(p.branchUnits[0].folderPath);
-          }
-          continue;
-        }
-        for (const u of p.branchUnits) {
-          if (expanded().has(ukey(g, p, u))) void checkHistorical(u.folderPath);
-        }
-      }
-    }
-  }
+  // The Historical section, its Adopt button and the verdict call that fed them
+  // all live in the History dropdown now. The verdict writes to disk (it
+  // auto-adopts), so it belongs to whichever surface actually renders that
+  // section and to no other - the sidebar asking for it here would adopt
+  // folders it no longer shows any ghosts for.
 
   const pkey = (g: Space, p: Project) => `p:${g.name}/${p.name}`;
-  const ukey = (g: Space, p: Project, u: BranchUnit) => `u:${g.name}/${p.name}/${u.label}`;
-  const hkey = (u: BranchUnit) => `h:${u.folderPath}`; // "Historical" sub-section
-  const isHistorical = (u: BranchUnit) => historical()[u.folderPath] === true;
 
   const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
   const currentBranch = (p: Project) =>
@@ -2001,7 +1802,6 @@ export default function LeftSidebar(props: {
       folderPath: u.folderPath,
       branch: unitLabel(u),
       projectKind: u.kind,
-      recordedBranch: s.branch || undefined,
       agent: s.agent,
       sessionId: s.id,
       sessionPath: s.path,
@@ -2009,38 +1809,11 @@ export default function LeftSidebar(props: {
       sessionCwd: s.cwd,
       sessionTitle: s.title,
       sessionName: s.name,
-      sessionArchived: s.archived,
     });
-    // Probe on selection so the dot reflects this row immediately, not just on
-    // the next sessions://changed/window-focus trigger.
+    // Probe on selection so the status reflects this session immediately, not
+    // just on the next sessions://changed/window-focus trigger.
     void probeSession(s.id, s.agent === "pi" ? "pi" : "claude");
-    void loadTouchedCount(s);
   }
-
-  // Stamp the selection as viewed both when it opens and when it closes. The
-  // closing stamp is the load-bearing one: it covers the turns that landed while
-  // the row was open (which never badged, since the selected row never badges),
-  // so switching away leaves the row clean rather than instantly unseen.
-  let lastStamped: { id: string; agent: string; cwd: string } | null = null;
-  createEffect(
-    on(
-      () => props.selected?.sessionId,
-      () => {
-        const now = Math.floor(Date.now() / 1000);
-        const sel = props.selected;
-        const cur =
-          sel?.sessionId && sel.sessionCwd
-            ? { id: sel.sessionId, agent: sel.agent ?? "claude", cwd: sel.sessionCwd }
-            : null;
-        let next = viewStamps();
-        if (lastStamped) next = markViewed(next, lastStamped, now);
-        if (cur) next = markViewed(next, cur, now);
-        lastStamped = cur;
-        setViewStamps(next);
-        saveStamps(next);
-      },
-    ),
-  );
 
   // A branch-unit reads as selected when it is the direct selection OR when a
   // session under it is (its sessions carry the unit's folderPath + label), so
@@ -2050,126 +1823,25 @@ export default function LeftSidebar(props: {
     return s != null && s.folderPath === u.folderPath && s.branch === unitLabel(u);
   }
 
-  // The session listing for one branch-unit (an optional "Historical" sub-section +
-  // the session rows). Extracted so it renders both under a branch node (sub2) and
-  // directly under a non-git folder that has no branch node (sub1). `sub` is the
-  // session rows' indent class; the historical header sits at the same level.
-  function sessionRows(g: Space, p: Project, u: BranchUnit, sub: "sub1" | "sub2") {
-    const histSub = sub;
-    return (
-      <>
-        <Show when={isHistorical(u)}>
-          <div
-            class={`${styles.row} ${styles.dim} ${styles[histSub]} ${styles.historical}`}
-            onClick={() => toggle(hkey(u))}
-            title="Sessions predating this recreated folder"
-          >
-            <Chevron open={expanded().has(hkey(u))} />
-            <span class={styles.label}>Historical ({unitSessions(p, u).length})</span>
-            <Button
-              variant="ghost"
-              size="xs"
-              style={{ "margin-left": "auto" }}
-              title="Adopt these sessions into the normal listing"
-              onClick={(e) => {
-                e.stopPropagation();
-                adoptFolder(u);
-              }}
-            >
-              Adopt
-            </Button>
-          </div>
-        </Show>
-        <Show when={!isHistorical(u) || expanded().has(hkey(u))}>
-          <For each={unitSessions(p, u)} fallback={<div class={`${styles.row} ${styles.dim} ${styles[sub]}`}>no sessions</div>}>
-            {(s) => {
-              const badge = sessionBadge(p, u, s);
-              return (
-                <div
-                  class={`${styles.row} ${styles.session} ${styles[sub]} ${props.selected?.sessionId === s.id ? styles.sel : ""}`}
-                  onClick={() => selectSession(g, p, u, s)}
-                  onContextMenu={(e) => openMenu(e, sessionMenu(g, p, u, s))}
-                  title={s.name || s.title}
-                  draggable={editingSessionId() !== s.id}
-                  onDragStart={(e) => startAbsDrag(e, s.path)}
-                >
-                  <Show when={s.agent === "pi"} fallback={<ClaudeIcon />}>
-                    <PiIcon />
-                  </Show>
-                  <EditableLabel
-                    class={styles.label}
-                    value={s.name || s.title}
-                    title={s.name || s.title}
-                    editing={editingSessionId() === s.id}
-                    onEdit={() => setEditingSessionId(s.id)}
-                    onCommit={(next) => {
-                      setEditingSessionId(null);
-                      void applySessionName(s, next);
-                    }}
-                    onCancel={() => setEditingSessionId(null)}
-                  />
-                  <Show when={badge}>
-                    <span
-                      class={`${styles.badge} ${badge!.hint ? styles.hint : ""}`}
-                      title={
-                        badge!.hint
-                          ? "Branchless session: files reflect the current checkout"
-                          : "Recorded on a branch other than the current checkout"
-                      }
-                    >
-                      {badge!.text}
-                    </span>
-                  </Show>
-                  <Show when={props.selected?.sessionId === s.id && touchedCount() !== null}>
-                    <span class={styles.touchedCount} title="Files touched (writes/creates/deletes)">
-                      {touchedCount()}
-                    </span>
-                  </Show>
-                  <Show when={isUnseen(viewStamps(), s, props.selected?.sessionId)}>
-                    <span class={styles.unseenDot} title="New activity since you last looked" />
-                  </Show>
-                  <Show
-                    when={statusIndicator(sessionStatus(s.id), sessionCertainty(s.id))}
-                    fallback={<span class={styles.when}>{ago(s.last_active)}</span>}
-                  >
-                    {statusIndicator(sessionStatus(s.id), sessionCertainty(s.id))}
-                  </Show>
-                </div>
-              );
-            }}
-          </For>
-        </Show>
-      </>
-    );
-  }
-
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
 
-  // One branch-unit node: its row, its sessions, and the rail that joins them.
+  // One branch-unit node. A leaf since the session rows went: sessions are
+  // reached from the terminal pane's History dropdown now, so a branch has
+  // nothing left to expand and clicking it means one thing - select this unit.
   // Shared by the flat worktree/branch list and by the attempts inside a group,
-  // which are the same node one indent deeper - `attemptNode` re-anchors the
-  // rail variables, so every class below is unchanged at either level.
+  // which are the same node one indent deeper.
   function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord) {
-    const uopen = () => expanded().has(ukey(g, p, u));
     return (
       <div
         class={`node ${styles.branchNode}`}
         classList={{
           [styles.attemptNode]: attempt != null,
-          // Gild the whole node rail (branch + its sessions), not just the
-          // branch row, while this unit is selected.
           [styles.railSel]: unitSelected(u),
-          [styles.railOpen]: uopen(),
         }}
       >
         <div
           class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
-          onClick={() => {
-            toggle(ukey(g, p, u));
-            fetchSessions(u.folderPath);
-            void checkHistorical(u.folderPath);
-            selectUnit(g, p, u);
-          }}
+          onClick={() => selectUnit(g, p, u)}
           onContextMenu={(e) =>
             openMenu(e, attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u))
           }
@@ -2183,12 +1855,8 @@ export default function LeftSidebar(props: {
           <Show when={u.isCurrent}>
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
-          {statusBubble(bubbleForUnits(p, [u], uopen()))}
-          <RowChevron open={uopen()} />
+          {statusBubble(bubbleForUnits(p, [u]))}
         </div>
-        <Show when={uopen()}>
-          {sessionRows(g, p, u, "sub2")}
-        </Show>
       </div>
     );
   }
@@ -2217,10 +1885,10 @@ export default function LeftSidebar(props: {
     const key = gkey(g, p, grp.groupId);
     const open = () => expanded().has(key);
     const units = () => grp.members.map(attemptUnit);
-    // Same rollup rule as a branch row: everything under a closed group, and
-    // only what the search filter hides under an open one.
+    // Same rollup rule as a project row: everything under a closed group, and
+    // nothing under an open one, whose attempt rows each carry their own.
     return (
-      <div class={`node ${styles.branchNode}`} classList={{ [styles.railOpen]: open() }}>
+      <div class={`node ${styles.branchNode}`}>
         <div
           class={`${styles.row} ${styles.branch} ${styles.sub1}`}
           onClick={() => {
@@ -2238,7 +1906,7 @@ export default function LeftSidebar(props: {
           >
             {grp.members.length === 1 ? "1 attempt" : `${grp.members.length} attempts`}
           </span>
-          {statusBubble(bubbleForUnits(p, units(), open()))}
+          {statusBubble(open() ? null : bubbleForUnits(p, units()))}
           <RowChevron open={open()} />
         </div>
         <Show when={open()}>
@@ -2250,63 +1918,14 @@ export default function LeftSidebar(props: {
     );
   }
 
-  // Attach a folder's sessions to the most-specific branch-unit. Worktree /
-  // plain-dir / incomplete units own a distinct folder, so all of it is theirs.
-  // Plain units share one repo folder, so split Claude sessions by recorded
-  // branch. A session whose recorded branch has no visible unit (detached or
-  // deleted) is an orphan: it re-homes onto the fallback unit so history is never
-  // lost. Branchless (pi) sessions likewise park on the fallback (the checkout).
-  // Query-unfiltered core: a plain project's branch units all share one
-  // `folderPath`, so this is the only place that actually knows which of
-  // several sibling branch rows a session belongs to. Also used by the
-  // status-bubble rollup below, which needs the sessions a search filter
-  // hides too (unitSessions layers that filter on top for rendering).
-  function unitSessionsAll(p: Project, u: BranchUnit): SessionMeta[] {
-    return (sessions()[u.folderPath] ?? [])
-      .filter((s) => !s.archived)
-      .filter((s) => belongsToUnit(s, u, p.branchUnits));
-  }
-
-  function unitSessions(p: Project, u: BranchUnit): SessionMeta[] {
-    return unitSessionsAll(p, u).filter(sessionVisible);
-  }
-
-  // Per-session flag: a Claude session recorded on a branch other than the
-  // current checkout, or a branchless (pi) session whose files are the checkout.
-  function sessionBadge(p: Project, u: BranchUnit, s: SessionMeta): { text: string; hint: boolean } | null {
-    if (u.kind !== "plain") return null;
-    if (s.agent === "pi") return { text: "≈ checkout", hint: true };
-    const cur = currentBranch(p);
-    if (s.branch && cur && s.branch !== cur) return { text: `≠ ${s.branch}`, hint: false };
-    return null;
-  }
-
   // --- filtering ---
+  // Project names, and nothing else: with the session rows gone there is no
+  // session for a match to reveal, and a filter that hid whole projects on the
+  // strength of a title you could not then see would be worse than none.
+  // Searching sessions is the History dropdown's own field.
   const q = () => query().trim().toLowerCase();
-  function sessionText(s: SessionMeta) {
-    return (s.name || s.title).toLowerCase();
-  }
-  // Every folder whose sessions belong to this project: its branch-units, plus
-  // its attempts, which on a plain repo are not branch-units at all - filtering
-  // by a name inside one would otherwise hide the project that holds it.
-  function projectFolders(p: Project): string[] {
-    return [
-      ...p.branchUnits.map((u) => u.folderPath),
-      ...(attempts()[p.path] ?? []).map((a) => a.path),
-    ];
-  }
-  function sessionsMatch(p: Project) {
-    if (!q()) return false;
-    return projectFolders(p).some((f) =>
-      (sessions()[f] ?? []).some((s) => sessionText(s).includes(q())),
-    );
-  }
   function projectVisible(p: Project) {
-    if (!q()) return true;
-    return p.name.toLowerCase().includes(q()) || sessionsMatch(p);
-  }
-  function sessionVisible(s: SessionMeta) {
-    return !q() || sessionText(s).includes(q());
+    return !q() || p.name.toLowerCase().includes(q());
   }
 
   let unlistenConfig: UnlistenFn | undefined;
@@ -2315,17 +1934,11 @@ export default function LeftSidebar(props: {
   let unlistenTrayFocus: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
-  let offSearch: (() => void) | undefined;
-  let offRefresh: (() => void) | undefined;
-  let offToast: (() => void) | undefined;
-  let offTabFocus: (() => void) | undefined;
   let offFocus: (() => void) | undefined;
   onMount(async () => {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
-    const cfg = config();
-    if (cfg) restoreOpen(cfg);
     unlistenConfig = await listen("config://changed", () => loadConfig());
     unlistenSessions = await listen("sessions://changed", () => {
       // No explicit tail re-read: the tail-state effect now triggers on the
@@ -2398,13 +2011,6 @@ export default function LeftSidebar(props: {
         }
       },
     );
-    // Deferred to the next frame so focus lands after the sidebar is revealed
-    // (App un-hides it on the same event; a synchronous focus would hit a
-    // display:none element and be dropped).
-    offSearch = onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus()));
-    offRefresh = onEvent(SESSIONS_REFRESH, () => refreshSessions());
-    offToast = onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error"));
-    offTabFocus = onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d));
   });
   onCleanup(() => {
     unlistenConfig?.();
@@ -2413,10 +2019,6 @@ export default function LeftSidebar(props: {
     unlistenTrayFocus?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
-    offSearch?.();
-    offRefresh?.();
-    offToast?.();
-    offTabFocus?.();
     offFocus?.();
   });
 
@@ -2480,7 +2082,7 @@ export default function LeftSidebar(props: {
         <input
           ref={searchEl}
           class={styles.searchInput}
-          placeholder="Filter projects / sessions (⌘P)"
+          placeholder="Filter projects (⌘⇧E)"
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Escape" && setQuery("")}
@@ -2492,10 +2094,9 @@ export default function LeftSidebar(props: {
           {(p) => {
             const g = activeSpace()!;
             const popen = () => expanded().has(pkey(g, p));
-            // A non-git folder has no branch node: the project row is the
-            // session anchor, so clicking it selects the single unit and its
-            // sessions render directly beneath (nothing but its own sessions,
-            // never a same-named branch stub).
+            // A non-git folder has no branch node, and now no session rows
+            // either: its project row *is* the branch-unit, a leaf that selects
+            // its single unit when clicked.
             const plainDir = () => projectKind(p) === "plain-dir";
             const folderUnit = () => p.branchUnits[0];
             // The flat units and the fan-out groups. An attempt of a worktree
@@ -2517,12 +2118,8 @@ export default function LeftSidebar(props: {
                 <div
                   class={`${styles.row} ${styles.project}`}
                   onClick={() => {
-                    toggle(pkey(g, p));
-                    if (plainDir() && folderUnit()) {
-                      fetchSessions(folderUnit().folderPath);
-                      void checkHistorical(folderUnit().folderPath);
-                      selectUnit(g, p, folderUnit());
-                    }
+                    if (plainDir()) selectUnit(g, p, folderUnit());
+                    else toggle(pkey(g, p));
                   }}
                   onContextMenu={(e) => openMenu(e, projectMenu(g, p))}
                   draggable={true}
@@ -2531,25 +2128,21 @@ export default function LeftSidebar(props: {
                   <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} /></span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
-                    !popen()
-                      ? bubbleForUnits(p, allUnits(), false)
-                      : plainDir()
-                        ? bubbleForUnits(p, [folderUnit()], true)
-                        // An expanded git project has branch rows of its own,
-                        // and each already carries its unit's bubble.
+                    // A plain-dir row has no children at all, so it carries its
+                    // folder's rollup unconditionally - it is the only row that
+                    // will ever report those sessions. A git project defers to
+                    // its branch rows whenever they are on screen.
+                    plainDir()
+                      ? bubbleForUnits(p, [folderUnit()])
+                      : !popen()
+                        ? bubbleForUnits(p, allUnits())
                         : null,
                   )}
-                  <RowChevron open={popen()} />
+                  <Show when={!plainDir()}>
+                    <RowChevron open={popen()} />
+                  </Show>
                 </div>
-                <Show when={popen()}>
-                  <Show
-                    when={!plainDir()}
-                    fallback={
-                      <Show when={folderUnit()}>
-                        {sessionRows(g, p, folderUnit(), "sub1")}
-                      </Show>
-                    }
-                  >
+                <Show when={popen() && !plainDir()}>
                   <For
                     each={split().units}
                     fallback={
@@ -2561,7 +2154,6 @@ export default function LeftSidebar(props: {
                     {(u) => unitNode(g, p, u)}
                   </For>
                   <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
-                  </Show>
                 </Show>
               </div>
             );

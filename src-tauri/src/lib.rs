@@ -275,7 +275,6 @@ pub fn run() {
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,
-            sessions::set_session_archived,
             sessions::delete_session,
             sessions::session_running,
             sessions::sessions_running,
