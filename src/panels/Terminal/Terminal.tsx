@@ -25,7 +25,6 @@ import {
   SEND_TO_SESSION,
   SEND_TO_SESSION_RESULT,
   TOAST,
-  OPEN_TRANSCRIPT,
   TAB_JUMP,
   TAB_CYCLE,
   NEXT_WAITING_SESSION,
@@ -41,7 +40,6 @@ import {
   type TabJump,
   type FocusSessionTab,
   type TerminalTabFocused,
-  type OpenTranscript,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -313,17 +311,6 @@ export default function Terminal(props: {
           continue;
         }
         const agentId = s.agent ?? "claude";
-        if (findAgent(agentId).resume_args.length === 0) {
-          // Resume-less adapter: the transcript is the only way back to it.
-          emitWith<OpenTranscript>(OPEN_TRANSCRIPT, {
-            id: s.id,
-            sessionPath: s.path,
-            agent: agentId === "pi" ? "pi" : "claude",
-            name: s.name || s.title,
-            cwd: s.cwd,
-          });
-          continue;
-        }
         // focusOrResume already focuses an existing tab rather than spawning a
         // second one, so an already-live session never double-spawns.
         await focusOrResume({

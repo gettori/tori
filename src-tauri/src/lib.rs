@@ -284,7 +284,6 @@ pub fn run() {
             sessions::session_detail,
             sessions::session_touched_files,
             sessions::session_editing_now,
-            sessions::session_transcript,
             sessions::session_tail_state,
             sessions::session_prompt_tail,
             checkpoint::checkpoint_snapshot,

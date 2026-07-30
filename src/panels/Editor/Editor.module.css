@@ -9,19 +9,10 @@
 }
 
 .editorMain {
-  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-/* A transcript virtual tab covers the (still-mounted, buffer-preserving)
-   CodeEditor entirely while active, rather than unmounting it. */
-.transcriptOverlay {
-  position: absolute;
-  inset: 0;
-  top: calc(34px * var(--ui-scale)); /* below .editorTabs */
 }
 
 .editorEmpty {
