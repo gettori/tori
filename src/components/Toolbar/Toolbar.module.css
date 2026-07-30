@@ -1,7 +1,7 @@
 /* Toolbar (top menubar) styles, hash-scoped. Buttons use the shared <Button>
    component. Kept global in App.css: the .sm.dim modifier, the
-   .workspace/.work-split/.pane layout (App.tsx), and .claude-icon/.pi-icon (seti
-   marks) which are reached here via :global(). */
+   .workspace/.work-split/.pane layout (App.tsx), and .claude-icon (the seti
+   mark) which is reached here via :global(). */
 /* Toolbar (background + bottom border live on .topbar so the whole bar matches) */
 .toolbar {
   padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
@@ -69,10 +69,9 @@
   gap: calc(5px * var(--ui-scale));
 }
 
-/* The agent mark in the menubar inherits the leaf text color (no brand tint,
-   unlike the sidebar where .claude-icon/.pi-icon set their own color). */
-.tbCrumb :global(.claude-icon),
-.tbCrumb :global(.pi-icon) {
+/* The agent mark in the menubar inherits the leaf text color rather than the
+   brand tint .claude-icon sets for itself. */
+.tbCrumb :global(.claude-icon) {
   color: inherit;
 }
 
