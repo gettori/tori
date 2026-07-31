@@ -12,9 +12,13 @@
 // published (the editor drops a path when its tab closes), and any single
 // file's list is capped.
 
+// This module must stay free of runtime CodeMirror imports. Editor and
+// ProblemsPanel import it eagerly, so any `@codemirror/*` value import here
+// pulls the editor's ~1.3 MB dependency graph into the startup chunk and
+// defeats the lazy boundary around CodeEditor. The one helper that needs
+// CodeMirror lives in `panels/Editor/problemsFromState.ts`.
+
 import { createSignal } from "solid-js";
-import { forEachDiagnostic } from "@codemirror/lint";
-import type { EditorState } from "@codemirror/state";
 
 export type Severity = "error" | "warning" | "info" | "hint";
 
@@ -66,27 +70,6 @@ export function orderFiles(entries: [string, Problem[]][]): [string, Problem[]][
   return [...entries].sort(
     (a, b) => worst(a[1]) - worst(b[1]) || b[1].length - a[1].length || a[0].localeCompare(b[0]),
   );
-}
-
-/** Convert a buffer's CodeMirror lint state into Problems.
- *
- *  CodeMirror addresses diagnostics by absolute document offset; the Problems
- *  list, the editor's jump target and the `@file#L<n>` mention all speak
- *  1-based line/column, so the conversion happens once, here.
- */
-export function problemsFromState(state: EditorState): Problem[] {
-  const list: Problem[] = [];
-  forEachDiagnostic(state, (d, from, to) => {
-    const line = state.doc.lineAt(from);
-    list.push({
-      line: line.number,
-      endLine: state.doc.lineAt(Math.max(from, to)).number,
-      column: from - line.from + 1,
-      severity: (d.severity ?? "error") as Severity,
-      message: d.message,
-    });
-  });
-  return list;
 }
 
 // ---- store -------------------------------------------------------------

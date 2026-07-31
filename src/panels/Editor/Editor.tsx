@@ -1,8 +1,15 @@
-import { createSignal, createEffect, on, onCleanup, onMount, Match, Show, Switch } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, lazy, Match, Show, Suspense, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import CodeEditor from "./CodeEditor";
+
+// CodeMirror and its Lezer grammars are ~1.3 MB of source, the single largest
+// thing in the bundle, and none of it is needed until a file is actually open.
+// The render site below already sits behind `filePaths().length`, so the chunk
+// is fetched on the first file open and the pane's own empty state covers the
+// gap. Keep this a lazy edge: a static import of CodeEditor, lspClient or
+// diffGutter anywhere on the eager path silently undoes the split.
+const CodeEditor = lazy(() => import("./CodeEditor"));
 import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
@@ -63,7 +70,9 @@ import { folderActors } from "../../utils/folderActors";
 import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite } from "../../utils/selfWrites";
-import { ensureLsp } from "./lspClient";
+// Not a static import: lspClient pulls @codemirror/lsp-client, which reaches
+// the rest of CodeMirror and would put the whole graph back in the startup
+// chunk. The only call is the fire-and-forget warm-up below.
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./Editor.module.css";
 
@@ -289,7 +298,10 @@ export default function Editor(props: {
       // A new project means a new language server; diagnostics from the old one
       // describe files that are no longer open here.
       clearDiagnostics();
-      ensureLsp(r); // start the TS/JS language server for this project
+      // Start the TS/JS language server for this project. Already
+      // fire-and-forget, so loading the client lazily changes nothing the
+      // caller can observe, and it keeps CodeMirror out of the startup chunk.
+      void import("./lspClient").then((m) => m.ensureLsp(r));
     }),
   );
 
@@ -711,17 +723,19 @@ export default function Editor(props: {
             </div>
           }
         >
-          <CodeEditor
-            activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
-            openPaths={filePaths()}
-            projectRoot={root()}
-            goto={gotoTarget()}
-            onDirty={handleDirty}
-            onCloseFile={forceCloseFile}
-            reverted={reverted()}
-            selected={props.selected}
-            hidden={isImageTab() || showingPreview()}
-          />
+          <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
+            <CodeEditor
+              activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
+              openPaths={filePaths()}
+              projectRoot={root()}
+              goto={gotoTarget()}
+              onDirty={handleDirty}
+              onCloseFile={forceCloseFile}
+              reverted={reverted()}
+              selected={props.selected}
+              hidden={isImageTab() || showingPreview()}
+            />
+          </Suspense>
           <Show when={isImageTab()}>
             <ImageView path={activeId()!} />
           </Show>
