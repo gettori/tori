@@ -7,13 +7,15 @@ import {
   dropDiagnostics,
   MAX_PER_FILE,
   orderFiles,
-  problemsFromState,
   publishDiagnostics,
   severityRank,
   summarize,
   type Problem,
   type Severity,
 } from "./diagnostics";
+// Moved out of the store so the store stays free of runtime CodeMirror imports
+// (see panels/Editor/problemsFromState.ts).
+import { problemsFromState } from "../panels/Editor/problemsFromState";
 
 const p = (line: number, severity: Severity, message = "m"): Problem => ({ line, endLine: line, column: 1, severity, message });
 
