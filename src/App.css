@@ -44,17 +44,65 @@ body.dragging {
   user-select: none;
 }
 
+/* The hue of the shell's wash, split from its strength.
+ *
+ * `--space-tint-rgb` is a bare channel triple, declared here on `html` so
+ * `var()` always resolves and the first paint is never untinted; the active
+ * space then overrides it with an INLINE property on the same element (see
+ * utils/spaceTint.ts), which outranks this rule and every
+ * `:root[data-theme=...]` block. The theme keeps the last word on strength:
+ * `--shell-glow-strength` is the only thing the light block changes, so a
+ * space's hue can never wash a bright canvas out.
+ *
+ * A triple rather than a colour because the alpha has to be applied by the
+ * consumer, and `color-mix()` cannot be relied on to do it: fed from a `var()`
+ * it resolves too late in some engines and the declaration is dropped whole.
+ * `rgb(var(--x) / 14%)` is an ordinary `rgb()` by the time it is parsed. */
+html {
+  --space-tint-rgb: var(--shell-glow-rgb);
+  /* One strength for both appearances, so there is no light/dark override here.
+     Light used to sit at 4%, which was tuned for what a light palette's own
+     glow tint is: a near-black, i.e. a faint DARKENING of the canvas, where a
+     little goes a long way. Once a space's colour supplies the hue that stopped
+     holding - a mid-lightness hue sits close to white in luminance, so 4% of
+     one over #ffffff is not there at all. At 8% the same figure reads on either
+     canvas, which is why the two appearances no longer need different numbers. */
+  --shell-glow-strength: 8%;
+}
+
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  /* Tinted desk: the amber space wash bled into the top-left over the flat shell
+  /* Tinted desk: the space's wash bled into the top-left over the flat shell
      fill. The transparent sidebar and topbar sit on this gradient; the raised
-     work-card floats above it. */
-  background:
-    radial-gradient(900px 600px at -10% -10%, var(--shell-glow), transparent 55%),
-    var(--canvas-default);
+     work-card floats above it.
+
+     Full-height from y=0 (the title bar is an overlay), which the gradient
+     depends on: its brightest point is anchored off-canvas past the corner, so
+     a shell that started below the title bar would clip the origin and leave
+     only a flat wash.
+
+     Sized in VIEWPORT units, not pixels, and the falloff spans most of the
+     window. A fixed `900px 600px ... transparent 55%` covers a sixth of a
+     1900px window: with the origin 10% off-canvas the wash reached zero about
+     300px in and only ever reached 5-7% alpha before it got there - invisible
+     in practice, and what little showed sat behind the sidebar's opaque
+     project cards. At 120vw/120vh stopping at 80% it reaches ~86% across and
+     down, holding 12% at the corner and ~5% by mid-window: a diagonal wash
+     rather than a corner smudge, and the same proportion at any window size.
+
+     The fill and the wash are two declarations, NOT one `background` shorthand.
+     A shorthand makes them share a fate: one unresolvable layer invalidates the
+     whole declaration, and the shell loses its base colour along with its
+     gradient. Split, the worst case is a flat canvas. */
+  background-color: var(--canvas-default);
+  background-image: radial-gradient(
+    120vw 120vh at -10% -10%,
+    rgb(var(--space-tint-rgb) / var(--shell-glow-strength)),
+    transparent 80%
+  );
 }
 
 .body {

@@ -282,7 +282,7 @@
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
 
     /* shell */
-    --shell-glow: rgba(217, 164, 104, 0.14);
+    --shell-glow-rgb: 217 164 104;
     --shell-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 
     /* tree */
@@ -442,7 +442,7 @@
     --shadow-lg: 0 12px 32px rgba(23, 23, 23, 0.18);
 
     /* shell */
-    --shell-glow: rgba(23, 23, 23, 0.04);
+    --shell-glow-rgb: 23 23 23;
     --shell-card-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
 
     /* tree */

@@ -41,6 +41,24 @@ export function alpha(hex: string, a: number): string {
 }
 
 /**
+ * `hex` as a bare space-separated channel triple, for CSS to compose its own
+ * alpha with: `rgb(var(--x) / 14%)`.
+ *
+ * This exists because an alpha baked into a role cannot be varied by the thing
+ * consuming it, and the shell's wash needs exactly that - one hue, mixed at a
+ * strength the theme chooses and re-tinted per space. `color-mix()` would be
+ * the modern way to do it, but it must resolve its arguments at parse time in
+ * some engines, and a `color-mix()` fed from a `var()` silently drops the whole
+ * declaration when it does not - taking every other layer of the shorthand with
+ * it. A substituted channel list has no such failure mode: by the time the
+ * value is parsed it is an ordinary `rgb()`.
+ */
+export function rgbTriple(hex: string): string {
+  const [r, g, b] = channels(hex);
+  return `${r} ${g} ${b}`;
+}
+
+/**
  * Blend `amount` of `top` over `bottom`, returning an opaque hex.
  *
  * Used for roles that must be flat rather than translucent: anything where two
@@ -161,7 +179,7 @@ export const ROLES: Role[] = [
   { id: "shadow.md", cssVar: "--shadow-md", group: "shadow" },
   { id: "shadow.lg", cssVar: "--shadow-lg", group: "shadow" },
 
-  { id: "shell.glow", cssVar: "--shell-glow", group: "shell" },
+  { id: "shell.glowRgb", cssVar: "--shell-glow-rgb", group: "shell" },
   { id: "shell.cardShadow", cssVar: "--shell-card-shadow", group: "shell" },
 
   { id: "tree.rowHover", cssVar: "--tree-row-hover", group: "tree" },
@@ -322,7 +340,12 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "shadow.md": `0 4px 12px ${alpha(p.shadowTint, v({ dark: 0.45, light: 0.12 }))}`,
     "shadow.lg": `0 12px 32px ${alpha(p.shadowTint, v({ dark: 0.55, light: 0.18 }))}`,
 
-    "shell.glow": alpha(p.glowTint, v({ dark: 0.14, light: 0.04 })),
+    // The same hue as a bare channel triple, so the shell can mix its own
+    // alpha. A space that carries a colour overrides the TRIPLE and inherits
+    // the strength, which is what keeps a per-space wash from washing light
+    // mode out: the theme still decides how strong a hue reads on its canvas,
+    // and the space only decides which hue.
+    "shell.glowRgb": rgbTriple(p.glowTint),
     // The one floating work-card. Dark carries the depth in opacity, light in
     // spread, so the geometry differs and not just the stop.
     "shell.cardShadow": v({

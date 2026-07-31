@@ -12,6 +12,7 @@ import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
+import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
 import Toasts, { type Toast } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import {
@@ -70,7 +71,9 @@ import {
 import { belongsToUnit } from "../../utils/unitAttribution";
 import { settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
+import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
+import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
 import {
   FolderCog,
   FolderPlus,
@@ -80,7 +83,10 @@ import {
   Folder,
   GitBranch,
   GitFork,
+  Layers,
+  Ellipsis,
   ChevronDown,
+  ChevronUp,
   Plus,
   ChevronsLeftRightEllipsis,
   MessageCircleQuestion,
@@ -97,10 +103,13 @@ import {
 } from "./attempts";
 import styles from "./LeftSidebar.module.css";
 
-// Lucide glyph for a project row, keyed by its git kind: a worktree container
-// (or an empty .bare stub) reads as a fork, a plain repo as a branch, and a
-// non-git folder as a plain folder (matching a space's folder mark).
-function projectIcon(kind: string | undefined): LucideIcon {
+// Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
+// empty .bare stub) reads as a fork, a branch of a plain repo as a branch, and
+// a non-git folder as a plain folder (matching a space's folder mark). This
+// used to mark the *project* row; it sits on the branch rows now, where the
+// distinction is about the thing named on the row rather than about a container
+// whose own identity the project icon carries.
+function kindIcon(kind: string | undefined): LucideIcon {
   switch (kind) {
     case "worktree":
     case "incomplete":
@@ -160,8 +169,27 @@ type BranchUnit = {
   isCurrent: boolean;
 };
 type Branch = { name: string; current: boolean };
-type Project = { name: string; path: string; branchUnits: BranchUnit[]; external: boolean };
-type Space = { name: string; path: string; projects: Project[]; external: boolean; icon?: string };
+// `icon`/`iconFile` are what the user chose (a Lucide name, or an image in the
+// icon store); `favicon` is what discovery found inside the project. All three
+// are optional and resolved in that order by ProjectIcon.
+type Project = {
+  name: string;
+  path: string;
+  branchUnits: BranchUnit[];
+  external: boolean;
+  icon?: string;
+  iconFile?: string;
+  favicon?: string;
+};
+type Space = {
+  name: string;
+  path: string;
+  projects: Project[];
+  external: boolean;
+  icon?: string;
+  // A swatch name; absent means the hue is derived from `name`.
+  color?: string;
+};
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
@@ -182,6 +210,12 @@ export type Selection = {
   sessionTitle?: string;
   sessionName?: string | null;
 };
+
+// How many branch-units a project card shows before it truncates. Six is about
+// what a card can hold without becoming a wall, and it covers a repo's usual
+// working set; everything past it is one click away, and never hidden from the
+// rollups (the truncation row reports for what it hides).
+const BRANCH_CAP = 6;
 
 const LS_EXPANDED = "sway.expanded.v1";
 const LS_ACTIVE_SPACE = "sway.active-space.v1";
@@ -390,8 +424,14 @@ export default function LeftSidebar(props: {
     mode: SpaceDialogMode;
     name: string;
     icon: string | null;
+    color: string | null;
     busy: boolean;
   } | null>(null);
+
+  // The project icon dialog. Holds the project itself rather than a copy of its
+  // icon fields, so a re-discovery while the dialog is open cannot leave the
+  // picker showing a state the tree has already moved past.
+  const [iconReq, setIconReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
 
   // Drag-to-reorder state for the root space tiles (pinned spaces don't reorder).
   // `dragSpace` is the name being dragged; `dropHint` marks the tile the drop
@@ -898,20 +938,26 @@ export default function LeftSidebar(props: {
   // Open the create-space dialog (needs a root to mkdir under).
   function addSpace() {
     if (!(config()?.roots ?? []).length) return;
-    setSpaceReq({ mode: "new", name: "", icon: null, busy: false });
+    setSpaceReq({ mode: "new", name: "", icon: null, color: null, busy: false });
   }
 
   // Open the edit-space dialog, prefilled. Keyed by name, so it works for a root
   // space and an external pin alike; only the icon is editable.
   function editSpace(g: Space) {
-    setSpaceReq({ mode: "edit", name: g.name, icon: g.icon ?? null, busy: false });
+    setSpaceReq({
+      mode: "edit",
+      name: g.name,
+      icon: g.icon ?? null,
+      color: g.color ?? null,
+      busy: false,
+    });
   }
 
   // Confirmed: create runs the single `add_space` command (mkdir + icon write +
   // one emit); edit runs `set_space_meta`. Each command emits `config://changed`,
   // which drives the reload, so there is no manual loadConfig here. On failure,
   // surface the error and leave the dialog open.
-  async function confirmSpace(opts: { name: string; icon: string | null }) {
+  async function confirmSpace(opts: { name: string; icon: string | null; color: string | null }) {
     const req = spaceReq();
     if (!req) return;
     setSpaceReq({ ...req, busy: true });
@@ -919,14 +965,52 @@ export default function LeftSidebar(props: {
       if (req.mode === "new") {
         const roots = config()?.roots ?? [];
         if (!roots.length) throw new Error("No base folder configured");
-        await invoke("add_space", { root: roots[0], name: opts.name, icon: opts.icon });
+        await invoke("add_space", {
+          root: roots[0],
+          name: opts.name,
+          icon: opts.icon,
+          color: opts.color,
+        });
       } else {
-        await invoke("set_space_meta", { name: req.name, icon: opts.icon });
+        await invoke("set_space_meta", { name: req.name, icon: opts.icon, color: opts.color });
       }
       setSpaceReq(null);
     } catch (e) {
       setError(String(e));
       setSpaceReq({ ...req, busy: false });
+    }
+  }
+
+  // Confirmed: one of two commands, picked by which branch of the choice came
+  // back. An uploaded image is passed as its SOURCE path - `set_project_icon_file`
+  // copies it into the icon store and returns where it landed, so the config
+  // never points at a file the user might later move. Both commands emit
+  // `config://changed`, which drives the reload, so there is no loadConfig here.
+  async function confirmProjectIcon(choice: { icon?: string; file?: string }) {
+    const req = iconReq();
+    if (!req) return;
+    setIconReq({ ...req, busy: true });
+    try {
+      if (choice.file) {
+        await invoke("set_project_icon_file", { path: req.p.path, source: choice.file });
+      } else {
+        await invoke("set_project_icon", { path: req.p.path, icon: choice.icon ?? null });
+      }
+      setIconReq(null);
+    } catch (e) {
+      setError(String(e));
+      setIconReq({ ...req, busy: false });
+    }
+  }
+
+  // The native picker behind the dialog's upload tile. A cancel is a null, not
+  // an error, so the dialog just stays as it was.
+  async function pickIconFile(): Promise<string | null> {
+    try {
+      return (await invoke<string | null>("pick_icon_file")) ?? null;
+    } catch (e) {
+      setError(String(e));
+      return null;
     }
   }
 
@@ -1578,10 +1662,25 @@ export default function LeftSidebar(props: {
   // checkout to attempt anything against.
   const gitProject = (p: Project) => projectKind(p) === "plain" || projectKind(p) === "worktree";
 
+  // "Change icon…" is appended to every project menu, external and every git
+  // kind alike: the icon is a property of the row, not of what git is doing
+  // underneath it, so a pinned folder and a worktree container get it equally.
+  // Placed last, after its own separator, so it sits below the kind-specific
+  // git actions and above nothing destructive.
+  const projectMenu = (g: Space, p: Project): MenuItem[] => {
+    const kind = kindMenu(g, p);
+    return [
+      ...kind,
+      // No leading separator on a menu whose kind contributed nothing.
+      ...(kind.length ? [{ separator: true } as MenuItem] : []),
+      { label: "Change icon…", onClick: () => setIconReq({ p, busy: false }) },
+    ];
+  };
+
   // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
   // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
   // a plain repo commits / sets a remote / pushes.
-  const projectMenu = (g: Space, p: Project): MenuItem[] => {
+  const kindMenu = (g: Space, p: Project): MenuItem[] => {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
     switch (projectKind(p)) {
       case "worktree":
@@ -1730,6 +1829,10 @@ export default function LeftSidebar(props: {
   // folders it no longer shows any ghosts for.
 
   const pkey = (g: Space, p: Project) => `p:${g.name}/${p.name}`;
+  // "Show all branches" for one project, stored in the same expanded-set (and so
+  // the same localStorage) as the project and group disclosures: opening a long
+  // list is a deliberate act, and it should still be open next launch.
+  const mkey = (g: Space, p: Project) => `m:${g.name}/${p.name}`;
 
   const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
   const currentBranch = (p: Project) =>
@@ -1848,6 +1951,7 @@ export default function LeftSidebar(props: {
           draggable={true}
           onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         >
+          <span class={styles.rowIcon}><Icon icon={kindIcon(u.kind)} /></span>
           <span class={styles.label}>{unitLabel(u)}</span>
           <Show when={u.kind === "incomplete"}>
             <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
@@ -1856,6 +1960,45 @@ export default function LeftSidebar(props: {
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
           {statusBubble(bubbleForUnits(p, [u]))}
+        </div>
+      </div>
+    );
+  }
+
+  // The truncation control at the foot of a long branch list: "N more branches"
+  // while the list is cut, "Show less" once it is open.
+  //
+  // Rendered as a branch node rather than as a footer beside them, because the
+  // rail's whole geometry is sibling-driven: `.branchNode:last-child` is what
+  // terminates the rail at the final elbow, so a plain div here would leave the
+  // last branch's rail dangling into it. Being a branch node, it takes the rail,
+  // the elbow and the hover pill for free and terminates the rail on itself.
+  //
+  // `hidden` is an accessor, not an array: the row is created once and its label,
+  // glyph and badge track the disclosure from the inside, so toggling never has
+  // to recreate the node.
+  function moreNode(g: Space, p: Project, hidden: () => BranchUnit[]) {
+    const key = mkey(g, p);
+    const open = () => expanded().has(key);
+    return (
+      <div class={`node ${styles.branchNode}`}>
+        <div
+          class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`}
+          onClick={() => toggle(key)}
+        >
+          <span class={styles.rowIcon}>
+            <Icon icon={open() ? ChevronUp : Ellipsis} />
+          </span>
+          <span class={styles.label}>
+            {open()
+              ? "Show less"
+              : `${hidden().length} more branch${hidden().length === 1 ? "" : "es"}`}
+          </span>
+          {/* A hidden branch has no row of its own to report on, so this one
+              carries the rollup for all of them - the same rule that puts a
+              collapsed project's rollup on its project row. Without it a
+              running agent on the 20th branch would surface nowhere. */}
+          {statusBubble(open() ? null : bubbleForUnits(p, hidden()))}
         </div>
       </div>
     );
@@ -1899,6 +2042,10 @@ export default function LeftSidebar(props: {
           }}
           title={grp.goal}
         >
+          {/* Layers, not a fork: the row names the shared goal, and the forks
+              are the attempt rows nested under it. It carries an icon at all so
+              every branch-level row lines its label up on the same x. */}
+          <span class={styles.rowIcon}><Icon icon={Layers} /></span>
           <span class={styles.label}>{grp.goal}</span>
           <span
             class={`${styles.badge} ${styles.hint}`}
@@ -2022,12 +2169,24 @@ export default function LeftSidebar(props: {
     offFocus?.();
   });
 
+  // The window's background wash follows the active space. Written as one
+  // inline custom property on `<html>` (see utils/spaceTint.ts for why that is
+  // safe alongside the theme resolver), and cleared when there is no active
+  // space at all so the token layer keeps the last word on an untinted window.
+  createEffect(() => {
+    const g = activeSpace();
+    applySpaceTint(g ? spaceHue(g.name, g.color) : null);
+  });
+  onCleanup(() => applySpaceTint(null));
+
   // One space tile for the bottom bar: its icon when set, else the name's
   // initial; active-marked, with its context menu and drag payload (all of the
-  // space's project paths).
+  // space's project paths). It carries its own hue too, so the whole set of
+  // spaces is legible at once rather than one switch at a time.
   const spaceTile = (g: Space) => (
     <button
       class={styles.space}
+      style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
       classList={{
         [styles.active]: activeSpace()?.name === g.name,
         [styles.dragging]: dragSpace() === g.name,
@@ -2103,6 +2262,28 @@ export default function LeftSidebar(props: {
             // container arrives as an ordinary worktree unit, so it is lifted
             // out here rather than rendered twice.
             const split = () => groupAttempts(p.branchUnits, attempts()[p.path] ?? []);
+            // A long branch list is cut to BRANCH_CAP with the rest behind a
+            // "N more branches" row. The selected unit is always kept, IN ITS
+            // OWN PLACE in the order: a highlight you cannot see is worse than
+            // a longer list, and lifting it to the top would reorder the tree
+            // under the user. Partitioned in one pass so the shown and hidden
+            // halves are always two views of the same `split()`.
+            const showAll = () => expanded().has(mkey(g, p));
+            const shown = () => {
+              const all = split().units;
+              if (showAll() || all.length <= BRANCH_CAP) return { units: all, hidden: [] as BranchUnit[] };
+              const units: BranchUnit[] = [];
+              const hidden: BranchUnit[] = [];
+              for (const [i, u] of all.entries()) {
+                (i < BRANCH_CAP || unitSelected(u) ? units : hidden).push(u);
+              }
+              return { units, hidden };
+            };
+            // Show the control only when it has something to say. Open, that is
+            // "the list is longer than the cap"; closed, "something is actually
+            // hidden" - which a cap+1 list whose last unit is selected is not.
+            const truncated = () =>
+              showAll() ? split().units.length > BRANCH_CAP : shown().hidden.length > 0;
             // Everything under this project, groups included, for the rollup a
             // collapsed project row shows: on a plain repo an attempt is not a
             // branch-unit at all, so its running session would bubble nowhere.
@@ -2114,7 +2295,7 @@ export default function LeftSidebar(props: {
                 .map(attemptUnit),
             ];
             return (
-              <div class="node">
+              <div class={`node ${styles.projectCard}`}>
                 <div
                   class={`${styles.row} ${styles.project}`}
                   onClick={() => {
@@ -2125,7 +2306,14 @@ export default function LeftSidebar(props: {
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, p.path)}
                 >
-                  <span class={styles.rowIcon}><Icon icon={projectIcon(projectKind(p))} /></span>
+                  <span class={`${styles.rowIcon} ${styles.projectIcon}`}>
+                    <ProjectIcon
+                      seed={p.path}
+                      icon={p.icon}
+                      iconFile={p.iconFile}
+                      favicon={p.favicon}
+                    />
+                  </span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
                     // A plain-dir row has no children at all, so it carries its
@@ -2144,7 +2332,7 @@ export default function LeftSidebar(props: {
                 </div>
                 <Show when={popen() && !plainDir()}>
                   <For
-                    each={split().units}
+                    each={shown().units}
                     fallback={
                       <Show when={split().groups.length === 0}>
                         <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no branches</div>
@@ -2153,6 +2341,7 @@ export default function LeftSidebar(props: {
                   >
                     {(u) => unitNode(g, p, u)}
                   </For>
+                  <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
                   <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
                 </Show>
               </div>
@@ -2341,11 +2530,26 @@ export default function LeftSidebar(props: {
         />
       </Show>
 
+      <Show when={iconReq()}>
+        <ProjectIconDialog
+          projectName={iconReq()!.p.name}
+          seed={iconReq()!.p.path}
+          icon={iconReq()!.p.icon ?? null}
+          iconFile={iconReq()!.p.iconFile ?? null}
+          favicon={iconReq()!.p.favicon ?? null}
+          busy={iconReq()!.busy}
+          onConfirm={(choice) => confirmProjectIcon(choice)}
+          onPickFile={pickIconFile}
+          onCancel={() => setIconReq(null)}
+        />
+      </Show>
+
       <Show when={spaceReq()}>
         <SpaceDialog
           mode={spaceReq()!.mode}
           name={spaceReq()!.name}
           icon={spaceReq()!.icon}
+          color={spaceReq()!.color}
           busy={spaceReq()!.busy}
           onConfirm={(opts) => confirmSpace(opts)}
           onCancel={() => setSpaceReq(null)}

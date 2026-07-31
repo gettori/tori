@@ -12,9 +12,23 @@
   user-select: none;
   min-height: 0;
   min-width: 0;
-  /* Where a branch/worktree name begins (sub1 indent). Shared so the branch
-     row's own hover pill and gold rail segment start on the same x. */
-  --branch-label-x: calc(34px * var(--ui-scale));
+  /* The tree's own horizontal insets. The filter field and every project card
+     line up on these, so the column reads as one edge instead of two.
+
+     The right inset is not a margin: `.treeScroll` reserves a permanent
+     scrollbar gutter, so anything inside it already stands that far off the
+     right edge and adding a margin on top would push the cards visibly left of
+     centre. Cards therefore run flush into the gutter, and the filter - which
+     sits outside the scroll area and so has no gutter of its own - pads itself
+     by the same amount instead. The width mirrors `::-webkit-scrollbar` in
+     base.css; if that changes, this is the other half of the pair. */
+  --tree-inset: calc(14px * var(--ui-scale));
+  --tree-gutter: calc(9px * var(--ui-scale));
+  /* Where a branch/worktree row's CONTENT begins (sub1 indent) - its type icon
+     now, the name right after. 32px·s clears the elbow (which ends at 25px·s)
+     with the same ~8px of breathing room the hover pill was always given, and
+     lands the icon one clear indent past the project icon at 8px·s. */
+  --branch-label-x: calc(32px * var(--ui-scale));
   /* One indent level: branch depth to attempt depth. */
   --nest-step: calc(12px * var(--ui-scale));
 }
@@ -24,7 +38,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   min-height: calc(40px * var(--ui-scale));
-  padding-inline: calc(14px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding-inline: var(--tree-inset) var(--tree-gutter);
   margin-bottom: calc(4px * var(--ui-scale));
 }
 
@@ -151,8 +165,40 @@
      appears. Modern WebKit dropped `overflow: overlay`, so a genuinely floating
      custom bar isn't available; a stable gutter is the reliable no-jump fix. */
   scrollbar-gutter: stable;
-  padding: 0 0 calc(10px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) 0 calc(10px * var(--ui-scale));
   min-height: 0;
+}
+
+/* ---- Project cards ----
+   One card per project, whatever its state: a card with a single header row is
+   how a collapsed project reads, so expanding one adds rows inside a box that
+   was already there rather than conjuring the box itself. That is the whole
+   point of carding them - the boundary between two projects is drawn, not
+   inferred from indentation.
+
+   The card takes over the 6px·s inset that every row used to carry as its own
+   left margin (see `.projectCard .row` below), so the content lands on exactly
+   the same x as before and the branch rail's geometry needs only to drop that
+   one term. */
+.projectCard {
+  position: relative;
+  /* No right margin: the scroll container's reserved gutter already stands the
+     card off that edge (see --tree-gutter). */
+  margin: 0 0 calc(10px * var(--ui-scale)) var(--tree-inset);
+  padding: calc(6px * var(--ui-scale));
+  /* No fill: the shell's wash is what shows through, and an opaque card would
+     punch a flat hole in it. The border alone carries the grouping - which is
+     all it was ever doing, since the fill and the surrounding surface were only
+     a step apart. */
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-lg);
+}
+
+/* Inside a card the row spans the card's content box: the inset it used to hold
+   is the card's padding now. Applying it here (rather than zeroing `.row`)
+   leaves the empty-state rows, which have no card, indented as they were. */
+.projectCard .row {
+  margin-left: 0;
 }
 
 .row {
@@ -161,9 +207,11 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   height: calc(30px * var(--ui-scale));
-  /* Left inset kept; right inset dropped so rows run flush toward the reserved
-     scrollbar gutter instead of doubling the right-hand gap. */
-  margin: 0 0 0 calc(6px * var(--ui-scale));
+  /* Left inset only; the right runs flush toward the reserved scrollbar gutter
+     rather than doubling the right-hand gap. This is what an empty-state row
+     outside any card uses - a row inside one takes the card's padding instead
+     (see `.projectCard .row`), which is the same x. */
+  margin: 0 0 0 var(--tree-inset);
   padding: 0 calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-md);
   cursor: pointer;
@@ -179,59 +227,43 @@
   background: var(--neutral-hover);
 }
 
-/* ---- Sticky group headers (VS Code-style "sticky scroll") ----
-   As the tree scrolls, each project/branch header pins to the top so the
-   ancestor context of the topmost visible row stays on screen, and they stack
-   (project above branch). Pure CSS: every header is `position: sticky` within
-   its OWN node - the project row within `.node`, the branch row within
-   `.branchNode` - so a header unpins exactly when its subtree has scrolled past,
-   and the next sibling's header takes over. The branch offset equals one row
-   height (`.row` is a fixed 30px) so it lands just under the project header.
-
-   Headers carry the opaque desk bg so rows scrolling beneath them do not bleed
-   through; the tree already sits on `--canvas-default`, so at rest they read the same as the
-   surrounding rows. `.node`/`.branchNode` are static and their only overflow is
-   the scroll container itself, so nothing clips the stickiness. */
-.row.project {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--canvas-default);
-}
-/* Sticky for the sake of a fan-out group header, which is a `.row.branch` with
-   attempt rows under it. An ordinary branch row is a leaf now, so it is a
-   one-row node with nothing to scroll under itself, and this costs it nothing.
-   Kept on the shared class rather than split, since the two look identical and
-   the geometry below is written once for both. */
-.row.branch {
-  position: sticky;
-  top: calc(30px * var(--ui-scale));
-  /* Opaque only from the label inward; the strip to the left of the label (where
-     the branch-graph rail lives) stays transparent so the rail shows through and
-     branches stay connected, even while this header is pinned. The attempt rows
-     that scroll under it are indented past the label, so the opaque half still
-     hides them. */
-  background: linear-gradient(
-    to right,
-    transparent var(--branch-label-x),
-    var(--canvas-default) var(--branch-label-x)
-  );
-}
+/* ---- Sticky headers: removed with the cards' fill ----
+   The project and fan-out headers used to pin to the top of the scroll area as
+   their subtree scrolled past (VS Code-style sticky scroll). That only works
+   with an OPAQUE header - a transparent one lets the rows sliding beneath it
+   show through its own text - and an opaque header is exactly what a card with
+   no fill cannot have: it would punch a flat patch out of the shell's wash at
+   the top of every group.
+   Little is lost. A card holds six branches before it truncates, so it is
+   almost never taller than the viewport, and the border now marks the grouping
+   the pinned header used to. If a long expanded list ever wants it back, the
+   way to do it is a blurred backdrop rather than a fill, so the wash still
+   reads through. */
 
 /* ---- Git-branch graph (branch/worktree level) ----
-   Each branch sits in a `.branchNode`; a thin rail drops from the project and a
-   rounded elbow connects into every (iconless) branch row. `--rail-x` is the
-   rail's x from the node's left edge; the elbow/segment on the row compensate
-   for the row's own left margin so they line up on that same x. */
+   Each branch sits in a `.branchNode` inside the project's card; a thin rail
+   drops from the project row's icon and a rounded elbow curves into each branch
+   row, landing just short of that row's own type icon. `--rail-x` is the rail's
+   x from the node's left edge, `--rail-x-row` the same x from the row's box. */
 .branchNode {
   position: relative;
-  /* Centre the rail under the project row's icon: row margin (6px·s) + row
-     padding (8px·s) + half the 16px icon (8px). `--rail-x-row` is that same x
-     re-expressed from the row's own box (minus the row's 6px·s left margin), so
-     the elbow/segment drawn on the row line up on the rail. Every term folds
-     --ui-scale (`s`), so the rail tracks the elbow at any UI scale. */
-  --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale));
+  /* Centre the rail under the project row's icon: row padding (8px·s) + half
+     the 16px icon (8px). `--rail-x-row` is that same x re-expressed from the
+     row's own box, which is what the elbow and the gold segment are drawn
+     against. The two now come out equal - inside a card a row has no left
+     margin of its own, so the node's box and the row's box start together -
+     but they stay two names because they answer two questions, and only one of
+     them moves if a row ever regains an inset. Every term folds --ui-scale
+     (`s`), so the rail tracks the elbow at any UI scale. */
+  --rail-x: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
   --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
+  /* How far the elbow reaches from the rail into the row. Named because two
+     rules depend on it: the elbow's own width, and the left edge of the hover
+     pill, which must begin exactly where the elbow ends. Before the branch rows
+     carried icons those two were tuned to miss each other by a pixel; the icon
+     moved the pill left, and a magic number in one place would have quietly put
+     the pill back under the elbow. */
+  --elbow-w: calc(9px * var(--ui-scale));
 }
 
 /* The vertical rail. Spans the node's full height so it passes behind a group's
@@ -253,12 +285,20 @@
   height: calc(10px * var(--ui-scale));
 }
 
-/* Selected unit: gild the node rail (the full-height ::before). The branch row's
-   own gold segment (.row.branch.sel::before) sits on the same x and just
-   overlaps the top of this. */
+/* Selected unit: gild the node rail. This is the ONLY thing drawing the gold
+   bar - the row's own ::before is the fill slot (see .row.branch.sel below), and
+   one pseudo-element cannot be both a 2px bar and a full-width pill. */
 .branchNode.railSel::before {
   width: calc(2px * var(--ui-scale));
   background: var(--brand-bar);
+}
+/* ...which means the shortening above has to be undone when the selected unit
+   is the last one. That rule exists so a GREY rail does not dangle past the
+   final elbow; the gold bar is marking the row itself, so it has to span it.
+   A leaf branch node is exactly one row tall, so "full height" is the row. */
+.branchNode.railSel:last-child::before {
+  bottom: 0;
+  height: auto;
 }
 
 /* ---- Attempt groups (one level deeper than a branch) ----
@@ -269,32 +309,27 @@
    right and the same rules draw the deeper rail, elbow and hover pill. Declared
    after .branchNode (equal specificity) so the overrides win. */
 .attemptNode {
-  --rail-x: calc(14px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --rail-x: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
   --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
-  --branch-label-x: calc(34px * var(--ui-scale) + var(--nest-step));
+  --branch-label-x: calc(32px * var(--ui-scale) + var(--nest-step));
 }
 
-/* An attempt header pins one row below the group header rather than on top of
-   it, and paints under it while both are stuck. */
-.attemptNode > .row.branch {
-  top: calc(60px * var(--ui-scale));
-  z-index: 1;
-}
-
-/* Branch hover: an inset fill that hugs the branch name with the standard 8px of
-   left padding (it starts 8px before the name, just past the elbow, so the text
-   is never jammed against the pill edge) and never reaches the far left. Sits
-   behind the content; the row owns a stacking context for the z-index -1 fill.
+/* Branch hover: an inset fill that hugs the row's content and never reaches the
+   far left, so the rail stays in clear space. It begins exactly where the elbow
+   ends, which both keeps the two from overlapping and reads as the elbow
+   feeding into the pill. Sits behind the content; the row owns a stacking
+   context for the z-index -1 fill.
    The selected state repurposes this same ::before as the gold rail segment.
-   z-index (2) also lifts a stuck group header above the attempt rows scrolling
-   beneath it, and still gives the z-index:-1 ::before its stacking context. */
+   The z-index is what gives that -1 pseudo-element its stacking context; it is
+   not about layering rows against each other any more, now that no header
+   pins. */
 .row.branch {
   z-index: 2;
 }
 .row.branch::before {
   content: "";
   position: absolute;
-  left: calc(var(--branch-label-x) - 8px * var(--ui-scale));
+  left: calc(var(--rail-x-row) + var(--elbow-w));
   right: 0;
   top: 0;
   bottom: 0;
@@ -311,6 +346,21 @@
   background: var(--neutral-hover);
 }
 
+/* The "N more branches" / "Show less" row. It keeps the whole `.branch`
+   geometry - rail, elbow, hover pill - because it IS an item in the list, and
+   the rail has to run through it and terminate on it when it is the last thing
+   in the card. Only the tone differs: its label is an instruction rather than a
+   name, so it and its glyph take the dimmer subtle tone that the disclosure
+   chevrons already use. */
+.row.moreRow .label,
+.row.moreRow .rowIcon {
+  color: var(--fg-subtle);
+}
+.row.moreRow:hover .label,
+.row.moreRow:hover .rowIcon {
+  color: var(--fg-muted);
+}
+
 /* Rounded elbow: a left+bottom bordered box in the row's top half whose
    bottom-left corner is rounded, curving from the rail into the row. */
 .row.branch::after {
@@ -318,7 +368,7 @@
   position: absolute;
   left: var(--rail-x-row);
   top: 0;
-  width: calc(9px * var(--ui-scale));
+  width: var(--elbow-w);
   height: calc(15px * var(--ui-scale));
   border-left: 1px solid var(--border-rail);
   border-bottom: 1px solid var(--border-rail);
@@ -327,12 +377,14 @@
 
 /* Selected branch: no fill; repurpose the ::before slot as a thin full-height
    gold rail segment (overlaying the grey rail), plus the gilded elbow below. */
+/* Selected branch: the same pill the hover uses, held in the brand fill rather
+   than the neutral one, so a selection reads as a state and not as "the pointer
+   happens to be here". Declared AFTER the :hover rule at equal specificity, so
+   hovering a selected row keeps the gold instead of dropping to grey - the same
+   ordering every selected row in this app depends on.
+   Geometry is inherited from the base ::before: only the fill changes. */
 .row.branch.sel::before {
-  left: var(--rail-x-row);
-  right: auto;
-  width: calc(2px * var(--ui-scale));
-  border-radius: 0;
-  background: var(--brand-bar);
+  background: var(--brand-subtle);
 }
 .row.branch.sel::after {
   border-left-width: 2px;
@@ -388,6 +440,19 @@
 .rowIcon :global(svg) {
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));
+}
+
+/* A project row's icon may be an IMAGE (its favicon, or one the user uploaded)
+   rather than a glyph. It gets the full 16px slot - a favicon is drawn to fill
+   its own square, so shrinking it to the 14px glyph box would leave it visibly
+   smaller than every icon around it - and `contain` letterboxes a non-square
+   logo instead of cropping it. Rounded just enough to soften a hard-edged PNG
+   against the row's own radius. */
+.projectIcon img {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  object-fit: contain;
+  border-radius: calc(3px * var(--ui-scale));
 }
 
 /* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
@@ -544,9 +609,18 @@
   background: var(--border-default);
 }
 
-/* A space tile: a rounded square showing the space's initial. Dim by default;
-   the active space is marked with the gold brand. */
+/* A space tile: a rounded square showing the space's icon or initial. Dim by
+   default; the active space is marked by tinting its GLYPH and nothing else.
+
+   The space's own hue arrives as a channel triple in `--space-hue-rgb` (set
+   inline from the swatch it chose, else derived from its name), declared here
+   too so the var always resolves and a tile with no inline hue falls back to
+   the theme's own glow. It is used for exactly one thing - the active glyph's
+   colour. No fill and no coloured border: the tile is a 30px square in a row of
+   them, and giving each one a tinted box turned the bar into a set of competing
+   chips. The hover border stays the brand, as it always was. */
 .space {
+  --space-hue-rgb: var(--shell-glow-rgb);
   position: relative;
   flex: none;
   display: inline-flex;
@@ -576,10 +650,12 @@
   color: var(--fg-default);
   border-color: var(--brand-default);
 }
-/* Active space: brand-tinted icon only, no border or fill. Colour only, so a
-   hover on the active tile still layers today's brand border on top. */
+/* Active space: its own hue on the glyph, nothing else - no fill, no ring.
+   Declared after :hover at equal specificity so the active tile keeps its hue
+   while the pointer is over it (it still picks up the hover border on top,
+   which is what it did before the colours existed). */
 .space.active {
-  color: var(--brand-default);
+  color: rgb(var(--space-hue-rgb));
 }
 /* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
    bar on the side of the tile the drop would land against. */

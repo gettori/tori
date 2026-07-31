@@ -36,6 +36,12 @@ struct RawConfig {
     // truth for which spaces exist.
     #[serde(default)]
     space: Vec<SpaceMeta>,
+    // Per-project metadata overlay (`[[project_meta]]` tables), merged onto
+    // discovered projects by path. A separate table from the legacy `[[project]]`
+    // above, whose `space` key is required: an icon-only entry written there
+    // would fail to parse and take the whole config down with it.
+    #[serde(default)]
+    project_meta: Vec<ProjectMeta>,
     // User-chosen order of root spaces, by name. Listed names sort first in this
     // order; unlisted (e.g. freshly created) spaces keep discovery order after.
     // Pinned ("Other") spaces are never reordered by this.
@@ -44,12 +50,32 @@ struct RawConfig {
 }
 
 // One `[[space]]` overlay entry: metadata keyed by the space's name (its folder
-// name). Absent icon / absent entry both mean "no icon".
+// name). An absent field (or an absent entry) means "not chosen", which for the
+// colour is not the same as "no colour": the UI derives one from the name.
 #[derive(Deserialize)]
 struct SpaceMeta {
     name: String,
     #[serde(default)]
     icon: Option<String>,
+    /// A swatch name from the space colour set; tints the window's background
+    /// wash. See `src/utils/spaceTint.ts`.
+    #[serde(default)]
+    color: Option<String>,
+}
+
+// One `[[project_meta]]` overlay entry: the icon a user chose for the project at
+// `path`. At most one of the two is ever set (choosing either clears the other),
+// but both are optional so a hand-edited config with neither is simply ignored
+// rather than an error.
+#[derive(Deserialize)]
+struct ProjectMeta {
+    path: String,
+    /// A Lucide name from the picker set.
+    #[serde(default)]
+    icon: Option<String>,
+    /// An image on disk, normally a copy in `~/.config/sway/icons`.
+    #[serde(default)]
+    icon_file: Option<String>,
 }
 
 // A parallel notes/docs tree that mirrors `<root>/<space>/<project>` under a
@@ -125,6 +151,21 @@ pub struct Project {
     pub branch_units: Vec<BranchUnit>,
     // True when reached via `[discovery].paths` (a pinned external), not the root.
     pub external: bool,
+    // The three icon sources, in the order the sidebar prefers them. The first
+    // two come from the `[[project_meta]]` overlay (what the user chose), the
+    // third from the project itself; all three absent means the row falls back
+    // to a glyph the frontend derives from the path.
+    /// A Lucide name (PascalCase) the user picked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// An image the user uploaded, as an absolute path. Only reported when the
+    /// file still exists, so a deleted icon degrades to the favicon or the
+    /// derived glyph instead of a broken image.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_file: Option<String>,
+    /// The favicon found inside the project, as an absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub favicon: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -141,6 +182,10 @@ pub struct Space {
     // None means the tile falls back to the name's initial letter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    // A swatch name from the same overlay, tinting the window's wash. None means
+    // the frontend derives a hue from the space's name instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -558,8 +603,17 @@ fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path, external: 
         projects: Vec::new(),
         external,
         icon: None,
+        color: None,
     });
     spaces.len() - 1
+}
+
+/// The icon for a project: its own if it has one, else the best its worktrees
+/// can offer. `icons::cached_project_icon` does the ranking and the memoizing;
+/// all this has to know is which directories are in scope.
+fn project_favicon(ppath: &Path, units: &[BranchUnit]) -> Option<String> {
+    let folders: Vec<PathBuf> = units.iter().map(|u| PathBuf::from(&u.folder_path)).collect();
+    crate::icons::cached_project_icon(ppath, &folders)
 }
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
@@ -578,11 +632,15 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             return; // reachable via several roots/paths: keep the first
         }
         seen_paths.insert(ppath.clone());
+        let branch_units = cached_probe(index, &ppath);
         let project = Project {
             name: basename(&ppath),
             path: ppath.to_string_lossy().into_owned(),
-            branch_units: cached_probe(index, &ppath),
+            favicon: project_favicon(&ppath, &branch_units),
+            branch_units,
             external,
+            icon: None,
+            icon_file: None,
         };
         spaces[gi].projects.push(project);
     };
@@ -625,14 +683,53 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         add_project(&mut spaces, gi, ppath, true);
     }
 
-    // Overlay per-space metadata (icon) from `[[space]]` tables, keyed by name.
-    // Keys by name only, so a root space and an external pin sharing a name both
-    // receive the icon (they share the one entry). Blank icons are ignored.
+    // Overlay per-space metadata (icon, colour) from `[[space]]` tables, keyed by
+    // name. Keys by name only, so a root space and an external pin sharing a name
+    // both receive it (they share the one entry). Blank values are ignored, which
+    // is how "not chosen" reaches the frontend as None.
     for meta in &raw.space {
-        if let Some(icon) = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            for g in spaces.iter_mut().filter(|g| g.name == meta.name) {
+        let icon = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let color = meta.color.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        for g in spaces.iter_mut().filter(|g| g.name == meta.name) {
+            if let Some(icon) = icon {
                 g.icon = Some(icon.to_string());
             }
+            if let Some(color) = color {
+                g.color = Some(color.to_string());
+            }
+        }
+    }
+
+    // Overlay per-project metadata (icon) from `[[project_meta]]` tables, keyed
+    // by path. Canonicalized on both sides once (a pin written through a symlink
+    // must still match the discovered project), then matched through one map so
+    // a config with many entries stays linear rather than metas × projects.
+    if !raw.project_meta.is_empty() {
+        let mut by_path: HashMap<PathBuf, (usize, usize)> = HashMap::new();
+        for (gi, g) in spaces.iter().enumerate() {
+            for (pi, p) in g.projects.iter().enumerate() {
+                let pp = PathBuf::from(&p.path);
+                by_path.insert(pp.canonicalize().unwrap_or(pp), (gi, pi));
+            }
+        }
+        for meta in &raw.project_meta {
+            let want = PathBuf::from(expand_tilde(&meta.path));
+            let want = want.canonicalize().unwrap_or(want);
+            let Some(&(gi, pi)) = by_path.get(&want) else {
+                continue; // an entry for a project that is no longer discovered
+            };
+            let p = &mut spaces[gi].projects[pi];
+            p.icon = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+            // Only report a file that is still there: an icon deleted out from
+            // under the config degrades to the favicon (or the derived glyph),
+            // never to a broken image in the tree.
+            p.icon_file = meta
+                .icon_file
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(expand_tilde)
+                .filter(|f| Path::new(f).is_file());
         }
     }
 
@@ -1130,10 +1227,17 @@ fn valid_name(name: &str) -> Result<String, String> {
 }
 
 /// Upsert or remove the `[[space]]` overlay entry for `name`, preserving the
-/// rest of the file (comments, formatting) via `toml_edit`. A blank/`None` icon
-/// prunes the entry; an emptied array-of-tables is dropped entirely. Pure over
-/// the config text so it can be unit-tested without touching the real config.
-fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>) -> Result<String, String> {
+/// rest of the file (comments, formatting) via `toml_edit`. Each field is set
+/// when given and *removed* when not, so clearing one never leaves a stale
+/// value behind; an entry with nothing left in it is pruned, and an emptied
+/// array-of-tables is dropped entirely. Pure over the config text so it can be
+/// unit-tested without touching the real config.
+fn upsert_space_meta(
+    text: &str,
+    name: &str,
+    icon: Option<&str>,
+    color: Option<&str>,
+) -> Result<String, String> {
     use toml_edit::{value, ArrayOfTables, Document, Item, Table};
     let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
 
@@ -1147,21 +1251,31 @@ fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>) -> Result<Strin
         .iter()
         .position(|t| t.get("name").and_then(|v| v.as_str()) == Some(name));
 
-    match icon {
-        Some(icon) => match pos {
-            Some(i) => {
-                tables.get_mut(i).unwrap()["icon"] = value(icon);
-            }
+    if icon.is_none() && color.is_none() {
+        if let Some(i) = pos {
+            tables.remove(i);
+        }
+    } else {
+        let i = match pos {
+            Some(i) => i,
             None => {
                 let mut t = Table::new();
                 t["name"] = value(name);
-                t["icon"] = value(icon);
                 tables.push(t);
+                tables.len() - 1
             }
-        },
-        None => {
-            if let Some(i) = pos {
-                tables.remove(i);
+        };
+        let t = tables.get_mut(i).unwrap();
+        match icon {
+            Some(v) => t["icon"] = value(v),
+            None => {
+                t.remove("icon");
+            }
+        }
+        match color {
+            Some(v) => t["color"] = value(v),
+            None => {
+                t.remove("color");
             }
         }
     }
@@ -1173,10 +1287,121 @@ fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>) -> Result<Strin
     Ok(doc.to_string())
 }
 
-/// Read the config, upsert/prune the `[[space]]` icon for `name`, write it back.
-/// `icon` is already trimmed-to-`None` by the caller.
-fn write_space_meta(name: &str, icon: Option<&str>) -> Result<(), String> {
-    let serialized = upsert_space_meta(&ensure_config()?, name, icon)?;
+/// Upsert or remove the `[[project_meta]]` entry for `path`, preserving the rest
+/// of the file via `toml_edit`. The two icon keys are mutually exclusive by
+/// construction: whichever the caller does not pass is *removed*, not left
+/// behind, so a project can never end up with a stale glyph shadowed by an
+/// image (or vice versa). Both `None` prunes the whole entry, which is what
+/// "back to automatic" means. Pure over the config text, so it unit-tests
+/// without touching the real config.
+fn upsert_project_meta(
+    text: &str,
+    path: &str,
+    icon: Option<&str>,
+    icon_file: Option<&str>,
+) -> Result<String, String> {
+    use toml_edit::{value, ArrayOfTables, Document, Item, Table};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+
+    if doc.get("project_meta").is_none() {
+        doc["project_meta"] = Item::ArrayOfTables(ArrayOfTables::new());
+    }
+    let tables = doc["project_meta"]
+        .as_array_of_tables_mut()
+        .ok_or("`project_meta` is not an array of tables")?;
+    let pos = tables
+        .iter()
+        .position(|t| t.get("path").and_then(|v| v.as_str()) == Some(path));
+
+    if icon.is_none() && icon_file.is_none() {
+        if let Some(i) = pos {
+            tables.remove(i);
+        }
+    } else {
+        let i = match pos {
+            Some(i) => i,
+            None => {
+                let mut t = Table::new();
+                t["path"] = value(path);
+                tables.push(t);
+                tables.len() - 1
+            }
+        };
+        let t = tables.get_mut(i).unwrap();
+        match icon {
+            Some(v) => t["icon"] = value(v),
+            None => {
+                t.remove("icon");
+            }
+        }
+        match icon_file {
+            Some(v) => t["icon_file"] = value(v),
+            None => {
+                t.remove("icon_file");
+            }
+        }
+    }
+
+    // Drop an emptied `[[project_meta]]` so the file has no dangling array key.
+    if doc["project_meta"].as_array_of_tables().map(|t| t.is_empty()).unwrap_or(false) {
+        doc.remove("project_meta");
+    }
+    Ok(doc.to_string())
+}
+
+/// Read the config, upsert/prune the `[[project_meta]]` entry for `path`, write
+/// it back. Both icon values are already trimmed-to-`None` by the caller.
+fn write_project_meta(path: &str, icon: Option<&str>, icon_file: Option<&str>) -> Result<(), String> {
+    let serialized = upsert_project_meta(&ensure_config()?, path, icon, icon_file)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+}
+
+/// The image currently stored for `path`, read back before an overwrite so the
+/// superseded copy can be pruned from the icon store. Read failures are silent:
+/// a stale file left in `~/.config/sway/icons` is litter, never a broken icon.
+fn current_icon_file(path: &str) -> Option<String> {
+    let raw: RawConfig = toml::from_str(&ensure_config().ok()?).ok()?;
+    raw.project_meta
+        .iter()
+        .find(|m| expand_tilde(&m.path) == path)
+        .and_then(|m| m.icon_file.as_deref())
+        .map(expand_tilde)
+}
+
+/// Set (or clear) a project's Lucide icon, keyed by its absolute path. An
+/// empty/whitespace name normalizes to `None`, which drops the whole overlay
+/// entry and returns the row to automatic (favicon, else a derived glyph).
+/// Picking a glyph also retires any uploaded image, since the two cannot both
+/// be in force. Mirrors `set_space_meta`: write store → emit `config://changed`
+/// (the sidebar's listener drives the reload).
+#[tauri::command]
+pub fn set_project_icon(app: AppHandle, path: String, icon: Option<String>) -> Result<(), String> {
+    let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let previous = current_icon_file(&path);
+    write_project_meta(&path, icon, None)?;
+    crate::icons::prune_stored(previous.as_deref(), None);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Copy `source` into the icon store and make it the project's icon, returning
+/// the stored path. The copy happens first: a rejected or unreadable pick fails
+/// before the config is touched, so a bad upload leaves the previous icon
+/// exactly as it was.
+#[tauri::command]
+pub fn set_project_icon_file(app: AppHandle, path: String, source: String) -> Result<String, String> {
+    let stored = crate::icons::store_icon(&path, Path::new(&source))?;
+    let previous = current_icon_file(&path);
+    write_project_meta(&path, None, Some(&stored))?;
+    crate::icons::prune_stored(previous.as_deref(), Some(&stored));
+    let _ = app.emit("config://changed", ());
+    Ok(stored)
+}
+
+/// Read the config, upsert/prune the `[[space]]` entry for `name`, write it
+/// back. Both values are already trimmed-to-`None` by the caller.
+fn write_space_meta(name: &str, icon: Option<&str>, color: Option<&str>) -> Result<(), String> {
+    let serialized = upsert_space_meta(&ensure_config()?, name, icon, color)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
 }
 
@@ -1190,6 +1415,7 @@ pub fn add_space(
     root: String,
     name: String,
     icon: Option<String>,
+    color: Option<String>,
 ) -> Result<String, String> {
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
@@ -1197,8 +1423,10 @@ pub fn add_space(
         return Err(format!("\"{n}\" already exists"));
     }
     std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
-    if let Some(icon) = icon.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        write_space_meta(&n, Some(icon))?;
+    let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if icon.is_some() || color.is_some() {
+        write_space_meta(&n, icon, color)?;
     }
     let _ = app.emit("config://changed", ()); // explicit re-discovery
     Ok(dir.to_string_lossy().into_owned())
@@ -1209,9 +1437,15 @@ pub fn add_space(
 /// Mirrors `pin_path`: write store → emit `config://changed` (the sidebar's
 /// listener drives the reload).
 #[tauri::command]
-pub fn set_space_meta(app: AppHandle, name: String, icon: Option<String>) -> Result<(), String> {
+pub fn set_space_meta(
+    app: AppHandle,
+    name: String,
+    icon: Option<String>,
+    color: Option<String>,
+) -> Result<(), String> {
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    write_space_meta(&name, icon)?;
+    let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    write_space_meta(&name, icon, color)?;
     let _ = app.emit("config://changed", ());
     Ok(())
 }
@@ -1693,6 +1927,7 @@ mod tests {
                 .collect(),
             docs: RawDocs::default(),
             space: Vec::new(),
+            project_meta: Vec::new(),
             space_order: Vec::new(),
         }
     }
@@ -2075,47 +2310,215 @@ mod tests {
     }
 
     #[test]
-    fn space_icon_overlays_onto_discovered_space() {
-        // What `add_space(root, name, Some(icon))` writes: a `[[space]]` entry.
+    fn space_icon_and_color_overlay_onto_discovered_space() {
+        // What `add_space(root, name, icon, color)` writes: a `[[space]]` entry.
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
         std::fs::create_dir_all(root.join("personal")).unwrap();
-        let meta = upsert_space_meta("", "personal", Some("Rocket")).unwrap();
+        let meta = upsert_space_meta("", "personal", Some("Rocket"), Some("Teal")).unwrap();
         let full = format!("[discovery]\nroots = [\"{}\"]\n\n{meta}", root.display());
         let raw: RawConfig = toml::from_str(&full).unwrap();
         let index = ProjectIndex::default();
         let cfg = resolve(raw, &index);
         let g = space(&cfg, "personal").expect("space present");
         assert_eq!(g.icon.as_deref(), Some("Rocket"));
+        assert_eq!(g.color.as_deref(), Some("Teal"));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_space_that_chose_no_colour_reports_none_so_the_ui_can_derive_one() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        std::fs::create_dir_all(root.join("personal")).unwrap();
+        let meta = upsert_space_meta("", "personal", Some("Rocket"), None).unwrap();
+        let full = format!("[discovery]\nroots = [\"{}\"]\n\n{meta}", root.display());
+        let cfg = resolve(toml::from_str(&full).unwrap(), &ProjectIndex::default());
+        assert_eq!(space(&cfg, "personal").unwrap().color, None);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
     fn upsert_space_meta_adds_updates_and_prunes() {
         // Add onto an empty config: creates the `[[space]]` entry.
-        let added = upsert_space_meta("", "personal", Some("Rocket")).unwrap();
+        let added = upsert_space_meta("", "personal", Some("Rocket"), None).unwrap();
         let c1: RawConfig = toml::from_str(&added).unwrap();
         assert_eq!(c1.space.len(), 1);
         assert_eq!(c1.space[0].name, "personal");
         assert_eq!(c1.space[0].icon.as_deref(), Some("Rocket"));
 
         // Update the same entry in place, never a duplicate.
-        let updated = upsert_space_meta(&added, "personal", Some("Anchor")).unwrap();
+        let updated = upsert_space_meta(&added, "personal", Some("Anchor"), None).unwrap();
         let c2: RawConfig = toml::from_str(&updated).unwrap();
         assert_eq!(c2.space.len(), 1);
         assert_eq!(c2.space[0].icon.as_deref(), Some("Anchor"));
 
         // Preserves comments and other keys (the toml_edit win over to_string_pretty).
         let with_comment = "# my config\n[discovery]\nroots = [\"/r\"]\n";
-        let out = upsert_space_meta(with_comment, "work", Some("Box")).unwrap();
+        let out = upsert_space_meta(with_comment, "work", Some("Box"), None).unwrap();
         assert!(out.contains("# my config"));
         assert!(out.contains("roots"));
 
-        // Clearing the icon prunes the entry and drops the emptied array.
-        let cleared = upsert_space_meta(&updated, "personal", None).unwrap();
+        // Clearing both prunes the entry and drops the emptied array.
+        let cleared = upsert_space_meta(&updated, "personal", None, None).unwrap();
         let c3: RawConfig = toml::from_str(&cleared).unwrap();
         assert!(c3.space.is_empty());
         assert!(!cleared.contains("[[space]]"));
+    }
+
+    #[test]
+    fn a_space_keeps_its_icon_and_its_colour_side_by_side() {
+        let both = upsert_space_meta("", "personal", Some("Rocket"), Some("Teal")).unwrap();
+        let c: RawConfig = toml::from_str(&both).unwrap();
+        assert_eq!(c.space.len(), 1);
+        assert_eq!(c.space[0].icon.as_deref(), Some("Rocket"));
+        assert_eq!(c.space[0].color.as_deref(), Some("Teal"));
+
+        // Clearing ONE leaves the other standing, and does not leave the cleared
+        // key behind with a stale value.
+        let no_icon = upsert_space_meta(&both, "personal", None, Some("Teal")).unwrap();
+        let c2: RawConfig = toml::from_str(&no_icon).unwrap();
+        assert_eq!(c2.space.len(), 1);
+        assert_eq!(c2.space[0].icon, None);
+        assert_eq!(c2.space[0].color.as_deref(), Some("Teal"));
+        assert!(!no_icon.contains("icon"));
+
+        // And the entry survives as long as either one is set.
+        let no_color = upsert_space_meta(&both, "personal", Some("Rocket"), None).unwrap();
+        let c3: RawConfig = toml::from_str(&no_color).unwrap();
+        assert_eq!(c3.space[0].color, None);
+        assert!(no_color.contains("[[space]]"));
+    }
+
+    #[test]
+    fn upsert_project_meta_adds_switches_and_prunes() {
+        // Add onto an empty config: creates the `[[project_meta]]` entry.
+        let added = upsert_project_meta("", "/p/sway", Some("Rocket"), None).unwrap();
+        let c1: RawConfig = toml::from_str(&added).unwrap();
+        assert_eq!(c1.project_meta.len(), 1);
+        assert_eq!(c1.project_meta[0].path, "/p/sway");
+        assert_eq!(c1.project_meta[0].icon.as_deref(), Some("Rocket"));
+
+        // Switching to an uploaded image must REMOVE the glyph, not shadow it -
+        // a leftover `icon` would resurface the moment the image was cleared.
+        let to_file = upsert_project_meta(&added, "/p/sway", None, Some("/i/a.png")).unwrap();
+        let c2: RawConfig = toml::from_str(&to_file).unwrap();
+        assert_eq!(c2.project_meta.len(), 1);
+        assert_eq!(c2.project_meta[0].icon, None);
+        assert_eq!(c2.project_meta[0].icon_file.as_deref(), Some("/i/a.png"));
+
+        // And back the other way, in place, still one entry.
+        let back = upsert_project_meta(&to_file, "/p/sway", Some("Anchor"), None).unwrap();
+        let c3: RawConfig = toml::from_str(&back).unwrap();
+        assert_eq!(c3.project_meta.len(), 1);
+        assert_eq!(c3.project_meta[0].icon.as_deref(), Some("Anchor"));
+        assert_eq!(c3.project_meta[0].icon_file, None);
+
+        // A second project is its own entry, keyed by path.
+        let two = upsert_project_meta(&back, "/p/other", Some("Star"), None).unwrap();
+        let c4: RawConfig = toml::from_str(&two).unwrap();
+        assert_eq!(c4.project_meta.len(), 2);
+
+        // Both cleared ("automatic") prunes that entry, leaving the other.
+        let cleared = upsert_project_meta(&two, "/p/sway", None, None).unwrap();
+        let c5: RawConfig = toml::from_str(&cleared).unwrap();
+        assert_eq!(c5.project_meta.len(), 1);
+        assert_eq!(c5.project_meta[0].path, "/p/other");
+
+        // Emptying the last entry drops the dangling array key entirely.
+        let none = upsert_project_meta(&cleared, "/p/other", None, None).unwrap();
+        assert!(!none.contains("[[project_meta]]"));
+
+        // Comments and unrelated keys survive (the toml_edit win).
+        let out = upsert_project_meta("# my config\n[discovery]\nroots = [\"/r\"]\n", "/p/x", Some("Box"), None).unwrap();
+        assert!(out.contains("# my config") && out.contains("roots"));
+    }
+
+    #[test]
+    fn project_meta_overlays_a_chosen_icon_and_drops_a_deleted_image() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let picked = root.join("personal/picked");
+        let missing = root.join("personal/missing");
+        std::fs::create_dir_all(&picked).unwrap();
+        std::fs::create_dir_all(&missing).unwrap();
+
+        // A real image for one project, a path that does not exist for the other.
+        let img = tmp.join("stored.png");
+        std::fs::write(&img, b"png").unwrap();
+
+        let mut cfg_in = raw(&[root.to_str().unwrap()], &[], &[], &[]);
+        cfg_in.project_meta = vec![
+            ProjectMeta {
+                path: picked.to_string_lossy().into_owned(),
+                icon: Some("Rocket".into()),
+                icon_file: None,
+            },
+            ProjectMeta {
+                path: missing.to_string_lossy().into_owned(),
+                icon: None,
+                icon_file: Some(tmp.join("gone.png").to_string_lossy().into_owned()),
+            },
+        ];
+        let cfg = resolve(cfg_in, &ProjectIndex::default());
+        assert_eq!(project(&cfg, "personal", "picked").icon.as_deref(), Some("Rocket"));
+        // An icon file deleted out from under the config must not be reported:
+        // the row falls back to its derived glyph, never a broken image.
+        assert_eq!(project(&cfg, "personal", "missing").icon_file, None);
+
+        // The same entry pointing at a file that IS there is reported as-is.
+        let mut raw2 = raw(&[root.to_str().unwrap()], &[], &[], &[]);
+        raw2.project_meta = vec![ProjectMeta {
+            path: missing.to_string_lossy().into_owned(),
+            icon: None,
+            icon_file: Some(img.to_string_lossy().into_owned()),
+        }];
+        let cfg2 = resolve(raw2, &ProjectIndex::default());
+        assert_eq!(
+            project(&cfg2, "personal", "missing").icon_file,
+            Some(img.to_string_lossy().into_owned())
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn favicon_is_found_in_a_plain_repo_and_inside_a_worktree_container() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+
+        // A plain repo answers for itself.
+        let plain = root.join("personal/plain");
+        init_repo(&plain, "main");
+        std::fs::create_dir_all(plain.join("public")).unwrap();
+        std::fs::write(plain.join("public/favicon.svg"), "<svg/>").unwrap();
+
+        // A worktree container's root holds only `.bare` + branch folders, so the
+        // favicon lives one level down and only the per-unit pass can find it.
+        let cont = root.join("personal/cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        let bare = cont.join(".bare");
+        git(&tmp, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        let seed = tmp.join("seed");
+        init_repo(&seed, "main");
+        git(&seed, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        git(&seed, &["push", "-q", "origin", "main"]);
+        git(&cont, &["worktree", "add", "-q", "main"]);
+        std::fs::create_dir_all(cont.join("main/public")).unwrap();
+        std::fs::write(cont.join("main/public/favicon.ico"), "ico").unwrap();
+
+        let cfg = resolve(raw(&[root.to_str().unwrap()], &[], &[], &[]), &ProjectIndex::default());
+        assert!(project(&cfg, "personal", "plain")
+            .favicon
+            .as_deref()
+            .is_some_and(|f| f.ends_with("public/favicon.svg")));
+        assert!(project(&cfg, "personal", "cont")
+            .favicon
+            .as_deref()
+            .is_some_and(|f| f.ends_with("main/public/favicon.ico")));
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
