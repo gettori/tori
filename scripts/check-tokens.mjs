@@ -48,6 +48,8 @@ const ALLOWLIST = new Map([
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
   ["src/theme/contrast.test.ts", "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white"],
   ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
+  ["src/utils/spaceTint.ts", "the space swatches: a space's colour is user data stored in sway.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for"],
+  ["src/utils/spaceTint.test.ts", "test fixtures pinning the hex -> channel-triple conversion. A named input and its expected three numbers are the only way to catch a red/blue swap, which every wash in the app would then render in the wrong hue"],
 ]);
 
 // Directory prefixes, for families of files where every member is exempt for the
@@ -81,8 +83,13 @@ const PATTERNS = [
   // `rgba(${...}` is a format string, not a colour: it is how the derivation
   // helpers in theme/roles.ts emit a wash whose channels came from the palette.
   // A literal colour never interpolates.
-  [/\brgba?\((?!\$\{)/g, "rgb()/rgba()"],
-  [/\bhsla?\((?!\$\{)/g, "hsl()/hsla()"],
+  //
+  // `rgb(var(--x) / 40%)` is not a colour either: it is a token being composed
+  // with an alpha the consumer chooses, which is the whole point of a channel
+  // triple role. The channels still come from the palette - there is nothing
+  // here for a theme to fail to repaint, which is what this check protects.
+  [/\brgba?\((?!\$\{|var\()/g, "rgb()/rgba()"],
+  [/\bhsla?\((?!\$\{|var\()/g, "hsl()/hsla()"],
   // A trailing `:` means the word is a key/property name, not a value -
   // xterm's ITheme has `black:`, `red:`, `cyan:` fields holding var() reads.
   // In CSS a named color is always a value, so it is never followed by `:`.
