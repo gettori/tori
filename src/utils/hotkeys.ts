@@ -269,6 +269,10 @@ export function bindingsByGroup(): { group: BindingGroup; bindings: Binding[] }[
 }
 
 function fire(e: KeyboardEvent, scopes: BindingScope[]): boolean {
+  // A key the focused widget already handled must not double-fire an app
+  // hotkey. CodeMirror preventDefaults every binding it runs, so without this
+  // guard Cmd+/ in the editor toggles a comment AND opens the shortcut sheet.
+  if (e.defaultPrevented) return false;
   const hit = BINDINGS.find((b) => scopes.includes(b.scope) && b.run && b.match(e));
   if (!hit) return false;
   hit.run!(e);

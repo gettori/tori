@@ -130,6 +130,16 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchWindowHotkey(key("f", { meta: true }))).toBe(false);
   });
 
+  it("yields to a key the focused widget already handled", () => {
+    // CodeMirror preventDefaults every binding it runs and the window listener
+    // sits on the bubble phase, so a handled Cmd+/ still reaches dispatch.
+    // Without the guard it would toggle a comment AND open the shortcut sheet.
+    const handled = { ...key("/", { meta: true }), defaultPrevented: true } as KeyboardEvent;
+    expect(dispatchHotkey(handled)).toBe(false);
+    expect(dispatchWindowHotkey(handled)).toBe(false);
+    expect(dispatchHotkey(key("/", { meta: true }))).toBe(true);
+  });
+
   it("ignores unmodified and wrongly-modified keys", () => {
     expect(dispatchHotkey(key("k"))).toBe(false);
     expect(dispatchHotkey(key("j", { meta: true, shift: true }))).toBe(false);
