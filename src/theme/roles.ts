@@ -152,6 +152,7 @@ export const ROLES: Role[] = [
   { id: "brand.default", cssVar: "--brand-default", group: "brand" },
   { id: "brand.strong", cssVar: "--brand-strong", group: "brand" },
   { id: "brand.subtle", cssVar: "--brand-subtle", group: "brand" },
+  { id: "brand.wash", cssVar: "--brand-wash", group: "brand" },
   { id: "brand.bar", cssVar: "--brand-bar", group: "brand" },
   { id: "brand.ring", cssVar: "--brand-ring", group: "brand" },
   { id: "brand.on", cssVar: "--brand-on", group: "brand" },
@@ -307,6 +308,19 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // the pill fill and focus ring render exactly as before. Change it only as a
     // deliberate design call, not as a "fix" to make it match gold-500.
     "brand.subtle": alpha(p.brandTint, v({ dark: 0.16, light: 0.14 })),
+    // The faintest brand-tinted *surface*, for a fill that should read as warm
+    // rather than as gold. `brand.subtle` is a wash meant to be seen as brand
+    // colour; this is a card that merely remembers the brand, and at these
+    // amounts the result is a near-neutral (Sway Dark lands on #272628).
+    //
+    // Mixed into `card`, not layered over the canvas, and opaque for two
+    // reasons. It has to stay a surface: a translucent brand wash on the
+    // transcript would be a hue with no elevation, and the whole point is that
+    // the surface it paints sits a step above the pane. And an alpha fill would
+    // double where two of them touch, which is exactly the case `mix` exists
+    // for. Light mixes one point lower because its brandTint is a dark brown
+    // going onto a near-white card, so the same amount reads stronger.
+    "brand.wash": mix(p.card, p.brandTint, v({ dark: 0.07, light: 0.06 })),
     "brand.bar": p.brand,
     // A focus ring is a WCAG 2.4.11 indicator, so it is measured, not judged by
     // eye. At the wash this used to carry (dark 0.5, light 0.4) it sat at 2.5

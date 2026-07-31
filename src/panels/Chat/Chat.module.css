@@ -236,7 +236,16 @@
   padding: calc(8px * var(--ui-scale)) calc(13px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
-  background: var(--canvas-default);
+  /* A step above the transcript, not the transcript itself. This was
+     `--canvas-default`, the exact colour of the list behind it, which left the
+     border doing all the work of saying "this is a surface" and made your own
+     turns the quietest thing in a pane full of tool cards.
+
+     `--brand-wash` rather than `--canvas-card`: the same elevation, plus enough
+     of the theme's brand hue to make your own turns findable while scrolling
+     without them reading as gold. The composer stays on `--canvas-card`, so what
+     you type warms as it becomes a turn. */
+  background: var(--brand-wash);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--fg-default);
@@ -529,8 +538,16 @@
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  /* A step above the pane, the way the mock's rows sit above its canvas. */
-  background: var(--neutral-subtle);
+  /* No fill. A tool call is plumbing, and plumbing earns attention only when it
+     fails, so it keeps a hairline and gives its fill up to the prompt bubble
+     above. This used to be `--neutral-subtle`, which made the loudest surface in
+     the transcript the one nobody reads, and made a long run of calls noisier
+     the further a turn went. `.toolBlocked` still stands out: it signals through
+     border and label colour, which now has nothing competing with it.
+
+     The frame goes flat, not its contents. `.toolPre` and `.hunk` take the fill
+     instead (see below), because the payload is the part anyone reads. */
+  background: transparent;
 }
 
 /* The collapsed row is the whole disclosure control, so the whole row is the
@@ -658,7 +675,11 @@
   overflow: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--canvas-default);
+  /* Lifts off the transcript rather than sinking into it. As `--canvas-default`
+     this was an inset that read only because the tool card around it carried a
+     fill; with that card now transparent, the same value would leave command
+     output the exact colour of the pane behind it. */
+  background: var(--neutral-subtle);
   color: var(--fg-default);
   font-family: var(--sway-font-mono);
   font-size: var(--sway-text-md);
@@ -692,7 +713,10 @@
 .hunk {
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--canvas-default);
+  /* Same reason as `.toolPre`: the diff is the payload, so it takes the fill the
+     tool card gave up. Diff lines colour their text rather than their
+     background, so nothing composites over this. */
+  background: var(--neutral-subtle);
   overflow: hidden;
 }
 
@@ -1104,7 +1128,15 @@
   --input-pad-x: calc(12px * var(--ui-scale));
   display: flex;
   flex-direction: column;
-  background: var(--canvas-input);
+  /* `--canvas-card`, not `--canvas-input`, and this is the one place in the app
+     that wants the difference. Every other field sits on a card and reads as
+     paper laid on it, which is exactly what `--canvas-input` is for; the light
+     palettes make it equal to `canvas` on purpose for that reason. The composer
+     is the outlier: it sits on the transcript well, which *is* `canvas`, so the
+     input colour left it with a 1.00:1 step and no surface of its own. Sharing
+     the bubble's rung also says the right thing, since what you type here is
+     what it becomes. */
+  background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-xl);
   transition: border-color var(--sway-duration-fast) ease;
