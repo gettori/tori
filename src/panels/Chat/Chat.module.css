@@ -336,9 +336,14 @@
   margin-bottom: 0;
 }
 
-/* Same treatment as MarkdownPreview's rendered body, so a fenced block reads
-   identically whether it came from a plan file or from the model. Inline code
-   picks up the brand tint the mock gives it. */
+/* Inline code picks up the brand tint the mock gives it.
+
+   This used to claim it matched MarkdownPreview's rendered body so a fenced
+   block read the same from a plan file or from the model. It has not for a
+   while: that one paints `--neutral-hover` with no border, this one paints a
+   step lower and adds one. The blocks a transcript shows side by side are the
+   ones that have to agree, so a fenced block matches `.toolPre` and `.hunk`
+   here rather than a body in another pane. */
 .assistant :global(code) {
   font-family: var(--sway-font-mono);
   font-size: 0.9em;
@@ -353,7 +358,13 @@
   padding: calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  background: var(--canvas-default);
+  /* Lifts off the transcript, the same step `.toolPre` and `.hunk` take. As
+     `--canvas-default` this was the exact colour of the pane behind it, so a
+     fenced block was an outline; nothing forced the issue while tool cards
+     carried a fill, but now that they do not, a code block from the model and
+     one from a tool sit in the same scroll and have to read alike.
+     `pre code` clears its own background, so this wash never doubles. */
+  background: var(--neutral-subtle);
   overflow-x: auto;
 }
 
