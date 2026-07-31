@@ -252,6 +252,7 @@
     --brand-default: #d9a468;
     --brand-strong: #d9bd85;
     --brand-subtle: rgba(201, 150, 83, 0.16);
+    --brand-wash: #272628;
     --brand-bar: #d9a468;
     --brand-ring: rgba(201, 150, 83, 0.6);
     --brand-on: #4a3719;
@@ -412,6 +413,7 @@
     --brand-default: #7e5e2f;
     --brand-strong: #6b4f27;
     --brand-subtle: rgba(138, 103, 51, 0.14);
+    --brand-wash: #edebe7;
     --brand-bar: #7e5e2f;
     --brand-ring: rgba(138, 103, 51, 0.77);
     --brand-on: #ffffff;

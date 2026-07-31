@@ -122,7 +122,11 @@ const exempt = (why: string): ContrastRule => ({ why });
 
 /** One entry per role in ROLES, checked for completeness by `checkPalette`. */
 export const CONTRAST_RULES: Record<string, ContrastRule> = {
-  "fg.default": text([...CANVASES, "neutral.hover"]),
+  // `brand.wash` joins the list because the chat prompt bubble paints it and
+  // sets `fg.default` on it. Nothing else is drawn there: the rewind button is
+  // positioned outside the bubble and sits on the transcript, and inline code
+  // brings its own `neutral.hover` fill, both of which are measured already.
+  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash"]),
   "fg.muted": text([...CANVASES, "neutral.hover"]),
   "fg.subtle": muted(CANVASES),
   "fg.onEmphasis": text(["success.emphasis", "attention.emphasis", "danger.emphasis"]),
@@ -190,6 +194,7 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   },
   "brand.strong": text(["canvas.default", "canvas.card", "canvas.head"]),
   "brand.subtle": surface(),
+  "brand.wash": surface(),
   "brand.bar": graphic(["canvas.default", "canvas.card", "canvas.head"]),
   "brand.ring": graphic(["canvas.default", "canvas.card", "canvas.input"]),
   "brand.on": text(["brand.default"]),
