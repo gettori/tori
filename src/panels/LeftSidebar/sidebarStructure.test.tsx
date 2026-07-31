@@ -34,12 +34,14 @@ const config = {
           name: "repo",
           path: REPO,
           external: false,
+          favicon: `${REPO}/main/public/favicon.svg`,
           branchUnits: [worktree("main", true), worktree("feat", false)],
         },
         {
           name: "notes",
           path: NOTES,
           external: false,
+          icon: "Rocket",
           branchUnits: [
             { label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false },
           ],
@@ -100,6 +102,7 @@ const bridge = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (p: string) => `asset://${p}`,
   invoke: (cmd: string, args: Record<string, unknown>) => {
     if (cmd === "get_config") return Promise.resolve(config);
     if (cmd === "list_sessions") {
@@ -246,6 +249,41 @@ describe("the sidebar levels that outlive the session rows", () => {
 
     await waitFor(() => expect(notes.querySelector('[title="Idle"]')).toBeTruthy());
     expect(screen.queryByText("in-notes")).toBeNull();
+  });
+
+  // The identity mark moved down a level: a project row now says which project
+  // it is (its own favicon, or an icon someone picked), and the git glyph that
+  // used to sit there now sits beside the branch it actually describes.
+  it("marks a project row with its favicon and each branch row with its git kind", async () => {
+    mount(["p:work/repo"]);
+
+    const repo = await row("repo");
+    expect(repo.querySelector("img")?.getAttribute("src")).toBe(
+      `asset://${REPO}/main/public/favicon.svg`,
+    );
+
+    // A project with a chosen glyph renders that glyph, never an image.
+    const notes = await row("notes");
+    expect(notes.querySelector("img")).toBeNull();
+    expect(notes.querySelector('[class*="lucide-rocket"]')).toBeTruthy();
+
+    // Both worktree rows carry the fork glyph the project row used to.
+    for (const label of ["main", "feat"]) {
+      expect((await row(label)).querySelector('[class*="lucide-git-fork"]')).toBeTruthy();
+    }
+  });
+
+  it("offers Change icon… on every project, pinned or not", async () => {
+    mount();
+
+    fireEvent.contextMenu(await row("repo"));
+    expect(await screen.findByText("Change icon…")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    // A plain-dir folder gets it too: the icon is a property of the row, not of
+    // whatever git is (or is not) doing underneath it.
+    fireEvent.contextMenu(await row("notes"));
+    expect(await screen.findByText("Change icon…")).toBeTruthy();
   });
 
   it("keeps the space, project and branch-unit context menus", async () => {

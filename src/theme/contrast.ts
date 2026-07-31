@@ -221,7 +221,11 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "shadow.md": exempt("a box-shadow value, not a colour"),
   "shadow.lg": exempt("a box-shadow value, not a colour"),
 
-  "shell.glow": surface(),
+  // The same hue with no alpha, which is never painted at full strength: the
+  // shell mixes it down to 14% (4% in light) against the canvas, and
+  // `shell.glow` above is that mix, measured as the surface it actually is.
+  // Measuring the raw stop would gate a colour nothing ever renders.
+  "shell.glowRgb": exempt("a bare channel triple, not a colour. The shell mixes its own alpha from it, and what that produces is a wash over canvas.default rather than a surface of its own"),
   "shell.cardShadow": exempt("a box-shadow value, not a colour"),
 
   "tree.rowHover": surface(),
