@@ -1,11 +1,12 @@
 import { onCleanup, onMount, createEffect, on, createSignal, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap, StreamLanguage } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
@@ -94,13 +95,26 @@ const swayTheme = EditorView.theme(
   { dark: true },
 );
 
-function langForPath(path: string): Extension {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+// Packs beyond ts/js/json load on demand so the (already lazy) editor chunk
+// stays lean; the module cache makes every open after the first free. The
+// suffix comes from the basename so a dotted directory can't fake one, and
+// dotfiles like .zshrc resolve to their own name.
+async function langForPath(path: string): Promise<Extension> {
+  const file = path.split("/").pop()?.toLowerCase() ?? "";
+  const ext = file.split(".").pop() ?? "";
   if (["ts", "mts", "cts"].includes(ext)) return javascript({ typescript: true });
   if (ext === "tsx") return javascript({ typescript: true, jsx: true });
   if (["js", "mjs", "cjs"].includes(ext)) return javascript();
   if (ext === "jsx") return javascript({ jsx: true });
   if (ext === "json") return json();
+  if (["md", "markdown"].includes(ext)) return (await import("@codemirror/lang-markdown")).markdown();
+  if (ext === "css") return (await import("@codemirror/lang-css")).css();
+  if (["html", "htm"].includes(ext)) return (await import("@codemirror/lang-html")).html();
+  if (ext === "rs") return (await import("@codemirror/lang-rust")).rust();
+  if (ext === "py") return (await import("@codemirror/lang-python")).python();
+  if (["yaml", "yml"].includes(ext)) return (await import("@codemirror/lang-yaml")).yaml();
+  if (ext === "toml") return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/toml")).toml);
+  if (["sh", "bash", "zsh", "zshrc", "bashrc"].includes(ext)) return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/shell")).shell);
   return [];
 }
 
@@ -375,8 +389,15 @@ export default function CodeEditor(props: {
     history(),
     drawSelection(),
     dropCursor(),
+    // Without this facet the searchKeymap's Mod-d / Mod-Shift-l silently
+    // collapse to a single range; Alt-drag columns come from the pair below.
+    EditorState.allowMultipleSelections.of(true),
+    rectangularSelection(),
+    crosshairCursor(),
     indentOnInput(),
     bracketMatching(),
+    closeBrackets(),
+    highlightSpecialChars(),
     foldGutter(),
     highlightSelectionMatches(),
     diffGutterExtension(),
@@ -399,6 +420,8 @@ export default function CodeEditor(props: {
           return true;
         },
       },
+      // Before defaultKeymap so pair-aware Backspace wins over plain delete.
+      ...closeBracketsKeymap,
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
@@ -419,12 +442,12 @@ export default function CodeEditor(props: {
     publishDiagnostics(path, problemsFromState(state));
   }
 
-  function makeState(path: string, text: string): EditorState {
+  function makeState(path: string, text: string, lang: Extension): EditorState {
     return EditorState.create({
       doc: text,
       extensions: [
         ...commonExtensions,
-        langForPath(path),
+        lang,
         lspPluginFor(path),
         EditorView.updateListener.of((u) => {
           // Diagnostics arrive as a transaction effect from the LSP client, so
@@ -462,9 +485,12 @@ export default function CodeEditor(props: {
       } catch (e) {
         text = `// failed to open ${path}\n// ${String(e)}`;
       }
+      // The first open of a language awaits its pack's chunk import; the
+      // token check below covers this await too.
+      const lang = await langForPath(path);
       // A newer swap superseded us while reading: drop this result.
       if (token !== swapToken) return;
-      buf = { state: makeState(path, text), savedText: text };
+      buf = { state: makeState(path, text, lang), savedText: text };
       buffers.set(path, buf);
     }
     if (token !== swapToken) return;
