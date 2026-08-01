@@ -24,9 +24,11 @@ import {
   stage as stageFiles,
   unstage as unstageFiles,
   commit as commitStaged,
+  headMessage,
   push as pushToOrigin,
   type FileStatus,
 } from "../../utils/gitActions";
+import { amendRewritesPushed, composeCommitMessage, splitCommitMessage } from "../../utils/commitMessage";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import DiffRows, { diffRowClasses } from "./DiffRows";
@@ -39,6 +41,7 @@ import { comparePrUrl } from "../../utils/prUrl";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
+import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import hunkStyles from "./HunkCommentInput.module.css";
@@ -83,7 +86,13 @@ export default function ReviewPanel(props: {
 }) {
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
-  const [commitMsg, setCommitMsg] = createSignal("");
+  const [commitSubject, setCommitSubject] = createSignal("");
+  const [commitBody, setCommitBody] = createSignal("");
+  const [amend, setAmend] = createSignal(false);
+  // What was typed before amend prefilled HEAD's message over it, so toggling
+  // amend off gives it back rather than leaving HEAD's wording behind.
+  const [preAmendDraft, setPreAmendDraft] = createSignal<{ subject: string; body: string } | null>(null);
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [drafting, setDrafting] = createSignal(false);
   const [origin, setOrigin] = createSignal<string | null>(null);
@@ -225,15 +234,74 @@ export default function ReviewPanel(props: {
     if (root) await unstageFiles(root, [path]);
   }
 
+  /** Amend is the one form that needs nothing staged: rewriting only the
+   *  message is a normal thing to want. Everything else still does. */
+  const canCommit = () => !!commitSubject().trim() && (amend() || !!staged().length);
+
+  function askConfirm(opts: Omit<ConfirmReq, "resolve">): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+
   async function commit() {
     const root = props.root;
-    const message = commitMsg().trim();
-    if (!root || !message || committing() || !staged().length) return;
+    const message = composeCommitMessage(commitSubject(), commitBody());
+    if (!root || !message || committing() || !canCommit()) return;
+    // Held across the confirm too, not just the invoke: the dialog is awaited,
+    // and an enabled button behind it would let a second click open a second
+    // dialog, orphaning the first one's promise and committing twice.
     setCommitting(true);
-    // The message is cleared only on success, so a rejected commit (an empty
-    // author, a failing hook) does not also lose what you typed.
-    if (await commitStaged(root, message)) setCommitMsg("");
-    setCommitting(false);
+    try {
+      // Amending a commit the upstream already has rewrites shared history. The
+      // check reads the remote-tracking ref, which is only as fresh as the last
+      // fetch, so it asks rather than refuses - and says so, since a stale ref
+      // is the reason to trust your own judgement over this warning.
+      //
+      // Scoped to this panel's root: the store is shared and a switch in flight
+      // would otherwise answer with another workspace's counts, which fails
+      // *open* here (no warning on a pushed commit).
+      const ab = gitState().root === root ? aheadBehind() : null;
+      if (amend() && amendRewritesPushed(ab)) {
+        const ok = await askConfirm({
+          title: "Amend a pushed commit?",
+          message:
+            "This commit looks like it is already on the upstream, so amending rewrites history others may have. That reading is only as fresh as your last fetch.",
+          confirmLabel: "Amend anyway",
+          danger: true,
+        });
+        if (!ok) return;
+      }
+      // The message is cleared only on success, so a rejected commit (an empty
+      // author, a failing hook) does not also lose what you typed.
+      if (await commitStaged(root, message, amend())) {
+        setCommitSubject("");
+        setCommitBody("");
+        setPreAmendDraft(null);
+        setAmend(false);
+      }
+    } finally {
+      setCommitting(false);
+    }
+  }
+
+  /** Toggling amend on prefills HEAD's message (stashing whatever was typed);
+   *  toggling it back off restores that draft. */
+  async function toggleAmend(on: boolean) {
+    const root = props.root;
+    setAmend(on);
+    if (!on) {
+      const saved = preAmendDraft();
+      setCommitSubject(saved?.subject ?? "");
+      setCommitBody(saved?.body ?? "");
+      setPreAmendDraft(null);
+      return;
+    }
+    setPreAmendDraft({ subject: commitSubject(), body: commitBody() });
+    if (!root) return;
+    const { subject, body } = splitCommitMessage(await headMessage(root));
+    // A late answer must not overwrite a toggle-off that happened meanwhile.
+    if (!amend()) return;
+    setCommitSubject(subject);
+    setCommitBody(body);
   }
 
   // Routes a draft request naming the currently staged files through
@@ -657,16 +725,29 @@ export default function ReviewPanel(props: {
         <input
           class={styles.commitInput}
           type="text"
-          placeholder="Commit message"
-          value={commitMsg()}
-          onInput={(e) => setCommitMsg(e.currentTarget.value)}
+          placeholder="Summary"
+          value={commitSubject()}
+          onInput={(e) => setCommitSubject(e.currentTarget.value)}
           onKeyDown={(e) => {
+            // Enter commits from the subject (the one-line case, unchanged);
+            // the body is a textarea, where Enter has to mean a newline.
             if (e.key === "Enter") {
               e.preventDefault();
               void commit();
             }
           }}
         />
+        <textarea
+          class={styles.commitBodyInput}
+          rows={3}
+          placeholder="Description (optional)"
+          value={commitBody()}
+          onInput={(e) => setCommitBody(e.currentTarget.value)}
+        />
+        <label class={styles.amendRow} title="Rewrite the last commit instead of adding one">
+          <input type="checkbox" checked={amend()} onChange={(e) => void toggleAmend(e.currentTarget.checked)} />
+          Amend last commit
+        </label>
         <div class={styles.commitActions}>
           <Button
             size="sm"
@@ -681,14 +762,30 @@ export default function ReviewPanel(props: {
             variant="primary"
             size="sm"
             class={styles.commitButton}
-            disabled={!staged().length || !commitMsg().trim() || committing()}
-            title={staged().length ? "Commit staged changes" : "Nothing staged"}
+            disabled={!canCommit() || committing()}
+            title={amend() ? "Amend the last commit" : staged().length ? "Commit staged changes" : "Nothing staged"}
             onClick={commit}
           >
-            Commit
+            {amend() ? "Amend" : "Commit"}
           </Button>
         </div>
       </div>
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => {
+            confirmReq()!.resolve(true);
+            setConfirmReq(null);
+          }}
+          onCancel={() => {
+            confirmReq()!.resolve(false);
+            setConfirmReq(null);
+          }}
+        />
+      </Show>
     </div>
   );
 }
