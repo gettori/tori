@@ -148,6 +148,45 @@
 /* The per-hunk stage/unstage and the inline/side-by-side view toggle are shared
    <Button>/<IconButton> controls now. */
 
+/* A stash entry. Same rhythm as a file row, but nothing to expand: the message
+   takes the slack so the age and the three actions sit hard right. */
+.stashRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  white-space: nowrap;
+}
+
+.stashRow:hover {
+  background: var(--neutral-hover);
+}
+
+.stashRow .reviewName {
+  flex: 1;
+}
+
+.stashMeta {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+/* Sits directly above the commit box, because it is the other thing you can do
+   with the same pile of changes. */
+.stashBar {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.stashBar .amendRow {
+  flex: 1;
+}
+
 .commitBox {
   position: sticky;
   bottom: 0;
