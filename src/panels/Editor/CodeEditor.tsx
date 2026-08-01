@@ -31,6 +31,7 @@ import {
   TOAST,
   type AgentFilesWritten,
   type ToastEvent,
+  type FsChanged,
 } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
@@ -525,7 +526,7 @@ export default function CodeEditor(props: {
     // Genuine external changes to any open buffer: reload (clean) or banner
     // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
     // also resyncs the gutter for the active file.
-    unlistenFs = await listen<{ paths: string[] }>("fs://changed", (e) => {
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       for (const p of e.payload.paths) {
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
       }
