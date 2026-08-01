@@ -10,6 +10,7 @@ import {
   TOAST,
   type AgentFilesWritten,
   type ToastEvent,
+  type FsChanged,
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -464,14 +465,20 @@ export default function ReviewPanel(props: {
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", (e) => {
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       void refresh();
       // An agent writing the open file renumbers its hunks, so the expanded
       // diff must refetch or the next stage click would carry a stale
-      // fingerprint (which the backend would refuse).
-      const changed = (e.payload as { path?: string } | null)?.path;
+      // fingerprint (which the backend would refuse). Only the open file's own
+      // burst does that, and refetching is not free: it also drops the gaps the
+      // user expanded (see refreshExpandedDiff), so an unrelated burst would
+      // snap them shut. Same predicate as the agent-writes handler below.
+      //
+      // `open.path` is porcelain's field, not necessarily a path (git.rs keeps
+      // a rename's `old -> new` and git's quoting), so this is a suffix test
+      // against the watcher's absolute paths rather than a path comparison.
       const open = openDiff();
-      if (!open || !changed || changed.endsWith(open.path)) void refreshExpandedDiff();
+      if (open && e.payload.paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
     });
     // A chat session's own report of what it just wrote, ahead of the watcher's
     // debounce. Same two refreshes the watcher drives, and both are re-entrant,

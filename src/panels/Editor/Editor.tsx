@@ -55,6 +55,7 @@ import {
   type PurgeUnderPath,
   type LiveTab,
   type SetRightMode,
+  type FsChanged,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
@@ -561,7 +562,7 @@ export default function Editor(props: {
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
-    offFollow = await listen<{ paths: string[] }>("fs://changed", (e) => {
+    offFollow = await listen<FsChanged>("fs://changed", (e) => {
       const external = e.payload.paths.filter((p) => !isSelfWrite(p));
       // The fs fallback for the live indicator: only consulted when the
       // session's own parser named nothing, so an adapter Sway can read is
