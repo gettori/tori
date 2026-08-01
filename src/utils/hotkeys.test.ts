@@ -125,6 +125,14 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchWindowHotkey(key("p", { meta: true }))).toBe(true);
   });
 
+  it("does not claim Cmd+S, which the focused editor owns", () => {
+    // "Save file" is a palette command with no key: CodeMirror's own Mod-s is
+    // the only save key. A table-level binding would fire while a terminal had
+    // focus and save a file nobody was looking at.
+    expect(dispatchHotkey(key("s", { meta: true }))).toBe(false);
+    expect(dispatchWindowHotkey(key("s", { meta: true }))).toBe(false);
+  });
+
   it("does not claim Cmd+F, which the focused terminal owns", () => {
     expect(dispatchHotkey(key("f", { meta: true }))).toBe(false);
     expect(dispatchWindowHotkey(key("f", { meta: true }))).toBe(false);
