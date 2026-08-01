@@ -58,6 +58,8 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
+import { purgeTabsUnder } from "./purgeTabs";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -138,8 +140,35 @@ export default function Editor(props: {
       title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
-  const [tabs, setTabs] = createSignal<FileTab[]>([]);
-  const [activeId, setActiveId] = createSignal<string | null>(null);
+  // Tabs belong to a workspace (branch-unit folder), not to the editor: a file
+  // open in one worktree has no meaning in another, and usually does not exist
+  // there. Switching branch-unit therefore swaps the strip, and coming back
+  // restores the strip you left. Both maps are keyed by workspace and read
+  // through the accessors below, so every call site still says `tabs()`.
+  //
+  // The empty-string key is the bucket for "no selection yet". Nothing can
+  // select into it, so it is transient by construction, and `toStore` refuses to
+  // persist under it.
+  const [tabsByWs, setTabsByWs] = createSignal<Record<string, FileTab[]>>({});
+  const [activeByWs, setActiveByWs] = createSignal<Record<string, string | null>>({});
+  // Derived from `root()` rather than reading the prop a second time, so the two
+  // cannot drift; they differ only in how each spells "nothing selected".
+  const ws = () => root() ?? "";
+  const tabs = () => tabsByWs()[ws()] ?? [];
+  const activeId = () => activeByWs()[ws()] ?? null;
+  function setTabs(next: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
+    const key = ws();
+    setTabsByWs((prev) => ({
+      ...prev,
+      [key]: typeof next === "function" ? next(prev[key] ?? []) : next,
+    }));
+  }
+  function setActiveId(id: string | null) {
+    const key = ws();
+    setActiveByWs((prev) => ({ ...prev, [key]: id }));
+  }
+  // Dirty state and preview choices are keyed by absolute path, so they need no
+  // workspace dimension: a path names exactly one file across every workspace.
   const [dirty, setDirty] = createSignal<Record<string, boolean>>({});
   const [rightMode, setRightMode] = createSignal<RightMode>("files");
   // Width of the right (file-tree/search/problems) panel, drag-resized and
@@ -195,6 +224,12 @@ export default function Editor(props: {
   let gotoNonce = 0;
 
   const filePaths = () => tabs().map((t) => t.path);
+  // Every workspace's open paths, not just the visible strip's. CodeEditor
+  // evicts the buffer of any path this does not name, so handing it the visible
+  // strip alone would throw away a background workspace's buffers - unsaved
+  // edits included - the moment you switched branch-unit, with none of the
+  // discard confirm that closing a tab goes through.
+  const allOpenPaths = () => Object.values(tabsByWs()).flatMap((ts) => ts.map((t) => t.path));
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   const isImageTab = () => {
     const t = activeTab();
@@ -306,12 +341,71 @@ export default function Editor(props: {
     }),
   );
 
+  // A tab is bucketed by the workspace selected when it was opened, which is
+  // what makes Docs-tree and `.shared/` files - real files that live outside any
+  // project root - land somewhere predictable instead of nowhere.
   function openFile(path: string) {
     if (!tabs().some((t) => t.path === path)) {
       setTabs([...tabs(), { path, name: basename(path) }]);
     }
     setActiveId(path);
   }
+
+  // What was stored last run. Read once, because it is the thing this run's
+  // saves are merged into: re-reading would fold our own writes back in.
+  const restorable = loadTabs(Date.now());
+  // Workspaces this run has opened tabs in, ever. `toStore` only sees what is
+  // open right now, so at startup it yields `{}`; without this set a save would
+  // erase every stored workspace before the first tab is opened.
+  const touchedWs = new Set<string>();
+  // Workspaces already offered a restore this run, so returning to one does not
+  // re-restore over tabs you have since closed.
+  const restoredWs = new Set<string>();
+
+  createEffect(() => {
+    const live = toStore(
+      Object.entries(tabsByWs()).flatMap(([workspace, ts]) => ts.map((t) => ({ path: t.path, workspace }))),
+      activeByWs(),
+      Date.now(),
+    );
+    for (const w of Object.keys(live)) touchedWs.add(w);
+    saveTabs(mergeStore(restorable, live, touchedWs));
+  });
+
+  // Restore on first visit to a workspace, automatically. The terminal's
+  // equivalent is an offer banner because a relaunch must never silently spawn
+  // agent processes; opening a file spawns nothing, so the ceremony would only
+  // cost a click. Lazy by construction: this sets descriptors, and only the
+  // active tab's buffer is built, by CodeEditor's own swap.
+  async function restoreWorkspace(w: string) {
+    const entry = restorable[w];
+    if (!entry?.paths.length) return;
+    // Tabs opened here already this run are current truth; a restore would be
+    // pasting last run's strip over them.
+    if ((tabsByWs()[w] ?? []).length) return;
+    const alive = new Set<string>();
+    await Promise.all(
+      entry.paths.map(async (p) => {
+        // A path that cannot be probed is treated as gone: a tab whose buffer
+        // can only ever report that it failed to open is worse than no tab.
+        if (await invoke<boolean>("file_exists", { path: p }).catch(() => false)) alive.add(p);
+      }),
+    );
+    const { paths, active } = restoreFor(entry, alive);
+    if (!paths.length) return;
+    // Re-checked after the await: the user may have opened something here while
+    // the existence probes were in flight.
+    if ((tabsByWs()[w] ?? []).length) return;
+    setTabsByWs((prev) => ({ ...prev, [w]: paths.map((p) => ({ path: p, name: basename(p) })) }));
+    setActiveByWs((prev) => ({ ...prev, [w]: active }));
+  }
+
+  createEffect(() => {
+    const w = ws();
+    if (!w || restoredWs.has(w)) return;
+    restoredWs.add(w);
+    void restoreWorkspace(w);
+  });
 
   async function closeTab(id: string) {
     const tab = tabs().find((t) => tabId(t) === id);
@@ -513,21 +607,19 @@ export default function Editor(props: {
   }
 
   // A space is being deleted: force-close every open tab rooted under it, without
-  // the per-file dirty prompt (the folder is going away regardless).
+  // the per-file dirty prompt (the folder is going away regardless). The sweep
+  // itself is pure and lives in `purgeTabs`, so it can be tested without a
+  // mounted editor and both maps come back from one pass.
   function purgeUnder(path: string) {
-    const goneTabs = tabs().filter((t) => isUnderPath(t.path, path));
-    if (!goneTabs.length) return;
-    const goneIds = new Set(goneTabs.map(tabId));
-    setTabs((ts) => ts.filter((t) => !goneIds.has(tabId(t))));
+    const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
+    if (!next.removed.length) return;
+    setTabsByWs(next.tabs);
+    setActiveByWs(next.active);
     setDirty((d) => {
-      const next = { ...d };
-      for (const t of goneTabs) delete next[t.path];
-      return next;
+      const out = { ...d };
+      for (const p of next.removed) delete out[p];
+      return out;
     });
-    if (activeId() && goneIds.has(activeId()!)) {
-      const remaining = tabs().filter((t) => !goneIds.has(tabId(t)));
-      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
-    }
   }
 
   let offTouched: UnlistenFn | undefined;
@@ -716,6 +808,27 @@ export default function Editor(props: {
             </>
           }
         />
+        {/* Mounted on the union, hidden on the visible strip. Gating the mount
+            on the current workspace's tab count would unmount CodeEditor the
+            moment you selected a workspace with nothing open, and its cleanup
+            destroys the view and every buffer behind it - including a background
+            workspace's unsaved edits, which is the loss `openPaths` carrying the
+            union exists to prevent. */}
+        <Show when={allOpenPaths().length}>
+          <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
+            <CodeEditor
+              activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
+              openPaths={allOpenPaths()}
+              projectRoot={root()}
+              goto={gotoTarget()}
+              onDirty={handleDirty}
+              onCloseFile={forceCloseFile}
+              reverted={reverted()}
+              selected={props.selected}
+              hidden={!filePaths().length || isImageTab() || showingPreview()}
+            />
+          </Suspense>
+        </Show>
         <Show
           when={filePaths().length}
           fallback={
@@ -724,19 +837,6 @@ export default function Editor(props: {
             </div>
           }
         >
-          <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
-            <CodeEditor
-              activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
-              openPaths={filePaths()}
-              projectRoot={root()}
-              goto={gotoTarget()}
-              onDirty={handleDirty}
-              onCloseFile={forceCloseFile}
-              reverted={reverted()}
-              selected={props.selected}
-              hidden={isImageTab() || showingPreview()}
-            />
-          </Suspense>
           <Show when={isImageTab()}>
             <ImageView path={activeId()!} />
           </Show>

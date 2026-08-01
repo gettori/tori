@@ -574,6 +574,19 @@ export default function CodeEditor(props: {
     offRefit = onEvent(REFIT_PANES, () => view?.requestMeasure());
   });
 
+  // Same reason as REFIT_PANES: geometry measured while display:none is stale.
+  // The editor now stays mounted but hidden whenever the selected workspace has
+  // no tabs open, so revealing it again is a case that did not exist when the
+  // pane was simply unmounted.
+  createEffect(
+    on(
+      () => props.hidden,
+      (h) => {
+        if (!h) view?.requestMeasure();
+      },
+      { defer: true },
+    ),
+  );
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
   // Editor font size (base setting × global zoom) reaches .cm-content through the
