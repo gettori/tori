@@ -17,9 +17,17 @@ use crate::env::augmented_path;
 
 #[derive(Serialize)]
 pub struct GitFileStatus {
-    /// Porcelain XY status code, e.g. " M", "??", "A ", "MM".
+    /// Porcelain XY status code, e.g. " M", "??", "A ", "MM". Normalised from
+    /// v2's `.`-for-unmodified back to v1's space, so this stays the shape
+    /// every consumer already reads.
     status: String,
+    /// The file's *current* path, always usable as a pathspec. v1 packed a
+    /// rename into the single string `old -> new` and quoted anything
+    /// non-ASCII, so neither form matched a real file; `-z` gives the path raw
+    /// and puts the rename's other half in `orig_path`.
     path: String,
+    /// A rename's source path. `None` for every other record.
+    orig_path: Option<String>,
     /// X (index) column is neither ' ' nor '?': this file has staged changes.
     staged: bool,
     /// Y (worktree) column is not ' ', or the file is untracked ("??"):
@@ -32,7 +40,7 @@ pub fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, String> {
     let output = Command::new("git")
         .arg("-C")
         .arg(&project_path)
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain=v2", "-z"])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -41,25 +49,80 @@ pub fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, String> {
         return Ok(vec![]);
     }
 
+    // `from_utf8_lossy` is load-bearing in a way it was not under v1. v1 quoted
+    // anything non-ASCII, so its output was valid UTF-8 by construction and
+    // nothing was ever lost here; `-z` emits paths as raw bytes, so a filename
+    // that is not valid UTF-8 now becomes U+FFFD and stops matching a real
+    // file. That is no worse than v1 (whose quoted form did not match either),
+    // and carrying bytes end-to-end would mean changing this command's type,
+    // so it stays lossy - deliberately, and only for a path that was already
+    // unaddressable.
     Ok(parse_status(&String::from_utf8_lossy(&output.stdout)))
 }
 
+/// One entry from an XY code and a path. `xy` arrives in v2 spelling (`.` for
+/// unmodified); it is normalised here so `status`, `staged` and `unstaged` all
+/// keep the meaning they had under v1.
+fn status_entry(xy: &str, path: &str, orig_path: Option<String>) -> GitFileStatus {
+    let mut chars = xy.chars();
+    let norm = |c: Option<char>| match c {
+        Some('.') | None => ' ',
+        Some(c) => c,
+    };
+    let x = norm(chars.next());
+    let y = norm(chars.next());
+    GitFileStatus {
+        status: format!("{x}{y}"),
+        path: path.to_string(),
+        orig_path,
+        staged: x != ' ' && x != '?',
+        unstaged: y != ' ',
+    }
+}
+
+/// Parse `git status --porcelain=v2 -z`.
+///
+/// v2 is a *typed-record* format rather than v1's fixed two-column line: the
+/// leading character says which record follows, and only then is the layout
+/// known. Two consequences drive this reader.
+///
+/// With `-z` every record is NUL-terminated and paths arrive **raw** - no
+/// quoting, no escaping - which is the whole point: v1 quoted a non-ASCII name
+/// and packed a rename as `old -> new`, and both produced a `path` that matched
+/// no file, so the diff for one came back empty.
+///
+/// And a rename (record `2`) spends *two* NUL fields, the new path then the
+/// original, so the reader pulls the next field instead of splitting a line.
 fn parse_status(text: &str) -> Vec<GitFileStatus> {
     let mut files = Vec::new();
-    for line in text.lines() {
-        if line.len() < 4 {
-            continue;
+    let mut records = text.split('\0').filter(|r| !r.is_empty());
+    while let Some(rec) = records.next() {
+        let Some((kind, rest)) = rec.split_once(' ') else {
+            continue; // a `# branch.*` header, or trailing noise
+        };
+        match kind {
+            // Untracked has no XY of its own, so it keeps v1's "??" - the code
+            // the panel already styles as untracked.
+            "?" => files.push(status_entry("??", rest, None)),
+            // Ignored only appears under `--ignored`, which this does not pass.
+            // Skipped rather than listed: an ignored file is not a change.
+            "!" => {}
+            "1" | "2" | "u" => {
+                // How many space-separated fields precede the path. A path may
+                // itself contain spaces, so the split is counted, never greedy.
+                let leading = match kind {
+                    "1" => 7,  // XY sub mH mI mW hH hI
+                    "2" => 8,  // XY sub mH mI mW hH hI Xscore
+                    _ => 9,    // XY sub m1 m2 m3 mW h1 h2 h3
+                };
+                let mut parts = rest.splitn(leading + 1, ' ');
+                let xy = parts.next().unwrap_or_default();
+                let Some(path) = parts.nth(leading - 1) else { continue };
+                let orig = if kind == "2" { records.next().map(str::to_string) } else { None };
+                files.push(status_entry(xy, path, orig));
+            }
+            _ => {}
         }
-        let code = &line[..2];
-        let mut chars = code.chars();
-        let x = chars.next().unwrap_or(' ');
-        let y = chars.next().unwrap_or(' ');
-        files.push(GitFileStatus {
-            status: code.to_string(),
-            path: line[3..].to_string(),
-            staged: x != ' ' && x != '?',
-            unstaged: y != ' ',
-        });
     }
     files
 }
@@ -875,17 +938,114 @@ pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
 mod tests {
     use super::*;
 
+    /// One fixture per porcelain-v2 record type, in the exact spelling real
+    /// `git status --porcelain=v2 -z` emits (captured from a scratch repo).
+    /// `\0` terminates every record, and the rename spends two of them.
     #[test]
-    fn status_splits_code_and_path() {
-        let out = " M src/App.tsx\n?? new.txt\nA  staged.rs\n";
+    fn status_parses_every_record_type() {
+        let out = concat!(
+            "# branch.head main\0",
+            "1 .M N... 100644 100644 100644 aaa bbb src/App.tsx\0",
+            "1 M. N... 100644 100644 100644 aaa bbb staged.rs\0",
+            "1 MM N... 100644 100644 100644 aaa bbb both.rs\0",
+            "2 R. N... 100644 100644 100644 aaa bbb R100 new name.txt\0old name.txt\0",
+            // A copy is the same record type as a rename, differing only in the
+            // score field, so it must take the same two-field path.
+            "2 C. N... 100644 100644 100644 aaa bbb C100 copy.txt\0source.txt\0",
+            "u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.rs\0",
+            "? new.txt\0",
+            "! ignored.log\0",
+        );
         let files = parse_status(out);
-        assert_eq!(files.len(), 3);
-        assert_eq!(files[0].status, " M");
-        assert_eq!(files[0].path, "src/App.tsx");
-        assert_eq!(files[1].status, "??");
-        assert_eq!(files[1].path, "new.txt");
-        assert_eq!(files[2].status, "A ");
-        assert_eq!(files[2].path, "staged.rs");
+        let by_path = |p: &str| files.iter().find(|f| f.path == p).unwrap_or_else(|| panic!("missing {p}"));
+
+        // The `#` header and the ignored file are both skipped, so the count is
+        // the seven records that describe an actual change.
+        assert_eq!(files.len(), 7, "header and ignored records must not be listed");
+        assert!(files.iter().all(|f| f.path != "ignored.log"));
+
+        // v2's `.` normalises back to v1's space, so these codes are unchanged
+        // from what every consumer already reads.
+        let unstaged = by_path("src/App.tsx");
+        assert_eq!((unstaged.status.as_str(), unstaged.staged, unstaged.unstaged), (" M", false, true));
+        let staged = by_path("staged.rs");
+        assert_eq!((staged.status.as_str(), staged.staged, staged.unstaged), ("M ", true, false));
+        let both = by_path("both.rs");
+        assert_eq!((both.status.as_str(), both.staged, both.unstaged), ("MM", true, true));
+        let untracked = by_path("new.txt");
+        assert_eq!((untracked.status.as_str(), untracked.staged, untracked.unstaged), ("??", false, true));
+
+        // A rename keeps the new path as the pathspec and the old one beside
+        // it, rather than v1's unusable "old -> new" single string. The space
+        // in the name is the reason the field split is counted, not greedy.
+        let renamed = by_path("new name.txt");
+        assert_eq!(renamed.status, "R ");
+        assert_eq!(renamed.orig_path.as_deref(), Some("old name.txt"));
+        assert!(renamed.staged && !renamed.unstaged);
+
+        // Conflicts keep v1's reading for now; Phase 10 of this epic is what
+        // gives them a `conflicted` flag and stops counting them as staged.
+        let conflict = by_path("conflict.rs");
+        assert_eq!(conflict.status, "UU");
+
+        // A copy carries its source the same way, so the pairing cannot be
+        // keyed on the score field.
+        let copied = by_path("copy.txt");
+        assert_eq!(copied.orig_path.as_deref(), Some("source.txt"));
+
+        // Everything except the two-path records leaves `orig_path` empty.
+        assert!(files
+            .iter()
+            .filter(|f| f.path != "new name.txt" && f.path != "copy.txt")
+            .all(|f| f.orig_path.is_none()));
+    }
+
+    #[test]
+    fn a_rename_reports_both_paths_and_a_diffable_pathspec() {
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("before.txt"), "one\ntwo\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "add before.txt"]);
+        git(&dir, &["mv", "before.txt", "after.txt"]);
+        let p = dir.to_string_lossy().into_owned();
+
+        let files = git_status(p.clone()).unwrap();
+        let renamed = files.iter().find(|f| f.orig_path.is_some()).expect("expected a rename entry");
+        assert_eq!(renamed.path, "after.txt");
+        assert_eq!(renamed.orig_path.as_deref(), Some("before.txt"));
+
+        // The point of the migration: the reported path is a real pathspec, so
+        // asking for its diff returns something. Under v1 this path was the
+        // literal "before.txt -> after.txt", which matched no file and gave an
+        // empty diff.
+        let diff = git_diff_text(p, renamed.path.clone(), None, Some(DiffMode::Staged)).unwrap();
+        assert!(!diff.is_empty(), "a renamed file's diff must not come back empty");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn z_output_carries_awkward_names_raw() {
+        // v1 quoted a non-ASCII name ("na\303\257ve.txt") and left a spaced one
+        // to be guessed at. `-z` emits both raw, which is what makes them
+        // usable as pathspecs - asserted here by staging via the reported path.
+        let dir = repo_with_two_branches();
+        std::fs::write(dir.join("naïve.txt"), "x").unwrap();
+        std::fs::write(dir.join("two words.txt"), "y").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+
+        let files = git_status(p.clone()).unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert!(paths.contains(&"naïve.txt"), "got {paths:?}");
+        assert!(paths.contains(&"two words.txt"), "got {paths:?}");
+        assert!(paths.iter().all(|p| !p.contains('"')), "no path should arrive quoted: {paths:?}");
+
+        git_stage(p.clone(), vec!["naïve.txt".into(), "two words.txt".into()]).unwrap();
+        let after = git_status(p).unwrap();
+        let staged: Vec<&str> = after.iter().filter(|f| f.staged).map(|f| f.path.as_str()).collect();
+        assert!(staged.contains(&"naïve.txt") && staged.contains(&"two words.txt"), "got {staged:?}");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
