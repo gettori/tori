@@ -797,7 +797,12 @@ export default function Editor(props: {
             <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />
           </Match>
           <Match when={rightMode() === "search"}>
-            <SearchPanel root={root()} focusNonce={searchFocusNonce()} />
+            <SearchPanel
+              root={root()}
+              focusNonce={searchFocusNonce()}
+              dirty={dirty()}
+              confirm={askConfirm}
+            />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel
