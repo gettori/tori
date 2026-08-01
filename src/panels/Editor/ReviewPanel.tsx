@@ -569,6 +569,11 @@ export default function ReviewPanel(props: {
               openFile(f.path);
             }}
           >
+            {/* A rename names both halves. Only `f.path` is clickable-through
+                to a file; the source is gone from the worktree by definition. */}
+            <Show when={f.orig_path}>
+              <span class={styles.renameFrom}>{f.orig_path} → </span>
+            </Show>
             {f.path}
           </span>
           <Button
