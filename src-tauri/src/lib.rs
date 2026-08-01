@@ -301,6 +301,8 @@ pub fn run() {
             checkpoint::checkpoint_revert_file,
             checkpoint::checkpoint_revert_tree,
             checkpoint::checkpoint_prune,
+            git::git_discard_hunks,
+            git::git_discard_files,
             backstop::backstop_list,
             backstop::backstop_restore_tree,
             backstop::backstop_restore_file,
