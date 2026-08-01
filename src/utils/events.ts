@@ -115,6 +115,17 @@ export const SESSIONS_REFRESH = "sway:sessions-refresh";
 export const THEME_APPLIED = "sway:theme-applied";
 export const SETTINGS_CHANGED = "sway:settings-changed";
 
+// The payload of the backend `fs://changed` Tauri event, mirroring `struct
+// FsChanged` in `src-tauri/src/fs.rs`. Not an event name: `fs://changed` is
+// emitted by Rust and listened to directly, this is only the shape its
+// consumers must agree on.
+//
+// Pass it as the type argument (`listen<FsChanged>("fs://changed", …)`) and read
+// `e.payload.paths`. An `as` cast on this payload defeats the whole point: that
+// is how a consumer came to read a `path` field the watcher has never emitted,
+// with no compile error to catch it.
+export type FsChanged = { paths: string[] };
+
 // Payload-carrying event: open a file in the editor at an optional position.
 // (General file-change fan-out is not here — that rides the backend
 // `fs://changed` Tauri event, consumed directly by the editor panes. The one
