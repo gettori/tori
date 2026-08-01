@@ -1,6 +1,7 @@
 mod agents;
 mod askpass;
 mod attempts;
+mod backstop;
 mod chat;
 mod checkpoint;
 mod config;
@@ -300,6 +301,10 @@ pub fn run() {
             checkpoint::checkpoint_revert_file,
             checkpoint::checkpoint_revert_tree,
             checkpoint::checkpoint_prune,
+            backstop::backstop_list,
+            backstop::backstop_restore_tree,
+            backstop::backstop_restore_file,
+            backstop::backstop_prune,
             hooks::agent_hook_launch_args,
             hooks::hooks_status_prune,
             presence::update_tray,
