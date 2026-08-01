@@ -36,6 +36,15 @@ const calls: { status: number; diff: number } = { status: 0, diff: 0 };
 let aheadBehind: { ahead: number; behind: number; has_upstream: boolean } | null = null;
 let headMsg = "";
 let commitArgs: unknown[] = [];
+// Discard is the one destructive thing this panel does, so what it was asked to
+// do (and who was in the way) is worth recording exactly.
+let discardArgs: { cmd: string; args: unknown }[] = [];
+let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
+
+vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/sessionActivity")>()),
+  liveSessionStatuses: () => live,
+}));
 
 const UNSTAGED = { status: " M", path: "src/a.ts", staged: false, unstaged: true };
 const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false };
@@ -62,7 +71,16 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_commit":
         commitArgs.push(args);
         return Promise.resolve(null);
+      case "git_discard_hunks":
+      case "git_discard_files":
+        discardArgs.push({ cmd, args });
+        return Promise.resolve({ backstop_ts: 1_700_000_000, restored: ["src/a.ts"], deleted: [] });
       case "list_branches":
+      // The revert guard's detached tier walks these two. They return arrays
+      // for real, and `folderActors` filters the first without a null guard, so
+      // the catch-all `null` below would throw before the guard ever ran.
+      case "list_sessions":
+      case "sessions_running":
         return Promise.resolve([]);
       // checkpoint_list / checkpoint_turn_files / git_ahead_behind / git_origin
       // / git_default_base_branch: the panel try/catches each one, so a null is
@@ -88,6 +106,16 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import ReviewPanel from "./ReviewPanel";
 import { stage, refreshStatus } from "../../utils/gitActions";
+import { TOAST, type ToastEvent } from "../../utils/events";
+
+/** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
+ *  not the Tauri event bus, so mocking the transport would never see one. */
+function captureToasts() {
+  const messages: string[] = [];
+  const onToast = (e: Event) => messages.push((e as CustomEvent<ToastEvent>).detail.message);
+  window.addEventListener(TOAST, onToast);
+  return { messages, stop: () => window.removeEventListener(TOAST, onToast) };
+}
 
 /** One watcher burst, delivered to every registered `fs://changed` listener. */
 function fsBurst(paths: string[]) {
@@ -104,6 +132,8 @@ beforeEach(async () => {
   aheadBehind = null;
   headMsg = "";
   commitArgs = [];
+  discardArgs = [];
+  live = [];
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -198,6 +228,119 @@ describe("renames", () => {
     // The row's own title is the pathspec, not the display string, so every
     // action on it (stage, unstage, diff) addresses a file that exists.
     expect(row.getAttribute("title")).toBe("after.txt");
+  });
+});
+
+describe("discard", () => {
+  /** Discard is destructive, so every path through it is confirmed. This
+   *  answers the dialog and returns what the panel did next. */
+  async function confirmWith(label: string) {
+    fireEvent.click(await screen.findByText(label));
+  }
+
+  it("asks before discarding a file, names the recovery route, and reports it", async () => {
+    const reverted: unknown[] = [];
+    render(() => <ReviewPanel root="/proj" selected={null} onReverted={(o) => reverted.push(o)} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Discard"));
+
+    // Blast radius and the way back, both stated before anything happens.
+    const dialog = await screen.findByText(/1 file goes back to how it is staged/);
+    expect(dialog.textContent).toContain("Undo history");
+    expect(discardArgs).toEqual([]);
+
+    await confirmWith("Discard changes");
+    await waitFor(() =>
+      expect(discardArgs).toEqual([
+        { cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } },
+      ]),
+    );
+    // Open buffers hear about it through the channel a checkpoint revert uses,
+    // so a discarded file is not silently re-saved from a stale buffer.
+    await waitFor(() =>
+      expect(reverted).toEqual([{ backstop_ts: 1_700_000_000, restored: ["src/a.ts"], deleted: [] }]),
+    );
+  });
+
+  it("discards nothing when the confirm is declined", async () => {
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Discard"));
+    await confirmWith("Cancel");
+
+    await waitFor(() => expect(screen.queryByText("Discard changes")).toBeNull());
+    expect(discardArgs).toEqual([]);
+  });
+
+  it("says it is deleting, not discarding, when the file was never committed", async () => {
+    statusRows = [{ status: "??", path: "src/new.ts", staged: false, unstaged: true }];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/new.ts")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Discard"));
+    // An untracked file is not restored to anything, it is removed, and git has
+    // no copy. Calling that "discard changes" would understate it.
+    expect(await screen.findByText("Delete src/new.ts?")).toBeTruthy();
+    await confirmWith("Delete file");
+    await waitFor(() => expect(discardArgs.length).toBe(1));
+  });
+
+  it("blocks a file discard while another chat is mid-turn in the folder", async () => {
+    live = [{ sessionId: "other", sessionName: "docs-agent", folderPath: "/proj", status: "executing" }];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    const toasts = captureToasts();
+    fireEvent.click(screen.getByText("Discard"));
+
+    await waitFor(() => expect(toasts.messages.join(" ")).toContain("docs-agent"));
+    toasts.stop();
+    // Hard block: it never even got as far as asking.
+    expect(screen.queryByText("Discard changes")).toBeNull();
+    expect(discardArgs).toEqual([]);
+  });
+
+  it("ignores a second discard while the first one's confirm is still open", async () => {
+    // The busy flag used to be set after the confirm await, leaving every
+    // Discard button live behind the modal. The dialog is a singleton bound to
+    // one signal, so a second click did not open a second dialog - it silently
+    // *replaced* the pending one and orphaned its promise. You then answered a
+    // question about b.ts believing you had answered one about a.ts.
+    statusRows = [
+      { status: " M", path: "src/a.ts", staged: false, unstaged: true },
+      { status: " M", path: "src/b.ts", staged: false, unstaged: true },
+    ];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/b.ts")).toBeTruthy());
+
+    const [discardA, discardB] = screen.getAllByText("Discard");
+    fireEvent.click(discardA);
+    expect(await screen.findByText("Discard changes to src/a.ts?")).toBeTruthy();
+
+    fireEvent.click(discardB);
+    await new Promise((r) => setTimeout(r, 0));
+    // Still asking about the file you actually clicked.
+    expect(screen.queryByText("Discard changes to src/b.ts?")).toBeNull();
+    expect(screen.getByText("Discard changes to src/a.ts?")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Discard changes"));
+    await waitFor(() =>
+      expect(discardArgs).toEqual([
+        { cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } },
+      ]),
+    );
+  });
+
+  it("offers no discard on a staged row", async () => {
+    statusRows = [STAGED];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
+
+    // Staged work is safe in the index, so there is nothing here to destroy.
+    // Unstaging moves the row down to where discard lives.
+    expect(screen.queryByText("Discard")).toBeNull();
   });
 });
 

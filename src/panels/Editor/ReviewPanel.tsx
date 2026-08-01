@@ -35,6 +35,8 @@ import DiffRows, { diffRowClasses } from "./DiffRows";
 import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
+import { folderActors } from "../../utils/folderActors";
+import { revertGuard } from "../../utils/revertGuard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { findAgent } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
@@ -51,6 +53,14 @@ import styles from "./ReviewPanel.module.css";
 // worktree-vs-HEAD; the panel always asks for one of the other two, since a
 // partially-staged file's two rows describe different comparisons.
 type DiffMode = "staged" | "unstaged";
+
+/** What `git_discard_hunks` / `git_discard_files` report back: the backstop that
+ *  makes the discard undoable, plus the paths that changed on disk. */
+type DiscardOutcome = {
+  backstop_ts: number;
+  restored: string[];
+  deleted: string[];
+};
 
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
@@ -393,6 +403,114 @@ export default function ReviewPanel(props: {
     }
   }
 
+  /** Throw away one unstaged hunk.
+   *
+   *  Unlike staging, this destroys work, so it asks first and says where the
+   *  change goes. No `revertGuard` here on purpose: the blast radius is one
+   *  hunk of one file the user is looking at, and blocking that on any session
+   *  being busy anywhere in the folder would make the control unusable in the
+   *  situation it is most wanted. Whole-file discard, which is unscoped, does
+   *  consult it. */
+  async function discardHunk(path: string, index: number, fingerprint: string) {
+    const root = props.root;
+    if (!root || applying()) return;
+    // Held across the confirm, not just the invoke. Setting it afterwards would
+    // leave the button live behind the modal, so a second click opens a second
+    // dialog, overwrites `confirmReq`, orphans the first promise and can
+    // discard twice. Exactly the bug `commit()` had for the same reason.
+    setApplying(true);
+    try {
+      const ok = await askConfirm({
+        title: "Discard this hunk?",
+        message: `This change to ${path} goes away. It is not staged, so git has no other copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+        confirmLabel: "Discard hunk",
+        danger: true,
+      });
+      if (!ok) return;
+      const outcome = await invoke<DiscardOutcome>("git_discard_hunks", {
+        projectPath: root,
+        file: path,
+        hunkIndices: [index],
+        fingerprints: [fingerprint],
+        context: DIFF_CONTEXT,
+      });
+      reportDiscarded(outcome);
+      await Promise.all([refresh(), refreshExpandedDiff()]);
+    } catch (e) {
+      await refreshExpandedDiff();
+      toastError(e);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  /** Throw away every unstaged change to a whole file.
+   *
+   *  Unscoped in the sense the revert guard cares about: an agent mid-turn in
+   *  this folder may be writing the very file about to be rolled back, so this
+   *  goes through the same two-tier guard as a tree revert. */
+  async function discardFile(path: string, untracked: boolean) {
+    const root = props.root;
+    if (!root || applying()) return;
+    // Held from before the guard probe, which is itself an await: see the note
+    // in `discardHunk`. Everything from here to the invoke is one indivisible
+    // decision as far as the user's clicks are concerned.
+    setApplying(true);
+    try {
+      const candidates = await folderActors(root);
+      let verdict = revertGuard(candidates, { folderPath: root });
+      if (!verdict.allow && !verdict.overridable) {
+        toastError(verdict.reason);
+        return;
+      }
+      if (!verdict.allow) {
+        const go = await askConfirm({
+          title: "Another session may be running here",
+          message: `${verdict.reason}\n\nDiscard anyway?`,
+          confirmLabel: "Discard anyway",
+          danger: true,
+        });
+        if (!go) return;
+        verdict = revertGuard(candidates, { folderPath: root, allowDetached: true });
+        if (!verdict.allow) return;
+      }
+
+      const ok = await askConfirm({
+        title: untracked ? `Delete ${path}?` : `Discard changes to ${path}?`,
+        message: untracked
+          ? `1 file is deleted. It was never committed, so git has no copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`
+          : `1 file goes back to how it is staged. Unstaged changes to it are lost; anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+        confirmLabel: untracked ? "Delete file" : "Discard changes",
+        danger: true,
+      });
+      if (!ok) return;
+
+      const outcome = await invoke<DiscardOutcome>("git_discard_files", {
+        projectPath: root,
+        files: [path],
+      });
+      reportDiscarded(outcome);
+      await Promise.all([refresh(), refreshExpandedDiff()]);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  /** Tell the editor which files just changed underneath it.
+   *
+   *  The same channel a checkpoint revert uses (`handleReverted` in Editor.tsx),
+   *  so a buffer open on a discarded file offers keep-mine / take-disk instead
+   *  of quietly writing the discarded content back on the next save. */
+  function reportDiscarded(outcome: DiscardOutcome) {
+    props.onReverted?.({
+      backstop_ts: outcome.backstop_ts,
+      restored: outcome.restored,
+      deleted: outcome.deleted,
+    });
+  }
+
   // Copies the file's unified patch. Fetched fresh rather than read off the
   // expanded diff, so the action works from a collapsed row too.
   async function copyDiff(path: string) {
@@ -588,6 +706,28 @@ export default function ReviewPanel(props: {
           >
             Copy
           </Button>
+          {/* Unstaged rows only. A staged file's changes are safe in the index,
+              so there is nothing here to destroy; unstage it and the row moves
+              down to where discard lives. */}
+          <Show when={!opts.staged}>
+            <Button
+              size="xs"
+              variant="ghost"
+              class={styles.rowAction}
+              disabled={applying()}
+              title={
+                f.status.includes("?")
+                  ? "Delete this file (it was never committed)"
+                  : "Throw away the unstaged changes to this file"
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                void discardFile(f.path, f.status.includes("?"));
+              }}
+            >
+              Discard
+            </Button>
+          </Show>
         </div>
         <Show when={expanded() === key}>
           <div class={styles.reviewDiff}>
@@ -620,6 +760,20 @@ export default function ReviewPanel(props: {
                     >
                       {opts.staged ? "Unstage hunk" : "Stage hunk"}
                     </Button>
+                    <Show when={!opts.staged}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={applying()}
+                        title="Throw away this hunk"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void discardHunk(f.path, hi(), hunkFingerprint(hunk.header, hunk.lines));
+                        }}
+                      >
+                        Discard hunk
+                      </Button>
+                    </Show>
                     <HunkCommentInput
                       target={target()}
                       disabledReason={disabledReason()}
