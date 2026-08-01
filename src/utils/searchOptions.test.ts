@@ -3,8 +3,11 @@ import {
   DEFAULT_SEARCH_OPTIONS,
   TOGGLE_KEYS,
   countOccurrences,
+  dirtyRelativePaths,
   grepArgs,
   isUnsupported,
+  replaceOutcome,
+  replaceTargets,
   splitHighlights,
   truncationNotice,
   type SearchOptions,
@@ -104,6 +107,103 @@ describe("truncationNotice", () => {
 
   it("singularises one occurrence", () => {
     expect(truncationNotice(true, 1, 1)).toContain("(1 occurrence)");
+  });
+});
+
+describe("dirtyRelativePaths", () => {
+  it("drops falsy entries, which is how the editor records a saved file", () => {
+    expect(
+      dirtyRelativePaths("/proj", { "/proj/a.ts": true, "/proj/b.ts": false }),
+    ).toEqual(["a.ts"]);
+  });
+
+  it("ignores paths outside the root", () => {
+    expect(dirtyRelativePaths("/proj", { "/elsewhere/a.ts": true })).toEqual([]);
+  });
+
+  it("does not treat a sibling sharing the root's prefix as inside it", () => {
+    // The bug a bare startsWith(root) would have: /proj-old is not in /proj.
+    expect(
+      dirtyRelativePaths("/proj", { "/proj-old/a.ts": true, "/proj/b.ts": true }),
+    ).toEqual(["b.ts"]);
+  });
+
+  it("tolerates a root with a trailing slash", () => {
+    expect(dirtyRelativePaths("/proj/", { "/proj/sub/a.ts": true })).toEqual(["sub/a.ts"]);
+  });
+
+  it("keeps nested paths relative to the root", () => {
+    expect(dirtyRelativePaths("/proj", { "/proj/src/deep/a.ts": true })).toEqual(["src/deep/a.ts"]);
+  });
+});
+
+describe("replaceTargets", () => {
+  const m = (path: string, line: number, submatches: [number, number][]) => ({
+    path,
+    line,
+    submatches,
+  });
+
+  it("groups spans per file and attaches that file's digest", () => {
+    const targets = replaceTargets(
+      [m("a.ts", 1, [[0, 2], [5, 7]]), m("a.ts", 3, [[1, 3]]), m("b.ts", 2, [[0, 1]])],
+      [
+        { path: "a.ts", digest: "d1" },
+        { path: "b.ts", digest: "d2" },
+      ],
+      [],
+    );
+    expect(targets).toEqual([
+      {
+        path: "a.ts",
+        digest: "d1",
+        matches: [
+          { line: 1, start: 0, end: 2 },
+          { line: 1, start: 5, end: 7 },
+          { line: 3, start: 1, end: 3 },
+        ],
+      },
+      { path: "b.ts", digest: "d2", matches: [{ line: 2, start: 0, end: 1 }] },
+    ]);
+  });
+
+  it("drops a file with unsaved edits", () => {
+    const targets = replaceTargets(
+      [m("a.ts", 1, [[0, 2]]), m("b.ts", 1, [[0, 2]])],
+      [
+        { path: "a.ts", digest: "d1" },
+        { path: "b.ts", digest: "d2" },
+      ],
+      ["a.ts"],
+    );
+    expect(targets.map((t) => t.path)).toEqual(["b.ts"]);
+  });
+
+  it("drops a file the search returned no digest for", () => {
+    // Nothing to prove it has not moved, so it must not be written.
+    const targets = replaceTargets([m("a.ts", 1, [[0, 2]])], [], []);
+    expect(targets).toEqual([]);
+  });
+});
+
+describe("replaceOutcome", () => {
+  it("reports counts with nothing skipped", () => {
+    expect(replaceOutcome(12, ["a", "b"], [])).toBe("Replaced 12 occurrences in 2 files.");
+  });
+
+  it("singularises one occurrence in one file", () => {
+    expect(replaceOutcome(1, ["a"], [])).toBe("Replaced 1 occurrence in 1 file.");
+  });
+
+  it("keeps skip reasons distinguishable, since they ask for different things", () => {
+    const out = replaceOutcome(12, ["a"], [
+      { path: "x", reason: "unsaved changes" },
+      { path: "y", reason: "unsaved changes" },
+      { path: "z", reason: "changed on disk" },
+    ]);
+    expect(out).toBe(
+      "Replaced 12 occurrences in 1 file, 2 skipped (unsaved changes), 1 skipped (changed on disk).",
+    );
   });
 });
 

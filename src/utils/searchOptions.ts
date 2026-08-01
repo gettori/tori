@@ -63,6 +63,66 @@ export function truncationNotice(
   return `First ${cap} matching lines shown (${occurrences} ${plural}). Refine your search.`;
 }
 
+/** The root-relative paths of files with unsaved edits, from the editor's
+ *  absolute-keyed dirty record.
+ *
+ *  Two things it has to get right. `handleDirty` (`Editor.tsx`) sets entries to
+ *  `false` rather than deleting them, so a falsy value is not a dirty file. And
+ *  a plain `startsWith(root)` would treat `/proj-old/a.ts` as living inside
+ *  `/proj`, so the boundary has to be a separator. */
+export function dirtyRelativePaths(root: string, dirty: Record<string, boolean>): string[] {
+  const base = root.endsWith("/") ? root.slice(0, -1) : root;
+  const out: string[] = [];
+  for (const [abs, isDirty] of Object.entries(dirty)) {
+    if (!isDirty) continue;
+    if (!abs.startsWith(`${base}/`)) continue;
+    out.push(abs.slice(base.length + 1));
+  }
+  return out;
+}
+
+/** Split the panel's matches into the per-file targets `replace_in_files`
+ *  takes, dropping any file with unsaved edits (its buffer, not the disk, is
+ *  the version the user is looking at) and any file the search returned no
+ *  digest for (there is nothing to prove it has not moved since). */
+export function replaceTargets(
+  matches: { path: string; line: number; submatches: Submatch[] }[],
+  files: { path: string; digest: string }[],
+  dirtyPaths: string[],
+): { path: string; digest: string; matches: { line: number; start: number; end: number }[] }[] {
+  const digests = new Map(files.map((f) => [f.path, f.digest]));
+  const skip = new Set(dirtyPaths);
+  const byPath = new Map<string, { line: number; start: number; end: number }[]>();
+  for (const m of matches) {
+    if (skip.has(m.path) || !digests.has(m.path)) continue;
+    const spans = byPath.get(m.path) ?? [];
+    for (const [start, end] of m.submatches) spans.push({ line: m.line, start, end });
+    byPath.set(m.path, spans);
+  }
+  return [...byPath].map(([path, spans]) => ({
+    path,
+    digest: digests.get(path)!,
+    matches: spans,
+  }));
+}
+
+/** The sentence reporting what a replace did. Skips are grouped by reason so
+ *  "unsaved changes" and "changed on disk" stay distinguishable, since they ask
+ *  the user for different things. */
+export function replaceOutcome(
+  occurrences: number,
+  changed: string[],
+  skipped: { path: string; reason: string }[],
+): string {
+  const occ = `${occurrences} ${occurrences === 1 ? "occurrence" : "occurrences"}`;
+  const files = `${changed.length} ${changed.length === 1 ? "file" : "files"}`;
+  const parts = [`Replaced ${occ} in ${files}`];
+  const byReason = new Map<string, number>();
+  for (const s of skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+  for (const [reason, n] of byReason) parts.push(`${n} skipped (${reason})`);
+  return `${parts.join(", ")}.`;
+}
+
 /** Why a toggle is disabled, phrased for a tooltip. The backend reports *that*
  *  it cannot honour an option; naming the reason is the panel's job, because a
  *  disabled control with no explanation is barely better than an inert one. */

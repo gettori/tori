@@ -1,7 +1,25 @@
-import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  on,
+  onMount,
+  onCleanup,
+  For,
+  Show,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { CaseSensitive, Ellipsis, EyeOff, Regex, WholeWord, type LucideIcon } from "lucide-solid";
+import {
+  CaseSensitive,
+  Ellipsis,
+  EyeOff,
+  Regex,
+  Replace,
+  ReplaceAll,
+  WholeWord,
+  type LucideIcon,
+} from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
@@ -9,8 +27,11 @@ import { debounce } from "../../utils/debounce";
 import {
   DEFAULT_SEARCH_OPTIONS,
   countOccurrences,
+  dirtyRelativePaths,
   grepArgs,
   isUnsupported,
+  replaceOutcome,
+  replaceTargets,
   splitHighlights,
   truncationNotice,
   unsupportedReason,
@@ -37,6 +58,9 @@ type FileGroup = { path: string; matches: SearchMatch[] };
 /** What the backend can do here, kept apart from `result` so clearing results
  *  (an empty query, a root switch) does not also blank the toggle states. */
 type Capabilities = { backend: string; unsupported: string[] };
+type ReplaceOutcome = { changed: string[]; skipped: { path: string; reason: string }[]; occurrences: number };
+/** One span to replace, as `replace_in_files` takes it. */
+type ReplaceSpan = { line: number; start: number; end: number };
 
 const MAX_RESULTS = 500;
 const EMPTY_RESULT: SearchResult = {
@@ -79,13 +103,30 @@ function groupByFile(matches: SearchMatch[]): FileGroup[] {
  *  runs while the mode is hidden.
  *
  *  All match semantics live in the backend's one canonical regex; this panel
- *  only collects the options and renders the spans it is handed. */
-export default function SearchPanel(props: { root: string | null; focusNonce: number }) {
+ *  only collects the options and renders the spans it is handed. Replace is the
+ *  same story: the preview text comes from the backend, because reproducing
+ *  `$1` expansion in JavaScript's regex dialect could show something the write
+ *  would not produce. */
+export default function SearchPanel(props: {
+  root: string | null;
+  focusNonce: number;
+  /** Absolute-keyed dirty record from the editor. Files with unsaved edits are
+   *  left out of a replace: the buffer, not the disk, is what the user sees. */
+  dirty?: Record<string, boolean>;
+  /** Editor's `askConfirm`. It is local to that component rather than exported,
+   *  so it arrives as a prop; without one, Replace All proceeds unconfirmed. */
+  confirm?: (opts: { title: string; message?: string; confirmLabel?: string }) => Promise<boolean>;
+}) {
   const [query, setQuery] = createSignal("");
+  const [replacement, setReplacement] = createSignal("");
+  const [showReplace, setShowReplace] = createSignal(false);
   const [options, setOptions] = createSignal<SearchOptions>({ ...DEFAULT_SEARCH_OPTIONS });
   const [showGlobs, setShowGlobs] = createSignal(false);
   const [result, setResult] = createSignal<SearchResult>(EMPTY_RESULT);
   const [caps, setCaps] = createSignal<Capabilities>({ backend: "", unsupported: [] });
+  const [preview, setPreview] = createSignal<(string | null)[]>([]);
+  const [outcome, setOutcome] = createSignal<string | null>(null);
+  const [applying, setApplying] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   let inputEl: HTMLInputElement | undefined;
@@ -170,6 +211,122 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
     debouncedGlobs();
   }
 
+  // --- replace ---
+
+  /** Flat list of every displayed span, in render order, so a preview response
+   *  can be read back positionally. */
+  const flatSpans = () =>
+    result().matches.flatMap((m) => m.submatches.map(([start, end]) => ({ text: m.text, start, end })));
+
+  /** Where each match's spans begin within `flatSpans()`. Memoised because the
+   *  alternative is rescanning the result set once per rendered span, which is
+   *  quadratic at the 500-line cap. */
+  const previewBase = createMemo(() => {
+    const base = new Map<SearchMatch, number>();
+    let i = 0;
+    for (const m of result().matches) {
+      base.set(m, i);
+      i += m.submatches.length;
+    }
+    return base;
+  });
+
+  /** Index of a given match's Nth span within `flatSpans()`, so a row can find
+   *  its own preview entry. */
+  function previewIndex(match: SearchMatch, spanIndex: number): number {
+    const base = previewBase().get(match);
+    return base === undefined ? -1 : base + spanIndex;
+  }
+
+  let previewGen = 0;
+  async function runPreview() {
+    const spans = flatSpans();
+    if (!replacement() || !spans.length) return setPreview([]);
+    const gen = ++previewGen;
+    try {
+      const out = await invoke<(string | null)[]>("preview_replace", {
+        query: query(),
+        options: options(),
+        replacement: replacement(),
+        spans,
+      });
+      if (gen === previewGen) setPreview(out);
+    } catch {
+      // An unpreviewable replacement (a bad pattern) simply shows no preview;
+      // the search error slot already carries the reason.
+      if (gen === previewGen) setPreview([]);
+    }
+  }
+  const debouncedPreview = debounce(() => void runPreview(), INPUT_DEBOUNCE_MS);
+
+  const dirtyPaths = () => dirtyRelativePaths(props.root ?? "", props.dirty ?? {});
+  const allTargets = () => replaceTargets(result().matches, result().files, dirtyPaths());
+
+  /** Apply `targets`, then report and re-search. The re-search matters beyond
+   *  freshness: it is what proves on screen that the write landed. */
+  async function applyReplace(
+    targets: { path: string; digest: string; matches: ReplaceSpan[] }[],
+    skippedForDirt: string[] = [],
+  ) {
+    const root = props.root;
+    // One replace at a time. A second would find every digest already moved and
+    // report "0 replaced, N skipped (changed on disk)" for work that in fact
+    // succeeded, which reads as a failure.
+    if (!root || !targets.length || applying()) return;
+    setApplying(true);
+    try {
+      const out = await invoke<ReplaceOutcome>("replace_in_files", {
+        root,
+        query: query(),
+        options: options(),
+        replacement: replacement(),
+        targets,
+      });
+      // Deliberately NOT markSelfWrite: the buffers of open files do not hold
+      // this edit, so suppressing the watcher echo would leave a clean tab
+      // showing pre-replace text whose next save would silently revert it.
+      const skipped = [
+        ...out.skipped,
+        ...skippedForDirt.map((path) => ({ path, reason: "unsaved changes" })),
+      ];
+      setOutcome(replaceOutcome(out.occurrences, out.changed, skipped));
+      setError(null);
+      await runSearch(query());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function replaceAll() {
+    const targets = allTargets();
+    if (!targets.length || applying()) return;
+    const occurrences = targets.reduce((n, t) => n + t.matches.length, 0);
+    const files = targets.length;
+    const ok = props.confirm
+      ? await props.confirm({
+          title: `Replace ${occurrences} ${occurrences === 1 ? "occurrence" : "occurrences"} in ${files} ${files === 1 ? "file" : "files"}?`,
+          message: "This writes to disk and cannot be undone from here.",
+          confirmLabel: "Replace",
+        })
+      : true;
+    if (!ok) return;
+    await applyReplace(targets, dirtyPaths().filter((p) => result().matches.some((m) => m.path === p)));
+  }
+
+  function replaceFile(path: string) {
+    void applyReplace(allTargets().filter((t) => t.path === path));
+  }
+
+  function replaceOne(m: SearchMatch, span: Submatch) {
+    const target = allTargets().find((t) => t.path === m.path);
+    if (!target) return;
+    void applyReplace([
+      { ...target, matches: [{ line: m.line, start: span[0], end: span[1] }] },
+    ]);
+  }
+
   createEffect(
     on(
       () => props.root,
@@ -178,6 +335,29 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
         setError(null);
         void probeCapabilities();
       },
+    ),
+  );
+
+  // Re-preview when the replacement text changes, a new result set arrives, or
+  // the replace row is reopened. Debounced, so typing a replacement does not
+  // fire a round trip per keystroke. `showReplace` has to be a dependency and
+  // not just a read: reopening the row after the results changed underneath it
+  // would otherwise show no preview until the replacement was retyped.
+  createEffect(
+    on([replacement, result, showReplace], () => {
+      if (showReplace()) debouncedPreview();
+      else setPreview([]);
+    }),
+  );
+
+  // A replace outcome describes one past action. Anything that changes what is
+  // on screen retires it, so a success line can never sit above results it had
+  // nothing to do with.
+  createEffect(
+    on(
+      [query, options, () => props.root],
+      () => setOutcome(null),
+      { defer: true },
     ),
   );
 
@@ -226,6 +406,33 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
           value={query()}
           onInput={(e) => onInput(e.currentTarget.value)}
         />
+        <Show when={showReplace()}>
+          <div class={styles.replaceRow}>
+            <input
+              class={styles.searchInput}
+              type="text"
+              aria-label="Replace with"
+              placeholder="Replace with"
+              value={replacement()}
+              onInput={(e) => setReplacement(e.currentTarget.value)}
+            />
+            <IconButton
+              size="xs"
+              icon={<Icon icon={ReplaceAll} size={14} />}
+              aria-label="Replace all"
+              title={
+                result().truncated
+                  ? "Refine the search first: Replace All is disabled while results are capped"
+                  : "Replace all"
+              }
+              // A capped result set is a subset of the real matches, so a
+              // "replace everything" that silently means "replace the first 500"
+              // is the one action that must not be offered here.
+              disabled={result().truncated || !allTargets().length || applying()}
+              onClick={() => void replaceAll()}
+            />
+          </div>
+        </Show>
         <div class={styles.toggleRow}>
           <For each={TOGGLES}>
             {(t) => {
@@ -244,6 +451,15 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
             }}
           </For>
           <span class={styles.toggleSpacer} />
+          <IconButton
+            size="xs"
+            icon={<Icon icon={Replace} size={14} />}
+            active={showReplace()}
+            aria-label="Toggle replace"
+            title="Toggle replace"
+            aria-expanded={showReplace()}
+            onClick={() => setShowReplace((v) => !v)}
+          />
           <IconButton
             size="xs"
             icon={<Icon icon={Ellipsis} size={14} />}
@@ -290,6 +506,9 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
       <Show when={notice()}>
         <div class={styles.truncatedNotice}>{notice()}</div>
       </Show>
+      <Show when={outcome()}>
+        <div class={styles.outcome}>{outcome()}</div>
+      </Show>
       <div class={styles.results}>
         <For each={groups()}>
           {(group) => (
@@ -297,6 +516,17 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
               <div class={styles.fileHeader} title={group.path}>
                 <span class={styles.filePath}>{group.path}</span>
                 <span class={styles.matchCount}>{group.matches.length}</span>
+                <Show when={showReplace() && replacement()}>
+                  <IconButton
+                    size="xs"
+                    class={styles.rowAction}
+                    icon={<Icon icon={Replace} size={12} />}
+                    aria-label={`Replace in ${group.path}`}
+                    title={`Replace in ${group.path}`}
+                    disabled={dirtyPaths().includes(group.path) || applying()}
+                    onClick={() => replaceFile(group.path)}
+                  />
+                </Show>
               </div>
               <For each={group.matches}>
                 {(m) => (
@@ -309,6 +539,37 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
                         }
                       </For>
                     </span>
+                    <Show when={showReplace() && replacement()}>
+                      <span class={styles.previewText}>
+                        <For each={m.submatches}>
+                          {(span, i) => {
+                            const next = () => preview()[previewIndex(m, i())];
+                            return (
+                              <Show when={next() != null}>
+                                <span class={styles.previewPair}>
+                                  <del class={styles.previewOld}>
+                                    {m.text.slice(span[0], span[1])}
+                                  </del>
+                                  <ins class={styles.previewNew}>{next()}</ins>
+                                  <IconButton
+                                    size="xs"
+                                    class={styles.rowAction}
+                                    icon={<Icon icon={Replace} size={12} />}
+                                    aria-label={`Replace this occurrence on line ${m.line}`}
+                                    title="Replace this occurrence"
+                                    disabled={dirtyPaths().includes(m.path) || applying()}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      replaceOne(m, span);
+                                    }}
+                                  />
+                                </span>
+                              </Show>
+                            );
+                          }}
+                        </For>
+                      </span>
+                    </Show>
                   </div>
                 )}
               </For>

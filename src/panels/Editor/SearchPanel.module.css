@@ -33,6 +33,53 @@
   font-size: var(--sway-text-lg);
 }
 
+.replaceRow {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+/* Reports what a replace did, including what it refused to touch. */
+.outcome {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+}
+
+/* The per-file and per-match replace buttons: present only while a replacement
+   is typed, and kept out of the row's flow so the match text still ellipsises. */
+.rowAction {
+  flex: none;
+}
+
+.previewText {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  flex: none;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+}
+
+.previewPair {
+  display: flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+}
+
+.previewOld {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
+
+.previewNew {
+  background: var(--success-emphasis);
+  color: var(--fg-on-emphasis);
+  border-radius: calc(2px * var(--ui-scale));
+  text-decoration: none;
+}
+
 .toggleRow {
   display: flex;
   align-items: center;
