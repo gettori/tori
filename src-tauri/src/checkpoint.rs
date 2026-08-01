@@ -847,13 +847,13 @@ pub struct RevertOutcome {
 
 /// One line of `git diff --raw --no-abbrev --no-renames`:
 /// `:<src_mode> <dst_mode> <src_sha> <dst_sha> <status>\t<path>`.
-struct RawChange {
-    dst_mode: String,
+pub(crate) struct RawChange {
+    pub(crate) dst_mode: String,
     dst_sha: String,
-    path: String,
+    pub(crate) path: String,
 }
 
-fn parse_raw_change(line: &str) -> Option<RawChange> {
+pub(crate) fn parse_raw_change(line: &str) -> Option<RawChange> {
     let (meta, path) = line.split_once('\t')?;
     let mut fields = meta.split_whitespace();
     let _src_mode = fields.next()?;
@@ -866,7 +866,7 @@ fn parse_raw_change(line: &str) -> Option<RawChange> {
 /// Write a blob from the object store to `abs`, honouring the tree's mode:
 /// a `120000` entry is a symlink (its blob content is the link target, which
 /// must not be written as a regular file), `100755` keeps the exec bit.
-fn write_blob_to_disk(repo: &str, change: &RawChange, abs: &Path) -> Result<(), String> {
+pub(crate) fn write_blob_to_disk(repo: &str, change: &RawChange, abs: &Path) -> Result<(), String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)

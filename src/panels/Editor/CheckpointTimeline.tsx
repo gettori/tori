@@ -35,6 +35,17 @@ export type RevertOutcome = {
   restored: string[];
   deleted: string[];
 };
+/** A pre-discard snapshot of the working tree, owned by this *worktree* rather
+ *  than by a session: nobody has to be chatting for one to exist, so these are
+ *  listed and shown even when the session strip above is empty. */
+type BackstopRecord = {
+  ts: number;
+  tree: string;
+  worktree_path: string;
+  head: string;
+  label: string;
+};
+type RestoreOutcome = { restored: string[]; deleted: string[] };
 // Checkpoint timestamps are epoch *seconds* (parse_rfc3339_secs in
 // sessions.rs), which Date() would otherwise read as milliseconds and render
 // as 1970.
@@ -85,6 +96,7 @@ export default function CheckpointTimeline(props: {
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal("");
   const [reverting, setReverting] = createSignal(false);
+  const [backstops, setBackstops] = createSignal<BackstopRecord[]>([]);
 
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
@@ -126,6 +138,82 @@ export default function CheckpointTimeline(props: {
     const current = picked();
     if (current !== null && list.some((e) => e.prompt_ts === current)) return;
     setPicked(list.length ? list[list.length - 1].prompt_ts : null);
+  }
+
+  /** Keyed on the worktree alone, so this runs whether or not a session is
+   *  selected. Newest last, matching the strip. */
+  async function loadBackstops() {
+    const root = props.root;
+    if (!root) {
+      setBackstops([]);
+      return;
+    }
+    // Coalesced, not just caught: this list is read unconditionally by the
+    // render gate below, where the session strip's `sessionId &&` used to
+    // short-circuit first. A reply that is not a list means no backstops, not a
+    // blank panel.
+    const list = await invoke<BackstopRecord[]>("backstop_list", { repoPath: root }).catch(() => []);
+    setBackstops(Array.isArray(list) ? list : []);
+  }
+
+  async function restoreBackstop(entry: BackstopRecord) {
+    const root = props.root;
+    const folder = props.folderPath;
+    if (!root || !folder || reverting()) return;
+
+    // Same blast radius as "Revert tree to here", so the same guard: this
+    // rewrites every file in the folder, including whatever another chat is
+    // writing right now. Nothing about the backstop being ours makes the other
+    // session's in-flight work ours to overwrite.
+    const candidates = await folderActors(folder);
+    let verdict = revertGuard(candidates, { folderPath: folder });
+    if (!verdict.allow && !verdict.overridable) {
+      toastError(verdict.reason);
+      return;
+    }
+    if (!verdict.allow) {
+      const go = await askConfirm({
+        title: "Another session may be running here",
+        message: `${verdict.reason}\n\nRestore anyway?`,
+        confirmLabel: "Restore anyway",
+        danger: true,
+      });
+      if (!go) return;
+      verdict = revertGuard(candidates, { folderPath: folder, allowDetached: true });
+      if (!verdict.allow) return;
+    }
+
+    const ok = await askConfirm({
+      title: `Undo "${entry.label}"?`,
+      message: `Every file in this folder goes back to how it was at ${shortTime(entry.ts)}, just before that change.\n\nAnything you have done since is overwritten.`,
+      confirmLabel: "Restore files",
+      danger: true,
+    });
+    if (!ok) return;
+    setReverting(true);
+    try {
+      const outcome = await invoke<RestoreOutcome>("backstop_restore_tree", {
+        repoPath: root,
+        ts: entry.ts,
+      });
+      // The same channel a checkpoint revert uses, so an open buffer over a
+      // restored file reconciles instead of saving over it later. Backstops
+      // never created one, hence the null.
+      props.onReverted?.({ backstop_ts: null, ...outcome });
+      // Both lists, like the turn revert does: the restore moved the working
+      // tree, so the strip's per-turn counts are stale too, and waiting for the
+      // watcher's debounce would show wrong numbers in the meantime.
+      await loadEntries();
+      await loadBackstops();
+      emitWith<ToastEvent>(TOAST, {
+        message: `Restored ${outcome.restored.length + outcome.deleted.length} file(s) from before "${entry.label}".`,
+        kind: "info",
+      });
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setReverting(false);
+    }
   }
 
   async function loadFiles() {
@@ -311,6 +399,7 @@ export default function CheckpointTimeline(props: {
       () => void loadEntries(),
     ),
   );
+  createEffect(on(() => props.root, () => void loadBackstops()));
   createEffect(on([picked, cumulative], () => void loadFiles()));
 
   // checkpoint_list costs a `git diff --raw` per checkpoint plus a write-tree,
@@ -321,7 +410,10 @@ export default function CheckpointTimeline(props: {
   onMount(async () => {
     unlistenFs = await listen("fs://changed", () => {
       clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => void loadEntries(), 500);
+      refreshTimer = setTimeout(() => {
+        void loadEntries();
+        void loadBackstops();
+      }, 500);
     });
   });
   onCleanup(() => {
@@ -338,109 +430,139 @@ export default function CheckpointTimeline(props: {
   };
 
   return (
-    <Show when={props.sessionId && entries().length}>
+    <Show when={(props.sessionId && entries().length) || backstops().length}>
       <div class={styles.timeline}>
-        <div class={styles.timelineHeader}>
-          <span class={styles.timelineTitle}>Timeline</span>
-          <label class={styles.cumulativeToggle} title="Compare this checkpoint against the working tree as it is now">
-            <input type="checkbox" checked={cumulative()} onChange={(e) => setCumulative(e.currentTarget.checked)} />
-            workspace since here
-          </label>
-        </div>
-        {/* Roving-focus strip: one tab stop, left/right moves the pick, so the
-            timeline is scrubbable without a mouse. */}
-        <div
-          class={styles.strip}
-          role="listbox"
-          tabindex="0"
-          aria-label="Session checkpoints"
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") {
-              e.preventDefault();
-              movePick(-1);
-            } else if (e.key === "ArrowRight") {
-              e.preventDefault();
-              movePick(1);
-            }
-          }}
-        >
-          <For each={entries()}>
-            {(entry) => (
-              <button
-                type="button"
-                role="option"
-                aria-selected={picked() === entry.prompt_ts}
-                class={`${styles.turnChip} ${picked() === entry.prompt_ts ? styles.turnChipActive : ""} ${
-                  entry.kind === "backstop" ? styles.turnChipBackstop : ""
-                }`}
-                title={`${shortTime(entry.prompt_ts)} · ${entry.file_count} file(s) · ${shortSize(entry.bytes)}${
-                  entry.kind === "backstop" ? " · saved before a revert" : ""
-                }`}
-                onClick={() => setPicked(entry.prompt_ts)}
-              >
-                <span class={styles.turnTime}>{shortTime(entry.prompt_ts)}</span>
-                <span class={styles.turnCount}>{entry.kind === "backstop" ? "backstop" : entry.file_count}</span>
-              </button>
-            )}
-          </For>
-        </div>
-        <Show when={cumulative()}>
-          <div class={styles.scopeHint}>
-            Everything that changed in this folder since this point, including your own edits and any other session's
-            work, not just this session's.
+        {/* The turn strip belongs to a session. The backstop list below does
+            not, so this panel can be nothing but backstops when no chat is
+            selected - which is the normal case for a discard. */}
+        <Show when={props.sessionId && entries().length}>
+          <div class={styles.timelineHeader}>
+            <span class={styles.timelineTitle}>Timeline</span>
+            <label
+              class={styles.cumulativeToggle}
+              title="Compare this checkpoint against the working tree as it is now"
+            >
+              <input type="checkbox" checked={cumulative()} onChange={(e) => setCumulative(e.currentTarget.checked)} />
+              workspace since here
+            </label>
           </div>
-        </Show>
-        <div class={styles.timelineActions}>
-          <Button
-            size="sm"
-            disabled={!!revertDisabledReason()}
-            title={revertDisabledReason() ?? "Restore every file in this folder to this checkpoint"}
-            onClick={revertToPicked}
+          {/* Roving-focus strip: one tab stop, left/right moves the pick, so the
+              timeline is scrubbable without a mouse. */}
+          <div
+            class={styles.strip}
+            role="listbox"
+            tabindex="0"
+            aria-label="Session checkpoints"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                movePick(-1);
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                movePick(1);
+              }
+            }}
           >
-            {reverting() ? "Reverting…" : "Revert tree to here"}
-          </Button>
-        </div>
-        <Show when={files().length} fallback={<div class={styles.timelineEmpty}>No file changes in this turn.</div>}>
-          <For each={files()}>
-            {(f) => (
-              <div>
-                <div class={styles.timelineRow} onClick={() => void toggleDiff(f.path)} title={f.path}>
-                  <span class={`${styles.timelineStatus} ${styles[f.status]}`}>{f.status[0].toUpperCase()}</span>
-                  <Show when={f.shared_with?.length}>
+            <For each={entries()}>
+              {(entry) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={picked() === entry.prompt_ts}
+                  class={`${styles.turnChip} ${picked() === entry.prompt_ts ? styles.turnChipActive : ""} ${
+                    entry.kind === "backstop" ? styles.turnChipBackstop : ""
+                  }`}
+                  title={`${shortTime(entry.prompt_ts)} · ${entry.file_count} file(s) · ${shortSize(entry.bytes)}${
+                    entry.kind === "backstop" ? " · saved before a revert" : ""
+                  }`}
+                  onClick={() => setPicked(entry.prompt_ts)}
+                >
+                  <span class={styles.turnTime}>{shortTime(entry.prompt_ts)}</span>
+                  <span class={styles.turnCount}>{entry.kind === "backstop" ? "backstop" : entry.file_count}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <Show when={cumulative()}>
+            <div class={styles.scopeHint}>
+              Everything that changed in this folder since this point, including your own edits and any other session's
+              work, not just this session's.
+            </div>
+          </Show>
+          <div class={styles.timelineActions}>
+            <Button
+              size="sm"
+              disabled={!!revertDisabledReason()}
+              title={revertDisabledReason() ?? "Restore every file in this folder to this checkpoint"}
+              onClick={revertToPicked}
+            >
+              {reverting() ? "Reverting…" : "Revert tree to here"}
+            </Button>
+          </div>
+          <Show when={files().length} fallback={<div class={styles.timelineEmpty}>No file changes in this turn.</div>}>
+            <For each={files()}>
+              {(f) => (
+                <div>
+                  <div class={styles.timelineRow} onClick={() => void toggleDiff(f.path)} title={f.path}>
+                    <span class={`${styles.timelineStatus} ${styles[f.status]}`}>{f.status[0].toUpperCase()}</span>
+                    <Show when={f.shared_with?.length}>
+                      <span
+                        class={styles.sharedMarker}
+                        title={`Also written by another chat in this worktree (${f.shared_with!.join(", ")}). Reverting affects work that is not only this session's.`}
+                      >
+                        shared
+                      </span>
+                    </Show>
+                    <Show when={f.unattributed}>
+                      <span class={styles.sharedMarker} title={UNATTRIBUTED_NOTICE}>
+                        unattributed
+                      </span>
+                    </Show>
                     <span
-                      class={styles.sharedMarker}
-                      title={`Also written by another chat in this worktree (${f.shared_with!.join(", ")}). Reverting affects work that is not only this session's.`}
+                      class={styles.timelineName}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (props.root)
+                          emitWith(OPEN_IN_EDITOR, {
+                            path: `${props.root}/${f.path}`,
+                          });
+                      }}
                     >
-                      shared
+                      {f.path}
                     </span>
-                  </Show>
-                  <Show when={f.unattributed}>
-                    <span class={styles.sharedMarker} title={UNATTRIBUTED_NOTICE}>
-                      unattributed
-                    </span>
-                  </Show>
-                  <span
-                    class={styles.timelineName}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (props.root)
-                        emitWith(OPEN_IN_EDITOR, {
-                          path: `${props.root}/${f.path}`,
-                        });
-                    }}
-                  >
-                    {f.path}
-                  </span>
-                </div>
-                <Show when={expanded() === f.path}>
-                  <div class={styles.timelineDiff}>
-                    <For each={diff().split("\n")}>
-                      {(line) => (
-                        <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
-                      )}
-                    </For>
                   </div>
-                </Show>
+                  <Show when={expanded() === f.path}>
+                    <div class={styles.timelineDiff}>
+                      <For each={diff().split("\n")}>
+                        {(line) => (
+                          <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </Show>
+        </Show>
+        <Show when={backstops().length}>
+          <div class={styles.timelineHeader}>
+            <span class={styles.timelineTitle}>Undo history</span>
+          </div>
+          <For each={backstops()}>
+            {(b) => (
+              <div class={styles.backstopRow} title={`Saved at ${shortTime(b.ts)} in this worktree`}>
+                <span class={styles.sharedMarker}>saved</span>
+                <span class={styles.timelineName}>{b.label}</span>
+                <span class={styles.backstopTime}>{shortTime(b.ts)}</span>
+                <Button
+                  size="xs"
+                  disabled={reverting()}
+                  title="Put every file in this folder back to just before this change"
+                  onClick={() => void restoreBackstop(b)}
+                >
+                  Restore
+                </Button>
               </div>
             )}
           </For>

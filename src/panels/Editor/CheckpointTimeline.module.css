@@ -167,6 +167,30 @@
 /* A file more than one live chat wrote this turn. Marked rather than resolved:
    both sessions really did write it, so reverting is not only this session's
    business. */
+/* A pre-discard snapshot. Same row shape as a turn's file, minus the click-to-
+   expand, plus a trailing time and its own Restore button. */
+.backstopRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.backstopRow:hover {
+  background: var(--neutral-hover);
+}
+
+/* The label takes the slack so the time and Restore sit hard right. */
+.backstopRow .timelineName {
+  flex: 1;
+}
+
+.backstopTime {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
 .sharedMarker {
   margin-left: var(--sway-space-2);
   padding: 0 var(--sway-space-1);
