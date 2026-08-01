@@ -39,6 +39,10 @@ let commitArgs: unknown[] = [];
 // Discard is the one destructive thing this panel does, so what it was asked to
 // do (and who was in the way) is worth recording exactly.
 let discardArgs: { cmd: string; args: unknown }[] = [];
+let stashArgs: { cmd: string; args: unknown }[] = [];
+let stashRows: { selector: string; message: string; branch: string | null; relative_date: string }[] = [];
+let stashCreated = true;
+let stashFails = false;
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
@@ -75,6 +79,18 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_discard_files":
         discardArgs.push({ cmd, args });
         return Promise.resolve({ backstop_ts: 1_700_000_000, restored: ["src/a.ts"], deleted: [] });
+      case "git_stash_list":
+        return Promise.resolve(stashRows);
+      case "git_stash_push":
+        stashArgs.push({ cmd, args });
+        return Promise.resolve(stashCreated);
+      case "git_stash_apply":
+        stashArgs.push({ cmd, args });
+        if (stashFails) return Promise.reject("error: Your local changes to src/a.ts would be overwritten");
+        return Promise.resolve({ restored: ["src/a.ts"], deleted: [] });
+      case "git_stash_drop":
+        stashArgs.push({ cmd, args });
+        return Promise.resolve(null);
       case "list_branches":
       // The revert guard's detached tier walks these two. They return arrays
       // for real, and `folderActors` filters the first without a null guard, so
@@ -133,6 +149,10 @@ beforeEach(async () => {
   headMsg = "";
   commitArgs = [];
   discardArgs = [];
+  stashArgs = [];
+  stashRows = [];
+  stashCreated = true;
+  stashFails = false;
   live = [];
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
@@ -341,6 +361,145 @@ describe("discard", () => {
     // Staged work is safe in the index, so there is nothing here to destroy.
     // Unstaging moves the row down to where discard lives.
     expect(screen.queryByText("Discard")).toBeNull();
+  });
+});
+
+describe("stash", () => {
+  const ENTRY = {
+    selector: "stash@{0}",
+    message: "fix: the thing: with colons",
+    branch: "main",
+    relative_date: "2 hours ago",
+  };
+
+  it("lists stashes even when the working tree is clean", async () => {
+    // A clean tree hits the panel's empty state. Hiding stashes behind it would
+    // lose the only route back to them at exactly the moment they matter.
+    statusRows = [];
+    stashRows = [ENTRY];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+
+    expect(await screen.findByText("Stashes")).toBeTruthy();
+    // The message survives its colons, and is not the raw "On main: ..." subject.
+    expect(screen.getByText("fix: the thing: with colons")).toBeTruthy();
+  });
+
+  it("creates a stash named after the Summary, with untracked left out by default", async () => {
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: "half-done refactor" } });
+
+    fireEvent.click(screen.getByText("Stash all"));
+
+    await waitFor(() =>
+      expect(stashArgs).toEqual([
+        {
+          cmd: "git_stash_push",
+          args: { projectPath: "/proj", message: "half-done refactor", includeUntracked: false },
+        },
+      ]),
+    );
+    // The name moved into the stash, so leaving it in the commit box would
+    // silently seed the next commit with it.
+    await waitFor(() => expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe(""));
+  });
+
+  it("passes the include-untracked flag when it is ticked", async () => {
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    fireEvent.click(screen.getByTitle(/Also stash files git has never seen/).querySelector("input")!);
+    fireEvent.click(screen.getByText("Stash all"));
+
+    await waitFor(() =>
+      expect(stashArgs[0]).toEqual({
+        cmd: "git_stash_push",
+        args: { projectPath: "/proj", message: null, includeUntracked: true },
+      }),
+    );
+  });
+
+  it("says so when there was nothing to stash", async () => {
+    // git exits 0 on a clean tree, so silence would read as success.
+    stashCreated = false;
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    const toasts = captureToasts();
+    fireEvent.click(screen.getByText("Stash all"));
+    await waitFor(() => expect(toasts.messages.join(" ")).toContain("Nothing to stash"));
+    toasts.stop();
+  });
+
+  it("reports an applied stash's files through onReverted", async () => {
+    const reverted: unknown[] = [];
+    stashRows = [ENTRY];
+    render(() => <ReviewPanel root="/proj" selected={null} onReverted={(o) => reverted.push(o)} />);
+    await screen.findByText("Stashes");
+
+    fireEvent.click(screen.getByText("Pop"));
+
+    await waitFor(() =>
+      expect(stashArgs).toEqual([
+        { cmd: "git_stash_apply", args: { projectPath: "/proj", selector: "stash@{0}", pop: true } },
+      ]),
+    );
+    // A stash laid back down over an open buffer must raise the same keep-mine
+    // / take-disk question a checkpoint revert does.
+    await waitFor(() =>
+      expect(reverted).toEqual([{ backstop_ts: null, restored: ["src/a.ts"], deleted: [] }]),
+    );
+  });
+
+  it("shows git's own reason when a pop conflicts", async () => {
+    stashRows = [ENTRY];
+    stashFails = true;
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await screen.findByText("Stashes");
+
+    const toasts = captureToasts();
+    fireEvent.click(screen.getByText("Pop"));
+    await waitFor(() => expect(toasts.messages.join(" ")).toContain("would be overwritten"));
+    toasts.stop();
+  });
+
+  it("warns that dropping a stash cannot be undone from the timeline", async () => {
+    stashRows = [ENTRY];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await screen.findByText("Stashes");
+
+    fireEvent.click(screen.getByText("Drop"));
+
+    // Discard can promise a backstop; drop cannot, because a stash is not part
+    // of the working tree any snapshot covers. Saying otherwise would be a lie.
+    const dialog = await screen.findByText(/cannot be undone from the timeline/);
+    expect(dialog.textContent).toContain("fix: the thing: with colons");
+    expect(stashArgs).toEqual([]);
+
+    fireEvent.click(screen.getByText("Drop stash"));
+    await waitFor(() =>
+      expect(stashArgs).toEqual([
+        { cmd: "git_stash_drop", args: { projectPath: "/proj", selector: "stash@{0}" } },
+      ]),
+    );
+  });
+
+  it("blocks every stash action while another chat is mid-turn", async () => {
+    // A stash is worktree-wide, so it can clobber an agent's in-flight work
+    // just as a tree revert can.
+    live = [{ sessionId: "other", sessionName: "docs-agent", folderPath: "/proj", status: "executing" }];
+    stashRows = [ENTRY];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await screen.findByText("Stashes");
+
+    for (const label of ["Stash all", "Apply", "Pop", "Drop"]) {
+      const toasts = captureToasts();
+      fireEvent.click(screen.getByText(label));
+      await waitFor(() => expect(toasts.messages.join(" ")).toContain("docs-agent"));
+      toasts.stop();
+    }
+    expect(stashArgs).toEqual([]);
+    expect(screen.queryByText("Drop stash")).toBeNull();
   });
 });
 
