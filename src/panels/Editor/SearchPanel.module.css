@@ -33,6 +33,36 @@
   font-size: var(--sway-text-lg);
 }
 
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+/* Pushes the glob disclosure to the far end, away from the match toggles: it
+   opens a row rather than changing what a match is. */
+.toggleSpacer {
+  flex: 1;
+}
+
+.globRow {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+.globInput {
+  flex: 1;
+  min-width: 0;
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+}
+
 .truncatedNotice {
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
@@ -101,7 +131,16 @@
 .matchText {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: pre;
   color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
+}
+
+/* The matched span. `<mark>` carries a browser default yellow that ignores the
+   theme, so both colors are set explicitly. */
+.hit {
+  background: var(--accent-subtle);
+  color: var(--fg-default);
+  border-radius: calc(2px * var(--ui-scale));
 }
