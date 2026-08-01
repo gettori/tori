@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, on, createSignal, Show } from "solid-
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, Compartment, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -13,7 +13,8 @@ import { json } from "@codemirror/lang-json";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
-import { lspPluginFor } from "./lspClient";
+import { lspPluginFor, onLspChange } from "./lspClient";
+import { reattachLsp } from "./lspReattach";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import { problemsFromState } from "./problemsFromState";
@@ -122,7 +123,18 @@ async function langForPath(path: string): Promise<Extension> {
 // `pendingKind` (not a truthy `pendingExternal`) is what marks a deferred
 // conflict: a deleted file's stashed text is the empty string, which would
 // read as "no conflict" and silently drop the banner on tab activation.
-type Buffer = { state: EditorState; savedText: string; pendingExternal?: string; pendingKind?: ConflictKind };
+// `lsp` is this buffer's own compartment holding the LSP plugin (or nothing).
+// It has to be per buffer, not shared: `client.plugin(uri)` is file-addressed,
+// so one compartment across buffers would hand every file the same file's
+// plugin. Reconfiguring it is what lets a file opened before the server was
+// ready pick LSP up in place, instead of needing a close and reopen.
+type Buffer = {
+  state: EditorState;
+  savedText: string;
+  lsp: Compartment;
+  pendingExternal?: string;
+  pendingKind?: ConflictKind;
+};
 // "changed": the file still exists but its contents moved under unsaved edits.
 // "deleted": the file is gone from disk (a checkpoint tree revert removes the
 // files a later checkpoint had added). The deleted case raises the banner even
@@ -175,6 +187,7 @@ export default function CodeEditor(props: {
     }
   }, AGENT_WRITE_DEBOUNCE_MS);
   let offRefit: (() => void) | undefined;
+  let offLsp: (() => void) | undefined;
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
   let swapToken = 0;
@@ -443,13 +456,13 @@ export default function CodeEditor(props: {
     publishDiagnostics(path, problemsFromState(state));
   }
 
-  function makeState(path: string, text: string, lang: Extension): EditorState {
+  function makeState(path: string, text: string, lang: Extension, lsp: Compartment): EditorState {
     return EditorState.create({
       doc: text,
       extensions: [
         ...commonExtensions,
         lang,
-        lspPluginFor(path),
+        lsp.of(lspPluginFor(path)),
         EditorView.updateListener.of((u) => {
           // Diagnostics arrive as a transaction effect from the LSP client, so
           // republish only when one actually lands rather than on every keypress.
@@ -464,6 +477,14 @@ export default function CodeEditor(props: {
         }),
       ],
     });
+  }
+
+  // The language client moved: came up, went away, or was replaced by a project
+  // switch. Every open buffer re-asks `lspPluginFor` what it should hold, so a
+  // file opened before the server was ready attaches in place, and one left over
+  // from the previous project drops a plugin that now points at a dead client.
+  function relinkLsp() {
+    reattachLsp(buffers, shown, lspPluginFor, (effects) => view?.dispatch({ effects }));
   }
 
   async function swapTo(path: string | null) {
@@ -491,7 +512,8 @@ export default function CodeEditor(props: {
       const lang = await langForPath(path);
       // A newer swap superseded us while reading: drop this result.
       if (token !== swapToken) return;
-      buf = { state: makeState(path, text, lang), savedText: text };
+      const lsp = new Compartment();
+      buf = { state: makeState(path, text, lang, lsp), savedText: text, lsp };
       buffers.set(path, buf);
     }
     if (token !== swapToken) return;
@@ -522,6 +544,13 @@ export default function CodeEditor(props: {
       parent: host,
       state: EditorState.create({ doc: "", extensions: commonExtensions }),
     });
+    // Subscribed before the first await, and before the opening swap, because
+    // the client can finish starting inside either. A fire that lands with no
+    // subscriber leaves the buffer holding no plugin for good, which is the bug
+    // this whole compartment exists to fix. One subscription for the component
+    // rather than one per buffer: the client is one per project, and every open
+    // buffer wants the same news about it.
+    offLsp = onLspChange(relinkLsp);
     if (props.activePath) swapTo(props.activePath);
     // Genuine external changes to any open buffer: reload (clean) or banner
     // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
@@ -588,6 +617,7 @@ export default function CodeEditor(props: {
     unlistenFs?.();
     offAgentWrites?.();
     offRefit?.();
+    offLsp?.();
     view?.destroy();
   });
 
