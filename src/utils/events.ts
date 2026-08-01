@@ -95,6 +95,28 @@ export const REFIT_PANES = "sway:refit-panes";
 export const SET_RIGHT_MODE = "sway:set-right-mode";
 export type SetRightMode = { mode: "files" | "changes" | "search" | "session" | "shared" | "docs" };
 
+// The command registry's editor entries (utils/commands.ts). Each acts on
+// whatever tab is active, so none of them carries a path: the editor is the only
+// thing that knows which that is, and a palette row naming a file it read a
+// moment ago would act on the wrong one after a tab switch.
+//
+// Save is consumed by CodeEditor (it owns the buffer); the rest by Editor (it
+// owns the tabs). GOTO_LINE asks for a line number rather than carrying one -
+// Editor is the prompt host, so the palette closes before the prompt opens.
+export const EDITOR_SAVE = "sway:editor-save";
+export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
+export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
+export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
+
+// The command registry's git entries. Consumed by Editor.tsx, which is always
+// mounted and knows both the selected workspace and the active file - the
+// Changes panel knows the first but is usually not on screen, and has never
+// known the second. The actions themselves live in utils/gitActions.
+export const GIT_STAGE_ACTIVE = "sway:git-stage-active";
+export const GIT_UNSTAGE_ACTIVE = "sway:git-unstage-active";
+export const GIT_COMMIT = "sway:git-commit";
+export const GIT_PUSH = "sway:git-push";
+
 // Payload-carrying event: focus a specific live terminal tab by id (the
 // command palette's "focus session" action, when the session is already
 // open). Consumed by Terminal.tsx.

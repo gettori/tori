@@ -46,19 +46,40 @@ import {
 import {
   on as onEvent,
   onWith,
+  emitWith,
   OPEN_IN_EDITOR,
   PURGE_UNDER_PATH,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
+  EDITOR_CLOSE_TAB,
+  EDITOR_TOGGLE_PREVIEW,
+  EDITOR_GOTO_LINE,
+  GIT_STAGE_ACTIVE,
+  GIT_UNSTAGE_ACTIVE,
+  GIT_COMMIT,
+  GIT_PUSH,
+  TOAST,
+  type ToastEvent,
   type OpenInEditor,
   type PurgeUnderPath,
   type LiveTab,
   type SetRightMode,
   type FsChanged,
 } from "../../utils/events";
-import { isUnderPath } from "../../utils/pathScope";
+import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
+import {
+  refreshGit,
+  startGitWatch,
+  gitState,
+  stagedFiles,
+  stage as stageFiles,
+  unstage as unstageFiles,
+  commit as commitStaged,
+  push as pushToOrigin,
+} from "../../utils/gitActions";
+import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
@@ -329,6 +350,11 @@ export default function Editor(props: {
   // review surface refresh on external changes.
   createEffect(
     on(root, (r) => {
+      // The shared git store's root-change refresh is driven from here, not from
+      // the Changes panel: that panel is unmounted whenever the right pane shows
+      // anything else, and the palette's git commands still have to know whether
+      // this workspace has anything staged or anything to push.
+      void refreshGit(r);
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // A new project means a new language server; diagnostics from the old one
@@ -622,6 +648,83 @@ export default function Editor(props: {
     });
   }
 
+  // Published for the command palette, which is this pane's sibling and can
+  // reach none of the above. One effect over everything the snapshot names, so
+  // its parts can never describe two different moments.
+  createEffect(() => {
+    const active = activeId();
+    publishEditorState({
+      activePath: active,
+      dirty: active ? !!dirty()[active] : false,
+      tabCount: tabs().length,
+      projectRoot: root(),
+    });
+  });
+  onCleanup(clearEditorState);
+
+  // --- Command registry -----------------------------------------------------
+  //
+  // The editor commands land here because this pane owns the tabs, and the git
+  // ones because it is the only always-mounted component that knows both the
+  // selected workspace and the active file. Each acts on whatever is active now,
+  // never on what the palette row was named after: the two can differ by the
+  // time the row is picked.
+  //
+  // Text input goes through the prompt this pane already owns, so the palette
+  // has closed by the time the prompt opens rather than the two stacking.
+
+  async function gotoLineFromPrompt() {
+    const path = activeId();
+    if (!path) return;
+    const answer = await askText("Go to line", "");
+    const line = Number(answer?.trim());
+    if (!answer || !Number.isInteger(line) || line < 1) return;
+    setGotoTarget({ path, line, nonce: ++gotoNonce });
+  }
+
+  // Repo-relative, which is what every git_* command takes. A file outside the
+  // workspace (a Docs note, a `.shared/` file) has no path git would accept, so
+  // it is refused by name rather than staged against the wrong repo.
+  //
+  // Relativized through `mentionPath` rather than by slicing the root's length:
+  // `isUnderPath` normalizes a trailing slash before comparing, so a root that
+  // carried one would pass the guard and then yield a path off by a character.
+  function activeRepoPath(): string | null {
+    const r = root();
+    const path = activeId();
+    if (!r || !path) return null;
+    if (!isUnderPath(path, r)) {
+      emitWith<ToastEvent>(TOAST, {
+        message: `${basename(path)} isn't in this workspace, so git has nothing to stage.`,
+        kind: "error",
+      });
+      return null;
+    }
+    return mentionPath(path, r);
+  }
+
+  function stageActive(staging: boolean) {
+    const r = root();
+    const rel = activeRepoPath();
+    if (!r || !rel) return;
+    void (staging ? stageFiles(r, [rel]) : unstageFiles(r, [rel]));
+  }
+
+  async function commitFromPrompt() {
+    const r = root();
+    // Re-checked here, not just in the palette's enablement: the index can move
+    // between the row being listed and the prompt being answered.
+    if (!r || !stagedFiles().length) return;
+    const message = (await askText("Commit message", ""))?.trim();
+    if (!message) return;
+    await commitStaged(r, message);
+  }
+
+  function pushCurrentBranch() {
+    const { root: r, branch } = gitState();
+    if (r && branch) void pushToOrigin(r, branch);
+  }
+
   let offTouched: UnlistenFn | undefined;
   let offOpen: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
@@ -629,8 +732,29 @@ export default function Editor(props: {
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
+  let offGitWatch: (() => void) | undefined;
+  let offCommands: (() => void)[] = [];
 
   onMount(async () => {
+    // Registered before the first await: these are synchronous window listeners,
+    // and there is no reason to leave a window in which a command silently does
+    // nothing.
+    offCommands = [
+      onEvent(EDITOR_CLOSE_TAB, () => {
+        const id = activeId();
+        if (id) void closeTab(id);
+      }),
+      onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
+      onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
+      onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
+      onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
+      onEvent(GIT_COMMIT, () => void commitFromPrompt()),
+      onEvent(GIT_PUSH, pushCurrentBranch),
+    ];
+    // `.git` is watcher-filtered, so a fetch moving the upstream emits no
+    // fs://changed. Subscribed here because this component outlives the panel
+    // that used to hold these listeners.
+    offGitWatch = await startGitWatch();
     // Turn end for every adapter: the transcript watcher's debounced signal.
     offTouched = await listen("sessions://changed", () => {
       void refreshTouched();
@@ -702,6 +826,8 @@ export default function Editor(props: {
     offFollow?.();
     offProjectSearch?.();
     offSetRightMode?.();
+    offGitWatch?.();
+    for (const off of offCommands) off();
   });
 
   return (

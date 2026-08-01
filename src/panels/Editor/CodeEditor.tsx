@@ -29,6 +29,7 @@ import {
   AGENT_FILES_WRITTEN,
   AGENT_WRITE_DEBOUNCE_MS,
   REFIT_PANES,
+  EDITOR_SAVE,
   TOAST,
   type AgentFilesWritten,
   type ToastEvent,
@@ -574,6 +575,13 @@ export default function CodeEditor(props: {
     offRefit = onEvent(REFIT_PANES, () => view?.requestMeasure());
   });
 
+  // The palette's "Save file". It lands here rather than in Editor because the
+  // buffer is here: `saveActive` writes what the view actually holds, which is
+  // the same text Mod-s writes, rather than a copy something else was passing
+  // around. The key binding is still CM6's own, and stays the only key: a
+  // table-level Mod-s would fire while a terminal had focus.
+  const offSave = onEvent(EDITOR_SAVE, () => void saveActive());
+
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
   // no tabs open, so revealing it again is a case that did not exist when the
@@ -631,6 +639,7 @@ export default function CodeEditor(props: {
     offAgentWrites?.();
     offRefit?.();
     offLsp?.();
+    offSave();
     view?.destroy();
   });
 

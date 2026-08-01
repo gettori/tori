@@ -1,12 +1,49 @@
-/* Extends Dialogs.module.css's .pickerItem with a label + secondary-text
-   layout (PickerModal's item is a single string, unstructured). */
+/* Extends Dialogs.module.css's .pickerItem with a label + secondary-text +
+   key-chip layout (PickerModal's item is a single string, unstructured). The
+   base row is a plain block, so the flex line is added here rather than there. */
+.item {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+}
+
 .itemLabel {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .itemSub {
-  margin-left: calc(8px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
+}
+
+/* A command whose requirements are unmet still lists - the row is where its
+   reason is shown - but reads as unavailable and does not run. */
+.disabled {
+  cursor: default;
+}
+.disabled .itemLabel {
+  color: var(--fg-muted);
+}
+
+/* The keys this command also answers to, matching the Cmd+/ sheet's chips so
+   the two surfaces of one table look like one table. */
+.itemKeys {
+  display: flex;
+  gap: var(--sway-space-1);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.key {
+  min-width: calc(18px * var(--ui-scale));
+  padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
+  font-family: var(--sway-font-ui);
+  font-size: var(--sway-text-md);
+  line-height: 1.5;
+  text-align: center;
+  color: var(--fg-muted);
+  background: var(--canvas-input);
+  border: var(--sway-border-thin) solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
 }

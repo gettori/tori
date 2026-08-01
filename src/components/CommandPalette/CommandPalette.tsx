@@ -3,44 +3,64 @@ import { Portal } from "solid-js/web";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { agents } from "../../utils/agents";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
-import {
-  emit,
-  emitWith,
-  SET_RIGHT_MODE,
-  NEW_SESSION,
-  TOGGLE_SIDEBAR,
-  TOGGLE_TERMINAL,
-  TOGGLE_EDITOR,
-  TOGGLE_FILETREE,
-  STOP_CHAT,
-  type StopChat,
-  type NewSession,
-  type SetRightMode,
-} from "../../utils/events";
+import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
+import { editorState } from "../../utils/editorState";
+import { stagedFiles, canPush } from "../../utils/gitActions";
+import { emitWith, NEW_SESSION, STOP_CHAT, type StopChat, type NewSession } from "../../utils/events";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import dialogStyles from "../Dialogs/Dialogs.module.css";
 import styles from "./CommandPalette.module.css";
 
-type PaletteItem = { id: string; label: string; sub?: string; run: () => void };
+type PaletteItem = {
+  id: string;
+  label: string;
+  sub?: string;
+  /** Key chips, for commands that also carry a binding. */
+  keys?: string[];
+  /** Why this cannot run right now, or null when it can. */
+  disabled?: string | null;
+  run: () => void;
+};
 
-const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
-  { mode: "files", label: "Files" },
-  { mode: "changes", label: "Changes" },
-  { mode: "search", label: "Search" },
-  { mode: "session", label: "Session" },
-  { mode: "shared", label: "Shared" },
-  { mode: "docs", label: "Docs" },
-];
+/**
+ * Why a requirement is unmet, or null when it holds.
+ *
+ * The tags are resolved here rather than in `commands.ts` because that table
+ * feeds `hotkeys.ts`, which `TerminalView` imports: a store read there would put
+ * the editor and git modules in the terminal's chunk. The palette is the leaf of
+ * that graph, so reading them costs nothing.
+ */
+function unmetReason(req: Requirement): string | null {
+  switch (req) {
+    case "editorFile":
+      return editorState().activePath ? null : "No file open";
+    case "gitRoot":
+      return editorState().projectRoot ? null : "Select a branch first";
+    case "staged":
+      return stagedFiles().length ? null : "Nothing staged";
+    case "ahead":
+      return canPush() ? null : "Nothing to push";
+  }
+}
 
-const VIEW_TOGGLES: { event: string; label: string }[] = [
-  { event: TOGGLE_SIDEBAR, label: "Sidebar" },
-  { event: TOGGLE_TERMINAL, label: "Terminal" },
-  { event: TOGGLE_EDITOR, label: "Editor" },
-  { event: TOGGLE_FILETREE, label: "Filetree" },
-];
+/** The first unmet requirement's reason, in the order the command listed them. */
+function refusal(c: Command): string | null {
+  for (const req of c.requires ?? []) {
+    const why = unmetReason(req);
+    if (why) return why;
+  }
+  return null;
+}
 
-/** Cmd+K command palette: fuzzy-filters actions - a new session per registered
- *  agent, right-panel modes, view toggles, stopping a running chat, settings.
+/** Cmd+K command palette: fuzzy-filters everything runnable by name.
+ *
+ *  Its rows come from the canonical table in `utils/commands` - the same table
+ *  `hotkeys.ts` derives its bindings from - so a command cannot be listed here
+ *  under one name and in the Cmd+/ sheet under another, and one added to the
+ *  table appears in both without being registered twice. What the table cannot
+ *  hold is added around it: a row per registered agent and a row per running
+ *  chat are both lists that only exist at runtime.
+ *
  *  It lists no sessions: the terminal pane's History dropdown is the session
  *  list, and it is branch-scoped and covers every session rather than only the
  *  live ones, which is more than a fuzzy line of text here could say. */
@@ -77,18 +97,19 @@ export default function CommandPalette(props: {
         },
       });
     }
-    for (const m of RIGHT_MODES) {
+    // The registry. `hidden` entries stay out: the palette itself, the one
+    // binding whose target is the key that fired it, the terminal-owned search,
+    // and the unqualified stop that the per-chat rows below say better.
+    for (const c of COMMANDS) {
+      if (c.hidden || !c.run) continue;
+      const why = refusal(c);
       actionItems.push({
-        id: `mode:${m.mode}`,
-        label: `Show ${m.label}`,
-        run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode }),
-      });
-    }
-    for (const v of VIEW_TOGGLES) {
-      actionItems.push({
-        id: `view:${v.event}`,
-        label: `View: Toggle ${v.label}`,
-        run: () => emit(v.event),
+        id: c.id,
+        label: c.label,
+        sub: why ?? c.sub,
+        keys: c.keys,
+        disabled: why,
+        run: () => c.run?.(),
       });
     }
     // One row per chat that a stop would actually do something to, named. The
@@ -123,6 +144,14 @@ export default function CommandPalette(props: {
     return scored.map((r) => r.item);
   });
 
+  // A disabled row lists (that is how you learn why it is refused) but does not
+  // run, and picking it leaves the palette open rather than dismissing it on an
+  // action that did nothing.
+  function pick(item: PaletteItem) {
+    if (item.disabled) return;
+    close(item.run);
+  }
+
   createEffect(() => {
     const n = results().length;
     if (index() >= n) setIndex(0);
@@ -146,7 +175,7 @@ export default function CommandPalette(props: {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const hit = results()[index()];
-      if (hit) close(hit.run);
+      if (hit) pick(hit);
     }
   }
 
@@ -190,16 +219,27 @@ export default function CommandPalette(props: {
                 {(item, i) => (
                   <div
                     ref={(el) => (rows[i()] = el)}
-                    class={dialogStyles.pickerItem}
-                    classList={{ [dialogStyles.active]: i() === index() }}
+                    class={`${dialogStyles.pickerItem} ${styles.item}`}
+                    classList={{
+                      [dialogStyles.active]: i() === index(),
+                      [styles.disabled]: !!item.disabled,
+                    }}
                     role="option"
                     aria-selected={i() === index()}
-                    onClick={() => close(item.run)}
+                    aria-disabled={!!item.disabled}
+                    onClick={() => pick(item)}
                     onMouseEnter={() => setIndex(i())}
                   >
                     <span class={styles.itemLabel}>{item.label}</span>
                     <Show when={item.sub}>
                       <span class={styles.itemSub}>{item.sub}</span>
+                    </Show>
+                    <Show when={item.keys}>
+                      {(keys) => (
+                        <span class={styles.itemKeys}>
+                          <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
+                        </span>
+                      )}
                     </Show>
                   </div>
                 )}

@@ -13,6 +13,20 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
+import {
+  gitState,
+  stagedFiles,
+  changedFiles,
+  pushing,
+  refreshStatus,
+  refreshMeta,
+  refreshGit,
+  stage as stageFiles,
+  unstage as unstageFiles,
+  commit as commitStaged,
+  push as pushToOrigin,
+  type FileStatus,
+} from "../../utils/gitActions";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import DiffRows, { diffRowClasses } from "./DiffRows";
@@ -30,13 +44,10 @@ import IconButton from "../../components/IconButton/IconButton";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
-type FileStatus = { status: string; path: string; staged: boolean; unstaged: boolean };
 // Mirrors DiffMode in src-tauri/src/git.rs. "head" (the backend default) is
 // worktree-vs-HEAD; the panel always asks for one of the other two, since a
 // partially-staged file's two rows describe different comparisons.
 type DiffMode = "staged" | "unstaged";
-type BranchInfo = { name: string; current: boolean };
-type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
@@ -57,23 +68,26 @@ const DIFF_CONTEXT = 3;
  *  staged/unstaged split, with per-file stage/unstage, a manual commit box,
  *  and an "ask agent to draft" button routed through safe-send. Each file's
  *  inline diff toggle (git_diff_text) still carries the per-hunk "Comment"
- *  affordance from phase 1, routed to the sidebar's selected session. */
+ *  affordance from phase 1, routed to the sidebar's selected session.
+ *
+ *  The file list, branch and ahead/behind are read from the shared store in
+ *  `utils/gitActions`, not fetched here: this panel is unmounted whenever the
+ *  right pane shows anything else, and the command palette's git entries have to
+ *  answer the same questions with it closed. Staging from either surface
+ *  therefore moves the other. Everything still local (the expanded diff, its
+ *  gaps, the PR base branch) is state only a mounted panel has any use for. */
 export default function ReviewPanel(props: {
   root: string | null;
   selected: Selection | null;
   onReverted?: (outcome: RevertOutcome) => void;
 }) {
-  const [files, setFiles] = createSignal<FileStatus[]>([]);
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
   const [commitMsg, setCommitMsg] = createSignal("");
   const [committing, setCommitting] = createSignal(false);
   const [drafting, setDrafting] = createSignal(false);
-  const [branch, setBranch] = createSignal<string | null>(null);
-  const [aheadBehind, setAheadBehind] = createSignal<AheadBehind | null>(null);
   const [origin, setOrigin] = createSignal<string | null>(null);
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
-  const [pushing, setPushing] = createSignal(false);
   const [openingPr, setOpeningPr] = createSignal(false);
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   // Which file the expanded diff belongs to, and which of its two sections:
@@ -136,8 +150,11 @@ export default function ReviewPanel(props: {
     setOpenGaps((prev) => new Set(prev).add(key));
   }
 
-  const staged = () => files().filter((f) => f.staged);
-  const unstaged = () => files().filter((f) => f.unstaged);
+  const files = () => gitState().files;
+  const staged = stagedFiles;
+  const unstaged = changedFiles;
+  const branch = () => gitState().branch;
+  const aheadBehind = () => gitState().aheadBehind;
 
   function target(): SessionTarget | null {
     const sel = props.selected;
@@ -164,41 +181,20 @@ export default function ReviewPanel(props: {
   }
 
   async function refresh() {
-    const root = props.root;
-    if (!root) {
-      setFiles([]);
-      return;
-    }
-    try {
-      setFiles(await invoke<FileStatus[]>("git_status", { projectPath: root }));
-    } catch {
-      setFiles([]);
-    }
+    await refreshStatus(props.root);
   }
 
-  // Header state (current branch, ahead/behind, origin, PR base branch) -
-  // kept separate from the file list since it has its own set of backend
-  // calls; refreshed alongside `refresh()` at every trigger point.
+  // Header state. Branch and ahead/behind live in the shared store (the palette
+  // needs them too); origin and the PR base branch stay here, since nothing
+  // outside the "Open PR" button has ever asked for them.
   async function refreshHeader() {
     const root = props.root;
     if (!root) {
-      setBranch(null);
-      setAheadBehind(null);
       setOrigin(null);
       setBaseBranch(null);
       return;
     }
-    try {
-      const branches = await invoke<BranchInfo[]>("list_branches", { path: root });
-      setBranch(branches.find((b) => b.current)?.name ?? null);
-    } catch {
-      setBranch(null);
-    }
-    try {
-      setAheadBehind(await invoke<AheadBehind>("git_ahead_behind", { projectPath: root }));
-    } catch {
-      setAheadBehind(null);
-    }
+    await refreshMeta(root);
     try {
       setOrigin(await invoke<string | null>("git_origin", { projectPath: root }));
     } catch {
@@ -212,7 +208,7 @@ export default function ReviewPanel(props: {
   }
 
   async function refreshAll() {
-    await Promise.all([refresh(), refreshHeader()]);
+    await Promise.all([refreshGit(props.root), refreshHeader()]);
   }
 
   function toastError(e: unknown) {
@@ -221,24 +217,12 @@ export default function ReviewPanel(props: {
 
   async function stage(path: string) {
     const root = props.root;
-    if (!root) return;
-    try {
-      await invoke("git_stage", { projectPath: root, paths: [path] });
-      await refresh();
-    } catch (e) {
-      toastError(e);
-    }
+    if (root) await stageFiles(root, [path]);
   }
 
   async function unstage(path: string) {
     const root = props.root;
-    if (!root) return;
-    try {
-      await invoke("git_unstage", { projectPath: root, paths: [path] });
-      await refresh();
-    } catch (e) {
-      toastError(e);
-    }
+    if (root) await unstageFiles(root, [path]);
   }
 
   async function commit() {
@@ -246,15 +230,10 @@ export default function ReviewPanel(props: {
     const message = commitMsg().trim();
     if (!root || !message || committing() || !staged().length) return;
     setCommitting(true);
-    try {
-      await invoke("git_commit", { projectPath: root, message });
-      setCommitMsg("");
-      await refreshAll();
-    } catch (e) {
-      toastError(e);
-    } finally {
-      setCommitting(false);
-    }
+    // The message is cleared only on success, so a rejected commit (an empty
+    // author, a failing hook) does not also lose what you typed.
+    if (await commitStaged(root, message)) setCommitMsg("");
+    setCommitting(false);
   }
 
   // Routes a draft request naming the currently staged files through
@@ -381,53 +360,6 @@ export default function ReviewPanel(props: {
     ),
   );
 
-  // Resolves once `git://push-done|error` fires for `repo`, so a caller can
-  // await a push before proceeding (e.g. "Open PR" pushing first). One-shot:
-  // both listeners are torn down as soon as either fires.
-  function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
-    return new Promise((resolve) => {
-      let settled = false;
-      let unDone: UnlistenFn | undefined;
-      let unError: UnlistenFn | undefined;
-      const finish = (result: { ok: boolean; error: string }) => {
-        if (settled) return;
-        settled = true;
-        unDone?.();
-        unError?.();
-        resolve(result);
-      };
-      listen<{ repo: string }>("git://push-done", (e) => {
-        if (e.payload.repo === repo) finish({ ok: true, error: "" });
-      }).then((un) => (settled ? un() : (unDone = un)));
-      listen<{ repo: string; error: string }>("git://push-error", (e) => {
-        if (e.payload.repo === repo) finish({ ok: false, error: e.payload.error });
-      }).then((un) => (settled ? un() : (unError = un)));
-    });
-  }
-
-  // Pushes `branch` to origin and waits for the result, toasting on failure
-  // and refreshing the header (ahead/behind, upstream) on success.
-  async function pushBranch(root: string, branchName: string): Promise<boolean> {
-    if (pushing()) return false;
-    setPushing(true);
-    const result = waitForPush(root);
-    try {
-      await invoke("git_push", { repo: root, remote: "origin", branch: branchName });
-    } catch (e) {
-      setPushing(false);
-      toastError(e);
-      return false;
-    }
-    const { ok, error } = await result;
-    setPushing(false);
-    if (!ok) {
-      toastError(error || "Push failed");
-      return false;
-    }
-    await refreshHeader();
-    return true;
-  }
-
   // "Open PR" (task 3): push first if the branch is unpushed or ahead, then
   // open the provider's compare/new-MR/new-PR page for branch -> base.
   async function openPr() {
@@ -444,7 +376,7 @@ export default function ReviewPanel(props: {
     setOpeningPr(true);
     const ab = aheadBehind();
     const needsPush = !ab || !ab.has_upstream || ab.ahead > 0;
-    if (needsPush && !(await pushBranch(root, branchName))) {
+    if (needsPush && !(await pushToOrigin(root, branchName))) {
       setOpeningPr(false);
       return;
     }
@@ -677,7 +609,7 @@ export default function ReviewPanel(props: {
                 onClick={() => {
                   const root = props.root;
                   const branchName = branch();
-                  if (root && branchName) void pushBranch(root, branchName);
+                  if (root && branchName) void pushToOrigin(root, branchName);
                 }}
               >
                 {pushing()
