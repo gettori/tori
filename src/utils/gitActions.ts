@@ -15,8 +15,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 
-/** One porcelain entry. `path` is repo-relative, as every git_* command wants. */
-export type FileStatus = { status: string; path: string; staged: boolean; unstaged: boolean };
+/** One porcelain entry. `path` is repo-relative, as every git_* command wants,
+ *  and since the backend moved to `--porcelain=v2 -z` it is always a real
+ *  pathspec: a rename puts its source in `orig_path` instead of packing both
+ *  into one `old -> new` string, and nothing arrives quoted. */
+export type FileStatus = {
+  status: string;
+  path: string;
+  orig_path?: string | null;
+  staged: boolean;
+  unstaged: boolean;
+};
 export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 type BranchInfo = { name: string; current: boolean };
 

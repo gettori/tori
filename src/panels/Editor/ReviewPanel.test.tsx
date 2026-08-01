@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import type { FileStatus } from "../../utils/gitActions";
 
 // The Changes panel's reaction to the filesystem watcher, driven through the
 // real component. What is asserted here is strictly the panel's own job: which
@@ -40,7 +41,7 @@ const UNSTAGED = { status: " M", path: "src/a.ts", staged: false, unstaged: true
 const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false };
 // The index as the backend would report it next. `git_stage` moves it, so a
 // panel that re-read the status shows the file under a different heading.
-let statusRows = [UNSTAGED];
+let statusRows: FileStatus[] = [UNSTAGED];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
@@ -179,6 +180,24 @@ describe("expanded diff refetch", () => {
     fsBurst(["/proj/src/a.ts"]);
     await waitFor(() => expect(calls.status).toBeGreaterThan(statusBefore));
     expect(calls.diff).toBe(0);
+  });
+});
+
+describe("renames", () => {
+  it("names both halves in one row, and acts on the destination", async () => {
+    // What `--porcelain=v2 -z` now reports: a real pathspec plus the source
+    // beside it, instead of v1's single unusable "before.txt -> after.txt".
+    statusRows = [
+      { status: "R ", path: "after.txt", orig_path: "before.txt", staged: true, unstaged: false },
+    ];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+
+    const row = await screen.findByTitle("after.txt");
+    expect(row.textContent).toContain("before.txt");
+    expect(row.textContent).toContain("after.txt");
+    // The row's own title is the pathspec, not the display string, so every
+    // action on it (stage, unstage, diff) addresses a file that exists.
+    expect(row.getAttribute("title")).toBe("after.txt");
   });
 });
 

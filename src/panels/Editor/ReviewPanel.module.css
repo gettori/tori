@@ -101,6 +101,12 @@
   color: var(--fg-default);
 }
 
+/* A rename's source path. Dimmed, because the destination is the one that
+   still exists and the one every action on the row acts on. */
+.renameFrom {
+  color: var(--fg-muted);
+}
+
 .reviewDiff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
