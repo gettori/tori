@@ -29,6 +29,13 @@ const DIFF = [
 
 const calls: { status: number; diff: number } = { status: 0, diff: 0 };
 
+// What `git_ahead_behind` reports, and what `git_commit` was called with. Both
+// drive the amend guard, which is the only thing here that asks the backend a
+// question whose answer changes what the panel does rather than what it shows.
+let aheadBehind: { ahead: number; behind: number; has_upstream: boolean } | null = null;
+let headMsg = "";
+let commitArgs: unknown[] = [];
+
 const UNSTAGED = { status: " M", path: "src/a.ts", staged: false, unstaged: true };
 const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false };
 // The index as the backend would report it next. `git_stage` moves it, so a
@@ -36,7 +43,7 @@ const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false }
 let statusRows = [UNSTAGED];
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => {
+  invoke: (cmd: string, args?: unknown) => {
     switch (cmd) {
       case "git_stage":
         statusRows = [STAGED];
@@ -47,6 +54,13 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_diff_text":
         calls.diff += 1;
         return Promise.resolve(DIFF);
+      case "git_ahead_behind":
+        return Promise.resolve(aheadBehind);
+      case "git_head_message":
+        return Promise.resolve(headMsg);
+      case "git_commit":
+        commitArgs.push(args);
+        return Promise.resolve(null);
       case "list_branches":
         return Promise.resolve([]);
       // checkpoint_list / checkpoint_turn_files / git_ahead_behind / git_origin
@@ -86,6 +100,9 @@ beforeEach(async () => {
   statusRows = [UNSTAGED];
   calls.status = 0;
   calls.diff = 0;
+  aheadBehind = null;
+  headMsg = "";
+  commitArgs = [];
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -162,5 +179,116 @@ describe("expanded diff refetch", () => {
     fsBurst(["/proj/src/a.ts"]);
     await waitFor(() => expect(calls.status).toBeGreaterThan(statusBefore));
     expect(calls.diff).toBe(0);
+  });
+});
+
+describe("amend", () => {
+  /** Toggle amend on and wait for HEAD's message to land in the fields. */
+  async function turnAmendOn() {
+    const box = screen.getByTitle("Rewrite the last commit instead of adding one");
+    fireEvent.click(box.querySelector("input")!);
+    await waitFor(() => expect(screen.getByText("Amend")).toBeTruthy());
+  }
+
+  it("prefills the fields from HEAD and splits subject from body", async () => {
+    headMsg = "previous subject\n\nprevious body\n\nsecond paragraph";
+    await mountPanel();
+    await turnAmendOn();
+
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("previous subject"),
+    );
+    expect((screen.getByPlaceholderText("Description (optional)") as HTMLTextAreaElement).value).toBe(
+      "previous body\n\nsecond paragraph",
+    );
+  });
+
+  it("gives back what you typed when amend is switched off again", async () => {
+    headMsg = "previous subject";
+    await mountPanel();
+    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: "my own subject" } });
+    await turnAmendOn();
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("previous subject"),
+    );
+
+    fireEvent.click(
+      screen.getByTitle("Rewrite the last commit instead of adding one").querySelector("input")!,
+    );
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("my own subject"),
+    );
+  });
+
+  it("asks before rewriting a commit the upstream already has", async () => {
+    // ahead 0 with an upstream: HEAD is contained in it.
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+    headMsg = "already pushed";
+    await mountPanel();
+    await turnAmendOn();
+    fireEvent.click(screen.getByText("Amend"));
+
+    await waitFor(() => expect(screen.getByText("Amend a pushed commit?")).toBeTruthy());
+    // Nothing is committed until the question is answered.
+    expect(commitArgs).toEqual([]);
+
+    fireEvent.click(screen.getByText("Amend anyway"));
+    await waitFor(() =>
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "already pushed", amend: true }]),
+    );
+  });
+
+  it("commits nothing when the amend warning is declined", async () => {
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+    headMsg = "already pushed";
+    await mountPanel();
+    await turnAmendOn();
+    fireEvent.click(screen.getByText("Amend"));
+
+    await waitFor(() => expect(screen.getByText("Amend a pushed commit?")).toBeTruthy());
+    fireEvent.click(screen.getByText("Cancel"));
+
+    await waitFor(() => expect(screen.queryByText("Amend a pushed commit?")).toBeNull());
+    expect(commitArgs).toEqual([]);
+  });
+
+  it("does not ask when there are unpushed commits on top", async () => {
+    aheadBehind = { ahead: 2, behind: 0, has_upstream: true };
+    headMsg = "not pushed yet";
+    await mountPanel();
+    await turnAmendOn();
+    fireEvent.click(screen.getByText("Amend"));
+
+    await waitFor(() =>
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "not pushed yet", amend: true }]),
+    );
+    expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
+  });
+
+  it("clears both fields and drops back out of amend once the commit lands", async () => {
+    aheadBehind = { ahead: 1, behind: 0, has_upstream: true };
+    headMsg = "previous subject\n\nprevious body";
+    await mountPanel();
+    await turnAmendOn();
+    fireEvent.click(screen.getByText("Amend"));
+
+    await waitFor(() => expect(commitArgs.length).toBe(1));
+    // Back to "Commit": a successful amend is not a mode you stay in.
+    await waitFor(() => expect(screen.getByText("Commit")).toBeTruthy());
+    expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("");
+    expect((screen.getByPlaceholderText("Description (optional)") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("does not ask when the branch has no upstream", async () => {
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: false };
+    headMsg = "local only";
+    await mountPanel();
+    await turnAmendOn();
+    fireEvent.click(screen.getByText("Amend"));
+
+    await waitFor(() =>
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "local only", amend: true }]),
+    );
+    expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
   });
 });

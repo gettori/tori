@@ -250,13 +250,32 @@ fn apply_cached(project_path: &str, patch: &str, reverse: bool) -> Result<(), St
 
 /// Commit whatever is currently staged with `message`. Refuses an empty
 /// message locally rather than letting git reject it (clearer error text).
+///
+/// `amend` rewrites HEAD instead of adding a commit, so it is the one path here
+/// that needs nothing staged: amending only the message is a normal thing to
+/// want. Whether that rewrite is safe (has HEAD been pushed?) is the caller's
+/// question, not this one's - see `amendRewritesPushed` in
+/// `src/utils/commitMessage.ts`.
 #[tauri::command]
-pub fn git_commit(project_path: String, message: String) -> Result<(), String> {
+pub fn git_commit(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("Commit message is empty".into());
     }
-    git_run(&project_path, &["commit", "-m", message])
+    let mut args = vec!["commit"];
+    if amend.unwrap_or(false) {
+        args.push("--amend");
+    }
+    args.extend(["-m", message]);
+    git_run(&project_path, &args)
+}
+
+/// HEAD's full commit message, for prefilling the editor when amend is toggled
+/// on. An unborn HEAD has no message to read, and that is not an error here:
+/// the toggle simply has nothing to prefill, so failure reads as empty.
+#[tauri::command]
+pub fn git_head_message(project_path: String) -> Result<String, String> {
+    Ok(git_capture(&project_path, &["log", "-1", "--format=%B"]).unwrap_or_default())
 }
 
 /// Which two trees a diff compares. A partially-staged ("MM") file has a row in
@@ -1065,7 +1084,7 @@ diff --git a/f b/f
             std::fs::remove_dir_all(&dir).ok();
             return;
         }
-        let err = git_commit(p, "won't work".into()).expect_err("commit without identity must fail");
+        let err = git_commit(p, "won't work".into(), None).expect_err("commit without identity must fail");
         assert!(!err.is_empty());
 
         std::fs::remove_dir_all(&dir).ok();
@@ -1115,13 +1134,53 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
 
-        let err = git_commit(p.clone(), "   ".into()).expect_err("empty message must be refused");
+        let err = git_commit(p.clone(), "   ".into(), None).expect_err("empty message must be refused");
         assert!(!err.is_empty());
 
-        git_commit(p.clone(), "add new.txt".into()).unwrap();
+        git_commit(p.clone(), "add new.txt".into(), None).unwrap();
         let files = git_status(p).unwrap();
         assert!(files.iter().all(|f| f.path != "new.txt"));
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn amend_replaces_head_and_keeps_a_multi_paragraph_body() {
+        let dir = repo_with_two_branches();
+        git(&dir, &["config", "user.name", "t"]);
+        git(&dir, &["config", "user.email", "t@t.test"]);
+        let p = dir.to_string_lossy().into_owned();
+        let count = |d: &Path| {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(d)
+                .args(["rev-list", "--count", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+        git_commit(p.clone(), "add new.txt".into(), None).unwrap();
+        let before = count(&dir);
+
+        // A subject, a blank line, and a body that itself contains a blank line:
+        // the shape `composeCommitMessage` produces and `%B` must give back.
+        let msg = "add new.txt\n\nwhy this was needed\n\nand a second paragraph";
+        git_commit(p.clone(), msg.into(), Some(true)).unwrap();
+
+        assert_eq!(count(&dir), before, "amend must rewrite HEAD, not add a commit");
+        assert_eq!(git_head_message(p).unwrap().trim(), msg);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn head_message_is_empty_on_an_unborn_head() {
+        let dir = empty_tmp();
+        git(&dir, &["init", "-q"]);
+        assert_eq!(git_head_message(dir.to_string_lossy().into_owned()).unwrap(), "");
         std::fs::remove_dir_all(&dir).ok();
     }
 
