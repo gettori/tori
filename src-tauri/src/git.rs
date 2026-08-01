@@ -569,6 +569,185 @@ fn git_apply(project_path: &str, patch: &str, cached: bool, reverse: bool) -> Re
     })
 }
 
+// --- stash ---------------------------------------------------------------
+
+/// One entry from `git stash list`.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct StashEntry {
+    /// `stash@{0}`. The handle every other stash command takes, and the only
+    /// stable way to name an entry: the index shifts as entries are pushed and
+    /// dropped, so the panel must re-list rather than remember.
+    pub selector: String,
+    /// The user's own text, colons intact.
+    pub message: String,
+    /// The branch it was taken on, when git recorded one.
+    pub branch: Option<String>,
+    pub relative_date: String,
+}
+
+/// Split a stash subject into its branch and the message the user actually
+/// wrote.
+///
+/// git writes `On <branch>: <message>` for a stash made with `-m`, and
+/// `WIP on <branch>: <sha> <subject>` for one made without. Both split on the
+/// **first** `": "` only: a stash message routinely contains colons
+/// ("fix: the thing"), and a greedy split would silently truncate it at the
+/// first one.
+fn split_stash_subject(subject: &str) -> (Option<String>, String) {
+    let Some((head, rest)) = subject.split_once(": ") else {
+        return (None, subject.to_string());
+    };
+    match head.strip_prefix("WIP on ").or_else(|| head.strip_prefix("On ")) {
+        Some(branch) => (Some(branch.to_string()), rest.to_string()),
+        // An unfamiliar prefix is not ours to reinterpret: a subject we cannot
+        // parse is shown whole rather than cut at a colon that meant nothing.
+        None => (None, subject.to_string()),
+    }
+}
+
+/// Every stash, newest first (git's own order).
+#[tauri::command]
+pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
+    // NUL-delimited fields, so neither a colon nor a newline in the message can
+    // split one entry into two. The stream is flat: three fields per entry.
+    let out = git_capture(
+        &project_path,
+        &["stash", "list", "-z", "--format=%gd%x00%s%x00%cr"],
+    )?;
+    let fields: Vec<&str> = out.split('\0').collect();
+    Ok(fields
+        .chunks_exact(3)
+        .map(|c| {
+            let (branch, message) = split_stash_subject(c[1]);
+            StashEntry {
+                selector: c[0].to_string(),
+                message,
+                branch,
+                relative_date: c[2].to_string(),
+            }
+        })
+        .collect())
+}
+
+/// `stash@{N}` and nothing else.
+///
+/// The selector reaches git as a bare argument, not after `--`, so a value like
+/// `--all` would be read as an option rather than as a stash. Every caller takes
+/// its selector straight from `git_stash_list`, so anything else is a bug at
+/// best.
+fn valid_selector(selector: &str) -> bool {
+    selector
+        .strip_prefix("stash@{")
+        .and_then(|r| r.strip_suffix('}'))
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Stash the working tree. Returns whether an entry was actually created.
+///
+/// `include_untracked` defaults **off**, matching `git stash` itself. On is the
+/// more surprising behaviour of the two: it sweeps up files git has never seen,
+/// which for a typical project means build output and local scratch files, so it
+/// is the caller's explicit choice rather than a convenience default.
+///
+/// A clean tree is not an error to git, which prints "No local changes to save"
+/// and exits 0. Counting entries rather than reading that sentence keeps the
+/// answer true regardless of git's locale.
+#[tauri::command]
+pub fn git_stash_push(
+    project_path: String,
+    message: Option<String>,
+    include_untracked: Option<bool>,
+) -> Result<bool, String> {
+    let before = git_stash_list(project_path.clone())?.len();
+
+    let mut args: Vec<&str> = vec!["stash", "push"];
+    if include_untracked.unwrap_or(false) {
+        args.push("-u");
+    }
+    let message = message.unwrap_or_default();
+    let trimmed = message.trim();
+    if !trimmed.is_empty() {
+        args.extend(["-m", trimmed]);
+    }
+    git_run(&project_path, &args)?;
+
+    Ok(git_stash_list(project_path)?.len() > before)
+}
+
+/// What a stash apply put back, so open buffers reconcile through the same
+/// channel a checkpoint revert and a discard use.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct StashOutcome {
+    pub restored: Vec<String>,
+    pub deleted: Vec<String>,
+}
+
+/// Apply a stash, optionally popping it.
+///
+/// The file list is read **before** applying: `pop` consumes the entry, so
+/// afterwards there is nothing left to ask. A conflicting apply fails and
+/// surfaces git's own message, which says which files are in the way.
+#[tauri::command]
+pub fn git_stash_apply(
+    project_path: String,
+    selector: String,
+    pop: Option<bool>,
+) -> Result<StashOutcome, String> {
+    if !valid_selector(&selector) {
+        return Err("That is not a stash.".into());
+    }
+    // `--include-untracked` is safe on an entry that has none: it simply
+    // reports nothing extra, so the list is complete either way.
+    //
+    // `--no-renames` is load-bearing, not tidiness. Rename detection is on by
+    // default, and under `-z` a rename spends **three** fields (`R100`, old,
+    // new) where every other change spends two, so pairing them blindly would
+    // desync and report a filename as a status from there on. It is also the
+    // truer answer for this caller: laying such a stash down really does create
+    // one path and remove the other, which is what an open buffer needs told.
+    let names = git_capture(
+        &project_path,
+        &[
+            "stash",
+            "show",
+            "--include-untracked",
+            "--no-renames",
+            "--name-status",
+            "-z",
+            &selector,
+        ],
+    )?;
+    let fields: Vec<&str> = names.split('\0').collect();
+    let mut restored = Vec::new();
+    let mut deleted = Vec::new();
+    for pair in fields.chunks_exact(2) {
+        // A stash can record a deletion, so applying one removes a file.
+        if pair[0].starts_with('D') {
+            deleted.push(pair[1].to_string());
+        } else {
+            restored.push(pair[1].to_string());
+        }
+    }
+
+    git_run(
+        &project_path,
+        &["stash", if pop.unwrap_or(false) { "pop" } else { "apply" }, &selector],
+    )?;
+    Ok(StashOutcome { restored, deleted })
+}
+
+/// Drop a stash. Destructive and **not** backstopped: the entry is not in the
+/// working tree, so a backstop (a snapshot of that tree) would not contain it
+/// and could not bring it back. The confirm says so rather than implying a
+/// safety net that does not exist.
+#[tauri::command]
+pub fn git_stash_drop(project_path: String, selector: String) -> Result<(), String> {
+    if !valid_selector(&selector) {
+        return Err("That is not a stash.".into());
+    }
+    git_run(&project_path, &["stash", "drop", &selector])
+}
+
 /// Commit whatever is currently staged with `message`. Refuses an empty
 /// message locally rather than letting git reject it (clearer error text).
 ///
@@ -2423,6 +2602,189 @@ diff --git a/f b/f
         crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
         assert_eq!(worktree(&dir, "g.txt"), "edited\n");
         assert_eq!(worktree(&dir, "fresh.txt"), "brand new\n");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- stash ------------------------------------------------------------
+
+    #[test]
+    fn a_stash_message_keeps_its_colons() {
+        // `git stash list`'s default line is "stash@{0}: On main: <message>",
+        // so a naive split on ":" truncates "fix: the thing" at the first one.
+        // Real messages are full of colons, so this is the normal case, not an
+        // edge case.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["stash", "push", "-q", "-m", "fix: the thing: with colons"]);
+
+        let list = git_stash_list(p).unwrap();
+
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].message, "fix: the thing: with colons");
+        assert_eq!(list[0].branch.as_deref(), Some("main"));
+        assert_eq!(list[0].selector, "stash@{0}");
+        assert!(!list[0].relative_date.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stash_made_without_a_message_reads_as_gits_own_wip_subject() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["stash", "push", "-q"]);
+
+        let list = git_stash_list(p).unwrap();
+
+        // "WIP on main: <sha> <subject>" - the branch comes off, the rest stays
+        // whole rather than being cut at the colon after the sha.
+        assert_eq!(list[0].branch.as_deref(), Some("main"));
+        assert!(list[0].message.contains("init"), "got: {}", list[0].message);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_unfamiliar_subject_is_shown_whole_rather_than_cut() {
+        // Nothing in git guarantees these two prefixes forever, and a subject
+        // we cannot parse is better shown intact than truncated at a colon that
+        // meant nothing.
+        assert_eq!(split_stash_subject("some: other: shape"), (None, "some: other: shape".into()));
+        assert_eq!(split_stash_subject("no separator"), (None, "no separator".into()));
+        assert_eq!(
+            split_stash_subject("On feat/x: a: b"),
+            (Some("feat/x".into()), "a: b".into())
+        );
+    }
+
+    #[test]
+    fn untracked_files_stay_put_unless_the_flag_is_on() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("scratch.txt"), "local only\n").unwrap();
+
+        assert!(git_stash_push(p.clone(), Some("tracked only".into()), None).unwrap());
+
+        // The default sweeps up tracked edits and leaves everything git has
+        // never seen exactly where it is.
+        assert!(dir.join("scratch.txt").exists(), "untracked file was taken");
+        assert_eq!(status_of(&dir, "f.txt"), "");
+
+        // With the flag on, the same file goes.
+        assert!(git_stash_push(p.clone(), Some("everything".into()), Some(true)).unwrap());
+        assert!(!dir.join("scratch.txt").exists(), "untracked file was left behind");
+        assert_eq!(git_stash_list(p).unwrap().len(), 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stashing_a_clean_tree_reports_that_nothing_was_stashed() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["checkout", "-q", "--", "f.txt"]);
+
+        // git prints "No local changes to save" and exits 0, so success alone
+        // does not mean an entry exists.
+        assert!(!git_stash_push(p.clone(), Some("nothing".into()), None).unwrap());
+        assert!(git_stash_list(p).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn applying_a_stash_names_the_files_it_touched() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        // A modification and a deletion, so both halves of the outcome are real.
+        std::fs::write(dir.join("gone.txt"), "doomed\n").unwrap();
+        git(&dir, &["add", "gone.txt"]);
+        git(&dir, &["commit", "-qm", "add gone"]);
+        std::fs::remove_file(dir.join("gone.txt")).unwrap();
+        git(&dir, &["rm", "-q", "--cached", "gone.txt"]);
+        git_stash_push(p.clone(), Some("wip".into()), None).unwrap();
+
+        let out = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
+
+        assert_eq!(out.restored, ["f.txt"]);
+        assert_eq!(out.deleted, ["gone.txt"]);
+        // Popped, so the entry is consumed - which is exactly why the file list
+        // has to be read before the apply rather than after.
+        assert!(git_stash_list(p).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stashed_rename_reports_both_paths_and_not_a_filename_as_a_status() {
+        // Rename detection is on by default, and under -z a rename spends three
+        // fields where everything else spends two. Pairing them blindly desyncs
+        // and hands `onReverted` a status string where a path belongs - and it
+        // acts on those paths. Same shape as the porcelain v2 rename record.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["checkout", "-q", "--", "f.txt"]);
+        git(&dir, &["mv", "f.txt", "renamed.txt"]);
+        // A second file, so a desync would visibly swallow it.
+        std::fs::write(dir.join("other.txt"), "edited\n").unwrap();
+        git(&dir, &["add", "other.txt"]);
+        git_stash_push(p.clone(), Some("a rename".into()), None).unwrap();
+
+        let out = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
+
+        let mut restored = out.restored.clone();
+        restored.sort();
+        assert_eq!(restored, ["other.txt", "renamed.txt"]);
+        assert_eq!(out.deleted, ["f.txt"]);
+        // Nothing that is obviously a status code leaked into the path lists.
+        for path in out.restored.iter().chain(out.deleted.iter()) {
+            assert!(path.contains('.'), "{path:?} looks like a status, not a path");
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_conflicting_pop_surfaces_gits_reason_and_keeps_the_stash() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git_stash_push(p.clone(), Some("wip".into()), None).unwrap();
+        // Edit the same file, so the stash cannot be laid back down over it.
+        std::fs::write(dir.join("f.txt"), "something else entirely\n").unwrap();
+
+        let err = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap_err();
+
+        assert!(err.contains("f.txt"), "the error should name the file: {err}");
+        // A failed pop must not consume the entry, or the work is gone.
+        assert_eq!(git_stash_list(p).unwrap().len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn drop_removes_one_entry_and_leaves_the_rest() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git_stash_push(p.clone(), Some("first".into()), None).unwrap();
+        std::fs::write(dir.join("f.txt"), "second round\n").unwrap();
+        git_stash_push(p.clone(), Some("second".into()), None).unwrap();
+
+        git_stash_drop(p.clone(), "stash@{0}".into()).unwrap();
+
+        let list = git_stash_list(p).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].message, "first");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_selector_that_is_not_a_stash_is_refused_before_git_sees_it() {
+        // The selector is a bare argument, not a pathspec after `--`, so an
+        // option-shaped value would be read as an option.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git_stash_push(p.clone(), Some("keep me".into()), None).unwrap();
+
+        for bad in ["--all", "stash@{0} --quiet", "refs/heads/main", "stash@{}", ""] {
+            assert!(
+                git_stash_drop(p.clone(), bad.into()).is_err(),
+                "accepted {bad:?}"
+            );
+        }
+        assert_eq!(git_stash_list(p).unwrap().len(), 1, "nothing was dropped");
         std::fs::remove_dir_all(&dir).ok();
     }
 

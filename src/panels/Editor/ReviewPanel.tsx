@@ -62,6 +62,16 @@ type DiscardOutcome = {
   deleted: string[];
 };
 
+/** One `git stash list` entry, as the backend parsed it: `message` is the user's
+ *  own text with its colons intact, not the raw `On main: ...` subject. */
+type StashEntry = {
+  selector: string;
+  message: string;
+  branch: string | null;
+  relative_date: string;
+};
+type StashOutcome = { restored: string[]; deleted: string[] };
+
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
   if (status.includes("?")) return "untracked";
@@ -113,6 +123,8 @@ export default function ReviewPanel(props: {
   // needed to refetch the right diff after a hunk apply or a disk change.
   const [openDiff, setOpenDiff] = createSignal<{ path: string; staged: boolean } | null>(null);
   const [applying, setApplying] = createSignal(false);
+  const [stashes, setStashes] = createSignal<StashEntry[]>([]);
+  const [includeUntracked, setIncludeUntracked] = createSignal(false);
   const [panelWidth, setPanelWidth] = createSignal(Infinity);
   // Which collapsed regions the user opened, keyed hunk:row. Cleared whenever a
   // different file expands, so collapse state never leaks between files.
@@ -227,7 +239,7 @@ export default function ReviewPanel(props: {
   }
 
   async function refreshAll() {
-    await Promise.all([refreshGit(props.root), refreshHeader()]);
+    await Promise.all([refreshGit(props.root), refreshHeader(), loadStashes()]);
   }
 
   function toastError(e: unknown) {
@@ -413,31 +425,78 @@ export default function ReviewPanel(props: {
    *  consult it. */
   async function discardHunk(path: string, index: number, fingerprint: string) {
     const root = props.root;
-    if (!root || applying()) return;
-    // Held across the confirm, not just the invoke. Setting it afterwards would
-    // leave the button live behind the modal, so a second click opens a second
-    // dialog, overwrites `confirmReq`, orphans the first promise and can
-    // discard twice. Exactly the bug `commit()` had for the same reason.
-    setApplying(true);
-    try {
-      const ok = await askConfirm({
-        title: "Discard this hunk?",
-        message: `This change to ${path} goes away. It is not staged, so git has no other copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
-        confirmLabel: "Discard hunk",
+    if (!root) return;
+    await busy(async () => {
+      try {
+        const ok = await askConfirm({
+          title: "Discard this hunk?",
+          message: `This change to ${path} goes away. It is not staged, so git has no other copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+          confirmLabel: "Discard hunk",
+          danger: true,
+        });
+        if (!ok) return;
+        const outcome = await invoke<DiscardOutcome>("git_discard_hunks", {
+          projectPath: root,
+          file: path,
+          hunkIndices: [index],
+          fingerprints: [fingerprint],
+          context: DIFF_CONTEXT,
+        });
+        reportDiscarded(outcome);
+        await Promise.all([refresh(), refreshExpandedDiff()]);
+      } catch (e) {
+        // Refetched before the error surfaces, and this is the only reason this
+        // one has its own catch rather than leaving it to `busy`: a refused
+        // discard usually means the hunks moved, so leaving the old ones on
+        // screen would invite the same doomed click again.
+        await refreshExpandedDiff();
+        throw e;
+      }
+    });
+  }
+
+  /** Run `action` only once no other session is mid-turn in this worktree.
+   *
+   *  Shared by whole-file discard and every stash action, because they share the
+   *  hazard: each rewrites files across the whole worktree, so an agent mid-turn
+   *  here can have its work clobbered or clobber the change a moment later. Two
+   *  tiers, the same as a tree revert: a session verifiably Executing blocks
+   *  hard, one Sway cannot see inside is overridable. `verb` names the action in
+   *  the override, so the question reads as itself rather than as a revert. */
+  async function guarded(verb: string, action: () => Promise<void>) {
+    const root = props.root;
+    if (!root) return;
+    const candidates = await folderActors(root);
+    const verdict = revertGuard(candidates, { folderPath: root });
+    if (!verdict.allow) {
+      if (!verdict.overridable) {
+        toastError(verdict.reason);
+        return;
+      }
+      const go = await askConfirm({
+        title: "Another session may be running here",
+        message: `${verdict.reason}\n\n${verb} anyway?`,
+        confirmLabel: `${verb} anyway`,
         danger: true,
       });
-      if (!ok) return;
-      const outcome = await invoke<DiscardOutcome>("git_discard_hunks", {
-        projectPath: root,
-        file: path,
-        hunkIndices: [index],
-        fingerprints: [fingerprint],
-        context: DIFF_CONTEXT,
-      });
-      reportDiscarded(outcome);
-      await Promise.all([refresh(), refreshExpandedDiff()]);
+      if (!go) return;
+      if (!revertGuard(candidates, { folderPath: root, allowDetached: true }).allow) return;
+    }
+    await action();
+  }
+
+  /** Hold the busy flag across everything, confirms included.
+   *
+   *  Setting it only around the invoke would leave the buttons live behind the
+   *  modal, and the confirm dialog is a singleton: a second click replaces the
+   *  pending question instead of queueing, so you answer about one thing
+   *  believing you answered about another. */
+  async function busy(action: () => Promise<void>) {
+    if (applying()) return;
+    setApplying(true);
+    try {
+      await action();
     } catch (e) {
-      await refreshExpandedDiff();
       toastError(e);
     } finally {
       setApplying(false);
@@ -447,55 +506,111 @@ export default function ReviewPanel(props: {
   /** Throw away every unstaged change to a whole file.
    *
    *  Unscoped in the sense the revert guard cares about: an agent mid-turn in
-   *  this folder may be writing the very file about to be rolled back, so this
-   *  goes through the same two-tier guard as a tree revert. */
+   *  this folder may be writing the very file about to be rolled back. */
   async function discardFile(path: string, untracked: boolean) {
     const root = props.root;
-    if (!root || applying()) return;
-    // Held from before the guard probe, which is itself an await: see the note
-    // in `discardHunk`. Everything from here to the invoke is one indivisible
-    // decision as far as the user's clicks are concerned.
-    setApplying(true);
-    try {
-      const candidates = await folderActors(root);
-      let verdict = revertGuard(candidates, { folderPath: root });
-      if (!verdict.allow && !verdict.overridable) {
-        toastError(verdict.reason);
-        return;
-      }
-      if (!verdict.allow) {
-        const go = await askConfirm({
-          title: "Another session may be running here",
-          message: `${verdict.reason}\n\nDiscard anyway?`,
-          confirmLabel: "Discard anyway",
+    if (!root) return;
+    await busy(() =>
+      guarded("Discard", async () => {
+        const ok = await askConfirm({
+          title: untracked ? `Delete ${path}?` : `Discard changes to ${path}?`,
+          message: untracked
+            ? `1 file is deleted. It was never committed, so git has no copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`
+            : `1 file goes back to how it is staged. Unstaged changes to it are lost; anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+          confirmLabel: untracked ? "Delete file" : "Discard changes",
           danger: true,
         });
-        if (!go) return;
-        verdict = revertGuard(candidates, { folderPath: root, allowDetached: true });
-        if (!verdict.allow) return;
-      }
+        if (!ok) return;
 
-      const ok = await askConfirm({
-        title: untracked ? `Delete ${path}?` : `Discard changes to ${path}?`,
-        message: untracked
-          ? `1 file is deleted. It was never committed, so git has no copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`
-          : `1 file goes back to how it is staged. Unstaged changes to it are lost; anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
-        confirmLabel: untracked ? "Delete file" : "Discard changes",
-        danger: true,
-      });
-      if (!ok) return;
+        const outcome = await invoke<DiscardOutcome>("git_discard_files", {
+          projectPath: root,
+          files: [path],
+        });
+        reportDiscarded(outcome);
+        await Promise.all([refresh(), refreshExpandedDiff()]);
+      }),
+    );
+  }
 
-      const outcome = await invoke<DiscardOutcome>("git_discard_files", {
-        projectPath: root,
-        files: [path],
-      });
-      reportDiscarded(outcome);
-      await Promise.all([refresh(), refreshExpandedDiff()]);
-    } catch (e) {
-      toastError(e);
-    } finally {
-      setApplying(false);
+  // --- stash ---------------------------------------------------------------
+
+  /** Stash the working tree.
+   *
+   *  The Summary field doubles as the stash name when it has something in it: a
+   *  stash you meant to come back to needs a label, and "WIP on main" is not
+   *  one. Left empty, git writes its own subject, same as `git stash` alone. */
+  async function stashAll() {
+    const root = props.root;
+    if (!root) return;
+    await busy(() =>
+      guarded("Stash", async () => {
+        const created = await invoke<boolean>("git_stash_push", {
+          projectPath: root,
+          message: commitSubject().trim() || null,
+          includeUntracked: includeUntracked(),
+        });
+        if (!created) {
+          // git exits 0 on a clean tree, so silence here would read as success.
+          emitWith<ToastEvent>(TOAST, { message: "Nothing to stash.", kind: "info" });
+          return;
+        }
+        // Both fields, not just the subject: the draft described the work that
+        // has now moved into the stash, and a body left behind would attach
+        // itself to whatever gets committed next.
+        setCommitSubject("");
+        setCommitBody("");
+        await Promise.all([refresh(), refreshExpandedDiff(), loadStashes()]);
+      }),
+    );
+  }
+
+  async function applyStash(entry: StashEntry, pop: boolean) {
+    const root = props.root;
+    if (!root) return;
+    await busy(() =>
+      guarded(pop ? "Pop" : "Apply", async () => {
+        const outcome = await invoke<StashOutcome>("git_stash_apply", {
+          projectPath: root,
+          selector: entry.selector,
+          pop,
+        });
+        // Same channel discard and checkpoint revert use: a stash laid back down
+        // over an open buffer must offer Reload / Keep mine, not lose a side.
+        props.onReverted?.({ backstop_ts: null, ...outcome });
+        await Promise.all([refresh(), refreshExpandedDiff(), loadStashes()]);
+      }),
+    );
+  }
+
+  /** Drop a stash. The one action here with no way back: the entry is not in the
+   *  working tree, so no snapshot of that tree contains it. The confirm says so
+   *  rather than implying the safety net the discard dialogs can promise. */
+  async function dropStash(entry: StashEntry) {
+    const root = props.root;
+    if (!root) return;
+    await busy(() =>
+      guarded("Drop", async () => {
+        const ok = await askConfirm({
+          title: "Drop this stash?",
+          message: `"${entry.message}" is deleted. Unlike discarding a change, this cannot be undone from the timeline: a stash is not part of the working tree, so no snapshot of it holds a copy.`,
+          confirmLabel: "Drop stash",
+          danger: true,
+        });
+        if (!ok) return;
+        await invoke("git_stash_drop", { projectPath: root, selector: entry.selector });
+        await loadStashes();
+      }),
+    );
+  }
+
+  async function loadStashes() {
+    const root = props.root;
+    if (!root) {
+      setStashes([]);
+      return;
     }
+    const list = await invoke<StashEntry[]>("git_stash_list", { projectPath: root }).catch(() => []);
+    setStashes(Array.isArray(list) ? list : []);
   }
 
   /** Tell the editor which files just changed underneath it.
@@ -585,6 +700,11 @@ export default function ReviewPanel(props: {
   onMount(async () => {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       void refresh();
+      // A `git stash` run in a terminal shows up as a working-tree burst like
+      // any other, and the entry it created would otherwise stay invisible
+      // until a fetch or a window focus. Reading the stash reflog is far cheaper
+      // than the status refresh already happening on this line.
+      void loadStashes();
       // An agent writing the open file renumbers its hunks, so the expanded
       // diff must refetch or the next stage click would carry a stale
       // fingerprint (which the backend would refuse). Only the open file's own
@@ -879,6 +999,72 @@ export default function ReviewPanel(props: {
           <div class={styles.sectionHeader}>Changes</div>
           <For each={unstaged()}>{(f) => row(f, { staged: false })}</For>
         </Show>
+      </Show>
+      {/* Outside the empty-state Show above: a clean tree can still have
+          stashes, and hiding them then would lose the only way back to them. */}
+      <Show when={stashes().length}>
+        <div class={styles.sectionHeader}>Stashes</div>
+        <For each={stashes()}>
+          {(s) => (
+            <div
+              class={styles.stashRow}
+              title={`${s.selector}${s.branch ? ` on ${s.branch}` : ""} · ${s.relative_date}`}
+            >
+              <span class={styles.reviewName}>{s.message}</span>
+              <span class={styles.stashMeta}>{s.relative_date}</span>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={applying()}
+                title="Lay this stash back down and keep it in the list"
+                onClick={() => void applyStash(s, false)}
+              >
+                Apply
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={applying()}
+                title="Lay this stash back down and remove it from the list"
+                onClick={() => void applyStash(s, true)}
+              >
+                Pop
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={applying()}
+                title="Delete this stash without applying it"
+                onClick={() => void dropStash(s)}
+              >
+                Drop
+              </Button>
+            </div>
+          )}
+        </For>
+      </Show>
+      <Show when={files().length}>
+        <div class={styles.stashBar}>
+          <label
+            class={styles.amendRow}
+            title="Also stash files git has never seen, which usually means build output and local scratch"
+          >
+            <input
+              type="checkbox"
+              checked={includeUntracked()}
+              onChange={(e) => setIncludeUntracked(e.currentTarget.checked)}
+            />
+            include untracked
+          </label>
+          <Button
+            size="xs"
+            disabled={applying()}
+            title="Put every change aside for later, named after the Summary below if you have written one"
+            onClick={() => void stashAll()}
+          >
+            Stash all
+          </Button>
+        </div>
       </Show>
       <div class={styles.commitBox}>
         <input
