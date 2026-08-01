@@ -621,8 +621,11 @@ export default function CodeEditor(props: {
     ),
   );
 
-  // A tree revert's files, resolved through the same external-change path the
-  // watcher would use, so the outcome never depends on watcher timing.
+  // Files rewritten under us by something the app did on purpose: a tree
+  // revert, a backstop restore, a discard. All resolved through the same
+  // external-change path the watcher would use, so the outcome never depends on
+  // watcher timing, and an unsaved buffer gets Reload / Keep mine rather than
+  // quietly writing the discarded content back on the next save.
   createEffect(
     on(
       () => props.reverted,

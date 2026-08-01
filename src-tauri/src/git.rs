@@ -240,22 +240,272 @@ pub fn git_apply_hunks(
     }
 
     let mode = if reverse { DiffMode::Staged } else { DiffMode::Unstaged };
-    let text = git_diff_text(project_path.clone(), file.clone(), context, Some(mode))?;
-    let parsed = crate::patch::parse_patch(&text);
+    let patch = selected_patch(
+        &project_path,
+        &file,
+        &hunk_indices,
+        &fingerprints,
+        mode,
+        reverse,
+        context,
+        "The diff changed, refreshed. Nothing was staged.",
+    )?;
+    git_apply(&project_path, &patch, true, reverse)
+}
 
-    for (&i, expected) in hunk_indices.iter().zip(&fingerprints) {
-        let actual = parsed
-            .hunks
-            .get(i)
-            .ok_or_else(|| "The diff changed, refreshed. Nothing was staged.".to_string())?;
+/// Re-read `file`'s diff in `mode`, re-check every selected hunk's fingerprint
+/// against it, and build a patch of just those hunks.
+///
+/// Shared by staging and discarding because the hazard is shared: a hunk index
+/// is only meaningful against the exact diff it was rendered from, so both have
+/// to re-derive the fingerprints rather than trust the number. `stale` is what
+/// to say when they no longer match, which differs by caller because it has to
+/// name what did *not* happen.
+#[allow(clippy::too_many_arguments)]
+fn selected_patch(
+    project_path: &str,
+    file: &str,
+    hunk_indices: &[usize],
+    fingerprints: &[String],
+    mode: DiffMode,
+    reverse: bool,
+    context: Option<u32>,
+    stale: &str,
+) -> Result<String, String> {
+    let text = git_diff_text(project_path.to_string(), file.to_string(), context, Some(mode))?;
+    let parsed = crate::patch::parse_patch(&text);
+    for (&i, expected) in hunk_indices.iter().zip(fingerprints) {
+        let actual = parsed.hunks.get(i).ok_or_else(|| stale.to_string())?;
         if &actual.fingerprint != expected {
-            return Err("The diff changed, refreshed. Nothing was staged.".into());
+            return Err(stale.to_string());
+        }
+    }
+    crate::patch::build_patch(&parsed, hunk_indices, reverse)
+}
+
+/// What a discard did: the backstop it took first (the recovery route, which the
+/// UI names), and the paths it rewrote and removed, so open buffers reconcile
+/// through the same channel a checkpoint revert uses.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct DiscardOutcome {
+    pub backstop_ts: u64,
+    /// Flattened, so the wire shape stays `{backstop_ts, restored, deleted}`
+    /// while "which paths changed on disk" has one definition shared with
+    /// `backstop::backstop_restore_*`. Both feed the same `onReverted` channel,
+    /// so a field added to one must reach the other.
+    #[serde(flatten)]
+    pub changed: crate::backstop::RestoreOutcome,
+}
+
+const STALE_DISCARD: &str = "The diff changed, refreshed. Nothing was discarded.";
+
+/// Resolve a repo-relative path for deletion, refusing anything that leaves the
+/// worktree.
+///
+/// Everywhere else here a path is handed to git after `--`, and git confines it
+/// to the repository itself. Discard is the only path that deletes through the
+/// filesystem directly, where `..` or an absolute path would simply escape, so
+/// the confinement git was providing has to be re-established explicitly.
+fn inside_repo(project_path: &str, file: &str) -> Result<PathBuf, String> {
+    let root = std::fs::canonicalize(project_path).map_err(|e| e.to_string())?;
+    let target = root.join(file);
+    // The file must still exist to be canonicalised, so the parent is what gets
+    // resolved: that is enough, since the last component cannot be `..` without
+    // the parent check already having caught the escape.
+    let parent = target.parent().ok_or("That path has no parent directory.")?;
+    let parent = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    if !parent.starts_with(&root) {
+        return Err("That path is outside this folder.".into());
+    }
+    Ok(parent.join(target.file_name().ok_or("That path names no file.")?))
+}
+
+/// Do these fingerprints belong to the file's *staged* diff?
+///
+/// Only asked once a discard has already failed to match the unstaged diff. The
+/// generic "the diff changed" would be true but useless there: nothing changed,
+/// the hunk was picked from the Staged section, and the fix is one click.
+fn matches_staged_diff(project_path: &str, file: &str, fingerprints: &[String], context: Option<u32>) -> bool {
+    let Ok(text) = git_diff_text(project_path.to_string(), file.to_string(), context, Some(DiffMode::Staged)) else {
+        return false;
+    };
+    let parsed = crate::patch::parse_patch(&text);
+    !parsed.hunks.is_empty()
+        && fingerprints
+            .iter()
+            .all(|f| parsed.hunks.iter().any(|h| &h.fingerprint == f))
+}
+
+/// Throw away a subset of a file's **unstaged** hunks, rewriting the file on
+/// disk and leaving the index alone.
+///
+/// This is the one apply path that is not `--cached`, and the only destructive
+/// one: staging and unstaging shuffle the index, and the worktree is always
+/// recoverable from it. A discard is the user's edits going away for good, so it
+/// takes a backstop first (`backstop::take`) and reports its timestamp back as
+/// the recovery route.
+///
+/// Unstaged-only by construction. Staged hunks are reached by unstaging them
+/// first, which keeps the destructive path narrow: one source diff, one
+/// direction, no mode argument a caller could pair wrongly.
+#[tauri::command]
+pub fn git_discard_hunks(
+    project_path: String,
+    file: String,
+    hunk_indices: Vec<usize>,
+    fingerprints: Vec<String>,
+    context: Option<u32>,
+) -> Result<DiscardOutcome, String> {
+    if hunk_indices.len() != fingerprints.len() {
+        return Err("Hunk selection is malformed".into());
+    }
+    if hunk_indices.is_empty() {
+        return Err("No hunks selected".into());
+    }
+    if is_conflicted(&project_path, &file)? {
+        return Err(CONFLICTED.into());
+    }
+
+    // An untracked file is all additions, so git emits exactly one hunk for it
+    // whatever the context width. "Discard that hunk" and "discard that file"
+    // are therefore the same request, and deleting it is the honest reading:
+    // there is no index entry to reverse-apply a partial patch against.
+    if is_untracked(&project_path, &file)? {
+        let abs = inside_repo(&project_path, &file)?;
+        // Still fingerprint-checked, even though the patch is never used. The
+        // check is what proves the file has not moved under the rendered view,
+        // and deleting on a stale one would destroy contents the user never saw
+        // - a worse outcome than the partial apply the check exists to prevent.
+        selected_patch(
+            &project_path,
+            &file,
+            &hunk_indices,
+            &fingerprints,
+            DiffMode::Unstaged,
+            true,
+            context,
+            STALE_DISCARD,
+        )?;
+        let record = crate::backstop::take(&project_path, &format!("Discard {file}"))?;
+        std::fs::remove_file(&abs).map_err(|e| e.to_string())?;
+        return Ok(DiscardOutcome {
+            backstop_ts: record.ts,
+            changed: crate::backstop::RestoreOutcome { restored: Vec::new(), deleted: vec![file] },
+        });
+    }
+
+    // Validated before the backstop, so a refused discard leaves no snapshot
+    // behind: an undo list full of changes that never happened is worse than
+    // none, because it makes the entries that matter harder to find.
+    let patch = selected_patch(
+        &project_path,
+        &file,
+        &hunk_indices,
+        &fingerprints,
+        DiffMode::Unstaged,
+        true,
+        context,
+        STALE_DISCARD,
+    )
+    .map_err(|e| {
+        if e == STALE_DISCARD && matches_staged_diff(&project_path, &file, &fingerprints, context) {
+            "That change is staged. Unstage it first, then discard it.".to_string()
+        } else {
+            e
+        }
+    })?;
+
+    let record = crate::backstop::take(
+        &project_path,
+        &format!(
+            "Discard {} hunk{} in {file}",
+            hunk_indices.len(),
+            if hunk_indices.len() == 1 { "" } else { "s" }
+        ),
+    )?;
+    git_apply(&project_path, &patch, false, true)?;
+    Ok(DiscardOutcome {
+        backstop_ts: record.ts,
+        changed: crate::backstop::RestoreOutcome { restored: vec![file], deleted: Vec::new() },
+    })
+}
+
+/// Throw away the working-tree changes to whole `files`: `git restore` for a
+/// tracked file, deletion for an untracked one (git has nothing to restore it
+/// from). Takes one backstop covering the lot.
+///
+/// Scoped to the unstaged side, matching the Changes section the control lives
+/// in: a file's staged content is left exactly as it is.
+#[tauri::command]
+pub fn git_discard_files(project_path: String, files: Vec<String>) -> Result<DiscardOutcome, String> {
+    if files.is_empty() {
+        return Err("No files selected".into());
+    }
+    // Split before anything is touched, and let a failed probe stop the whole
+    // operation: guessing "tracked" on a git error would send an untracked file
+    // to `git restore`, which cannot restore it and would report a confusing
+    // pathspec error instead of the real problem.
+    let mut untracked = Vec::new();
+    let mut tracked = Vec::new();
+    for f in &files {
+        if is_conflicted(&project_path, f)? {
+            return Err(CONFLICTED.into());
+        }
+        if is_untracked(&project_path, f)? {
+            // Resolved before the backstop so an escaping path is refused while
+            // refusing is still free.
+            inside_repo(&project_path, f)?;
+            untracked.push(f.clone());
+        } else {
+            tracked.push(f.clone());
         }
     }
 
-    let patch = crate::patch::build_patch(&parsed, &hunk_indices, reverse)?;
-    apply_cached(&project_path, &patch, reverse)
+    let record = crate::backstop::take(
+        &project_path,
+        &format!(
+            "Discard {} file{}",
+            files.len(),
+            if files.len() == 1 { "" } else { "s" }
+        ),
+    )?;
+
+    if !tracked.is_empty() {
+        let mut args: Vec<&str> = vec!["restore", "--"];
+        args.extend(tracked.iter().map(String::as_str));
+        git_run(&project_path, &args)?;
+    }
+    for f in &untracked {
+        match std::fs::remove_file(inside_repo(&project_path, f)?) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(DiscardOutcome {
+        backstop_ts: record.ts,
+        changed: crate::backstop::RestoreOutcome { restored: tracked, deleted: untracked },
+    })
 }
+
+/// True when `file` has unmerged index stages, i.e. it is mid-conflict.
+///
+/// Discard has no meaning on one: there is no single "what it was" to go back
+/// to, and `git restore` refuses an unmerged path anyway, so asking would only
+/// trade a clear sentence for a raw pathspec error after a backstop had already
+/// been written. (Until Phase 10 gives conflicts their own section, such a file
+/// still appears under Changes, so the control really is reachable.)
+fn is_conflicted(project_path: &str, file: &str) -> Result<bool, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["ls-files", "-u", "--", file])
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
+}
+
+const CONFLICTED: &str = "That file has merge conflicts. Resolve them first, then discard what is left.";
 
 /// True when git does not track `file` at all (no index entry).
 fn is_untracked(project_path: &str, file: &str) -> Result<bool, String> {
@@ -268,10 +518,15 @@ fn is_untracked(project_path: &str, file: &str) -> Result<bool, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
-/// Feed `patch` to `git apply --cached` on stdin. Index-only: `--cached`
-/// deliberately leaves the working tree alone, so a failed apply can never
-/// leave the user's edits half-rewritten.
-fn apply_cached(project_path: &str, patch: &str, reverse: bool) -> Result<(), String> {
+/// Feed `patch` to `git apply` on stdin.
+///
+/// `cached` picks what it touches, and that is the whole safety story here.
+/// With it, the apply is index-only and the working tree cannot be disturbed at
+/// all, so staging is unconditionally safe. Without it, the patch rewrites the
+/// file on disk, which only discard does and only after taking a backstop.
+/// Either way git apply is all-or-nothing: a patch that no longer fits is
+/// rejected outright, never applied half-way.
+fn git_apply(project_path: &str, patch: &str, cached: bool, reverse: bool) -> Result<(), String> {
     use std::io::Write;
     use std::process::Stdio;
 
@@ -280,7 +535,10 @@ fn apply_cached(project_path: &str, patch: &str, reverse: bool) -> Result<(), St
     // flag exists to disable the context checks a zero-context patch cannot
     // satisfy. Keeping them on means a patch that no longer fits is rejected
     // rather than applied somewhere plausible-looking.
-    cmd.arg("-C").arg(project_path).args(["apply", "--cached"]);
+    cmd.arg("-C").arg(project_path).arg("apply");
+    if cached {
+        cmd.arg("--cached");
+    }
     if reverse {
         cmd.arg("--reverse");
     }
@@ -305,7 +563,7 @@ fn apply_cached(project_path: &str, patch: &str, reverse: bool) -> Result<(), St
     }
     let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
     Err(if err.is_empty() {
-        "git could not apply the selected hunks; nothing was staged.".into()
+        "git could not apply the selected hunks; nothing changed.".into()
     } else {
         err
     })
@@ -1916,6 +2174,281 @@ diff --git a/f b/f
 
         // Staging every hunk must reproduce the worktree exactly.
         assert_eq!(indexed(&dir, "g.txt"), std::fs::read_to_string(dir.join("g.txt")).unwrap());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- discard (git_discard_hunks / git_discard_files) ------------------
+    //
+    // The one apply path that is not `--cached`, so unlike staging a mistake
+    // here destroys work rather than shuffling the index. Every test asserts
+    // both halves: that the intended change went away, and that nothing else
+    // did - especially the index, which a stray `--cached` would eat.
+
+    fn worktree(dir: &Path, file: &str) -> String {
+        std::fs::read_to_string(dir.join(file)).unwrap()
+    }
+
+    #[test]
+    fn discards_one_hunk_and_leaves_the_other_and_the_index_alone() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 2);
+
+        let out = git_discard_hunks(
+            p.clone(),
+            "f.txt".into(),
+            vec![1],
+            vec![parsed.hunks[1].fingerprint.clone()],
+            Some(3),
+        )
+        .unwrap();
+
+        let after = worktree(&dir, "f.txt");
+        assert!(after.contains("line 2 EDITED"), "the untouched hunk survives");
+        assert!(!after.contains("line 19 EDITED"), "the discarded hunk is gone");
+        // The whole point of dropping --cached: this writes the file, not the
+        // index, so a partially-staged file's staging must be exactly as it was.
+        assert_eq!(status_of(&dir, "f.txt"), " M f.txt");
+        assert_eq!(out.changed.restored, ["f.txt"]);
+        assert!(out.changed.deleted.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_discard_is_recoverable_from_the_backstop_it_took() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let before = worktree(&dir, "f.txt");
+        let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        let all: Vec<usize> = (0..parsed.hunks.len()).collect();
+        let fps: Vec<String> = parsed.hunks.iter().map(|h| h.fingerprint.clone()).collect();
+
+        let out = git_discard_hunks(p.clone(), "f.txt".into(), all, fps, Some(3)).unwrap();
+        assert_ne!(worktree(&dir, "f.txt"), before, "the discard really happened");
+
+        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        assert_eq!(worktree(&dir, "f.txt"), before, "byte-identical to before the discard");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stale_fingerprint_refuses_and_discards_nothing() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let before = worktree(&dir, "f.txt");
+
+        let err = git_discard_hunks(
+            p.clone(),
+            "f.txt".into(),
+            vec![0],
+            vec!["deadbeef".into()],
+            Some(3),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Nothing was discarded"), "unhelpful refusal: {err}");
+        assert_eq!(worktree(&dir, "f.txt"), before);
+        // A refused discard leaves no backstop: an undo list full of changes
+        // that never happened buries the entries that matter.
+        assert!(crate::backstop::backstop_list(p).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn discarding_a_staged_hunk_says_to_unstage_it_first() {
+        // A partially-staged (MM) file: hunk 0 staged, hunk 1 still loose.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(
+            p.clone(),
+            "f.txt".into(),
+            vec![0],
+            vec![unstaged.hunks[0].fingerprint.clone()],
+            false,
+            Some(3),
+        )
+        .unwrap();
+        assert_eq!(status_of(&dir, "f.txt"), "MM f.txt");
+
+        // Now aim a discard at the *staged* half. It cannot be reverse-applied
+        // from the unstaged diff, and "the diff changed" would be a lie.
+        let staged = hunks_of(&p, "f.txt", DiffMode::Staged);
+        let err = git_discard_hunks(
+            p.clone(),
+            "f.txt".into(),
+            vec![0],
+            vec![staged.hunks[0].fingerprint.clone()],
+            Some(3),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Unstage it first"), "unhelpful refusal: {err}");
+        assert_eq!(status_of(&dir, "f.txt"), "MM f.txt", "nothing moved");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_untracked_files_only_hunk_is_the_whole_file() {
+        // Not a plan-shaped "three-hunk untracked file": one cannot exist. An
+        // untracked file is all additions, so git emits exactly one hunk for it
+        // at any context width, and discarding that hunk is deleting the file.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let body: Vec<String> = (1..=40).map(|i| format!("new {i}")).collect();
+        std::fs::write(dir.join("fresh.txt"), body.join("\n") + "\n").unwrap();
+
+        let parsed = hunks_of(&p, "fresh.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 1, "an untracked file is one hunk, always");
+
+        let out = git_discard_hunks(
+            p.clone(),
+            "fresh.txt".into(),
+            vec![0],
+            vec![parsed.hunks[0].fingerprint.clone()],
+            Some(3),
+        )
+        .unwrap();
+
+        assert!(!dir.join("fresh.txt").exists());
+        assert_eq!(out.changed.deleted, ["fresh.txt"]);
+        // And it is still recoverable, which is what makes deleting acceptable.
+        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        assert_eq!(worktree(&dir, "fresh.txt"), body.join("\n") + "\n");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_discard_restores_a_tracked_file_and_deletes_an_untracked_one() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
+
+        let out = git_discard_files(p.clone(), vec!["f.txt".into(), "fresh.txt".into()]).unwrap();
+
+        assert_eq!(status_of(&dir, "f.txt"), "", "tracked file is back to the index");
+        assert!(!dir.join("fresh.txt").exists(), "untracked file is gone");
+        assert_eq!(out.changed.restored, ["f.txt"]);
+        assert_eq!(out.changed.deleted, ["fresh.txt"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stale_fingerprint_refuses_to_delete_an_untracked_file() {
+        // The untracked branch deletes rather than reverse-applying, so it never
+        // uses the patch it builds. It must still build it: without the check, a
+        // file rewritten between render and click is deleted with contents the
+        // user never saw, which is worse than the partial apply the check exists
+        // to prevent.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
+
+        let err = git_discard_hunks(
+            p.clone(),
+            "fresh.txt".into(),
+            vec![0],
+            vec!["deadbeef".into()],
+            Some(3),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Nothing was discarded"), "unhelpful refusal: {err}");
+        assert!(dir.join("fresh.txt").exists(), "the file is still there");
+        assert!(crate::backstop::backstop_list(p).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_path_that_escapes_the_worktree_is_refused() {
+        // Every other path here is handed to git after `--`, which confines it
+        // to the repo. Discard deletes through the filesystem directly, where
+        // `..` simply escapes, so the confinement has to be re-established.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let outside = dir.parent().unwrap().join("sway_escape_probe.txt");
+        std::fs::write(&outside, "not yours\n").unwrap();
+
+        let err = git_discard_files(p, vec!["../sway_escape_probe.txt".into()]).unwrap_err();
+
+        assert!(err.contains("outside this folder"), "unhelpful refusal: {err}");
+        assert!(outside.exists(), "the file outside the repo is untouched");
+        std::fs::remove_file(&outside).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn discard_refuses_a_conflicted_file_rather_than_erroring_from_git() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["checkout", "-q", "--", "f.txt"]);
+        git(&dir, &["checkout", "-q", "-b", "side"]);
+        std::fs::write(dir.join("f.txt"), "side\n").unwrap();
+        git(&dir, &["commit", "-qam", "side"]);
+        git(&dir, &["checkout", "-q", "main"]);
+        std::fs::write(dir.join("f.txt"), "main\n").unwrap();
+        git(&dir, &["commit", "-qam", "main"]);
+        // Merge deliberately fails, leaving f.txt unmerged in the index.
+        Command::new("git").arg("-C").arg(&dir).args(["merge", "side"]).output().unwrap();
+
+        let err = git_discard_files(p.clone(), vec!["f.txt".into()]).unwrap_err();
+        assert!(err.contains("merge conflicts"), "unhelpful refusal: {err}");
+        // And no backstop was written for the refusal.
+        assert!(crate::backstop::backstop_list(p).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_discard_handles_several_files_under_one_backstop() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("g.txt"), "committed\n").unwrap();
+        git(&dir, &["add", "g.txt"]);
+        git(&dir, &["commit", "-qm", "add g"]);
+        std::fs::write(dir.join("g.txt"), "edited\n").unwrap();
+        std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
+
+        let out = git_discard_files(
+            p.clone(),
+            vec!["f.txt".into(), "g.txt".into(), "fresh.txt".into()],
+        )
+        .unwrap();
+
+        assert_eq!(out.changed.restored, ["f.txt", "g.txt"]);
+        assert_eq!(out.changed.deleted, ["fresh.txt"]);
+        assert_eq!(std::fs::read_to_string(dir.join("g.txt")).unwrap(), "committed\n");
+        // One snapshot for the batch, and it takes all three back at once.
+        assert_eq!(crate::backstop::backstop_list(p.clone()).unwrap().len(), 1);
+        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        assert_eq!(worktree(&dir, "g.txt"), "edited\n");
+        assert_eq!(worktree(&dir, "fresh.txt"), "brand new\n");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_discard_leaves_the_staged_half_of_a_partially_staged_file() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
+        git_apply_hunks(
+            p.clone(),
+            "f.txt".into(),
+            vec![0],
+            vec![unstaged.hunks[0].fingerprint.clone()],
+            false,
+            Some(3),
+        )
+        .unwrap();
+
+        git_discard_files(p, vec!["f.txt".into()]).unwrap();
+
+        // "Discard" lives in the Changes section, so it means the unstaged
+        // side. Eating the staged half too would be a different, larger promise
+        // than the button makes.
+        assert_eq!(status_of(&dir, "f.txt"), "M  f.txt");
+        assert!(worktree(&dir, "f.txt").contains("line 2 EDITED"));
+        assert!(!worktree(&dir, "f.txt").contains("line 19 EDITED"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
