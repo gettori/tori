@@ -483,6 +483,246 @@ pub fn grep_project(
     Ok(empty(matches, truncated, files))
 }
 
+// --- replace ---
+//
+// Replace reuses the search matcher rather than re-deriving one: the same
+// `canonical_pattern` compiles the same `Regex`, so a span the panel is showing
+// and the span this writes at are the same span by construction. That is the
+// whole reason rg was demoted to a candidate finder in the first place.
+
+/// One match to replace, addressed the way the panel received it: a 1-based
+/// line number plus UTF-16 offsets into that line's text.
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceSpan {
+    pub line: u32,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceTarget {
+    pub path: String,
+    /// The digest this file carried when it was searched. A file that no longer
+    /// matches is skipped whole rather than edited at offsets that have moved.
+    pub digest: String,
+    pub matches: Vec<ReplaceSpan>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedFile {
+    pub path: String,
+    pub reason: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceResult {
+    pub changed: Vec<String>,
+    pub skipped: Vec<SkippedFile>,
+    pub occurrences: u32,
+}
+
+/// One line the panel is displaying, for previewing what a replacement produces.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSpan {
+    pub text: String,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// Byte offset within `text` of a UTF-16 code-unit offset. `None` when the
+/// offset does not land on a character boundary, which means the caller's
+/// offsets do not describe this string.
+fn utf16_to_byte(text: &str, offset: u32) -> Option<usize> {
+    let mut seen = 0u32;
+    for (i, ch) in text.char_indices() {
+        if seen == offset {
+            return Some(i);
+        }
+        seen += ch.len_utf16() as u32;
+    }
+    if seen == offset {
+        Some(text.len())
+    } else {
+        None
+    }
+}
+
+/// Byte ranges of each line, excluding its terminator, indexed from 0. A file
+/// ending in a newline yields no trailing empty line, since no 1-based line
+/// number from grep or rg addresses one.
+fn line_spans(content: &str) -> Vec<(usize, usize)> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    for (i, b) in bytes.iter().enumerate() {
+        if *b == b'\n' {
+            let mut end = i;
+            if end > start && bytes[end - 1] == b'\r' {
+                end -= 1;
+            }
+            out.push((start, end));
+            start = i + 1;
+        }
+    }
+    if start < bytes.len() {
+        out.push((start, bytes.len()));
+    }
+    out
+}
+
+/// Expand `replacement` for the match sitting at exactly `[start, end)` (byte
+/// offsets) in `line`. `None` when no match sits there, which is the signal that
+/// the caller's span does not describe this line any more.
+///
+/// Going through `Captures::expand` is what makes `$1` and `${name}` work, and
+/// it is also why the span has to be re-found rather than trusted: the captures
+/// only exist as a by-product of matching.
+fn expand_at(re: &Regex, line: &str, start: usize, end: usize, replacement: &str) -> Option<String> {
+    let caps = re.captures_at(line, start)?;
+    let m = caps.get(0)?;
+    if m.start() != start || m.end() != end {
+        return None;
+    }
+    let mut out = String::new();
+    caps.expand(replacement, &mut out);
+    Some(out)
+}
+
+/// What a replacement produces for each displayed span, without touching disk.
+/// Computed in Rust because the expansion has to come from the same regex
+/// engine that will perform the write; JavaScript's `RegExp` is a different
+/// dialect and could show a preview the write would not reproduce.
+///
+/// A span that no longer verifies yields `null` rather than a guess.
+#[tauri::command]
+pub fn preview_replace(
+    query: String,
+    options: SearchOptions,
+    replacement: String,
+    spans: Vec<PreviewSpan>,
+) -> Result<Vec<Option<String>>, String> {
+    let re = build_regex(&query, &options)?;
+    Ok(spans
+        .into_iter()
+        .map(|s| {
+            let start = utf16_to_byte(&s.text, s.start)?;
+            let end = utf16_to_byte(&s.text, s.end)?;
+            expand_at(&re, &s.text, start, end, &replacement)
+        })
+        .collect())
+}
+
+/// Apply `replacement` to the given spans, file by file.
+///
+/// Fail-closed at every step: a path outside `root` is refused, a file whose
+/// digest has moved is skipped whole, and a span that no longer verifies skips
+/// its file rather than writing at an offset nobody agrees on. Edits are applied
+/// to the original bytes back to front, so earlier offsets stay valid and the
+/// file's line endings and final-newline state are whatever they already were.
+#[tauri::command]
+pub fn replace_in_files(
+    root: String,
+    query: String,
+    options: SearchOptions,
+    replacement: String,
+    targets: Vec<ReplaceTarget>,
+) -> Result<ReplaceResult, String> {
+    let re = build_regex(&query, &options)?;
+    let mut changed = Vec::new();
+    let mut skipped = Vec::new();
+    let mut occurrences = 0u32;
+
+    for target in targets {
+        let abs = Path::new(&root).join(&target.path);
+        let abs_str = abs.to_string_lossy().into_owned();
+        let mut skip = |reason: &str| {
+            skipped.push(SkippedFile { path: target.path.clone(), reason: reason.to_string() });
+        };
+
+        if let Err(e) = crate::fs::ensure_inside_named(&root, &abs_str, "project folder") {
+            skip(&e);
+            continue;
+        }
+        // An absent digest is not a pass: without one there is nothing to
+        // compare, so the file cannot be shown to be the one that was searched.
+        match digest_of(&abs) {
+            Some(d) if d == target.digest => {}
+            Some(_) => {
+                skip("changed on disk");
+                continue;
+            }
+            None => {
+                skip("unreadable");
+                continue;
+            }
+        }
+        let Ok(content) = std::fs::read_to_string(&abs) else {
+            skip("not a text file");
+            continue;
+        };
+
+        let lines = line_spans(&content);
+        let mut edits: Vec<(usize, usize, String)> = Vec::new();
+        let mut bad = false;
+        for span in &target.matches {
+            let Some(&(ls, le)) = lines.get(span.line.saturating_sub(1) as usize) else {
+                bad = true;
+                break;
+            };
+            let text = &content[ls..le];
+            let (Some(bs), Some(be)) = (utf16_to_byte(text, span.start), utf16_to_byte(text, span.end))
+            else {
+                bad = true;
+                break;
+            };
+            let Some(new) = expand_at(&re, text, bs, be, &replacement) else {
+                bad = true;
+                break;
+            };
+            edits.push((ls + bs, ls + be, new));
+        }
+        if bad {
+            skip("no longer matches");
+            continue;
+        }
+        if edits.is_empty() {
+            continue;
+        }
+
+        // Overlapping spans cannot be applied as independent edits. The panel
+        // derives spans from `find_iter`, which never overlaps, but this command
+        // is reachable with arbitrary targets and every other guard here is
+        // fail-closed.
+        edits.sort_by_key(|e| e.0);
+        if edits.windows(2).any(|w| w[0].1 > w[1].0) {
+            skip("overlapping matches");
+            continue;
+        }
+
+        // Applied back to front, so an earlier edit never shifts a later one's
+        // offsets. Written through the atomic shape rather than a truncating
+        // `fs::write`: a replace spans many files and has no undo, so a crash
+        // mid-write must not be able to leave a source file short.
+        let mut text = content;
+        for (s, e, new) in edits.iter().rev() {
+            text.replace_range(*s..*e, new);
+        }
+        if let Err(e) = crate::chat::rules::write_atomically(&abs, &text) {
+            skip(&e);
+            continue;
+        }
+        occurrences += edits.len() as u32;
+        changed.push(target.path.clone());
+    }
+
+    Ok(ReplaceResult { changed, skipped, occurrences })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1045,6 +1285,380 @@ mod tests {
         let root = dir.to_string_lossy().into_owned();
         let o = SearchOptions { case: true, regex: true, ..Default::default() };
         assert!(grep_project(root, "[".into(), o, 500).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // --- replace ---
+
+    fn span(line: u32, start: u32, end: u32) -> ReplaceSpan {
+        ReplaceSpan { line, start, end }
+    }
+
+    /// Search the fixture the way the panel does, so the digest and offsets
+    /// handed to `replace_in_files` are the ones a real run would carry.
+    fn search_for(root: &str, query: &str, o: &SearchOptions) -> SearchResult {
+        grep_project(root.to_string(), query.to_string(), o.clone(), 500).unwrap()
+    }
+
+    fn targets_from(result: &SearchResult) -> Vec<ReplaceTarget> {
+        result
+            .files
+            .iter()
+            .map(|f| ReplaceTarget {
+                path: f.path.clone(),
+                digest: f.digest.clone(),
+                matches: result
+                    .matches
+                    .iter()
+                    .filter(|m| m.path == f.path)
+                    .flat_map(|m| m.submatches.iter().map(|(s, e)| span(m.line, *s, *e)))
+                    .collect(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn utf16_to_byte_maps_through_non_ascii() {
+        assert_eq!(utf16_to_byte("café needle", 0), Some(0));
+        // "café " is 5 UTF-16 units, 6 bytes.
+        assert_eq!(utf16_to_byte("café needle", 5), Some(6));
+        assert_eq!(utf16_to_byte("café needle", 11), Some(12));
+        // Past the end is not a boundary.
+        assert_eq!(utf16_to_byte("abc", 9), None);
+    }
+
+    #[test]
+    fn line_spans_handles_crlf_and_a_missing_final_newline() {
+        assert_eq!(line_spans("a\nbb\n"), vec![(0, 1), (2, 4)]);
+        // No phantom trailing line when the file ends in a newline.
+        assert_eq!(line_spans("a\n").len(), 1);
+        // A final line without a terminator still counts.
+        assert_eq!(line_spans("a\nbb"), vec![(0, 1), (2, 4)]);
+        // CRLF: the span excludes both terminator bytes.
+        assert_eq!(line_spans("a\r\nbb\r\n"), vec![(0, 1), (3, 5)]);
+    }
+
+    #[test]
+    fn preview_expands_captures_named_groups_and_a_literal_dollar() {
+        let rx = SearchOptions { case: true, regex: true, ..Default::default() };
+
+        let out = preview_replace(
+            r"(\w+)@(\w+)".into(),
+            rx.clone(),
+            "$2 at $1".into(),
+            vec![PreviewSpan { text: "mail bob@example here".into(), start: 5, end: 16 }],
+        )
+        .unwrap();
+        assert_eq!(out, vec![Some("example at bob".to_string())]);
+
+        let out = preview_replace(
+            r"(?P<user>\w+)@(?P<host>\w+)".into(),
+            rx.clone(),
+            "${host}/${user}".into(),
+            vec![PreviewSpan { text: "bob@example".into(), start: 0, end: 11 }],
+        )
+        .unwrap();
+        assert_eq!(out, vec![Some("example/bob".to_string())]);
+
+        // `$$` is the escape for a literal dollar.
+        let out = preview_replace(
+            "cost".into(),
+            SearchOptions { case: true, ..Default::default() },
+            "$$5".into(),
+            vec![PreviewSpan { text: "the cost here".into(), start: 4, end: 8 }],
+        )
+        .unwrap();
+        assert_eq!(out, vec![Some("$5".to_string())]);
+    }
+
+    #[test]
+    fn preview_returns_null_for_a_span_that_no_longer_matches() {
+        let out = preview_replace(
+            "needle".into(),
+            SearchOptions { case: true, ..Default::default() },
+            "pin".into(),
+            vec![
+                PreviewSpan { text: "needle here".into(), start: 0, end: 6 },
+                // Right length, wrong place: nothing matches at this offset.
+                PreviewSpan { text: "needle here".into(), start: 5, end: 11 },
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, vec![Some("pin".to_string()), None]);
+    }
+
+    #[test]
+    fn preview_and_replace_agree_on_the_same_span() {
+        // The property the panel relies on: what is previewed is what is written.
+        let dir = temp_dir("previewparity");
+        std::fs::write(dir.join("a.txt"), "bob@example here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = SearchOptions { case: true, regex: true, ..Default::default() };
+        let query = r"(\w+)@(\w+)";
+        let replacement = "$2 at $1";
+
+        let found = search_for(&root, query, &o);
+        let m = &found.matches[0];
+        let previewed = preview_replace(
+            query.into(),
+            o.clone(),
+            replacement.into(),
+            vec![PreviewSpan {
+                text: m.text.clone(),
+                start: m.submatches[0].0,
+                end: m.submatches[0].1,
+            }],
+        )
+        .unwrap()[0]
+            .clone()
+            .unwrap();
+
+        replace_in_files(
+            root.clone(),
+            query.into(),
+            o,
+            replacement.into(),
+            targets_from(&found),
+        )
+        .unwrap();
+
+        let after = std::fs::read_to_string(dir.join("a.txt")).unwrap();
+        assert!(after.contains(&previewed), "wrote {after:?}, previewed {previewed:?}");
+        assert_eq!(after, "example at bob here\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_refuses_a_path_outside_the_root() {
+        let dir = temp_dir("containment");
+        let outside = temp_dir("containment_outside");
+        std::fs::write(outside.join("secret.txt"), "needle here\n").unwrap();
+        std::fs::write(dir.join("inside.txt"), "needle here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        // A parent-dir escape, and a symlink that resolves out of the root.
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, dir.join("escape")).unwrap();
+
+        let targets = vec![
+            ReplaceTarget {
+                path: "../containment_outside/secret.txt".into(),
+                digest: digest_of(&outside.join("secret.txt")).unwrap(),
+                matches: vec![span(1, 0, 6)],
+            },
+            #[cfg(unix)]
+            ReplaceTarget {
+                path: "escape/secret.txt".into(),
+                digest: digest_of(&outside.join("secret.txt")).unwrap(),
+                matches: vec![span(1, 0, 6)],
+            },
+        ];
+        let n = targets.len();
+        let out =
+            replace_in_files(root, "needle".into(), o, "pin".into(), targets).unwrap();
+
+        assert!(out.changed.is_empty());
+        assert_eq!(out.skipped.len(), n);
+        assert!(out.skipped.iter().all(|s| s.reason.contains("project folder")));
+        assert_eq!(
+            std::fs::read_to_string(outside.join("secret.txt")).unwrap(),
+            "needle here\n",
+            "nothing outside the root may be written"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn replace_skips_a_file_whose_digest_moved() {
+        // The case a line-text comparison cannot detect: two *identical* lines
+        // inserted above the match, so line 1's text still equals what was
+        // searched while the match has moved to line 3.
+        let dir = temp_dir("stale");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "needle here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "needle", &o);
+        let targets = targets_from(&found);
+
+        std::fs::write(&file, "needle here\nneedle here\nneedle here\n").unwrap();
+
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets).unwrap();
+        assert!(out.changed.is_empty());
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].reason, "changed on disk");
+        assert_eq!(out.occurrences, 0);
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "needle here\nneedle here\nneedle here\n",
+            "a stale target must leave the file untouched"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_skips_a_target_with_no_digest() {
+        let dir = temp_dir("nodigest");
+        std::fs::write(dir.join("a.txt"), "needle\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let out = replace_in_files(
+            root,
+            "needle".into(),
+            opts(),
+            "pin".into(),
+            vec![ReplaceTarget {
+                path: "a.txt".into(),
+                digest: String::new(),
+                matches: vec![span(1, 0, 6)],
+            }],
+        )
+        .unwrap();
+        assert!(out.changed.is_empty());
+        assert_eq!(out.skipped[0].reason, "changed on disk");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_preserves_crlf_and_a_missing_final_newline() {
+        let dir = temp_dir("endings");
+        let crlf = dir.join("crlf.txt");
+        let nonl = dir.join("nonl.txt");
+        std::fs::write(&crlf, "one needle\r\ntwo needle\r\n").unwrap();
+        std::fs::write(&nonl, "three needle").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "needle", &o);
+        let out =
+            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        assert_eq!(out.changed.len(), 2, "skipped: {:?}", out.skipped);
+
+        assert_eq!(std::fs::read_to_string(&crlf).unwrap(), "one pin\r\ntwo pin\r\n");
+        assert_eq!(
+            std::fs::read_to_string(&nonl).unwrap(),
+            "three pin",
+            "a file without a final newline must not gain one"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn two_matches_on_one_line_both_land() {
+        let dir = temp_dir("twoperline");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "ab cd ab\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "ab", &o);
+        assert_eq!(found.matches[0].submatches.len(), 2);
+
+        // A longer replacement, so a front-to-back application would corrupt the
+        // second offset.
+        let out =
+            replace_in_files(root, "ab".into(), o, "XYZ".into(), targets_from(&found)).unwrap();
+        assert_eq!(out.occurrences, 2);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "XYZ cd XYZ\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_lands_on_the_right_bytes_on_a_non_ascii_line() {
+        let dir = temp_dir("utf8replace");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "café needle here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "needle", &o);
+        assert_eq!(found.matches[0].submatches, vec![(5, 11)]);
+        let out =
+            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        assert_eq!(out.occurrences, 1);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "café pin here\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_rejects_overlapping_spans_rather_than_corrupting_the_file() {
+        let dir = temp_dir("overlap");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "abcdef\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = replace_in_files(
+            root,
+            "abc".into(),
+            opts(),
+            "X".into(),
+            vec![ReplaceTarget {
+                path: "a.txt".into(),
+                digest: digest_of(&file).unwrap(),
+                // Hand-built overlapping spans: the UI cannot produce these, but
+                // the command must not splice them.
+                matches: vec![span(1, 0, 3), span(1, 2, 5)],
+            }],
+        )
+        .unwrap();
+
+        assert!(out.changed.is_empty());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "abcdef\n", "file must be untouched");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn replace_swaps_the_file_by_rename_so_a_torn_write_cannot_shorten_it() {
+        // The atomic property, testable without crashing anything: `rename`
+        // swaps a directory entry, so a handle opened *before* the replace still
+        // reads the old bytes. A truncating write would rewrite the very file
+        // that handle points at, and this would come back replaced.
+        use std::io::Read;
+        let dir = temp_dir("atomic");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "needle here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "needle", &o);
+        let mut handle = std::fs::File::open(&file).unwrap();
+
+        let out =
+            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        assert_eq!(out.changed.len(), 1);
+
+        let mut old = String::new();
+        handle.read_to_string(&mut old).unwrap();
+        assert_eq!(old, "needle here\n", "the pre-open handle must still see the replaced file");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "pin here\n");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_mixed_run_reports_changed_skipped_and_occurrences() {
+        let dir = temp_dir("mixed");
+        std::fs::write(dir.join("good.txt"), "needle one needle\n").unwrap();
+        std::fs::write(dir.join("stale.txt"), "needle two\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let o = opts();
+
+        let found = search_for(&root, "needle", &o);
+        let targets = targets_from(&found);
+        assert_eq!(targets.len(), 2);
+
+        // Move one file out from under its digest.
+        std::fs::write(dir.join("stale.txt"), "needle two, edited\n").unwrap();
+
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets).unwrap();
+        assert_eq!(out.changed, vec!["good.txt".to_string()]);
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].path, "stale.txt");
+        assert_eq!(out.occurrences, 2, "both spans on the one good line");
+        assert_eq!(std::fs::read_to_string(dir.join("good.txt")).unwrap(), "pin one pin\n");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

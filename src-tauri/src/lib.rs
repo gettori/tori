@@ -246,6 +246,8 @@ pub fn run() {
             fs::list_project_files,
             fs::fs_watch_start,
             search::grep_project,
+            search::preview_replace,
+            search::replace_in_files,
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,

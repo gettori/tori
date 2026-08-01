@@ -150,18 +150,25 @@ fn resolve_existing_prefix(p: &Path) -> PathBuf {
 /// not-yet-created target cannot be canonicalized, so a parent-dir escape must be
 /// caught lexically) and then compares symlink-resolved absolute forms so a
 /// symlink cannot redirect out of `root`. Mirrors `config::is_inside`.
-fn ensure_inside(root: &str, path: &str) -> Result<PathBuf, String> {
+///
+/// `noun` names the boundary in the error text, since this now guards two of
+/// them: the Shared tab's folder and, for replace-in-files, the project root.
+pub(crate) fn ensure_inside_named(root: &str, path: &str, noun: &str) -> Result<PathBuf, String> {
     let target = PathBuf::from(path);
     if target.components().any(|c| matches!(c, Component::ParentDir)) {
-        return Err("Refusing a path that escapes the shared folder.".into());
+        return Err(format!("Refusing a path that escapes the {noun}."));
     }
     let root_real = resolve_existing_prefix(Path::new(root));
     let target_real = resolve_existing_prefix(&target);
     if target_real == root_real || target_real.starts_with(&root_real) {
         Ok(target)
     } else {
-        Err("Refusing a path outside the shared folder.".into())
+        Err(format!("Refusing a path outside the {noun}."))
     }
+}
+
+fn ensure_inside(root: &str, path: &str) -> Result<PathBuf, String> {
+    ensure_inside_named(root, path, "shared folder")
 }
 
 /// `mkdir -p` a directory inside `root` (used to create `.shared` on first add).
