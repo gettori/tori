@@ -162,6 +162,25 @@
   font-size: var(--sway-text-lg);
 }
 
+/* The body shares the subject's box, minus the single-line constraints: it is
+   resizable vertically only, so dragging it cannot break the panel's width. */
+.commitBodyInput {
+  composes: commitInput;
+  min-height: calc(48px * var(--ui-scale));
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.amendRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
 .commitActions {
   display: flex;
   gap: calc(6px * var(--ui-scale));

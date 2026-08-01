@@ -204,8 +204,12 @@ describe("commands the editor answers", () => {
     });
     fireEvent.click(screen.getByText("OK"));
 
+    // The palette's one-line prompt never amends, and says so rather than
+    // leaving the flag off the payload for the backend to default.
     await waitFor(() =>
-      expect(invokedWith("git_commit")).toEqual([{ projectPath: REPO, message: "Say what changed" }]),
+      expect(invokedWith("git_commit")).toEqual([
+        { projectPath: REPO, message: "Say what changed", amend: false },
+      ]),
     );
   });
 

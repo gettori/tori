@@ -144,8 +144,20 @@ export function unstage(root: string, paths: string[]): Promise<boolean> {
   return act(root, () => invoke("git_unstage", { projectPath: root, paths }), refreshStatus);
 }
 
-export function commit(root: string, message: string): Promise<boolean> {
-  return act(root, () => invoke("git_commit", { projectPath: root, message }), refreshGit);
+/** Commit the staged changes. `amend` rewrites HEAD instead of adding a commit,
+ *  and is the one form that needs nothing staged (amending only the message). */
+export function commit(root: string, message: string, amend = false): Promise<boolean> {
+  return act(root, () => invoke("git_commit", { projectPath: root, message, amend }), refreshGit);
+}
+
+/** HEAD's full message, for prefilling the fields when amend is toggled on.
+ *  An unborn HEAD (or an unreadable one) reads as empty, not as a failure. */
+export async function headMessage(root: string): Promise<string> {
+  try {
+    return await invoke<string>("git_head_message", { projectPath: root });
+  } catch {
+    return "";
+  }
 }
 
 // Resolves once `git://push-done|error` fires for `repo`, so a caller can await
