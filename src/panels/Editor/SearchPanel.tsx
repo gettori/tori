@@ -5,11 +5,38 @@ import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import styles from "./SearchPanel.module.css";
 
-type SearchMatch = { path: string; line: number; text: string };
-type SearchResult = { matches: SearchMatch[]; truncated: boolean };
+// `submatches` are UTF-16 code-unit offsets into `text`, so they can index the
+// string directly; the backend converts from its own byte offsets.
+type SearchMatch = { path: string; line: number; text: string; submatches: [number, number][] };
+type FileDigest = { path: string; digest: string };
+type SearchResult = {
+  matches: SearchMatch[];
+  truncated: boolean;
+  /** Which backend ran: `rg`, `git` or `plain`. */
+  backend: string;
+  /** Option names this backend cannot honour, so a toggle never sits inert. */
+  unsupported: string[];
+  files: FileDigest[];
+};
 type FileGroup = { path: string; matches: SearchMatch[] };
 
 const MAX_RESULTS = 500;
+const EMPTY_RESULT: SearchResult = {
+  matches: [],
+  truncated: false,
+  backend: "",
+  unsupported: [],
+  files: [],
+};
+// Phase 2 replaces this with the panel's live toggle state.
+const DEFAULT_OPTIONS = {
+  case: false,
+  regex: false,
+  wholeWord: false,
+  include: "",
+  exclude: "",
+  noIgnore: false,
+};
 const INPUT_DEBOUNCE_MS = 200;
 const FS_CHANGE_DEBOUNCE_MS = 400;
 
@@ -35,7 +62,7 @@ function groupByFile(matches: SearchMatch[]): FileGroup[] {
  *  runs while the mode is hidden. */
 export default function SearchPanel(props: { root: string | null; focusNonce: number }) {
   const [query, setQuery] = createSignal("");
-  const [result, setResult] = createSignal<SearchResult>({ matches: [], truncated: false });
+  const [result, setResult] = createSignal<SearchResult>(EMPTY_RESULT);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   let inputEl: HTMLInputElement | undefined;
@@ -47,14 +74,19 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
     const root = props.root;
     if (!root || !q) {
       searchGen++;
-      setResult({ matches: [], truncated: false });
+      setResult(EMPTY_RESULT);
       setError(null);
       return;
     }
     const gen = ++searchGen;
     setLoading(true);
     try {
-      const r = await invoke<SearchResult>("grep_project", { root, query: q, case: false, max: MAX_RESULTS });
+      const r = await invoke<SearchResult>("grep_project", {
+        root,
+        query: q,
+        options: DEFAULT_OPTIONS,
+        max: MAX_RESULTS,
+      });
       if (gen !== searchGen) return;
       setResult(r);
       setError(null);
@@ -78,7 +110,7 @@ export default function SearchPanel(props: { root: string | null; focusNonce: nu
     on(
       () => props.root,
       () => {
-        setResult({ matches: [], truncated: false });
+        setResult(EMPTY_RESULT);
         setError(null);
       },
     ),
