@@ -18,7 +18,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const { default: CommandPalette } = await import("./CommandPalette");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
-const { NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT } = await import("../../utils/events");
+const { publishEditorState, clearEditorState } = await import("../../utils/editorState");
+const { refreshStatus } = await import("../../utils/gitActions");
+const { NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE } = await import(
+  "../../utils/events"
+);
 
 const selection = {
   spaceName: "work",
@@ -57,9 +61,13 @@ function fire(label: string, event: string): unknown {
   return payload;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   bridge.calls.length = 0;
   onOpenSettings.mockClear();
+  // Both stores are module-level and outlive any one palette, so each test says
+  // what the editor and the index hold rather than inheriting the last one's.
+  clearEditorState();
+  await refreshStatus(null);
 });
 afterEach(() => {
   mounted?.unmount();
@@ -90,10 +98,74 @@ describe("CommandPalette", () => {
   it.each([
     ["New Claude session", NEW_SESSION, { folderPath: REPO, projectName: "repo", agent: "claude" }],
     ["Show Changes", SET_RIGHT_MODE, { mode: "changes" }],
-    ["View: Toggle Terminal", TOGGLE_TERMINAL, FIRED],
+    // Labelled from the canonical table now, which is the same string the
+    // Cmd+/ sheet shows: one command cannot be called two things.
+    ["Show or hide the terminal", TOGGLE_TERMINAL, FIRED],
   ])("%s still runs", (label, event, want) => {
     open();
     expect(fire(label, event)).toEqual(want);
+  });
+
+  it("shows the key chips of a command that also carries a binding", () => {
+    open();
+    const row = screen.getByText("Show or hide the terminal").parentElement!;
+    expect([...row.querySelectorAll("kbd")].map((k) => k.textContent)).toEqual(["⌘", "⌥", "J"]);
+  });
+
+  it("lists an unavailable command with its reason, and refuses to run it", () => {
+    // Nothing published means no file is open, so "Save file" has to say why
+    // rather than either vanishing (you would never learn it exists) or running
+    // and saving nothing.
+    open();
+    const row = screen.getByText("Save file").parentElement!;
+    expect(row.textContent).toContain("No file open");
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+
+    // Filtered down first, so the row Enter would take is unambiguously this
+    // one rather than whatever happened to be at the top of the full list.
+    fireEvent.input(screen.getByRole("textbox"), { target: { value: "Save file" } });
+    expect(rowLabels()[0]).toBe("Save file");
+
+    let fired = false;
+    const on = () => (fired = true);
+    window.addEventListener(EDITOR_SAVE, on);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.click(screen.getByText("Save file"));
+    window.removeEventListener(EDITOR_SAVE, on);
+    expect(fired).toBe(false);
+  });
+
+  it("runs a command once its requirement is met", () => {
+    publishEditorState({ activePath: `${REPO}/src/a.ts`, dirty: true, tabCount: 1, projectRoot: REPO });
+    open();
+    expect(screen.getByText("Save file").parentElement!.textContent).not.toContain("No file open");
+    expect(fire("Save file", EDITOR_SAVE)).toEqual(FIRED);
+  });
+
+  it("closes before the command runs", () => {
+    // Load-bearing for the commands whose handler opens a prompt (go to line,
+    // commit): Editor is the prompt host, and a prompt raised while the palette
+    // was still up would open behind it and take the palette's focus fight.
+    const order: string[] = [];
+    mounted = render(() => (
+      <CommandPalette
+        selected={selection}
+        onOpenSettings={onOpenSettings}
+        onClose={() => order.push("closed")}
+      />
+    ));
+    const on = () => order.push("ran");
+    window.addEventListener(SET_RIGHT_MODE, on);
+    fireEvent.click(screen.getByText("Show Changes"));
+    window.removeEventListener(SET_RIGHT_MODE, on);
+    expect(order).toEqual(["closed", "ran"]);
+  });
+
+  it("refuses Commit and Push by naming what is missing", () => {
+    publishEditorState({ activePath: `${REPO}/src/a.ts`, dirty: false, tabCount: 1, projectRoot: REPO });
+    open();
+    expect(screen.getByText("Commit staged changes").parentElement!.textContent).toContain("Nothing staged");
+    expect(screen.getByText("Push to origin").parentElement!.textContent).toContain("Nothing to push");
   });
 
   it("stops a running chat", () => {
@@ -117,7 +189,12 @@ describe("CommandPalette", () => {
 
   it("filters to the actions that match", () => {
     open();
-    fireEvent.input(screen.getByRole("textbox"), { target: { value: "toggle" } });
-    expect(rowLabels().every((l) => l.startsWith("View: Toggle"))).toBe(true);
+    const all = rowLabels().length;
+    fireEvent.input(screen.getByRole("textbox"), { target: { value: "sidebar" } });
+    // fuzzyScore matches subsequences, so the narrowed list is not only exact
+    // substring hits; what it must do is narrow, and rank both sidebar rows in.
+    expect(rowLabels().length).toBeLessThan(all);
+    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Filter the sidebar");
   });
 });

@@ -29,14 +29,21 @@ const DIFF = [
 
 const calls: { status: number; diff: number } = { status: 0, diff: 0 };
 
+const UNSTAGED = { status: " M", path: "src/a.ts", staged: false, unstaged: true };
+const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false };
+// The index as the backend would report it next. `git_stage` moves it, so a
+// panel that re-read the status shows the file under a different heading.
+let statusRows = [UNSTAGED];
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     switch (cmd) {
+      case "git_stage":
+        statusRows = [STAGED];
+        return Promise.resolve(null);
       case "git_status":
         calls.status += 1;
-        return Promise.resolve([
-          { status: " M", path: "src/a.ts", staged: false, unstaged: true },
-        ]);
+        return Promise.resolve(statusRows);
       case "git_diff_text":
         calls.diff += 1;
         return Promise.resolve(DIFF);
@@ -65,13 +72,18 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
+import { stage, refreshStatus } from "../../utils/gitActions";
 
 /** One watcher burst, delivered to every registered `fs://changed` listener. */
 function fsBurst(paths: string[]) {
   for (const fn of handlers["fs://changed"] ?? []) fn({ payload: { paths } });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The git store outlives any one panel, so the previous test's index would
+  // otherwise still be loaded. Selecting nothing is the reset the app uses.
+  await refreshStatus(null);
+  statusRows = [UNSTAGED];
   calls.status = 0;
   calls.diff = 0;
   for (const key of Object.keys(handlers)) delete handlers[key];
@@ -100,6 +112,21 @@ async function mountWithOpenDiff() {
   fireEvent.click(screen.getByTitle("src/a.ts"));
   await waitFor(() => expect(calls.diff).toBe(1));
 }
+
+describe("the shared git store", () => {
+  it("moves a file to Staged when something outside the panel stages it", async () => {
+    // What the command palette's "Stage this file" runs. The panel used to hold
+    // its own `git_status` signal, so an action from anywhere else left it
+    // showing the file as unstaged until something happened to refresh it.
+    await mountPanel();
+    expect(screen.queryByText("Staged Changes")).toBeNull();
+
+    await stage("/proj", ["src/a.ts"]);
+
+    await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
+    expect(screen.queryByText("Changes")).toBeNull();
+  });
+});
 
 describe("expanded diff refetch", () => {
   it("ignores a burst that does not name the open file", async () => {
