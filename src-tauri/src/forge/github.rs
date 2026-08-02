@@ -29,11 +29,23 @@ use super::http::{
     HttpRequest, NestedSpec, Transport, PAGE_CAP,
 };
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, MergeableState, Paged, PrState, PullRequest,
-    RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, CheckRollup, CheckState, FileStatus, MergeableState, Paged, PrFile,
+    PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewThread,
+    UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
+
+/// How many changed files the API will describe for one pull request.
+///
+/// GitHub's own ceiling, not a budget of ours, which is why exceeding it is a
+/// sentence on screen rather than a shorter list: past this the server simply
+/// stops describing the PR, and the only honest thing left to offer is the link
+/// out. At `PR_FILES_PER_PAGE` per page it is reached in exactly
+/// `PR_FILE_PAGES` pages, so a `Link: rel="next"` on the last one is the signal.
+const PR_FILE_CAP: usize = 300;
+const PR_FILES_PER_PAGE: usize = 100;
+const PR_FILE_PAGES: usize = PR_FILE_CAP / PR_FILES_PER_PAGE;
 
 const API_BASE: &str = "https://api.github.com";
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
@@ -260,6 +272,43 @@ fn pr_from_rest(v: &Value) -> Result<PullRequest, ForgeError> {
         head_sha: v.get("head").map(|h| str_at(h, "sha")).unwrap_or_default(),
         url: str_at(v, "html_url"),
         mergeable_state: mergeable_from_rest(v),
+    })
+}
+
+/// Maps one entry of `GET /pulls/{n}/files`.
+///
+/// `patch` is passed through untouched, including its absence. GitHub omits it
+/// for a binary file, for a mode-only change, and for a patch past the size it
+/// will send, and those need three different sentences on screen; the line
+/// counts are what tell them apart, so they are kept even though a present
+/// patch already contains them.
+fn file_from_rest(v: &Value) -> Result<PrFile, ForgeError> {
+    let path = v
+        .get("filename")
+        .and_then(|f| f.as_str())
+        .ok_or_else(|| ForgeError::Malformed { message: "changed file has no filename".into() })?;
+    let status = match v.get("status").and_then(|s| s.as_str()) {
+        Some("added") => FileStatus::Added,
+        Some("removed") => FileStatus::Removed,
+        Some("renamed") => FileStatus::Renamed,
+        Some("copied") => FileStatus::Copied,
+        Some("unchanged") => FileStatus::Unchanged,
+        Some("changed") => FileStatus::Changed,
+        // Includes GitHub's own "modified" and anything it adds later. A file
+        // Sway cannot classify still renders its patch, which is the part the
+        // reader came for.
+        _ => FileStatus::Modified,
+    };
+    Ok(PrFile {
+        path: path.to_string(),
+        previous_path: v
+            .get("previous_filename")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string()),
+        status,
+        additions: v.get("additions").and_then(|a| a.as_u64()).unwrap_or(0) as u32,
+        deletions: v.get("deletions").and_then(|d| d.as_u64()).unwrap_or(0) as u32,
+        patch: v.get("patch").and_then(|p| p.as_str()).map(|s| s.to_string()),
     })
 }
 
@@ -511,6 +560,25 @@ impl Forge for GitHubForge {
         let (items, truncated) =
             paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         let items = items.iter().map(pr_from_rest).collect::<Result<Vec<_>, _>>()?;
+        Ok(Paged { items, truncated })
+    }
+
+    fn pull_request_files(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+    ) -> Result<Paged<PrFile>, ForgeError> {
+        self.require_token()?;
+        let path = format!(
+            "/repos/{}/{}/pulls/{number}/files?per_page={PR_FILES_PER_PAGE}",
+            repo.owner, repo.repo
+        );
+        let (items, truncated) = paginate_rest(
+            self.transport.as_ref(),
+            self.rest("GET", &path, None),
+            PR_FILE_PAGES,
+        )?;
+        let items = items.iter().map(file_from_rest).collect::<Result<Vec<_>, _>>()?;
         Ok(Paged { items, truncated })
     }
 
@@ -1064,6 +1132,67 @@ mod tests {
         let list = f.list_pull_requests(&repo()).unwrap();
         assert_eq!(list.items.len(), 3);
         assert!(!list.truncated);
+    }
+
+    #[test]
+    fn a_changed_file_keeps_the_status_and_the_patch_the_api_computed() {
+        // Four statuses that render four different ways, and the rename's
+        // `previous_filename`, which is the only thing saying where the file
+        // came from: without it a rename reads as an addition beside a deletion.
+        let body = r#"[
+            {"filename":"src/new.ts","status":"added","additions":9,"deletions":0,
+             "patch":"@@ -0,0 +1,9 @@\n+const a = 1;"},
+            {"filename":"src/old.ts","status":"removed","additions":0,"deletions":4,
+             "patch":"@@ -1,4 +0,0 @@\n-const b = 2;"},
+            {"filename":"src/edit.ts","status":"modified","additions":1,"deletions":1,
+             "patch":"@@ -1,1 +1,1 @@\n-a\n+b"},
+            {"filename":"src/to.ts","status":"renamed","previous_filename":"src/from.ts",
+             "additions":0,"deletions":0}
+        ]"#;
+        let (f, _stub) = forge(vec![StubTransport::json(200, body)]);
+        let files = f.pull_request_files(&repo(), 12).unwrap();
+
+        assert_eq!(files.items.len(), 4);
+        assert!(!files.truncated);
+        assert_eq!(files.items[0].status, FileStatus::Added);
+        assert_eq!(files.items[1].status, FileStatus::Removed);
+        assert_eq!(files.items[2].status, FileStatus::Modified);
+        assert_eq!(files.items[3].status, FileStatus::Renamed);
+        assert_eq!(files.items[3].previous_path.as_deref(), Some("src/from.ts"));
+        assert_eq!(files.items[0].previous_path, None);
+        // The patch is the API's own text, carried through byte for byte: it is
+        // what Phase 10's thread anchors are measured against.
+        assert_eq!(files.items[2].patch.as_deref(), Some("@@ -1,1 +1,1 @@\n-a\n+b"));
+        // A pure rename has no patch at all, which is not the same as an empty
+        // one and must not render as a file with no changes to show.
+        assert_eq!(files.items[3].patch, None);
+    }
+
+    #[test]
+    fn a_file_list_past_the_api_ceiling_reports_truncation_rather_than_a_short_list() {
+        // The failure this prevents: a 400-file PR showing 300 files and looking
+        // entirely healthy doing it. Three pages is the whole budget, so a
+        // fourth `Link` is the server saying it has stopped describing the PR.
+        let file = |n: usize| format!(r#"{{"filename":"f{n}.ts","status":"modified","patch":"@@"}}"#);
+        let page = |from: usize| {
+            let items: Vec<String> = (from..from + 100).map(file).collect();
+            format!("[{}]", items.join(","))
+        };
+        let next = |p: u32| {
+            format!("<https://api.test/repos/skarif2/sway/pulls/1/files?page={p}>; rel=\"next\"")
+        };
+        let (f, stub) = forge(vec![
+            StubTransport::with_headers(200, &[("Link", &next(2))], &page(0)),
+            StubTransport::with_headers(200, &[("Link", &next(3))], &page(100)),
+            StubTransport::with_headers(200, &[("Link", &next(4))], &page(200)),
+        ]);
+
+        let files = f.pull_request_files(&repo(), 1).unwrap();
+        assert_eq!(files.items.len(), PR_FILE_CAP);
+        assert!(files.truncated, "the cap was hit and nothing said so");
+        // And it stopped at the ceiling rather than walking on: a fourth page
+        // would be a request spent on files the API will not finish sending.
+        assert_eq!(stub.request_count(), PR_FILE_PAGES);
     }
 
     #[test]

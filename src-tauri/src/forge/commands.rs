@@ -10,7 +10,7 @@
 
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
-use super::model::{AuthState, Paged, PullRequest, RepoRef, StatusReport};
+use super::model::{AuthState, Paged, PrFile, PullRequest, RepoRef, StatusReport};
 use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -325,6 +325,29 @@ pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, Forge
     }
     let repo = repo_ref(&project_path)?;
     let result = client().list_pull_requests(&repo);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Every file one pull request touches, with GitHub's own patch for each.
+///
+/// Uncached for the same reason as the listing above: this is a view somebody
+/// opened, and the poll layer's pacing exists for a tick that runs forever.
+///
+/// The patches come from the API rather than from a local `git diff` because
+/// Phase 10's review threads anchor to the hunks GitHub computed. A locally
+/// recomputed diff would read identically and anchor differently, which puts
+/// comments on the wrong lines rather than failing outright.
+#[tauri::command]
+pub fn github_pr_files(
+    project_path: String,
+    number: u64,
+) -> Result<Paged<PrFile>, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().pull_request_files(&repo, number);
     auth::note_result(&result);
     Ok(result?)
 }
@@ -651,6 +674,20 @@ mod tests {
 
         let err = github_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
         assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed pull requests");
+
+        auth::restore(None, None, true);
+    }
+
+    #[test]
+    fn the_kill_switch_stops_a_file_listing_too() {
+        // Third door onto the wire, same backstop. A PR detail view is opened by
+        // a click, so it reaches Rust while the scheduler sits paused, and a
+        // "no polling" reading of the toggle would let it straight through.
+        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        auth::restore(Some(TOKEN.into()), Some("skarif2".into()), false);
+
+        let err = github_pr_files(not_a_repo.to_string_lossy().into_owned(), 12).unwrap_err();
+        assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed changed files");
 
         auth::restore(None, None, true);
     }

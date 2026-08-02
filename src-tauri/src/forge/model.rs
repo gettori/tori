@@ -197,6 +197,48 @@ pub struct ReviewThread {
     pub comments: Vec<ReviewComment>,
 }
 
+/// What happened to one file in a pull request.
+///
+/// `Changed` is GitHub's own word for a file whose content the API could not
+/// classify further; it is kept rather than folded into `Modified` so a status
+/// the server invents later does not arrive wearing a word it did not choose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileStatus {
+    Added,
+    Modified,
+    Removed,
+    Renamed,
+    Copied,
+    Changed,
+    Unchanged,
+}
+
+/// One file of a pull request's diff, with the forge's **own** patch.
+///
+/// The patch is carried through rather than recomputed locally, and that is the
+/// whole point of this type. A review thread anchors to a `diff_hunk` and a
+/// position that GitHub calculated; a diff Sway computed itself would differ in
+/// context size, in rename detection and in whitespace handling, and every one
+/// of those differences lands a comment on the wrong line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrFile {
+    pub path: String,
+    /// Where a renamed or copied file came from. `None` for everything else.
+    pub previous_path: Option<String>,
+    pub status: FileStatus,
+    pub additions: u32,
+    pub deletions: u32,
+    /// The unified patch, hunks only, with no `diff --git` preamble.
+    ///
+    /// Absent in three different situations that the UI must not render alike:
+    /// a binary file, a mode-only change, and a patch past the size the API
+    /// will send. The line counts beside it are what tell them apart, which is
+    /// why they are carried even though the patch already contains them.
+    pub patch: Option<String>,
+}
+
 /// Who the stored token belongs to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -312,6 +354,17 @@ mod tests {
                     body: "This drops the error.".into(),
                     created_at: "2026-08-02T12:00:00Z".into(),
                 }],
+            },
+            // A renamed file whose patch the API did send, because the two
+            // fields the UI branches on (`previousPath` and `patch`) are both
+            // populated only in that case.
+            "prFile": PrFile {
+                path: "src/utils/forgeChip.ts".into(),
+                previous_path: Some("src/panels/LeftSidebar/chip.ts".into()),
+                status: FileStatus::Renamed,
+                additions: 12,
+                deletions: 3,
+                patch: Some("@@ -1,3 +1,4 @@\n fn main() {\n+    let x = 1;".into()),
             },
             "viewer": Viewer {
                 login: "skarif2".into(),
