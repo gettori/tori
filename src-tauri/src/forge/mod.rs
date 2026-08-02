@@ -30,8 +30,8 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewThread,
-    UnitStatus, Viewer,
+    AuthState, Capabilities, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewComment,
+    ReviewThread, UnitStatus, Viewer,
 };
 
 /// Everything that can go wrong, as distinct variants rather than a `String`.
@@ -205,8 +205,18 @@ pub trait Forge: Send + Sync {
         number: u64,
     ) -> Result<Paged<ReviewThread>, ForgeError>;
 
-    fn reply_to_thread(&self, repo: &RepoRef, thread_id: &str, body: &str)
-        -> Result<(), ForgeError>;
+    /// Post a reply and hand back **the comment the server stored**.
+    ///
+    /// Not `()`. A reply is shown the instant it is typed, because waiting on a
+    /// round trip to see your own words is the slowest a text box can feel; but
+    /// an optimistic comment is a guess about id, author and timestamp, and the
+    /// only thing that can correct it is what the server actually wrote.
+    fn reply_to_thread(
+        &self,
+        repo: &RepoRef,
+        thread_id: &str,
+        body: &str,
+    ) -> Result<ReviewComment, ForgeError>;
 
     /// Resolve or unresolve a thread.
     ///
@@ -303,7 +313,7 @@ mod tests {
             _repo: &RepoRef,
             _thread_id: &str,
             _body: &str,
-        ) -> Result<(), ForgeError> {
+        ) -> Result<ReviewComment, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
         fn set_thread_resolved(&self, _thread_id: &str, _resolved: bool) -> Result<(), ForgeError> {

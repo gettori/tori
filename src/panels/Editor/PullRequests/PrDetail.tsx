@@ -20,11 +20,28 @@
 import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../../utils/diffHunks";
-import { buildRows, hunkGaps, type Gap } from "../../../utils/diffView";
+import { buildRows, hunkGaps, type DiffRow, type Gap } from "../../../utils/diffView";
 import { fileSkip, fileLabel, type FileSkip } from "../../../utils/prFiles";
-import { forgeErrorMessage, type Paged, type PrFile, type PullRequest } from "../../../utils/forgeTypes";
+import {
+  groupThreads,
+  newSideLines,
+  pendingComment,
+  splitByRenderedLines,
+  withComment,
+  withoutComment,
+  withResolved,
+} from "../../../utils/reviewThreads";
+import {
+  forgeErrorMessage,
+  type Paged,
+  type PrFile,
+  type PullRequest,
+  type ReviewComment,
+  type ReviewThread,
+} from "../../../utils/forgeTypes";
 import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
 import DiffRows, { diffRowClasses } from "../DiffRows";
+import ReviewThreadView from "./ReviewThreadView";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import styles from "./PrDetail.module.css";
@@ -49,6 +66,15 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
   const [gapLines, setGapLines] = createSignal<Record<string, string[]>>({});
   const [gapError, setGapError] = createSignal<string | null>(null);
 
+  // Review conversations. Their own request, and a failure of it must not take
+  // the diff down with it: a pull request whose threads could not be read is
+  // still a pull request worth reading.
+  const [threads, setThreads] = createSignal<ReviewThread[]>([]);
+  const [threadsTruncated, setThreadsTruncated] = createSignal(false);
+  const [threadError, setThreadError] = createSignal<string | null>(null);
+  const [busyThread, setBusyThread] = createSignal<string | null>(null);
+  const grouped = createMemo(() => groupThreads(threads()));
+
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -61,6 +87,9 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
   // most readers never expand a gap at all, and a PR on a branch checked out
   // right here needs no fetch even then.
   let headFetch: Promise<void> | null = null;
+  // Distinguishes two replies in flight at once, so each reconciles onto its own
+  // optimistic comment rather than onto whichever was appended last.
+  let replySeq = 0;
 
   createEffect(
     on([() => props.root, () => props.pr.number], async ([root, number]) => {
@@ -70,6 +99,10 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       setGapLines({});
       setGapError(null);
       headFetch = null;
+      setThreads([]);
+      setThreadsTruncated(false);
+      setThreadError(null);
+      setBusyThread(null);
       setLoading(true);
       setError(null);
       try {
@@ -88,8 +121,72 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       } finally {
         if (mine === current) setLoading(false);
       }
+
+      // Its own request and its own failure. Threads that will not load must
+      // not take the diff down with them.
+      try {
+        const page = await invoke<Paged<ReviewThread>>("github_review_threads", {
+          projectPath: root,
+          number,
+        });
+        if (mine !== current) return;
+        setThreads(page.items);
+        setThreadsTruncated(page.truncated);
+      } catch (e) {
+        if (mine !== current) return;
+        setThreadError(forgeErrorMessage(e));
+      }
     }),
   );
+
+  /** Post a reply, showing it at once and then correcting it with what the
+   *  server stored. The rollback is the half that matters: a reply left on
+   *  screen after a refusal is a comment only its author can see. */
+  async function reply(threadId: string, body: string) {
+    // Same staleness guard as the two loads. A stale thread id already matches
+    // nothing in the new list, so it is the *message* that would otherwise land:
+    // a refusal from the pull request you just navigated away from, posted onto
+    // the one now on screen.
+    const mine = current;
+    const pending = pendingComment(body, ++replySeq);
+    setThreads((list) => withComment(list, threadId, pending));
+    try {
+      const stored = await invoke<ReviewComment>("github_reply_to_thread", {
+        projectPath: props.root,
+        threadId,
+        body,
+      });
+      if (mine !== current) return;
+      setThreads((list) => withComment(list, threadId, stored, pending.id));
+    } catch (e) {
+      if (mine !== current) return;
+      setThreads((list) => withoutComment(list, threadId, pending.id));
+      setThreadError(forgeErrorMessage(e));
+    }
+  }
+
+  /** Resolve or unresolve. Not optimistic: unlike a reply there is nothing to
+   *  read while it lands, and a card that flips back on refusal reads as a
+   *  click that did the opposite of what it said. */
+  async function setResolved(threadId: string, resolved: boolean) {
+    const mine = current;
+    setBusyThread(threadId);
+    try {
+      await invoke<void>("github_set_thread_resolved", {
+        projectPath: props.root,
+        threadId,
+        resolved,
+      });
+      if (mine !== current) return;
+      setThreads((list) => withResolved(list, threadId, resolved));
+      setThreadError(null);
+    } catch (e) {
+      if (mine !== current) return;
+      setThreadError(forgeErrorMessage(e));
+    } finally {
+      if (mine === current) setBusyThread(null);
+    }
+  }
 
   function toggleFile(path: string) {
     setOpenFile(openFile() === path ? null : path);
@@ -196,10 +293,63 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
     );
   }
 
+  /** One hunk's rows, cut at every line a thread is anchored to, so the
+   *  conversation sits between the line it is about and the one after it.
+   *
+   *  Cut rather than interleave: `DiffRows` owns the markup and the two-column
+   *  layout, and a card threaded through its grid would have to break out of it.
+   *  Rendering consecutive slices puts the card between two blocks, which lands
+   *  in the same place in both layouts. The cost is that a `-`/`+` pair split
+   *  across a cut renders unpaired side-by-side, which needs a comment on a
+   *  deleted line inside a change block to reach at all. */
+  function hunkSegments(
+    rows: DiffRow[],
+    lines: (number | null)[],
+    shown: Map<number, ReviewThread[]>,
+  ): { rows: DiffRow[]; after: ReviewThread[] }[] {
+    const out: { rows: DiffRow[]; after: ReviewThread[] }[] = [];
+    let from = 0;
+    rows.forEach((_, i) => {
+      const line = lines[i];
+      const at = line === null ? undefined : shown.get(line);
+      if (!at) return;
+      out.push({ rows: rows.slice(from, i + 1), after: at });
+      from = i + 1;
+    });
+    if (from < rows.length) out.push({ rows: rows.slice(from), after: [] });
+    return out;
+  }
+
+  /** How many anchored conversations a file carries. Outdated ones are counted
+   *  in their own group instead, since the file's rows do not show them. */
+  function threadCount(path: string): number {
+    let n = 0;
+    for (const at of grouped().byLine.get(path)?.values() ?? []) n += at.length;
+    return n;
+  }
+
+  function threadCard(t: ReviewThread, quoteHunk?: boolean) {
+    return (
+      <ReviewThreadView
+        thread={t}
+        quoteHunk={quoteHunk}
+        busy={busyThread() === t.id}
+        onReply={(body) => void reply(t.id, body)}
+        onResolve={(resolved) => void setResolved(t.id, resolved)}
+      />
+    );
+  }
+
   function fileDiff(f: PrFile) {
     const hunks = createMemo(() => parseDiffHunks(f.patch ?? ""));
     const gaps = createMemo(() => hunkGaps(hunks()));
     const skip = createMemo(() => fileSkip(f));
+    // Every line this file's hunks actually render, so a thread anchored
+    // outside them is held back rather than dropped.
+    const rendered = createMemo(() => hunks().flatMap((h) => newSideLines(h)));
+    const placed = createMemo(() =>
+      splitByRenderedLines(grouped().byLine.get(f.path), rendered()),
+    );
     return (
       <div class={styles.fileDiff}>
         <Show when={skip()} fallback={null}>
@@ -223,16 +373,45 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
             {(gap) => gapRow(gap, `${f.path}:-1`, f.path)}
           </For>
           <For each={hunks()}>
-            {(hunk, hi) => (
-              <div>
-                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
-                <DiffRows rows={buildRows(hunk.lines)} twoColumn={twoColumn()} />
-                <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                  {(gap) => gapRow(gap, `${f.path}:${hi()}`, f.path)}
-                </For>
-              </div>
-            )}
+            {(hunk, hi) => {
+              // Both memoised, and for different reasons. `buildRows` does the
+              // word-level pairing and is the most expensive thing on screen for
+              // a large patch, while being a pure function of text that never
+              // changes; recomputing it on a column toggle or a gap expansion is
+              // pure waste. The segments then change only when a thread appears
+              // at a new line, so the diff's DOM survives everything else.
+              const rows = createMemo(() => buildRows(hunk.lines));
+              const lines = createMemo(() => newSideLines(hunk));
+              const segments = createMemo(() => hunkSegments(rows(), lines(), placed().shown));
+              return (
+                <div>
+                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
+                  <For each={segments()}>
+                    {(seg) => (
+                      <>
+                        <DiffRows rows={seg.rows} twoColumn={twoColumn()} />
+                        <For each={seg.after}>{(t) => threadCard(t, false)}</For>
+                      </>
+                    )}
+                  </For>
+                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
+                    {(gap) => gapRow(gap, `${f.path}:${hi()}`, f.path)}
+                  </For>
+                </div>
+              );
+            }}
           </For>
+        </Show>
+
+        {/* Current, correct, and on no rendered line: its anchor sits in a
+            stretch the patch does not cover, or the patch was withheld. Held
+            back with its quoted hunk rather than dropped, because a file that
+            visibly has a conversation must not appear to have none. */}
+        <Show when={placed().offDiff.length}>
+          <div class={styles.threadGroup}>
+            <div class={styles.groupTitle}>Not on a line this diff shows</div>
+            <For each={placed().offDiff}>{(t) => threadCard(t, true)}</For>
+          </div>
         </Show>
       </div>
     );
@@ -277,6 +456,9 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       <Show when={gapError()}>
         {(message) => <div class={styles.error}>{message()}</div>}
       </Show>
+      <Show when={threadError()}>
+        {(message) => <div class={styles.error}>{message()}</div>}
+      </Show>
 
       <Show when={loading()}>
         <div class={styles.notice}>Loading files…</div>
@@ -311,6 +493,15 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
                 {f.status}
               </span>
               <span class={styles.path}>{fileLabel(f)}</span>
+              {/* A closed file with a conversation in it is otherwise
+                  indistinguishable from one with none. */}
+              <Show when={threadCount(f.path)}>
+                {(n) => (
+                  <span class={styles.threadCount} data-thread-count={n()}>
+                    {n()} 💬
+                  </span>
+                )}
+              </Show>
               <span class={styles.counts}>
                 <span class={styles.added}>+{f.additions}</span>
                 <span class={styles.removed}>-{f.deletions}</span>
@@ -320,6 +511,28 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
           </div>
         )}
       </For>
+
+      {/* Threads with no line to sit beside: written against a version of the
+          file that has moved on. Their own group rather than a guessed line,
+          because a stale remark placed on whatever occupies that line today
+          reads as a remark about it (`reviewThreads.ts`). */}
+      <Show when={grouped().outdated.length}>
+        <div class={styles.threadGroup} data-group="outdated">
+          <div class={styles.groupTitle}>
+            Outdated conversations ({grouped().outdated.length})
+          </div>
+          <For each={grouped().outdated}>{(t) => threadCard(t, true)}</For>
+        </div>
+      </Show>
+
+      <Show when={threadsTruncated()}>
+        <div class={styles.notice}>
+          This pull request has more conversations than one read can carry.{" "}
+          <a href={props.pr.url} target="_blank" rel="noreferrer">
+            See them all on github.com
+          </a>
+        </div>
+      </Show>
     </div>
   );
 }

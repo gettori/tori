@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
-import type { PrFile, PullRequest } from "../../../utils/forgeTypes";
+import type { PrFile, PullRequest, ReviewThread } from "../../../utils/forgeTypes";
 
 // One pull request's files.
 //
@@ -72,6 +72,12 @@ const bridge = vi.hoisted(() => ({
   slice: [] as string[],
   fetchFails: null as string | null,
   sliceFails: null as string | null,
+  threads: [] as unknown[],
+  threadsTruncated: false,
+  threadsFail: null as { kind: string; message: string } | null,
+  reply: null as unknown,
+  replyFails: null as { kind: string; message: string } | null,
+  resolveFails: null as { kind: string; message: string } | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -86,6 +92,15 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.fetchFails ? Promise.reject(bridge.fetchFails) : Promise.resolve(null);
     if (cmd === "git_blob_slice")
       return bridge.sliceFails ? Promise.reject(bridge.sliceFails) : Promise.resolve(bridge.slice);
+    if (cmd === "github_review_threads") {
+      return bridge.threadsFail
+        ? Promise.reject(bridge.threadsFail)
+        : Promise.resolve({ items: bridge.threads, truncated: bridge.threadsTruncated });
+    }
+    if (cmd === "github_reply_to_thread")
+      return bridge.replyFails ? Promise.reject(bridge.replyFails) : Promise.resolve(bridge.reply);
+    if (cmd === "github_set_thread_resolved")
+      return bridge.resolveFails ? Promise.reject(bridge.resolveFails) : Promise.resolve(null);
     return Promise.resolve(null);
   },
 }));
@@ -103,6 +118,12 @@ describe("the pull request detail", () => {
     bridge.slice = [];
     bridge.fetchFails = null;
     bridge.sliceFails = null;
+    bridge.threads = [];
+    bridge.threadsTruncated = false;
+    bridge.threadsFail = null;
+    bridge.reply = null;
+    bridge.replyFails = null;
+    bridge.resolveFails = null;
     localStorage.clear();
   });
 
@@ -316,5 +337,235 @@ describe("the pull request detail", () => {
     setCurrent(pr({ number: 2 }));
     await waitFor(() => expect(screen.queryByText("second.ts")).toBeTruthy());
     expect(screen.queryByText("first.ts")).toBeNull();
+  });
+});
+
+// Review conversations, on the diff they were written about.
+describe("review threads on a pull request's diff", () => {
+  beforeEach(() => {
+    bridge.calls.length = 0;
+    bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
+    bridge.truncated = false;
+    bridge.fail = null;
+    bridge.slice = [];
+    bridge.fetchFails = null;
+    bridge.sliceFails = null;
+    bridge.threads = [];
+    bridge.threadsTruncated = false;
+    bridge.threadsFail = null;
+    bridge.reply = null;
+    bridge.replyFails = null;
+    bridge.resolveFails = null;
+    localStorage.clear();
+  });
+
+  // The path is on the file row *and* in every thread card's header, so the row
+  // is reached by its status word rather than by its text.
+  const open = async () => {
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-file-status]")!);
+  };
+
+  // The hunks of TWO_HUNKS cover new-side lines 1..3 and 40..42.
+  const thread = (over: Partial<ReviewThread> = {}): ReviewThread => ({
+    id: "PRRT_1",
+    path: "src/edit.ts",
+    line: 2,
+    diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
+    isResolved: false,
+    isOutdated: false,
+    comments: [
+      { id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" },
+    ],
+    ...over,
+  });
+
+  it("puts a thread on its own line, inside the hunk it belongs to", async () => {
+    bridge.threads = [thread({ line: 2 })];
+    await open();
+
+    await waitFor(() => expect(screen.queryByText("this drops the error")).toBeTruthy());
+    const card = document.querySelector('[data-thread-id="PRRT_1"]')!;
+    // The card sits after the row for line 2 and before the row for line 3,
+    // which is what "anchored to a line" means in a rendered diff.
+    const rows = Array.from(document.querySelectorAll("[class*=diffLine]"));
+    const before = rows.filter((r) => r.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before[before.length - 1].textContent).toContain("+two edited");
+  });
+
+  it("sends an outdated thread to its own group, never to a line", async () => {
+    // The mistake worth preventing: GitHub reports `isOutdated` with a line
+    // still on it, and that line describes a version of the file that has moved
+    // on. Placing it puts a three-week-old remark beside whatever occupies the
+    // line today, which reads as a remark about it.
+    bridge.threads = [
+      thread({ id: "PRRT_current", line: 2 }),
+      thread({ id: "PRRT_stale", line: 2, isOutdated: true, comments: [
+        { id: "C2", author: "reviewer", body: "written against the old file", createdAt: "" },
+      ] }),
+      thread({ id: "PRRT_noline", line: null, comments: [
+        { id: "C3", author: "reviewer", body: "no line at all", createdAt: "" },
+      ] }),
+    ];
+    await open();
+
+    await waitFor(() => expect(screen.queryByText("written against the old file")).toBeTruthy());
+    const group = document.querySelector('[data-group="outdated"]')!;
+    expect(group.querySelectorAll("[data-thread-id]")).toHaveLength(2);
+    expect(group.querySelector('[data-thread-id="PRRT_current"]')).toBeNull();
+    // And both outdated ones quote the hunk they were written against, which
+    // with no line to sit beside is the whole of what makes them readable.
+    expect(group.textContent).toContain("@@ -1,3 +1,3 @@");
+  });
+
+  it("holds back a thread anchored outside the lines this patch renders", async () => {
+    // Current and correct, and on no row: line 20 sits in the stretch between
+    // the two hunks. Dropping it silently is how a conversation disappears from
+    // a file that visibly has one.
+    bridge.threads = [
+      thread({ id: "PRRT_off", line: 20, comments: [
+        { id: "C9", author: "reviewer", body: "in the gap", createdAt: "" },
+      ] }),
+    ];
+    await open();
+
+    await waitFor(() => expect(screen.queryByText("in the gap")).toBeTruthy());
+    expect(screen.queryByText(/Not on a line this diff shows/)).toBeTruthy();
+    // Not in the outdated group either: it is not outdated, it is just not here.
+    expect(document.querySelector('[data-group="outdated"]')).toBeNull();
+  });
+
+  it("shows a reply at once and then replaces it with what the server stored", async () => {
+    bridge.threads = [thread()];
+    bridge.reply = {
+      id: "PRRC_stored",
+      author: "skarif2",
+      body: "fixed in 4d95fc3",
+      createdAt: "2026-08-03T10:00:00Z",
+    };
+    await open();
+    await waitFor(() => expect(screen.queryByText("this drops the error")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Reply"));
+    const box = screen.getByLabelText(/Reply to the thread on src\/edit.ts/) as HTMLTextAreaElement;
+    fireEvent.input(box, { target: { value: "fixed in 4d95fc3" } });
+    const buttons = screen.getAllByText("Reply");
+    fireEvent.click(buttons[buttons.length - 1]);
+
+    // Optimistic: on screen before the round trip, and visibly not stored yet.
+    expect(screen.queryByText("fixed in 4d95fc3")).toBeTruthy();
+    expect(document.querySelector('[data-pending="yes"]')).toBeTruthy();
+
+    // Reconciled: the same one comment, now wearing the server's author. Scoped
+    // to the card, since the pull request's own author is on screen too.
+    await waitFor(() => expect(document.querySelector('[data-pending="yes"]')).toBeNull());
+    expect(screen.queryAllByText("fixed in 4d95fc3")).toHaveLength(1);
+    const card = document.querySelector('[data-thread-id="PRRT_1"]')!;
+    expect(card.textContent).toContain("skarif2");
+    expect(cmds("github_reply_to_thread")[0].args).toMatchObject({
+      projectPath: ROOT,
+      threadId: "PRRT_1",
+      body: "fixed in 4d95fc3",
+    });
+  });
+
+  it("takes a refused reply back off the screen", async () => {
+    // A reply left standing after a refusal is a comment only its author can
+    // see, and they have no way to tell.
+    bridge.threads = [thread()];
+    bridge.replyFails = { kind: "forbidden", message: "you cannot comment on this pull request" };
+    await open();
+    await waitFor(() => expect(screen.queryByText("this drops the error")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Reply"));
+    fireEvent.input(screen.getByLabelText(/Reply to the thread/), { target: { value: "nope" } });
+    const buttons = screen.getAllByText("Reply");
+    fireEvent.click(buttons[buttons.length - 1]);
+    expect(screen.queryByText("nope")).toBeTruthy();
+
+    await waitFor(() =>
+      expect(screen.queryByText("you cannot comment on this pull request")).toBeTruthy(),
+    );
+    expect(screen.queryByText("nope")).toBeNull();
+  });
+
+  it("resolves and unresolves through one command with a flag", async () => {
+    bridge.threads = [thread()];
+    await open();
+    await waitFor(() => expect(screen.queryByText("Resolve")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Resolve"));
+    await waitFor(() => expect(screen.queryByText("Unresolve")).toBeTruthy());
+    fireEvent.click(screen.getByText("Unresolve"));
+    await waitFor(() => expect(screen.queryByText("Resolve")).toBeTruthy());
+
+    // Same call, same node id, opposite flag: they are one intent, and a
+    // provider that has one has the other.
+    const calls = cmds("github_set_thread_resolved").map((c) => c.args);
+    expect(calls).toEqual([
+      { projectPath: ROOT, threadId: "PRRT_1", resolved: true },
+      { projectPath: ROOT, threadId: "PRRT_1", resolved: false },
+    ]);
+  });
+
+  it("leaves a thread unresolved when the server refuses", async () => {
+    // Not optimistic on purpose: a card that flips and flips back reads as a
+    // click that did the opposite of what it said.
+    bridge.threads = [thread()];
+    bridge.resolveFails = { kind: "forbidden", message: "no write access" };
+    await open();
+    await waitFor(() => expect(screen.queryByText("Resolve")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Resolve"));
+    await waitFor(() => expect(screen.queryByText("no write access")).toBeTruthy());
+    expect(screen.queryByText("Resolve")).toBeTruthy();
+    expect(screen.queryByText("Unresolve")).toBeNull();
+  });
+
+  it("keeps the diff readable when the conversations cannot be read", async () => {
+    // Two requests, two failures. A pull request whose threads will not load is
+    // still a pull request worth reading.
+    bridge.threadsFail = { kind: "rateLimited", message: "the GitHub rate limit is spent" };
+    await open();
+
+    await waitFor(() => expect(screen.queryByText("the GitHub rate limit is spent")).toBeTruthy());
+    expect(screen.queryByText("@@ -1,3 +1,3 @@")).toBeTruthy();
+  });
+
+  it("says so when not every conversation could be read", async () => {
+    // Same shape as every other cap here: a partial answer rendered as a
+    // complete one is the failure nobody reports, because the page looks fine.
+    bridge.threads = [thread()];
+    bridge.threadsTruncated = true;
+    await open();
+
+    await waitFor(() =>
+      expect(screen.queryByText(/more conversations than one read can carry/)).toBeTruthy(),
+    );
+    const link = screen.getByText(/See them all on github.com/) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://github.com/skarif2/sway/pull/42");
+  });
+
+  it("puts the cursor in the reply box when it opens", async () => {
+    // A box that opens looking ready and needs a second click is worse than one
+    // that does not open. `autofocus` is honoured inconsistently on an element
+    // inserted this long after load, so the focus is taken by hand.
+    bridge.threads = [thread()];
+    await open();
+    await waitFor(() => expect(screen.queryByText("Reply")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Reply"));
+    const box = screen.getByLabelText(/Reply to the thread on src\/edit.ts/);
+    await waitFor(() => expect(document.activeElement).toBe(box));
+  });
+
+  it("counts a closed file's conversations on its row", async () => {
+    // A closed file with a conversation in it is otherwise indistinguishable
+    // from one with none.
+    bridge.threads = [thread({ id: "A", line: 2 }), thread({ id: "B", line: 41 })];
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-thread-count]")).toBeTruthy());
+    expect(document.querySelector("[data-thread-count]")!.getAttribute("data-thread-count")).toBe("2");
   });
 });
