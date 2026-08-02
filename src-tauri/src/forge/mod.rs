@@ -30,8 +30,8 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, MergeableState, Paged, PullRequest, RepoRef, ReviewThread, UnitStatus,
-    Viewer,
+    AuthState, Capabilities, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewThread,
+    UnitStatus, Viewer,
 };
 
 /// Everything that can go wrong, as distinct variants rather than a `String`.
@@ -187,6 +187,18 @@ pub trait Forge: Send + Sync {
         branches: &[String],
     ) -> Result<Vec<UnitStatus>, ForgeError>;
 
+    /// Every file a pull request touches, each with the forge's own patch.
+    ///
+    /// Deliberately not "give me a diff": the provider returns per-file patches
+    /// it computed, because that is what a review thread's anchor is measured
+    /// against. A caller that recomputed the diff locally would get a document
+    /// that reads the same and anchors differently.
+    fn pull_request_files(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+    ) -> Result<Paged<PrFile>, ForgeError>;
+
     fn review_threads(
         &self,
         repo: &RepoRef,
@@ -271,6 +283,13 @@ mod tests {
                     review_decision: ReviewDecision::None,
                 })
                 .collect())
+        }
+        fn pull_request_files(
+            &self,
+            _repo: &RepoRef,
+            _number: u64,
+        ) -> Result<Paged<PrFile>, ForgeError> {
+            Ok(Paged::complete(vec![]))
         }
         fn review_threads(
             &self,

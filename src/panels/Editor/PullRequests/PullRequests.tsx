@@ -29,6 +29,7 @@ import {
 } from "../../../utils/forgeStatus";
 import { forgeErrorMessage, type Paged, type PullRequest } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
+import PrDetail from "./PrDetail";
 import styles from "./PullRequests.module.css";
 
 /** The sentence for each reason polling is paused, and what to do about it.
@@ -50,6 +51,8 @@ export default function PullRequests(props: { root: string | null }) {
   // shows the previous one's PRs until the new request lands, which reads as a
   // working list of the wrong repo.
   const [listedRoot, setListedRoot] = createSignal<string | null>(null);
+  // Which pull request is open in the detail view, if any.
+  const [opened, setOpened] = createSignal<PullRequest | null>(null);
 
   const paused = () => forgePause();
 
@@ -76,6 +79,9 @@ export default function PullRequests(props: { root: string | null }) {
   // else happens to re-render it.
   createEffect(
     on([() => props.root, paused], ([root, why]) => {
+      // A detail view of a PR from the project just left, or one the credential
+      // can no longer fetch files for, is a view that cannot refresh itself.
+      setOpened(null);
       if (!root || why !== null) {
         setItems([]);
         setListedRoot(null);
@@ -109,7 +115,18 @@ export default function PullRequests(props: { root: string | null }) {
   const shown = createMemo(() => (listedRoot() === props.root ? items() : []));
   const uncovered = () => (props.root ? uncoveredUnits(props.root) : 0);
 
-  return (
+  // The detail view replaces the list rather than sitting beside it: the right
+  // pane is one column wide, and a list plus a diff in it would leave neither
+  // enough room to read.
+  const detail = createMemo(() => {
+    const pr = opened();
+    const root = props.root;
+    // Scoped to the project the list belongs to, so switching projects drops a
+    // detail view of a PR the new one has never heard of.
+    return pr && root && listedRoot() === root ? { pr, root } : null;
+  });
+
+  const list = () => (
     <div class={styles.panel}>
       <div class={styles.head}>
         <span class={styles.title}>Pull requests</span>
@@ -141,7 +158,17 @@ export default function PullRequests(props: { root: string | null }) {
               forgeBadges(props.root ? unitStatus(props.root, pr.headRef) : null),
             );
             return (
-              <div class={styles.row}>
+              <div
+                class={styles.row}
+                role="button"
+                tabIndex={0}
+                onClick={() => setOpened(pr)}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  setOpened(pr);
+                }}
+              >
                 <div class={styles.rowMain}>
                   <span class={styles.number}>#{pr.number}</span>
                   <span class={styles.prTitle} title={pr.title}>
@@ -178,5 +205,16 @@ export default function PullRequests(props: { root: string | null }) {
         </Show>
       </Show>
     </div>
+  );
+
+  // Unkeyed on purpose. `detail()` builds a fresh object each recompute, so
+  // `keyed` would tear down and remount the detail view (re-fetching every file)
+  // whenever the memo re-ran for reasons that have nothing to do with which pull
+  // request is open. Unkeyed re-renders on the *branch* changing, and PrDetail's
+  // own effect handles a swap from one pull request to another.
+  return (
+    <Show when={detail()} fallback={list()}>
+      {(d) => <PrDetail root={d().root} pr={d().pr} onBack={() => setOpened(null)} />}
+    </Show>
   );
 }

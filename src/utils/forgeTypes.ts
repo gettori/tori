@@ -127,6 +127,38 @@ export type ReviewThread = {
   comments: ReviewComment[];
 };
 
+/// `changed` is GitHub's own word for a file it could not classify further. It
+/// is kept rather than folded into `modified` so a status the server invents
+/// later does not arrive wearing a word it did not choose.
+export type FileStatus =
+  | "added"
+  | "modified"
+  | "removed"
+  | "renamed"
+  | "copied"
+  | "changed"
+  | "unchanged";
+
+/// One file of a pull request's diff, with the forge's **own** patch.
+///
+/// The patch is carried through rather than recomputed, which is the whole
+/// point of the type: a review thread anchors to the hunk GitHub calculated, and
+/// a locally recomputed diff would differ in context size, rename detection and
+/// whitespace handling. Each of those differences lands a comment on a wrong
+/// line rather than failing outright.
+export type PrFile = {
+  path: string;
+  /// Where a renamed or copied file came from; null for everything else.
+  previousPath: string | null;
+  status: FileStatus;
+  additions: number;
+  deletions: number;
+  /// Hunks only, with no `diff --git` preamble. Null in three situations the UI
+  /// must not render alike (binary, mode-only, and a patch past the size the
+  /// API will send), which the line counts beside it are what tell apart.
+  patch: string | null;
+};
+
 export type Viewer = {
   login: string;
   avatarUrl: string | null;
@@ -234,6 +266,7 @@ export const FORGE_KEYS = {
     "path",
   ],
   reviewComment: ["author", "body", "createdAt", "id"],
+  prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],
   viewer: ["avatarUrl", "login"],
   capabilities: ["checks", "merge", "pullRequests", "resolveThreads", "reviewThreads"],
   pagedTruncated: ["items", "truncated"],
@@ -264,6 +297,15 @@ export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
   "none",
 ];
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
+export const FILE_STATUSES: readonly FileStatus[] = [
+  "added",
+  "modified",
+  "removed",
+  "renamed",
+  "copied",
+  "changed",
+  "unchanged",
+];
 
 /// Whether the forge API may be called right now.
 ///
