@@ -17,6 +17,7 @@ import {
   gitState,
   stagedFiles,
   changedFiles,
+  conflictedFiles,
   pushing,
   refreshStatus,
   refreshMeta,
@@ -187,6 +188,7 @@ export default function ReviewPanel(props: {
   const files = () => gitState().files;
   const staged = stagedFiles;
   const unstaged = changedFiles;
+  const conflicts = conflictedFiles;
   const branch = () => gitState().branch;
   const aheadBehind = () => gitState().aheadBehind;
 
@@ -784,6 +786,31 @@ export default function ReviewPanel(props: {
     );
   }
 
+  /** A conflicted file's row: name only, no actions.
+   *
+   *  Deliberately not `row()` with the buttons hidden. Every control there acts
+   *  on one version of the file, and an unmerged path has three; git refuses
+   *  stage, unstage and discard on it alike. Resolving is Phase 12's job, so
+   *  until then the row's whole job is to say which files are waiting and to
+   *  open one.
+   *
+   *  A `<button>` rather than the `<div onClick>` its siblings are: opening the
+   *  file is the row's only action, so a div would make the whole section
+   *  mouse-only, which is the reason the commit views' rows are buttons too. */
+  function conflictRow(f: FileStatus) {
+    return (
+      <button
+        type="button"
+        class={`${styles.reviewRow} ${styles.conflictRow}`}
+        onClick={() => openFile(f.path)}
+        title={f.path}
+      >
+        <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>
+        <span class={styles.reviewName}>{f.path}</span>
+      </button>
+    );
+  }
+
   function row(f: FileStatus, opts: { staged: boolean }) {
     const key = `${opts.staged ? "staged" : "unstaged"}:${f.path}`;
     return (
@@ -1002,6 +1029,12 @@ export default function ReviewPanel(props: {
           </div>
         }
       >
+        {/* First, because nothing below it can be finished until these are:
+            git refuses to commit with unmerged paths in the index. */}
+        <Show when={conflicts().length}>
+          <div class={styles.sectionHeader}>Conflicts</div>
+          <For each={conflicts()}>{(f) => conflictRow(f)}</For>
+        </Show>
         <Show when={staged().length}>
           <div class={styles.sectionHeader}>Staged Changes</div>
           <For each={staged()}>{(f) => row(f, { staged: true })}</For>
@@ -1067,10 +1100,16 @@ export default function ReviewPanel(props: {
             />
             include untracked
           </label>
+          {/* Off while anything is unmerged: `git stash` refuses such a tree
+              outright, so the button would only ever produce git's error. */}
           <Button
             size="xs"
-            disabled={applying()}
-            title="Put every change aside for later, named after the Summary below if you have written one"
+            disabled={applying() || conflicts().length > 0}
+            title={
+              conflicts().length
+                ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
+                : "Put every change aside for later, named after the Summary below if you have written one"
+            }
             onClick={() => void stashAll()}
           >
             Stash all

@@ -29,10 +29,18 @@ pub struct GitFileStatus {
     /// A rename's source path. `None` for every other record.
     orig_path: Option<String>,
     /// X (index) column is neither ' ' nor '?': this file has staged changes.
+    /// Always false for a conflicted file, see `conflicted`.
     staged: bool,
     /// Y (worktree) column is not ' ', or the file is untracked ("??"):
     /// this file has unstaged changes. A file can be both (e.g. "MM").
+    /// Always false for a conflicted file, see `conflicted`.
     unstaged: bool,
+    /// The file has unmerged index stages: a merge, rebase or stash apply left
+    /// it mid-conflict. Read from the **record type** (`u`), not by scanning
+    /// the XY code for a `U`. Two of the seven unmerged codes (`AA` both added,
+    /// `DD` both deleted) contain no `U` at all, and `DD` is indistinguishable
+    /// from an ordinary staged-and-worktree delete once the type is gone.
+    conflicted: bool,
 }
 
 #[tauri::command]
@@ -63,7 +71,13 @@ pub fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, String> {
 /// One entry from an XY code and a path. `xy` arrives in v2 spelling (`.` for
 /// unmodified); it is normalised here so `status`, `staged` and `unstaged` all
 /// keep the meaning they had under v1.
-fn status_entry(xy: &str, path: &str, orig_path: Option<String>) -> GitFileStatus {
+///
+/// `conflicted` comes from the record type, and when it is set the other two
+/// flags are cleared: an unmerged path has three index stages rather than one
+/// staged version, and both `git commit` and `git restore --staged` refuse it.
+/// Reading `UU`'s two non-space columns as "staged and unstaged" would list the
+/// file in both sections and offer it actions git will not perform.
+fn status_entry(xy: &str, path: &str, orig_path: Option<String>, conflicted: bool) -> GitFileStatus {
     let mut chars = xy.chars();
     let norm = |c: Option<char>| match c {
         Some('.') | None => ' ',
@@ -75,8 +89,9 @@ fn status_entry(xy: &str, path: &str, orig_path: Option<String>) -> GitFileStatu
         status: format!("{x}{y}"),
         path: path.to_string(),
         orig_path,
-        staged: x != ' ' && x != '?',
-        unstaged: y != ' ',
+        staged: !conflicted && x != ' ' && x != '?',
+        unstaged: !conflicted && y != ' ',
+        conflicted,
     }
 }
 
@@ -103,7 +118,7 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
         match kind {
             // Untracked has no XY of its own, so it keeps v1's "??" - the code
             // the panel already styles as untracked.
-            "?" => files.push(status_entry("??", rest, None)),
+            "?" => files.push(status_entry("??", rest, None, false)),
             // Ignored only appears under `--ignored`, which this does not pass.
             // Skipped rather than listed: an ignored file is not a change.
             "!" => {}
@@ -119,7 +134,7 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
                 let xy = parts.next().unwrap_or_default();
                 let Some(path) = parts.nth(leading - 1) else { continue };
                 let orig = if kind == "2" { records.next().map(str::to_string) } else { None };
-                files.push(status_entry(xy, path, orig));
+                files.push(status_entry(xy, path, orig, kind == "u"));
             }
             _ => {}
         }
@@ -493,8 +508,13 @@ pub fn git_discard_files(project_path: String, files: Vec<String>) -> Result<Dis
 /// Discard has no meaning on one: there is no single "what it was" to go back
 /// to, and `git restore` refuses an unmerged path anyway, so asking would only
 /// trade a clear sentence for a raw pathspec error after a backstop had already
-/// been written. (Until Phase 10 gives conflicts their own section, such a file
-/// still appears under Changes, so the control really is reachable.)
+/// been written.
+///
+/// Conflicts now have their own section and no Discard control, so this is no
+/// longer reachable by clicking the obvious thing. It stays because the panel
+/// acts on the status it last read: a merge or rebase started in the terminal
+/// makes a file unmerged without the row under the pointer changing, and the
+/// path that then arrives here is a conflicted one from a list that predates it.
 fn is_conflicted(project_path: &str, file: &str) -> Result<bool, String> {
     let output = Command::new("git")
         .arg("-C")
@@ -1665,6 +1685,10 @@ mod tests {
             // score field, so it must take the same two-field path.
             "2 C. N... 100644 100644 100644 aaa bbb C100 copy.txt\0source.txt\0",
             "u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.rs\0",
+            // Both-deleted: an unmerged code with no `U` in it, and identical to
+            // an ordinary staged-plus-worktree delete once the record type is
+            // thrown away. The reason `conflicted` is read from the type.
+            "u DD N... 100644 100644 100644 100644 aaa bbb ccc gone.rs\0",
             "? new.txt\0",
             "! ignored.log\0",
         );
@@ -1672,8 +1696,8 @@ mod tests {
         let by_path = |p: &str| files.iter().find(|f| f.path == p).unwrap_or_else(|| panic!("missing {p}"));
 
         // The `#` header and the ignored file are both skipped, so the count is
-        // the seven records that describe an actual change.
-        assert_eq!(files.len(), 7, "header and ignored records must not be listed");
+        // the eight records that describe an actual change.
+        assert_eq!(files.len(), 8, "header and ignored records must not be listed");
         assert!(files.iter().all(|f| f.path != "ignored.log"));
 
         // v2's `.` normalises back to v1's space, so these codes are unchanged
@@ -1695,10 +1719,20 @@ mod tests {
         assert_eq!(renamed.orig_path.as_deref(), Some("old name.txt"));
         assert!(renamed.staged && !renamed.unstaged);
 
-        // Conflicts keep v1's reading for now; Phase 10 of this epic is what
-        // gives them a `conflicted` flag and stops counting them as staged.
+        // A conflicted file is its own thing, not a staged one: three index
+        // stages is not a staged version, and every action either section
+        // offers is one git refuses on an unmerged path.
         let conflict = by_path("conflict.rs");
         assert_eq!(conflict.status, "UU");
+        assert!(conflict.conflicted);
+        assert!(!conflict.staged && !conflict.unstaged);
+        let both_deleted = by_path("gone.rs");
+        assert!(both_deleted.conflicted, "`DD` is unmerged, and has no `U` to scan for");
+        assert!(!both_deleted.staged && !both_deleted.unstaged);
+
+        // Nothing else claims to be conflicted, in particular not the `MM` file
+        // whose two non-space columns look the same at a glance.
+        assert!(files.iter().filter(|f| f.path != "conflict.rs" && f.path != "gone.rs").all(|f| !f.conflicted));
 
         // A copy carries its source the same way, so the pairing cannot be
         // keyed on the score field.
@@ -1710,6 +1744,36 @@ mod tests {
             .iter()
             .filter(|f| f.path != "new name.txt" && f.path != "copy.txt")
             .all(|f| f.orig_path.is_none()));
+    }
+
+    #[test]
+    fn a_real_conflict_is_its_own_state_until_it_is_marked_resolved() {
+        // The fixture above is a captured string; this is git's own output, so
+        // the record type really is what a mid-merge repo emits.
+        let dir = repo_with_two_branches();
+        git(&dir, &["checkout", "-q", "feature"]);
+        std::fs::write(dir.join("f.txt"), "theirs\n").unwrap();
+        git(&dir, &["commit", "-qam", "theirs"]);
+        git(&dir, &["checkout", "-q", "main"]);
+        std::fs::write(dir.join("f.txt"), "ours\n").unwrap();
+        git(&dir, &["commit", "-qam", "ours"]);
+        // Deliberately fails, leaving f.txt unmerged in the index.
+        Command::new("git").arg("-C").arg(&dir).args(["merge", "feature"]).output().unwrap();
+        let p = dir.to_string_lossy().into_owned();
+
+        let conflicted = git_status(p.clone()).unwrap();
+        let f = conflicted.iter().find(|f| f.path == "f.txt").expect("f.txt is listed");
+        assert!(f.conflicted);
+        assert!(!f.staged && !f.unstaged, "a conflict is in neither section");
+
+        // Marking it resolved is an ordinary `git add`, and from that moment the
+        // file is an ordinary staged change: one index stage, no `u` record.
+        git(&dir, &["add", "f.txt"]);
+        let resolved = git_status(p).unwrap();
+        let f = resolved.iter().find(|f| f.path == "f.txt").expect("f.txt is still listed");
+        assert!(!f.conflicted);
+        assert!(f.staged);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -32,6 +32,16 @@
   font-size: var(--sway-text-lg);
 }
 
+/* Says why the buffer below has conflict markers in it. `flex: none` because
+   it sits in the same column as the editor, which takes the rest. */
+.conflictBanner {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  color: var(--danger-fg);
+  font-size: var(--sway-text-md);
+}
+
 /* The follow / preview / file-tree toggles are now <IconButton>s. The file-tree
    toggle keeps a "pane hidden" accent: the glyph goes brand (only the glyph, the
    border keeps its token) as a cue that clicking brings the tree back, held

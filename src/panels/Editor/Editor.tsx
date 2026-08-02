@@ -79,6 +79,7 @@ import {
   refreshGit,
   startGitWatch,
   gitState,
+  isConflicted,
   stagedFiles,
   stage as stageFiles,
   unstage as unstageFiles,
@@ -330,6 +331,12 @@ export default function Editor(props: {
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
+
+  // The open file is mid-conflict. Read from the shared git store rather than
+  // probed per file: the store is already refreshed by every watcher burst and
+  // every git action, so the banner appears and clears on the same beat as the
+  // Changes panel's Conflicts section, with no second source of truth.
+  const conflicted = () => isConflicted(root(), activeFileTab()?.path ?? null);
 
   // The tab strip's right-click menu.
   const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
@@ -1041,6 +1048,14 @@ export default function Editor(props: {
             </>
           }
         />
+        {/* Above the editor rather than inside it: the file on screen is the
+            merged working-tree copy, markers and all, and nothing in the buffer
+            itself says that is why it looks like that. */}
+        <Show when={conflicted()}>
+          <div class={styles.conflictBanner} role="status">
+            Merge conflict: this file holds both sides. Resolve the markers, then stage it to mark it resolved.
+          </div>
+        </Show>
         {/* Mounted on the union, hidden on the visible strip. Gating the mount
             on the current workspace's tab count would unmount CodeEditor the
             moment you selected a workspace with nothing open, and its cleanup
