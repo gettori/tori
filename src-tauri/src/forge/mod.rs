@@ -26,6 +26,7 @@ pub mod github;
 pub mod http;
 pub mod model;
 pub mod prs;
+pub mod status;
 pub mod token;
 
 use model::{
@@ -57,9 +58,19 @@ pub enum ForgeError {
     CredentialSuspect,
     /// Authenticated, but not allowed to do this (scope or repo permission).
     Forbidden { message: String },
-    /// Rate limited. `retry_after` is the server's own deadline when it gave
-    /// one, which is the only number worth backing off by.
-    RateLimited { kind: RateLimitKind, retry_after_secs: Option<u64> },
+    /// Rate limited, with both deadlines the server offered.
+    ///
+    /// `retry_after_secs` is an explicit instruction and comes with a secondary
+    /// limit; `reset_at_secs` is when the primary budget refills, and is the
+    /// only number a 403 usually carries. Between them the caller always waits
+    /// the server's own interval rather than a constant of our own, which is the
+    /// difference between resuming on time and sulking for a quarter of an hour.
+    RateLimited {
+        kind: RateLimitKind,
+        retry_after_secs: Option<u64>,
+        /// Unix seconds, as `X-RateLimit-Reset` sends it.
+        reset_at_secs: Option<u64>,
+    },
     NotFound,
     /// The mutation conflicts with existing state (a PR for this head already
     /// exists, a thread is already resolved).
@@ -97,7 +108,7 @@ impl std::fmt::Display for ForgeError {
             Self::NotAuthenticated => write!(f, "not signed in"),
             Self::CredentialSuspect => write!(f, "the stored token was rejected"),
             Self::Forbidden { message } => write!(f, "{message}"),
-            Self::RateLimited { kind, retry_after_secs } => match retry_after_secs {
+            Self::RateLimited { kind, retry_after_secs, .. } => match retry_after_secs {
                 Some(s) => write!(f, "{kind:?} rate limit, retry in {s}s"),
                 None => write!(f, "{kind:?} rate limit"),
             },
@@ -316,9 +327,17 @@ mod tests {
     fn a_rate_limit_carries_which_limit_it_was() {
         // Primary and secondary limits need different backoff, so a caller must
         // be able to tell them apart without parsing a message.
-        let primary = ForgeError::RateLimited { kind: RateLimitKind::Primary, retry_after_secs: None };
+        let primary = ForgeError::RateLimited {
+            kind: RateLimitKind::Primary,
+            retry_after_secs: None,
+            reset_at_secs: None,
+        };
         let secondary =
-            ForgeError::RateLimited { kind: RateLimitKind::Secondary, retry_after_secs: Some(60) };
+            ForgeError::RateLimited {
+                kind: RateLimitKind::Secondary,
+                retry_after_secs: Some(60),
+                reset_at_secs: None,
+            };
         assert_ne!(primary, secondary);
     }
 }

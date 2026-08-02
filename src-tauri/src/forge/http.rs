@@ -207,18 +207,27 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
     let message = error_message(&resp.body).unwrap_or_else(|| resp.body.clone());
     let retry_after = resp.header("Retry-After").and_then(|v| v.trim().parse::<u64>().ok());
     let exhausted = resp.header("X-RateLimit-Remaining").map(|v| v.trim() == "0").unwrap_or(false);
+    // Read here rather than left to the caller's rate snapshot: a refusal is
+    // exactly the response whose body never reaches the snapshot's reader, so
+    // the one number that says when to come back would be dropped on the only
+    // path that needs it.
+    let reset_at = resp.header("X-RateLimit-Reset").and_then(|v| v.trim().parse::<u64>().ok());
 
     Some(match resp.status {
         401 => ForgeError::CredentialSuspect,
-        403 if exhausted => {
-            ForgeError::RateLimited { kind: RateLimitKind::Primary, retry_after_secs: retry_after }
-        }
+        403 if exhausted => ForgeError::RateLimited {
+            kind: RateLimitKind::Primary,
+            retry_after_secs: retry_after,
+            reset_at_secs: reset_at,
+        },
         // A 403 carrying `Retry-After` is the secondary limit wearing the
         // forbidden status code, which is why the retry header is checked
         // before falling through to a permissions error.
-        403 if retry_after.is_some() => {
-            ForgeError::RateLimited { kind: RateLimitKind::Secondary, retry_after_secs: retry_after }
-        }
+        403 if retry_after.is_some() => ForgeError::RateLimited {
+            kind: RateLimitKind::Secondary,
+            retry_after_secs: retry_after,
+            reset_at_secs: reset_at,
+        },
         403 => ForgeError::Forbidden { message },
         404 => ForgeError::NotFound,
         405 => ForgeError::NotMergeable { message },
@@ -230,9 +239,11 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
             ForgeError::AlreadyExists { message }
         }
         422 => ForgeError::Api { status: 422, message },
-        429 => {
-            ForgeError::RateLimited { kind: RateLimitKind::Secondary, retry_after_secs: retry_after }
-        }
+        429 => ForgeError::RateLimited {
+            kind: RateLimitKind::Secondary,
+            retry_after_secs: retry_after,
+            reset_at_secs: reset_at,
+        },
         status => ForgeError::Api { status, message },
     })
 }
@@ -628,14 +639,19 @@ mod tests {
     fn a_rate_limit_response_is_read_as_a_rate_limit_not_a_permission_error() {
         let primary = StubTransport::with_headers(
             403,
-            &[("X-RateLimit-Remaining", "0")],
+            &[("X-RateLimit-Remaining", "0"), ("X-RateLimit-Reset", "1785179400")],
             r#"{"message":"API rate limit exceeded"}"#,
         );
         assert_eq!(
             classify(&primary),
             Some(ForgeError::RateLimited {
                 kind: RateLimitKind::Primary,
-                retry_after_secs: None
+                retry_after_secs: None,
+                // A 403 names no `Retry-After`, so the reset is the only thing
+                // that says when to come back. Read off the refusal itself,
+                // because a refusal is the one response whose rate snapshot the
+                // caller never gets to see.
+                reset_at_secs: Some(1_785_179_400),
             })
         );
 
@@ -650,7 +666,8 @@ mod tests {
             classify(&secondary),
             Some(ForgeError::RateLimited {
                 kind: RateLimitKind::Secondary,
-                retry_after_secs: Some(60)
+                retry_after_secs: Some(60),
+                reset_at_secs: None,
             })
         );
 

@@ -24,6 +24,13 @@
     "state": "failure",
     "total": 12
   },
+  "forgeError": {
+    "kind": "rateLimited",
+    "message": "Secondary rate limit, retry in 60s",
+    "rateLimitKind": "secondary",
+    "resetAtSecs": 1785179400,
+    "retryAfterSecs": 60
+  },
   "pagedTruncated": {
     "items": [
       1,
@@ -45,6 +52,11 @@
     "title": "Let a conflict be handed to the agent",
     "url": "https://github.com/skarif2/sway/pull/42"
   },
+  "rateSnapshot": {
+    "limit": 5000,
+    "remaining": 4812,
+    "resetAt": 1785179400
+  },
   "repoRef": {
     "owner": "skarif2",
     "repo": "sway"
@@ -65,6 +77,38 @@
     "isResolved": false,
     "line": 88,
     "path": "src-tauri/src/forge/github.rs"
+  },
+  "statusReport": {
+    "rate": {
+      "limit": 5000,
+      "remaining": 4812,
+      "resetAt": 1785179400
+    },
+    "statuses": [
+      {
+        "checks": {
+          "failing": 2,
+          "state": "failure",
+          "total": 12
+        },
+        "headRef": "wave-3",
+        "pullRequest": {
+          "author": "skarif2",
+          "baseRef": "main",
+          "body": "Replaces the compare-URL flow.",
+          "headRef": "wave-3",
+          "headSha": "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f",
+          "isDraft": false,
+          "mergeableState": "clean",
+          "number": 42,
+          "state": "open",
+          "title": "Let a conflict be handed to the agent",
+          "url": "https://github.com/skarif2/sway/pull/42"
+        },
+        "reviewDecision": "changesRequested"
+      }
+    ],
+    "uncovered": 4
   },
   "unitStatus": {
     "checks": {

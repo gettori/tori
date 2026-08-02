@@ -273,6 +273,7 @@ mod tests {
             Err(ForgeError::RateLimited {
                 kind: crate::forge::RateLimitKind::Primary,
                 retry_after_secs: None,
+                reset_at_secs: None,
             })
         })
         .unwrap_err();

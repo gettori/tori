@@ -10,8 +10,8 @@
 
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
-use super::model::{AuthState, PullRequest, RepoRef};
-use super::{auth, github, prs, token, CreatePr, Forge, ForgeError};
+use super::model::{AuthState, PullRequest, RepoRef, StatusReport};
+use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -23,15 +23,44 @@ pub struct DeviceFlowState(pub Mutex<Option<PendingFlow>>);
 ///
 /// The kind is what the UI switches on, so it must not be the display string:
 /// a reworded message would silently change behaviour.
-#[derive(Debug, Clone, Serialize)]
+///
+/// The two rate-limit fields ride along for the poll scheduler, which has to
+/// back off by *the server's own* number. Parsing "retry in 60s" back out of the
+/// sentence would work right up until the sentence is reworded, which is the
+/// same trap the `kind` exists to avoid.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForgeErrorDto {
     pub kind: String,
     pub message: String,
+    /// Which limit was hit, for the failures that are one. Primary and secondary
+    /// limits need different backoff, and only the server can say which.
+    pub rate_limit_kind: Option<String>,
+    /// The server's own `Retry-After`, when it gave one. A secondary limit
+    /// usually does; a primary one usually does not, and carries the field
+    /// below instead.
+    pub retry_after_secs: Option<u64>,
+    /// Unix seconds at which the primary budget refills. The number that lets a
+    /// 403 resume on time rather than after a fixed guess.
+    pub reset_at_secs: Option<u64>,
 }
 
 impl From<ForgeError> for ForgeErrorDto {
     fn from(e: ForgeError) -> Self {
+        let (rate_limit_kind, retry_after_secs, reset_at_secs) = match &e {
+            ForgeError::RateLimited { kind, retry_after_secs, reset_at_secs } => (
+                Some(
+                    match kind {
+                        super::RateLimitKind::Primary => "primary",
+                        super::RateLimitKind::Secondary => "secondary",
+                    }
+                    .to_string(),
+                ),
+                *retry_after_secs,
+                *reset_at_secs,
+            ),
+            _ => (None, None, None),
+        };
         let kind = match &e {
             ForgeError::NoRemote => "noRemote",
             ForgeError::UnsupportedRemote { .. } => "unsupportedRemote",
@@ -46,7 +75,13 @@ impl From<ForgeError> for ForgeErrorDto {
             ForgeError::Transport { .. } => "transport",
             ForgeError::Malformed { .. } => "malformed",
         };
-        Self { kind: kind.into(), message: e.to_string() }
+        Self {
+            kind: kind.into(),
+            message: e.to_string(),
+            rate_limit_kind,
+            retry_after_secs,
+            reset_at_secs,
+        }
     }
 }
 
@@ -236,6 +271,40 @@ pub fn github_push_and_create_pr(
     Ok(pr)
 }
 
+/// One poll tick for a project: PR state, checks and review decision for as many
+/// of `branches` as this tick covers.
+///
+/// `branches` is in the caller's priority order (visible units first), because
+/// the frontend is the only side that knows what is on screen. Everything past
+/// the per-tick cap comes back as `uncovered` rather than being dropped; see
+/// [`super::status`].
+///
+/// The credential gate is a backstop, not the mechanism: the scheduler pauses
+/// itself when signed out, suspect, or switched off. This is what makes "no
+/// request" true even if a caller forgets, which matters most for the kill
+/// switch, whose whole job is to stop the traffic.
+#[tauri::command]
+pub fn github_unit_statuses(
+    project_path: String,
+    branches: Vec<String>,
+    refresh: bool,
+) -> Result<StatusReport, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let out = status::cached_tick(&repo, &branches, refresh, |ask| {
+        let forge = client();
+        let result = forge.unit_statuses(&repo, ask);
+        auth::note_result(&result);
+        // The snapshot is read whether the call succeeded or not, but only a
+        // success carries it out of here: an error path returns the error, and
+        // the scheduler backs off on that instead.
+        result.map(|statuses| (statuses, forge.rate_snapshot()))
+    })?;
+    Ok(out)
+}
+
 /// Restores the credential at startup and installs the keychain store.
 ///
 /// Failure is non-fatal and deliberately so: a keychain that will not open
@@ -311,6 +380,7 @@ mod tests {
         let dto: ForgeErrorDto = ForgeError::RateLimited {
             kind: super::super::RateLimitKind::Secondary,
             retry_after_secs: Some(60),
+            reset_at_secs: None,
         }
         .into();
         assert_eq!(dto.kind, "rateLimited");
@@ -332,6 +402,7 @@ mod tests {
             ForgeError::RateLimited {
                 kind: super::super::RateLimitKind::Primary,
                 retry_after_secs: None,
+                reset_at_secs: None,
             },
             ForgeError::NotFound,
             ForgeError::AlreadyExists { message: String::new() },
@@ -486,6 +557,62 @@ mod tests {
             assert!(!json.contains(TOKEN), "token leaked into {json}");
             assert!(!format!("{err:?}").contains(TOKEN), "token leaked into Debug of {err:?}");
         }
+    }
+
+    #[test]
+    fn a_rate_limit_hands_the_scheduler_a_deadline_rather_than_a_sentence_to_parse() {
+        // The scheduler has to back off by the server's own number. Reading it
+        // out of the message would work until the message is reworded, which is
+        // the same trap `kind` exists to avoid.
+        let dto: ForgeErrorDto = ForgeError::RateLimited {
+            kind: super::super::RateLimitKind::Secondary,
+            retry_after_secs: Some(60),
+            reset_at_secs: None,
+        }
+        .into();
+        assert_eq!(dto.rate_limit_kind.as_deref(), Some("secondary"));
+        assert_eq!(dto.retry_after_secs, Some(60));
+
+        // A primary limit usually names no deadline; the kind is what tells the
+        // scheduler to wait out an hourly budget rather than a few seconds.
+        let dto: ForgeErrorDto = ForgeError::RateLimited {
+            kind: super::super::RateLimitKind::Primary,
+            retry_after_secs: None,
+            reset_at_secs: Some(1_785_179_400),
+        }
+        .into();
+        assert_eq!(dto.rate_limit_kind.as_deref(), Some("primary"));
+        assert_eq!(dto.retry_after_secs, None);
+        // The number that lets the scheduler resume when the budget actually
+        // refills instead of after a fixed guess of its own.
+        assert_eq!(dto.reset_at_secs, Some(1_785_179_400));
+
+        // And every other failure sends both as null rather than as a zero the
+        // scheduler would read as "retry immediately".
+        let dto: ForgeErrorDto = ForgeError::NotFound.into();
+        assert_eq!(dto.rate_limit_kind, None);
+        assert_eq!(dto.retry_after_secs, None);
+    }
+
+    #[test]
+    fn the_kill_switch_stops_a_poll_before_it_can_reach_anything() {
+        // The deferred half of the `github.enabled` promise: the scheduler pauses
+        // itself, and this is the backstop that makes "no request" true even if a
+        // caller forgets. The path handed in is not a repo at all, so a build
+        // where the gate is missing fails with a *remote* error instead, which is
+        // what makes this assertion discriminating rather than decorative.
+        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        auth::restore(Some(TOKEN.into()), Some("skarif2".into()), false);
+
+        let err = github_unit_statuses(
+            not_a_repo.to_string_lossy().into_owned(),
+            vec!["wave-3".into()],
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "notAuthenticated", "a disabled integration reached the repo");
+
+        auth::restore(None, None, true);
     }
 
     #[test]
