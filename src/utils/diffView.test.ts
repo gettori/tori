@@ -70,6 +70,26 @@ describe("similarity", () => {
 });
 
 describe("buildRows", () => {
+  it("emits one row per line, in order, so a row index is a body index", () => {
+    // Line-level staging sends the backend the indices of the rows the user
+    // clicked, and the backend reads them against the raw hunk body. Pairing
+    // reorders nothing, and this is what says so: if it ever did, the wrong
+    // lines would be staged with no error anywhere.
+    const lines = [
+      " keep",
+      "-a",
+      "-b",
+      "+A",
+      "+B",
+      " middle",
+      "+lone",
+      "-orphan",
+      "\\ No newline at end of file",
+    ];
+    const rows = buildRows(lines);
+    expect(rows.map((r) => ("text" in r ? r.text : null))).toEqual(lines);
+  });
+
   it("pairs a single-token change and leaves context plain", () => {
     const rows = buildRows([" keep", "-let x = 1;", "+let x = 2;", " tail"]);
     const del = rows.find((r) => r.kind === "del");
@@ -191,6 +211,15 @@ describe("toSideBySide", () => {
     // Each pair collapses onto one row.
     expect(sides).toHaveLength(2500);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it("says which body line each cell came from", () => {
+    const rows = buildRows([" keep", "-let x = 1;", "+let x = 2;", "+extra"]);
+    const sides = toSideBySide(rows);
+    expect(sides[0]).toMatchObject({ leftIndex: 0, rightIndex: 0 });
+    // The pair is drawn on one row, but the two cells are two body lines.
+    expect(sides[1]).toMatchObject({ leftIndex: 1, rightIndex: 2 });
+    expect(sides[2]).toMatchObject({ leftIndex: null, rightIndex: 3 });
   });
 
   it("emits every row exactly once", () => {

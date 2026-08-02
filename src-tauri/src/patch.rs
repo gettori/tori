@@ -176,6 +176,153 @@ pub fn build_patch(patch: &FilePatch, selected: &[usize], reverse: bool) -> Resu
     Ok(out)
 }
 
+/// Which sides of the diff a body line belongs to: `(old, new)`.
+///
+/// A `\ No newline at end of file` marker is on neither: it is an annotation on
+/// the line above, not a line of either version.
+fn sides(line: &str) -> (bool, bool) {
+    match line.as_bytes().first() {
+        Some(b'\\') => (false, false),
+        Some(b'+') => (false, true),
+        Some(b'-') => (true, false),
+        _ => (true, true),
+    }
+}
+
+/// `(old_count, new_count)` for a hunk body, counted rather than trusted: a
+/// line-selected rebuild changes the produced side's length.
+fn side_counts(body: &[String]) -> (u32, u32) {
+    let mut old = 0;
+    let mut new = 0;
+    for line in body {
+        let (o, n) = sides(line);
+        old += o as u32;
+        new += n as u32;
+    }
+    (old, new)
+}
+
+pub const SPLIT_NO_NEWLINE: &str =
+    "That selection splits the end of a file that has no final newline. Use the whole hunk instead.";
+
+/// A `\ No newline at end of file` marker is only meaningful directly after the
+/// *last* line of a side. Dropping or demoting lines around one can strand it in
+/// the middle, which git accepts as far as parsing and then applies wrongly, so
+/// the rebuild refuses instead.
+fn markers_are_coherent(body: &[String]) -> bool {
+    for (i, line) in body.iter().enumerate() {
+        if !line.starts_with('\\') {
+            continue;
+        }
+        let Some(owner) = i.checked_sub(1).map(|j| &body[j]) else {
+            return false;
+        };
+        let (claims_old, claims_new) = sides(owner);
+        if body[i + 1..].iter().any(|l| {
+            let (o, n) = sides(l);
+            (claims_old && o) || (claims_new && n)
+        }) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Build a patch from a subset of the *lines* of one hunk.
+///
+/// `lines` are indices into `patch.hunks[hunk].body`. The rule is one rule seen
+/// from two directions: the side the patch is applied *to* is the source, and
+/// every source line has to survive, as itself if selected and as context if
+/// not, while an unselected line that exists only on the produced side is
+/// dropped. Staging applies forward, so the old side is the source: unselected
+/// `-` becomes context, unselected `+` disappears. Unstaging applies in reverse,
+/// so the new side is the source and the two swap.
+///
+/// The hunk is never split into several. Its source span stays whole, so the
+/// context around a selection always abuts it however scattered the selection
+/// is, and the unselected changes in between are exactly the context that holds
+/// the two ends together. The alternative, emitting a hunk per run of selected
+/// lines, would have to re-derive context git never sent us.
+///
+/// **A demoted line keeps its place in the body**, which is the one visible
+/// consequence worth knowing about. git groups a run of removals and then a run
+/// of additions, so demoting a removal inside such a block places it *before*
+/// the additions on the produced side: staging only the `a -> A` half of
+/// `-a -b +A +B` produces `b, A`, not `A, b`. Ordering the block correctly would
+/// need to know which removal each addition replaces, and a unified diff does
+/// not say; the panel's pairing is a similarity guess, and guessing wrong here
+/// writes the wrong file into the index rather than merely rendering oddly. So
+/// this follows the rule git's own `add -p` edit mode documents ("to remove
+/// a `-` line, make it a ` ` line"), which is what every other line-staging tool
+/// produces, and the panel re-reads the diff afterwards so the result is on
+/// screen immediately.
+///
+/// Indices naming a context line or a `\` marker are ignored (the fingerprint
+/// check upstream already proves the body is the one the UI rendered, so they
+/// can only mean the caller counted rows it did not offer); at least one changed
+/// line must survive or there is nothing to apply.
+pub fn build_line_patch(patch: &FilePatch, hunk: usize, lines: &[usize], reverse: bool) -> Result<String, String> {
+    let h = patch.hunks.get(hunk).ok_or_else(|| format!("Hunk {} is out of range", hunk))?;
+    if let Some(&bad) = lines.iter().find(|&&i| i >= h.body.len()) {
+        return Err(format!("Line {} is out of range", bad));
+    }
+    let picked: std::collections::HashSet<usize> = lines.iter().copied().collect();
+
+    // The marker of the side that is *not* produced, i.e. the one whose
+    // unselected lines stay as context.
+    let source = if reverse { b'+' } else { b'-' };
+    let mut body: Vec<String> = Vec::with_capacity(h.body.len());
+    let mut changed = 0usize;
+    // Whether the previous content line made it into `body`; a marker follows
+    // its owner rather than being decided on its own.
+    let mut owner_kept = false;
+    for (i, line) in h.body.iter().enumerate() {
+        let mark = line.as_bytes().first().copied().unwrap_or(b' ');
+        if mark == b'\\' {
+            if owner_kept {
+                body.push(line.clone());
+            }
+            continue;
+        }
+        owner_kept = true;
+        if mark != b'+' && mark != b'-' {
+            body.push(line.clone());
+        } else if picked.contains(&i) {
+            changed += 1;
+            body.push(line.clone());
+        } else if mark == source {
+            body.push(format!(" {}", &line[1..]));
+        } else {
+            owner_kept = false;
+        }
+    }
+
+    if changed == 0 {
+        return Err("No lines selected".into());
+    }
+    if !markers_are_coherent(&body) {
+        return Err(SPLIT_NO_NEWLINE.into());
+    }
+
+    let (old_count, new_count) = side_counts(&body);
+    // Only hunk in the patch, so nothing has shifted ahead of it: the produced
+    // side starts wherever the source side does. Which of `h`'s starts that is
+    // depends on the direction, exactly as in `build_patch`.
+    let start = if reverse { h.new_start } else { h.old_start };
+
+    let mut out = String::new();
+    for line in &patch.preamble {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&format!("@@ -{},{} +{},{} @@\n", start, old_count, start, new_count));
+    for line in &body {
+        out.push_str(line);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +439,138 @@ index 111..222 100644\n\
     fn patch_always_ends_with_a_newline() {
         let out = build_patch(&parse_patch(SAMPLE), &[0], false).unwrap();
         assert!(out.ends_with('\n'), "git apply rejects a truncated final line");
+    }
+
+    /// One hunk rewriting three separate lines, with context between them, so a
+    /// selection can leave changes on both sides of the ones it keeps.
+    // Written flat rather than with `\`-continuations: those swallow the
+    // leading whitespace of the next line, and here a leading space *is* the
+    // marker that says "context".
+    const SCATTERED: &str = "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1,7 +1,7 @@\n one\n-two\n+TWO\n three\n-four\n+FOUR\n five\n-six\n+SIX\n seven\n";
+
+    fn body_of(patch: &str) -> Vec<String> {
+        patch.lines().skip_while(|l| !l.starts_with("@@")).skip(1).map(str::to_string).collect()
+    }
+
+    #[test]
+    fn staging_a_line_drops_the_additions_it_left_and_keeps_their_removals() {
+        let p = parse_patch(SCATTERED);
+        // Body index 2 is "+TWO"; take it and its own removal at index 1.
+        let out = build_line_patch(&p, 0, &[1, 2], false).unwrap();
+        assert_eq!(
+            body_of(&out),
+            vec![" one", "-two", "+TWO", " three", " four", " five", " six", " seven"],
+            "got: {out}"
+        );
+        // The old side is the source, so it is unchanged in length and start.
+        assert!(out.contains("@@ -1,7 +1,7 @@"), "got: {out}");
+    }
+
+    #[test]
+    fn taking_an_addition_without_its_removal_leaves_both_lines() {
+        let p = parse_patch(SCATTERED);
+        let out = build_line_patch(&p, 0, &[2], false).unwrap();
+        assert_eq!(
+            body_of(&out),
+            vec![" one", " two", "+TWO", " three", " four", " five", " six", " seven"]
+        );
+        // One line longer on the new side, and the header has to say so.
+        assert!(out.contains("@@ -1,7 +1,8 @@"), "got: {out}");
+    }
+
+    #[test]
+    fn a_scattered_selection_stays_one_hunk_so_its_context_still_abuts() {
+        let p = parse_patch(SCATTERED);
+        // First and third change, skipping the middle one entirely.
+        let out = build_line_patch(&p, 0, &[1, 2, 7, 8], false).unwrap();
+        assert_eq!(out.matches("@@ ").count(), 1, "one hunk, not one per run: {out}");
+        let body = body_of(&out);
+        assert_eq!(body[4], " four", "the skipped change becomes the context between the two runs");
+        assert!(body.contains(&"+TWO".to_string()) && body.contains(&"+SIX".to_string()));
+        assert!(!body.contains(&"+FOUR".to_string()));
+    }
+
+    #[test]
+    fn unstaging_a_line_mirrors_the_rule_onto_the_other_side() {
+        let p = parse_patch(SCATTERED);
+        let out = build_line_patch(&p, 0, &[1, 2], true).unwrap();
+        // Reverse: the new side is the source, so the unselected *additions*
+        // are what survive as context and the removals vanish.
+        assert_eq!(
+            body_of(&out),
+            vec![" one", "-two", "+TWO", " three", " FOUR", " five", " SIX", " seven"]
+        );
+        assert!(out.contains("@@ -1,7 +1,7 @@"), "got: {out}");
+    }
+
+    #[test]
+    fn reverse_anchors_the_hunk_on_the_new_side() {
+        // Old and new start differ, so an anchor taken from the wrong side
+        // would place the patch several lines off.
+        let p = parse_patch("--- a/f\n+++ b/f\n@@ -4,2 +9,2 @@\n-a\n+b\n c\n");
+        assert!(build_line_patch(&p, 0, &[0, 1], true).unwrap().contains("@@ -9,2 +9,2 @@"));
+        assert!(build_line_patch(&p, 0, &[0, 1], false).unwrap().contains("@@ -4,2 +4,2 @@"));
+    }
+
+    #[test]
+    fn a_demoted_removal_keeps_its_place_in_the_body() {
+        // The documented ordering consequence, pinned so it cannot change by
+        // accident: git groups removals ahead of additions, so a removal kept
+        // as context lands ahead of the addition that replaced its neighbour.
+        let p = parse_patch("--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n-a\n-b\n+A\n+B\n");
+        let out = build_line_patch(&p, 0, &[0, 2], false).unwrap();
+        assert_eq!(body_of(&out), vec!["-a", " b", "+A"], "got: {out}");
+        assert!(out.contains("@@ -1,2 +1,2 @@"));
+    }
+
+    #[test]
+    fn a_selection_with_no_changed_line_in_it_is_refused() {
+        let p = parse_patch(SCATTERED);
+        // Index 0 is " one", a context line: nothing would be applied.
+        assert_eq!(build_line_patch(&p, 0, &[0], false).unwrap_err(), "No lines selected");
+        assert_eq!(build_line_patch(&p, 0, &[], false).unwrap_err(), "No lines selected");
+    }
+
+    #[test]
+    fn out_of_range_hunk_or_line_is_refused_rather_than_panicking() {
+        let p = parse_patch(SCATTERED);
+        assert!(build_line_patch(&p, 9, &[1], false).is_err());
+        assert!(build_line_patch(&p, 0, &[99], false).is_err());
+    }
+
+    #[test]
+    fn the_preamble_is_carried_and_the_patch_ends_with_a_newline() {
+        let out = build_line_patch(&parse_patch(SCATTERED), 0, &[1], false).unwrap();
+        assert!(out.starts_with("diff --git a/f.txt b/f.txt\n"));
+        assert!(out.contains("--- a/f.txt\n+++ b/f.txt\n"));
+        assert!(out.ends_with('\n'));
+    }
+
+    const NO_NEWLINE: &str = "--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n keep\n-last\n\\ No newline at end of file\n+LAST\n\\ No newline at end of file\n";
+
+    #[test]
+    fn a_dropped_line_takes_its_no_newline_marker_with_it() {
+        let p = parse_patch(NO_NEWLINE);
+        // Both halves of the final-line rewrite, which is representable.
+        let out = build_line_patch(&p, 0, &[1, 3], false).unwrap();
+        assert_eq!(out.matches("\\ No newline").count(), 2, "got: {out}");
+    }
+
+    #[test]
+    fn splitting_a_file_with_no_final_newline_is_refused_not_corrupted() {
+        let p = parse_patch(NO_NEWLINE);
+        // Taking the addition alone would leave the demoted " last" claiming to
+        // be the end of the file with another line after it.
+        assert_eq!(build_line_patch(&p, 0, &[3], false).unwrap_err(), SPLIT_NO_NEWLINE);
+    }
+
+    #[test]
+    fn a_marker_left_at_the_end_is_still_accepted() {
+        // Removing the last line of a file that had no final newline, with
+        // nothing added back: the marker stays last, so it stays coherent.
+        let p = parse_patch("--- a/f\n+++ b/f\n@@ -1,2 +1,1 @@\n keep\n-last\n\\ No newline at end of file\n");
+        let out = build_line_patch(&p, 0, &[1], false).unwrap();
+        assert!(out.ends_with("-last\n\\ No newline at end of file\n"), "got: {out}");
     }
 }
 

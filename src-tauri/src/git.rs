@@ -268,14 +268,78 @@ pub fn git_apply_hunks(
     git_apply(&project_path, &patch, true, reverse)
 }
 
-/// Re-read `file`'s diff in `mode`, re-check every selected hunk's fingerprint
-/// against it, and build a patch of just those hunks.
+/// Stage or unstage a subset of the *lines* of one hunk.
 ///
-/// Shared by staging and discarding because the hazard is shared: a hunk index
-/// is only meaningful against the exact diff it was rendered from, so both have
-/// to re-derive the fingerprints rather than trust the number. `stale` is what
-/// to say when they no longer match, which differs by caller because it has to
-/// name what did *not* happen.
+/// The same contract as `git_apply_hunks` one level finer: same two directions,
+/// same source diffs, same fingerprint proof that the hunk on screen is the hunk
+/// on disk. Only the patch is narrower, and `patch::build_line_patch` owns what
+/// "narrower" means for each direction.
+///
+/// A whole-hunk apply is not this with every line listed. It stays its own
+/// command because it is the common case and because its patch is the hunk
+/// verbatim, with nothing rebuilt that could be rebuilt wrongly.
+#[tauri::command]
+pub fn git_apply_lines(
+    project_path: String,
+    file: String,
+    hunk_index: usize,
+    fingerprint: String,
+    lines: Vec<usize>,
+    reverse: bool,
+    context: Option<u32>,
+) -> Result<(), String> {
+    if lines.is_empty() {
+        return Err("No lines selected".into());
+    }
+    if reverse {
+        // Unstaging only ever touches files already in the index.
+    } else if is_untracked(&project_path, &file)? {
+        git_run(&project_path, &["add", "-N", "--", &file])?;
+    }
+
+    let mode = if reverse { DiffMode::Staged } else { DiffMode::Unstaged };
+    let parsed = checked_patch(
+        &project_path,
+        &file,
+        &[hunk_index],
+        std::slice::from_ref(&fingerprint),
+        mode,
+        context,
+        "The diff changed, refreshed. Nothing was staged.",
+    )?;
+    let patch = crate::patch::build_line_patch(&parsed, hunk_index, &lines, reverse)?;
+    git_apply(&project_path, &patch, true, reverse)
+}
+
+/// Re-read `file`'s diff in `mode` and prove every selected hunk is still the
+/// one whose fingerprint the UI rendered.
+///
+/// A hunk index is only meaningful against the exact diff it came from, so every
+/// caller re-derives the fingerprints rather than trusting the number. `stale` is
+/// what to say when they no longer match, which differs by caller because it has
+/// to name what did *not* happen.
+fn checked_patch(
+    project_path: &str,
+    file: &str,
+    hunk_indices: &[usize],
+    fingerprints: &[String],
+    mode: DiffMode,
+    context: Option<u32>,
+    stale: &str,
+) -> Result<crate::patch::FilePatch, String> {
+    let text = git_diff_text(project_path.to_string(), file.to_string(), context, Some(mode))?;
+    let parsed = crate::patch::parse_patch(&text);
+    for (&i, expected) in hunk_indices.iter().zip(fingerprints) {
+        let actual = parsed.hunks.get(i).ok_or_else(|| stale.to_string())?;
+        if &actual.fingerprint != expected {
+            return Err(stale.to_string());
+        }
+    }
+    Ok(parsed)
+}
+
+/// `checked_patch` plus the whole-hunk patch built from it. Shared by staging
+/// and discarding, which differ only in direction and in what they call stale.
 #[allow(clippy::too_many_arguments)]
 fn selected_patch(
     project_path: &str,
@@ -287,14 +351,7 @@ fn selected_patch(
     context: Option<u32>,
     stale: &str,
 ) -> Result<String, String> {
-    let text = git_diff_text(project_path.to_string(), file.to_string(), context, Some(mode))?;
-    let parsed = crate::patch::parse_patch(&text);
-    for (&i, expected) in hunk_indices.iter().zip(fingerprints) {
-        let actual = parsed.hunks.get(i).ok_or_else(|| stale.to_string())?;
-        if &actual.fingerprint != expected {
-            return Err(stale.to_string());
-        }
-    }
+    let parsed = checked_patch(project_path, file, hunk_indices, fingerprints, mode, context, stale)?;
     crate::patch::build_patch(&parsed, hunk_indices, reverse)
 }
 
@@ -2507,6 +2564,189 @@ diff --git a/f b/f
         git_apply_hunks(p.clone(), "n.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         assert!(indexed(&dir, "n.txt").contains("new 20"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// One file, one hunk, three consecutive lines rewritten, so a line
+    /// selection inside it can leave changes on either side of what it takes.
+    fn repo_with_one_dense_hunk() -> PathBuf {
+        let dir = repo_with_two_hunks();
+        let mut lines: Vec<String> = (1..=20).map(|i| format!("line {i}")).collect();
+        std::fs::write(dir.join("d.txt"), lines.join("\n") + "\n").unwrap();
+        git(&dir, &["add", "d.txt"]);
+        git(&dir, &["commit", "-q", "-m", "dense"]);
+        for i in [8, 9, 10] {
+            lines[i] = format!("line {} EDITED", i + 1);
+        }
+        std::fs::write(dir.join("d.txt"), lines.join("\n") + "\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn stages_two_lines_of_a_hunk_and_leaves_the_rest_unstaged() {
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
+        assert_eq!(parsed.hunks.len(), 1, "the three edits are one hunk at -U3");
+        let body = &parsed.hunks[0].body;
+        // Take the removal and addition of line 9 only.
+        let del = body.iter().position(|l| l == "-line 9").unwrap();
+        let add = body.iter().position(|l| l == "+line 9 EDITED").unwrap();
+
+        git_apply_lines(
+            p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
+            vec![del, add], false, Some(3),
+        ).unwrap();
+
+        assert_eq!(status_of(&dir, "d.txt"), "MM d.txt");
+        let staged = indexed(&dir, "d.txt");
+        assert!(staged.contains("line 9 EDITED"), "the selected line should be staged");
+        assert!(!staged.contains("line 10 EDITED"), "its neighbours must not be");
+        assert!(!staged.contains("line 11 EDITED"));
+        assert_eq!(staged.lines().count(), 20, "no line was added or lost");
+        // The documented ordering: the two removals left as context sit ahead
+        // of the addition, because git's diff puts the whole removal run first.
+        assert_eq!(staged.lines().nth(8).unwrap(), "line 10");
+        assert_eq!(staged.lines().nth(9).unwrap(), "line 11");
+        assert_eq!(staged.lines().nth(10).unwrap(), "line 9 EDITED");
+        // --cached: the worktree still has all three edits.
+        let worktree = std::fs::read_to_string(dir.join("d.txt")).unwrap();
+        assert!(worktree.contains("line 10 EDITED") && worktree.contains("line 11 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stages_a_selection_that_skips_a_change_in_its_middle() {
+        // The split case: the rebuilt patch's two selected runs are held
+        // together by the change between them, demoted to context. If that were
+        // dropped instead, or the hunk split in two, git would reject the patch
+        // or apply it at the wrong offset.
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
+        let body = &parsed.hunks[0].body;
+        let pick: Vec<usize> = ["-line 9", "+line 9 EDITED", "-line 11", "+line 11 EDITED"]
+            .iter()
+            .map(|want| body.iter().position(|l| l == want).unwrap())
+            .collect();
+
+        git_apply_lines(
+            p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
+            pick, false, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "d.txt");
+        assert!(staged.contains("line 9 EDITED") && staged.contains("line 11 EDITED"));
+        assert!(!staged.contains("line 10 EDITED"), "the skipped change stays unstaged");
+        assert_eq!(staged.lines().count(), 20);
+        // The change it skipped is still the original line, carried through as
+        // the context that holds the two selected runs together.
+        assert_eq!(staged.lines().nth(8).unwrap(), "line 10");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn staging_an_addition_without_its_removal_leaves_both_lines_in_the_index() {
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
+        let add = parsed.hunks[0].body.iter().position(|l| l == "+line 9 EDITED").unwrap();
+
+        git_apply_lines(
+            p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
+            vec![add], false, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "d.txt");
+        assert_eq!(staged.lines().count(), 21, "the old line was kept and the new one added");
+        assert_eq!(staged.lines().nth(8).unwrap(), "line 9");
+        assert_eq!(staged.lines().nth(11).unwrap(), "line 9 EDITED");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unstages_one_line_of_a_staged_hunk() {
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["add", "d.txt"]);
+        let staged_hunks = hunks_of(&p, "d.txt", DiffMode::Staged);
+        let body = &staged_hunks.hunks[0].body;
+        let del = body.iter().position(|l| l == "-line 10").unwrap();
+        let add = body.iter().position(|l| l == "+line 10 EDITED").unwrap();
+
+        git_apply_lines(
+            p.clone(), "d.txt".into(), 0, staged_hunks.hunks[0].fingerprint.clone(),
+            vec![del, add], true, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "d.txt");
+        assert!(!staged.contains("line 10 EDITED"), "the reversed line left the index");
+        assert!(staged.contains("line 9 EDITED") && staged.contains("line 11 EDITED"));
+        assert_eq!(staged.lines().count(), 20);
+        // The worktree keeps every edit either way.
+        assert!(std::fs::read_to_string(dir.join("d.txt")).unwrap().contains("line 10 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_stale_fingerprint_refuses_a_line_apply_and_stages_nothing() {
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        let err = git_apply_lines(
+            p.clone(), "d.txt".into(), 0, "deadbeef".into(), vec![1], false, Some(3),
+        ).unwrap_err();
+        assert!(err.contains("diff changed"), "got: {err}");
+        assert_eq!(status_of(&dir, "d.txt"), " M d.txt", "nothing may be staged");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_empty_line_selection_refuses() {
+        let dir = repo_with_one_dense_hunk();
+        let p = dir.to_string_lossy().into_owned();
+        let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
+        assert!(git_apply_lines(
+            p, "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(), vec![], false, Some(3),
+        ).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unstaging_part_of_a_newly_added_file_refuses_without_touching_the_index() {
+        // A file not in HEAD has no old contents for a partial reverse to land
+        // on, and git says so rather than half-applying. Reachable from the UI
+        // (a new file's Staged row expands like any other), so what matters is
+        // that it fails loudly and leaves the index alone.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("n.txt"), "a\nb\nc\n").unwrap();
+        git(&dir, &["add", "n.txt"]);
+        let staged = hunks_of(&p, "n.txt", DiffMode::Staged);
+
+        let err = git_apply_lines(
+            p.clone(), "n.txt".into(), 0, staged.hunks[0].fingerprint.clone(),
+            vec![0], true, Some(3),
+        ).unwrap_err();
+        assert!(err.contains("depends on old contents"), "got: {err}");
+        assert_eq!(indexed(&dir, "n.txt"), "a\nb\nc\n", "the index must be untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn staging_lines_of_an_untracked_file_goes_through_intent_to_add() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("n.txt"), "alpha\nbeta\ngamma\n").unwrap();
+        let parsed = hunks_of(&p, "n.txt", DiffMode::Unstaged);
+
+        // Only the first of the three added lines.
+        git_apply_lines(
+            p.clone(), "n.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
+            vec![0], false, Some(3),
+        ).unwrap();
+
+        let staged = indexed(&dir, "n.txt");
+        assert_eq!(staged, "alpha\n", "one line staged, the rest still untracked work");
         std::fs::remove_dir_all(&dir).ok();
     }
 

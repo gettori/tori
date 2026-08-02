@@ -42,6 +42,9 @@ let commitArgs: unknown[] = [];
 // Discard is the one destructive thing this panel does, so what it was asked to
 // do (and who was in the way) is worth recording exactly.
 let discardArgs: { cmd: string; args: unknown }[] = [];
+// What a line-level stage asked for. The indices only mean anything alongside
+// the fingerprint they were picked against, so both are recorded.
+let applyLineArgs: unknown[] = [];
 let stashArgs: { cmd: string; args: unknown }[] = [];
 let stashRows: { selector: string; message: string; branch: string | null; relative_date: string }[] = [];
 let stashCreated = true;
@@ -82,6 +85,9 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_discard_files":
         discardArgs.push({ cmd, args });
         return Promise.resolve({ backstop_ts: 1_700_000_000, restored: ["src/a.ts"], deleted: [] });
+      case "git_apply_lines":
+        applyLineArgs.push(args);
+        return Promise.resolve(null);
       case "git_stash_list":
         return Promise.resolve(stashRows);
       case "git_stash_push":
@@ -137,6 +143,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
+import { parseDiffHunks } from "../../utils/diffHunks";
+import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { stage, refreshStatus } from "../../utils/gitActions";
 import { TOAST, OPEN_IN_EDITOR, SEND_TO_SESSION, type ToastEvent } from "../../utils/events";
 import { syntheticId } from "../../utils/syntheticTabs";
@@ -167,6 +175,7 @@ beforeEach(async () => {
   headMsg = "";
   commitArgs = [];
   discardArgs = [];
+  applyLineArgs = [];
   stashArgs = [];
   stashRows = [];
   stashCreated = true;
@@ -385,6 +394,84 @@ describe("conflicts", () => {
 
     await waitFor(() => expect(screen.queryByText("Conflicts")).toBeNull());
     expect(screen.getByText("Staged Changes")).toBeTruthy();
+  });
+});
+
+describe("line-level staging", () => {
+  // The fixture is one hunk whose body is [" one", "-two", "+TWO", " three"],
+  // so 1 and 2 are the two halves of its only change.
+  const HUNK = parseDiffHunks(DIFF)[0];
+
+  it("stages only the lines picked out of the hunk", async () => {
+    await mountWithOpenDiff();
+    // Until something is picked the header offers the hunk and nothing finer.
+    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
+
+    fireEvent.click(screen.getByText("-two"));
+    fireEvent.click(screen.getByText("+TWO"));
+    await waitFor(() => expect(screen.getByText("Stage 2 lines")).toBeTruthy());
+    expect(applyLineArgs, "picking a line must not apply anything on its own").toEqual([]);
+
+    fireEvent.click(screen.getByText("Stage 2 lines"));
+    await waitFor(() => expect(applyLineArgs).toHaveLength(1));
+    // The indices are only meaningful against the body they were picked from,
+    // so the fingerprint of that exact hunk travels with them.
+    expect(applyLineArgs[0]).toMatchObject({
+      projectPath: "/proj",
+      file: "src/a.ts",
+      hunkIndex: 0,
+      fingerprint: hunkFingerprint(HUNK.header, HUNK.lines),
+      lines: [1, 2],
+      reverse: false,
+    });
+  });
+
+  it("counts one line as one, and drops the control when the last is unpicked", async () => {
+    await mountWithOpenDiff();
+    fireEvent.click(screen.getByText("+TWO"));
+    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("+TWO"));
+    await waitFor(() => expect(screen.queryByText(/Stage \d+ line/)).toBeNull());
+  });
+
+  it("offers nothing to pick on an unchanged line", async () => {
+    await mountWithOpenDiff();
+    // Context is in both versions, so there is nothing about it to stage.
+    fireEvent.click(screen.getByText("one"));
+    fireEvent.click(screen.getByText("three"));
+    await Promise.resolve();
+    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
+  });
+
+  it("leaves the discard control acting on the whole hunk", async () => {
+    // The two live in the same header, and the finer one must not quietly
+    // narrow the destructive one.
+    await mountWithOpenDiff();
+    fireEvent.click(screen.getByText("+TWO"));
+    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Discard hunk"));
+    // Two now say it: the header's control and the confirm dialog's button.
+    const confirm = await screen.findAllByText("Discard hunk");
+    expect(confirm).toHaveLength(2);
+    fireEvent.click(confirm[1]);
+    await waitFor(() => expect(discardArgs).toHaveLength(1));
+    expect(discardArgs[0].args).toMatchObject({ hunkIndices: [0] });
+    expect(applyLineArgs).toEqual([]);
+  });
+
+  it("forgets the selection when the diff is collapsed", async () => {
+    await mountWithOpenDiff();
+    fireEvent.click(screen.getByText("+TWO"));
+    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
+
+    // Indices into a hunk body mean nothing once that body is off screen.
+    fireEvent.click(screen.getByTitle("src/a.ts"));
+    await waitFor(() => expect(screen.queryByText("+TWO")).toBeNull());
+    fireEvent.click(screen.getByTitle("src/a.ts"));
+    await waitFor(() => expect(screen.getByText("+TWO")).toBeTruthy());
+    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
   });
 });
 

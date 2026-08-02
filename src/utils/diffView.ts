@@ -173,7 +173,17 @@ export function buildRows(lines: string[]): DiffRow[] {
   return rows;
 }
 
-export type SideRow = { left: DiffRow | null; right: DiffRow | null };
+/** A row's index in the array `toSideBySide` was given, which is also its index
+ *  in the hunk body (`buildRows` emits one row per line, in order). Line-level
+ *  staging selects by that index, so the two columns have to carry it: the row
+ *  objects alone cannot say where they came from. `null` where the cell is
+ *  empty. */
+export type SideRow = {
+  left: DiffRow | null;
+  right: DiffRow | null;
+  leftIndex: number | null;
+  rightIndex: number | null;
+};
 
 /** Lay rows into two columns: context spans both, a matched -/+ pair shares a
  *  row, and unpaired changes sit alone on their own side. */
@@ -192,18 +202,22 @@ export function toSideBySide(rows: DiffRow[]): SideRow[] {
   rows.forEach((row, idx) => {
     if (placed.has(idx)) return;
     if (row.kind === "context" || row.kind === "meta") {
-      out.push({ left: row, right: row });
+      out.push({ left: row, right: row, leftIndex: idx, rightIndex: idx });
       return;
     }
     if (row.kind === "del" && row.pair !== undefined) {
       const aj = addByPair.get(row.pair);
       if (aj !== undefined && aj > idx) {
         placed.add(aj);
-        out.push({ left: row, right: rows[aj] });
+        out.push({ left: row, right: rows[aj], leftIndex: idx, rightIndex: aj });
         return;
       }
     }
-    out.push(row.kind === "del" ? { left: row, right: null } : { left: null, right: row });
+    out.push(
+      row.kind === "del"
+        ? { left: row, right: null, leftIndex: idx, rightIndex: null }
+        : { left: null, right: row, leftIndex: null, rightIndex: idx },
+    );
   });
 
   return out;

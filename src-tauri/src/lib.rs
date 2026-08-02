@@ -256,6 +256,7 @@ pub fn run() {
             git::git_diff_file,
             git::git_diff_text,
             git::git_apply_hunks,
+            git::git_apply_lines,
             git::git_file_slice,
             git::git_stage,
             git::git_unstage,
