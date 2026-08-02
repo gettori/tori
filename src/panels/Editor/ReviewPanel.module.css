@@ -94,6 +94,23 @@
 .reviewStatus.untracked {
   color: var(--fg-muted);
 }
+/* Conflicts are the one status that is blocking rather than descriptive:
+   nothing below can be committed until they are gone. */
+.reviewStatus.conflicted {
+  color: var(--danger-fg);
+}
+
+/* The conflict row is a <button> so it is reachable by keyboard, which costs
+   the browser's own button chrome back. Everything else it takes from
+   `.reviewRow`, so the two kinds of row still read as one list. */
+.conflictRow {
+  width: calc(100% - 8px * var(--ui-scale));
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
 
 .reviewName {
   overflow: hidden;

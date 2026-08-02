@@ -25,6 +25,11 @@ export type FileStatus = {
   orig_path?: string | null;
   staged: boolean;
   unstaged: boolean;
+  /** Unmerged index stages: the file is mid-conflict. Mutually exclusive with
+   *  the other two, so a conflicted file falls out of both sections rather than
+   *  offering stage, unstage or discard, none of which git performs on one.
+   *  Optional only so a fixture may omit it; the backend always sends it. */
+  conflicted?: boolean;
 };
 export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 type BranchInfo = { name: string; current: boolean };
@@ -49,6 +54,28 @@ export { gitState };
 
 export const stagedFiles = () => gitState().files.filter((f) => f.staged);
 export const changedFiles = () => gitState().files.filter((f) => f.unstaged);
+export const conflictedFiles = () => gitState().files.filter((f) => f.conflicted);
+
+/**
+ * Is this file mid-conflict in the workspace the store currently describes?
+ *
+ * Takes the **absolute** path, because that is what the editor holds and the
+ * store's paths are repo-relative; the two coordinate systems have to meet
+ * somewhere, and it may as well be the one place that knows both. The prefix
+ * strip duplicates `CodeEditor`'s `relTo` on purpose: that module is the lazy
+ * CM6 edge, and importing one helper out of it would pull the whole editor
+ * into the graph of a store the command palette reads.
+ *
+ * Root-checked. The store is shared across workspaces and blanks on a switch,
+ * so answering from a file list that describes a different workspace would put
+ * a conflict banner on a file that is perfectly fine.
+ */
+export function isConflicted(root: string | null, absPath: string | null): boolean {
+  const state = gitState();
+  if (!root || !absPath || state.root !== root) return false;
+  const rel = absPath.startsWith(root + "/") ? absPath.slice(root.length + 1) : absPath;
+  return state.files.some((f) => f.conflicted && f.path === rel);
+}
 
 /** Can a push do anything? A branch with no upstream counts: the push sets it.
  *  Unknown (the probe failed, or nothing is selected) reads as no. */

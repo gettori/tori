@@ -257,6 +257,70 @@ describe("renames", () => {
   });
 });
 
+describe("conflicts", () => {
+  // What the backend reports for a `u` record: neither staged nor unstaged, so
+  // the file falls out of both sections and has to be given one of its own.
+  const CONFLICT: FileStatus = {
+    status: "UU",
+    path: "src/c.ts",
+    staged: false,
+    unstaged: false,
+    conflicted: true,
+  };
+
+  it("lists a conflicted file in its own section and nowhere else", async () => {
+    statusRows = [CONFLICT, UNSTAGED];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+    // One row, not one per section: the file is not also sitting under Changes
+    // or Staged Changes wearing a Stage button.
+    const rows = screen.getAllByTitle("src/c.ts");
+    expect(rows).toHaveLength(1);
+    // The row is the control, so it is a button: opening the file is its only
+    // action, and a div would make the whole section mouse-only. Nothing is
+    // nested inside it, since stage, unstage and discard are all refused here.
+    expect(rows[0].tagName).toBe("BUTTON");
+    expect(rows[0].querySelectorAll("button")).toHaveLength(0);
+    // The ordinary file beside it still gets its section and its controls, so
+    // the conflict section is an addition rather than a takeover.
+    expect(screen.getByText("Changes")).toBeTruthy();
+    expect(screen.getByTitle("src/a.ts").querySelectorAll("button").length).toBeGreaterThan(0);
+  });
+
+  it("does not offer to stash a tree git will not stash", async () => {
+    // `git stash` refuses an unmerged tree outright, so an enabled button here
+    // could only ever produce git's error message.
+    statusRows = [CONFLICT, UNSTAGED];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+
+    // `Button` puts its label in a span, so the control is the ancestor.
+    const stashAll = () => screen.getByText("Stash all").closest("button")!;
+    expect(stashAll().disabled).toBe(true);
+    expect(stashAll().getAttribute("title")).toMatch(/merge is unresolved/);
+
+    statusRows = [UNSTAGED];
+    await refreshStatus("/proj");
+
+    await waitFor(() => expect(stashAll().disabled).toBe(false));
+  });
+
+  it("drops the section once the last conflict is marked resolved", async () => {
+    statusRows = [CONFLICT];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+
+    // `git add` on a conflicted path is what "mark resolved" means: one index
+    // stage where there were three, so the next status has no `u` record.
+    statusRows = [{ status: "M ", path: "src/c.ts", staged: true, unstaged: false, conflicted: false }];
+    await refreshStatus("/proj");
+
+    await waitFor(() => expect(screen.queryByText("Conflicts")).toBeNull());
+    expect(screen.getByText("Staged Changes")).toBeTruthy();
+  });
+});
+
 describe("discard", () => {
   /** Discard is destructive, so every path through it is confirmed. This
    *  answers the dialog and returns what the panel did next. */
