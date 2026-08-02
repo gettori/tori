@@ -35,7 +35,8 @@ import {
 import { anchorFor, anchorLabel, isSelfAuthored } from "../../../utils/pendingReview";
 import { composeThreadAsk } from "../../../utils/threadAsk";
 import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../../utils/safeSend";
-import { branchOwner, sessionStatus } from "../../../utils/sessionActivity";
+import { branchOwner, projectUnitFor, sessionStatus } from "../../../utils/sessionActivity";
+import { emitWith, REMOVE_BRANCH_UNIT, type RemoveBranchUnit } from "../../../utils/events";
 import { STATUS_LABEL } from "../../../utils/sessionStatus";
 import { findAgent } from "../../../utils/agents";
 import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
@@ -44,6 +45,8 @@ import {
   type DraftComment,
   type Paged,
   type PrFile,
+  type MergeableState,
+  type MergeMethod,
   type PullRequest,
   type ReviewComment,
   type ReviewEvent,
@@ -53,6 +56,7 @@ import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../.
 import DiffRows, { diffRowClasses } from "../DiffRows";
 import ReviewThreadView from "./ReviewThreadView";
 import ReviewBar from "./ReviewBar";
+import MergeBar from "./MergeBar";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import styles from "./PrDetail.module.css";
@@ -66,7 +70,16 @@ const SKIP_COPY: Record<FileSkip, string> = {
   noText: "No line changes to show (a binary file, or a mode change).",
 };
 
-export default function PrDetail(props: { root: string; pr: PullRequest; onBack: () => void }) {
+export default function PrDetail(props: {
+  root: string;
+  pr: PullRequest;
+  onBack: () => void;
+  /** Called once this pull request has been landed. The list behind this view
+   *  still has it open: Rust drops its caches on a merge, but the panel is
+   *  holding an array it fetched before, and going back to find the pull request
+   *  you just merged still sitting there is the one place the user checks. */
+  onLanded: () => void;
+}) {
   const [files, setFiles] = createSignal<PrFile[]>([]);
   const [truncated, setTruncated] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
@@ -114,6 +127,14 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
   const [sendingThread, setSendingThread] = createSignal<string | null>(null);
   const [sendNotes, setSendNotes] = createSignal<Record<string, { text: string; ok: boolean }>>({});
 
+  // Landing it. `null` is "nobody has asked yet", which is not `"unknown"`
+  // ("GitHub has not decided"): one is a blank the UI must not render as a
+  // verdict, the other is a verdict.
+  const [mergeState, setMergeState] = createSignal<MergeableState | null>(null);
+  const [mergeBusy, setMergeBusy] = createSignal(false);
+  const [mergeError, setMergeError] = createSignal<string | null>(null);
+  const [merged, setMerged] = createSignal(false);
+
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -149,6 +170,10 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       setReviewOpen(false);
       setSendingThread(null);
       setSendNotes({});
+      setMergeState(null);
+      setMergeBusy(false);
+      setMergeError(null);
+      setMerged(false);
       setLoading(true);
       setError(null);
       try {
@@ -168,9 +193,37 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
         if (mine === current) setLoading(false);
       }
 
-      await loadThreads(root, number, mine);
+      // Independent reads, so neither waits on the other. The merge bar is the
+      // topmost control on the surface, and holding it behind a thread request
+      // it has nothing to do with is latency for nothing.
+      await Promise.all([loadThreads(root, number, mine), loadMergeability(root, number, mine)]);
     }),
   );
+
+  /// The server's verdict, on its own request and with its own silence on
+  /// failure.
+  ///
+  /// Read here rather than from `props.pr.mergeableState`, even though the list
+  /// carries one: that field came from the listing, and by the time somebody has
+  /// opened a pull request and read its diff the base may have moved twice. The
+  /// merge button is the one control where a stale green light costs something.
+  ///
+  /// A failure leaves the state `null`, which renders as "checking" with the
+  /// button inert. That is the honest shape: not asking and being told "no" are
+  /// different, and only one of them should be dressed as a verdict.
+  async function loadMergeability(root: string, number: number, mine: number) {
+    try {
+      const state = await invoke<MergeableState>("github_mergeability", {
+        projectPath: root,
+        number,
+      });
+      if (mine === current) setMergeState(state);
+    } catch {
+      // Deliberately silent. The diff and the conversations are worth reading on
+      // a pull request whose mergeability could not be fetched, and an error
+      // banner over all of them would say otherwise.
+    }
+  }
 
   /** Its own request and its own failure. Threads that will not load must not
    *  take the diff down with them. Re-run after a submit, whose comments open
@@ -512,6 +565,79 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
     }
   }
 
+  // --- landing it -----------------------------------------------------------
+
+  /// Run a mutation that lands or moves the branch, and report the server's own
+  /// sentence when it refuses.
+  ///
+  /// Its wording, verbatim, is the point: GitHub knows about branch protection
+  /// Sway cannot read, so "At least 1 approving review is required" is a fact
+  /// only the refusal carries. A generic "could not merge" here would throw away
+  /// the only actionable thing in the whole exchange.
+  async function land(run: () => Promise<void>, after: () => void) {
+    const mine = current;
+    setMergeBusy(true);
+    setMergeError(null);
+    try {
+      await run();
+      if (mine !== current) return;
+      after();
+      // The chip and the row read the server's verdict, and it has changed.
+      void pollNow("manual");
+    } catch (e) {
+      if (mine === current) setMergeError(forgeErrorMessage(e));
+    } finally {
+      if (mine === current) setMergeBusy(false);
+    }
+  }
+
+  const mergePr = (method: MergeMethod) =>
+    land(
+      () =>
+        invoke<void>("github_merge", {
+          projectPath: props.root,
+          number: props.pr.number,
+          method,
+        }),
+      () => {
+        setMerged(true);
+        props.onLanded();
+      },
+    );
+
+  const updateBranch = () =>
+    land(
+      () =>
+        invoke<void>("github_update_branch", {
+          projectPath: props.root,
+          number: props.pr.number,
+        }),
+      // The verdict is re-read rather than assumed: the update is queued on the
+      // server (202), so `behind` may still be the current answer for a moment,
+      // and guessing `clean` here would offer a merge the server refuses.
+      () => void loadMergeability(props.root, props.pr.number, current),
+    );
+
+  /// The branch-unit this pull request was built on, if this machine has one.
+  ///
+  /// What decides whether "Delete branch" is offered at all. A pull request whose
+  /// head was never checked out here has nothing local to remove, and a button
+  /// that opens a dialog about a branch the sidebar does not list would be a
+  /// dead end dressed as an action.
+  const localUnit = createMemo(() => projectUnitFor(props.root, props.pr.headRef));
+
+  function askToDeleteBranch() {
+    const unit = localUnit();
+    if (!unit) return;
+    // Handed to the sidebar, which owns the guards: a dirty worktree, unpushed
+    // commits, and agents still running in the folder. Deleting from here would
+    // be a second path for all three to be forgotten.
+    emitWith<RemoveBranchUnit>(REMOVE_BRANCH_UNIT, {
+      projectPath: unit.projectPath,
+      branch: props.pr.headRef,
+    });
+  }
+
   function threadCard(t: ReviewThread, quoteHunk?: boolean) {
     return (
       <ReviewThreadView
@@ -718,6 +844,21 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
           {props.pr.headRef} → {props.pr.baseRef}
         </span>
       </div>
+
+      {/* Above the diff, because whether this can land is the first thing a
+          reader of a pull request wants to know, and it is the one control on
+          the surface whose answer only the server can give. */}
+      <Show when={props.pr.state === "open"}>
+        <MergeBar
+          state={mergeState()}
+          busy={mergeBusy()}
+          error={mergeError()}
+          merged={merged()}
+          onMerge={(method) => void mergePr(method)}
+          onUpdateBranch={() => void updateBranch()}
+          onDeleteBranch={localUnit() ? askToDeleteBranch : undefined}
+        />
+      </Show>
 
       <Show when={error()}>
         {(message) => <div class={styles.error}>{message()}</div>}

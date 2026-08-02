@@ -239,6 +239,18 @@ export type NewSession = { folderPath: string; projectName: string; agent?: stri
 export const PURGE_UNDER_PATH = "sway:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
+// Payload-carrying event: ask the sidebar to open its own branch-removal
+// confirmation for a branch-unit. Emitted by the Pull Requests panel once a pull
+// request has been landed, when the branch it was on has nothing left to do.
+//
+// An event rather than a second delete path, because the sidebar's dialogs are
+// where the guards live: a dirty worktree, unpushed commits, and agents still
+// running in the folder. A panel that called `remove_worktree_and_branch`
+// itself would be a place for all three to be forgotten. The sidebar owns the
+// branch-unit list, so it also decides which of its two dialogs a unit gets.
+export const REMOVE_BRANCH_UNIT = "sway:remove-branch-unit";
+export type RemoveBranchUnit = { projectPath: string; branch: string };
+
 // Payload-carrying event: surface a toast from anywhere. The sidebar owns the
 // toast stack (setError), so components outside it (e.g. the editor's file tree)
 // emit this instead of holding their own notifier.

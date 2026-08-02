@@ -244,6 +244,21 @@ function unitWantsAttention(folderPath: string | undefined, branch: string | und
   return siblings.some((u) => u.attention && belongsToUnit({ branch }, u, siblings));
 }
 
+/// The branch-unit of `root`'s project that carries `branch`, or null.
+///
+/// `root` is whatever directory the caller happens to be looking at. For a plain
+/// project that is the project's own path; for a worktree project it is one
+/// unit's checkout, which is *not* the project path, so the project is found
+/// through the unit list rather than assumed to equal `root`.
+export function projectUnitFor(root: string, branch: string): ForgeUnit | null {
+  const all = forgeUnits();
+  const projectPath =
+    all.find((u) => u.folderPath === root)?.projectPath ??
+    (all.some((u) => u.projectPath === root) ? root : null);
+  if (projectPath === null || !branch) return null;
+  return all.find((u) => u.projectPath === projectPath && u.branch === branch) ?? null;
+}
+
 /** One branch-unit and the session that speaks for it. */
 export type BranchOwner = { folderPath: string; session: SessionMeta };
 
@@ -265,14 +280,9 @@ export type BranchOwner = { folderPath: string; session: SessionMeta };
 /// the one that wrote the branch, and safe-send resumes it. Picking a live
 /// session instead would hand the remark to whichever tab happened to be open.
 export function branchOwner(root: string, branch: string): BranchOwner | null {
-  const all = forgeUnits();
-  const projectPath =
-    all.find((u) => u.folderPath === root)?.projectPath ??
-    (all.some((u) => u.projectPath === root) ? root : null);
-  if (projectPath === null || !branch) return null;
-  const unit = all.find((u) => u.projectPath === projectPath && u.branch === branch);
+  const unit = projectUnitFor(root, branch);
   if (!unit) return null;
-  const siblings = all.filter((u) => u.folderPath === unit.folderPath);
+  const siblings = forgeUnits().filter((u) => u.folderPath === unit.folderPath);
   const mine = (sessions()[unit.folderPath] ?? []).filter((s) =>
     belongsToUnit({ branch: s.branch }, unit, siblings),
   );

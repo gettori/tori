@@ -819,6 +819,17 @@ mutation($threadId:ID!,$body:String!){
         self.send(self.rest("PUT", &path, Some(serde_json::json!({ "merge_method": method }))))?;
         Ok(())
     }
+
+    fn update_branch(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError> {
+        self.require_token()?;
+        // 202, not 200: GitHub queues the merge of base into head and answers
+        // before it has run. Nothing here waits for it; the next poll tick is
+        // what reports the new `mergeable_state`, which is the same server
+        // verdict every other control on this surface reads.
+        let path = format!("/repos/{}/{}/pulls/{number}/update-branch", repo.owner, repo.repo);
+        self.send(self.rest("PUT", &path, Some(serde_json::json!({}))))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1333,6 +1344,30 @@ mod tests {
                     .into()
             }
         );
+    }
+
+    #[test]
+    fn updating_a_branch_asks_the_server_to_do_the_merge() {
+        // 202 Accepted: the merge of base into head is queued, not done. It has
+        // to read as success, because treating "accepted" as a failure would put
+        // an error on the one control that actually worked.
+        let (f, stub) = forge(vec![StubTransport::json(202, r#"{"message":"Updating pull request branch."}"#)]);
+        f.update_branch(&repo(), 42).unwrap();
+        let sent = stub.requests();
+        assert_eq!(sent[0].method, "PUT");
+        assert!(sent[0].url.ends_with("/repos/skarif2/sway/pulls/42/update-branch"), "got {}", sent[0].url);
+    }
+
+    #[test]
+    fn a_branch_that_cannot_be_updated_keeps_the_servers_own_reason() {
+        // The same 422 shape the review gate hit: the actionable sentence is in
+        // `errors[]`, not in the top-level "Validation Failed".
+        let (f, _stub) = forge(vec![StubTransport::json(
+            422,
+            r#"{"message":"Validation Failed","errors":[{"message":"merge conflict between base and head"}]}"#,
+        )]);
+        let err = f.update_branch(&repo(), 42).unwrap_err();
+        assert!(format!("{err}").contains("merge conflict between base and head"), "got {err}");
     }
 
     #[test]

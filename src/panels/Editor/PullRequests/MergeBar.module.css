@@ -1,0 +1,44 @@
+/* The landing controls, hash-scoped. Sits above the file list, because whether
+   this can merge is the first thing a reader of a pull request wants. */
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-card);
+}
+
+.row,
+.done {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+
+.method {
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-default, var(--canvas-card));
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-2xs);
+}
+
+/* The server's own refusal. It is the only sentence on this surface that can
+   name a branch-protection rule, so it gets the weight of one. */
+.error {
+  color: var(--danger-fg);
+  font-size: var(--sway-text-2xs);
+}

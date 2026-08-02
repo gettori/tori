@@ -196,6 +196,10 @@ export type DraftComment = {
 /// pull request, not about the app.
 export type ReviewEvent = "approve" | "comment" | "requestChanges";
 
+/// How to land a pull request. The picker offers all three and lets the server
+/// refuse: a repo can forbid any of them, and that setting is not visible here.
+export type MergeMethod = "merge" | "squash" | "rebase";
+
 export type Viewer = {
   login: string;
   avatarUrl: string | null;
@@ -338,6 +342,7 @@ export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
 export const DIFF_SIDES: readonly DiffSide[] = ["LEFT", "RIGHT"];
 export const REVIEW_EVENTS: readonly ReviewEvent[] = ["approve", "comment", "requestChanges"];
+export const MERGE_METHODS: readonly MergeMethod[] = ["merge", "squash", "rebase"];
 export const FILE_STATUSES: readonly FileStatus[] = [
   "added",
   "modified",

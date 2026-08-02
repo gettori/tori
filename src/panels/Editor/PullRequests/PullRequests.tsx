@@ -214,7 +214,17 @@ export default function PullRequests(props: { root: string | null }) {
   // own effect handles a swap from one pull request to another.
   return (
     <Show when={detail()} fallback={list()}>
-      {(d) => <PrDetail root={d().root} pr={d().pr} onBack={() => setOpened(null)} />}
+      {(d) => (
+        <PrDetail
+          root={d().root}
+          pr={d().pr}
+          onBack={() => setOpened(null)}
+          // Landing one makes this list wrong, and the list is where the user
+          // goes to confirm it worked. Rust drops its caches on a merge; the
+          // array held here was fetched before that and has to be asked again.
+          onLanded={() => void load(d().root)}
+        />
+      )}
     </Show>
   );
 }
