@@ -25,23 +25,29 @@ import { fileSkip, fileLabel, type FileSkip } from "../../../utils/prFiles";
 import {
   groupThreads,
   newSideLines,
+  oldSideLines,
   pendingComment,
   splitByRenderedLines,
   withComment,
   withoutComment,
   withResolved,
 } from "../../../utils/reviewThreads";
+import { anchorFor, anchorLabel, isSelfAuthored } from "../../../utils/pendingReview";
+import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
   forgeErrorMessage,
+  type DraftComment,
   type Paged,
   type PrFile,
   type PullRequest,
   type ReviewComment,
+  type ReviewEvent,
   type ReviewThread,
 } from "../../../utils/forgeTypes";
 import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
 import DiffRows, { diffRowClasses } from "../DiffRows";
 import ReviewThreadView from "./ReviewThreadView";
+import ReviewBar from "./ReviewBar";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import styles from "./PrDetail.module.css";
@@ -75,6 +81,27 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
   const [busyThread, setBusyThread] = createSignal<string | null>(null);
   const grouped = createMemo(() => groupThreads(threads()));
 
+  // The review being written. Held here and posted in one call, because a review
+  // is atomic on the server: posting comments as they are written and the
+  // verdict at the end leaves a half-submitted review behind whenever the last
+  // call fails, with nothing saying which comments already landed.
+  const [pending, setPending] = createSignal<DraftComment[]>([]);
+  const [reviewBody, setReviewBody] = createSignal("");
+  const [submitting, setSubmitting] = createSignal(false);
+  // Which rows are picked, and in which hunk. One hunk at a time, like the
+  // Changes panel's line staging: a comment anchors within a single hunk's
+  // numbering, so a selection spanning two of them could not be one comment.
+  const [picked, setPicked] = createSignal<{
+    path: string;
+    hunk: number;
+    lines: ReadonlySet<number>;
+  } | null>(null);
+  const [draftBody, setDraftBody] = createSignal("");
+  const [reviewOpen, setReviewOpen] = createSignal(false);
+
+  const reviewing = () => reviewOpen() || pending().length > 0;
+  const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer()));
+
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -103,6 +130,11 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       setThreadsTruncated(false);
       setThreadError(null);
       setBusyThread(null);
+      setPending([]);
+      setReviewBody("");
+      setPicked(null);
+      setDraftBody("");
+      setReviewOpen(false);
       setLoading(true);
       setError(null);
       try {
@@ -122,22 +154,27 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
         if (mine === current) setLoading(false);
       }
 
-      // Its own request and its own failure. Threads that will not load must
-      // not take the diff down with them.
-      try {
-        const page = await invoke<Paged<ReviewThread>>("github_review_threads", {
-          projectPath: root,
-          number,
-        });
-        if (mine !== current) return;
-        setThreads(page.items);
-        setThreadsTruncated(page.truncated);
-      } catch (e) {
-        if (mine !== current) return;
-        setThreadError(forgeErrorMessage(e));
-      }
+      await loadThreads(root, number, mine);
     }),
   );
+
+  /** Its own request and its own failure. Threads that will not load must not
+   *  take the diff down with them. Re-run after a submit, whose comments open
+   *  threads this list has never seen. */
+  async function loadThreads(root: string, number: number, mine: number) {
+    try {
+      const page = await invoke<Paged<ReviewThread>>("github_review_threads", {
+        projectPath: root,
+        number,
+      });
+      if (mine !== current) return;
+      setThreads(page.items);
+      setThreadsTruncated(page.truncated);
+    } catch (e) {
+      if (mine !== current) return;
+      setThreadError(forgeErrorMessage(e));
+    }
+  }
 
   /** Post a reply, showing it at once and then correcting it with what the
    *  server stored. The rollback is the half that matters: a reply left on
@@ -320,6 +357,60 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
     return out;
   }
 
+  /** Pick or unpick one row of one hunk. Switching hunks starts a fresh
+   *  selection rather than merging: the anchor lives inside a hunk. */
+  function togglePick(path: string, hunk: number, index: number) {
+    setPicked((was) => {
+      const same = was && was.path === path && was.hunk === hunk;
+      const lines = new Set(same ? was!.lines : []);
+      if (lines.has(index)) lines.delete(index);
+      else lines.add(index);
+      if (!lines.size) return null;
+      return { path, hunk, lines };
+    });
+  }
+
+  /** Hold the drafted line comment. Nothing is posted: it joins the review and
+   *  goes out with the verdict, in one call. */
+  function holdComment(anchor: Omit<DraftComment, "body">) {
+    const body = draftBody().trim();
+    if (!body) return;
+    setPending((list) => [...list, { ...anchor, body }]);
+    setDraftBody("");
+    setPicked(null);
+  }
+
+  async function submitReview(event: ReviewEvent) {
+    const mine = current;
+    setSubmitting(true);
+    try {
+      await invoke<void>("github_submit_review", {
+        projectPath: props.root,
+        number: props.pr.number,
+        event,
+        body: reviewBody(),
+        comments: pending(),
+      });
+      if (mine !== current) return;
+      // Only now. A failed submit has to hand the whole set back, or the
+      // reader loses every comment they wrote to one refusal.
+      setPending([]);
+      setReviewBody("");
+      setReviewOpen(false);
+      setThreadError(null);
+      // The verdict the sidebar chip reads is the server's, and it has changed.
+      void pollNow("manual");
+      // The review's own comments open new threads, which this list has not
+      // seen. Its own request, and its failure is already handled there.
+      void loadThreads(props.root, props.pr.number, mine);
+    } catch (e) {
+      if (mine !== current) return;
+      setThreadError(forgeErrorMessage(e));
+    } finally {
+      if (mine === current) setSubmitting(false);
+    }
+  }
+
   /** How many anchored conversations a file carries. Outdated ones are counted
    *  in their own group instead, since the file's rows do not show them. */
   function threadCount(path: string): number {
@@ -382,18 +473,91 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
               // at a new line, so the diff's DOM survives everything else.
               const rows = createMemo(() => buildRows(hunk.lines));
               const lines = createMemo(() => newSideLines(hunk));
-              const segments = createMemo(() => hunkSegments(rows(), lines(), placed().shown));
+              const oldLines = createMemo(() => oldSideLines(hunk));
+              const segments = createMemo(() => {
+                // A deliberate dependency. `DiffRows` reads `selection` once
+                // per row, on purpose (a surface either offers line staging or
+                // it does not), so starting a review has to rebuild the rows
+                // for them to become pickable. One rebuild per explicit click,
+                // which is not the unrelated-render churn the memo exists to
+                // stop.
+                reviewing();
+                return hunkSegments(rows(), lines(), placed().shown);
+              });
+              // The picked rows, when they are this hunk's. `DiffRows` already
+              // owns line selection for the Changes panel's staging, so the
+              // affordance and its keyboard handling come for free.
+              const mine = createMemo(() => {
+                const p = picked();
+                return p && p.path === f.path && p.hunk === hi() ? p.lines : null;
+              });
+              const anchor = createMemo(() => {
+                const sel = mine();
+                if (!sel) return null;
+                return anchorFor({
+                  path: f.path,
+                  rows: rows(),
+                  newLines: lines(),
+                  oldLines: oldLines(),
+                  selected: [...sel],
+                });
+              });
+              // Only while a review is under way. `DiffRows` gives every
+              // selectable line a role, a tab stop and a click handler, and a
+              // pull request diff runs to thousands of them: handing those out
+              // to a reader who is only reading puts the whole file in the tab
+              // order and makes lines respond to clicks that mean nothing.
+              const selection = () =>
+                reviewing()
+                  ? {
+                      has: (i: number) => mine()?.has(i) ?? false,
+                      toggle: (i: number) => togglePick(f.path, hi(), i),
+                    }
+                  : undefined;
               return (
                 <div>
                   <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
                   <For each={segments()}>
                     {(seg) => (
                       <>
-                        <DiffRows rows={seg.rows} twoColumn={twoColumn()} />
+                        <DiffRows rows={seg.rows} twoColumn={twoColumn()} selection={selection()} />
                         <For each={seg.after}>{(t) => threadCard(t, false)}</For>
                       </>
                     )}
                   </For>
+                  {/* The anchor is spelled out because a selection spanning both
+                      sides narrows to one line, and a silent narrowing is a
+                      comment that lands somewhere other than where it was drawn. */}
+                  <Show when={anchor()}>
+                    {(a) => (
+                      <div class={styles.composer}>
+                        <span class={styles.anchor}>{anchorLabel(a())}</span>
+                        <textarea
+                          class={styles.composerInput}
+                          rows={2}
+                          ref={(el) => queueMicrotask(() => el.focus())}
+                          aria-label={`Comment on ${anchorLabel(a())}`}
+                          value={draftBody()}
+                          onInput={(e) => setDraftBody(e.currentTarget.value)}
+                          onKeyDown={(e: KeyboardEvent) => {
+                            if (e.key === "Escape") setPicked(null);
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              holdComment(a());
+                            }
+                          }}
+                        />
+                        <div class={styles.composerActions}>
+                          <Button variant="ghost" onClick={() => setPicked(null)}>
+                            Cancel
+                          </Button>
+                          <Button onClick={() => holdComment(a())} disabled={!draftBody().trim()}>
+                            Add to review
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Show>
                   <For each={gaps().filter((g) => g.afterHunk === hi())}>
                     {(gap) => gapRow(gap, `${f.path}:${hi()}`, f.path)}
                   </For>
@@ -423,6 +587,11 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
         <Button variant="ghost" onClick={props.onBack}>
           ← Pull requests
         </Button>
+        <Show when={!reviewing()}>
+          <Button variant="ghost" onClick={() => setReviewOpen(true)}>
+            Review
+          </Button>
+        </Show>
         <IconButton
           size="xs"
           active={twoColumn()}
@@ -532,6 +701,22 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
             See them all on github.com
           </a>
         </div>
+      </Show>
+
+      {/* Only once there is a review under way. A permanent submit bar over a
+          pull request nobody is reviewing is chrome on every diff in the app,
+          and the header button is the way in for a verdict that needs no words
+          (an approval is a complete statement at zero characters). */}
+      <Show when={reviewing()}>
+        <ReviewBar
+          comments={pending()}
+          body={reviewBody()}
+          onBody={setReviewBody}
+          selfAuthored={selfAuthored()}
+          submitting={submitting()}
+          onSubmit={(event) => void submitReview(event)}
+          onRemove={(i) => setPending((list) => list.filter((_, at) => at !== i))}
+        />
       </Show>
     </div>
   );

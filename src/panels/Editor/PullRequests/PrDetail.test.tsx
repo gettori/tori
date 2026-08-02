@@ -50,6 +50,23 @@ const file = (over: Partial<PrFile> = {}): PrFile => ({
   ...over,
 });
 
+// The second hunk here ends in two consecutive additions, which is the only
+// shape a same-side multi-line range can be built from: context rows are not
+// selectable, so a range needs two changed rows counted in one numbering.
+const RANGEABLE = [
+  "@@ -1,3 +1,3 @@",
+  " one",
+  "-two",
+  "+two edited",
+  " three",
+  "@@ -40,2 +40,4 @@",
+  " forty",
+  "-forty one",
+  "+forty one edited",
+  "+forty two added",
+  "+forty three added",
+].join("\n");
+
 // Two hunks with 36 untouched lines between them, which is what makes a gap.
 const TWO_HUNKS = [
   "@@ -1,3 +1,3 @@",
@@ -78,6 +95,8 @@ const bridge = vi.hoisted(() => ({
   reply: null as unknown,
   replyFails: null as { kind: string; message: string } | null,
   resolveFails: null as { kind: string; message: string } | null,
+  viewer: null as string | null,
+  submitFails: null as { kind: string; message: string } | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -101,13 +120,32 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.replyFails ? Promise.reject(bridge.replyFails) : Promise.resolve(bridge.reply);
     if (cmd === "github_set_thread_resolved")
       return bridge.resolveFails ? Promise.reject(bridge.resolveFails) : Promise.resolve(null);
+    if (cmd === "github_viewer")
+      return bridge.viewer ? Promise.resolve(bridge.viewer) : Promise.reject(new Error("signed out"));
+    if (cmd === "github_submit_review")
+      return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
+    if (cmd === "github_auth_state")
+      return Promise.resolve(
+        bridge.viewer ? { kind: "signedIn", login: bridge.viewer } : { kind: "signedOut" },
+      );
     return Promise.resolve(null);
   },
 }));
 
 const { default: PrDetail } = await import("./PrDetail");
+const { noteForgeAuth, noteForgeEnabled, resetForgeStatusForTests } = await import(
+  "../../../utils/forgeStatus"
+);
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
+
+/** Sign in as `login`, and let the viewer identity land. */
+const signInAs = async (login: string) => {
+  bridge.viewer = login;
+  noteForgeEnabled(true);
+  noteForgeAuth({ kind: "signedIn", login });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
 
 describe("the pull request detail", () => {
   beforeEach(() => {
@@ -567,5 +605,215 @@ describe("review threads on a pull request's diff", () => {
     render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-thread-count]")).toBeTruthy());
     expect(document.querySelector("[data-thread-count]")!.getAttribute("data-thread-count")).toBe("2");
+  });
+});
+
+// A review written across the diff and submitted in one call.
+//
+// The failure this shape prevents: posting comments as they are written and the
+// verdict at the end leaves a half-submitted review behind whenever the last
+// call fails, with nothing saying which comments already landed.
+describe("writing and submitting a review", () => {
+  beforeEach(async () => {
+    resetForgeStatusForTests();
+    bridge.calls.length = 0;
+    bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
+    bridge.truncated = false;
+    bridge.fail = null;
+    bridge.slice = [];
+    bridge.fetchFails = null;
+    bridge.sliceFails = null;
+    bridge.threads = [];
+    bridge.threadsTruncated = false;
+    bridge.threadsFail = null;
+    bridge.reply = null;
+    bridge.replyFails = null;
+    bridge.resolveFails = null;
+    bridge.viewer = null;
+    bridge.submitFails = null;
+    localStorage.clear();
+  });
+
+  const openDiff = async (author = "skarif2") => {
+    render(() => <PrDetail root={ROOT} pr={pr({ author })} onBack={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-file-status]")!);
+  };
+
+  /** Open the diff and start a review, which is what makes lines pickable. */
+  const startReview = async (author = "skarif2") => {
+    await openDiff(author);
+    fireEvent.click(screen.getByText("Review"));
+  };
+
+  /** Pick diff rows by their text and write a line comment on them. */
+  const commentOn = async (rowTexts: string[], body: string) => {
+    const rows = Array.from(document.querySelectorAll('[role="checkbox"]'));
+    for (const text of rowTexts) {
+      const row = rows.find((r) => r.textContent?.includes(text));
+      expect(row, `no selectable row for ${text}`).toBeTruthy();
+      fireEvent.click(row!);
+    }
+    const box = await waitFor(() => screen.getByLabelText(/^Comment on /));
+    fireEvent.input(box, { target: { value: body } });
+    fireEvent.click(screen.getByText("Add to review"));
+  };
+
+  it("holds three comments, one of them a multi-line range, and posts nothing", async () => {
+    bridge.files = [file({ path: "src/edit.ts", patch: RANGEABLE })];
+    await signInAs("skarif2");
+    await startReview();
+
+    await commentOn(["+two edited"], "first");
+    await commentOn(["-forty one"], "second");
+    // A range needs two rows on the *same* side, and only changed rows can be
+    // picked, so it takes two consecutive additions.
+    await commentOn(["+forty two added", "+forty three added"], "third");
+
+    const bar = document.querySelector("[data-pending-count]")!;
+    expect(bar.getAttribute("data-pending-count")).toBe("3");
+    // Each carries its own line and side, and the range carries both ends.
+    const anchors = Array.from(document.querySelectorAll("[data-pending-comment]")).map((n) =>
+      n.getAttribute("data-pending-comment"),
+    );
+    expect(anchors).toEqual([
+      "src/edit.ts:2",
+      "src/edit.ts:41 (base)",
+      "src/edit.ts:42-43",
+    ]);
+    // And the whole point: nothing has been sent.
+    expect(cmds("github_submit_review")).toHaveLength(0);
+  });
+
+  it("disables both verdicts on your own pull request, with the reason on screen", async () => {
+    // GitHub answers 422 for approve and request-changes from the author, and
+    // on a single-owner repo that is every pull request. Hiding the buttons
+    // would make this look like a build without the feature.
+    await signInAs("skarif2");
+    await startReview("skarif2");
+    await commentOn(["+two edited"], "a note");
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    expect(button("Approve").disabled).toBe(true);
+    expect(button("Request changes").disabled).toBe(true);
+    expect(button("Comment").disabled).toBe(false);
+    expect(document.querySelector("[data-verdict-reason]")!.textContent).toContain(
+      "does not accept this on your own pull request",
+    );
+
+    // And the one verb the author can use goes through, carrying the comments.
+    fireEvent.click(button("Comment"));
+    await waitFor(() => expect(cmds("github_submit_review")).toHaveLength(1));
+    expect(cmds("github_submit_review")[0].args).toMatchObject({
+      projectPath: ROOT,
+      number: 42,
+      event: "comment",
+    });
+    const sent = cmds("github_submit_review")[0].args.comments as unknown[];
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ path: "src/edit.ts", line: 2, side: "RIGHT", body: "a note" });
+  });
+
+  it("offers both verdicts on somebody else's pull request", async () => {
+    await signInAs("skarif2");
+    await startReview("someone-else");
+    await commentOn(["+two edited"], "a note");
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    expect(button("Approve").disabled).toBe(false);
+    // The reason line may still speak for request-changes (no summary yet), but
+    // never for authorship.
+    expect(document.querySelector("[data-verdict-reason]")?.textContent ?? "").not.toContain(
+      "your own pull request",
+    );
+
+    fireEvent.click(button("Approve"));
+    await waitFor(() => expect(cmds("github_submit_review")).toHaveLength(1));
+    expect(cmds("github_submit_review")[0].args).toMatchObject({ event: "approve" });
+  });
+
+  it("blocks request-changes until the review says what to change", async () => {
+    // The server accepts a bare "changes requested". A reader receiving one with
+    // no word about what to change cannot act on it.
+    await signInAs("skarif2");
+    await startReview("someone-else");
+    await commentOn(["+two edited"], "a note");
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    expect(button("Request changes").disabled).toBe(true);
+    expect(document.querySelector("[data-verdict-reason]")!.textContent).toContain(
+      "needs a summary saying what to change",
+    );
+
+    fireEvent.input(screen.getByLabelText("Review summary"), {
+      target: { value: "the error is dropped here" },
+    });
+    await waitFor(() => expect(button("Request changes").disabled).toBe(false));
+  });
+
+  it("clears the pending set on a successful submit and keeps it on a refusal", async () => {
+    // A reader who loses every comment they wrote to one refusal will not write
+    // them again.
+    await signInAs("skarif2");
+    await startReview("someone-else");
+    await commentOn(["+two edited"], "a note");
+    bridge.submitFails = { kind: "forbidden", message: "you cannot review this pull request" };
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    fireEvent.click(button("Comment"));
+    await waitFor(() =>
+      expect(screen.queryByText("you cannot review this pull request")).toBeTruthy(),
+    );
+    expect(document.querySelector("[data-pending-count]")!.getAttribute("data-pending-count")).toBe(
+      "1",
+    );
+
+    bridge.submitFails = null;
+    fireEvent.click(button("Comment"));
+    await waitFor(() => expect(document.querySelector("[data-pending-count]")).toBeNull());
+  });
+
+  it("keeps both verdicts shut while it does not know who you are", async () => {
+    // Not-yet-known is not known-different. Offering approve here ships a button
+    // whose only outcome is a 422.
+    await startReview("someone-else");
+    await commentOn(["+two edited"], "a note");
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    expect(button("Approve").disabled).toBe(true);
+    expect(button("Comment").disabled).toBe(false);
+  });
+});
+
+describe("reading without reviewing", () => {
+  beforeEach(() => {
+    resetForgeStatusForTests();
+    bridge.calls.length = 0;
+    bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
+    bridge.threads = [];
+    bridge.threadsFail = null;
+    bridge.fail = null;
+    bridge.viewer = null;
+    localStorage.clear();
+  });
+
+  it("leaves the diff inert until a review is started", async () => {
+    // `DiffRows` gives every selectable line a role, a tab stop and a click
+    // handler, and its own source says why a read-only diff must not have them:
+    // a five-thousand-line pull request would put five thousand controls in the
+    // tab order, and lines would answer clicks that mean nothing.
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-file-status]")!);
+
+    expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(0);
+
+    fireEvent.click(screen.getByText("Review"));
+    expect(document.querySelectorAll('[role="checkbox"]').length).toBeGreaterThan(0);
   });
 });

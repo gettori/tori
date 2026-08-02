@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isAnchored,
   newSideLines,
+  oldSideLines,
   groupThreads,
   splitByRenderedLines,
   pendingComment,
@@ -74,6 +75,25 @@ describe("newSideLines", () => {
     );
     expect(newSideLines(hunk)).toHaveLength(hunk.lines.length);
     expect(newSideLines(hunk)).toEqual([5, null, null, 6, 7]);
+  });
+});
+
+describe("oldSideLines", () => {
+  it("numbers only the lines that exist in the base file", () => {
+    // The mirror of `newSideLines`. An addition is not in the base file, so it
+    // has no base-file line, and counting it would shift everything after it.
+    const [hunk] = parseDiffHunks(
+      ["@@ -10,4 +10,4 @@", " ten", "-eleven", "+eleven edited", " twelve", " thirteen"].join("\n"),
+    );
+    expect(oldSideLines(hunk)).toEqual([10, 11, null, 12, 13]);
+    expect(newSideLines(hunk)).toEqual([10, null, 11, 12, 13]);
+  });
+
+  it("disagrees with the head numbering as soon as a line is added", () => {
+    // The whole reason both exist. Line 12 of one is not line 12 of the other.
+    const [hunk] = parseDiffHunks(["@@ -10,2 +10,3 @@", " ten", "+inserted", " eleven"].join("\n"));
+    expect(oldSideLines(hunk)).toEqual([10, null, 11]);
+    expect(newSideLines(hunk)).toEqual([10, 11, 12]);
   });
 });
 

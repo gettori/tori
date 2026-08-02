@@ -159,6 +159,39 @@ export type PrFile = {
   patch: string | null;
 };
 
+/// Which side of the diff a line is counted on.
+///
+/// `LEFT` is the base file and `RIGHT` the head file: two numberings of the same
+/// region, which stop agreeing the moment anything above the line changed. A
+/// comment that names a line without its side is a comment on whichever line
+/// the server guesses.
+export type DiffSide = "LEFT" | "RIGHT";
+
+/// A line comment held in a review that has not been submitted.
+///
+/// Anchored with `line`/`side` and never with `position`. `position` counts
+/// lines from the top of a patch, so it means something different the moment the
+/// pull request gets another commit; GitHub deprecated it for that, and the
+/// line-and-side form is re-resolved by the server against the diff it has now.
+export type DraftComment = {
+  path: string;
+  /// The last line of the range, in `side`'s numbering.
+  line: number;
+  side: DiffSide;
+  /// The first line of a multi-line range; null for a single line.
+  startLine: number | null;
+  startSide: DiffSide | null;
+  body: string;
+};
+
+/// The verdict a submitted review carries.
+///
+/// `approve` and `requestChanges` are rejected with a 422 on a pull request the
+/// viewer authored, which on a single-owner repo is every pull request Sway
+/// opens. Both are built and gated rather than omitted: the gate is about this
+/// pull request, not about the app.
+export type ReviewEvent = "approve" | "comment" | "requestChanges";
+
 export type Viewer = {
   login: string;
   avatarUrl: string | null;
@@ -267,6 +300,7 @@ export const FORGE_KEYS = {
   ],
   reviewComment: ["author", "body", "createdAt", "id"],
   prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],
+  draftComment: ["body", "line", "path", "side", "startLine", "startSide"],
   viewer: ["avatarUrl", "login"],
   capabilities: ["checks", "merge", "pullRequests", "resolveThreads", "reviewThreads"],
   pagedTruncated: ["items", "truncated"],
@@ -297,6 +331,8 @@ export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
   "none",
 ];
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
+export const DIFF_SIDES: readonly DiffSide[] = ["LEFT", "RIGHT"];
+export const REVIEW_EVENTS: readonly ReviewEvent[] = ["approve", "comment", "requestChanges"];
 export const FILE_STATUSES: readonly FileStatus[] = [
   "added",
   "modified",
