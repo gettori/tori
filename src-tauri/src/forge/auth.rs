@@ -287,7 +287,11 @@ mod tests {
         use super::super::{ForgeError, RateLimitKind};
         let mut a = signed_in();
         for harmless in [
-            ForgeError::RateLimited { kind: RateLimitKind::Primary, retry_after_secs: None },
+            ForgeError::RateLimited {
+                kind: RateLimitKind::Primary,
+                retry_after_secs: None,
+                reset_at_secs: None,
+            },
             ForgeError::Transport { message: "offline".into() },
             ForgeError::NotFound,
             ForgeError::Forbidden { message: "scope".into() },

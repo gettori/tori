@@ -128,6 +128,44 @@ pub struct UnitStatus {
     pub review_decision: ReviewDecision,
 }
 
+/// What the last answered call said about the rate budget.
+///
+/// Captured on every response so the poll scheduler can slow down *before* it
+/// gets refused, rather than discovering the limit by hitting it. Every field is
+/// optional because a response that carried no rate headers must read as "no
+/// news", not as a budget of zero.
+///
+/// Provider-neutral in shape (a budget, a ceiling, and when it resets) and lives
+/// here rather than in `github.rs` because it crosses the bridge with
+/// [`StatusReport`] and is mirrored in TypeScript like the rest of this file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RateSnapshot {
+    pub remaining: Option<u32>,
+    pub limit: Option<u32>,
+    /// Unix **seconds** at which the primary budget resets, as the header sends
+    /// it. Converted at the one point of use rather than at the boundary, so the
+    /// field keeps the wire's units.
+    pub reset_at: Option<u64>,
+}
+
+/// One poll tick's answer: the statuses it covered, what it did not, and what
+/// the budget looked like afterwards.
+///
+/// `uncovered` is the part that must not be silent. A project past the per-tick
+/// cap gets a partial answer, and a partial answer that renders as a complete
+/// one is the failure nobody notices: units simply never get a chip, with
+/// nothing on screen saying so.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusReport {
+    pub statuses: Vec<UnitStatus>,
+    pub uncovered: usize,
+    /// All-`None` when the tick was served from the cache, which spends nothing
+    /// and therefore learns nothing about the budget.
+    pub rate: RateSnapshot,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewComment {
@@ -248,17 +286,19 @@ mod tests {
             mergeable_state: MergeableState::Clean,
         };
 
+        let unit = UnitStatus {
+            head_ref: "wave-3".into(),
+            pull_request: Some(pr.clone()),
+            checks: CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
+            review_decision: ReviewDecision::ChangesRequested,
+        };
+
         let samples = serde_json::json!({
             "repoRef": RepoRef { owner: "skarif2".into(), repo: "sway".into() },
             "pullRequest": pr.clone(),
             "checkRollup": CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
             "reviewDecision": ReviewDecision::ChangesRequested,
-            "unitStatus": UnitStatus {
-                head_ref: "wave-3".into(),
-                pull_request: Some(pr),
-                checks: CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
-                review_decision: ReviewDecision::ChangesRequested,
-            },
+            "unitStatus": unit.clone(),
             "reviewThread": ReviewThread {
                 id: "PRRT_kwDOABCD123".into(),
                 path: "src-tauri/src/forge/github.rs".into(),
@@ -295,6 +335,33 @@ mod tests {
             // A truncated page, because `truncated: true` is the case the UI
             // must not render as a complete list.
             "pagedTruncated": Paged { items: vec![1u32, 2, 3], truncated: true },
+            "rateSnapshot": RateSnapshot {
+                remaining: Some(4_812),
+                limit: Some(5_000),
+                reset_at: Some(1_785_179_400),
+            },
+            // A capped tick: fewer statuses than the caller asked about, with
+            // the remainder counted rather than dropped.
+            "statusReport": StatusReport {
+                statuses: vec![unit],
+                uncovered: 4,
+                rate: RateSnapshot {
+                    remaining: Some(4_812),
+                    limit: Some(5_000),
+                    reset_at: Some(1_785_179_400),
+                },
+            },
+            // Not a domain type, but it crosses the same bridge and the poll
+            // scheduler branches on it, so it is mirrored the same way. A rate
+            // limit is the sample because it is the variant carrying the extra
+            // fields; the others send them as null.
+            "forgeError": super::super::commands::ForgeErrorDto::from(
+                super::super::ForgeError::RateLimited {
+                    kind: super::super::RateLimitKind::Secondary,
+                    retry_after_secs: Some(60),
+                    reset_at_secs: Some(1_785_179_400),
+                },
+            ),
         });
 
         let text = serde_json::to_string_pretty(&samples).expect("serialize samples");
