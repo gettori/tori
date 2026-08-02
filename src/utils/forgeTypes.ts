@@ -135,6 +135,31 @@ export type AuthState =
   | { kind: "signedIn"; login: string }
   | { kind: "suspect"; login: string | null };
 
+/// A `ForgeError` as the Tauri layer serializes it: a stable `kind` to branch
+/// on plus a sentence to show. The kind is deliberately not the message, so
+/// rewording a sentence cannot change behaviour.
+export type ForgeErrorDto = { kind: string; message: string };
+
+export function isForgeError(e: unknown): e is ForgeErrorDto {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    typeof (e as ForgeErrorDto).kind === "string" &&
+    typeof (e as ForgeErrorDto).message === "string"
+  );
+}
+
+/// The sentence to show for anything a forge command rejected with.
+///
+/// A rejected Tauri command hands back the serialized DTO, an object, and the
+/// panels' `String(e)` renders that as "[object Object]". Every forge failure is
+/// user-facing, so the one that matters most (a PR that already exists, a base
+/// that does not) must not arrive as the least informative string in the app.
+export function forgeErrorMessage(e: unknown): string {
+  if (isForgeError(e)) return e.message;
+  return String(e);
+}
+
 /// The field names each type carries on the wire, as data.
 ///
 /// Declared separately from the types above because a type alone cannot catch a

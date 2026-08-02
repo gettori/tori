@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import type { FileStatus } from "../../utils/gitActions";
 
 // The Changes panel's reaction to the filesystem watcher, driven through the
@@ -50,6 +50,15 @@ let stashRows: { selector: string; message: string; branch: string | null; relat
 let stashCreated = true;
 let stashFails = false;
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
+// The "Open PR" button's three paths turn on these three answers, so each test
+// says which world it is in rather than sharing one.
+let originUrl: string | null = null;
+let defaultBase: string | null = null;
+let authState: { kind: string; login?: string } = { kind: "signedOut" };
+// What `github_push_and_create_pr` was called with, and what it answers. An
+// empty array after a click is the assertion that nothing was sent.
+let createPrArgs: unknown[] = [];
+let createPrFails: unknown = null;
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/sessionActivity")>()),
@@ -102,6 +111,33 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(null);
       case "list_branches":
         return Promise.resolve(branches);
+      case "git_origin":
+        return Promise.resolve(originUrl);
+      case "git_default_base_branch":
+        return Promise.resolve(defaultBase);
+      case "github_auth_state":
+        return Promise.resolve(authState);
+      // The backend echoes back what it persisted, which is what puts the
+      // settings store into agreement. Returning the default `null` would land
+      // a null settings object in the store instead.
+      case "set_settings":
+        return Promise.resolve((args as { settings: unknown }).settings);
+      case "github_push_and_create_pr":
+        createPrArgs.push(args);
+        if (createPrFails) return Promise.reject(createPrFails);
+        return Promise.resolve({
+          number: 42,
+          title: "t",
+          body: null,
+          state: "open",
+          isDraft: false,
+          author: "skarif2",
+          headRef: "wave-3",
+          baseRef: "main",
+          headSha: "abc",
+          url: "https://github.com/skarif2/sway/pull/42",
+          mergeableState: "unknown",
+        });
       // The revert guard's detached tier walks these two. They return arrays
       // for real, and `folderActors` filters the first without a null guard, so
       // the catch-all `null` below would throw before the guard ever ran.
@@ -146,7 +182,15 @@ import ReviewPanel from "./ReviewPanel";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { stage, refreshStatus } from "../../utils/gitActions";
-import { TOAST, OPEN_IN_EDITOR, SEND_TO_SESSION, type ToastEvent } from "../../utils/events";
+import {
+  TOAST,
+  OPEN_IN_EDITOR,
+  SEND_TO_SESSION,
+  SEND_TO_SESSION_RESULT,
+  type ToastEvent,
+} from "../../utils/events";
+import { saveSettings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
+import { BLOCKED_REASON } from "../../utils/safeSend";
 import { syntheticId } from "../../utils/syntheticTabs";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
@@ -156,6 +200,14 @@ function captureToasts() {
   const onToast = (e: Event) => messages.push((e as CustomEvent<ToastEvent>).detail.message);
   window.addEventListener(TOAST, onToast);
   return { messages, stop: () => window.removeEventListener(TOAST, onToast) };
+}
+
+/** The create-PR dialog's own subtree.
+ *
+ *  Scoped because the commit composer behind the modal carries a button with the
+ *  same "Ask agent to draft" label, so an unscoped query matches both. */
+function prDialog() {
+  return within(screen.getByText("Open a pull request").parentElement!);
 }
 
 /** One watcher burst, delivered to every registered `fs://changed` listener. */
@@ -181,6 +233,17 @@ beforeEach(async () => {
   stashCreated = true;
   stashFails = false;
   live = [];
+  originUrl = null;
+  defaultBase = null;
+  authState = { kind: "signedOut" };
+  createPrArgs = [];
+  createPrFails = null;
+  // `github` is named explicitly rather than left to the spread: the settings
+  // store is created *over* DEFAULT_SETTINGS, so writing to the store mutates
+  // that object in place. A test that switches the integration off leaves
+  // `DEFAULT_SETTINGS.github.enabled === false` behind it, and a reset that
+  // spreads the same object would faithfully restore the wrong value.
+  await saveSettings({ ...DEFAULT_SETTINGS, github: { enabled: true } });
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -852,5 +915,263 @@ describe("the commit log entry point", () => {
     // The id carries the workspace, so the same button in another branch-unit
     // opens a different tab rather than retargeting this one.
     expect(opened).toEqual([syntheticId("log", "/proj")]);
+  });
+});
+
+describe("Open PR", () => {
+  /** Mount with a branch, an origin and a base, which is what the header needs
+   *  before the "Open PR" button renders at all.
+   *
+   *  Up to date with its upstream on purpose: the compare path pushes first when
+   *  the branch is ahead or unpushed, and that push waits on a `git://push-done`
+   *  event no mock emits. The push itself is asserted where `push` lives. */
+  async function mountWithPrHeader() {
+    branches = [{ name: "wave-3", current: true }];
+    defaultBase = "main";
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+    await mountPanel();
+    return await screen.findByText("Open PR");
+  }
+
+  it("opens the in-app form on a signed-in github.com remote", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+
+    expect(await screen.findByText("Open a pull request")).toBeTruthy();
+    // Prefilled from `git_default_base_branch`, and still editable: a stacked
+    // branch opens against its parent, not against main.
+    const base = screen.getByDisplayValue("main");
+    expect(base).toBeTruthy();
+  });
+
+  it("submits the typed title and body, and names the PR it opened", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+
+    fireEvent.input(screen.getByPlaceholderText("What this branch does"), {
+      target: { value: "Add a thing" },
+    });
+    fireEvent.input(screen.getByPlaceholderText("Optional"), {
+      target: { value: "Because of reasons." },
+    });
+
+    const toasts = captureToasts();
+    fireEvent.click(screen.getByText("Open pull request"));
+
+    await waitFor(() => expect(createPrArgs.length).toBe(1));
+    expect(createPrArgs[0]).toEqual({
+      projectPath: "/proj",
+      remote: "origin",
+      newPr: {
+        title: "Add a thing",
+        body: "Because of reasons.",
+        head: "wave-3",
+        base: "main",
+        draft: false,
+      },
+    });
+
+    // The number is the confirmation. Without it the dialog just closes, and
+    // the user has no idea whether anything was opened.
+    await waitFor(() => expect(toasts.messages).toContain("Opened #42"));
+    toasts.stop();
+    await waitFor(() => expect(screen.queryByText("Open a pull request")).toBeNull());
+  });
+
+  it("carries the draft toggle through to the backend", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+    fireEvent.input(screen.getByPlaceholderText("What this branch does"), {
+      target: { value: "Add a thing" },
+    });
+    fireEvent.click(screen.getByLabelText("Open as a draft"));
+    fireEvent.click(screen.getByText("Open pull request"));
+
+    await waitFor(() => expect(createPrArgs.length).toBe(1));
+    expect((createPrArgs[0] as { newPr: { draft: boolean } }).newPr.draft).toBe(true);
+  });
+
+  it("keeps an edited base inside the form, so cancelling does not retarget compare", async () => {
+    // The form's base is the PR's, not the repo's. Writing it back into the
+    // panel's `git_default_base_branch` reading would leave a cancelled edit
+    // pointing the compare-URL fallback somewhere the user never chose.
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+
+    fireEvent.input(screen.getByDisplayValue("main"), { target: { value: "release" } });
+    fireEvent.click(prDialog().getByText("Cancel"));
+    await waitFor(() => expect(screen.queryByText("Open a pull request")).toBeNull());
+
+    // Reopening reseeds from the panel's base, so seeing "main" again is the
+    // proof that the edit never reached it. The compare-URL fallback reads that
+    // same value, which is what the leak would have retargeted.
+    fireEvent.click(screen.getByText("Open PR"));
+    await screen.findByText("Open a pull request");
+    expect(screen.getByDisplayValue("main")).toBeTruthy();
+    expect(screen.queryByDisplayValue("release")).toBeNull();
+  });
+
+  it("opens the PR against the edited base, not the repo default", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+
+    fireEvent.input(screen.getByPlaceholderText("What this branch does"), {
+      target: { value: "Add a thing" },
+    });
+    fireEvent.input(screen.getByDisplayValue("main"), { target: { value: "release" } });
+    fireEvent.click(prDialog().getByText("Open pull request"));
+
+    await waitFor(() => expect(createPrArgs.length).toBe(1));
+    expect((createPrArgs[0] as { newPr: { base: string } }).newPr.base).toBe("release");
+  });
+
+  it("refuses to submit without a title, and says why", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+
+    expect(screen.getByText("A title is required")).toBeTruthy();
+    fireEvent.click(screen.getByText("Open pull request"));
+    expect(createPrArgs).toEqual([]);
+  });
+
+  it("keeps the typed title and body when the server refuses", async () => {
+    // Most of these failures are fixable in place, so losing the description
+    // and making the user retype it would be its own insult.
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    createPrFails = { kind: "alreadyExists", message: "A pull request already exists for skarif2:wave-3." };
+    fireEvent.click(await mountWithPrHeader());
+    await screen.findByText("Open a pull request");
+    fireEvent.input(screen.getByPlaceholderText("What this branch does"), {
+      target: { value: "Add a thing" },
+    });
+
+    const toasts = captureToasts();
+    fireEvent.click(screen.getByText("Open pull request"));
+
+    // The DTO is an object, so a `String(e)` toast would read "[object Object]"
+    // for every forge failure the user is meant to act on.
+    await waitFor(() =>
+      expect(toasts.messages).toContain("A pull request already exists for skarif2:wave-3."),
+    );
+    toasts.stop();
+    expect(screen.getByText("Open a pull request")).toBeTruthy();
+    expect((screen.getByPlaceholderText("What this branch does") as HTMLInputElement).value).toBe(
+      "Add a thing",
+    );
+  });
+
+  it("falls back to the compare page when signed out", async () => {
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedOut" };
+    const opened: string[] = [];
+    const open = vi.spyOn(window, "open").mockImplementation((url) => {
+      opened.push(String(url));
+      return null;
+    });
+    fireEvent.click(await mountWithPrHeader());
+
+    await waitFor(() => expect(opened.length).toBe(1));
+    expect(opened[0]).toContain("/compare/main...wave-3");
+    expect(screen.queryByText("Open a pull request")).toBeNull();
+    expect(createPrArgs).toEqual([]);
+    open.mockRestore();
+  });
+
+  it("falls back to the compare page when the integration is switched off", async () => {
+    // Signing out and switching the integration off are different things, and
+    // only one of them costs the credential. Both stop the API being used.
+    originUrl = "git@github.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    await saveSettings({ ...DEFAULT_SETTINGS, github: { enabled: false } });
+    const opened: string[] = [];
+    const open = vi.spyOn(window, "open").mockImplementation((url) => {
+      opened.push(String(url));
+      return null;
+    });
+    fireEvent.click(await mountWithPrHeader());
+
+    await waitFor(() => expect(opened.length).toBe(1));
+    expect(opened[0]).toContain("/compare/main...wave-3");
+    expect(createPrArgs).toEqual([]);
+    open.mockRestore();
+  });
+
+  it("sends GitHub Enterprise to compare rather than to a form it cannot submit", async () => {
+    // prUrl's provider detection matches any host containing "github", but the
+    // API client accepts github.com only. A form here would submit and come
+    // back `unsupportedRemote` after the user had typed a title and body.
+    originUrl = "git@github.mycorp.com:skarif2/sway.git";
+    authState = { kind: "signedIn", login: "skarif2" };
+    const opened: string[] = [];
+    const open = vi.spyOn(window, "open").mockImplementation((url) => {
+      opened.push(String(url));
+      return null;
+    });
+    fireEvent.click(await mountWithPrHeader());
+
+    await waitFor(() => expect(opened.length).toBe(1));
+    expect(opened[0]).toContain("github.mycorp.com");
+    expect(screen.queryByText("Open a pull request")).toBeNull();
+    open.mockRestore();
+  });
+});
+
+describe("the agent-drafted PR description", () => {
+  it("refuses a blocked session, names the reason, and sends nothing", async () => {
+    // The gate the commit-message draft goes through, applied to the same kind
+    // of request. A blocked session is refused outright rather than queued: the
+    // user has to answer that permission prompt first.
+    branches = [{ name: "wave-3", current: true }];
+    originUrl = "git@github.com:skarif2/sway.git";
+    defaultBase = "main";
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+    authState = { kind: "signedIn", login: "skarif2" };
+
+    const sent: unknown[] = [];
+    const onSend = (e: Event) => {
+      const detail = (e as CustomEvent<{ requestId: string; text: string }>).detail;
+      sent.push(detail.text);
+      // Terminal.tsx answers every request; here it answers "blocked".
+      window.dispatchEvent(
+        new CustomEvent(SEND_TO_SESSION_RESULT, {
+          detail: { requestId: detail.requestId, result: "blocked" },
+        }),
+      );
+    };
+    window.addEventListener(SEND_TO_SESSION, onSend);
+
+    render(() => (
+      <ReviewPanel
+        root="/proj"
+        selected={{ sessionId: "s1", agent: "claude", folderPath: "/proj" } as never}
+      />
+    ));
+    fireEvent.click(await screen.findByText("Open PR"));
+    await screen.findByText("Open a pull request");
+
+    const toasts = captureToasts();
+    fireEvent.click(prDialog().getByText("Ask agent to draft"));
+
+    await waitFor(() => expect(toasts.messages).toContain(BLOCKED_REASON));
+    toasts.stop();
+    window.removeEventListener(SEND_TO_SESSION, onSend);
+
+    // The request was composed and offered; the gate is what refused it, and
+    // nothing reached the session's input.
+    expect(sent.length).toBe(1);
+    expect(String(sent[0])).toContain("wave-3");
+    expect(String(sent[0])).toContain("main");
   });
 });
