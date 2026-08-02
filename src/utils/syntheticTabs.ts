@@ -22,9 +22,9 @@
 const PREFIX = "sway://";
 
 export type SyntheticTab = {
-  /** What the tab shows: `log` today, `commit` next. */
+  /** What the tab shows: `log`, `commit`, `history`. */
   kind: string;
-  /** The kind's argument (a sha, a file), or "" when it takes none. */
+  /** The kind's argument (a sha, a repo-relative file path), or "" for `log`. */
   arg: string;
   /** Absolute path of the branch-unit folder this tab belongs to. */
   workspace: string;
@@ -76,9 +76,19 @@ export function tabScopePath(id: string): string {
   return parseSyntheticId(id)?.workspace ?? id;
 }
 
-/** Tab-strip label for a synthetic id. */
+/**
+ * Tab-strip label for a synthetic id. A tab is a few characters wide, so the
+ * label carries the shortest thing that distinguishes this tab from its
+ * siblings; the tooltip (see `tabTitle` in Editor) carries the workspace, and
+ * the view's own header carries everything else.
+ */
 export function syntheticTabName(id: string): string {
   const t = parseSyntheticId(id);
   if (!t) return id;
-  return t.kind === "log" ? "Commit log" : t.arg ? `${t.kind} ${t.arg}` : t.kind;
+  if (t.kind === "log") return "Commit log";
+  // A sha is unreadable past its first few characters, and a file's history is
+  // known by the file's name, not by the folders above it.
+  if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
+  if (t.kind === "history") return `History: ${t.arg.split("/").pop() || t.arg}`;
+  return t.arg ? `${t.kind} ${t.arg}` : t.kind;
 }

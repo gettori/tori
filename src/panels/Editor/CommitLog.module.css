@@ -46,14 +46,23 @@
   color: var(--fg-muted);
 }
 
+/* A button, because a row opens the commit: the pointer affordance was already
+   there, and this is what makes it reachable by keyboard too. */
 .row {
   display: flex;
   align-items: baseline;
   gap: calc(8px * var(--ui-scale));
+  width: calc(100% - 8px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: none;
   border-radius: var(--sway-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .row:hover {
