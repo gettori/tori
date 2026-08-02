@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import type { PullRequest } from "../../../utils/forgeTypes";
 
 // The Pull Requests panel.
@@ -30,10 +30,17 @@ const pr = (n: number, over: Partial<PullRequest> = {}): PullRequest => ({
   ...over,
 });
 
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   items: [] as unknown[],
   statuses: [] as unknown[],
+  files: [] as unknown[],
   truncated: false,
   fail: null as { kind: string; message: string } | null,
 }));
@@ -52,6 +59,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         uncovered: 0,
         rate: { remaining: 4800, limit: 5000, resetAt: null },
       });
+    if (cmd === "github_pr_files")
+      return Promise.resolve({ items: bridge.files, truncated: false });
     if (cmd === "github_auth_state") return Promise.resolve({ kind: "signedOut" });
     return Promise.resolve(null);
   },
@@ -72,8 +81,43 @@ describe("the pull request list", () => {
     bridge.calls.length = 0;
     bridge.items = [];
     bridge.statuses = [];
+    bridge.files = [];
     bridge.truncated = false;
     bridge.fail = null;
+  });
+
+  it("opens a row onto that pull request's files", async () => {
+    // The list is a way in, not a destination. Until this, every row was a
+    // rendered fact with nowhere to go, which is the mirror of a registered
+    // command with no caller (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
+    bridge.items = [pr(31, { headRef: "wave-3", headSha: "abc123" })];
+    bridge.files = [
+      {
+        path: "src/utils/forgeChip.ts",
+        previousPath: null,
+        status: "modified",
+        additions: 4,
+        deletions: 1,
+        patch: "@@ -1,1 +1,1 @@\n-a\n+b",
+      },
+    ];
+    signIn();
+
+    render(() => <PullRequests root={ROOT} />);
+    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("pull request 31"));
+    await waitFor(() => expect(screen.queryByText("src/utils/forgeChip.ts")).toBeTruthy());
+    expect(bridge.calls.filter((c) => c.cmd === "github_pr_files")[0].args).toMatchObject({
+      projectPath: ROOT,
+      number: 31,
+    });
+
+    // And back, without re-listing: the list it left is the one it returns to.
+    const listed = bridge.calls.filter((c) => c.cmd === "github_list_prs").length;
+    fireEvent.click(screen.getByText("← Pull requests"));
+    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
+    expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(listed);
   });
 
   it("lists every pull request a paged repo has, not the first page", async () => {

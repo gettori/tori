@@ -211,6 +211,117 @@ pub fn git_file_slice(
         .collect())
 }
 
+/// Whether this repo already has the commit `sha` in its object store.
+fn has_commit(project_path: &str, sha: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Make a pull request's head commit readable locally.
+///
+/// The PR's own file contents come from **layer 1**, the git protocol, not from
+/// the API: `refs/pull/{n}/head` is a ref the forge publishes and `git fetch`
+/// reaches it with the credentials the askpass bridge already handles. That is
+/// what makes expanding a collapsed region in a PR diff cost zero API quota,
+/// and it is the difference between a gap expander that works and one that has
+/// to be governed by the same rate budget as everything else.
+///
+/// Fetched with **no destination ref**. A Sway-owned `refs/sway/pr/{n}` would
+/// keep the commit reachable, but nothing would ever remove it, so a reviewer
+/// would accumulate one pinned tree per pull request read, permanently, in
+/// their own repo. Git already shields freshly fetched objects from prune for
+/// `gc.pruneExpire`, which is the whole of what is needed to read them.
+///
+/// Split like [`push_branch`] so the network path carries the bridge and the
+/// test can drive the same body: everything that talks to a remote goes through
+/// [`git_command`], never a bare `Command`, because a `git` with no askpass and
+/// no TTY does not fail politely.
+///
+/// The `has_commit` check first is not an optimisation. The common case is a PR
+/// on a branch checked out right here, and going to the network to re-learn a
+/// commit already in the object store is a round trip spent on nothing.
+/// The fetch itself, built but not run, so a test can read back what it would
+/// have done: which refspec, and whether the bridge is wired.
+fn pr_head_fetch_command(repo: &str, number: u64, sock: &Path, token: &str) -> Command {
+    let op_id = next_op_id();
+    let mut cmd = git_command(repo, &op_id, sock, token);
+    cmd.args(["fetch", "--no-tags", "origin", &format!("refs/pull/{number}/head")]);
+    cmd
+}
+
+pub fn fetch_pr_head(
+    repo: &str,
+    number: u64,
+    sha: &str,
+    sock: &Path,
+    token: &str,
+) -> Result<(), String> {
+    if !sha.is_empty() && has_commit(repo, sha) {
+        return Ok(());
+    }
+    let out = pr_head_fetch_command(repo, number, sock, token).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_fetch_pr_head(
+    state: State<AskpassState>,
+    project_path: String,
+    number: u64,
+    sha: String,
+) -> Result<(), String> {
+    let inner = state.0.clone();
+    fetch_pr_head(&project_path, number, &sha, inner.sock_path(), inner.token())
+}
+
+/// The 1-based line range `start..=end` of a file **as of one commit**.
+///
+/// The companion to [`git_file_slice`] for a diff that is not about the working
+/// tree. A pull request's head is usually not checked out, so reading the file
+/// from disk there would show whatever happens to be in the editor's copy: the
+/// right line numbers over the wrong content, which is worse than showing
+/// nothing because it looks exactly like an answer.
+#[tauri::command]
+pub fn git_blob_slice(
+    project_path: String,
+    rev: String,
+    file: String,
+    start: usize,
+    end: usize,
+) -> Result<Vec<String>, String> {
+    if start == 0 || end < start {
+        return Ok(vec![]);
+    }
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(["show", &format!("{rev}:{file}")])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        // Git's own sentence: "path does not exist in ..." says which half is
+        // missing, where a silent empty list is a click that does nothing.
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let content = String::from_utf8_lossy(&output.stdout);
+    // Clamp rather than error, as `git_file_slice` does: the range was computed
+    // from a patch, and a patch does not say how long the file is.
+    Ok(content
+        .lines()
+        .skip(start - 1)
+        .take(end - start + 1)
+        .map(str::to_string)
+        .collect())
+}
+
 /// Stage or unstage a subset of a file's hunks, never touching the working
 /// tree (`git apply --cached`).
 ///
@@ -2839,6 +2950,83 @@ diff --git a/f b/f
         assert_eq!(staged, vec!["line 19"]);
         assert_eq!(worktree, vec!["line 19 EDITED"]);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_blob_slice_reads_the_commit_not_whatever_is_on_disk() {
+        // The whole reason this exists beside `git_file_slice`. A PR's head is
+        // usually not checked out, so reading the file from disk would give the
+        // right line numbers over the wrong content, which looks exactly like an
+        // answer.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let head = String::from_utf8_lossy(
+            &Command::new("git").arg("-C").arg(&dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout,
+        )
+        .trim()
+        .to_string();
+
+        // Line 2 is edited in the worktree and untouched in the commit.
+        let committed = git_blob_slice(p.clone(), head, "f.txt".into(), 2, 2).unwrap();
+        let on_disk = git_file_slice(p, "f.txt".into(), Some(DiffMode::Unstaged), 2, 2).unwrap();
+        assert_eq!(committed, vec!["line 2"]);
+        assert_eq!(on_disk, vec!["line 2 EDITED"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_pr_head_already_in_the_object_store_is_never_fetched() {
+        // This repo has no `origin` at all, so a build that fetched
+        // unconditionally fails here rather than quietly spending a round trip
+        // per expanded gap on a branch that is checked out right now.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let sock = Path::new("/tmp/sway-akp-x/s");
+        let head = String::from_utf8_lossy(
+            &Command::new("git").arg("-C").arg(&dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout,
+        )
+        .trim()
+        .to_string();
+
+        fetch_pr_head(&p, 7, &head, sock, "tok").expect("a local commit needs no remote");
+
+        // And a sha this repo has never seen does go to the network, which with
+        // no remote configured is where it fails. `GIT_TERMINAL_PROMPT=0` from
+        // `git_command` is what makes that a failure rather than a hang.
+        assert!(
+            fetch_pr_head(&p, 7, "0123456789abcdef0123456789abcdef01234567", sock, "tok").is_err(),
+            "an absent commit must be fetched",
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn fetching_a_pr_head_goes_through_the_bridge_and_leaves_no_ref_behind() {
+        let cmd = pr_head_fetch_command("/repo", 7, Path::new("/tmp/sway-akp-x/s"), "tok");
+
+        // Everything that talks to a remote goes through the bridge, or a
+        // private repo with no agent leaves git nothing to ask and no terminal
+        // to ask on: at best a confusing error, at worst ssh blocking the
+        // command thread behind a spinner that never stops
+        // (`concept_askpass_bridge`).
+        let envs: std::collections::HashMap<String, Option<String>> = cmd
+            .get_envs()
+            .map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|s| s.to_string_lossy().into_owned())))
+            .collect();
+        assert_eq!(envs.get("GIT_TERMINAL_PROMPT").unwrap().as_deref(), Some("0"));
+        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/sway-akp-x/s"));
+        assert!(envs.contains_key("GIT_ASKPASS"));
+
+        // And no destination ref. One would keep the commit reachable and
+        // nothing would ever remove it, so a reviewer would collect a pinned
+        // tree per pull request read, permanently, in their own repo.
+        let args: Vec<String> =
+            cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert!(args.contains(&"refs/pull/7/head".to_string()), "got {args:?}");
+        assert!(
+            !args.iter().any(|a| a.contains("refs/pull/7/head:")),
+            "a destination refspec pins the commit forever: {args:?}",
+        );
     }
 
     #[test]
