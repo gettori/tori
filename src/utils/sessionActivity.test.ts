@@ -34,6 +34,7 @@ const {
   noteLiveTabs,
   noteAttention,
   noteFolderOwners,
+  noteForgeUnits,
   notePtyActivity,
   probeBatch,
   refreshTailStates,
@@ -46,6 +47,7 @@ const {
 } = await import("./sessionActivity");
 const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore");
 const { setLiveChat, dropLiveChat } = await import("./chatSessions");
+const { liveCounts, trayEntries } = await import("./presence");
 
 // Effects inside the store's root are queued, and `notifyNeedsYou` awaits a
 // permission check on top of that, so a notification lands two ticks out.
@@ -306,5 +308,177 @@ describe("the needs-you notification", () => {
     await blocks("blocked-c", "session C");
     expect(bridge.notified.map((n) => n.title)).toContain("session C");
     dropLiveChat("blocked-c");
+  });
+});
+
+// The forge's half of the needs-you pipeline.
+//
+// A failing check is a fact about a *branch*; needs-you is a fact about a
+// *session*. Joining them is the whole of this feature, and the join is the part
+// that can be silently wrong: the sidebar chip would still be red, the tray
+// would just never mention it, and nothing in a passing suite would say so.
+describe("a failing check on the branch a session owns", () => {
+  // A worktree unit: one branch, one folder of its own.
+  const unit = (branch: string, attention: boolean) => ({
+    folderPath: FOLDER,
+    branch,
+    kind: "worktree",
+    isCurrent: false,
+    attention,
+  });
+
+  beforeEach(() => {
+    resetSessionActivityForTests();
+    resetSessionStoreForTests();
+    bridge.calls.length = 0;
+    bridge.running = [];
+    bridge.tail = null;
+    bridge.notified = [];
+  });
+
+  // The plan's two named cases, and both are chat-free on purpose: the chat tier
+  // reports its own status and would carry a needs-you here for reasons that
+  // have nothing to do with CI, so a chat-based test proves nothing about the
+  // path this feature actually has to travel
+  // (`gotchas#only-the-pty-tier-can-starve-so-a-chat-based-needs-you-test-proves-nothing`).
+  it("reaches a live PTY agent and a detached session alike", async () => {
+    await seedSessions([meta("pty", "main"), meta("loose", "main")]);
+    noteLiveTabs([tab("t1", "pty")]);
+    bridge.running = ["pty", "loose"];
+    await probeBatch([
+      { id: "pty", agent: "claude" },
+      { id: "loose", agent: "claude" },
+    ]);
+
+    // A quiet live agent is idle; a session with no tab at all caps at running.
+    expect(sessionStatus("pty")).toBe("idle");
+    expect(sessionStatus("loose")).toBe("running");
+
+    noteForgeUnits([unit("main", true)]);
+
+    expect(sessionStatus("pty")).toBe("waitingForApproval");
+    expect(sessionStatus("loose")).toBe("waitingForApproval");
+    // Inferred either way: the forge measured the branch, not the session, and
+    // claiming otherwise would restyle every row this touches.
+    expect(sessionCertainty("pty")).toBe("inferred");
+  });
+
+  it("leaves a session that is mid-turn alone", async () => {
+    await seedSessions([meta("busy", "main")]);
+    noteLiveTabs([tab("t1", "busy")]);
+    bridge.running = ["busy"];
+    await probeBatch([{ id: "busy", agent: "claude" }]);
+    notePtyActivity("t1", "active");
+    noteForgeUnits([unit("main", true)]);
+
+    // The agent may well be fixing it, and an edge spent now cannot re-arm when
+    // it stops - which is the moment the user actually needs telling.
+    expect(sessionStatus("busy")).toBe("executing");
+  });
+
+  it("lands on the branch that failed, not on its sibling in the same folder", async () => {
+    // A plain repo: both branch-units share one folder and are told apart only
+    // by the branch each session recorded. This is the case where a second
+    // attribution rule would put the warning on the wrong row.
+    await seedSessions([meta("on-main", "main"), meta("on-feat", "feat")]);
+    noteLiveTabs([tab("t1", "on-main"), tab("t2", "on-feat")]);
+    bridge.running = ["on-main", "on-feat"];
+    await probeBatch([
+      { id: "on-main", agent: "claude" },
+      { id: "on-feat", agent: "claude" },
+    ]);
+
+    noteForgeUnits([
+      { folderPath: FOLDER, branch: "main", kind: "plain", isCurrent: true, attention: false },
+      { folderPath: FOLDER, branch: "feat", kind: "plain", isCurrent: false, attention: true },
+    ]);
+
+    expect(sessionStatus("on-feat")).toBe("waitingForApproval");
+    expect(sessionStatus("on-main")).toBe("idle");
+  });
+
+  // The verify that names the tier: a build wiring only the chat branch leaves
+  // this at zero, because there is no chat anywhere in it.
+  it("puts a PTY-tier failure in the tray and its counts", async () => {
+    await seedSessions([meta("pty", "main")]);
+    noteFolderOwners({ [FOLDER]: { spaceName: "work", projectName: "repo" } });
+    noteLiveTabs([tab("t1", "pty")]);
+    bridge.running = ["pty"];
+    await probeBatch([{ id: "pty", agent: "claude" }]);
+
+    expect(liveCounts(liveSessionDots()).needsYou).toBe(0);
+
+    noteForgeUnits([unit("main", true)]);
+
+    const live = liveSessionDots();
+    expect(liveCounts(live)).toEqual({ running: 1, needsYou: 1 });
+    // The tray marks a needs-you row and sorts it first; a count with no row to
+    // click is the failure the merged list was built to end.
+    expect(trayEntries(live)).toEqual([{ id: "pty", label: "⚠ title of pty (repo)" }]);
+  });
+
+  it("reaches no tray, badge or notification when nothing is running on it", async () => {
+    // The sidebar chip is still red - that is the whole surface for a branch
+    // nobody has open. Interrupting for it would mean a notification with no
+    // session to take you to.
+    await seedSessions([meta("cold", "main")]);
+    noteForgeUnits([unit("main", true)]);
+    await flush();
+
+    expect(liveSessionDots()).toEqual([]);
+    expect(liveCounts(liveSessionDots())).toEqual({ running: 0, needsYou: 0 });
+    expect(trayEntries(liveSessionDots())).toEqual([]);
+    expect(bridge.notified).toEqual([]);
+  });
+
+  // The raise runs the chat tier's status through the dot vocabulary, and that
+  // trip is lossy on purpose: `budgetStopped` and `waitingForApproval` share one
+  // dot. Only one of them comes back, so a chat stopped at a spend ceiling would
+  // arrive in the shared list telling the user to answer a prompt that does not
+  // exist - the exact collapse `budgetStopped` was added to prevent.
+  it("does not flatten a budget-stopped chat on its way through the raise", async () => {
+    await seedSessions([]);
+    setLiveChat({
+      sessionId: "c-budget",
+      sessionName: "the stopped chat",
+      folderPath: FOLDER,
+      tabId: "chat:budget",
+      visible: false,
+      status: "budgetStopped",
+    });
+    noteForgeUnits([unit("main", true)]);
+
+    const mine = liveSessionStatuses().find((s) => s.sessionId === "c-budget");
+    expect(mine?.status).toBe("budgetStopped");
+    // And the dot is unchanged, which is the half the two do share: both mean
+    // the session is going nowhere until a person acts.
+    expect(liveSessionDots().find((d) => d.sessionId === "c-budget")?.dot).toBe("needsYou");
+    dropLiveChat("c-budget");
+  });
+
+  it("does not notify twice while the check stays red", async () => {
+    await seedSessions([meta("pty", "main")]);
+    noteLiveTabs([tab("t1", "pty")]);
+    bridge.running = ["pty"];
+    await probeBatch([{ id: "pty", agent: "claude" }]);
+
+    noteForgeUnits([unit("main", true)]);
+    await flush();
+    expect(bridge.notified.length).toBe(1);
+
+    // The next poll tick reports the same failure. It is a fresh array and a
+    // fresh signal write, so the memos and the effect all re-run; only the
+    // rising-edge test in `stepPresence` stops it being a second interruption.
+    noteForgeUnits([unit("main", true)]);
+    await flush();
+    expect(bridge.notified.length, "a steady failure interrupted twice").toBe(1);
+
+    // And it re-arms on a genuine recovery-then-failure, rather than going quiet
+    // for the rest of the session.
+    noteForgeUnits([unit("main", false)]);
+    await flush();
+    noteForgeUnits([unit("main", true)]);
+    await flush();
+    expect(bridge.notified.length).toBe(2);
   });
 });

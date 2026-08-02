@@ -1,0 +1,1730 @@
+[
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "executing",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "working",
+    "with": "working",
+    "status": "executing"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "waitingForApproval",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "needsYou",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "idle",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "solid",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "running",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "hollow",
+    "with": "needsYou",
+    "status": "waitingForApproval"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": true,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": true,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "active",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  },
+  {
+    "inputs": {
+      "chatStatus": "none",
+      "hasLiveTab": false,
+      "running": false,
+      "ptyActivity": "quiet",
+      "tailState": "blocked-candidate",
+      "forgeAttention": true
+    },
+    "without": "none",
+    "with": "none",
+    "status": "none"
+  }
+]
