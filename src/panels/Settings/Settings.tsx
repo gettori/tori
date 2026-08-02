@@ -1,6 +1,7 @@
 import { createMemo, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
+import GithubSection from "./GithubSection";
 import {
   settings,
   saveSettings,
@@ -118,6 +119,7 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               </div>
             </Show>
             <AgentsSection />
+            <GithubSection />
 
             <section class={styles.section}>
               <div class={styles.sectionTitle}>Appearance</div>

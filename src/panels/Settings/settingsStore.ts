@@ -22,6 +22,11 @@ export type Typography = {
   lineHeight: number;
 };
 export type Checkpoints = { enabled: boolean };
+
+/** The forge integration's kill switch. Separate from signing out on purpose:
+ *  signing out also stops the traffic but costs the credential, so quieting a
+ *  misbehaving poller would disable PR creation and the review surface too. */
+export type Github = { enabled: boolean };
 /** What a chat reopens with, remembered per project because the right model and
  *  effort are a property of the work rather than of the user. `model` is the
  *  `--model` **value**, never the resolved id the session reports back: the
@@ -71,6 +76,7 @@ export type Settings = {
   appearance: Appearance;
   typography: Typography;
   checkpoints: Checkpoints;
+  github: Github;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
   harness: Harness;
@@ -80,6 +86,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "sway-dark" },
+  github: { enabled: true },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,

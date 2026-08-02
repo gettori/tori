@@ -19,9 +19,13 @@
 //!   * `http`  - the transport seam, redaction, and both pagination walkers
 //!   * `github` - the one provider that exists today
 
+pub mod auth;
+pub mod commands;
+pub mod device_flow;
 pub mod github;
 pub mod http;
 pub mod model;
+pub mod token;
 
 use model::{
     AuthState, Capabilities, MergeableState, Paged, PullRequest, RepoRef, ReviewThread, UnitStatus,

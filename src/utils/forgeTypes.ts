@@ -196,6 +196,20 @@ export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
 ];
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
 
+/// Whether the forge API may be called right now.
+///
+/// The mirror of `AuthCore::may_call` in `src-tauri/src/forge/auth.rs`, and it
+/// exists for the same reason: **three independent things can say no** (no
+/// token, a rejected token, the kill switch), and every call site remembering
+/// its own subset is how a disabled integration ends up still making requests.
+///
+/// When this is false the caller does not fail, it falls back to the
+/// compare-URL path, which is why signing out never costs the user the ability
+/// to open a PR, only the ability to do it in-app.
+export function mayUseForge(auth: AuthState, enabled: boolean): boolean {
+  return enabled && auth.kind === "signedIn";
+}
+
 /// Whether a unit's forge state is something the user needs to look at.
 ///
 /// The one piece of judgment in this file, kept here because the sidebar chip

@@ -158,8 +158,15 @@ pub fn run() {
             // pulls them with `chat_orphans` once it is ready.
             app.state::<chat::ownership::Orphans>().set(chat::ownership::reap_on_startup());
 
+            // Install the keychain store and restore the forge credential.
+            // Non-fatal like the askpass bridge and the tray above: a keychain
+            // that will not open should leave Sway signed out, not stop it
+            // starting.
+            forge::commands::restore_at_startup(settings::get_settings().github.enabled);
+
             Ok(())
         })
+        .manage(forge::commands::DeviceFlowState::default())
         .manage(PtyState::default())
         .manage(ChatState::default())
         .manage(chat::ownership::Orphans::default())
@@ -339,6 +346,12 @@ pub fn run() {
             worktree::branch_status,
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
+            forge::commands::github_auth_state,
+            forge::commands::github_is_configured,
+            forge::commands::github_device_start,
+            forge::commands::github_device_poll,
+            forge::commands::github_device_cancel,
+            forge::commands::github_sign_out,
             settings::get_settings,
             settings::set_settings,
             settings::settings_watch_start,

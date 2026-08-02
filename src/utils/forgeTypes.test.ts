@@ -7,6 +7,7 @@ import {
   MERGEABLE_STATES,
   PR_STATES,
   REVIEW_DECISIONS,
+  mayUseForge,
   needsAttention,
   type AuthState,
   type PullRequest,
@@ -123,6 +124,29 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     const unit = golden.unitStatus as UnitStatus;
     expect(unit.pullRequest).not.toBeNull();
     expect({ ...unit, pullRequest: null }.pullRequest).toBeNull();
+  });
+});
+
+describe("mayUseForge", () => {
+  it("allows the API only when signed in and enabled", () => {
+    expect(mayUseForge({ kind: "signedIn", login: "skarif2" }, true)).toBe(true);
+  });
+
+  it("falls back for every reason the API is unavailable", () => {
+    // Three independent noes. A caller that remembers only "signed out" keeps
+    // polling a disabled integration, and one that forgets `suspect` keeps
+    // hammering a credential the forge has already rejected.
+    expect(mayUseForge({ kind: "signedOut" }, true)).toBe(false);
+    expect(mayUseForge({ kind: "suspect", login: "skarif2" }, true)).toBe(false);
+    expect(mayUseForge({ kind: "signedIn", login: "skarif2" }, false)).toBe(false);
+  });
+
+  it("keeps the kill switch independent of the credential", () => {
+    // Turning the integration off must not read as signed out, or the UI would
+    // offer a sign-in to someone who is already signed in.
+    const signedIn: AuthState = { kind: "signedIn", login: "skarif2" };
+    expect(mayUseForge(signedIn, false)).toBe(false);
+    expect(mayUseForge(signedIn, true)).toBe(true);
   });
 });
 

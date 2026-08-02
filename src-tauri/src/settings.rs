@@ -126,6 +126,25 @@ impl Default for Checkpoints {
     }
 }
 
+/// The forge integration's kill switch: on by default.
+///
+/// **Deliberately separate from signing out.** Signing out also stops the
+/// network traffic, but it costs the credential, so quieting a misbehaving
+/// poller would also disable PR creation, the review surface and merge. This
+/// turns off polling and every API call while the token stays in the keychain,
+/// which makes it the one cheap way back if the integration misbehaves.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Github {
+    pub enabled: bool,
+}
+
+impl Default for Github {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 /// What a chat session should reopen with, remembered per project.
 ///
 /// **Per project rather than global** because the answer is a property of the
@@ -257,6 +276,8 @@ pub struct Settings {
     pub typography: Typography,
     #[serde(default)]
     pub checkpoints: Checkpoints,
+    #[serde(default)]
+    pub github: Github,
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
     #[serde(default)]
@@ -397,6 +418,24 @@ mod tests {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("sway-settings-test-{n}-{seq}.json"))
+    }
+
+    #[test]
+    fn the_github_kill_switch_defaults_on_and_survives_an_older_settings_file() {
+        // A settings file written before this field existed must not read as
+        // "integration off": the default has to come from `Github::default`,
+        // not from the absence of the key.
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        assert!(load_from(&p).github.enabled, "a file with no github section is enabled");
+
+        // And an explicit off survives the round trip, or the kill switch would
+        // silently re-arm the integration on every restart.
+        let mut s = load_from(&p);
+        s.github.enabled = false;
+        save_to(&p, &s).unwrap();
+        assert!(!load_from(&p).github.enabled);
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

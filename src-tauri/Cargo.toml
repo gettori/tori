@@ -34,8 +34,17 @@ regex = "1"
 globset = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tauri-plugin-clipboard-manager = "2.3.2"
+# The forge token store. `keyring-core` rather than the all-in-one `keyring`
+# crate on that crate's own advice: it says an application that wants to choose
+# its credential stores should link core plus the specific store, since `keyring`
+# itself exists to serve its CLI and would drag in every platform's backend.
+keyring-core = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"
+# `keychain` is the login keychain (the one a desktop app shares with every
+# other credential the user has); `protected` is the data-protection keychain,
+# which needs an app-group entitlement Sway does not have.
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
