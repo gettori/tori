@@ -7,6 +7,10 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // closed). Both read the same store, so what is tested here is the wiring: that
 // the banner tracks the open tab and the current workspace, and that it goes
 // away on its own when the file stops being conflicted.
+//
+// It is also where the two halves meet: this mount holds the banner *and* the
+// Changes panel, so it is the one place that can watch both offer "ask the
+// agent to resolve" and check they ask for the same thing.
 
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
 
@@ -22,18 +26,35 @@ const RESOLVED: Row = { status: "M ", path: "src/a.ts", staged: true, unstaged: 
 
 let statusRows: Row[] = [];
 
+// One conflict, both sides having rewritten the same line.
+const STAGES = {
+  base: "one\ntwo\nthree\n",
+  ours: "one\nOURS\nthree\n",
+  theirs: "one\nTHEIRS\nthree\n",
+  binary: false,
+};
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     switch (cmd) {
       case "git_status":
         return Promise.resolve(statusRows);
+      // The Changes panel comes with the mount, so its own reads answer too:
+      // a `null` where it expects a list is a crash, not an empty section.
       case "list_branches":
       case "fs_read_dir":
+      case "git_stash_list":
+      case "checkpoint_list":
+      case "backstop_list":
         return Promise.resolve([]);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });
       case "file_exists":
         return Promise.resolve(String(args.path) === FILE || String(args.path) === OTHER);
+      case "git_conflict_stages":
+        return Promise.resolve(STAGES);
+      case "git_conflict_op":
+        return Promise.resolve("merge");
       case "get_docs_root":
         return Promise.reject("no docs root");
       default:
@@ -55,19 +76,35 @@ vi.mock("./CodeEditor", () => ({ default: () => null }));
 vi.mock("./lspClient", () => ({ ensureLsp: () => {} }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, OPEN_IN_EDITOR } = await import("../../utils/events");
+const { emitWith, onWith, OPEN_IN_EDITOR, SET_RIGHT_MODE, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
+  "../../utils/events"
+);
 const { refreshStatus } = await import("../../utils/gitActions");
 
 const selection = selectionFor(REPO);
+// The same selection with a session attached: safe-send has nowhere to land
+// text without one, so the ask is disabled for the banner-only tests.
+const withSession = { ...selection, sessionId: "s1", agent: "claude", sessionCwd: REPO };
 const BANNER = /Merge conflict/;
 
 let mounted: ReturnType<typeof render> | null = null;
 
-async function mountWith(path: string) {
-  mounted = render(() => <Editor selected={selection as never} />);
+async function mountWith(path: string, sel: Partial<typeof withSession> = selection) {
+  mounted = render(() => <Editor selected={sel as never} />);
   await waitFor(() => expect(listening.ready).toBe(true));
   emitWith(OPEN_IN_EDITOR, { path });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
+}
+
+/** Stand in for Terminal.tsx: take each composed message off the bus and answer
+ *  it, so the sender's await resolves instead of sitting out its own timeout. */
+function collectSends(): { sent: { text: string }[]; off: () => void } {
+  const sent: { text: string }[] = [];
+  const off = onWith<{ requestId: string; text: string }>(SEND_TO_SESSION, (req) => {
+    sent.push(req);
+    emitWith(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: "sent" });
+  });
+  return { sent, off };
 }
 
 beforeEach(async () => {
@@ -128,6 +165,47 @@ describe("the conflict banner", () => {
     await mountWith(OTHER);
 
     expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
+  it("asks the agent for the same thing from the banner and from the Conflicts row", async () => {
+    // Two entry points, one question. They are separate components reading
+    // separate state (the banner knows the open tab, the row knows a path in a
+    // list), so the only thing keeping their wording together is that both go
+    // through the one composer - which is what this asserts, byte for byte.
+    statusRows = [CONFLICT];
+    await mountWith(FILE, withSession);
+    await waitFor(() => expect(screen.getByText(BANNER)).toBeTruthy());
+    const { sent, off } = collectSends();
+
+    fireEvent.click(screen.getByText("Ask agent to resolve"));
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    // The same file, reached the other way: as a row in the Changes panel's
+    // Conflicts section, which never opened it.
+    emitWith(SET_RIGHT_MODE, { mode: "changes" });
+    await waitFor(() => expect(screen.getByText("Ask agent")).toBeTruthy());
+    fireEvent.click(screen.getByText("Ask agent"));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    off();
+
+    expect(sent[1].text).toBe(sent[0].text);
+    expect(sent[0].text).toContain("Resolve the conflict in @src/a.ts");
+    // Insert-only: what lands at the prompt is one line, so nothing submits
+    // halfway through it.
+    expect(sent[0].text).not.toMatch(/\n/);
+  });
+
+  it("says why the ask is refused when no session is selected", async () => {
+    // Safe-send needs somewhere to land the text. The banner keeps its own copy
+    // of that gate (it is not inside a panel that already has one), so it is
+    // worth checking it actually refuses rather than sending into nothing.
+    statusRows = [CONFLICT];
+    await mountWith(FILE);
+    await waitFor(() => expect(screen.getByText(BANNER)).toBeTruthy());
+
+    const ask = screen.getByText("Ask agent to resolve").closest("button") as HTMLButtonElement;
+    expect(ask.disabled).toBe(true);
+    expect(ask.title).toBe("Select a session first");
   });
 
   it("says nothing while the store describes another workspace", async () => {
