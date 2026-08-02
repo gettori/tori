@@ -16,6 +16,8 @@
 //     constructed, by the editor's normal swap; the rest are tab descriptors
 //     until you click them.
 
+import { isSyntheticId } from "./syntheticTabs";
+
 const LS_TABS = "sway.editor.tabs.v1";
 // A workspace nobody has opened in this long is almost certainly finished work.
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -43,6 +45,11 @@ export type OpenFileTabLike = { path: string; workspace: string };
 // A tab with no workspace is dropped rather than stored: it belongs to the
 // window before a selection has resolved, and a key nothing can ever be
 // selected as is a key nothing can ever restore from.
+//
+// A synthetic tab (`sway://…`, the commit log) is dropped too, and this is the
+// one place that decides it. Restoring one would mean reopening a view the user
+// never asked for a second time, and every path in the store is otherwise a
+// real file the restore probes for existence.
 export function toStore(
   open: readonly OpenFileTabLike[],
   activeByWorkspace: Readonly<Record<string, string | null>>,
@@ -50,7 +57,7 @@ export function toStore(
 ): FileTabStore {
   const out: FileTabStore = {};
   for (const t of open) {
-    if (!t.workspace) continue;
+    if (!t.workspace || isSyntheticId(t.path)) continue;
     const ws = (out[t.workspace] ??= { paths: [], active: null, savedAt: now });
     ws.paths.push(t.path);
     if (activeByWorkspace[t.workspace] === t.path) ws.active = t.path;

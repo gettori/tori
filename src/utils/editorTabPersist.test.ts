@@ -9,6 +9,7 @@ import {
   type FileTabStore,
   type OpenFileTabLike,
 } from "./editorTabPersist";
+import { syntheticId } from "./syntheticTabs";
 
 const tab = (path: string, workspace = "/w/a"): OpenFileTabLike => ({ path, workspace });
 
@@ -39,6 +40,19 @@ describe("toStore", () => {
     // nothing can be selected as is a key nothing can restore from.
     const out = toStore([tab("/orphan.ts", ""), tab("/w/a/one.ts")], {}, 100);
     expect(Object.keys(out)).toEqual(["/w/a"]);
+  });
+
+  it("never stores a synthetic view, nor records one as the active tab", () => {
+    // A relaunch restores files; a commit log is opened on request, and every
+    // stored path is probed for existence, which a `sway://` id can never pass.
+    const log = syntheticId("log", "/w/a");
+    const out = toStore([tab(log), tab("/w/a/one.ts")], { "/w/a": log }, 100);
+    expect(out["/w/a"].paths).toEqual(["/w/a/one.ts"]);
+    expect(out["/w/a"].active).toBeNull();
+  });
+
+  it("writes no entry for a workspace holding only a synthetic view", () => {
+    expect(toStore([tab(syntheticId("log", "/w/a"))], {}, 100)).toEqual({});
   });
 });
 

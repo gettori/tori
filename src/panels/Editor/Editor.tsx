@@ -20,6 +20,7 @@ import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
+import CommitLog from "./CommitLog";
 import ImageView, { isImagePath } from "./ImageView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
@@ -41,6 +42,7 @@ import {
   Share2,
   BookOpen,
   PanelRight,
+  History,
   type LucideIcon,
 } from "lucide-solid";
 import {
@@ -81,6 +83,7 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
+import { isSyntheticId, parseSyntheticId, syntheticTabName } from "../../utils/syntheticTabs";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -128,6 +131,19 @@ function tabId(t: FileTab): string {
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
+}
+
+// A synthetic view takes one glyph for the whole kind; a file keeps the seti
+// icon its extension earns it.
+function tabIcon(t: FileTab) {
+  return isSyntheticId(t.path) ? <Icon icon={History} /> : <FileIcon name={t.name} />;
+}
+
+// A file tab's tooltip is its path. A view's is the workspace it belongs to,
+// which is the one thing its label cannot say and the only thing telling two
+// branch-units' log tabs apart.
+function tabTitle(t: FileTab): string {
+  return parseSyntheticId(t.path)?.workspace ?? t.path;
 }
 
 const LS_RIGHT_W = "sway.editor.rightw.v1";
@@ -250,19 +266,37 @@ export default function Editor(props: {
   // strip alone would throw away a background workspace's buffers - unsaved
   // edits included - the moment you switched branch-unit, with none of the
   // discard confirm that closing a tab goes through.
-  const allOpenPaths = () => Object.values(tabsByWs()).flatMap((ts) => ts.map((t) => t.path));
+  // Synthetic views are filtered out here rather than downstream: this is the
+  // set CodeEditor keeps buffers for, and a `sway://` id has no file to read, no
+  // buffer to keep, and so no language server to attach.
+  const allOpenPaths = () =>
+    Object.values(tabsByWs()).flatMap((ts) => ts.map((t) => t.path).filter((p) => !isSyntheticId(p)));
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
-  const isImageTab = () => {
+  // The active tab when it is a real file. The three suffix tests below ask
+  // what is on disk, and a synthetic id ends in the workspace path - a folder
+  // named `notes.md` would otherwise give the commit log a preview toggle and
+  // render MarkdownPreview against a `sway://` id.
+  const activeFileTab = () => {
     const t = activeTab();
+    return t && !isSyntheticId(t.path) ? t : null;
+  };
+  const isImageTab = () => {
+    const t = activeFileTab();
     return t != null && isImagePath(t.path);
   };
   const isMarkdownTab = () => {
-    const t = activeTab();
+    const t = activeFileTab();
     return t != null && t.path.toLowerCase().endsWith(".md");
   };
   const isSvgTab = () => {
-    const t = activeTab();
+    const t = activeFileTab();
     return t != null && t.path.toLowerCase().endsWith(".svg");
+  };
+  // A view rather than a file: CodeEditor stays out of its way, the same as it
+  // does for an image or a rendered preview.
+  const syntheticTab = () => {
+    const t = activeTab();
+    return t ? parseSyntheticId(t.path) : null;
   };
   // Tabs that carry a source-vs-render toggle: Markdown renders to HTML, SVG
   // renders to its image. Everything else edits in place with no toggle.
@@ -372,7 +406,7 @@ export default function Editor(props: {
   // project root - land somewhere predictable instead of nowhere.
   function openFile(path: string) {
     if (!tabs().some((t) => t.path === path)) {
-      setTabs([...tabs(), { path, name: basename(path) }]);
+      setTabs([...tabs(), { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }]);
     }
     setActiveId(path);
   }
@@ -406,9 +440,12 @@ export default function Editor(props: {
   async function restoreWorkspace(w: string) {
     const entry = restorable[w];
     if (!entry?.paths.length) return;
-    // Tabs opened here already this run are current truth; a restore would be
-    // pasting last run's strip over them.
-    if ((tabsByWs()[w] ?? []).length) return;
+    // Files opened here already this run are current truth; a restore would be
+    // pasting last run's strip over them. Synthetic tabs do not count: opening
+    // the commit log from the sidebar selects the branch-unit and opens the tab
+    // in the same breath, which lands while these probes are still in flight,
+    // and that must not cost the workspace its file restore.
+    if (openFileTabs(w).length) return;
     const alive = new Set<string>();
     await Promise.all(
       entry.paths.map(async (p) => {
@@ -421,9 +458,19 @@ export default function Editor(props: {
     if (!paths.length) return;
     // Re-checked after the await: the user may have opened something here while
     // the existence probes were in flight.
-    if ((tabsByWs()[w] ?? []).length) return;
-    setTabsByWs((prev) => ({ ...prev, [w]: paths.map((p) => ({ path: p, name: basename(p) })) }));
-    setActiveByWs((prev) => ({ ...prev, [w]: active }));
+    if (openFileTabs(w).length) return;
+    // Restored tabs go *after* whatever is already open (a log tab, at most), and
+    // an active tab the user has since chosen outranks the stored one.
+    setTabsByWs((prev) => ({
+      ...prev,
+      [w]: [...(prev[w] ?? []), ...paths.map((p) => ({ path: p, name: basename(p) }))],
+    }));
+    setActiveByWs((prev) => ({ ...prev, [w]: prev[w] ?? active }));
+  }
+
+  /** This workspace's real-file tabs; synthetic views are not restorable state. */
+  function openFileTabs(w: string): FileTab[] {
+    return (tabsByWs()[w] ?? []).filter((t) => !isSyntheticId(t.path));
   }
 
   createEffect(() => {
@@ -653,9 +700,13 @@ export default function Editor(props: {
   // its parts can never describe two different moments.
   createEffect(() => {
     const active = activeId();
+    // A synthetic view reports no active *file*, so the palette's save, preview,
+    // go-to-line and stage commands correctly refuse on it. `tabCount` still
+    // counts it, which is what keeps "Close editor tab" available.
+    const file = active && !isSyntheticId(active) ? active : null;
     publishEditorState({
-      activePath: active,
-      dirty: active ? !!dirty()[active] : false,
+      activePath: file,
+      dirty: file ? !!dirty()[file] : false,
       tabCount: tabs().length,
       projectRoot: root(),
     });
@@ -844,14 +895,16 @@ export default function Editor(props: {
             <Tab
               active={tabId(t) === activeId()}
               onClick={() => setActiveId(tabId(t))}
-              title={t.path}
-              draggable={true}
+              title={tabTitle(t)}
+              // A synthetic view has no path to hand anyone: dropping its id on a
+              // terminal would paste `sway://…`, which names nothing on disk.
+              draggable={!isSyntheticId(t.path)}
               onDragStart={(e) => {
                 e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
                 e.dataTransfer?.setData("text/plain", t.path);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
               }}
-              icon={<FileIcon name={t.name} />}
+              icon={tabIcon(t)}
               trailing={
                 <>
                   <Show when={isTouched(t.path) || isEditingNow(t.path)}>
@@ -876,7 +929,7 @@ export default function Editor(props: {
           )}
           renderMenuItem={(t) => (
             <>
-              <FileIcon name={t.name} />
+              {tabIcon(t)}
               <span class="tab-name">{t.name}</span>
               <Show when={isTouched(t.path) || isEditingNow(t.path)}>
                 <span
@@ -943,7 +996,9 @@ export default function Editor(props: {
         <Show when={allOpenPaths().length}>
           <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
             <CodeEditor
-              activePath={activeTab() && !isImageTab() && !showingPreview() ? activeId() : null}
+              activePath={
+                activeTab() && !isImageTab() && !showingPreview() && !syntheticTab() ? activeId() : null
+              }
               openPaths={allOpenPaths()}
               projectRoot={root()}
               goto={gotoTarget()}
@@ -951,7 +1006,7 @@ export default function Editor(props: {
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}
-              hidden={!filePaths().length || isImageTab() || showingPreview()}
+              hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
             />
           </Suspense>
         </Show>
@@ -963,6 +1018,13 @@ export default function Editor(props: {
             </div>
           }
         >
+          <Show when={syntheticTab()}>
+            {(t) => (
+              <Show when={t().kind === "log"}>
+                <CommitLog workspace={t().workspace} />
+              </Show>
+            )}
+          </Show>
           <Show when={isImageTab()}>
             <ImageView path={activeId()!} />
           </Show>

@@ -258,6 +258,7 @@ pub fn run() {
             git::git_unstage,
             git::git_commit,
             git::git_head_message,
+            git::git_log,
             git::git_checkout,
             git::git_init,
             git::bare_init,

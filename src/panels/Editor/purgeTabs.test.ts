@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { purgeTabsUnder, type TabMaps } from "./purgeTabs";
+import { syntheticId } from "../../utils/syntheticTabs";
 
 const t = (path: string) => ({ path, name: path.split("/").pop()! });
 
@@ -71,6 +72,33 @@ describe("purgeTabsUnder", () => {
     const input: TabMaps<{ path: string; name: string }> = {
       tabs: { "/space/one-old": [t("/space/one-old/a.ts")] },
       active: { "/space/one-old": "/space/one-old/a.ts" },
+    };
+    const out = purgeTabsUnder(input, "/space/one");
+    expect(out.removed).toEqual([]);
+  });
+
+  it("takes a synthetic tab with the workspace its id names", () => {
+    const log = syntheticId("log", "/space/one/main");
+    const input: TabMaps<{ path: string; name: string }> = {
+      tabs: {
+        "/space/one/main": [t("/space/one/main/a.ts"), { path: log, name: "Commit log" }],
+        "/space/two/main": [t("/space/two/main/d.ts")],
+      },
+      active: { "/space/one/main": log, "/space/two/main": "/space/two/main/d.ts" },
+    };
+    const out = purgeTabsUnder(input, "/space/one");
+    expect(out.tabs["/space/one/main"]).toEqual([]);
+    expect(out.removed).toContain(log);
+    expect(out.active["/space/one/main"]).toBeNull();
+    // A log tab in another workspace is untouched.
+    expect(out.tabs["/space/two/main"]).toHaveLength(1);
+  });
+
+  it("leaves a synthetic tab whose workspace is not under the deleted root", () => {
+    const log = syntheticId("log", "/space/two/main");
+    const input: TabMaps<{ path: string; name: string }> = {
+      tabs: { "/space/two/main": [{ path: log, name: "Commit log" }] },
+      active: { "/space/two/main": log },
     };
     const out = purgeTabsUnder(input, "/space/one");
     expect(out.removed).toEqual([]);

@@ -9,6 +9,7 @@
 // because Solid applies setters synchronously.
 
 import { isUnderPath } from "../../utils/pathScope";
+import { tabScopePath } from "../../utils/syntheticTabs";
 
 export type PathTab = { path: string };
 
@@ -27,6 +28,10 @@ export type TabMaps<T extends PathTab> = {
  * A workspace whose active tab was removed falls back to its last surviving tab,
  * or to null when nothing survives. `removed` lists the dropped paths so the
  * caller can clear the state it keys by path (dirty flags, preview choices).
+ *
+ * A synthetic tab (`sway://…`) is matched on the workspace its id carries, not
+ * on the id itself, so a deleted space takes its commit-log tabs with it rather
+ * than leaving views onto a folder that is gone.
  */
 export function purgeTabsUnder<T extends PathTab>(
   maps: TabMaps<T>,
@@ -36,7 +41,7 @@ export function purgeTabsUnder<T extends PathTab>(
   const tabs: Record<string, T[]> = {};
   for (const [ws, list] of Object.entries(maps.tabs)) {
     tabs[ws] = list.filter((t) => {
-      const gone = isUnderPath(t.path, root);
+      const gone = isUnderPath(tabScopePath(t.path), root);
       if (gone) removed.push(t.path);
       return !gone;
     });

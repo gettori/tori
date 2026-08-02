@@ -143,6 +143,8 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { OPEN_IN_EDITOR } = await import("../../utils/events");
+const { syntheticId } = await import("../../utils/syntheticTabs");
 
 /** The row element carrying `label`, which is that text's own parent. */
 const row = async (label: string) => (await screen.findByText(label)).parentElement!;
@@ -304,5 +306,21 @@ describe("the sidebar levels that outlive the session rows", () => {
     fireEvent.contextMenu(await row("feat"));
     expect(await screen.findByText("New session")).toBeTruthy();
     expect(screen.getByText("Remove worktree")).toBeTruthy();
+  });
+
+  it("opens a branch-unit's commit log, selecting that unit on the way", async () => {
+    mount(["p:work/repo"]);
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
+    window.addEventListener(OPEN_IN_EDITOR, listener);
+
+    fireEvent.contextMenu(await row("feat"));
+    fireEvent.click(await screen.findByText("Commit log"));
+
+    // The tab is workspace-scoped, so the unit has to be selected first or the
+    // log would open into a workspace nobody is looking at.
+    await waitFor(() => expect(opened).toEqual([syntheticId("log", `${REPO}/feat`)]));
+    expect(selections[selections.length - 1]).toMatchObject({ folderPath: `${REPO}/feat` });
+    window.removeEventListener(OPEN_IN_EDITOR, listener);
   });
 });
