@@ -92,8 +92,14 @@ export const REFIT_PANES = "sway:refit-panes";
 // (the command palette's "toggle right-panel mode" actions). Editor.tsx's
 // existing fallback-to-files effect handles a mode the current selection
 // can't show, so no availability gating is needed here.
+/** A pull request was just opened, so any list of them is one row short.
+ *  Carries the project it belongs to: two projects can be open at once and a
+ *  panel showing the other one has nothing to re-list. */
+export const PR_OPENED = "sway:pr-opened";
+export type PrOpened = { projectPath: string };
+
 export const SET_RIGHT_MODE = "sway:set-right-mode";
-export type SetRightMode = { mode: "files" | "changes" | "search" | "session" | "shared" | "docs" };
+export type SetRightMode = { mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" };
 
 // The command registry's editor entries (utils/commands.ts). Each acts on
 // whatever tab is active, so none of them carries a path: the editor is the only
