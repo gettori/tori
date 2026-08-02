@@ -43,6 +43,7 @@ const bridge = vi.hoisted(() => ({
   files: [] as unknown[],
   truncated: false,
   fail: null as { kind: string; message: string } | null,
+  mergeable: "clean" as string,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -61,6 +62,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     if (cmd === "github_pr_files")
       return Promise.resolve({ items: bridge.files, truncated: false });
+    if (cmd === "github_mergeability") return Promise.resolve(bridge.mergeable);
+    if (cmd === "github_merge") return Promise.resolve(null);
     if (cmd === "github_auth_state") return Promise.resolve({ kind: "signedOut" });
     return Promise.resolve(null);
   },
@@ -118,6 +121,37 @@ describe("the pull request list", () => {
     fireEvent.click(screen.getByText("← Pull requests"));
     await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
     expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(listed);
+  });
+
+  it("re-asks for the list once a pull request has been landed", async () => {
+    // Merging makes the list wrong, and the list is exactly where the user goes
+    // to check it worked. Rust drops its caches on a merge; the array this panel
+    // is holding was fetched before that, so going back would otherwise show the
+    // pull request just merged still sitting open.
+    bridge.items = [pr(31, { headRef: "wave-3", headSha: "abc123" })];
+    bridge.files = [];
+    signIn();
+
+    render(() => <PullRequests root={ROOT} />);
+    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
+    fireEvent.click(screen.getByText("pull request 31"));
+    await waitFor(() => expect(document.querySelector("[data-merge-state]")).toBeTruthy());
+    await waitFor(() =>
+      expect(document.querySelector("[data-merge-state]")!.getAttribute("data-merge-state")).toBe(
+        "clean",
+      ),
+    );
+
+    const listed = bridge.calls.filter((c) => c.cmd === "github_list_prs").length;
+    // Landed, and the server no longer has it open.
+    bridge.items = [];
+    fireEvent.click(screen.getAllByText("Merge").find((n) => n.closest("button"))!);
+
+    await waitFor(() =>
+      expect(bridge.calls.filter((c) => c.cmd === "github_list_prs").length).toBe(listed + 1),
+    );
+    fireEvent.click(screen.getByText("← Pull requests"));
+    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeNull());
   });
 
   it("lists every pull request a paged repo has, not the first page", async () => {

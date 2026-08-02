@@ -11,10 +11,10 @@
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, DraftComment, Paged, PrFile, PullRequest, RepoRef, ReviewComment, ReviewEvent,
-    ReviewThread, StatusReport,
+    AuthState, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewComment,
+    ReviewEvent, ReviewThread, StatusReport,
 };
-use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
+use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError, MergeMethod};
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -474,6 +474,93 @@ pub fn github_submit_review(
     Ok(result?)
 }
 
+/// Run a mutation that moves a branch, and drop the caches only if it worked.
+///
+/// **The whole repo, not the one branch.** Landing a pull request moves the base
+/// branch, so every *other* open pull request's mergeability and check rollup now
+/// describe a commit that is no longer what they will be merged into.
+/// Invalidating one entry leaves those siblings confidently stale.
+///
+/// **Only on success.** A refused mutation changed nothing on the server, and
+/// throwing the caches away for it spends a fresh round of requests to re-learn
+/// exactly what was already known.
+fn landing<F>(repo: &RepoRef, run: F) -> Result<(), ForgeError>
+where
+    F: FnOnce() -> Result<(), ForgeError>,
+{
+    let result = run();
+    auth::note_result(&result);
+    result?;
+    prs::invalidate_repo(repo);
+    status::invalidate_repo(repo);
+    Ok(())
+}
+
+/// Whether this pull request can be landed, as **the server** sees it.
+///
+/// Asked rather than worked out. Branch protection, required reviewers and
+/// required checks are all invisible from here, so a local verdict renders an
+/// enabled button the server then refuses, which is worse than no button: the
+/// user learns it will not merge only after asking it to.
+///
+/// Uncached, like the other view-opened reads: the poll layer's pacing exists
+/// for a tick that runs forever, and this is somebody looking at one pull
+/// request. `Unknown` is a real answer (GitHub is still computing it) and means
+/// ask again, never "no".
+#[tauri::command]
+pub fn github_mergeability(
+    project_path: String,
+    number: u64,
+) -> Result<MergeableState, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().mergeability(&repo, number);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Land the pull request.
+///
+/// Both caches are dropped for the whole repo on success, not just the entry for
+/// this branch: a merge moves the base branch, so every other open pull request's
+/// mergeability and check rollup are now answers about a commit that is no longer
+/// the tip. Invalidating one branch would leave the siblings quietly stale.
+///
+/// Only on success. A refused merge changed nothing, and throwing the cache away
+/// would spend a fresh round of requests to re-learn what it already knew.
+#[tauri::command]
+pub fn github_merge(
+    project_path: String,
+    number: u64,
+    method: MergeMethod,
+) -> Result<(), ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    Ok(landing(&repo, || client().merge(&repo, number, method))?)
+}
+
+/// Merge the base branch into this pull request's head, on the server.
+///
+/// The server's merge rather than a local one, because the branch may not be
+/// checked out on this machine at all; doing it here would mean a fetch, a merge
+/// and a push, which is three ways to fail where the forge offers one.
+///
+/// The same repo-wide invalidation as a merge, for a narrower version of the same
+/// reason: the head moved, so the cached check rollup describes a commit that is
+/// no longer the tip.
+#[tauri::command]
+pub fn github_update_branch(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    Ok(landing(&repo, || client().update_branch(&repo, number))?)
+}
+
 /// Restores the credential at startup and installs the keychain store.
 ///
 /// Failure is non-fatal and deliberately so: a keychain that will not open
@@ -541,6 +628,71 @@ fn log_startup(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pr(number: u64, branch: &str) -> PullRequest {
+        PullRequest {
+            number,
+            title: "t".into(),
+            body: None,
+            state: super::super::model::PrState::Open,
+            is_draft: false,
+            author: "skarif2".into(),
+            head_ref: branch.into(),
+            base_ref: "main".into(),
+            head_sha: "abc".into(),
+            url: "u".into(),
+            mergeable_state: MergeableState::Clean,
+        }
+    }
+
+    #[test]
+    fn a_refused_landing_keeps_the_caches_it_did_not_invalidate() {
+        // Nothing moved on the server, so the cached answers are still true and
+        // throwing them away spends a fresh round of requests to re-learn them.
+        let repo = RepoRef { owner: "skarif2".into(), repo: "refused".into() };
+        prs::record_created(&repo, pr(1, "wave-3"));
+        let err = landing(&repo, || Err(ForgeError::NotMergeable { message: "blocked".into() }))
+            .unwrap_err();
+        assert!(matches!(err, ForgeError::NotMergeable { .. }));
+
+        let served = prs::cached_lookup(&repo, "wave-3", false, || {
+            panic!("a refused landing dropped a cache entry that was still true")
+        })
+        .unwrap();
+        assert_eq!(served.map(|p| p.number), Some(1));
+    }
+
+    #[test]
+    fn landing_drops_every_branch_of_the_repo_it_landed_in() {
+        // The base branch moved, so every *other* open pull request's cached
+        // mergeability describes a commit that is no longer what it merges into.
+        // Invalidating only the landed branch leaves the siblings confidently
+        // stale, which is the failure the merge guard exists to prevent.
+        let repo = RepoRef { owner: "skarif2".into(), repo: "landed".into() };
+        let other = RepoRef { owner: "skarif2".into(), repo: "untouched".into() };
+        prs::record_created(&repo, pr(1, "wave-3"));
+        prs::record_created(&repo, pr(2, "sibling"));
+        prs::record_created(&other, pr(3, "wave-3"));
+
+        landing(&repo, || Ok(())).unwrap();
+
+        for branch in ["wave-3", "sibling"] {
+            let mut asked = false;
+            prs::cached_lookup(&repo, branch, false, || {
+                asked = true;
+                Ok(None)
+            })
+            .unwrap();
+            assert!(asked, "{branch} was served from a cache the merge should have dropped");
+        }
+        // And only that repo: another checkout of the same branch name is a
+        // different question, and re-asking it would spend a request for nothing.
+        let served = prs::cached_lookup(&other, "wave-3", false, || {
+            panic!("landing in one repo invalidated another")
+        })
+        .unwrap();
+        assert_eq!(served.map(|p| p.number), Some(3));
+    }
 
     #[test]
     fn an_error_kind_is_stable_and_separate_from_its_wording() {
