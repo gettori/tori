@@ -18,7 +18,7 @@ const commit = (n: number, refs: string[] = []): Row => ({
 });
 
 let pages: Row[][] = [];
-let logArgs: { skip: number; limit: number }[] = [];
+let logArgs: { skip: number; limit: number; file?: string }[] = [];
 let logFails = "";
 // With `holdLog` on, every `git_log` hangs until the test resolves it by hand,
 // which is the only way to have two loads genuinely in flight at once.
@@ -31,7 +31,11 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     switch (cmd) {
       case "git_log": {
-        logArgs.push({ skip: Number(args.skip), limit: Number(args.limit) });
+        logArgs.push({
+          skip: Number(args.skip),
+          limit: Number(args.limit),
+          file: args.file as string | undefined,
+        });
         if (logFails) return Promise.reject(logFails);
         if (holdLog) return new Promise<Row[]>((resolve) => pending.push(resolve));
         return Promise.resolve(pages.shift() ?? []);
@@ -51,11 +55,13 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 
 const { default: CommitLog } = await import("./CommitLog");
 const { refreshGit, refreshStatus } = await import("../../utils/gitActions");
+const { onWith, OPEN_IN_EDITOR } = await import("../../utils/events");
+const { parseSyntheticId } = await import("../../utils/syntheticTabs");
 
 /** Fill the store for `REPO`, then mount the tab against it. */
-async function mount(workspace = REPO) {
+async function mount(workspace = REPO, file?: string) {
   await refreshGit(REPO);
-  render(() => <CommitLog workspace={workspace} />);
+  render(() => <CommitLog workspace={workspace} file={file} />);
 }
 
 beforeEach(async () => {
@@ -194,5 +200,43 @@ describe("the commit log tab", () => {
     pages = [[]];
     await mount();
     await waitFor(() => expect(screen.getByText("No commits yet.")).toBeTruthy());
+  });
+
+  it("opens a commit tab for the row that was clicked", async () => {
+    // The log's only way onward. The id carries the tab's own workspace, not
+    // the selected one, so a background unit's log opens its own commits.
+    pages = [[commit(1), commit(2)]];
+    const opened: string[] = [];
+    const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
+    await mount();
+
+    fireEvent.click(await screen.findByText("commit 2"));
+
+    expect(opened.length).toBe(1);
+    expect(parseSyntheticId(opened[0])).toEqual({ kind: "commit", arg: commit(2).sha, workspace: REPO });
+    off();
+  });
+
+  it("shows one file's history when given a file, and says it follows renames", async () => {
+    branches = [{ name: "wave-2", current: true }];
+    aheadBehind = { ahead: 2, behind: 1, has_upstream: true };
+    pages = [[commit(1)]];
+
+    await mount(REPO, "src/panels/Editor/Editor.tsx");
+
+    await waitFor(() => expect(screen.getByText("commit 1")).toBeTruthy());
+    expect(logArgs[0]).toMatchObject({ skip: 0, file: "src/panels/Editor/Editor.tsx" });
+    expect(screen.getByText("src/panels/Editor/Editor.tsx")).toBeTruthy();
+    // Worth saying: rows from before a rename name a path the file no longer
+    // has, which is confusing unless the header admits it.
+    expect(screen.getByText("following renames")).toBeTruthy();
+    // The branch header belongs to the branch log, not to this one.
+    expect(screen.queryByText("↑2 ↓1")).toBeNull();
+  });
+
+  it("says nothing touched the file rather than that the repo is empty", async () => {
+    pages = [[]];
+    await mount(REPO, "src/gone.ts");
+    await waitFor(() => expect(screen.getByText("No commits touch this file.")).toBeTruthy());
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
 // is what it is kept *out* of: CodeEditor's buffers (and so the language server),
@@ -36,6 +36,19 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "fs_read_dir":
       case "git_log":
         return Promise.resolve([]);
+      case "git_commit_detail":
+        return Promise.resolve({
+          sha: String(args.sha),
+          short: String(args.sha).slice(0, 7),
+          subject: "the commit that was asked for",
+          body: "",
+          author: "t",
+          email: "t@t",
+          relative_date: "an hour ago",
+          parents: ["f".repeat(40)],
+          refs: [],
+          files: [],
+        });
       default:
         return Promise.resolve(null);
     }
@@ -68,8 +81,8 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ ensureLsp: () => {} }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
-const { syntheticId } = await import("../../utils/syntheticTabs");
+const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
+const { syntheticId, parseSyntheticId } = await import("../../utils/syntheticTabs");
 
 const LOG = syntheticId("log", REPO);
 const FILE = `${REPO}/src/a.ts`;
@@ -164,5 +177,43 @@ describe("a sway:// tab in the editor pane", () => {
     emitWith(PURGE_UNDER_PATH, { path: REPO });
 
     await waitFor(() => expect(screen.getByText(EMPTY_PANE)).toBeTruthy());
+  });
+
+  it("opens a file's own history from its tab, by a path git can use", async () => {
+    // The pathspec has to be repo-relative: an absolute one works by accident
+    // today and stops working the moment the same tab is read anywhere else.
+    await mountEditor();
+    await open(FILE);
+    const opened: string[] = [];
+    const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
+
+    fireEvent.contextMenu(screen.getByTitle(FILE));
+    fireEvent.click(await screen.findByText("File history"));
+
+    expect(parseSyntheticId(opened[0])).toEqual({ kind: "history", arg: "src/a.ts", workspace: REPO });
+    off();
+  });
+
+  it("routes each kind of id to its own view, and none of them to the code editor", async () => {
+    // The routing is three one-line `Show`s in the pane; without this the whole
+    // commit tab could be unreachable and every other test would still pass.
+    await mountEditor();
+    await open(syntheticId("commit", REPO, "a".repeat(40)));
+    await waitFor(() => expect(screen.getByText("the commit that was asked for")).toBeTruthy());
+
+    await open(syntheticId("history", REPO, "src/a.ts"));
+    await waitFor(() => expect(screen.getByText("following renames")).toBeTruthy());
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+
+    expect(mountedCodeEditor).toBe(0);
+  });
+
+  it("offers no history for a view, which has none", async () => {
+    await mountEditor();
+    await open(LOG);
+
+    fireEvent.contextMenu(screen.getByTitle(REPO));
+
+    expect(screen.queryByText("File history")).toBeNull();
   });
 });

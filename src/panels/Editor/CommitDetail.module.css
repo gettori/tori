@@ -1,0 +1,130 @@
+/* One commit, as an editor tab. The header borrows the Changes panel's rhythm
+   (see CommitLog.module.css, which came from the same place) so the log and the
+   commit it opens read as one surface. */
+.commitDetail {
+  flex: 1;
+  overflow: auto;
+  background: var(--canvas-card);
+  padding-bottom: calc(8px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.subjectRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* A branch, tag or HEAD pointing at this commit. */
+.ref {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.sha {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+}
+
+.mergeNote {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+/* The message body keeps the author's own line breaks; it is prose they wrote. */
+.body {
+  margin: calc(6px * var(--ui-scale)) 0 0;
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  white-space: pre-wrap;
+}
+
+.fileRow {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  width: calc(100% - 8px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fileRow:hover {
+  background: var(--neutral-hover);
+}
+
+/* The word, not the letter: "renamed" needs no key, and the row has the room. */
+.status {
+  flex: none;
+  min-width: calc(72px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.status[data-status="A"] {
+  color: var(--diff-added);
+}
+
+.status[data-status="D"] {
+  color: var(--diff-deleted);
+}
+
+.path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-default);
+}
+
+.fileDiff {
+  margin: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  overflow-x: auto;
+}
+
+.error {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--danger-fg);
+}
+
+.commitDetail :global(.tree-empty) {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}

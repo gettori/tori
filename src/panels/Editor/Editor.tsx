@@ -21,10 +21,12 @@ import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
+import CommitDetail from "./CommitDetail";
 import ImageView, { isImagePath } from "./ImageView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
+import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
 import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
@@ -83,7 +85,7 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
-import { isSyntheticId, parseSyntheticId, syntheticTabName } from "../../utils/syntheticTabs";
+import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -131,6 +133,17 @@ function tabId(t: FileTab): string {
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
+}
+
+/** A tab's path relative to its workspace, for the surfaces that speak git.
+ *  Null when the tab is a view, or a file from somewhere else entirely.
+ *
+ *  Strictly *under* the root, not equal to it: the empty string is not a
+ *  pathspec, and git reads it as "everything", which is the opposite of one
+ *  file's history. */
+function repoRelative(path: string, root: string): string | null {
+  if (isSyntheticId(path)) return null;
+  return path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
 }
 
 // A synthetic view takes one glyph for the whole kind; a file keeps the seti
@@ -315,6 +328,25 @@ export default function Editor(props: {
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
+
+  // The tab strip's right-click menu.
+  const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
+
+  function openTabMenu(e: MouseEvent, t: FileTab) {
+    const r = root();
+    const rel = r && repoRelative(t.path, r);
+    // A view has no history of its own, so the menu it would open is empty, and
+    // the browser's own menu is more useful than a menu with nothing in it.
+    if (!r || !rel) return;
+    e.preventDefault();
+    const items: MenuItem[] = [
+      {
+        label: "File history",
+        onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
+      },
+    ];
+    setTabMenu({ x: e.clientX, y: e.clientY, items });
+  }
 
   // The editable `.shared/` folder lives on the worktree container (projectPath);
   // only worktree units have one. Null for plain / plain-dir units gates the tab.
@@ -895,6 +927,7 @@ export default function Editor(props: {
             <Tab
               active={tabId(t) === activeId()}
               onClick={() => setActiveId(tabId(t))}
+              onContextMenu={(e) => openTabMenu(e, t)}
               title={tabTitle(t)}
               // A synthetic view has no path to hand anyone: dropping its id on a
               // terminal would paste `sway://…`, which names nothing on disk.
@@ -1020,9 +1053,19 @@ export default function Editor(props: {
         >
           <Show when={syntheticTab()}>
             {(t) => (
-              <Show when={t().kind === "log"}>
-                <CommitLog workspace={t().workspace} />
-              </Show>
+              <>
+                <Show when={t().kind === "log"}>
+                  <CommitLog workspace={t().workspace} />
+                </Show>
+                {/* One file's history is the same list under a pathspec, so it
+                    is the same component, not a near-copy of it. */}
+                <Show when={t().kind === "history"}>
+                  <CommitLog workspace={t().workspace} file={t().arg} />
+                </Show>
+                <Show when={t().kind === "commit"}>
+                  <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+              </>
             )}
           </Show>
           <Show when={isImageTab()}>
@@ -1111,6 +1154,9 @@ export default function Editor(props: {
           </Match>
         </Switch>
       </div>
+      <Show when={tabMenu()}>
+        <Menu x={tabMenu()!.x} y={tabMenu()!.y} items={tabMenu()!.items} onClose={() => setTabMenu(null)} />
+      </Show>
       <Show when={promptReq()}>
         <PromptModal
           title={promptReq()!.title}

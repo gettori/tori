@@ -1,6 +1,8 @@
 import { createSignal, createMemo, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitState } from "../../utils/gitActions";
+import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
+import { syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -21,15 +23,20 @@ export type LogEntry = {
 const PAGE = 100;
 
 /**
- * The repo-wide commit log, as an editor tab rather than a panel: history is
- * read at reading width, and the right panel is already the narrow column.
+ * A commit log, as an editor tab rather than a panel: history is read at reading
+ * width, and the right panel is already the narrow column.
+ *
+ * With `file` set it is that one file's history instead of the branch's. One
+ * component rather than two, because the difference is a pathspec and a header:
+ * splitting them would give a reader two places to look for the same rows and
+ * two chances for them to drift.
  *
  * Its workspace comes from the tab id, not from the current selection, so the
  * tab always shows the branch-unit it was opened for. The header's branch and
  * ahead/behind come from the shared git store, which is only the same thing
  * while that unit is selected - and since tabs are per-workspace, it is.
  */
-export default function CommitLog(props: { workspace: string }) {
+export default function CommitLog(props: { workspace: string; file?: string }) {
   const [entries, setEntries] = createSignal<LogEntry[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [end, setEnd] = createSignal(false);
@@ -63,6 +70,7 @@ export default function CommitLog(props: { workspace: string }) {
         projectPath: props.workspace,
         skip,
         limit: PAGE,
+        file: props.file,
       });
       if (mine !== current) return;
       // Anything but a list is treated as an empty page rather than indexed
@@ -85,19 +93,41 @@ export default function CommitLog(props: { workspace: string }) {
   // Reloaded whenever the store re-reads this workspace's branch metadata, which
   // is exactly the set of things that move HEAD: a commit, a push, a fetch, a
   // checkout. A file save re-reads the *status* only, and leaves this alone.
-  createEffect(on([() => props.workspace, branch, aheadBehind], () => void load(false)));
+  createEffect(on([() => props.workspace, () => props.file, branch, aheadBehind], () => void load(false)));
+
+  function openCommit(sha: string) {
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("commit", props.workspace, sha) });
+  }
 
   return (
     <div class={styles.commitLog}>
       <div class={styles.headerBar}>
-        <span class={styles.branchName} title={branch() ?? ""}>
-          {branch() ?? "Commit log"}
-        </span>
-        <Show when={aheadBehind()} fallback={<span class={styles.meta}>-</span>}>
-          {(ab) => (
-            <span class={styles.meta}>
-              {ab().has_upstream ? `↑${ab().ahead} ↓${ab().behind}` : "Unpushed branch"}
-            </span>
+        <Show
+          when={props.file}
+          fallback={
+            <>
+              <span class={styles.branchName} title={branch() ?? ""}>
+                {branch() ?? "Commit log"}
+              </span>
+              <Show when={aheadBehind()} fallback={<span class={styles.meta}>-</span>}>
+                {(ab) => (
+                  <span class={styles.meta}>
+                    {ab().has_upstream ? `↑${ab().ahead} ↓${ab().behind}` : "Unpushed branch"}
+                  </span>
+                )}
+              </Show>
+            </>
+          }
+        >
+          {(f) => (
+            <>
+              <span class={styles.branchName} title={f()}>
+                {f()}
+              </span>
+              {/* Said out loud because it changes what the list means: rows from
+                  before a rename name a path this file no longer has. */}
+              <span class={styles.meta}>following renames</span>
+            </>
           )}
         </Show>
         <IconButton
@@ -113,17 +143,21 @@ export default function CommitLog(props: { workspace: string }) {
       </Show>
       <Show
         when={entries().length}
-        fallback={<Show when={!loading() && !error()}><div class="tree-empty">No commits yet.</div></Show>}
+        fallback={
+          <Show when={!loading() && !error()}>
+            <div class="tree-empty">{props.file ? "No commits touch this file." : "No commits yet."}</div>
+          </Show>
+        }
       >
         <For each={entries()}>
           {(c) => (
-            <div class={styles.row} title={c.sha}>
+            <button type="button" class={styles.row} title={c.sha} onClick={() => openCommit(c.sha)}>
               <span class={styles.sha}>{c.short}</span>
               <span class={styles.subject}>{c.subject}</span>
               <For each={c.refs}>{(r) => <span class={styles.ref}>{r}</span>}</For>
               <span class={styles.author}>{c.author}</span>
               <span class={styles.date}>{c.relative_date}</span>
-            </div>
+            </button>
           )}
         </For>
         <Show when={!end()}>
