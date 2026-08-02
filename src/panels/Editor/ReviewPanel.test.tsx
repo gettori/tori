@@ -102,9 +102,21 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "list_sessions":
       case "sessions_running":
         return Promise.resolve([]);
-      // checkpoint_list / checkpoint_turn_files / git_ahead_behind / git_origin
-      // / git_default_base_branch: the panel try/catches each one, so a null is
-      // a fine stand-in for every backend call this test does not drive.
+      // Reading a conflict is what composing an "ask agent to resolve" starts
+      // with; the wording itself is asserted where the composer lives.
+      case "git_conflict_stages":
+        return Promise.resolve({ base: "one\n", ours: "OURS\n", theirs: "THEIRS\n", binary: false });
+      case "git_conflict_op":
+        return Promise.resolve("merge");
+      // The turn strip only reads these once a session is selected, and it
+      // measures the answer's length rather than try/catching it, so `null`
+      // would be a crash rather than an empty timeline.
+      case "checkpoint_list":
+      case "backstop_list":
+        return Promise.resolve([]);
+      // checkpoint_turn_files / git_ahead_behind / git_origin /
+      // git_default_base_branch: the panel try/catches each one, so a null is a
+      // fine stand-in for every backend call this test does not drive.
       default:
         return Promise.resolve(null);
     }
@@ -126,7 +138,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import ReviewPanel from "./ReviewPanel";
 import { stage, refreshStatus } from "../../utils/gitActions";
-import { TOAST, OPEN_IN_EDITOR, type ToastEvent } from "../../utils/events";
+import { TOAST, OPEN_IN_EDITOR, SEND_TO_SESSION, type ToastEvent } from "../../utils/events";
 import { syntheticId } from "../../utils/syntheticTabs";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
@@ -277,9 +289,11 @@ describe("conflicts", () => {
     // or Staged Changes wearing a Stage button.
     const rows = screen.getAllByTitle("src/c.ts");
     expect(rows).toHaveLength(1);
-    // The row is the control, so it is a button: opening the file is its only
+    // The row is the control, so it is a button: opening the file is its main
     // action, and a div would make the whole section mouse-only. Nothing is
-    // nested inside it, since stage, unstage and discard are all refused here.
+    // nested inside it - stage, unstage and discard are all refused here, and
+    // the one action it does have sits beside it, since a button inside a
+    // button is not clickable in its own right.
     expect(rows[0].tagName).toBe("BUTTON");
     expect(rows[0].querySelectorAll("button")).toHaveLength(0);
     // The ordinary file beside it still gets its section and its controls, so
@@ -303,6 +317,42 @@ describe("conflicts", () => {
     window.removeEventListener(OPEN_IN_EDITOR, listener);
 
     expect(opened).toEqual([syntheticId("conflict", "/proj", "src/c.ts")]);
+  });
+
+  it("offers the conflict to the agent, and says why when there is no session to offer it to", async () => {
+    // Safe-send's capability gate, the same one the commit draft sits behind:
+    // with nothing selected there is nowhere for the text to land, and a
+    // disabled button that never says why reads as a broken control.
+    statusRows = [CONFLICT];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+
+    const ask = screen.getByText("Ask agent").closest("button") as HTMLButtonElement;
+    expect(ask.disabled).toBe(true);
+    expect(ask.title).toBe("Select a session first");
+  });
+
+  it("asks about a second conflicted file while the first is still in flight", async () => {
+    // Two conflicted files are two questions. An in-flight request is tracked
+    // per path, so the second row's button acts rather than looking enabled and
+    // doing nothing while the first waits for a session that may be booting.
+    const OTHER: FileStatus = { ...CONFLICT, path: "src/d.ts" };
+    statusRows = [CONFLICT, OTHER];
+    const selected = { folderPath: "/proj", sessionId: "s1", agent: "claude", sessionCwd: "/proj" };
+    render(() => <ReviewPanel root="/proj" selected={selected as never} />);
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+
+    // Nothing answers the requests: this is exactly the window in which the
+    // second row has to stay usable.
+    const sent: { text: string }[] = [];
+    const listener = (e: Event) => sent.push((e as CustomEvent<{ text: string }>).detail);
+    window.addEventListener(SEND_TO_SESSION, listener);
+    for (const ask of screen.getAllByText("Ask agent")) fireEvent.click(ask);
+    await waitFor(() => expect(sent).toHaveLength(2));
+    window.removeEventListener(SEND_TO_SESSION, listener);
+
+    expect(sent[0].text).toContain("@src/c.ts");
+    expect(sent[1].text).toContain("@src/d.ts");
   });
 
   it("does not offer to stash a tree git will not stash", async () => {
