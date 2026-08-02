@@ -1593,11 +1593,35 @@ pub struct PushResult {
     error: String,
 }
 
+/// One blocking `git push` through the askpass bridge, with a fresh op id so
+/// credential prompts pop the in-app dialog. Passes `--set-upstream` when
+/// `branch` tracks nothing yet (its first push).
+///
+/// Separate from [`git_push`] because two callers need opposite things from the
+/// same push: the button wants it off the UI thread and reported by event, while
+/// "open a PR" must know whether it succeeded *before* deciding to create one.
+/// Sharing the body means the second caller cannot drift from the first on
+/// `--set-upstream`, which is the flag a brand-new branch depends on.
+pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &str) -> Result<(), String> {
+    let op_id = next_op_id();
+    let set_upstream = !has_upstream(repo, branch);
+    let mut cmd = git_command(repo, &op_id, sock, token);
+    cmd.arg("push");
+    if set_upstream {
+        cmd.arg("--set-upstream");
+    }
+    cmd.arg(remote).arg(branch);
+    match cmd.output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// Background `git push` through the askpass bridge, a sibling of `git_fetch`:
-/// runs on its own thread with a fresh op id, so credential prompts pop the
-/// in-app dialog. Passes `--set-upstream` when `branch` tracks nothing yet
-/// (its first push). Emits `git://push-done` on success and `git://push-error`
-/// on failure; both carry the repo path so the UI can correlate.
+/// runs on its own thread. Emits `git://push-done` on success and
+/// `git://push-error` on failure; both carry the repo path so the UI can
+/// correlate.
 #[tauri::command]
 pub fn git_push(
     app: AppHandle,
@@ -1607,19 +1631,11 @@ pub fn git_push(
     branch: String,
 ) -> Result<(), String> {
     let inner = state.0.clone();
-    let op_id = next_op_id();
     thread::spawn(move || {
-        let set_upstream = !has_upstream(&repo, &branch);
-        let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
-        cmd.arg("push");
-        if set_upstream {
-            cmd.arg("--set-upstream");
-        }
-        cmd.arg(&remote).arg(&branch);
-        let (ok, error) = match cmd.output() {
-            Ok(o) if o.status.success() => (true, String::new()),
-            Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
-            Err(e) => (false, e.to_string()),
+        let (ok, error) = match push_branch(&repo, &remote, &branch, inner.sock_path(), inner.token())
+        {
+            Ok(()) => (true, String::new()),
+            Err(e) => (false, e),
         };
         let event = if ok { "git://push-done" } else { "git://push-error" };
         let _ = app.emit(event, PushResult { repo, ok, error });
