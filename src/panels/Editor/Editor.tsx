@@ -1119,7 +1119,15 @@ export default function Editor(props: {
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
                 </Show>
                 <Show when={t().kind === "conflict"}>
-                  <ConflictView workspace={t().workspace} file={t().arg} />
+                  {/* Resolving rewrites the file, so it reports on the same
+                      channel a discard or a checkpoint revert does: a buffer
+                      open on it with unsaved edits is offered keep-mine /
+                      take-disk rather than writing the conflict back. */}
+                  <ConflictView
+                    workspace={t().workspace}
+                    file={t().arg}
+                    onResolved={handleReverted}
+                  />
                 </Show>
               </>
             )}

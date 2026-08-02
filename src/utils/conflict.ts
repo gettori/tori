@@ -55,10 +55,24 @@ export type ConflictRegion = {
    *  merges cleanly and which a rule of "both sides touched it" would report as
    *  a conflict over two identical versions. */
   both: boolean;
+  /** Which sides moved these lines away from the base. What makes a region with
+   *  only one of them a change to *carry across* rather than a decision, and
+   *  what tells the resolver which version to carry. */
+  touched: { ours: boolean; theirs: boolean };
   base: LineRange;
   ours: LineRange;
   theirs: LineRange;
 };
+
+/** One of the two candidate versions, named by index stage rather than by who
+ *  owns it: which of them is the reader's own work depends on the operation,
+ *  and that reading lives in `sideLabels`. */
+export type Side = "ours" | "theirs";
+
+/** What the reader decided about one conflict region. `both` keeps ours then
+ *  theirs, in that order: it is the order git wrote the two into the file, so
+ *  the result reads the way the markers did. */
+export type Choice = Side | "both";
 
 /** What to call each side, and which one is the reader's own work.
  *
@@ -190,6 +204,7 @@ export function conflictRegions(base: string, ours: string, theirs: string): Con
       // merges that without complaint. Asking for a decision between two
       // identical versions is a question with no wrong answer and no right one.
       both: hasOurs && hasTheirs && lines(oursDoc, oursSpan) !== lines(theirsDoc, theirsSpan),
+      touched: { ours: hasOurs, theirs: hasTheirs },
       base: baseSpan,
       ours: oursSpan,
       theirs: theirsSpan,
@@ -221,4 +236,75 @@ export function prevConflict(regions: ConflictRegion[], currentId: string | null
   const list = conflictsOnly(regions);
   const at = currentId ? list.findIndex((r) => r.id === currentId) : -1;
   return at > 0 ? list[at - 1] : null;
+}
+
+/** The conflicts still waiting on a decision. */
+export function unresolved(
+  regions: ConflictRegion[],
+  choices: Record<string, Choice>,
+): ConflictRegion[] {
+  return conflictsOnly(regions).filter((r) => !choices[r.id]);
+}
+
+/**
+ * The sides that deleted the file, which is a conflict about the file's
+ * existence rather than about its lines.
+ *
+ * A stage is absent exactly when that side has no version of the file: the
+ * delete half of a delete/modify conflict, or both halves of a `DD`. There is
+ * nothing to resolve line by line there, and treating the absent side as an
+ * empty document would offer "accept theirs" as a way to produce an empty file
+ * where git means the file to be gone.
+ */
+export function deletedSides(stages: ConflictStages): Side[] {
+  const out: Side[] = [];
+  if (stages.ours === null) out.push("ours");
+  if (stages.theirs === null) out.push("theirs");
+  return out;
+}
+
+/**
+ * The file the chosen resolutions add up to, or null while any conflict is
+ * still undecided.
+ *
+ * Built out of the three stages rather than by editing the marker-riddled file
+ * on disk, which is the point of modelling the conflict from the index: the
+ * result contains what the reader chose and nothing git wrote to describe the
+ * choice.
+ *
+ * The walk is in base coordinates, which is the only frame all three sides
+ * share. Between regions the three documents agree, so those lines are copied
+ * from the base; inside one, the region's own span on the chosen side says
+ * which lines replace them.
+ *
+ * Null rather than a best effort when something is undecided: a half-resolved
+ * file that looks finished is worse than no file at all, and the caller's
+ * button is disabled on the same condition.
+ */
+export function resolvedText(
+  stages: ConflictStages,
+  regions: ConflictRegion[],
+  choices: Record<string, Choice>,
+): string | null {
+  if (unresolved(regions, choices).length) return null;
+  const base = (stages.base ?? "").split("\n");
+  const ours = (stages.ours ?? "").split("\n");
+  const theirs = (stages.theirs ?? "").split("\n");
+  const take = (side: Side, r: ConflictRegion) =>
+    (side === "ours" ? ours : theirs).slice(r[side].from - 1, r[side].to - 1);
+
+  const out: string[] = [];
+  let cursor = 1;
+  for (const r of regions) {
+    out.push(...base.slice(cursor - 1, r.base.from - 1));
+    // An undisputed region is not a decision, so it does not have one: whichever
+    // side moved is the version to carry. Both having moved to the same text is
+    // the `both === false` case where either answer is the same answer.
+    const choice: Choice = r.both ? choices[r.id] : r.touched.ours ? "ours" : "theirs";
+    if (choice === "both") out.push(...take("ours", r), ...take("theirs", r));
+    else out.push(...take(choice, r));
+    cursor = r.base.to;
+  }
+  out.push(...base.slice(cursor - 1));
+  return out.join("\n");
 }
