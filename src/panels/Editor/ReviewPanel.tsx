@@ -38,14 +38,18 @@ import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
-import { requestSend, type SessionTarget } from "../../utils/safeSend";
+import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { findAgent } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
+import { composeDraftRequest, prPath } from "../../utils/createPr";
+import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
+import { settings } from "../Settings/settingsStore";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
+import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
@@ -127,6 +131,19 @@ export default function ReviewPanel(props: {
   const [origin, setOrigin] = createSignal<string | null>(null);
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
   const [openingPr, setOpeningPr] = createSignal(false);
+  // The in-app create-PR form. Only reachable on a signed-in github.com remote;
+  // every other case still opens the provider's compare page (see `prPath`).
+  const [prForm, setPrForm] = createSignal(false);
+  const [prTitle, setPrTitle] = createSignal("");
+  const [prBody, setPrBody] = createSignal("");
+  // The form's own base, seeded from the repo default when the form opens.
+  // Separate from `baseBranch` on purpose: that one is what
+  // `git_default_base_branch` reported, and the compare-URL fallback reads it
+  // too, so letting the dialog write to it would leave a cancelled edit
+  // retargeting the compare page.
+  const [prBase, setPrBase] = createSignal("");
+  const [prDrafting, setPrDrafting] = createSignal(false);
+  const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   // Which file the expanded diff belongs to, and which of its two sections:
   // needed to refetch the right diff after a hunk apply or a disk change.
@@ -254,6 +271,14 @@ export default function ReviewPanel(props: {
       setOrigin(await invoke<string | null>("git_origin", { projectPath: root }));
     } catch {
       setOrigin(null);
+    }
+    // Read alongside the base branch rather than once at mount: signing in from
+    // Settings must change what "Open PR" does without a restart, and this
+    // already runs whenever the panel's project changes or the tree refreshes.
+    try {
+      setAuthState(await invoke<AuthState>("github_auth_state"));
+    } catch {
+      setAuthState({ kind: "signedOut" });
     }
     try {
       setBaseBranch(await invoke<string | null>("git_default_base_branch", { projectPath: root }));
@@ -762,14 +787,32 @@ export default function ReviewPanel(props: {
     ),
   );
 
-  // "Open PR" (task 3): push first if the branch is unpushed or ahead, then
-  // open the provider's compare/new-MR/new-PR page for branch -> base.
+  // "Open PR": one button, three paths. A signed-in github.com remote opens the
+  // in-app form; anything else (another provider, GitHub Enterprise, signed out,
+  // or the integration switched off) still pushes and opens the provider's own
+  // compare page, exactly as it did before the API existed. The decision lives
+  // in `prPath` so the button and the submit cannot disagree about it.
   async function openPr() {
+    const org = origin();
+    if (openingPr()) return;
+    if (prPath(org, authState(), settings.github.enabled) === "form") {
+      setPrTitle("");
+      setPrBody("");
+      setPrBase(baseBranch() ?? "");
+      setPrForm(true);
+      return;
+    }
+    await openCompare();
+  }
+
+  // The unauthenticated path, unchanged: push first if the branch is unpushed or
+  // ahead, then open the provider's compare/new-MR/new-PR page for branch -> base.
+  async function openCompare() {
     const root = props.root;
     const branchName = branch();
     const org = origin();
     const base = baseBranch();
-    if (!root || !branchName || !org || !base || openingPr()) return;
+    if (!root || !branchName || !org || !base) return;
     const url = comparePrUrl(org, base, branchName);
     if (!url) {
       toastError("This origin isn't a recognized GitHub/GitLab/Bitbucket host.");
@@ -784,6 +827,67 @@ export default function ReviewPanel(props: {
     }
     setOpeningPr(false);
     window.open(url, "_blank");
+  }
+
+  // Asks the agent for a title and body, through the same safe-send gate the
+  // commit-message draft uses. Insert-only: the agent proposes at its own
+  // prompt, unsubmitted, and the user copies what they want into the form.
+  async function askAgentToDraftPr() {
+    const t = target();
+    const branchName = branch();
+    // The form's base, not the repo default: a title for "wave-3 into main" is
+    // a different sentence from one for "wave-3 into release".
+    const base = prBase();
+    if (!t || disabledReason() || !branchName || !base || prDrafting()) return;
+    setPrDrafting(true);
+    const paths = [...staged(), ...unstaged()].map((f) => f.path);
+    const result = await requestSend({ ...t, text: composeDraftRequest(branchName, base, paths) });
+    setPrDrafting(false);
+    // A blocked session is refused outright rather than queued: the user has to
+    // answer that permission prompt first, and saying so is the difference
+    // between a gate and a button that silently did nothing.
+    if (result.kind === "blocked") {
+      emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
+    } else if (result.kind === "timeout") {
+      emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session, try again.", kind: "error" });
+    }
+  }
+
+  // Pushes, then creates. Always through the push-then-create command rather
+  // than checking ahead/behind first: an up-to-date push is a no-op, while a
+  // stale ahead/behind reading would open a PR against a head the remote has
+  // never seen.
+  async function submitPr(opts: { draft: boolean }) {
+    const root = props.root;
+    const branchName = branch();
+    const base = prBase().trim();
+    if (!root || !branchName || !base || openingPr()) return;
+    setOpeningPr(true);
+    try {
+      const pr = await invoke<PullRequest>("github_push_and_create_pr", {
+        projectPath: root,
+        remote: "origin",
+        newPr: {
+          title: prTitle().trim(),
+          body: prBody().trim(),
+          head: branchName,
+          base,
+          draft: opts.draft,
+        },
+      });
+      setPrForm(false);
+      emitWith<ToastEvent>(TOAST, { message: `Opened #${pr.number}`, kind: "info" });
+      await refreshMeta(root);
+    } catch (e) {
+      // The form stays open with the typed title and body intact: most of these
+      // failures are fixable in place (a base that does not exist, a PR that is
+      // already open), and losing the description to retype it is its own insult.
+      // `forgeErrorMessage` because a rejected forge command hands back an
+      // object, which `String(e)` would render as "[object Object]".
+      emitWith<ToastEvent>(TOAST, { message: forgeErrorMessage(e), kind: "error" });
+    } finally {
+      setOpeningPr(false);
+    }
   }
 
   let unlistenFs: UnlistenFn | undefined;
@@ -1333,6 +1437,23 @@ export default function ReviewPanel(props: {
             confirmReq()!.resolve(false);
             setConfirmReq(null);
           }}
+        />
+      </Show>
+      <Show when={prForm()}>
+        <CreatePrDialog
+          head={branch() ?? ""}
+          base={prBase()}
+          busy={openingPr()}
+          drafting={prDrafting()}
+          draftDisabledReason={disabledReason()}
+          title={prTitle()}
+          body={prBody()}
+          onTitleChange={setPrTitle}
+          onBodyChange={setPrBody}
+          onBaseChange={setPrBase}
+          onDraft={() => void askAgentToDraftPr()}
+          onConfirm={(opts) => void submitPr(opts)}
+          onCancel={() => setPrForm(false)}
         />
       </Show>
     </div>
