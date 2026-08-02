@@ -356,6 +356,7 @@ pub fn run() {
             forge::commands::github_create_pr,
             forge::commands::github_push_and_create_pr,
             forge::commands::github_unit_statuses,
+            forge::commands::github_list_prs,
             settings::get_settings,
             settings::set_settings,
             settings::settings_watch_start,

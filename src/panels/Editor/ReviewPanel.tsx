@@ -7,7 +7,9 @@ import {
   AGENT_FILES_WRITTEN,
   AGENT_WRITE_DEBOUNCE_MS,
   OPEN_IN_EDITOR,
+  PR_OPENED,
   TOAST,
+  type PrOpened,
   type AgentFilesWritten,
   type ToastEvent,
   type FsChanged,
@@ -877,6 +879,10 @@ export default function ReviewPanel(props: {
       });
       setPrForm(false);
       emitWith<ToastEvent>(TOAST, { message: `Opened #${pr.number}`, kind: "info" });
+      // The Pull Requests panel holds its own listing, so the write-through that
+      // makes the sidebar chip flip does not reach it. Without this the PR the
+      // user just opened is absent from the list until they hit Refresh.
+      emitWith<PrOpened>(PR_OPENED, { projectPath: root });
       await refreshMeta(root);
     } catch (e) {
       // The form stays open with the typed title and body intact: most of these

@@ -39,6 +39,8 @@ import {
   type SessionAction,
   OPEN_IN_EDITOR,
   type OpenInEditor,
+  SET_RIGHT_MODE,
+  type SetRightMode,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { syntheticId } from "../../utils/syntheticTabs";
@@ -73,7 +75,8 @@ import {
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
-import { forgeChip, type PrChipState } from "../../utils/forgeChip";
+import { forgeChip } from "../../utils/forgeChip";
+import ForgeChipView from "../../components/ForgeChip/ForgeChip";
 import { needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
@@ -109,15 +112,6 @@ import {
   MessageCircleQuestion,
   Check,
   CircleDashed,
-  GitPullRequest,
-  GitPullRequestDraft,
-  GitPullRequestClosed,
-  GitMerge,
-  CircleCheck,
-  CircleX,
-  CircleDotDashed,
-  MessageSquareWarning,
-  MessageSquareCheck,
 } from "lucide-solid";
 import type { LucideIcon } from "lucide-solid";
 import {
@@ -146,28 +140,6 @@ function kindIcon(kind: string | undefined): LucideIcon {
       return Folder;
   }
 }
-
-// The glyph for a branch-unit's pull-request state. `none` is the branch with
-// no PR: an outline of the same shape, so the row reads as "this could have one"
-// rather than as a different kind of thing.
-function prIcon(state: PrChipState): LucideIcon {
-  switch (state) {
-    case "draft":
-      return GitPullRequestDraft;
-    case "merged":
-      return GitMerge;
-    case "closed":
-      return GitPullRequestClosed;
-    default:
-      return GitPullRequest;
-  }
-}
-
-// Checks and the review verdict get different glyph families on purpose: both
-// can be green at once, and two identical ticks side by side say nothing about
-// which of the two passed.
-const CHECK_ICON = { good: CircleCheck, bad: CircleX, busy: CircleDotDashed } as const;
-const REVIEW_ICON = { good: MessageSquareCheck, bad: MessageSquareWarning, busy: CircleDotDashed } as const;
 
 // Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned to
 // the row's right edge that flips to a chevron-up (rotate 180°) when expanded.
@@ -701,8 +673,8 @@ export default function LeftSidebar(props: {
   // all, so nothing in the tree can be clicked into a capability the repo does
   // not have - and, equally, so a sidebar full of GitLab checkouts stays as
   // quiet as it is today.
-  function forgeChipNode(p: Project, u: BranchUnit) {
-    // Memoized, not a bare accessor: the JSX below reads it four times per
+  function forgeChipNode(g: Space, p: Project, u: BranchUnit) {
+    // Memoized, not a bare accessor: the component reads it several times per
     // render and each read would otherwise re-parse the origin URL.
     const chip = createMemo(() =>
       forgeChip({
@@ -712,44 +684,29 @@ export default function LeftSidebar(props: {
         status: unitStatus(p.path, u.branch),
       }),
     );
+    // A control only when there is a pull request to open a panel *onto*. A
+    // branch with no PR yet renders the quiet no-PR mark and stays inert: the
+    // panel lists what exists, and a button that opens a list this branch is
+    // not in would be a control that appears to do nothing.
+    const opens = () => chip().kind === "pr";
     return (
-      <Show when={chip().pr}>
-        {(pr) => (
-          <span class={styles.forgeChip} data-forge-state={chip().kind}>
-            <span
-              class={`${styles.forgeItem} ${styles[`pr_${pr().state}`]}`}
-              title={pr().title}
-              data-forge-pr={pr().state}
-            >
-              <Icon icon={prIcon(pr().state)} />
-              <Show when={pr().label}>{pr().label}</Show>
-            </span>
-            <Show when={chip().checks}>
-              {(c) => (
-                <span
-                  class={`${styles.forgeItem} ${styles[c().tone]}`}
-                  title={c().title}
-                  data-forge-checks={c().tone}
-                >
-                  <Icon icon={CHECK_ICON[c().tone]} />
-                </span>
-              )}
-            </Show>
-            <Show when={chip().review}>
-              {(r) => (
-                <span
-                  class={`${styles.forgeItem} ${styles[r().tone]}`}
-                  title={r().title}
-                  data-forge-review={r().tone}
-                >
-                  <Icon icon={REVIEW_ICON[r().tone]} />
-                </span>
-              )}
-            </Show>
-          </span>
-        )}
-      </Show>
+      <ForgeChipView
+        chip={chip()}
+        label={`Pull requests for ${p.name}`}
+        onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
+      />
     );
+  }
+
+  /// Select the branch-unit, then show the Pull Requests panel for its project.
+  ///
+  /// Selecting first, exactly as "New session" and "Commit log" do: the panel is
+  /// workspace-scoped, so one opened into a workspace nobody is looking at would
+  /// be invisible until you happened to switch back.
+  async function openPullRequests(g: Space, p: Project, u: BranchUnit) {
+    if (await selectUnit(g, p, u)) {
+      emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "pulls" });
+    }
   }
 
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
@@ -2115,7 +2072,7 @@ export default function LeftSidebar(props: {
           <Show when={u.isCurrent}>
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
-          {forgeChipNode(p, u)}
+          {forgeChipNode(g, p, u)}
           {statusBubble(bubbleForUnits(p, [u]))}
         </div>
       </div>

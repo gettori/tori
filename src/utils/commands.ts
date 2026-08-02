@@ -114,6 +114,7 @@ const cmdOpt = (code: string) => (e: KeyboardEvent) =>
 const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "files", label: "Files" },
   { mode: "changes", label: "Changes" },
+  { mode: "pulls", label: "Pull requests" },
   { mode: "search", label: "Search" },
   { mode: "session", label: "Session" },
   { mode: "shared", label: "Shared" },
