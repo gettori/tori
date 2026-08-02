@@ -17,6 +17,15 @@ import type { ReviewThread } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
 import styles from "./ReviewThreadView.module.css";
 
+/** The anchor as a reader scans it. A thread can span lines, since Sway itself
+ *  sends ranges, and a head showing only `line` would name the last line of a
+ *  remark whose message to the agent says the whole span. */
+function anchor(thread: ReviewThread): string {
+  const { line, startLine } = thread;
+  if (line === null) return "";
+  return startLine !== null && startLine !== line ? `${startLine}-${line}` : `${line}`;
+}
+
 export default function ReviewThreadView(props: {
   thread: ReviewThread;
   /** Whether to show the quoted hunk. On by default for a thread with no line
@@ -26,6 +35,19 @@ export default function ReviewThreadView(props: {
   onReply: (body: string) => void;
   onResolve: (resolved: boolean) => void;
   busy?: boolean;
+  /** Handing the thread to the agent that owns the branch. `label` names who
+   *  would get it and how they are doing, or says why there is nobody, and it
+   *  shows either way: a disabled button with no reason beside it is the one
+   *  thing worse than no button at all. `note` is how the last attempt went,
+   *  on the card rather than in a toast, because a toast that has scrolled a
+   *  stack of threads out of mind cannot say *which* one did not go. */
+  send?: {
+    label: string;
+    ready: boolean;
+    busy?: boolean;
+    note?: { text: string; ok: boolean } | null;
+    onSend: () => void;
+  };
 }) {
   const [draft, setDraft] = createSignal("");
   const [replying, setReplying] = createSignal(false);
@@ -50,7 +72,7 @@ export default function ReviewThreadView(props: {
       <div class={styles.head}>
         <span class={styles.where}>
           {props.thread.path}
-          <Show when={props.thread.line !== null}>:{props.thread.line}</Show>
+          <Show when={props.thread.line !== null}>:{anchor(props.thread)}</Show>
         </span>
         <Show when={props.thread.isOutdated}>
           <span class={styles.tag}>outdated</span>
@@ -86,6 +108,28 @@ export default function ReviewThreadView(props: {
           </div>
         )}
       </For>
+
+      <Show when={props.send}>
+        {(send) => (
+          <div class={styles.sendRow} data-send-to={send().label}>
+            <Button
+              variant="ghost"
+              disabled={!send().ready || send().busy}
+              onClick={() => send().onSend()}
+            >
+              Send to agent
+            </Button>
+            <span class={styles.sendTarget}>{send().label}</span>
+            <Show when={send().note}>
+              {(note) => (
+                <span class={styles.sendNote} data-send-note={note().ok ? "ok" : "error"}>
+                  {note().text}
+                </span>
+              )}
+            </Show>
+          </div>
+        )}
+      </Show>
 
       <Show
         when={replying()}

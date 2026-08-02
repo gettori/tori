@@ -43,6 +43,7 @@ const {
   liveSessionDots,
   liveSessionStatuses,
   shouldPollAccumulatedDiff,
+  branchOwner,
   resetSessionActivityForTests,
 } = await import("./sessionActivity");
 const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore");
@@ -321,6 +322,7 @@ describe("a failing check on the branch a session owns", () => {
   // A worktree unit: one branch, one folder of its own.
   const unit = (branch: string, attention: boolean) => ({
     folderPath: FOLDER,
+    projectPath: FOLDER,
     branch,
     kind: "worktree",
     isCurrent: false,
@@ -389,8 +391,8 @@ describe("a failing check on the branch a session owns", () => {
     ]);
 
     noteForgeUnits([
-      { folderPath: FOLDER, branch: "main", kind: "plain", isCurrent: true, attention: false },
-      { folderPath: FOLDER, branch: "feat", kind: "plain", isCurrent: false, attention: true },
+      { folderPath: FOLDER, projectPath: FOLDER, branch: "main", kind: "plain", isCurrent: true, attention: false },
+      { folderPath: FOLDER, projectPath: FOLDER, branch: "feat", kind: "plain", isCurrent: false, attention: true },
     ]);
 
     expect(sessionStatus("on-feat")).toBe("waitingForApproval");
@@ -480,5 +482,91 @@ describe("a failing check on the branch a session owns", () => {
     noteForgeUnits([unit("main", true)]);
     await flush();
     expect(bridge.notified.length).toBe(2);
+  });
+});
+
+describe("the session that speaks for a branch", () => {
+  // Who a review comment about a branch should reach. The attribution is
+  // `belongsToUnit`, the same rule the CI raise above uses, because a plain
+  // repo's sibling units share one folder and are told apart only by the branch
+  // a session recorded.
+  const plain = (branch: string | null) => ({
+    folderPath: FOLDER,
+    projectPath: FOLDER,
+    branch,
+    kind: "plain",
+    isCurrent: branch === "main",
+    attention: false,
+  });
+
+  beforeEach(() => {
+    resetSessionActivityForTests();
+    resetSessionStoreForTests();
+    bridge.calls.length = 0;
+  });
+
+  it("picks the branch's own session, never a sibling sharing the folder", async () => {
+    await seedSessions([meta("on-main", "main"), meta("on-feat", "feat")]);
+    noteForgeUnits([plain("main"), plain("feat")]);
+
+    expect(branchOwner(FOLDER, "feat")?.session.id).toBe("on-feat");
+    expect(branchOwner(FOLDER, "main")?.session.id).toBe("on-main");
+  });
+
+  it("takes the most recent of several, not the first the scan happened to list", async () => {
+    await seedSessions([
+      { ...meta("old", "feat"), last_active: 10 },
+      { ...meta("recent", "feat"), last_active: 90 },
+      { ...meta("middling", "feat"), last_active: 50 },
+    ]);
+    noteForgeUnits([plain("feat")]);
+    expect(branchOwner(FOLDER, "feat")?.session.id).toBe("recent");
+  });
+
+  it("answers from a worktree's own folder, which is not the project's path", async () => {
+    // The case that makes `projectPath` load-bearing. A worktree project's units
+    // each have a checkout of their own, so the directory a panel is showing is
+    // one unit's folder and not the project it belongs to. Resolving the sibling
+    // set by that folder alone would find one unit and never the branch asked
+    // about.
+    const wt = `${FOLDER}/.worktrees/feat`;
+    bridge.listing = [{ ...meta("in-wt", "feat"), cwd: wt, path: `${wt}/.t/in-wt.jsonl` }];
+    await trackFolders([wt]);
+    noteForgeUnits([
+      { folderPath: FOLDER, projectPath: FOLDER, branch: "main", kind: "worktree", isCurrent: true, attention: false },
+      { folderPath: wt, projectPath: FOLDER, branch: "feat", kind: "worktree", isCurrent: false, attention: false },
+    ]);
+
+    const owner = branchOwner(FOLDER, "feat");
+    expect(owner?.session.id).toBe("in-wt");
+    // The folder the message must be composed against: the unit's, not the one
+    // the caller happened to name.
+    expect(owner?.folderPath).toBe(wt);
+    expect(branchOwner(wt, "feat")?.session.id).toBe("in-wt");
+  });
+
+  it("works out the fallback home from this project's units, not every project's", async () => {
+    // A session that recorded no branch (an older scan, or one started outside a
+    // repo) re-homes onto its project's current checkout. `fallbackHome` decides
+    // that from the sibling list, so handing it every watched unit lets another
+    // project's current row claim the fallback and strand the session here.
+    await seedSessions([meta("branchless", "")]);
+    noteForgeUnits([
+      // Listed first and current, so a sibling set that is not filtered by
+      // folder picks *this* as the home for the units below it.
+      { folderPath: "/other", projectPath: "/other", branch: "feat", kind: "plain", isCurrent: true, attention: false },
+      plain("main"),
+      plain("feat"),
+    ]);
+
+    expect(branchOwner(FOLDER, "main")?.session.id).toBe("branchless");
+  });
+
+  it("answers nothing rather than something close, for a branch nobody has worked", async () => {
+    await seedSessions([meta("on-main", "main")]);
+    noteForgeUnits([plain("main")]);
+    expect(branchOwner(FOLDER, "feat")).toBeNull();
+    expect(branchOwner(FOLDER, "")).toBeNull();
+    expect(branchOwner("/some/other/repo", "main")).toBeNull();
   });
 });

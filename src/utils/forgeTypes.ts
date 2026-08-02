@@ -121,6 +121,10 @@ export type ReviewThread = {
   /// Absent once the thread goes outdated. A null line is what routes a thread
   /// into the outdated group rather than onto a line that has moved.
   line: number | null;
+  /// The first line of a multi-line comment, null on a single-line one. Sway
+  /// itself sends ranges, so a reader that only knew `line` would narrow a
+  /// range it had just written.
+  startLine: number | null;
   diffHunk: string;
   isResolved: boolean;
   isOutdated: boolean;
@@ -297,6 +301,7 @@ export const FORGE_KEYS = {
     "isResolved",
     "line",
     "path",
+    "startLine",
   ],
   reviewComment: ["author", "body", "createdAt", "id"],
   prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],

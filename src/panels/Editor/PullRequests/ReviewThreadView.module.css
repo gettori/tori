@@ -102,3 +102,33 @@
   justify-content: flex-end;
   gap: calc(6px * var(--ui-scale));
 }
+
+/* Handing the thread to the agent that owns the branch. The target and the
+   outcome sit beside the button rather than in a toast: a stack of threads all
+   look alike from a notification, and the one that failed is the only one worth
+   naming. */
+.sendRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sendTarget {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A confirmation and a refusal are not the same news, and one colour for both
+   makes "it did not go" read as "it went". */
+.sendNote {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+.sendNote[data-send-note="error"] {
+  color: var(--danger-fg);
+}

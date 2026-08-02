@@ -77,8 +77,25 @@ export type SendDeps = {
 // newlines would submit intermediate lines at the shell/agent's prompt), and
 // trims incidental whitespace from multi-line paste sources (a hunk comment,
 // a selection mention).
+//
+// **And removes every other control byte**, which matters as soon as any of
+// this text comes from outside the machine. `bracketedPaste` wraps the payload
+// in `ESC[200~ … ESC[201~`, so a body carrying that terminator ends the paste
+// early and hands the terminal everything after it as typing; a bare escape
+// sequence repaints or repositions the display instead. A review comment (phase
+// 12) is written by whoever reviews the pull request, so this is the first
+// composer whose input nobody here controls, and the guard belongs at the one
+// point every composer passes through rather than in each of them.
+//
+// A tab becomes a space, because it is genuine whitespace in quoted code and
+// deleting it would run two words together. Nothing else in the C0/C1 range
+// carries text.
 export function sanitizeForSend(text: string): string {
-  return text.replace(/\s*\r?\n\s*/g, " ").trim();
+  return text
+    .replace(/\s*\r?\n\s*/g, " ")
+    .replace(/\t/g, " ")
+    .replace(/\p{Cc}/gu, "")
+    .trim();
 }
 
 // Bracketed paste (no trailing Enter): the payload lands in the agent's

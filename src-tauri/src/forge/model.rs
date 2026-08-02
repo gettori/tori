@@ -191,6 +191,10 @@ pub struct ReviewThread {
     /// absent line is what routes a thread into the outdated group rather than
     /// onto a line number that no longer means what it did.
     pub line: Option<u32>,
+    /// The first line of a multi-line comment, absent on a single-line one.
+    /// Carried because Sway itself sends ranges (`DraftComment::start_line`), so
+    /// a reader that only knew `line` would narrow a range it had just written.
+    pub start_line: Option<u32>,
     pub diff_hunk: String,
     pub is_resolved: bool,
     pub is_outdated: bool,
@@ -404,6 +408,7 @@ mod tests {
                 id: "PRRT_kwDOABCD123".into(),
                 path: "src-tauri/src/forge/github.rs".into(),
                 line: Some(88),
+                start_line: Some(86),
                 diff_hunk: "@@ -1,3 +1,4 @@\n fn main() {\n+    let x = 1;".into(),
                 is_resolved: false,
                 is_outdated: false,

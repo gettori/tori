@@ -537,6 +537,7 @@ export default function LeftSidebar(props: {
             const st = u.branch ? unitStatus(p.path, u.branch) : null;
             return {
               folderPath: u.folderPath,
+              projectPath: p.path,
               branch: u.branch,
               kind: u.kind,
               isCurrent: u.isCurrent,

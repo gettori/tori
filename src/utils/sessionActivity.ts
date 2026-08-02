@@ -22,7 +22,7 @@
 import { createSignal, createMemo, createEffect, createRoot, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { LiveTab } from "./events";
-import { sessions } from "./sessionStore";
+import { sessions, type SessionMeta } from "./sessionStore";
 import { liveChats, liveChatIds } from "./chatSessions";
 import {
   statusFromDot,
@@ -65,7 +65,14 @@ export type FolderOwner = { spaceName: string; projectName: string };
  *  and a session knows only its folder; only the sidebar holds both. The shape
  *  deliberately carries no dot and no status, so the effect that produces it
  *  cannot end up reading the dots it is about to change. */
-export type ForgeUnit = AttributableUnit & { folderPath: string; attention: boolean };
+export type ForgeUnit = AttributableUnit & {
+  folderPath: string;
+  /** The project the unit belongs to. A worktree project's units each have
+   *  their own folder, so the folder alone cannot group siblings, and the
+   *  branch a pull request names is only unique within one project. */
+  projectPath: string;
+  attention: boolean;
+};
 
 // --- fed inputs -------------------------------------------------------------
 
@@ -235,6 +242,45 @@ function unitWantsAttention(folderPath: string | undefined, branch: string | und
   const siblings = unitsByFolder().get(folderPath);
   if (!siblings) return false;
   return siblings.some((u) => u.attention && belongsToUnit({ branch }, u, siblings));
+}
+
+/** One branch-unit and the session that speaks for it. */
+export type BranchOwner = { folderPath: string; session: SessionMeta };
+
+/// Who to hand a remark about `branch` to: the most recently active session of
+/// the unit that carries it, or null when no unit does or nothing has ever run
+/// there.
+///
+/// `root` is whatever directory the caller happens to be looking at. For a plain
+/// project that is the project's own path; for a worktree project it is one
+/// unit's checkout, which is *not* the project path, so the project is found
+/// through the unit list rather than assumed to equal `root`.
+///
+/// The attribution is `belongsToUnit`, the same rule Phase 7's CI raise and the
+/// sidebar's rollup badges follow. A plain repo's sibling units share one folder
+/// and are told apart only by the branch a session recorded, so a second rule
+/// here is how a review comment on `feat` ends up in the agent working on `main`.
+///
+/// Most recently active, not "the live one": a session with no tab open is still
+/// the one that wrote the branch, and safe-send resumes it. Picking a live
+/// session instead would hand the remark to whichever tab happened to be open.
+export function branchOwner(root: string, branch: string): BranchOwner | null {
+  const all = forgeUnits();
+  const projectPath =
+    all.find((u) => u.folderPath === root)?.projectPath ??
+    (all.some((u) => u.projectPath === root) ? root : null);
+  if (projectPath === null || !branch) return null;
+  const unit = all.find((u) => u.projectPath === projectPath && u.branch === branch);
+  if (!unit) return null;
+  const siblings = all.filter((u) => u.folderPath === unit.folderPath);
+  const mine = (sessions()[unit.folderPath] ?? []).filter((s) =>
+    belongsToUnit({ branch: s.branch }, unit, siblings),
+  );
+  const owner = mine.reduce<SessionMeta | null>(
+    (best, s) => (best === null || s.last_active > best.last_active ? s : best),
+    null,
+  );
+  return owner ? { folderPath: unit.folderPath, session: owner } : null;
 }
 
 /// Where each session lives: the folder it sits in and the branch it recorded.

@@ -18,6 +18,7 @@ const thread = (over: Partial<ReviewThread> = {}): ReviewThread => ({
   id: "PRRT_kwDOABCD123",
   path: "src/a.rs",
   line: 12,
+  startLine: null,
   diffHunk: "@@ -10,3 +10,4 @@\n fn main() {\n+    let x = 1;",
   isResolved: false,
   isOutdated: false,
