@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createEffect, on } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -72,6 +72,18 @@ import {
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
+import { forgeChip, type PrChipState } from "../../utils/forgeChip";
+import { apiCanServe } from "../../utils/createPr";
+import {
+  forgePause,
+  noteForgeEnabled,
+  noteWatchedProjects,
+  pollNow,
+  pollOnFocus,
+  startForgePolling,
+  unitStatus,
+  type WatchedProject,
+} from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -95,6 +107,15 @@ import {
   MessageCircleQuestion,
   Check,
   CircleDashed,
+  GitPullRequest,
+  GitPullRequestDraft,
+  GitPullRequestClosed,
+  GitMerge,
+  CircleCheck,
+  CircleX,
+  CircleDotDashed,
+  MessageSquareWarning,
+  MessageSquareCheck,
 } from "lucide-solid";
 import type { LucideIcon } from "lucide-solid";
 import {
@@ -123,6 +144,28 @@ function kindIcon(kind: string | undefined): LucideIcon {
       return Folder;
   }
 }
+
+// The glyph for a branch-unit's pull-request state. `none` is the branch with
+// no PR: an outline of the same shape, so the row reads as "this could have one"
+// rather than as a different kind of thing.
+function prIcon(state: PrChipState): LucideIcon {
+  switch (state) {
+    case "draft":
+      return GitPullRequestDraft;
+    case "merged":
+      return GitMerge;
+    case "closed":
+      return GitPullRequestClosed;
+    default:
+      return GitPullRequest;
+  }
+}
+
+// Checks and the review verdict get different glyph families on purpose: both
+// can be green at once, and two identical ticks side by side say nothing about
+// which of the two passed.
+const CHECK_ICON = { good: CircleCheck, bad: CircleX, busy: CircleDotDashed } as const;
+const REVIEW_ICON = { good: MessageSquareCheck, bad: MessageSquareWarning, busy: CircleDotDashed } as const;
 
 // Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned to
 // the row's right edge that flips to a chevron-up (rotate 180°) when expanded.
@@ -269,10 +312,14 @@ export default function LeftSidebar(props: {
     setToasts((ts) => [...ts, { id: ++toastSeq, message, kind }]);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
-  // Per-project "has an origin remote" flag: gates whether Attach Existing
+  // Per-project origin URL, keyed by project path: gates whether Attach Existing
   // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
-  // Keyed by project path.
-  const [origins, setOrigins] = createSignal<Record<string, boolean>>({});
+  //
+  // The URL rather than a flag, because the forge chip has to tell a GitHub
+  // remote from a GitLab one, and a boolean can only tell it from nothing. A
+  // missing key is "not probed yet" and a `null` value is "probed, no origin";
+  // `forgeChip` reads the difference so a launch does not flash every row inert.
+  const [origins, setOrigins] = createSignal<Record<string, string | null>>({});
   // Per-project fan-out attempts, keyed by project path. Git already reports an
   // attempt's worktree; this is only what git has no field for (its group and
   // its goal), so it is fetched alongside the config rather than folded into it.
@@ -612,6 +659,66 @@ export default function LeftSidebar(props: {
     );
   }
 
+  // The forge chip for one branch-unit: its PR, that PR's checks, and the
+  // review verdict, or nothing at all.
+  //
+  // Every decision about *whether* to draw is `forgeChip`'s; what is left here
+  // is glyphs and classes. The kinds that draw nothing (a remote the API cannot
+  // serve, a paused poller, a unit no tick has reached) render no element at
+  // all, so nothing in the tree can be clicked into a capability the repo does
+  // not have - and, equally, so a sidebar full of GitLab checkouts stays as
+  // quiet as it is today.
+  function forgeChipNode(p: Project, u: BranchUnit) {
+    // Memoized, not a bare accessor: the JSX below reads it four times per
+    // render and each read would otherwise re-parse the origin URL.
+    const chip = createMemo(() =>
+      forgeChip({
+        origin: origins()[p.path],
+        branch: u.branch,
+        paused: forgePause(),
+        status: unitStatus(p.path, u.branch),
+      }),
+    );
+    return (
+      <Show when={chip().pr}>
+        {(pr) => (
+          <span class={styles.forgeChip} data-forge-state={chip().kind}>
+            <span
+              class={`${styles.forgeItem} ${styles[`pr_${pr().state}`]}`}
+              title={pr().title}
+              data-forge-pr={pr().state}
+            >
+              <Icon icon={prIcon(pr().state)} />
+              <Show when={pr().label}>{pr().label}</Show>
+            </span>
+            <Show when={chip().checks}>
+              {(c) => (
+                <span
+                  class={`${styles.forgeItem} ${styles[c().tone]}`}
+                  title={c().title}
+                  data-forge-checks={c().tone}
+                >
+                  <Icon icon={CHECK_ICON[c().tone]} />
+                </span>
+              )}
+            </Show>
+            <Show when={chip().review}>
+              {(r) => (
+                <span
+                  class={`${styles.forgeItem} ${styles[r().tone]}`}
+                  title={r().title}
+                  data-forge-review={r().tone}
+                >
+                  <Icon icon={REVIEW_ICON[r().tone]} />
+                </span>
+              )}
+            </Show>
+          </span>
+        )}
+      </Show>
+    );
+  }
+
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
   // and select it exactly as clicking its sidebar row would - the notification
   // click handler and the tray's per-session menu entries both focus this way.
@@ -837,10 +944,11 @@ export default function LeftSidebar(props: {
         .filter((p) => p.branchUnits.some((u) => u.kind === "plain"))
         .map((p) => p.path);
       for (const repo of plainRepos) invoke("seed_attached", { repo }).catch(() => {});
-      // Populate the per-project origin flag (fire-and-forget) so the remote menu
-      // items resolve to the right variant by the time a menu is opened.
+      // Populate the per-project origin URL (fire-and-forget) so the remote menu
+      // items resolve to the right variant by the time a menu is opened, and the
+      // forge chip knows which remotes its API can actually serve.
       void (async () => {
-        const map: Record<string, boolean> = {};
+        const map: Record<string, string | null> = {};
         await Promise.all(
           cfg.spaces
             .flatMap((g) => g.projects)
@@ -850,9 +958,9 @@ export default function LeftSidebar(props: {
             })
             .map(async (p) => {
               try {
-                map[p.path] = (await invoke<string | null>("git_origin", { projectPath: p.path })) != null;
+                map[p.path] = await invoke<string | null>("git_origin", { projectPath: p.path });
               } catch {
-                map[p.path] = false;
+                map[p.path] = null;
               }
             }),
         );
@@ -1288,7 +1396,7 @@ export default function LeftSidebar(props: {
 
   // --- plain-repo branch actions (attach/detach model) ---
 
-  const hasOrigin = (p: Project) => origins()[p.path] === true;
+  const hasOrigin = (p: Project) => (origins()[p.path] ?? null) !== null;
 
   // Repos already warned about a missing credential helper, so the notice fires
   // once per session, not on every fetch.
@@ -1974,6 +2082,7 @@ export default function LeftSidebar(props: {
           <Show when={u.isCurrent}>
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
+          {forgeChipNode(p, u)}
           {statusBubble(bubbleForUnits(p, [u]))}
         </div>
       </div>
@@ -2133,6 +2242,12 @@ export default function LeftSidebar(props: {
         // (e.g. a frozen hook Notification) would otherwise never be re-queried.
         // Refocusing the window re-syncs it, clearing a wrongly-pinned amber dot.
         void refreshTailStates();
+        // The forge's own focus tick. `startForgePolling` also listens for the
+        // DOM focus event; this is the signal the rest of the sidebar has always
+        // trusted for a native refocus. Both go through `pollOnFocus`, so
+        // whichever wins the race does the same thing, and the 30s per-project
+        // gap absorbs the loser.
+        void pollOnFocus();
       }
     });
     // Attach-flow background fetch: fold remote-only branches into the open
@@ -2183,6 +2298,56 @@ export default function LeftSidebar(props: {
     unlistenFetchError?.();
     offFocus?.();
   });
+
+  // --- forge polling ---------------------------------------------------------
+
+  // The kill switch, straight from Settings. Read through an effect rather than
+  // at mount so switching it off stops the schedule on the click, not on the
+  // next launch.
+  createEffect(() => noteForgeEnabled(appSettings.github?.enabled ?? true));
+
+  // What the poller watches, and which of it is on screen.
+  //
+  // **The active space only.** A tick costs one request per project, so watching
+  // every space would multiply the hourly budget by the number of spaces in
+  // order to keep chips fresh on rows that are not rendered anywhere. Projects
+  // the API cannot serve are filtered out here rather than asked and refused:
+  // a GitLab checkout would spend a request to be told `unsupportedRemote`,
+  // every tick, forever.
+  //
+  // `visible` is the project's disclosure, not the row's exact presence. It only
+  // orders the ask (the per-tick cap falls on the tail), so the cost of being
+  // approximate is that a branch hidden behind "N more branches" is asked about
+  // slightly earlier than it deserves - not that anything goes unasked.
+  createEffect(() => {
+    const g = activeSpace();
+    const seen = origins();
+    const watched: WatchedProject[] = (g?.projects ?? [])
+      .filter((p) => apiCanServe(seen[p.path] ?? null))
+      .map((p) => {
+        const open = expanded().has(pkey(g!, p));
+        return {
+          path: p.path,
+          units: p.branchUnits
+            .filter((u) => u.branch)
+            .map((u) => ({ branch: u.branch, visible: open })),
+        };
+      });
+    noteWatchedProjects(watched);
+    // The opening tick. `startForgePolling` deliberately does not fire one at
+    // mount (nothing is watched yet), so the first ask is here, the moment there
+    // is something to ask about. Re-running on every disclosure toggle is safe:
+    // `mayPoll` holds each project to one tick per 30 seconds.
+    //
+    // `untrack` because polling *reads* the store it is scheduling against - the
+    // backoff clocks, the auth state, the last-poll stamps. Tracked, this effect
+    // would inherit the change rate of all of them and re-run on every failed
+    // tick's backoff write, which is the exact shape
+    // `lesson_a_solid_effect_inherits_the_change_rate_of_what_it_reads` names.
+    if (watched.length) untrack(() => void pollNow("focus"));
+  });
+
+  onCleanup(startForgePolling());
 
   // The window's background wash follows the active space. Written as one
   // inline custom property on `<html>` (see utils/spaceTint.ts for why that is
