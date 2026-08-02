@@ -41,6 +41,30 @@
   border-radius: 2px;
 }
 
+/* Line-level staging. Only a changed line gets these, and only where the
+   surface offers the selection at all, so a diff that is purely for reading
+   still reads as text rather than as a form. */
+.diffLine.selectable {
+  cursor: pointer;
+}
+/* Deliberately not --canvas-card: that is what an empty side-by-side cell
+   already uses, so hovering a changed line would make it read as a cell with
+   nothing in it. */
+.diffLine.selectable:hover {
+  background: var(--neutral-hover);
+}
+.diffLine.selectable:focus-visible {
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}
+.diffLine.selected,
+.diffLine.selectable.selected:hover {
+  background: var(--accent-subtle);
+  /* The mark is on the left edge, where the +/- already is, so a selected line
+     is legible at a glance without the row colour fighting the diff colour. */
+  box-shadow: inset calc(3px * var(--ui-scale)) 0 0 var(--accent-fg);
+}
+
 /* Side-by-side. Both columns live in one grid row inside a single scroll
    container, so they stay aligned and scroll together without a sync handler. */
 .sideBySide {
