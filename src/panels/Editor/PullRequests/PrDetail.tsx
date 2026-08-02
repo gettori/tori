@@ -33,6 +33,11 @@ import {
   withResolved,
 } from "../../../utils/reviewThreads";
 import { anchorFor, anchorLabel, isSelfAuthored } from "../../../utils/pendingReview";
+import { composeThreadAsk } from "../../../utils/threadAsk";
+import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../../utils/safeSend";
+import { branchOwner, sessionStatus } from "../../../utils/sessionActivity";
+import { STATUS_LABEL } from "../../../utils/sessionStatus";
+import { findAgent } from "../../../utils/agents";
 import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
   forgeErrorMessage,
@@ -102,6 +107,13 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
   const reviewing = () => reviewOpen() || pending().length > 0;
   const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer()));
 
+  // Handing a thread back to the agent that wrote the branch. Which thread is in
+  // flight, and how the last attempt on each went. Per thread rather than one
+  // panel-wide line, because a reader who sent three of them needs to know which
+  // one did not land.
+  const [sendingThread, setSendingThread] = createSignal<string | null>(null);
+  const [sendNotes, setSendNotes] = createSignal<Record<string, { text: string; ok: boolean }>>({});
+
   const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -135,6 +147,8 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
       setPicked(null);
       setDraftBody("");
       setReviewOpen(false);
+      setSendingThread(null);
+      setSendNotes({});
       setLoading(true);
       setError(null);
       try {
@@ -419,6 +433,85 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
     return n;
   }
 
+  // --- handing a thread to the agent that owns the branch --------------------
+
+  /// The session a remark about this pull request should reach.
+  ///
+  /// The branch, not the selection. Every other safe-send surface in the app
+  /// composes for whatever session is selected, because it is looking at that
+  /// session's own working tree; this one is looking at a branch, and the
+  /// session that wrote it may not be the one on screen, may be in a different
+  /// worktree, and may have no tab open at all.
+  const owner = createMemo(() => branchOwner(props.root, props.pr.headRef));
+
+  const ownerTarget = createMemo<SessionTarget | null>(() => {
+    const o = owner();
+    if (!o) return null;
+    return {
+      sessionId: o.session.id,
+      agent: o.session.agent ?? "claude",
+      folderPath: o.folderPath,
+      sessionCwd: o.session.cwd,
+      sessionPath: o.session.path,
+      sessionTitle: o.session.title,
+      sessionFile: o.session.path,
+    };
+  });
+
+  /// Who would get the thread and how they are doing, or why nobody would.
+  ///
+  /// One memo rather than a label beside a separate refusal, because they are
+  /// the same question asked twice and a pair that could disagree is how a
+  /// reason ends up printed next to a button that still works.
+  ///
+  /// Both refusals are about the target, never about the thread: an outdated or
+  /// resolved conversation is still worth an agent's attention, and withholding
+  /// it would be this panel deciding what the reader meant. The readiness is the
+  /// composed session status, the same one the sidebar row shows, so the two
+  /// cannot disagree about a session mid-turn. `none` is not a refusal: a
+  /// session with nothing running is resumed by safe-send before it writes.
+  const sendTo = createMemo<{ label: string; name: string; ready: boolean }>(() => {
+    const o = owner();
+    if (!o) {
+      const label = `Nothing has run on ${props.pr.headRef} in this project.`;
+      return { label, name: "", ready: false };
+    }
+    const name = o.session.name || o.session.title || o.session.id;
+    if (findAgent(o.session.agent ?? "claude").resume_args.length === 0) {
+      return { label: "This agent's sessions can't be resumed", name, ready: false };
+    }
+    const status = sessionStatus(o.session.id);
+    const how = status === "none" ? "Not running" : STATUS_LABEL[status];
+    return { label: `${name} · ${how}`, name, ready: true };
+  });
+
+  async function sendThread(t: ReviewThread) {
+    const target = ownerTarget();
+    const home = owner();
+    if (!target || !home || !sendTo().ready) return;
+    const mine = current;
+    // Read before the send, not after: the owner can change while a message is
+    // in flight (a newer session appears, the branch moves), and a confirmation
+    // naming whoever owns it *now* would name a session that received nothing.
+    const to = sendTo().name;
+    setSendingThread(t.id);
+    const note = (text: string, ok: boolean) => {
+      if (mine === current) setSendNotes((m) => ({ ...m, [t.id]: { text, ok } }));
+    };
+    try {
+      // The unit's own folder, not `props.root`: a worktree project's units each
+      // have a checkout, and a path resolved against the panel's one would
+      // mention a real file in the wrong copy of the repo.
+      const text = composeThreadAsk(target, home.folderPath, props.pr.number, t);
+      const result = await requestSend({ ...target, text });
+      if (result.kind === "sent") note(`Sent to ${to}.`, true);
+      else if (result.kind === "blocked") note(BLOCKED_REASON, false);
+      else note("Couldn't reach the session, try again.", false);
+    } finally {
+      if (mine === current) setSendingThread(null);
+    }
+  }
+
   function threadCard(t: ReviewThread, quoteHunk?: boolean) {
     return (
       <ReviewThreadView
@@ -427,6 +520,13 @@ export default function PrDetail(props: { root: string; pr: PullRequest; onBack:
         busy={busyThread() === t.id}
         onReply={(body) => void reply(t.id, body)}
         onResolve={(resolved) => void setResolved(t.id, resolved)}
+        send={{
+          label: sendTo().label,
+          ready: sendTo().ready,
+          busy: sendingThread() === t.id,
+          note: sendNotes()[t.id] ?? null,
+          onSend: () => void sendThread(t),
+        }}
       />
     );
   }

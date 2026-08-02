@@ -97,6 +97,8 @@ const bridge = vi.hoisted(() => ({
   resolveFails: null as { kind: string; message: string } | null,
   viewer: null as string | null,
   submitFails: null as { kind: string; message: string } | null,
+  sessions: [] as unknown[],
+  running: [] as string[],
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -124,6 +126,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.viewer ? Promise.resolve(bridge.viewer) : Promise.reject(new Error("signed out"));
     if (cmd === "github_submit_review")
       return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
+    if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
+    if (cmd === "sessions_running") return Promise.resolve(bridge.running);
     if (cmd === "github_auth_state")
       return Promise.resolve(
         bridge.viewer ? { kind: "signedIn", login: bridge.viewer } : { kind: "signedOut" },
@@ -132,9 +136,23 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: () => Promise.resolve(false),
+  requestPermission: () => Promise.resolve("denied"),
+  sendNotification: () => {},
+  onAction: () => Promise.resolve(() => {}),
+}));
+
 const { default: PrDetail } = await import("./PrDetail");
 const { noteForgeAuth, noteForgeEnabled, resetForgeStatusForTests } = await import(
   "../../../utils/forgeStatus"
+);
+const { noteForgeUnits, probeBatch, resetSessionActivityForTests } = await import(
+  "../../../utils/sessionActivity"
+);
+const { trackFolders, resetSessionStoreForTests } = await import("../../../utils/sessionStore");
+const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
+  "../../../utils/events"
 );
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
@@ -410,6 +428,7 @@ describe("review threads on a pull request's diff", () => {
     id: "PRRT_1",
     path: "src/edit.ts",
     line: 2,
+    startLine: null,
     diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
     isResolved: false,
     isOutdated: false,
@@ -815,5 +834,207 @@ describe("reading without reviewing", () => {
 
     fireEvent.click(screen.getByText("Review"));
     expect(document.querySelectorAll('[role="checkbox"]').length).toBeGreaterThan(0);
+  });
+});
+
+describe("handing a review thread to the agent that owns the branch", () => {
+  // The branch, not the selection. Every other safe-send surface composes for
+  // whatever session is selected, because it is looking at that session's own
+  // working tree. This one is looking at a branch, and the session that wrote it
+  // may be in another worktree with no tab open.
+  const session = (id: string, branch: string, over: Record<string, unknown> = {}) => ({
+    id,
+    path: `${ROOT}/.sessions/${id}.jsonl`,
+    cwd: ROOT,
+    branch,
+    title: `title of ${id}`,
+    last_active: 1,
+    created_at: 1,
+    name: null,
+    agent: "claude",
+    ...over,
+  });
+
+  const unit = (branch: string | null) => ({
+    folderPath: ROOT,
+    projectPath: ROOT,
+    branch,
+    kind: "plain",
+    isCurrent: branch === "main",
+    attention: false,
+  });
+
+  /** Stand in for Terminal.tsx, the sole consumer of SEND_TO_SESSION. Records
+   *  what it was asked to write and answers with `result`. */
+  function fakeTerminal(result: "sent" | "blocked" | "timeout") {
+    const seen: Record<string, unknown>[] = [];
+    const off = onWith<{ requestId: string }>(SEND_TO_SESSION, (req) => {
+      seen.push(req as unknown as Record<string, unknown>);
+      emitWith(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result });
+    });
+    return { seen, off };
+  }
+
+  const openWithThread = async () => {
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-file-status]")!);
+    await waitFor(() => expect(document.querySelector("[data-thread-id]")).toBeTruthy());
+  };
+
+  const sendButton = () =>
+    screen.getAllByText("Send to agent").find((n) => n.closest("button"))!.closest("button")!;
+
+  beforeEach(async () => {
+    resetForgeStatusForTests();
+    resetSessionActivityForTests();
+    resetSessionStoreForTests();
+    bridge.calls.length = 0;
+    bridge.fail = null;
+    bridge.viewer = null;
+    bridge.running = [];
+    bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
+    bridge.threads = [
+      {
+        id: "PRRT_1",
+        path: "src/edit.ts",
+        line: 2,
+        startLine: null,
+        diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
+        isResolved: false,
+        isOutdated: false,
+        comments: [
+          { id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" },
+        ],
+      },
+    ];
+    bridge.threadsFail = null;
+    localStorage.clear();
+  });
+
+  it("sends to the session on the pull request's branch, not the one in front of you", async () => {
+    // A plain project: both units share one folder and are told apart only by
+    // the branch each session recorded, which is the exact case a second
+    // attribution rule gets wrong. `belongsToUnit` is the one Phase 7 uses.
+    bridge.sessions = [session("on-main", "main"), session("on-wave", "wave-3")];
+    await trackFolders([ROOT]);
+    noteForgeUnits([unit("main"), unit("wave-3")]);
+
+    const term = fakeTerminal("sent");
+    await openWithThread();
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(term.seen).toHaveLength(1));
+    term.off();
+
+    expect(term.seen[0].sessionId).toBe("on-wave");
+    // The whole remark, in one line, with the anchor the agent can open.
+    expect(term.seen[0].text).toBe(
+      'Review comment on @src/edit.ts line 2 (PR #42). reviewer wrote: "this drops the error". ' +
+        "Make the change here; the reply on GitHub is sent from Sway.",
+    );
+    const note = document.querySelector("[data-send-note]")!;
+    expect(note.textContent).toBe("Sent to title of on-wave.");
+    // Marked as news that went well. One colour for both outcomes is how "it
+    // did not go" ends up reading as "it went".
+    expect(note.getAttribute("data-send-note")).toBe("ok");
+  });
+
+  it("confirms the session that received it, not whoever owns the branch by then", async () => {
+    // The owner can move while a message is in flight: a newer session appears,
+    // or the branch does. A confirmation resolved after the send would name a
+    // session that received nothing.
+    bridge.sessions = [session("on-wave", "wave-3")];
+    await trackFolders([ROOT]);
+    noteForgeUnits([unit("wave-3")]);
+    await openWithThread();
+
+    const off = onWith<{ requestId: string }>(SEND_TO_SESSION, (req) => {
+      noteForgeUnits([]); // the branch loses its unit mid-flight
+      emitWith(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: "sent" });
+    });
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(document.querySelector("[data-send-note]")).toBeTruthy());
+    off();
+
+    expect(document.querySelector("[data-send-note]")!.textContent).toBe(
+      "Sent to title of on-wave.",
+    );
+  });
+
+  it("shows the whole span a multi-line thread covers, not just its last line", async () => {
+    // The card and the message must agree. A comment Sway wrote through Phase 11
+    // can span lines, so a header naming only `line` describes a narrower remark
+    // than the one being sent.
+    (bridge.threads[0] as { startLine: number | null }).startLine = 1;
+    bridge.sessions = [];
+    await trackFolders([ROOT]);
+    noteForgeUnits([]);
+    await openWithThread();
+    expect(document.querySelector('[data-thread-id="PRRT_1"]')!.textContent).toContain(
+      "src/edit.ts:1-2",
+    );
+  });
+
+  it("names the session and how it is doing before anything is sent", async () => {
+    bridge.sessions = [session("on-wave", "wave-3")];
+    bridge.running = ["on-wave"];
+    await trackFolders([ROOT]);
+    await probeBatch([{ id: "on-wave", agent: "claude" }]);
+    noteForgeUnits([unit("wave-3")]);
+
+    await openWithThread();
+    // A session with no tab caps at "running", which is what a detached agent
+    // looks like: real, resumable, and not idle.
+    expect(document.querySelector("[data-send-to]")!.getAttribute("data-send-to")).toBe(
+      "title of on-wave · Running",
+    );
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it("refuses, with a reason, when nothing has ever run on the branch", async () => {
+    bridge.sessions = [session("on-main", "main")];
+    await trackFolders([ROOT]);
+    noteForgeUnits([unit("main")]);
+
+    const term = fakeTerminal("sent");
+    await openWithThread();
+    expect(sendButton().disabled).toBe(true);
+    expect(document.querySelector("[data-send-to]")!.getAttribute("data-send-to")).toBe(
+      "Nothing has run on wave-3 in this project.",
+    );
+
+    fireEvent.click(sendButton());
+    await Promise.resolve();
+    term.off();
+    expect(term.seen).toHaveLength(0);
+  });
+
+  it("says on the thread itself when a send is refused or never lands", async () => {
+    // On the card, not in a toast. A reader who sent three threads needs to know
+    // which one did not go, and a toast that has scrolled them out of view
+    // cannot say. The thread is left exactly as it was either way.
+    bridge.sessions = [session("on-wave", "wave-3")];
+    await trackFolders([ROOT]);
+    noteForgeUnits([unit("wave-3")]);
+    await openWithThread();
+
+    for (const [result, expected] of [
+      ["blocked", "Session is waiting for permission, answer it first."],
+      ["timeout", "Couldn't reach the session, try again."],
+    ] as const) {
+      const term = fakeTerminal(result);
+      fireEvent.click(sendButton());
+      await waitFor(() =>
+        expect(document.querySelector("[data-send-note]")!.textContent).toBe(expected),
+      );
+      expect(document.querySelector("[data-send-note]")!.getAttribute("data-send-note")).toBe(
+        "error",
+      );
+      term.off();
+      // Unsent: nothing was added to the conversation, and the button is live
+      // again for a retry.
+      expect(document.querySelectorAll('[data-thread-id="PRRT_1"] [data-pending]')).toHaveLength(1);
+      expect(sendButton().disabled).toBe(false);
+    }
   });
 });

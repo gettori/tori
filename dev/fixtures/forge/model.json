@@ -92,7 +92,8 @@
     "isOutdated": false,
     "isResolved": false,
     "line": 88,
-    "path": "src-tauri/src/forge/github.rs"
+    "path": "src-tauri/src/forge/github.rs",
+    "startLine": 86
   },
   "statusReport": {
     "rate": {
