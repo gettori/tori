@@ -841,7 +841,12 @@ fn parse_log(text: &str) -> Vec<LogEntry> {
 /// How many commits one page holds when the caller does not say.
 const LOG_PAGE: u32 = 100;
 
-/// A page of the current branch's history, newest first.
+/// A page of history, newest first: the whole branch, or one file's own.
+///
+/// With `file` set the page is that path's history through `--follow`, which is
+/// the only way to see a file's life before it was renamed - git stores no such
+/// link, it re-detects the rename at each step, so nothing but `--follow` can
+/// answer "where did this file come from".
 ///
 /// An unborn HEAD (a repo with no commits yet) is an empty log, not an error:
 /// `git log` exits non-zero there, and a fresh `bare_init` worktree is exactly
@@ -852,6 +857,7 @@ pub fn git_log(
     project_path: String,
     skip: Option<u32>,
     limit: Option<u32>,
+    file: Option<String>,
 ) -> Result<Vec<LogEntry>, String> {
     match git_capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"]) {
         // `--quiet` silences exactly one failure, "HEAD names no commit", and
@@ -863,8 +869,171 @@ pub fn git_log(
     }
     let skip = format!("--skip={}", skip.unwrap_or(0));
     let limit = format!("--max-count={}", limit.unwrap_or(LOG_PAGE));
-    let out = git_capture(&project_path, &["log", "-z", LOG_FORMAT, &skip, &limit])?;
+    let mut args = vec!["log", "-z", LOG_FORMAT, &skip, &limit];
+    if let Some(path) = file.as_deref() {
+        // `--follow` takes exactly one pathspec, and it must come after `--`.
+        args.extend_from_slice(&["--follow", "--", path]);
+    }
+    let out = git_capture(&project_path, &args)?;
     Ok(parse_log(&out))
+}
+
+/// One file's place in a commit.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct CommitFile {
+    /// The path as of this commit. For a delete, the path that went away.
+    pub path: String,
+    /// Where it came from, for a rename or a copy. Carried because the patch
+    /// needs it too: pathspec-limited rename detection only pairs the two sides
+    /// when *both* are in the pathspec, and asking for the new path alone turns
+    /// a rename into a whole-file addition.
+    pub old_path: Option<String>,
+    /// git's status letter with its similarity score stripped: A, M, D, R, C, T.
+    pub status: String,
+}
+
+/// Everything a commit tab shows above its diffs.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct CommitDetail {
+    pub sha: String,
+    pub short: String,
+    pub subject: String,
+    pub body: String,
+    pub author: String,
+    pub email: String,
+    pub relative_date: String,
+    /// Full shas, first-parent first. Two or more means a merge, which is what
+    /// the header says and what the diff framing below is chosen for.
+    pub parents: Vec<String>,
+    pub refs: Vec<String>,
+    pub files: Vec<CommitFile>,
+}
+
+const COMMIT_META_FORMAT: &str =
+    "--format=%H%x00%h%x00%s%x00%b%x00%an%x00%ae%x00%cr%x00%P%x00%D";
+
+/// The framing that answers a commit's three awkward shapes with one command.
+///
+/// `--root` gives the first commit a diff against nothing, rather than nothing
+/// at all. `-m --first-parent` gives a merge one diff against the branch it
+/// landed on, where plain `git show` gives a merge the *combined* diff, which is
+/// empty for a clean merge, and nearly every merge is clean. `-M` finds renames,
+/// so a moved file is one row instead of a delete standing beside an addition.
+const COMMIT_DIFF_ARGS: &[&str] = &[
+    "diff-tree",
+    "-r",
+    "-m",
+    "--first-parent",
+    "--root",
+    "-M",
+    "--no-commit-id",
+];
+
+/// A commit id, and nothing that could be read as an option. Tab ids are strings
+/// and so is `--output=/etc/passwd`; the sha reaching a command line has to be
+/// proven to be a sha first.
+fn valid_object_name(sha: &str) -> bool {
+    (7..=64).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Parse `--name-status -z`. A rename or copy record spends *three* fields
+/// (`R094`, old, new) where every other record spends two, so the reader pulls
+/// the extra field rather than splitting into fixed-size chunks.
+fn parse_commit_files(text: &str) -> Vec<CommitFile> {
+    let mut out = Vec::new();
+    let mut fields = text.split('\0');
+    while let Some(code) = fields.next() {
+        // The stream's own terminator leaves a trailing empty field.
+        let Some(letter) = code.chars().next() else {
+            continue;
+        };
+        if letter == 'R' || letter == 'C' {
+            let (Some(old), Some(path)) = (fields.next(), fields.next()) else {
+                break;
+            };
+            out.push(CommitFile {
+                path: path.to_string(),
+                old_path: Some(old.to_string()),
+                status: letter.to_string(),
+            });
+        } else {
+            let Some(path) = fields.next() else { break };
+            out.push(CommitFile {
+                path: path.to_string(),
+                old_path: None,
+                status: letter.to_string(),
+            });
+        }
+    }
+    out
+}
+
+fn parse_commit_meta(text: &str, files: Vec<CommitFile>) -> Option<CommitDetail> {
+    let fields: Vec<&str> = text.split('\0').collect();
+    let c = fields.chunks_exact(9).next()?;
+    Some(CommitDetail {
+        sha: c[0].to_string(),
+        short: c[1].to_string(),
+        subject: c[2].to_string(),
+        // `%b` keeps the blank line that separated it from the subject.
+        body: c[3].trim_end().to_string(),
+        author: c[4].to_string(),
+        email: c[5].to_string(),
+        relative_date: c[6].to_string(),
+        parents: c[7].split_whitespace().map(str::to_string).collect(),
+        refs: parse_refs(c[8]),
+        files,
+    })
+}
+
+/// One commit's metadata and the files it touched.
+#[tauri::command]
+pub fn git_commit_detail(project_path: String, sha: String) -> Result<CommitDetail, String> {
+    if !valid_object_name(&sha) {
+        return Err(format!("Not a commit id: {}", sha));
+    }
+    let meta = git_capture(&project_path, &["log", "-1", "-z", COMMIT_META_FORMAT, &sha])?;
+    let mut args: Vec<&str> = COMMIT_DIFF_ARGS.to_vec();
+    args.extend_from_slice(&["--name-status", "-z", &sha]);
+    let names = git_capture(&project_path, &args)?;
+    parse_commit_meta(&meta, parse_commit_files(&names))
+        .ok_or_else(|| format!("Could not read commit {}", sha))
+}
+
+/// One file's patch within a commit. `old_path` comes straight back from
+/// `git_commit_detail`; without it a renamed file reads as an addition of the
+/// whole file (see `CommitFile::old_path`).
+///
+/// Run directly rather than through `git_capture` because a patch's last line
+/// can legitimately be a context line that is nothing but a space, and trimming
+/// the output would drop it.
+#[tauri::command]
+pub fn git_commit_file_diff(
+    project_path: String,
+    sha: String,
+    file: String,
+    old_path: Option<String>,
+    context: Option<u32>,
+) -> Result<String, String> {
+    if !valid_object_name(&sha) {
+        return Err(format!("Not a commit id: {}", sha));
+    }
+    let unified = format!("-U{}", context.unwrap_or(3));
+    let mut args: Vec<&str> = COMMIT_DIFF_ARGS.to_vec();
+    args.extend_from_slice(&["--no-color", &unified, "-p", &sha, "--", &file]);
+    if let Some(old) = old_path.as_deref() {
+        args.push(old);
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&project_path)
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Which two trees a diff compares. A partially-staged ("MM") file has a row in
@@ -2945,7 +3114,7 @@ diff --git a/f b/f
         }
         git(&dir, &["tag", "v1"]);
 
-        let all = git_log(p.clone(), None, None).unwrap();
+        let all = git_log(p.clone(), None, None, None).unwrap();
         assert_eq!(
             all.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             ["commit 4", "commit 3", "commit 2", "init"],
@@ -2958,13 +3127,13 @@ diff --git a/f b/f
         assert!(all[0].refs.iter().any(|r| r == "tag: v1"), "refs were {:?}", all[0].refs);
         assert!(all[1].refs.is_empty());
 
-        let page = git_log(p.clone(), Some(1), Some(2)).unwrap();
+        let page = git_log(p.clone(), Some(1), Some(2), None).unwrap();
         assert_eq!(
             page.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             ["commit 3", "commit 2"],
         );
         // Past the end is an empty page, not an error.
-        assert!(git_log(p, Some(99), Some(2)).unwrap().is_empty());
+        assert!(git_log(p, Some(99), Some(2), None).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -2977,9 +3146,175 @@ diff --git a/f b/f
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
 
-        assert_eq!(git_log(dir.to_string_lossy().into_owned(), None, None).unwrap(), vec![]);
+        assert_eq!(git_log(dir.to_string_lossy().into_owned(), None, None, None).unwrap(), vec![]);
         // A folder that is not a repo at all still reports the real failure.
-        assert!(git_log(dir.join("nope").to_string_lossy().into_owned(), None, None).is_err());
+        assert!(git_log(dir.join("nope").to_string_lossy().into_owned(), None, None, None).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_files_parse_a_rename_beside_ordinary_records() {
+        // A rename spends three fields where everything else spends two, so a
+        // fixed-size chunker desyncs from the first rename onward and every path
+        // after it is read out of the wrong slot. Same shape as the Phase 2
+        // status parser, and the same reason to pin it.
+        let text = "M\0src/a.ts\0R094\0old/name.ts\0new/name.ts\0A\0docs/b.md\0D\0gone.txt\0";
+        let files = parse_commit_files(text);
+
+        assert_eq!(
+            files,
+            vec![
+                CommitFile { path: "src/a.ts".into(), old_path: None, status: "M".into() },
+                CommitFile {
+                    path: "new/name.ts".into(),
+                    old_path: Some("old/name.ts".into()),
+                    status: "R".into(),
+                },
+                CommitFile { path: "docs/b.md".into(), old_path: None, status: "A".into() },
+                CommitFile { path: "gone.txt".into(), old_path: None, status: "D".into() },
+            ],
+        );
+    }
+
+    /// A repo whose history holds the three shapes a commit view has to survive:
+    /// a root commit, a merge, and a rename carrying an edit.
+    fn repo_with_awkward_history() -> std::path::PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_commit_detail_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "user.email", "t@t"]);
+        git(&dir, &["config", "user.name", "t"]);
+
+        std::fs::write(dir.join("big.txt"), (1..=20).map(|i| format!("{i}\n")).collect::<String>()).unwrap();
+        std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+        git(&dir, &["add", "-A"]);
+        git(&dir, &["commit", "-q", "-m", "root"]);
+
+        git(&dir, &["checkout", "-q", "-b", "side"]);
+        std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+        git(&dir, &["add", "-A"]);
+        git(&dir, &["commit", "-q", "-m", "side work"]);
+
+        git(&dir, &["checkout", "-q", "main"]);
+        std::fs::write(dir.join("a.txt"), "a\nsecond\n").unwrap();
+        git(&dir, &["commit", "-q", "-am", "grow a"]);
+        git(&dir, &["merge", "-q", "--no-ff", "side", "-m", "merge side"]);
+
+        git(&dir, &["mv", "big.txt", "moved.txt"]);
+        std::fs::write(dir.join("moved.txt"), (1..=21).map(|i| format!("{i}\n")).collect::<String>()).unwrap();
+        git(&dir, &["commit", "-q", "-am", "rename with edit\n\nand a body paragraph"]);
+        dir
+    }
+
+    fn sha_of(dir: &std::path::Path, rev: &str) -> String {
+        git_capture(&dir.to_string_lossy(), &["rev-parse", rev]).unwrap()
+    }
+
+    #[test]
+    fn commit_detail_of_a_merge_diffs_against_the_branch_it_landed_on() {
+        // The verify: a merge must not render an empty diff. `git show`'s own
+        // default (the combined diff) is empty for a clean merge, which is
+        // nearly every merge, so the framing is the whole test.
+        let dir = repo_with_awkward_history();
+        let p = dir.to_string_lossy().into_owned();
+        let merge = sha_of(&dir, "HEAD^");
+
+        let detail = git_commit_detail(p.clone(), merge.clone()).unwrap();
+        assert_eq!(detail.subject, "merge side");
+        assert_eq!(detail.parents.len(), 2, "a merge names both parents");
+        let paths: Vec<&str> = detail.files.iter().map(|f| f.path.as_str()).collect();
+        assert!(paths.contains(&"b.txt"), "the merge brought b.txt in, files were {paths:?}");
+
+        let patch = git_commit_file_diff(p, merge, "b.txt".into(), None, Some(3)).unwrap();
+        assert!(patch.contains("+b"), "the merge's diff was empty: {patch:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_detail_pairs_a_rename_into_one_row_and_diffs_it_as_a_move() {
+        let dir = repo_with_awkward_history();
+        let p = dir.to_string_lossy().into_owned();
+        let head = sha_of(&dir, "HEAD");
+
+        let detail = git_commit_detail(p.clone(), head.clone()).unwrap();
+        assert_eq!(detail.subject, "rename with edit");
+        assert_eq!(detail.body, "and a body paragraph");
+        assert_eq!(detail.parents.len(), 1);
+        assert_eq!(
+            detail.files,
+            vec![CommitFile {
+                path: "moved.txt".into(),
+                old_path: Some("big.txt".into()),
+                status: "R".into(),
+            }],
+            "a move is one row, not a delete standing beside an addition",
+        );
+
+        // Both paths go to git, which is what makes it read as a move; the new
+        // path alone comes back as an addition of all 21 lines.
+        let moved = git_commit_file_diff(p.clone(), head.clone(), "moved.txt".into(), Some("big.txt".into()), Some(3))
+            .unwrap();
+        assert!(moved.contains("rename from big.txt"), "{moved}");
+        assert!(moved.contains("+21"), "the edit inside the rename is missing: {moved}");
+
+        let alone = git_commit_file_diff(p, head, "moved.txt".into(), None, Some(3)).unwrap();
+        assert!(alone.contains("new file mode"), "{alone}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_detail_of_the_root_commit_shows_its_files_as_additions() {
+        // Without `--root` the first commit diffs against nothing at all, and a
+        // repo's oldest commit is exactly the one a reader scrolls back to.
+        let dir = repo_with_awkward_history();
+        let p = dir.to_string_lossy().into_owned();
+        let root = git_capture(&p, &["rev-list", "--max-parents=0", "HEAD"]).unwrap();
+
+        let detail = git_commit_detail(p.clone(), root.clone()).unwrap();
+        assert!(detail.parents.is_empty());
+        let mut statuses: Vec<&str> = detail.files.iter().map(|f| f.status.as_str()).collect();
+        statuses.dedup();
+        assert_eq!(statuses, ["A"], "files were {:?}", detail.files);
+
+        let patch = git_commit_file_diff(p, root, "a.txt".into(), None, Some(3)).unwrap();
+        assert!(patch.contains("+a"), "the root commit's diff was empty: {patch:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_file_log_follows_the_file_across_a_rename() {
+        // The verify: a renamed file shows the commits from before the rename.
+        // Nothing in git links the two paths; `--follow` re-detects the rename
+        // at each step, which is why the flag and not a path lookup.
+        let dir = repo_with_awkward_history();
+        let p = dir.to_string_lossy().into_owned();
+
+        let followed = git_log(p.clone(), None, None, Some("moved.txt".into())).unwrap();
+        let subjects: Vec<&str> = followed.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, ["rename with edit", "root"]);
+
+        // Without it, the file's life starts at the commit that named it.
+        let plain = git_log(p, None, None, Some("a.txt".into())).unwrap();
+        assert_eq!(
+            plain.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
+            ["grow a", "root"],
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_commit_id_that_is_really_an_option_is_refused_before_git_sees_it() {
+        let dir = repo_with_awkward_history();
+        let p = dir.to_string_lossy().into_owned();
+
+        for bad in ["--output=/tmp/pwned", "HEAD", "", "abc"] {
+            assert!(
+                git_commit_detail(p.clone(), bad.into()).is_err(),
+                "{bad:?} reached git",
+            );
+            assert!(git_commit_file_diff(p.clone(), bad.into(), "a.txt".into(), None, None).is_err());
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 }
