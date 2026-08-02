@@ -79,6 +79,32 @@ export type UnitStatus = {
   reviewDecision: ReviewDecision;
 };
 
+/// What the last answered call said about the rate budget.
+///
+/// Every field is nullable because a response that carried no rate headers must
+/// read as "no news", never as a budget of zero: the latter would stop polling
+/// on the first proxy that strips headers.
+export type RateSnapshot = {
+  remaining: number | null;
+  limit: number | null;
+  /// Epoch **seconds**, as the header sends it. Converted at the point of use so
+  /// the field keeps the wire's units.
+  resetAt: number | null;
+};
+
+/// One poll tick's answer.
+///
+/// `uncovered` is the count the UI must not swallow: a project past the per-tick
+/// cap gets a partial answer, and a partial answer rendered as a complete one
+/// leaves units with no chip and nothing saying why.
+export type StatusReport = {
+  statuses: UnitStatus[];
+  uncovered: number;
+  /// All-null when the tick was served from Rust's cache, which spends nothing
+  /// and so learns nothing about the budget.
+  rate: RateSnapshot;
+};
+
 export type ReviewComment = {
   id: string;
   author: string;
@@ -138,7 +164,20 @@ export type AuthState =
 /// A `ForgeError` as the Tauri layer serializes it: a stable `kind` to branch
 /// on plus a sentence to show. The kind is deliberately not the message, so
 /// rewording a sentence cannot change behaviour.
-export type ForgeErrorDto = { kind: string; message: string };
+///
+/// The rate-limit fields are null on every other failure. They exist so the poll
+/// scheduler backs off by the server's own number instead of parsing it back out
+/// of the sentence, which would work right up until the sentence is reworded.
+export type ForgeErrorDto = {
+  kind: string;
+  message: string;
+  rateLimitKind: string | null;
+  retryAfterSecs: number | null;
+  /// Epoch **seconds** at which the primary budget refills. Read off the refusal
+  /// itself, because a refusal is the one response whose rate snapshot never
+  /// reaches a caller.
+  resetAtSecs: number | null;
+};
 
 export function isForgeError(e: unknown): e is ForgeErrorDto {
   return (
@@ -198,6 +237,11 @@ export const FORGE_KEYS = {
   viewer: ["avatarUrl", "login"],
   capabilities: ["checks", "merge", "pullRequests", "resolveThreads", "reviewThreads"],
   pagedTruncated: ["items", "truncated"],
+  rateSnapshot: ["limit", "remaining", "resetAt"],
+  statusReport: ["rate", "statuses", "uncovered"],
+  // Not a domain type, but it crosses the same bridge and the poll scheduler
+  // branches on it, so it is checked against Rust the same way.
+  forgeError: ["kind", "message", "rateLimitKind", "resetAtSecs", "retryAfterSecs"],
 } as const satisfies Record<string, readonly string[]>;
 
 /// Every value each closed enum can take, so a variant added in Rust and not

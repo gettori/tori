@@ -30,7 +30,7 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, MergeableState, Paged, PrState, PullRequest,
-    RepoRef, ReviewComment, ReviewDecision, ReviewThread, UnitStatus, Viewer,
+    RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -89,18 +89,6 @@ pub fn parse_remote(url: &str) -> Result<RepoRef, ForgeError> {
         return Err(ForgeError::UnsupportedRemote { host });
     }
     Ok(RepoRef { owner: owner.to_string(), repo: repo.to_string() })
-}
-
-/// What the last response said about the rate budget.
-///
-/// Captured on every call so the poll scheduler can back off *before* it gets
-/// refused, rather than discovering the limit by hitting it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RateSnapshot {
-    pub remaining: Option<u32>,
-    pub limit: Option<u32>,
-    /// Unix seconds at which the primary budget resets.
-    pub reset_at: Option<u64>,
 }
 
 /// Wraps the real transport and records what every response said about the rate
