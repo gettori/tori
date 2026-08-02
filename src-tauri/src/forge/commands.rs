@@ -10,7 +10,9 @@
 
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
-use super::model::{AuthState, Paged, PrFile, PullRequest, RepoRef, StatusReport};
+use super::model::{
+    AuthState, Paged, PrFile, PullRequest, RepoRef, ReviewComment, ReviewThread, StatusReport,
+};
 use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -348,6 +350,70 @@ pub fn github_pr_files(
     }
     let repo = repo_ref(&project_path)?;
     let result = client().pull_request_files(&repo, number);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Every review conversation on one pull request.
+///
+/// Read over GraphQL, and that is not an optimisation: REST has no thread object
+/// at all, only comments carrying an `in_reply_to_id`, and the resolve mutation
+/// takes a `PullRequestReviewThread` node id that no REST response ever
+/// produces. A thread read the REST way could be displayed and never resolved.
+#[tauri::command]
+pub fn github_review_threads(
+    project_path: String,
+    number: u64,
+) -> Result<Paged<ReviewThread>, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().review_threads(&repo, number);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Reply to a thread, returning the comment the server stored.
+///
+/// The caller has already drawn the reply optimistically. What comes back is
+/// what corrects the three things it had to guess: the id, the author's login,
+/// and the timestamp.
+#[tauri::command]
+pub fn github_reply_to_thread(
+    project_path: String,
+    thread_id: String,
+    body: String,
+) -> Result<ReviewComment, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().reply_to_thread(&repo, &thread_id, &body);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Resolve or unresolve a thread.
+///
+/// One command with a boolean rather than two, mirroring the trait: they are the
+/// same intent, and a provider that has one has the other.
+///
+/// `project_path` is not used to address the thread (a node id is global) but is
+/// still taken, so the command refuses on a repo the forge cannot serve for the
+/// same reason every other one does, rather than being the single door that
+/// answers for a GitLab checkout.
+#[tauri::command]
+pub fn github_set_thread_resolved(
+    project_path: String,
+    thread_id: String,
+    resolved: bool,
+) -> Result<(), ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    repo_ref(&project_path)?;
+    let result = client().set_thread_resolved(&thread_id, resolved);
     auth::note_result(&result);
     Ok(result?)
 }

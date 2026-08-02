@@ -1,0 +1,104 @@
+/* A review conversation card, hash-scoped. Sits either under a diff line or in
+   the outdated group, so it carries its own frame rather than inheriting the
+   diff's column flow. */
+.thread {
+  margin: calc(4px * var(--ui-scale)) 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-card);
+  font-size: var(--sway-text-lg);
+}
+.thread[data-resolved="yes"] {
+  opacity: 0.7;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+}
+
+.where {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+
+.tag {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+
+/* The anchor as GitHub recorded it. For an outdated thread it is the only thing
+   that says what the remark was about. */
+.hunk {
+  margin: calc(4px * var(--ui-scale)) 0;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  overflow-x: auto;
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-sunken, var(--canvas-card));
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono, monospace);
+  font-size: var(--sway-text-2xs);
+  white-space: pre;
+}
+
+.comment {
+  padding: calc(4px * var(--ui-scale)) 0;
+}
+.comment + .comment {
+  border-top: 1px solid var(--border-subtle, var(--border-default));
+}
+.comment[data-pending="yes"] {
+  opacity: 0.6;
+}
+
+.byline {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.author {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+
+.body {
+  color: var(--fg-default);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.replyBox {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+}
+
+.input {
+  width: 100%;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-default, var(--canvas-card));
+  color: var(--fg-default);
+  font: inherit;
+  resize: vertical;
+}
+
+.replyActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(6px * var(--ui-scale));
+}
