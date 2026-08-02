@@ -133,24 +133,31 @@ const REPORT: StatusReport = {
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   auth: { kind: "signedIn", login: "skarif2" } as { kind: string; login?: string },
+  sessions: [] as unknown[],
+  handlers: {} as Record<string, (e: { payload: unknown }) => void>,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_sessions") return Promise.resolve([]);
+    if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(ORIGINS[args.projectPath as string] ?? null);
     if (cmd === "github_auth_state") return Promise.resolve(bridge.auth);
     if (cmd === "github_unit_statuses") return Promise.resolve(REPORT);
-    if (cmd === "sessions_running") return Promise.resolve([]);
+    if (cmd === "sessions_running")
+      return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
+    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: () => Promise.resolve(() => {}),
+  listen: (name: string, fn: (e: { payload: unknown }) => void) => {
+    bridge.handlers[name] = fn;
+    return Promise.resolve(() => {});
+  },
   emit: () => Promise.resolve(),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
@@ -183,6 +190,8 @@ describe("the forge chip on a branch row", () => {
     resetForgeStatusForTests();
     bridge.calls.length = 0;
     bridge.auth = { kind: "signedIn", login: "skarif2" };
+    bridge.sessions = [];
+    bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("sway.active-space.v1", "work");
@@ -288,5 +297,66 @@ describe("the forge chip on a branch row", () => {
     noteForgeAuth({ kind: "signedOut" });
 
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeNull());
+  });
+});
+
+// The wiring between the chip and the needs-you pipeline.
+//
+// `sessionActivity.test.ts` pins the join itself, given the units. What it
+// cannot see is whether anything ever hands them over: a store fed nothing
+// composes perfectly and reports nothing, and every one of its own tests still
+// passes (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
+describe("a failing check reaching the session that owns the branch", () => {
+  const BROKEN = `${GH}/broken`;
+  const session = {
+    id: "s-broken",
+    path: `${BROKEN}/.t/s-broken.jsonl`,
+    cwd: BROKEN,
+    branch: "broken",
+    title: "the agent on broken",
+    last_active: 1,
+    created_at: 1,
+    name: null,
+    agent: "claude",
+  };
+  const liveTabs = [
+    { id: "t1", workspace: BROKEN, kind: "agent" as const, sessionId: "s-broken", agent: "claude" as const },
+  ];
+
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    resetForgeStatusForTests();
+    bridge.calls.length = 0;
+    bridge.auth = { kind: "signedIn", login: "skarif2" };
+    bridge.handlers = {};
+    bridge.sessions = [session];
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/gh"]));
+  });
+
+  it("turns the branch's own row into a needs-you row", async () => {
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
+
+    const broken = await row("broken");
+    await waitFor(() => expect(broken.querySelector('[data-forge-checks="bad"]')).toBeTruthy());
+
+    // A tab hosting a session is not probed by the folder sweep, so drive the
+    // scanner event that does. Until the probe lands the dot is "none", which
+    // the raise deliberately leaves alone.
+    await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
+    bridge.handlers["sessions://changed"]({ payload: null });
+
+    // The existing rollup badge, unchanged: the CI failure arrives as a
+    // needs-you dot and rides the surface that was already there.
+    await waitFor(() =>
+      expect(broken.querySelector('[title="Waiting for approval"]')).toBeTruthy(),
+    );
+
+    // And only that branch. `shipped` is green and `fresh` has no PR at all.
+    const shipped = await row("shipped");
+    expect(shipped.querySelector('[title="Waiting for approval"]')).toBeNull();
   });
 });

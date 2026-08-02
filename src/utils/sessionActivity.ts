@@ -26,7 +26,6 @@ import { sessions } from "./sessionStore";
 import { liveChats, liveChatIds } from "./chatSessions";
 import {
   statusFromDot,
-  dotFromStatus,
   type SessionStatus,
   type LiveSessionStatus,
 } from "./sessionStatus";
@@ -37,6 +36,7 @@ import {
   type SessionDotInputs,
   type StatusCertainty,
 } from "./sessionDot";
+import { belongsToUnit, type AttributableUnit } from "./unitAttribution";
 import {
   notePresence,
   markSessionAttended,
@@ -57,12 +57,23 @@ export type TailState = "working" | "done" | "blocked-candidate";
  *  tray and the notification, which the store cannot work out for itself. */
 export type FolderOwner = { spaceName: string; projectName: string };
 
+/** One branch-unit as the CI attribution needs it: enough to run
+ *  `belongsToUnit` against, plus whether its pull request is in a state worth
+ *  someone's attention.
+ *
+ *  Fed rather than derived because the forge status is keyed by *project path*
+ *  and a session knows only its folder; only the sidebar holds both. The shape
+ *  deliberately carries no dot and no status, so the effect that produces it
+ *  cannot end up reading the dots it is about to change. */
+export type ForgeUnit = AttributableUnit & { folderPath: string; attention: boolean };
+
 // --- fed inputs -------------------------------------------------------------
 
 const [liveTabs, setLiveTabs] = createSignal<readonly LiveTab[]>([]);
 const [folderOwners, setFolderOwners] = createSignal<Record<string, FolderOwner>>({});
 const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
 const [windowFocused, setWindowFocused] = createSignal(true);
+const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
 
 /** The tab set, from whoever owns it (App, through the sidebar). */
 export function noteLiveTabs(tabs: readonly LiveTab[]) {
@@ -80,6 +91,12 @@ export function noteFolderOwners(owners: Record<string, FolderOwner>) {
 export function noteAttention(sessionId: string | null, focused: boolean) {
   setSelectedSessionId(sessionId);
   setWindowFocused(focused);
+}
+
+/** Every watched branch-unit and whether its pull request wants looking at.
+ *  Rebuilt whenever the forge answers or the tree changes. */
+export function noteForgeUnits(units: readonly ForgeUnit[]) {
+  setForgeUnits(units);
 }
 
 // --- owned state ------------------------------------------------------------
@@ -190,14 +207,69 @@ export async function refreshTailStateForSession(sessionId: string) {
 
 // --- composition ------------------------------------------------------------
 
+/// Does the branch-unit this session belongs to want looking at?
+///
+/// The attribution is `belongsToUnit`, the same rule the sidebar's rollup badges
+/// use, and for the same reason: a plain repo's sibling branch-units share one
+/// folder and are told apart only by the branch a session recorded, so a second
+/// implementation here is how a red chip on `feat` ends up ringing for the
+/// session on `main`. Siblings are filtered by folder, which for a plain repo is
+/// exactly its set of units and for every other kind is the single unit that
+/// owns the folder - the case `belongsToUnit` answers before it looks at any of
+/// them.
+/// Grouped by folder once per feed, for the same reason as `sessionHomes`: this
+/// is asked per live session on every recompute, and re-filtering the whole unit
+/// list each time makes the cost the product of the two.
+const unitsByFolder = createMemo(() => {
+  const byFolder = new Map<string, ForgeUnit[]>();
+  for (const u of forgeUnits()) {
+    const list = byFolder.get(u.folderPath);
+    if (list) list.push(u);
+    else byFolder.set(u.folderPath, [u]);
+  }
+  return byFolder;
+});
+
+function unitWantsAttention(folderPath: string | undefined, branch: string | undefined): boolean {
+  if (!folderPath) return false;
+  const siblings = unitsByFolder().get(folderPath);
+  if (!siblings) return false;
+  return siblings.some((u) => u.attention && belongsToUnit({ branch }, u, siblings));
+}
+
+/// Where each session lives: the folder it sits in and the branch it recorded.
+///
+/// The folder comes from the store's own key rather than from a tab, because a
+/// **detached** session has no tab and no chat - and a detached session is one
+/// of the two the CI raise has to reach. Reading it off `cwd` would work for a
+/// worktree and quietly stop working for anything re-homed.
+///
+/// Indexed once per store change rather than scanned per session: `sessionDot`
+/// is called for every live session by both memos, and those recompute as often
+/// as PTY activity does, so a per-call walk of every folder would be quadratic
+/// on the hottest path this module has.
+const sessionHomes = createMemo(() => {
+  const homes = new Map<string, { folder: string; branch?: string }>();
+  for (const [folder, list] of Object.entries(sessions())) {
+    for (const s of list) if (!homes.has(s.id)) homes.set(s.id, { folder, branch: s.branch || undefined });
+  }
+  return homes;
+});
+
 function sessionDotInputs(id: string): SessionDotInputs {
   const tab = liveTabs().find((t) => t.sessionId === id);
+  const chat = liveChats().find((c) => c.sessionId === id);
+  const home = sessionHomes().get(id);
   return {
-    chatStatus: liveChats().find((c) => c.sessionId === id)?.status,
+    chatStatus: chat?.status,
     hasLiveTab: !!tab,
     running: probes()[id]?.running === true,
     ptyActivity: tab ? ptyActivity()[tab.id] : undefined,
     tailState: tailStates()[id],
+    forgeAttention: unitWantsAttention(
+      tab?.workspace ?? chat?.folderPath ?? home?.folder,
+      home?.branch,
+    ),
   };
 }
 
@@ -235,11 +307,14 @@ const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
     });
   }
   // The chat tier needs none of the composition above: its own event stream
-  // says when a turn is running and when a tool call is blocked.
+  // says when a turn is running and when a tool call is blocked. It still goes
+  // through `sessionDot` rather than straight to `dotFromStatus`, because the
+  // forge raise sits outside the tiers and a chat on a branch with failing
+  // checks is in exactly the same position as a PTY agent on one.
   for (const c of liveChats()) {
     live.push({
       sessionId: c.sessionId,
-      dot: dotFromStatus(c.status),
+      dot: sessionDot(c.sessionId),
       sessionName: c.sessionName,
       projectName: folderOwners()[c.folderPath]?.projectName ?? "",
       folderPath: c.folderPath,
@@ -281,7 +356,15 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
     const owner = folderOwners()[c.folderPath];
     live.push({
       sessionId: c.sessionId,
-      status: c.status,
+      // Only `idle` and `running` are taken from the composed answer, because
+      // they are the only two the forge raise can lift. Routing every status
+      // through it would round-trip through the dot vocabulary, and that trip is
+      // lossy on purpose: `budgetStopped` and `waitingForApproval` share one
+      // dot, and only one of them comes back. Flattening the pair is the exact
+      // thing `budgetStopped` was introduced to stop - it would tell the user to
+      // answer a prompt that does not exist.
+      status:
+        c.status === "idle" || c.status === "running" ? sessionStatus(c.sessionId) : c.status,
       sessionName: c.sessionName,
       spaceName: owner?.spaceName ?? "",
       projectName: owner?.projectName ?? "",
@@ -370,4 +453,5 @@ export function resetSessionActivityForTests() {
   setFolderOwners({});
   setSelectedSessionId(null);
   setWindowFocused(true);
+  setForgeUnits([]);
 }

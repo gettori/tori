@@ -28,6 +28,14 @@
 // The two inferred tiers are untouched by the chat branch, which is checked
 // rather than promised: the golden fixture enumerates them with no chat status
 // present and must reproduce byte-for-byte.
+//
+// **A fourth input sits outside the tiers.** `forgeAttention` is a fact about
+// the *branch* (a failing check, a changes-requested verdict), not about the
+// session, so it is applied to whatever the tiers decided rather than competing
+// with them. It has its own golden fixture (`sessionDotCi.golden.json`) for the
+// same reason the first one exists, and deliberately not the same file: the
+// original is a frozen record of pre-chat behaviour, and letting it absorb new
+// rows means one `-u` run rewrites the baseline it was created to protect.
 import { dotFromStatus, type SessionStatus } from "./sessionStatus";
 
 export type SessionDot = "solid" | "hollow" | "working" | "needsYou" | "none";
@@ -51,9 +59,15 @@ export type SessionDotInputs = {
   ptyActivity?: "active" | "quiet" | string;
   /** The transcript-tail classification, e.g. "blocked-candidate". */
   tailState?: string;
+  /** Whether the branch-unit this session owns has failing checks or a
+   *  changes-requested verdict on its pull request. A fact about the *branch*,
+   *  not about the session, which is why it is applied after the tiers rather
+   *  than inside them. Absent for every session before the forge answered,
+   *  which is what leaves the recorded baseline untouched. */
+  forgeAttention?: boolean;
 };
 
-export function computeSessionDot(input: SessionDotInputs): SessionDot {
+function tierDot(input: SessionDotInputs): SessionDot {
   // Ahead of everything: an exact answer is never improved by a guess.
   if (input.chatStatus !== undefined) return dotFromStatus(input.chatStatus);
   if (!input.hasLiveTab) return input.running ? "hollow" : "none";
@@ -61,6 +75,26 @@ export function computeSessionDot(input: SessionDotInputs): SessionDot {
   if (input.ptyActivity === "active") return "working";
   if (input.ptyActivity === "quiet" && input.tailState === "blocked-candidate") return "needsYou";
   return "solid";
+}
+
+export function computeSessionDot(input: SessionDotInputs): SessionDot {
+  const dot = tierDot(input);
+  // A failing check raises a session that is **sitting still**, and only that.
+  //
+  //   * `solid` (a live agent, quiet) and `hollow` (a detached session) become
+  //     `needsYou`: the branch is broken and nothing is moving on it.
+  //   * `working` is left alone. An agent mid-turn may well be fixing it, and a
+  //     needs-you raised while it works cannot re-arm when it stops, so the one
+  //     edge that matters would be spent on the moment it mattered least.
+  //   * `needsYou` is already there, and `none` means nothing is running for
+  //     this to be about - a dead tab must not start ringing because CI went red
+  //     on the branch it used to be on.
+  //
+  // Applied uniformly to the tier result rather than branching per tier, so the
+  // chat tier gets the same rule for free: a mid-turn chat is `working` and
+  // untouched, an idle one is `solid` and raised.
+  if (input.forgeAttention && (dot === "solid" || dot === "hollow")) return "needsYou";
+  return dot;
 }
 
 /** Which tier answered. Derived from the same inputs rather than returned

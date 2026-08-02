@@ -63,6 +63,7 @@ import {
 import {
   noteLiveTabs,
   noteFolderOwners,
+  noteForgeUnits,
   noteAttention,
   probeBatch,
   probeSession,
@@ -73,6 +74,7 @@ import {
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
 import { forgeChip, type PrChipState } from "../../utils/forgeChip";
+import { needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
   forgePause,
@@ -543,6 +545,37 @@ export default function LeftSidebar(props: {
       ),
     ),
   );
+  // The forge's half of the needs-you pipeline: every branch-unit and whether
+  // its pull request wants looking at.
+  //
+  // Here rather than in the store because the forge status is keyed by *project
+  // path* and a session knows only its folder, and this is the one place that
+  // holds both. Every space, not just the active one: a failing check on a
+  // project you are not currently looking at is exactly the case the tray and
+  // the dock badge exist for. (Polling is still active-space-only - this reports
+  // whatever the store happens to know, and knows nothing itself.)
+  //
+  // It reads no dot and no session, so it cannot end up reacting to the statuses
+  // it is about to change.
+  createEffect(() =>
+    noteForgeUnits(
+      (config()?.spaces ?? []).flatMap((g) =>
+        g.projects.flatMap((p) =>
+          p.branchUnits.map((u) => {
+            const st = u.branch ? unitStatus(p.path, u.branch) : null;
+            return {
+              folderPath: u.folderPath,
+              branch: u.branch,
+              kind: u.kind,
+              isCurrent: u.isCurrent,
+              attention: st !== null && needsAttention(st),
+            };
+          }),
+        ),
+      ),
+    ),
+  );
+
   // Attention, the one input the store cannot see for itself: it is the sidebar
   // that knows what is selected, and this component that owns the window-focus
   // listener. Everything downstream of it - what counts as attended, which
