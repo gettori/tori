@@ -222,7 +222,14 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
         403 => ForgeError::Forbidden { message },
         404 => ForgeError::NotFound,
         405 => ForgeError::NotMergeable { message },
-        422 => ForgeError::AlreadyExists { message },
+        // 422 is GitHub's catch-all validation status, not an "already exists"
+        // status. Creating a PR with nothing to merge, or from a head the server
+        // cannot see, lands here too, and reporting those as "a PR already
+        // exists" sends the user looking for a PR that is not there.
+        422 if message.to_ascii_lowercase().contains("already exists") => {
+            ForgeError::AlreadyExists { message }
+        }
+        422 => ForgeError::Api { status: 422, message },
         429 => {
             ForgeError::RateLimited { kind: RateLimitKind::Secondary, retry_after_secs: retry_after }
         }
@@ -232,9 +239,26 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
 
 /// GitHub's error bodies put the human-readable part in `message`. Falling back
 /// to the raw body keeps an unexpected shape debuggable instead of blank.
+/// The sentence to show, folding in the per-field detail.
+///
+/// A 422's top-level `message` is always the literal "Validation Failed", which
+/// names no field and suggests no fix. Everything actionable ("A pull request
+/// already exists for owner:branch", "No commits between main and wave-3") is in
+/// the `errors` array, so both are joined rather than only the first read.
 fn error_message(body: &str) -> Option<String> {
     let v: Value = serde_json::from_str(body).ok()?;
-    v.get("message")?.as_str().map(|s| s.to_string())
+    let top = v.get("message")?.as_str()?.to_string();
+    let details: Vec<String> = v
+        .get("errors")
+        .and_then(|e| e.as_array())
+        .map(|errs| {
+            errs.iter().filter_map(|e| e.get("message")?.as_str()).map(|s| s.to_string()).collect()
+        })
+        .unwrap_or_default();
+    if details.is_empty() {
+        return Some(top);
+    }
+    Some(format!("{top}: {}", details.join("; ")))
 }
 
 /// The `url` of the `rel="next"` link, if the header offers one.
