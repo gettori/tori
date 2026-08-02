@@ -7,6 +7,7 @@ mod blame;
 mod chat;
 mod checkpoint;
 mod config;
+mod conflict;
 mod env;
 mod fs;
 mod git;
@@ -264,6 +265,8 @@ pub fn run() {
             git::git_head_sha,
             blame::git_blame,
             agent_lines::agent_lines,
+            conflict::git_conflict_stages,
+            conflict::git_conflict_op,
             git::git_commit_detail,
             git::git_commit_file_diff,
             git::git_checkout,

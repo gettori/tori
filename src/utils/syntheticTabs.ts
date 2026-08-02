@@ -90,5 +90,6 @@ export function syntheticTabName(id: string): string {
   // known by the file's name, not by the folders above it.
   if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
   if (t.kind === "history") return `History: ${t.arg.split("/").pop() || t.arg}`;
+  if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
   return t.arg ? `${t.kind} ${t.arg}` : t.kind;
 }

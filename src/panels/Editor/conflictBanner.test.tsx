@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // The conflict banner: the editor's half of the Conflicts section. Nothing in a
 // buffer full of `<<<<<<<` markers says *why* it looks like that, and the
@@ -102,6 +102,23 @@ describe("the conflict banner", () => {
     await refreshStatus(REPO);
 
     await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull());
+  });
+
+  it("opens the three-way view for the file it is about", async () => {
+    // The banner says the file holds both sides; the button is the only route
+    // to seeing what those sides are. A tab rather than a pane, so the file
+    // itself stays open beside it.
+    statusRows = [CONFLICT];
+    await mountWith(FILE);
+    await waitFor(() => expect(screen.getByText(BANNER)).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Compare the versions"));
+
+    // Named after the file, and repo-relative: the id carries the workspace
+    // separately, so a path from another worktree cannot address this one.
+    // `getAllBy`, because the tab strip renders a hidden ghost copy of itself
+    // to measure against.
+    await waitFor(() => expect(screen.getAllByText("Conflict: a.ts").length).toBeGreaterThan(0));
   });
 
   it("stays off a file that is not the conflicted one", async () => {
