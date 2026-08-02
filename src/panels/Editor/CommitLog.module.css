@@ -1,0 +1,99 @@
+/* The commit log, as an editor tab. Same header rhythm as the Changes panel
+   (ReviewPanel.module.css) so the two read as one surface, but laid out for the
+   wide side of the pane: one line per commit, nothing wraps. */
+.commitLog {
+  flex: 1;
+  overflow: auto;
+  background: var(--canvas-card);
+  padding: calc(4px * var(--ui-scale)) 0;
+  font-size: var(--sway-text-xl);
+  user-select: none;
+}
+
+.headerBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.branchName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.meta {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.error {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--danger-fg);
+}
+
+.commitLog :global(.tree-empty) {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: var(--neutral-hover);
+}
+
+.sha {
+  flex: none;
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+}
+
+/* Takes the slack, so the author and the date sit hard right on every row. */
+.subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-default);
+}
+
+/* A branch, tag or HEAD pointing here. Rare enough to earn the emphasis. */
+.ref {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+.author,
+.date {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.moreRow {
+  display: flex;
+  justify-content: center;
+  padding: calc(6px * var(--ui-scale));
+}

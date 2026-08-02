@@ -78,7 +78,7 @@ export type CommandScope = "global" | "window" | "terminal";
  * importing either here would put them in the terminal's chunk (see the module
  * comment). The palette resolves these into a refusal reason.
  */
-export type Requirement = "editorFile" | "gitRoot" | "staged" | "ahead";
+export type Requirement = "editorTab" | "editorFile" | "gitRoot" | "staged" | "ahead";
 
 export type Command = {
   id: string;
@@ -333,7 +333,8 @@ export const COMMANDS: Command[] = [
     label: "Close editor tab",
     group: "editor",
     run: () => emit(EDITOR_CLOSE_TAB),
-    requires: ["editorFile"],
+    // Any tab, not just a file one: the commit log is closed the same way.
+    requires: ["editorTab"],
   },
   {
     id: "editor-toggle-preview",

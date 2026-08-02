@@ -32,6 +32,8 @@ type PaletteItem = {
  */
 function unmetReason(req: Requirement): string | null {
   switch (req) {
+    case "editorTab":
+      return editorState().tabCount ? null : "No tab open";
     case "editorFile":
       return editorState().activePath ? null : "No file open";
     case "gitRoot":

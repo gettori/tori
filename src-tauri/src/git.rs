@@ -778,6 +778,95 @@ pub fn git_head_message(project_path: String) -> Result<String, String> {
     Ok(git_capture(&project_path, &["log", "-1", "--format=%B"]).unwrap_or_default())
 }
 
+/// One row of the commit log.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct LogEntry {
+    /// Full sha. What a commit-detail view is opened by; never shown as is.
+    pub sha: String,
+    /// git's own abbreviation, which is what the row shows. Taken from git
+    /// rather than sliced here, because the length it needs to stay unambiguous
+    /// grows with the repo and only git knows where that line currently sits.
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    pub relative_date: String,
+    /// The branch, tag and HEAD names pointing at this commit, in git's order
+    /// (`HEAD -> main` first, then the rest). Empty for the overwhelming
+    /// majority of commits, which is the case the parse has to get right.
+    pub refs: Vec<String>,
+}
+
+/// Six NUL-terminated fields per commit. NUL rather than any printable
+/// separator because a subject, an author name and a ref name can all contain
+/// almost anything else; and `-z` on the command side so the *records* are
+/// NUL-terminated too, leaving one flat stream to chunk.
+///
+/// The *author* name (`%an`) is paired with the *committer* date (`%cr`) on
+/// purpose. Who wrote it does not change when history is replayed, but when it
+/// was written does not describe where it sits: after a rebase the author date
+/// of the top commit can be months old, and "3 months ago" beside the tip of a
+/// branch you just rebased is a lie about the branch, not a fact about the
+/// commit.
+const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%cr%x00%D";
+
+/// Split `%D` back into names. git joins them with ", ", which no ref name can
+/// contain (git refuses a space in one), so the split cannot cut a name in half.
+fn parse_refs(decorations: &str) -> Vec<String> {
+    decorations
+        .split(", ")
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Parse the flat `-z` stream. A trailing empty field is left over by the final
+/// record's terminator; `chunks_exact` drops it, along with any partial record
+/// a truncated stream would end in.
+fn parse_log(text: &str) -> Vec<LogEntry> {
+    let fields: Vec<&str> = text.split('\0').collect();
+    fields
+        .chunks_exact(6)
+        .map(|c| LogEntry {
+            sha: c[0].to_string(),
+            short: c[1].to_string(),
+            subject: c[2].to_string(),
+            author: c[3].to_string(),
+            relative_date: c[4].to_string(),
+            refs: parse_refs(c[5]),
+        })
+        .collect()
+}
+
+/// How many commits one page holds when the caller does not say.
+const LOG_PAGE: u32 = 100;
+
+/// A page of the current branch's history, newest first.
+///
+/// An unborn HEAD (a repo with no commits yet) is an empty log, not an error:
+/// `git log` exits non-zero there, and a fresh `bare_init` worktree is exactly
+/// that state. The check is `rev-parse --verify`, not the wording of git's
+/// complaint, which is localised.
+#[tauri::command]
+pub fn git_log(
+    project_path: String,
+    skip: Option<u32>,
+    limit: Option<u32>,
+) -> Result<Vec<LogEntry>, String> {
+    match git_capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"]) {
+        // `--quiet` silences exactly one failure, "HEAD names no commit", and
+        // says nothing on stderr for it. Anything with a complaint attached
+        // (not a repo, folder gone) is a real error and stays one.
+        Err(complaint) if complaint.is_empty() => return Ok(Vec::new()),
+        Err(complaint) => return Err(complaint),
+        Ok(_) => {}
+    }
+    let skip = format!("--skip={}", skip.unwrap_or(0));
+    let limit = format!("--max-count={}", limit.unwrap_or(LOG_PAGE));
+    let out = git_capture(&project_path, &["log", "-z", LOG_FORMAT, &skip, &limit])?;
+    Ok(parse_log(&out))
+}
+
 /// Which two trees a diff compares. A partially-staged ("MM") file has a row in
 /// both the Staged and Changes sections, and one comparison cannot describe
 /// both: the Staged row needs index-vs-HEAD, the Changes row worktree-vs-index.
@@ -2811,6 +2900,86 @@ diff --git a/f b/f
         assert_eq!(status_of(&dir, "f.txt"), "M  f.txt");
         assert!(worktree(&dir, "f.txt").contains("line 2 EDITED"));
         assert!(!worktree(&dir, "f.txt").contains("line 19 EDITED"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // --- Commit log ---------------------------------------------------------
+
+    /// The exact spelling `git log -z --format=…` emits, captured from a real
+    /// repo: six NUL-terminated fields per commit, the final record terminated
+    /// like the rest (so the split leaves a trailing empty field), and `%D`
+    /// empty for a commit nothing points at - which is nearly every commit in
+    /// a real history, and the case a naive split would misread.
+    #[test]
+    fn log_parses_a_decorated_commit_and_an_undecorated_one() {
+        let out = concat!(
+            "3071c3a4410166c58587\0 3071c3a\0Let work be put aside\0",
+            "Sk Arif\011 minutes ago\0HEAD -> wave-2, origin/wave-2, tag: v1.2\0",
+            "b42b4942daffcbee3d28\0b42b494\0fix: a subject with a comma, and a colon\0",
+            "Sk Arif\054 minutes ago\0\0",
+        );
+        let log = parse_log(out);
+
+        assert_eq!(log.len(), 2, "the trailing terminator must not add a record");
+        assert_eq!(log[0].sha, "3071c3a4410166c58587");
+        assert_eq!(log[0].short, " 3071c3a");
+        assert_eq!(log[0].author, "Sk Arif");
+        assert_eq!(log[0].relative_date, "11 minutes ago");
+        assert_eq!(log[0].refs, ["HEAD -> wave-2", "origin/wave-2", "tag: v1.2"]);
+
+        // The one the verify asks for: no decorations at all is an empty list,
+        // not a list holding one empty name.
+        assert!(log[1].refs.is_empty(), "an undecorated commit has no refs");
+        // And the comma in its subject stayed in the subject.
+        assert_eq!(log[1].subject, "fix: a subject with a comma, and a colon");
+    }
+
+    #[test]
+    fn log_reads_a_real_history_newest_first_and_pages_through_it() {
+        let dir = repo_with_two_hunks(); // one commit, "init"
+        let p = dir.to_string_lossy().into_owned();
+        for n in 2..=4 {
+            std::fs::write(dir.join(format!("{n}.txt")), "x").unwrap();
+            git(&dir, &["add", "."]);
+            git(&dir, &["commit", "-q", "-m", &format!("commit {n}")]);
+        }
+        git(&dir, &["tag", "v1"]);
+
+        let all = git_log(p.clone(), None, None).unwrap();
+        assert_eq!(
+            all.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
+            ["commit 4", "commit 3", "commit 2", "init"],
+        );
+        assert_eq!(all[0].author, "t");
+        assert!(!all[0].relative_date.is_empty());
+        assert!(all[0].sha.starts_with(&all[0].short), "short must abbreviate the full sha");
+        // HEAD, the branch and the tag all land on the newest commit; the ones
+        // behind it are decorated by nothing.
+        assert!(all[0].refs.iter().any(|r| r == "tag: v1"), "refs were {:?}", all[0].refs);
+        assert!(all[1].refs.is_empty());
+
+        let page = git_log(p.clone(), Some(1), Some(2)).unwrap();
+        assert_eq!(
+            page.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
+            ["commit 3", "commit 2"],
+        );
+        // Past the end is an empty page, not an error.
+        assert!(git_log(p, Some(99), Some(2)).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn log_of_a_repo_with_no_commits_is_empty_rather_than_an_error() {
+        // What a fresh `bare_init` worktree looks like: a real repo on an
+        // unborn branch, where `git log` itself exits non-zero.
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_log_unborn_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]);
+
+        assert_eq!(git_log(dir.to_string_lossy().into_owned(), None, None).unwrap(), vec![]);
+        // A folder that is not a repo at all still reports the real failure.
+        assert!(git_log(dir.join("nope").to_string_lossy().into_owned(), None, None).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

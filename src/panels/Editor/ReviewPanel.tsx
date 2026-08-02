@@ -46,6 +46,9 @@ import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
+import Icon from "../../components/Icon/Icon";
+import { History } from "lucide-solid";
+import { syntheticId } from "../../utils/syntheticTabs";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./ReviewPanel.module.css";
 
@@ -930,6 +933,14 @@ export default function ReviewPanel(props: {
           <span class={styles.branchName} title={branch() ?? ""}>
             {branch()}
           </span>
+          <IconButton
+            size="xs"
+            icon={<Icon icon={History} />}
+            title="Show this branch's commit log"
+            onClick={() =>
+              props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", props.root) })
+            }
+          />
           <IconButton
             size="xs"
             active={twoColumn()}

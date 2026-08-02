@@ -34,6 +34,9 @@ const calls: { status: number; diff: number } = { status: 0, diff: 0 };
 // drive the amend guard, which is the only thing here that asks the backend a
 // question whose answer changes what the panel does rather than what it shows.
 let aheadBehind: { ahead: number; behind: number; has_upstream: boolean } | null = null;
+// The header only renders once the store knows a branch, so the tests that are
+// about the header say so by naming one.
+let branches: { name: string; current: boolean }[] = [];
 let headMsg = "";
 let commitArgs: unknown[] = [];
 // Discard is the one destructive thing this panel does, so what it was asked to
@@ -92,6 +95,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         stashArgs.push({ cmd, args });
         return Promise.resolve(null);
       case "list_branches":
+        return Promise.resolve(branches);
       // The revert guard's detached tier walks these two. They return arrays
       // for real, and `folderActors` filters the first without a null guard, so
       // the catch-all `null` below would throw before the guard ever ran.
@@ -122,7 +126,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import ReviewPanel from "./ReviewPanel";
 import { stage, refreshStatus } from "../../utils/gitActions";
-import { TOAST, type ToastEvent } from "../../utils/events";
+import { TOAST, OPEN_IN_EDITOR, type ToastEvent } from "../../utils/events";
+import { syntheticId } from "../../utils/syntheticTabs";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
  *  not the Tauri event bus, so mocking the transport would never see one. */
@@ -146,6 +151,7 @@ beforeEach(async () => {
   calls.status = 0;
   calls.diff = 0;
   aheadBehind = null;
+  branches = [];
   headMsg = "";
   commitArgs = [];
   discardArgs = [];
@@ -611,5 +617,22 @@ describe("amend", () => {
       expect(commitArgs).toEqual([{ projectPath: "/proj", message: "local only", amend: true }]),
     );
     expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
+  });
+});
+
+describe("the commit log entry point", () => {
+  it("asks for a log tab scoped to this workspace", async () => {
+    branches = [{ name: "main", current: true }];
+    await mountPanel();
+
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
+    window.addEventListener(OPEN_IN_EDITOR, listener);
+    fireEvent.click(await screen.findByTitle("Show this branch's commit log"));
+    window.removeEventListener(OPEN_IN_EDITOR, listener);
+
+    // The id carries the workspace, so the same button in another branch-unit
+    // opens a different tab rather than retargeting this one.
+    expect(opened).toEqual([syntheticId("log", "/proj")]);
   });
 });

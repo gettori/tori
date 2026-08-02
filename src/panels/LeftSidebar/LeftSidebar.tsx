@@ -37,8 +37,11 @@ import {
   type SessionDeleted,
   SESSION_ACTION,
   type SessionAction,
+  OPEN_IN_EDITOR,
+  type OpenInEditor,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { syntheticId } from "../../utils/syntheticTabs";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
 import {
@@ -1747,7 +1750,10 @@ export default function LeftSidebar(props: {
         { label: "Remove empty container", danger: true, onClick: () => cleanupStub(u) },
       ];
     }
-    const items: MenuItem[] = [{ label: "New session", onClick: () => startSession(g, p, u) }];
+    const items: MenuItem[] = [
+      { label: "New session", onClick: () => startSession(g, p, u) },
+      { label: "Commit log", onClick: () => openCommitLog(g, p, u) },
+    ];
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });
@@ -1891,6 +1897,15 @@ export default function LeftSidebar(props: {
   async function startSession(g: Space, p: Project, u: BranchUnit) {
     if (await selectUnit(g, p, u)) {
       emitWith<NewSession>(NEW_SESSION, { folderPath: u.folderPath, projectName: p.name });
+    }
+  }
+
+  // "Commit log" menu action: select the unit first, exactly as "New session"
+  // does. The log tab is workspace-scoped, and a tab opened into a workspace
+  // nobody is looking at would be invisible until you happened to switch back.
+  async function openCommitLog(g: Space, p: Project, u: BranchUnit) {
+    if (await selectUnit(g, p, u)) {
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("log", u.folderPath) });
     }
   }
 
