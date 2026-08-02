@@ -36,15 +36,56 @@ export const diffRowClasses = {
   sideRow: styles.sideRow,
 };
 
-export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean }) {
+/** Line-level staging, when the surface rendering the hunk offers it.
+ *
+ *  Indices are into the hunk body the rows were built from, which is what the
+ *  backend selects by. Only changed lines are offered: a context line is in both
+ *  versions, so there is nothing about it to stage. */
+export type LineSelection = {
+  has: (index: number) => boolean;
+  toggle: (index: number) => void;
+};
+
+export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean; selection?: LineSelection }) {
+  function cell(row: DiffRow | null, index: number | null) {
+    // Read once, not per render: whether a surface offers line staging is a
+    // property of the surface, so a read-only diff (a commit, a transcript)
+    // gets no handlers and no roles at all rather than inert ones on every
+    // line of a five-thousand-line diff.
+    const selectable = !!props.selection && !!row && (row.kind === "add" || row.kind === "del") && index !== null;
+    const toggle = () => props.selection!.toggle(index!);
+    const picked = () => selectable && props.selection!.has(index!);
+    return (
+      <div
+        class={`${styles.diffLine} ${row ? (styles[rowClass(row)] ?? "") : styles.sideEmpty} ${
+          selectable ? styles.selectable : ""
+        } ${picked() ? styles.selected : ""}`}
+        onClick={selectable ? toggle : undefined}
+        // A line is in the selection or it is not, which is what a checkbox
+        // is. Reachable by keyboard for the same reason the conflicted row is
+        // a button: a control only the mouse can reach is half a control.
+        role={selectable ? "checkbox" : undefined}
+        aria-checked={selectable ? picked() : undefined}
+        tabIndex={selectable ? 0 : undefined}
+        onKeyDown={
+          selectable
+            ? (e: KeyboardEvent) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                toggle();
+              }
+            : undefined
+        }
+      >
+        {row ? lineContent(row) : " "}
+      </div>
+    );
+  }
+
   return (
     <Show
       when={props.twoColumn}
-      fallback={
-        <For each={props.rows}>
-          {(r) => <div class={`${styles.diffLine} ${styles[rowClass(r)] ?? ""}`}>{lineContent(r)}</div>}
-        </For>
-      }
+      fallback={<For each={props.rows}>{(r, i) => cell(r, i())}</For>}
     >
       {/* Side-by-side: one scroll container holding both columns, so the two
           sides scroll together by construction rather than by syncing. */}
@@ -52,12 +93,8 @@ export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean })
         <For each={toSideBySide(props.rows)}>
           {(side) => (
             <div class={styles.sideRow}>
-              <div class={`${styles.diffLine} ${side.left ? (styles[rowClass(side.left)] ?? "") : styles.sideEmpty}`}>
-                {side.left ? lineContent(side.left) : " "}
-              </div>
-              <div class={`${styles.diffLine} ${side.right ? (styles[rowClass(side.right)] ?? "") : styles.sideEmpty}`}>
-                {side.right ? lineContent(side.right) : " "}
-              </div>
+              {cell(side.left, side.leftIndex)}
+              {cell(side.right, side.rightIndex)}
             </div>
           )}
         </For>

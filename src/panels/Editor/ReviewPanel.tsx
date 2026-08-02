@@ -140,11 +140,25 @@ export default function ReviewPanel(props: {
   const [openGaps, setOpenGaps] = createSignal<Set<string>>(new Set());
   // Fetched contents of expanded gaps, keyed the same way.
   const [gapLines, setGapLines] = createSignal<Record<string, string[]>>({});
+  // The lines picked for a line-level stage, and the hunk they are picked from.
+  //
+  // One hunk at a time on purpose: the patch is rebuilt from a single hunk's
+  // body, so a selection spanning two of them could not be applied as one
+  // request anyway, and picking a line in a second hunk reading as "I meant
+  // this one now" is the least surprising of the readings available.
+  const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
 
   // One parse per diff change, shared by every consumer below: the hunk list,
   // the gaps between them, and the per-hunk fingerprints.
   const hunks = createMemo(() => parseDiffHunks(diff()));
   const gaps = createMemo(() => hunkGaps(hunks()));
+
+  // A line selection is indices into one hunk's body, so it means nothing once
+  // the hunks move or a different file is showing. Cleared from the diff itself
+  // rather than at each of the three places that reset the view, because a
+  // fourth would otherwise be one edit away from leaving a selection pointing
+  // into lines that are no longer there.
+  createEffect(on([expanded, diff], () => setPicked(null)));
 
   // The persisted preference only applies when there is room for two columns.
   const twoColumn = () => sideBySide() && panelWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -433,17 +447,31 @@ export default function ReviewPanel(props: {
   // never left looking at hunks that have already moved.
   async function applyHunk(path: string, staged: boolean, index: number, fingerprint: string) {
     const root = props.root;
-    if (!root || applying()) return;
-    setApplying(true);
-    try {
-      await invoke("git_apply_hunks", {
+    if (!root) return;
+    await applied(() =>
+      invoke("git_apply_hunks", {
         projectPath: root,
         file: path,
         hunkIndices: [index],
         fingerprints: [fingerprint],
         reverse: staged,
         context: DIFF_CONTEXT,
-      });
+      }),
+    );
+  }
+
+  /** Run one index-shuffling apply and put the view back in step with it.
+   *
+   *  Distinct from `busy` below, which holds the flag across a confirm dialog:
+   *  this one also refetches. Both the status and the expanded diff have moved
+   *  by the time an apply returns, and on failure the refetch happens *before*
+   *  the error surfaces, so the user is never left looking at hunks that have
+   *  already moved and inviting the same doomed click again. */
+  async function applied(run: () => Promise<unknown>) {
+    if (applying()) return;
+    setApplying(true);
+    try {
+      await run();
       await Promise.all([refresh(), refreshExpandedDiff()]);
     } catch (e) {
       await refreshExpandedDiff();
@@ -451,6 +479,41 @@ export default function ReviewPanel(props: {
     } finally {
       setApplying(false);
     }
+  }
+
+  /** Toggle one body line of one hunk into the selection.
+   *
+   *  Picking a line in a different hunk starts that hunk's selection rather than
+   *  adding to the old one; see `picked`. Emptying a selection drops it, so the
+   *  "N lines" control disappears with the last line rather than lingering as a
+   *  disabled button. */
+  function pickLine(hunk: number, line: number) {
+    setPicked((prev) => {
+      const lines = new Set(prev?.hunk === hunk ? prev.lines : []);
+      if (!lines.delete(line)) lines.add(line);
+      return lines.size ? { hunk, lines } : null;
+    });
+  }
+
+  /** Stage (or unstage) just the selected lines of one hunk.
+   *
+   *  The same guarantees as `applyHunk`, one level finer: the fingerprint proves
+   *  the hunk is still the one on screen, and the line indices are only
+   *  meaningful against that same body, which is why the two travel together. */
+  async function applyLines(path: string, staged: boolean, index: number, fingerprint: string, lines: number[]) {
+    const root = props.root;
+    if (!root) return;
+    await applied(() =>
+      invoke("git_apply_lines", {
+        projectPath: root,
+        file: path,
+        hunkIndex: index,
+        fingerprint,
+        lines,
+        reverse: staged,
+        context: DIFF_CONTEXT,
+      }),
+    );
   }
 
   /** Throw away one unstaged hunk.
@@ -964,6 +1027,36 @@ export default function ReviewPanel(props: {
                     >
                       {opts.staged ? "Unstage hunk" : "Stage hunk"}
                     </Button>
+                    {/* Only while this hunk has lines picked, so the header
+                        stays the same width it always was until there is
+                        something for the control to act on. */}
+                    <Show when={picked()?.hunk === hi() ? picked() : null}>
+                      {(sel) => (
+                        <Button
+                          size="xs"
+                          disabled={applying()}
+                          title={
+                            opts.staged
+                              ? "Unstage only the selected lines"
+                              : "Stage only the selected lines"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void applyLines(
+                              f.path,
+                              opts.staged,
+                              hi(),
+                              hunkFingerprint(hunk.header, hunk.lines),
+                              [...sel().lines].sort((a, b) => a - b),
+                            );
+                          }}
+                        >
+                          {`${opts.staged ? "Unstage" : "Stage"} ${sel().lines.size} line${
+                            sel().lines.size === 1 ? "" : "s"
+                          }`}
+                        </Button>
+                      )}
+                    </Show>
                     <Show when={!opts.staged}>
                       <Button
                         size="xs"
@@ -986,7 +1079,14 @@ export default function ReviewPanel(props: {
                       endLine={hunk.endLine}
                     />
                   </div>
-                  <DiffRows rows={buildRows(hunk.lines)} twoColumn={twoColumn()} />
+                  <DiffRows
+                    rows={buildRows(hunk.lines)}
+                    twoColumn={twoColumn()}
+                    selection={{
+                      has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
+                      toggle: (i) => pickLine(hi(), i),
+                    }}
+                  />
                   <For each={gaps().filter((g) => g.afterHunk === hi())}>
                     {(gap) => gapRow(gap, `${key}:gap${hi()}`, f.path, opts.staged)}
                   </For>
