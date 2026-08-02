@@ -102,6 +102,9 @@ import {
 } from "../../utils/editingNow";
 import { folderActors } from "../../utils/folderActors";
 import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
+import { askAgentToResolve } from "../../utils/conflictAsk";
+import { findAgent } from "../../utils/agents";
+import type { SessionTarget } from "../../utils/safeSend";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite } from "../../utils/selfWrites";
 // Not a static import: lspClient pulls @codemirror/lsp-client, which reaches
@@ -349,6 +352,55 @@ export default function Editor(props: {
     const rel = r && path && repoRelative(path, r);
     if (!r || !rel) return;
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("conflict", r, rel) });
+  }
+
+  // Safe-send's capability gate, the same pair the Changes and Problems panels
+  // keep: a target to name and a reason to refuse when there is nothing to send
+  // to (no session selected, or an adapter whose sessions cannot be resumed).
+  function sendTarget(): SessionTarget | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return null;
+    return {
+      sessionId: sel.sessionId,
+      agent: sel.agent ?? "claude",
+      folderPath: sel.folderPath,
+      sessionCwd: sel.sessionCwd,
+      sessionPath: sel.sessionPath,
+      sessionTitle: sel.sessionTitle,
+      sessionFile: sel.sessionFile,
+    };
+  }
+
+  function sendDisabledReason(): string | null {
+    const sel = props.selected;
+    if (!sel?.sessionId) return "Select a session first";
+    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    return null;
+  }
+
+  const [askingConflict, setAskingConflict] = createSignal(false);
+
+  /** Hand the open file's conflict to the selected session. The Conflicts
+   *  section's row offers the same thing for a file that is not open; both go
+   *  through the one composer, so the agent is asked in the same words either
+   *  way. */
+  async function askAgentToResolveOpen() {
+    const r = root();
+    const path = activeFileTab()?.path;
+    const rel = r && path && repoRelative(path, r);
+    const t = sendTarget();
+    const reason = sendDisabledReason();
+    if (reason) {
+      emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" });
+      return;
+    }
+    if (!r || !rel || !t || askingConflict()) return;
+    setAskingConflict(true);
+    try {
+      await askAgentToResolve(t, r, rel);
+    } finally {
+      setAskingConflict(false);
+    }
   }
 
   // The tab strip's right-click menu.
@@ -1069,6 +1121,14 @@ export default function Editor(props: {
             <span>Merge conflict: this file holds both sides.</span>
             <Button size="xs" onClick={openConflictView}>
               Compare the versions
+            </Button>
+            <Button
+              size="xs"
+              disabled={!!sendDisabledReason() || askingConflict()}
+              title={sendDisabledReason() ?? "Ask the selected session to resolve this conflict"}
+              onClick={askAgentToResolveOpen}
+            >
+              Ask agent to resolve
             </Button>
           </div>
         </Show>

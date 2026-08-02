@@ -39,6 +39,7 @@ import { copyText } from "../../utils/clipboard";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
+import { askAgentToResolve } from "../../utils/conflictAsk";
 import { findAgent } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -119,6 +120,10 @@ export default function ReviewPanel(props: {
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [drafting, setDrafting] = createSignal(false);
+  // The conflicted paths currently being handed to the agent. A set rather than
+  // one path, so each row's button reports its own request: two conflicted files
+  // are two questions, and neither should be waiting on the other.
+  const [asking, setAsking] = createSignal<ReadonlySet<string>>(new Set());
   const [origin, setOrigin] = createSignal<string | null>(null);
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
   const [openingPr, setOpeningPr] = createSignal(false);
@@ -344,6 +349,34 @@ export default function ReviewPanel(props: {
     setDrafting(false);
     if (result.kind === "timeout") {
       emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session, try again.", kind: "error" });
+    }
+  }
+
+  // The Conflicts row's half of "ask agent to resolve" (phase 13). The banner
+  // over the buffer offers the same thing, and both go through the one composer
+  // in conflictAsk.ts so they ask for the same file in the same words.
+  //
+  // The refusal is a toast rather than a silent no-op: the button is disabled
+  // for the same reason, but a disabled button that never says why is how the
+  // capability gate reads as a broken control.
+  async function askToResolve(file: string) {
+    const t = target();
+    const root = props.root;
+    const reason = disabledReason();
+    if (reason) {
+      emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" });
+      return;
+    }
+    if (!t || !root || asking().has(file)) return;
+    setAsking((prev) => new Set(prev).add(file));
+    try {
+      await askAgentToResolve(t, root, file);
+    } finally {
+      setAsking((prev) => {
+        const next = new Set(prev);
+        next.delete(file);
+        return next;
+      });
     }
   }
 
@@ -786,13 +819,13 @@ export default function ReviewPanel(props: {
     );
   }
 
-  /** A conflicted file's row: name only, no actions.
+  /** A conflicted file's row: open the three-way view, or hand the conflict to
+   *  the agent.
    *
    *  Deliberately not `row()` with the buttons hidden. Every control there acts
    *  on one version of the file, and an unmerged path has three; git refuses
-   *  stage, unstage and discard on it alike. Resolving is Phase 12's job, so
-   *  until then the row's whole job is to say which files are waiting and to
-   *  open one.
+   *  stage, unstage and discard on it alike. The two things that do make sense
+   *  on an unmerged path are reading it and delegating it.
    *
    *  It opens the three-way view rather than the file. The file on disk is
    *  git's marker-riddled attempt at a merge; the three versions behind it are
@@ -800,21 +833,35 @@ export default function ReviewPanel(props: {
    *  finding the banner and clicking again.
    *
    *  A `<button>` rather than the `<div onClick>` its siblings are: opening the
-   *  view is the row's only action, so a div would make the whole section
-   *  mouse-only, which is the reason the commit views' rows are buttons too. */
+   *  view is the row's main action, so a div would make the whole section
+   *  mouse-only, which is the reason the commit views' rows are buttons too.
+   *  The ask sits *beside* it rather than inside it, because a button nested in
+   *  a button is neither valid nor clickable in its own right. */
   function conflictRow(f: FileStatus) {
     return (
-      <button
-        type="button"
-        class={`${styles.reviewRow} ${styles.conflictRow}`}
-        onClick={() =>
-          props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", props.root, f.path) })
-        }
-        title={f.path}
-      >
-        <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>
-        <span class={styles.reviewName}>{f.path}</span>
-      </button>
+      <div class={styles.conflictRowWrap}>
+        <button
+          type="button"
+          class={`${styles.reviewRow} ${styles.conflictRow}`}
+          onClick={() =>
+            props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", props.root, f.path) })
+          }
+          title={f.path}
+        >
+          <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>
+          <span class={styles.reviewName}>{f.path}</span>
+        </button>
+        <Button
+          size="xs"
+          variant="ghost"
+          class={styles.askButton}
+          disabled={!!disabledReason() || asking().has(f.path)}
+          title={disabledReason() ?? "Ask the selected session to resolve this conflict"}
+          onClick={() => askToResolve(f.path)}
+        >
+          Ask agent
+        </Button>
+      </div>
     );
   }
 

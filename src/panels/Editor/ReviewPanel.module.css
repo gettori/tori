@@ -104,12 +104,33 @@
    the browser's own button chrome back. Everything else it takes from
    `.reviewRow`, so the two kinds of row still read as one list. */
 .conflictRow {
-  width: calc(100% - 8px * var(--ui-scale));
+  flex: 1;
+  min-width: 0;
   border: 0;
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
+}
+
+/* The row and the ask beside it. The ask cannot live *inside* the row, which is
+   itself a button, so the two are laid out as one line here and the name takes
+   whatever the ask leaves. Same reveal-on-hover rule as `.rowAction`: an
+   unmerged path has no other actions, so a permanently visible button on every
+   row would be the loudest thing in the panel. */
+.conflictRowWrap {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding-right: calc(8px * var(--ui-scale));
+}
+.askButton {
+  flex: none;
+  opacity: 0;
+}
+.conflictRowWrap:hover .askButton,
+.askButton:focus-visible {
+  opacity: 1;
 }
 
 .reviewName {
