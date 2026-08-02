@@ -1,7 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { EditorState, Compartment } from "@codemirror/state";
-import { blameExtension, blameAtLine, blameEffect, blameLabel, inlineBlameDecorations } from "./blameGutter";
+import {
+  blameExtension,
+  agentAtLine,
+  agentEffect,
+  blameAtLine,
+  blameEffect,
+  blameLabel,
+  inlineBlameDecorations,
+} from "./blameGutter";
 import { UNCOMMITTED, type Blame, type BlameCommit } from "../../utils/blame";
+import type { AgentLines, AgentTurn } from "../../utils/agentLines";
 
 // Blame is read once per file per HEAD, and after that the *lines* move while
 // the data stands still. These tests are about that movement, and they run
@@ -31,6 +40,7 @@ function stateWith(doc: string, blame: Blame): EditorState {
 
 const THREE = ["one", "two", "three"].join("\n");
 const COMMITS = [commit(1, 2), commit(2, 400)];
+
 
 describe("blame positions as the buffer changes", () => {
   it("reads each line's own commit", () => {
@@ -159,6 +169,69 @@ describe("switching blame off", () => {
 
     on = on.update({ effects: blameEffect(on, blameOf([0, 0, 1], COMMITS)) }).state;
     expect(blameAtLine(on, 3)?.short).toBe("2222222");
+  });
+});
+
+describe("the agent turn behind an uncommitted line", () => {
+  // The second marker set. It rides the same ChangeSet the first one does, and
+  // it only ever speaks where blame is silent - which is exactly the set of
+  // lines blame calls uncommitted.
+  const TURN_A: AgentTurn = { session_id: "sess-a", prompt_ts: 1700, ordinal: 4 };
+  const TURN_B: AgentTurn = { session_id: "sess-b", prompt_ts: 1800, ordinal: 9 };
+
+  function withAgent(doc: string, blame: Blame, agent: AgentLines): EditorState {
+    const start = EditorState.create({ doc, extensions: [blameExtension()] });
+    return start
+      .update({ effects: [blameEffect(start, blame), agentEffect(start, agent)] })
+      .state;
+  }
+
+  const AGENT: AgentLines = { lines: [-1, 0, 1], turns: [TURN_A, TURN_B] };
+
+  it("reads each line's own turn, and none for a line no turn wrote", () => {
+    const state = withAgent(THREE, blameOf([0, 0, 1], COMMITS), AGENT);
+
+    expect(agentAtLine(state, 1)).toBeNull();
+    expect(agentAtLine(state, 2)?.ordinal).toBe(4);
+    expect(agentAtLine(state, 3)?.session_id).toBe("sess-b");
+    expect(agentAtLine(state, 4)).toBeNull();
+  });
+
+  it("moves with the lines when text is typed above them", () => {
+    // The same property blame has, and it has to hold for both sets at once:
+    // one of them mapping and the other not would put the two answers on
+    // different lines.
+    const state = withAgent(THREE, blameOf([0, 0, 1], COMMITS), AGENT);
+    const after = state.update({ changes: { from: state.doc.line(2).from, insert: "typed\n" } }).state;
+
+    expect(after.doc.line(3).text).toBe("two");
+    expect(agentAtLine(after, 3)?.ordinal).toBe(4);
+    // And the line the user just typed belongs to nobody, same as blame.
+    expect(agentAtLine(after, 2)).toBeNull();
+  });
+
+  it("says nothing when blame is switched off", () => {
+    const bare = EditorState.create({ doc: THREE });
+
+    expect(agentAtLine(bare, 1)).toBeNull();
+  });
+
+  it("offers a widget on an uncommitted line the agent wrote, and none on a bare one", () => {
+    // The precedence itself is asserted where the widget can be rendered
+    // (`blameWidget.test.tsx`); what is pinned here is that the second set
+    // reaches the decoration at all, without a DOM.
+    const notYet: BlameCommit = { ...commit(0, 0), sha: UNCOMMITTED, short: "0000000" };
+    const state = withAgent(THREE, blameOf([1, 1, 1], [COMMITS[0], notYet]), AGENT);
+    const onSecond = state.update({ selection: { anchor: state.doc.line(2).from } }).state;
+
+    expect(inlineBlameDecorations(onSecond).size).toBe(1);
+  });
+
+  it("offers nothing on a line neither a commit nor a turn claims", () => {
+    const state = withAgent(THREE, blameOf([], []), AGENT);
+    const onFirst = state.update({ selection: { anchor: state.doc.line(1).from } }).state;
+
+    expect(inlineBlameDecorations(onFirst).size).toBe(0);
   });
 });
 

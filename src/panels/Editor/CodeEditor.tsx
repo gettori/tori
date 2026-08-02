@@ -13,8 +13,10 @@ import { json } from "@codemirror/lang-json";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
-import { blameExtension, setBlameMarkers } from "./blameGutter";
+import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
+import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
+import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
 import { lspPluginFor, onLspChange } from "./lspClient";
 import { reattachLsp } from "./lspReattach";
@@ -33,8 +35,10 @@ import {
   AGENT_WRITE_DEBOUNCE_MS,
   REFIT_PANES,
   EDITOR_SAVE,
+  REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
+  type RevealTurn,
   type ToastEvent,
   type FsChanged,
 } from "../../utils/events";
@@ -192,6 +196,12 @@ export default function CodeEditor(props: {
     const paths = [...agentWritten];
     agentWritten.clear();
     for (const p of paths) {
+      // Every path, not only the open ones. Which turn wrote which line is
+      // exactly what an agent write changes, and its cache key carries no
+      // version to notice with - not even the HEAD blame's does. A file cached
+      // while it was open, closed, then written to by five more turns would
+      // otherwise come back to a stale answer on reopening.
+      if (props.projectRoot) dropAgentLines(props.projectRoot, relTo(props.projectRoot, p));
       if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
     }
   }, AGENT_WRITE_DEBOUNCE_MS);
@@ -247,7 +257,12 @@ export default function CodeEditor(props: {
     // longer what was read - even though HEAD has not moved, which is the one
     // thing the cache key knows about. Dropped here rather than re-read: the
     // reload below decides whether this buffer adopts the new text at all.
-    if (props.projectRoot) dropBlame(props.projectRoot, relTo(props.projectRoot, path));
+    if (props.projectRoot) {
+      dropBlame(props.projectRoot, relTo(props.projectRoot, path));
+      // And a write is the only thing that changes who wrote which line, so this
+      // one has nothing else to notice it.
+      dropAgentLines(props.projectRoot, relTo(props.projectRoot, path));
+    }
     let text: string;
     try {
       text = await invoke<string>("fs_read_file", { path });
@@ -283,6 +298,7 @@ export default function CodeEditor(props: {
         // The buffer just adopted a different file, so its markers describe
         // lines that are no longer there. Clean again, so a rebuild is safe.
         void refreshBlame();
+        void refreshAgentLines();
       }
     } else {
       buf.pendingExternal = text;
@@ -358,6 +374,31 @@ export default function CodeEditor(props: {
     setBlameMarkers(view, blame);
   }
 
+  // Re-read which agent turn wrote each uncommitted line.
+  //
+  // Called on a buffer swap and when blame is switched on, and - unlike blame -
+  // **not** when HEAD moves: committing does not change who wrote a line, it
+  // only makes the commit the better answer, and the commit is read first.
+  //
+  // Same placement rule as blame, for the same reason: the line numbers are the
+  // file's on disk, so they may only be laid onto a buffer that still matches it.
+  async function refreshAgentLines() {
+    const path = shown;
+    const root = props.projectRoot;
+    if (!path || !root || !view) return;
+    if (!props.blame) return;
+    // The chats in this worktree. Passed in rather than discovered because a
+    // bare repo's worktrees share one ref store, so the sessions git can see
+    // include ones whose checkpoints describe a different set of files.
+    const sessions = chatsInFolder(root).map((c) => c.sessionId);
+    const agent = sessions.length
+      ? await agentLinesFor(root, relTo(root, path), sessions)
+      : emptyAgentLines();
+    if (!view || shown !== path || !props.blame) return;
+    if (!canPlaceBlame(view.state.doc.toString(), buffers.get(path)?.savedText)) return;
+    setAgentMarkers(view, agent);
+  }
+
   // Re-diff the active file and repaint the gutter. Called directly on save and
   // on a genuine external fs://changed (a save's own echo is skipped via
   // isSelfWrite, so a save produces exactly one re-diff).
@@ -389,7 +430,10 @@ export default function CodeEditor(props: {
       // read is spent - but nothing is re-read *here*: the markers on screen
       // were mapped through exactly the edits just saved and are still right.
       // The next rebuild (a swap, a toggle) is what pays for a fresh read.
-      if (props.projectRoot) dropBlame(props.projectRoot, relTo(props.projectRoot, path));
+      if (props.projectRoot) {
+        dropBlame(props.projectRoot, relTo(props.projectRoot, path));
+        dropAgentLines(props.projectRoot, relTo(props.projectRoot, path));
+      }
     } catch (e) {
       console.error("save failed", path, e);
     }
@@ -455,9 +499,19 @@ export default function CodeEditor(props: {
   // current setting up when it is swapped in.
   const blameConf = new Compartment();
 
+  // How the inline widget names a chat, and what clicking it does. The editor
+  // holds both because neither is the gutter's business: one is the chat panel's
+  // list of open sessions, the other is a pane the editor does not own.
+  const turnLink: TurnLink = {
+    nameFor: (sessionId) => liveChats().find((c) => c.sessionId === sessionId)?.sessionName,
+    onOpen: (turn) =>
+      emitWith<RevealTurn>(REVEAL_TURN, { sessionId: turn.session_id, promptTs: turn.prompt_ts }),
+  };
+
   function syncBlame() {
-    view?.dispatch({ effects: blameConf.reconfigure(props.blame ? blameExtension() : []) });
+    view?.dispatch({ effects: blameConf.reconfigure(props.blame ? blameExtension(turnLink) : []) });
     void refreshBlame();
+    void refreshAgentLines();
   }
 
   const commonExtensions: Extension[] = [
@@ -671,7 +725,19 @@ export default function CodeEditor(props: {
   // signal) keeps this off the path of every file save, which rewrites the
   // store's file list and nothing else this cares about.
   const head = createMemo(() => gitState().head);
+
+  // The chats in this worktree, by id and name. Both halves matter and neither
+  // is a doc change, so nothing else would repaint on them: a new chat changes
+  // whose turns the read covers, and a renamed one changes what the widget calls
+  // the turn it is already showing. Keyed on those two fields rather than on the
+  // list, whose status flips on every turn a chat starts or finishes.
+  const chatNames = createMemo(() =>
+    liveChats()
+      .map((c) => `${c.sessionId} ${c.sessionName}`)
+      .join(""),
+  );
   createEffect(on(head, () => void refreshBlame(), { defer: true }));
+  createEffect(on(chatNames, () => void refreshAgentLines(), { defer: true }));
   // Editor font size (base setting × global zoom) reaches .cm-content through the
   // --editor-font-size CSS var, but CM6 caches the char/line geometry it measured
   // at the old size. Re-measure when either input changes so the cursor, gutter

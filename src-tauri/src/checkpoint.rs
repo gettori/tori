@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 /// The well-known SHA-1 empty-tree object id (no parent needed for a
 /// never-before-snapshotted session's first turn).
-const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 fn checkpoint_index_path(session_id: &str) -> PathBuf {
     dirs::home_dir()
@@ -167,7 +167,155 @@ pub fn checkpoint_note_touched(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string(&rec).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    // The turn is registered even when it added no path, so the ordinals stay
+    // the session's own turn numbering rather than a count of the turns that
+    // happened to write something.
+    note_touched_index(&session_id, prompt_ts, &rec.files);
+    Ok(())
+}
+
+/// The reverse of the per-turn records: which turns touched a given path.
+///
+/// The per-turn files answer "what did turn N write", which is the question the
+/// timeline asks. Attributing a *line* asks the opposite: "which turns wrote
+/// this file", and answering that from the per-turn files means opening every
+/// one of them - 200 reads to find the 3 that matter, on every file you open.
+///
+/// `turns` is **append-only and unsorted**, so an index into it never moves;
+/// `files` holds those indices. A turn's ordinal ("turn 12 of this session") is
+/// its rank once `turns` is sorted, computed at read time.
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct TouchedIndex {
+    turns: Vec<u64>,
+    files: HashMap<String, Vec<u32>>,
+}
+
+fn touched_index_path(session_id: &str) -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/sway/checkpoint-touched")
+        .join(session_id)
+        .join("index.json")
+}
+
+fn read_touched_index(session_id: &str) -> Option<TouchedIndex> {
+    let text = std::fs::read_to_string(touched_index_path(session_id)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Fold one turn's paths into the session's index. Called from
+/// `checkpoint_note_touched` on the path where the record actually changed, so
+/// a repeated tool call costs nothing here either.
+///
+/// A failure is swallowed rather than returned: the index is a lookup shortcut
+/// over records that are already on disk, and failing the tool call that was
+/// merely *noting* a write would be a much worse trade than losing attribution
+/// for one turn.
+fn note_touched_index(session_id: &str, prompt_ts: u64, files: &[String]) {
+    let mut index = read_touched_index(session_id).unwrap_or_default();
+    // A turn calls the same tools over and over, so most calls after the first
+    // reach exactly what is already indexed.
+    if !fold_into_index(&mut index, prompt_ts, files) {
+        return;
+    }
+    write_touched_index(session_id, &index);
+}
+
+/// Add one turn and its paths to an index in memory. Returns whether anything
+/// actually moved, so the caller can skip the write.
+fn fold_into_index(index: &mut TouchedIndex, prompt_ts: u64, files: &[String]) -> bool {
+    let mut changed = false;
+    let at = match index.turns.iter().position(|t| *t == prompt_ts) {
+        Some(i) => i as u32,
+        None => {
+            index.turns.push(prompt_ts);
+            changed = true;
+            (index.turns.len() - 1) as u32
+        }
+    };
+    for file in files {
+        let entry = index.files.entry(file.clone()).or_default();
+        if !entry.contains(&at) {
+            entry.push(at);
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn write_touched_index(session_id: &str, index: &TouchedIndex) {
+    let path = touched_index_path(session_id);
+    let Some(parent) = path.parent() else { return };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    if let Ok(json) = serde_json::to_string(index) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+/// One turn that wrote a file, and where it sits in its session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TouchedTurn {
+    pub session_id: String,
+    pub prompt_ts: u64,
+    /// 1-based position among the turns this session has recorded, so the
+    /// widget can say "turn 12" rather than an epoch timestamp.
+    pub ordinal: usize,
+}
+
+/// Every turn of `session_id` that wrote `abs_file`, oldest first.
+///
+/// One file read. A session with no index answers empty rather than falling
+/// back to a scan: the scan is the cost this exists to avoid, and a session that
+/// predates the index is exactly the case where it would run every time.
+/// `rebuild_touched_index` covers that case once, at open.
+pub(crate) fn turns_touching(session_id: &str, abs_file: &str) -> Vec<TouchedTurn> {
+    let Some(index) = read_touched_index(session_id) else { return Vec::new() };
+    let Some(at) = index.files.get(abs_file) else { return Vec::new() };
+    let mut order: Vec<u64> = index.turns.clone();
+    order.sort_unstable();
+    let mut out: Vec<TouchedTurn> = at
+        .iter()
+        .filter_map(|i| index.turns.get(*i as usize).copied())
+        .map(|ts| TouchedTurn {
+            session_id: session_id.to_string(),
+            prompt_ts: ts,
+            ordinal: order.iter().position(|t| *t == ts).map(|i| i + 1).unwrap_or(0),
+        })
+        .collect();
+    out.sort_by_key(|t| t.prompt_ts);
+    out
+}
+
+/// Build the index from the per-turn records for a session that has none.
+///
+/// The one place the 200-read scan is allowed, and it happens once per session
+/// ever: without it every session recorded before the index existed would report
+/// no agent lines at all, which looks exactly like "the agent wrote nothing".
+pub(crate) fn rebuild_touched_index(session_id: &str) {
+    if touched_index_path(session_id).exists() {
+        return;
+    }
+    let Some(dir) = attribution_path(session_id, 0).parent().map(|p| p.to_path_buf()) else { return };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return };
+    let mut turns: Vec<u64> = entries
+        .flatten()
+        .filter_map(|e| {
+            e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).and_then(|n| n.parse().ok())
+        })
+        .collect();
+    turns.sort_unstable();
+    if turns.is_empty() {
+        return;
+    }
+    let mut index = TouchedIndex::default();
+    for ts in turns {
+        let Some(rec) = read_touched(session_id, ts) else { continue };
+        fold_into_index(&mut index, ts, &rec.files);
+    }
+    write_touched_index(session_id, &index);
 }
 
 /// A session's record for one turn, or `None` when there is no readable one.
@@ -353,6 +501,15 @@ fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
         .collect();
     entries.sort_by_key(|c| c.ts);
     entries
+}
+
+/// Every tree this session has snapshotted, ascending by timestamp.
+///
+/// Backstops are included. A backstop is a real intermediate state of the tree,
+/// and a line walk that skipped it would carry line numbers across a change
+/// nothing in its plan accounts for.
+pub(crate) fn checkpoint_trees(repo: &str, session_id: &str) -> Vec<(u64, String)> {
+    list_checkpoints(repo, session_id).into_iter().map(|c| (c.ts, c.tree)).collect()
 }
 
 fn tree_at_or_before(checkpoints: &[Checkpoint], ts: u64) -> String {
@@ -1096,6 +1253,66 @@ mod tests {
         if let Some(d) = attribution_path(session_id, 0).parent() {
             std::fs::remove_dir_all(d).ok();
         }
+    }
+
+    #[test]
+    fn a_files_turns_are_found_without_opening_every_turns_record() {
+        // 200 turns, three of which wrote the file. The lookup costs one read,
+        // proven by deleting every per-turn record first: an answer that still
+        // arrives cannot have come from scanning them.
+        let (dir, session) = tmp_repo();
+        let file = dir.join("a.ts").to_string_lossy().into_owned();
+        let other = dir.join("b.ts").to_string_lossy().into_owned();
+        for i in 0..200u64 {
+            let wrote = if i == 3 || i == 77 || i == 150 { &file } else { &other };
+            checkpoint_note_touched(session.clone(), 1000 + i, "Edit".into(), vec![wrote.clone()]).unwrap();
+        }
+        let records = attribution_path(&session, 0).parent().unwrap().to_path_buf();
+        for entry in std::fs::read_dir(&records).unwrap().flatten() {
+            if entry.file_name() != "index.json" {
+                std::fs::remove_file(entry.path()).unwrap();
+            }
+        }
+
+        let turns = turns_touching(&session, &file);
+
+        assert_eq!(turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(), vec![1003, 1077, 1150]);
+        // The session's own numbering, not a count of the three: the widget says
+        // "turn 4", and turn 4 is what the timeline calls it too.
+        assert_eq!(turns[0].ordinal, 4);
+        assert_eq!(turns[2].ordinal, 151);
+        assert!(turns_touching(&session, &dir.join("never.ts").to_string_lossy()).is_empty());
+        cleanup(&dir, &session);
+    }
+
+    #[test]
+    fn a_session_recorded_before_the_index_existed_is_indexed_once_on_demand() {
+        // Without this every session from before this feature reads as having
+        // written nothing, which looks exactly like an agent that wrote nothing.
+        let (dir, session) = tmp_repo();
+        let file = dir.join("a.ts").to_string_lossy().into_owned();
+        checkpoint_note_touched(session.clone(), 1000, "Edit".into(), vec![file.clone()]).unwrap();
+        checkpoint_note_touched(session.clone(), 2000, "Edit".into(), vec![file.clone()]).unwrap();
+        std::fs::remove_file(touched_index_path(&session)).unwrap();
+        assert!(turns_touching(&session, &file).is_empty(), "no index, no answer");
+
+        rebuild_touched_index(&session);
+
+        assert_eq!(turns_touching(&session, &file).len(), 2);
+        cleanup(&dir, &session);
+    }
+
+    #[test]
+    fn a_turn_that_named_no_file_still_takes_its_place_in_the_numbering() {
+        // A Bash-only turn writes nothing this can see, but it is still a turn:
+        // skipping it would shift every later turn's number by one.
+        let (dir, session) = tmp_repo();
+        let file = dir.join("a.ts").to_string_lossy().into_owned();
+        checkpoint_note_touched(session.clone(), 1000, "Bash".into(), vec![]).unwrap();
+        checkpoint_note_touched(session.clone(), 2000, "Edit".into(), vec![file.clone()]).unwrap();
+
+        assert_eq!(turns_touching(&session, &file)[0].ordinal, 2);
+        cleanup(&dir, &session);
     }
 
     /// Each tool call a capture's turn made, as `(tool name, reported paths)`,

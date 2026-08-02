@@ -214,20 +214,37 @@ export default function MessageList(props: {
     return current.dataset.turnId ?? null;
   }
 
+  /** Put `turnId`'s row at the top of the viewport. After the next paint, so the
+   *  rows it is measured against exist. */
+  function scrollToTurn(turnId: string) {
+    queueMicrotask(() => {
+      const target = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(turnId)}"]`);
+      if (!target || !scroller) return;
+      scroller.scrollTop += target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      setStuck(atBottom());
+    });
+  }
+
   onMount(() => {
     // Captured now, not read again inside the microtask: props are reactive
     // getters, and the anchor this mount is restoring is the one it opened
     // with.
     const anchor = props.anchorTurnId;
-    if (!anchor) return;
-    // After the first paint, so the rows the anchor is measured against exist.
-    queueMicrotask(() => {
-      const target = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(anchor)}"]`);
-      if (!target || !scroller) return;
-      scroller.scrollTop += target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      setStuck(atBottom());
-    });
+    if (anchor) scrollToTurn(anchor);
   });
+
+  // An anchor that arrives later is somebody pointing at a turn - the blame
+  // widget's "open the turn that wrote this line" - rather than a view being
+  // restored, and the list is already mounted when it lands.
+  createEffect(
+    on(
+      () => props.anchorTurnId,
+      (anchor) => {
+        if (anchor) scrollToTurn(anchor);
+      },
+      { defer: true },
+    ),
+  );
 
   onCleanup(() => props.onAnchor?.(visibleTurn()));
 

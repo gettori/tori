@@ -182,6 +182,17 @@ export const AGENT_WRITE_DEBOUNCE_MS = 100;
 export const SESSION_DELETED = "sway:session-deleted";
 export type SessionDeleted = { sessionId: string };
 
+// Payload-carrying event: show the turn that wrote a line. Emitted by the
+// editor's blame widget, which knows a session id and a prompt timestamp and
+// nothing else; the chat tab for that session answers by scrolling its
+// transcript to the matching turn.
+//
+// A timestamp rather than a turn id, because that is what the checkpoints are
+// named by. Only the tab hosting the session can translate the two, since the
+// mapping is built as its turns run.
+export const REVEAL_TURN = "sway:reveal-turn";
+export type RevealTurn = { sessionId: string; promptTs: number };
+
 // Payload-carrying event: a History row was acted on. The dropdown lives in the
 // terminal pane and reaches none of what these actions need - the selection
 // chain with its plain-repo checkout guard, the rename prompt, the delete
