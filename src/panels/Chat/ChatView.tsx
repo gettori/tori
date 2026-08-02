@@ -63,16 +63,20 @@ import {
   type PickableModel,
 } from "../../utils/chatModels";
 import { findAgent } from "../../utils/agents";
+import { revealTarget } from "../../utils/agentLines";
 import { chatTier, steerCostLabel } from "../../utils/chatCapabilities";
 import { settings } from "../Settings/settingsStore";
 import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
+  onWith,
   AGENT_FILES_WRITTEN,
   FOCUS_SESSION_TAB,
+  REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
   type FocusSessionTab,
+  type RevealTurn,
   type ToastEvent,
 } from "../../utils/events";
 import {
@@ -535,6 +539,22 @@ export default function ChatView(props: {
     clearComposer(props.sessionId);
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
+
+  // A blame widget in the editor pointed at one of this session's turns.
+  //
+  // The editor knows a session and a prompt timestamp, which is how the
+  // checkpoints are named; only this tab can turn that into a turn id, because
+  // the mapping is built as its own turns run. A turn from a replayed transcript
+  // has no stamp, so the tab still comes forward and the transcript stays where
+  // it was, which is a better answer than scrolling somewhere arbitrary.
+  onCleanup(
+    onWith<RevealTurn>(REVEAL_TURN, (ev) => {
+      const target = revealTarget(props.sessionId, turnStamps(), ev);
+      if (!target) return;
+      emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: props.tabId });
+      if (target.turnId) setAnchorTurn(target.turnId);
+    }),
+  );
 
   // Report this chat's status to whoever asks who could be writing in this
   // folder. Exact, not probed: the event stream says when a turn is running.
