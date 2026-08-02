@@ -4,6 +4,7 @@ import Button from "../../components/Button/Button";
 import { copyText } from "../../utils/clipboard";
 import { settings, saveSettings } from "./settingsStore";
 import type { AuthState } from "../../utils/forgeTypes";
+import { noteForgeAuth } from "../../utils/forgeStatus";
 import styles from "./Settings.module.css";
 
 // The GitHub account section: sign in by device flow, see who you are signed in
@@ -58,7 +59,13 @@ export default function GithubSection() {
   });
 
   const refresh = async () => {
-    setAuth(await invoke<AuthState>("github_auth_state"));
+    const state = await invoke<AuthState>("github_auth_state");
+    setAuth(state);
+    // Sign-in and sign-out both happen here and nowhere else, so this is the
+    // one place that knows the moment the credential changes. Telling the poll
+    // store directly is what makes the sidebar's chips appear on sign-in and
+    // vanish on sign-out, rather than at whatever the next focus happens to be.
+    noteForgeAuth(state);
     setConfigured(await invoke<boolean>("github_is_configured"));
   };
   void refresh();

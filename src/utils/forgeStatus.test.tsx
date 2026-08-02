@@ -89,7 +89,16 @@ const project = (path: string, branches: string[]) => ({
   units: branches.map((b) => ({ branch: b, visible: true })),
 });
 
+/** Drain the microtask queue, however many awaits deep the work sits. */
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
+
 function signedInWith(projects: WatchedProject[]) {
+  // Rust's answer too, not just the store's copy. `startForgePolling` re-reads
+  // the credential at mount and Rust is the authority, so a stub that still
+  // said "signed out" would quietly undo this line.
+  authState = { kind: "signedIn", login: "skarif2" };
   noteForgeAuth({ kind: "signedIn", login: "skarif2" });
   noteForgeEnabled(true);
   noteWatchedProjects(projects);
@@ -314,6 +323,31 @@ describe("backing off", () => {
 describe("the background schedule", () => {
   afterEach(() => vi.useRealTimers());
 
+  it("ticks the moment the credential becomes usable", async () => {
+    // Every tick before sign-in was refused by the pause, and none of them is
+    // retried on its own. Without this the app sits looking signed-out for the
+    // rest of the interval after the user has just signed in - and the same
+    // applies at launch, where the credential is read asynchronously and can
+    // easily land after the sidebar has already asked for its first tick.
+    noteForgeEnabled(true);
+    noteWatchedProjects([project("/a", ["main"])]);
+    await pollNow("interval", NOW);
+    expect(asks.length, "polled while signed out").toBe(0);
+
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await Promise.resolve();
+    expect(asks.length).toBe(1);
+
+    // A repeated auth read is not news and must never become a request. Two
+    // guards say so here (only a transition triggers, and the per-project gap
+    // would refuse it anyway); the assertion is on the outcome they share,
+    // since the focus tick this fires reads the wall clock and cannot be
+    // driven far enough forward to isolate one of them.
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await Promise.resolve();
+    expect(asks.length).toBe(1);
+  });
+
   it("ticks when the window comes back to the front", async () => {
     // Coming back to Sway after a build finished is exactly when the chips are
     // stale, and waiting out the rest of the interval to notice it is the
@@ -321,13 +355,15 @@ describe("the background schedule", () => {
     signedInWith([project("/a", ["main"])]);
     const stop = startForgePolling();
     window.dispatchEvent(new Event("focus"));
-    await Promise.resolve();
+    // Two flushes, not one: a focus tick re-reads the credential before it asks
+    // anything, so the request is one microtask deeper than the poll alone.
+    await flush();
     expect(asks.length).toBe(1);
 
     stop();
     asks.length = 0;
     window.dispatchEvent(new Event("focus"));
-    await Promise.resolve();
+    await flush();
     expect(asks.length, "the listener outlived its owner").toBe(0);
   });
 
