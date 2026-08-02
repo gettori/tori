@@ -30,8 +30,8 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewComment,
-    ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef,
+    ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 
 /// Everything that can go wrong, as distinct variants rather than a `String`.
@@ -224,6 +224,21 @@ pub trait Forge: Send + Sync {
     /// intent and every provider that has one has the other.
     fn set_thread_resolved(&self, thread_id: &str, resolved: bool) -> Result<(), ForgeError>;
 
+    /// Submit a review: a verdict, a body, and any line comments held with it.
+    ///
+    /// One call rather than a comment-posting loop plus a verdict. A review is
+    /// atomic on the server, and posting the comments separately would leave a
+    /// half-submitted review behind whenever the verdict call failed, with no
+    /// way for the caller to tell which comments had already landed.
+    fn submit_review(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        event: ReviewEvent,
+        body: &str,
+        comments: &[DraftComment],
+    ) -> Result<(), ForgeError>;
+
     /// The server's mergeability verdict, not ours.
     fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError>;
 
@@ -317,6 +332,16 @@ mod tests {
             Err(ForgeError::NotAuthenticated)
         }
         fn set_thread_resolved(&self, _thread_id: &str, _resolved: bool) -> Result<(), ForgeError> {
+            Err(ForgeError::NotAuthenticated)
+        }
+        fn submit_review(
+            &self,
+            _repo: &RepoRef,
+            _number: u64,
+            _event: ReviewEvent,
+            _body: &str,
+            _comments: &[DraftComment],
+        ) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
         fn mergeability(

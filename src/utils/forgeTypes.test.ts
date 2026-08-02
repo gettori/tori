@@ -3,6 +3,7 @@ import golden from "../../dev/fixtures/forge/model.json";
 import {
   AUTH_STATE_KINDS,
   CHECK_STATES,
+  DIFF_SIDES,
   FILE_STATUSES,
   FORGE_KEYS,
   MERGEABLE_STATES,
@@ -75,6 +76,8 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     expect(CHECK_STATES).toContain(golden.checkRollup.state);
     expect(REVIEW_DECISIONS).toContain(golden.reviewDecision);
     expect(FILE_STATUSES).toContain(golden.prFile.status);
+    expect(DIFF_SIDES).toContain(golden.draftComment.side);
+    expect(DIFF_SIDES).toContain(golden.draftComment.startSide);
 
     // All three auth states are emitted, because the Settings section renders a
     // distinct surface for each and a mirror that only saw one would let the

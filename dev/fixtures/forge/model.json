@@ -24,6 +24,14 @@
     "state": "failure",
     "total": 12
   },
+  "draftComment": {
+    "body": "This anchors on the wrong side.",
+    "line": 48,
+    "path": "src/utils/reviewThreads.ts",
+    "side": "RIGHT",
+    "startLine": 45,
+    "startSide": "RIGHT"
+  },
   "forgeError": {
     "kind": "rateLimited",
     "message": "Secondary rate limit, retry in 60s",

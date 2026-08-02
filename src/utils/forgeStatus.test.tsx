@@ -19,6 +19,8 @@ type Ask = { projectPath: string; branches: string[]; refresh: boolean };
 const asks: Ask[] = [];
 let authState: AuthState = { kind: "signedOut" };
 let authStateReads = 0;
+let viewerReads = 0;
+let viewerAnswer: string | null = null;
 /** Queued answers to `github_unit_statuses`, one per call. A value is resolved,
  *  an Error is rejected; running out falls back to an empty report. */
 let answers: (StatusReport | Error)[] = [];
@@ -28,6 +30,12 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "github_auth_state") {
       authStateReads += 1;
       return Promise.resolve(authState);
+    }
+    if (cmd === "github_viewer") {
+      viewerReads += 1;
+      return viewerAnswer
+        ? Promise.resolve(viewerAnswer)
+        : Promise.reject(new Error("not signed in"));
     }
     if (cmd === "github_unit_statuses") {
       asks.push(args as unknown as Ask);
@@ -49,6 +57,7 @@ import {
   unitStatus,
   uncoveredUnits,
   forgePause,
+  forgeViewer,
   type WatchedProject,
 } from "./forgeStatus";
 
@@ -109,7 +118,73 @@ beforeEach(() => {
   answers = [];
   authState = { kind: "signedOut" };
   authStateReads = 0;
+  viewerReads = 0;
+  viewerAnswer = null;
   resetForgeStatusForTests();
+});
+
+// The identity behind the review gate. Approve and request-changes are refused
+// with a 422 on your own pull request, so who "you" are decides which buttons
+// exist at all, and an answer from a credential that is no longer signed in is
+// the one way that gate can be wrong without looking wrong.
+describe("the viewer identity", () => {
+  it("is learned when a credential becomes usable", async () => {
+    viewerAnswer = "skarif2";
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+    expect(forgeViewer()).toBe("skarif2");
+  });
+
+  it("does not survive a sign-out", async () => {
+    viewerAnswer = "skarif2";
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+
+    noteForgeAuth({ kind: "signedOut" });
+    expect(forgeViewer(), "an identity outlived its credential").toBeNull();
+  });
+
+  it("does not survive a rejected credential", async () => {
+    // Rust keeps the login through a suspicion so the re-auth prompt can name
+    // the account it wants back. That is a label. This is an authorisation
+    // fact, and only one of the two is allowed to outlive a 401.
+    viewerAnswer = "skarif2";
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+
+    noteForgeAuth({ kind: "suspect", login: "skarif2" });
+    expect(forgeViewer()).toBeNull();
+  });
+
+  it("is re-derived when a different account signs in", async () => {
+    // Sign out, sign back in as somebody else. Reusing the first identity would
+    // have the review gate answering "whose pull request is this?" for an
+    // account that is no longer signed in.
+    viewerAnswer = "skarif2";
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+    expect(viewerReads).toBe(1);
+
+    noteForgeAuth({ kind: "signedOut" });
+    viewerAnswer = "someone-else";
+    noteForgeAuth({ kind: "signedIn", login: "someone-else" });
+    await flush();
+
+    expect(forgeViewer()).toBe("someone-else");
+    expect(viewerReads).toBe(2);
+  });
+
+  it("is not re-asked while the same account stays signed in", async () => {
+    // The credential state is re-read on every window focus, and an identity
+    // request per focus is a request spent to learn what has not changed.
+    viewerAnswer = "skarif2";
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    await flush();
+    expect(viewerReads).toBe(1);
+  });
 });
 
 describe("the poll schedule", () => {

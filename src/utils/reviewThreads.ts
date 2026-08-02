@@ -113,6 +113,23 @@ export function withResolved(
   return threads.map((t) => (t.id === threadId ? { ...t, isResolved: resolved } : t));
 }
 
+/** Base-file (old side) line number for each line of a hunk body, index-aligned
+ *  the same way, and null where a line has none.
+ *
+ *  The mirror of `newSideLines`, and kept beside it: they are the same function
+ *  with the sides swapped, and a reader who finds one must find the other. Both
+ *  exist because a diff has two numberings that stop agreeing the moment
+ *  anything above the line changed, so an anchor is only meaningful with the
+ *  side it is counted on. Additions are not in the base file, so they get no
+ *  number, and numbering them would push every following line out of step. */
+export function oldSideLines(hunk: { oldStart: number; lines: string[] }): (number | null)[] {
+  let next = hunk.oldStart;
+  return hunk.lines.map((line) => {
+    if (line.startsWith("+") || line.startsWith("\\")) return null;
+    return next++;
+  });
+}
+
 export type GroupedThreads = {
   /** Anchored threads, by path then by head-file line. */
   byLine: Map<string, Map<number, ReviewThread[]>>;
