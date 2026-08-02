@@ -38,7 +38,24 @@ const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 
 /** The credential state, from whoever last asked Rust for it. */
 export function noteForgeAuth(state: AuthState) {
+  const was = auth();
   setAuth(state);
+  // Becoming usable is itself a trigger, because every tick before it was
+  // refused by `mayPoll` and none of them will be retried on their own. Without
+  // this, signing in (or the startup read simply landing after the first tick)
+  // leaves a signed-in app looking signed-out until the next interval.
+  if (state.kind === "signedIn" && was.kind !== "signedIn") void pollNow("focus");
+}
+
+/// Ask Rust for the credential state and fold it in.
+///
+/// Rust is the only place that knows: the token is in the keychain and the
+/// suspect flag is set by whichever call last got a 401, which may be one no
+/// surface here made. A failure is swallowed on purpose, since the alternative
+/// to a stale answer is an invented one.
+export async function refreshForgeAuth() {
+  const state = await invoke<AuthState>("github_auth_state").catch(() => null);
+  if (state) noteForgeAuth(state);
 }
 
 /** The `github.enabled` kill switch, from the settings store. */
@@ -128,8 +145,7 @@ async function noteFailure(path: string, err: unknown, now: number) {
   // because the decision can also be made by a *different* command (a PR create
   // that got the 401), leaving this store's copy of the auth state stale.
   if (isForgeError(err) && (err.kind === "credentialSuspect" || err.kind === "notAuthenticated")) {
-    const state = await invoke<AuthState>("github_auth_state").catch(() => null);
-    if (state) setAuth(state);
+    await refreshForgeAuth();
   }
 }
 
@@ -162,6 +178,19 @@ export async function pollNow(trigger: Trigger, now: number = Date.now()) {
   await Promise.all(projects().map((p) => pollProject(p, trigger, now)));
 }
 
+/// What every "the window came back" trigger does, wherever it comes from.
+///
+/// One function rather than a line at each call site, because the two triggers
+/// that exist (the DOM focus event here, and the Tauri window's own focus
+/// change in the sidebar) race: whichever runs first stamps `lastPollAt` and the
+/// other is refused by the gap. If only one of them re-read the credential, a
+/// sign-out made outside Settings would reach the chips or not depending on
+/// which of the two won.
+export async function pollOnFocus(now: number = Date.now()) {
+  await refreshForgeAuth();
+  await pollNow("focus", now);
+}
+
 /// Starts the background schedule: an interval, plus a tick whenever the window
 /// comes back to the front.
 ///
@@ -171,7 +200,16 @@ export async function pollNow(trigger: Trigger, now: number = Date.now()) {
 /// stale one. The gap in `forgePoll` is what stops that from becoming a request
 /// per alt-tab.
 export function startForgePolling(): () => void {
-  const onFocus = () => void pollNow("focus");
+  // The credential, read once at startup. A local read costing no request, and
+  // the store's own copy starts at `signedOut`, so without it every tick before
+  // the first focus is refused. It lands asynchronously, which is fine: becoming
+  // signed-in is itself a trigger (see `noteForgeAuth`).
+  //
+  // No opening tick here. Nothing is watched yet at mount, so it would poll an
+  // empty list; the first real tick comes from whoever calls
+  // `noteWatchedProjects`, which is the moment there is something to ask about.
+  void refreshForgeAuth();
+  const onFocus = () => void pollOnFocus();
   window.addEventListener("focus", onFocus);
   const timer = window.setInterval(() => void pollNow("interval"), POLL_INTERVAL_MS);
   return () => {
