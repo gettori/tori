@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@solidjs/testing-library";
+import { render, waitFor } from "@solidjs/testing-library";
 import { Show, createSignal } from "solid-js";
 import MessageList from "./MessageList";
 import type { ChatItem } from "./chatStore";
@@ -98,6 +98,53 @@ describe("MessageList turn anchoring", () => {
     // away must leave something to come back to.
     expect(onAnchor).toHaveBeenCalledTimes(1);
     expect(onAnchor.mock.calls[0][0]).toBe("turn-3");
+  });
+
+  it("scrolls to a turn named while it is already on screen", async () => {
+    // Where the blame widget's click lands. The mount-time anchor restores a
+    // reader's place; this one is somebody pointing at a specific turn, and the
+    // list is already mounted when it arrives.
+    const [anchor, setAnchor] = createSignal<string | null>(null);
+    // Written out rather than through `list()`: that helper takes its overrides
+    // as a plain object, so the anchor would be frozen at the value it had when
+    // the object was built, and this test is about one arriving later.
+    const { container } = render(() => (
+      <MessageList
+        items={ITEMS}
+        streaming={false}
+        sessionId="s1"
+        cwd="/tmp"
+        anchorTurnId={anchor()}
+        modelLabelFor={() => null}
+        onAnswer={() => {}}
+        onRevertHunk={async () => true}
+      />
+    ));
+
+    // jsdom lays nothing out, so the rows are given the geometry the scroll
+    // arithmetic reads: one turn every 100px down a viewport that starts at 0.
+    // `scrollTop` is stubbed too - jsdom has no scrolling box, so its own
+    // setter is a no-op and the assertion below would read 0 whatever happened.
+    const scroller = container.firstElementChild as HTMLElement;
+    expect(scroller.querySelectorAll("[data-turn-id]").length).toBe(3);
+    scroller.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    let scrolledTo = 0;
+    Object.defineProperty(scroller, "scrollTop", {
+      get: () => scrolledTo,
+      set: (v: number) => {
+        scrolledTo = v;
+      },
+      configurable: true,
+    });
+    const rows = [...container.querySelectorAll<HTMLElement>("[data-turn-id]")];
+    rows.forEach((row, i) => {
+      row.getBoundingClientRect = () => ({ top: (i + 1) * 100 }) as DOMRect;
+    });
+
+    setAnchor("turn-2");
+
+    // The second turn's row, not the first and not the tail.
+    await waitFor(() => expect(scrolledTo).toBe(200));
   });
 
   it("round-trips the anchor through a view switch without losing it", () => {

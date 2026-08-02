@@ -1,3 +1,4 @@
+mod agent_lines;
 mod agents;
 mod askpass;
 mod attempts;
@@ -262,6 +263,7 @@ pub fn run() {
             git::git_log,
             git::git_head_sha,
             blame::git_blame,
+            agent_lines::agent_lines,
             git::git_commit_detail,
             git::git_commit_file_diff,
             git::git_checkout,

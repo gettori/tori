@@ -520,6 +520,23 @@ html {
   pointer-events: none;
 }
 
+/* The agent-turn variant is a target rather than a note: it opens the turn that
+   wrote the line, so it takes back the pointer events its neighbour refuses. */
+.cm-blame-turn {
+  pointer-events: auto;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-style: italic;
+}
+
+.cm-blame-turn:hover,
+.cm-blame-turn:focus-visible {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
 
 /* LSP diagnostics. @codemirror/lint ships hardcoded colours in its base theme
    (they live in node_modules, so the token guard cannot see them); these
