@@ -9,6 +9,7 @@ mod checkpoint;
 mod config;
 mod conflict;
 mod env;
+pub mod forge;
 mod fs;
 mod git;
 mod health;

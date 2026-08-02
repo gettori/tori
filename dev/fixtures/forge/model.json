@@ -1,0 +1,95 @@
+{
+  "authStates": [
+    {
+      "kind": "signedOut"
+    },
+    {
+      "kind": "signedIn",
+      "login": "skarif2"
+    },
+    {
+      "kind": "suspect",
+      "login": "skarif2"
+    }
+  ],
+  "capabilities": {
+    "checks": true,
+    "merge": true,
+    "pullRequests": true,
+    "resolveThreads": true,
+    "reviewThreads": true
+  },
+  "checkRollup": {
+    "failing": 2,
+    "state": "failure",
+    "total": 12
+  },
+  "pagedTruncated": {
+    "items": [
+      1,
+      2,
+      3
+    ],
+    "truncated": true
+  },
+  "pullRequest": {
+    "author": "skarif2",
+    "baseRef": "main",
+    "body": "Replaces the compare-URL flow.",
+    "headRef": "wave-3",
+    "headSha": "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f",
+    "isDraft": false,
+    "mergeableState": "clean",
+    "number": 42,
+    "state": "open",
+    "title": "Let a conflict be handed to the agent",
+    "url": "https://github.com/skarif2/sway/pull/42"
+  },
+  "repoRef": {
+    "owner": "skarif2",
+    "repo": "sway"
+  },
+  "reviewDecision": "changesRequested",
+  "reviewThread": {
+    "comments": [
+      {
+        "author": "skarif2",
+        "body": "This drops the error.",
+        "createdAt": "2026-08-02T12:00:00Z",
+        "id": "PRRC_kwDOABCD456"
+      }
+    ],
+    "diffHunk": "@@ -1,3 +1,4 @@\n fn main() {\n+    let x = 1;",
+    "id": "PRRT_kwDOABCD123",
+    "isOutdated": false,
+    "isResolved": false,
+    "line": 88,
+    "path": "src-tauri/src/forge/github.rs"
+  },
+  "unitStatus": {
+    "checks": {
+      "failing": 2,
+      "state": "failure",
+      "total": 12
+    },
+    "headRef": "wave-3",
+    "pullRequest": {
+      "author": "skarif2",
+      "baseRef": "main",
+      "body": "Replaces the compare-URL flow.",
+      "headRef": "wave-3",
+      "headSha": "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f",
+      "isDraft": false,
+      "mergeableState": "clean",
+      "number": 42,
+      "state": "open",
+      "title": "Let a conflict be handed to the agent",
+      "url": "https://github.com/skarif2/sway/pull/42"
+    },
+    "reviewDecision": "changesRequested"
+  },
+  "viewer": {
+    "avatarUrl": "https://avatars.githubusercontent.com/u/1",
+    "login": "skarif2"
+  }
+}
