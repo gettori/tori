@@ -2,6 +2,7 @@ mod agents;
 mod askpass;
 mod attempts;
 mod backstop;
+mod blame;
 mod chat;
 mod checkpoint;
 mod config;
@@ -259,6 +260,8 @@ pub fn run() {
             git::git_commit,
             git::git_head_message,
             git::git_log,
+            git::git_head_sha,
+            blame::git_blame,
             git::git_commit_detail,
             git::git_commit_file_diff,
             git::git_checkout,

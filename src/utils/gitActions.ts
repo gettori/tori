@@ -36,9 +36,13 @@ export type GitState = {
   files: FileStatus[];
   branch: string | null;
   aheadBehind: AheadBehind | null;
+  /** The commit HEAD names, or null on an unborn branch. Read here because it
+   *  is what everything derived from committed history caches against: blame
+   *  cannot change while HEAD stands still, however much you type. */
+  head: string | null;
 };
 
-const EMPTY: Omit<GitState, "root"> = { files: [], branch: null, aheadBehind: null };
+const EMPTY: Omit<GitState, "root"> = { files: [], branch: null, aheadBehind: null, head: null };
 
 const [gitState, setGitState] = createSignal<GitState>({ root: null, ...EMPTY });
 export { gitState };
@@ -105,25 +109,27 @@ export function refreshStatus(root: string | null): Promise<void> {
   });
 }
 
-/** Re-read branch and ahead/behind. Its own call because it costs two more
- *  backend round trips than the file list and changes far less often. */
+/** Re-read branch, ahead/behind and HEAD. Its own call because it costs more
+ *  backend round trips than the file list and changes far less often: it runs
+ *  on the events that move HEAD, not on every save. */
 export function refreshMeta(root: string | null): Promise<void> {
   if (!enterRoot(root)) return Promise.resolve();
   return coalesce(`meta:${root}`, async () => {
-    let branch: string | null = null;
-    let aheadBehind: AheadBehind | null = null;
-    try {
-      branch = (await invoke<BranchInfo[]>("list_branches", { path: root })).find((b) => b.current)?.name ?? null;
-    } catch {
-      branch = null;
-    }
-    try {
-      aheadBehind = await invoke<AheadBehind>("git_ahead_behind", { projectPath: root });
-    } catch {
-      aheadBehind = null;
-    }
+    // Three independent probes, so three at once: they were serial while there
+    // were two of them, and a third would have made this refresh visibly slower
+    // than the file list it runs beside. Each keeps its own failure, so one
+    // probe going wrong still leaves the other two answered.
+    const [branch, aheadBehind, head] = await Promise.all([
+      invoke<BranchInfo[]>("list_branches", { path: root })
+        .then((bs) => bs.find((b) => b.current)?.name ?? null)
+        .catch(() => null),
+      invoke<AheadBehind>("git_ahead_behind", { projectPath: root }).catch(() => null),
+      invoke<string>("git_head_sha", { projectPath: root })
+        .then((sha) => sha || null)
+        .catch(() => null),
+    ]);
     if (currentRoot !== root) return;
-    setGitState((prev) => ({ ...prev, branch, aheadBehind }));
+    setGitState((prev) => ({ ...prev, branch, aheadBehind, head }));
   });
 }
 

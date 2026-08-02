@@ -471,6 +471,55 @@ html {
   background: var(--diff-deleted);
 }
 
+/* Git blame. Emitted as literal class strings by src/panels/Editor/blameGutter.ts,
+   so like the diff gutter above they are global rather than CSS-module scoped.
+
+   The stripe shades by age against a fixed scale (see `ageBucket`), not against
+   the file's own oldest line: a file nobody has touched in years must not read
+   as fresh as one written this morning. One hue at six opacities rather than six
+   hues, because the reader is being told "older / newer", not "which of six
+   categories" - and because the diff gutter beside it already owns colour, and
+   two coloured stripes an inch apart would compete for the same glance.
+   A line with no stripe has no commit: uncommitted, or typed since the read. */
+.cm-blame-gutter {
+  width: calc(3px * var(--ui-scale));
+  padding: 0;
+}
+
+.cm-blame-gutter .cm-gutterElement[class*="cm-blame-age-"] {
+  background: var(--accent-fg);
+}
+
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-0 {
+  opacity: 1;
+}
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-1 {
+  opacity: 0.78;
+}
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-2 {
+  opacity: 0.58;
+}
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-3 {
+  opacity: 0.42;
+}
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-4 {
+  opacity: 0.3;
+}
+.cm-blame-gutter .cm-gutterElement.cm-blame-age-5 {
+  opacity: 0.2;
+}
+
+/* Who wrote the line the cursor is on, after the end of that line. Subtle and
+   un-selectable: it is an annotation on the code, not part of it. */
+.cm-blame-inline {
+  padding-left: 2ch;
+  color: var(--fg-subtle);
+  font-style: italic;
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
+}
+
 
 /* LSP diagnostics. @codemirror/lint ships hardcoded colours in its base theme
    (they live in node_modules, so the token guard cannot see them); these
