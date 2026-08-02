@@ -118,6 +118,41 @@
   color: var(--diff-deleted);
 }
 
+/* The line-comment composer, under the hunk whose rows are picked. */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  margin: calc(4px * var(--ui-scale)) 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+}
+
+.anchor {
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono, monospace);
+  font-size: var(--sway-text-2xs);
+}
+
+.composerInput {
+  width: 100%;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-default, var(--canvas-card));
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-lg);
+  resize: vertical;
+}
+
+.composerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(6px * var(--ui-scale));
+}
+
 .threadCount {
   flex: none;
   color: var(--fg-muted);

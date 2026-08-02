@@ -33,6 +33,7 @@ export type WatchedProject = { path: string; units: readonly WatchedUnit[] };
 // --- fed inputs -------------------------------------------------------------
 
 const [auth, setAuth] = createSignal<AuthState>({ kind: "signedOut" });
+const [viewer, setViewer] = createSignal<string | null>(null);
 const [enabled, setEnabled] = createSignal(true);
 const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 
@@ -40,11 +41,41 @@ const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 export function noteForgeAuth(state: AuthState) {
   const was = auth();
   setAuth(state);
+  // The viewer identity is a fact about *this* credential, and the review gate
+  // reads it to decide whether approve and request-changes are offerable at
+  // all. Carrying it across a sign-out, or across a 401, is how that gate ends
+  // up answering for an account that is no longer the one signed in: sign out,
+  // sign back in as somebody else, and the first account's identity would still
+  // be saying whose pull request this is.
+  //
+  // Rust keeps the login through a suspicion on purpose, so the re-auth prompt
+  // can name the account it wants back. That is a *label*; this is an
+  // authorisation fact, and only one of the two survives a 401.
+  const account = (s: AuthState) => (s.kind === "signedIn" ? s.login : null);
+  if (state.kind !== "signedIn") setViewer(null);
+  else if (account(was) !== account(state)) void refreshForgeViewer();
+
   // Becoming usable is itself a trigger, because every tick before it was
   // refused by `mayPoll` and none of them will be retried on their own. Without
   // this, signing in (or the startup read simply landing after the first tick)
   // leaves a signed-in app looking signed-out until the next interval.
   if (state.kind === "signedIn" && was.kind !== "signedIn") void pollNow("focus");
+}
+
+/// Ask Rust who the token belongs to and fold it in.
+///
+/// Usually free: Rust answers from the login it learned at sign-in and only
+/// reaches the network for a credential restored without one.
+export async function refreshForgeViewer() {
+  const v = await invoke<string>("github_viewer").catch(() => null);
+  // Only when still signed in. A sign-out landing while this was in flight
+  // would otherwise restore the identity it had just cleared.
+  if (v && auth().kind === "signedIn") setViewer(v);
+}
+
+/** The login the stored credential belongs to, or null while unknown. */
+export function forgeViewer(): string | null {
+  return viewer();
 }
 
 /// Ask Rust for the credential state and fold it in.
@@ -225,6 +256,7 @@ export function startForgePolling(): () => void {
 /// next, and nothing in the app should ever call this.
 export function resetForgeStatusForTests() {
   setAuth({ kind: "signedOut" });
+  setViewer(null);
   setEnabled(true);
   setProjects([]);
   setStatuses({});

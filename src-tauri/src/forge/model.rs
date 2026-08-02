@@ -239,6 +239,65 @@ pub struct PrFile {
     pub patch: Option<String>,
 }
 
+/// Which side of the diff a comment's line is counted on.
+///
+/// `Left` is the base file and `Right` the head file, and they are two different
+/// numberings of the same region: line 12 on the left is not line 12 on the
+/// right once anything above it changed. A comment that names a line without
+/// naming its side is a comment on whichever line the server guesses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum DiffSide {
+    Left,
+    Right,
+}
+
+/// A line comment held in a review that has not been submitted.
+///
+/// Anchored with `line`/`side` (plus `start_line`/`start_side` for a range) and
+/// **never** with `position`. `position` counts lines from the top of a patch,
+/// so it silently means something different the moment the pull request gets a
+/// new commit; GitHub deprecated it for exactly that. The line-and-side form is
+/// re-resolved by the server against the diff it currently has.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftComment {
+    pub path: String,
+    /// The last line of the range, in `side`'s numbering.
+    pub line: u32,
+    pub side: DiffSide,
+    /// The first line of a multi-line range. `None` for a single line.
+    pub start_line: Option<u32>,
+    pub start_side: Option<DiffSide>,
+    pub body: String,
+}
+
+/// The verdict a submitted review carries.
+///
+/// `Approve` and `RequestChanges` are rejected with a 422 on a pull request the
+/// viewer authored, which on a single-owner repo is every pull request Sway
+/// opens. They are built and gated rather than omitted, because the gate is
+/// about *this* pull request, not about the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewEvent {
+    Approve,
+    Comment,
+    RequestChanges,
+}
+
+impl ReviewEvent {
+    /// The wire word. GitHub spells these in screaming snake case, and it is the
+    /// only place that spelling belongs.
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Approve => "APPROVE",
+            Self::Comment => "COMMENT",
+            Self::RequestChanges => "REQUEST_CHANGES",
+        }
+    }
+}
+
 /// Who the stored token belongs to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -365,6 +424,16 @@ mod tests {
                 additions: 12,
                 deletions: 3,
                 patch: Some("@@ -1,3 +1,4 @@\n fn main() {\n+    let x = 1;".into()),
+            },
+            // A multi-line right-side range, because that is the shape carrying
+            // every field: a single-line comment sends the start pair as null.
+            "draftComment": DraftComment {
+                path: "src/utils/reviewThreads.ts".into(),
+                line: 48,
+                side: DiffSide::Right,
+                start_line: Some(45),
+                start_side: Some(DiffSide::Right),
+                body: "This anchors on the wrong side.".into(),
             },
             "viewer": Viewer {
                 login: "skarif2".into(),

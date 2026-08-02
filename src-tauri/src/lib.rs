@@ -363,6 +363,8 @@ pub fn run() {
             forge::commands::github_review_threads,
             forge::commands::github_reply_to_thread,
             forge::commands::github_set_thread_resolved,
+            forge::commands::github_viewer,
+            forge::commands::github_submit_review,
             settings::get_settings,
             settings::set_settings,
             settings::settings_watch_start,

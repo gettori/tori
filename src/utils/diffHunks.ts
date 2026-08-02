@@ -8,11 +8,15 @@ export type DiffHunk = {
   // header), matching the coordinates the editor/gutter already use.
   startLine: number;
   endLine: number;
+  // 1-based old-file line the hunk starts at (the "-" side). The two sides are
+  // separate numberings and stop agreeing as soon as anything above the hunk
+  // changed, so a comment on a removed line has to be anchored in this one.
+  oldStart: number;
   // The hunk's own lines, header excluded.
   lines: string[];
 };
 
-const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 
 export function parseDiffHunks(diffText: string): DiffHunk[] {
   const hunks: DiffHunk[] = [];
@@ -26,9 +30,16 @@ export function parseDiffHunks(diffText: string): DiffHunk[] {
   for (const line of lines) {
     const m = HUNK_HEADER_RE.exec(line);
     if (m) {
-      const start = parseInt(m[1], 10);
-      const count = m[2] !== undefined ? parseInt(m[2], 10) : 1;
-      current = { header: line, startLine: start, endLine: count > 0 ? start + count - 1 : start, lines: [] };
+      const oldStart = parseInt(m[1], 10);
+      const start = parseInt(m[2], 10);
+      const count = m[3] !== undefined ? parseInt(m[3], 10) : 1;
+      current = {
+        header: line,
+        startLine: start,
+        endLine: count > 0 ? start + count - 1 : start,
+        oldStart,
+        lines: [],
+      };
       hunks.push(current);
       continue;
     }

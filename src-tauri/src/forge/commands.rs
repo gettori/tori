@@ -11,7 +11,8 @@
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, Paged, PrFile, PullRequest, RepoRef, ReviewComment, ReviewThread, StatusReport,
+    AuthState, DraftComment, Paged, PrFile, PullRequest, RepoRef, ReviewComment, ReviewEvent,
+    ReviewThread, StatusReport,
 };
 use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
 use serde::Serialize;
@@ -414,6 +415,61 @@ pub fn github_set_thread_resolved(
     }
     repo_ref(&project_path)?;
     let result = client().set_thread_resolved(&thread_id, resolved);
+    auth::note_result(&result);
+    Ok(result?)
+}
+
+/// Who the stored token belongs to.
+///
+/// Served from the credential state when the login is already known, which it is
+/// from the moment of sign-in, so the usual answer costs no request. It is
+/// fetched only when the credential was restored without one.
+///
+/// The frontend needs this to decide whether approve and request-changes are
+/// even offerable: GitHub rejects both from the pull request's author with a
+/// 422, and on a single-owner repo that is every pull request.
+///
+/// **The login, and only the login.** Not a [`Viewer`]: the cached path knows
+/// who the token belongs to and nothing else, and answering `avatar_url: None`
+/// there would state the account has no avatar rather than that nobody asked.
+/// Returning the one field this command can always answer for keeps the cheap
+/// path and the fetched path telling the same kind of truth.
+#[tauri::command]
+pub fn github_viewer() -> Result<String, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    if let AuthState::SignedIn { login } = auth::state() {
+        if !login.is_empty() {
+            return Ok(login);
+        }
+    }
+    let result = client().viewer();
+    auth::note_result(&result);
+    let viewer = result?;
+    auth::note_login(viewer.login.clone());
+    Ok(viewer.login)
+}
+
+/// Submit a review: a verdict, a body, and the line comments held with it.
+///
+/// One call, because a review is atomic on the server. Posting the comments
+/// first and the verdict second would leave a half-submitted review behind
+/// whenever the second call failed, with nothing telling the caller which
+/// comments had already landed.
+#[tauri::command]
+pub fn github_submit_review(
+    project_path: String,
+    number: u64,
+    event: ReviewEvent,
+    body: String,
+    comments: Vec<DraftComment>,
+) -> Result<(), ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().submit_review(&repo, number, event, &body, &comments);
     auth::note_result(&result);
     Ok(result?)
 }

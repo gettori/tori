@@ -29,9 +29,9 @@ use super::http::{
     HttpRequest, NestedSpec, Transport, PAGE_CAP,
 };
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, FileStatus, MergeableState, Paged, PrFile,
-    PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewThread,
-    UnitStatus, Viewer,
+    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
+    MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment,
+    ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -310,6 +310,13 @@ fn file_from_rest(v: &Value) -> Result<PrFile, ForgeError> {
         deletions: v.get("deletions").and_then(|d| d.as_u64()).unwrap_or(0) as u32,
         patch: v.get("patch").and_then(|p| p.as_str()).map(|s| s.to_string()),
     })
+}
+
+fn side_wire(side: DiffSide) -> &'static str {
+    match side {
+        DiffSide::Left => "LEFT",
+        DiffSide::Right => "RIGHT",
+    }
 }
 
 /// GitHub's `mergeable_state`, carried through rather than recomputed.
@@ -744,6 +751,49 @@ mutation($threadId:ID!,$body:String!){
             "mutation($id:ID!){ unresolveReviewThread(input:{threadId:$id}){ thread { id isResolved } } }"
         };
         self.graphql(query, serde_json::json!({ "id": thread_id }))?;
+        Ok(())
+    }
+
+    fn submit_review(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        event: ReviewEvent,
+        body: &str,
+        comments: &[DraftComment],
+    ) -> Result<(), ForgeError> {
+        self.require_token()?;
+        // `line`/`side` and never `position`. `position` counts lines from the
+        // top of a patch, so it means something different the moment the pull
+        // request gets a new commit; the line-and-side form is re-resolved by
+        // the server against the diff it currently has.
+        //
+        // `start_line`/`start_side` are omitted entirely rather than sent null
+        // for a single-line comment: GitHub rejects a null `start_line` on a
+        // comment that has no range.
+        let comments: Vec<Value> = comments
+            .iter()
+            .map(|c| {
+                let mut v = serde_json::json!({
+                    "path": c.path,
+                    "line": c.line,
+                    "side": side_wire(c.side),
+                    "body": c.body,
+                });
+                if let (Some(start), Some(side)) = (c.start_line, c.start_side) {
+                    v["start_line"] = serde_json::json!(start);
+                    v["start_side"] = serde_json::json!(side_wire(side));
+                }
+                v
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "event": event.wire(),
+            "body": body,
+            "comments": comments,
+        });
+        let path = format!("/repos/{}/{}/pulls/{number}/reviews", repo.owner, repo.repo);
+        self.send(self.rest("POST", &path, Some(payload)))?;
         Ok(())
     }
 
@@ -1192,6 +1242,78 @@ mod tests {
             let v: serde_json::Value = serde_json::from_str(body).unwrap();
             assert_eq!(v["variables"]["id"], id);
         }
+    }
+
+    #[test]
+    fn a_submitted_review_anchors_by_line_and_side_never_by_position() {
+        // `position` counts lines from the top of a patch, so it means something
+        // different the moment the pull request gets another commit. GitHub
+        // deprecated it for that; sending it would put comments on drifting
+        // lines rather than failing.
+        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"id":1,"state":"COMMENTED"}"#)]);
+        let comments = vec![
+            DraftComment {
+                path: "src/a.rs".into(),
+                line: 48,
+                side: DiffSide::Right,
+                start_line: Some(45),
+                start_side: Some(DiffSide::Right),
+                body: "this range".into(),
+            },
+            DraftComment {
+                path: "src/b.rs".into(),
+                line: 9,
+                side: DiffSide::Left,
+                start_line: None,
+                start_side: None,
+                body: "one deleted line".into(),
+            },
+        ];
+
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "looks close", &comments).unwrap();
+
+        let sent: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
+        assert_eq!(sent["event"], "COMMENT");
+        assert_eq!(sent["body"], "looks close");
+        assert_eq!(sent["comments"][0]["line"], 48);
+        assert_eq!(sent["comments"][0]["side"], "RIGHT");
+        assert_eq!(sent["comments"][0]["start_line"], 45);
+        assert_eq!(sent["comments"][0]["start_side"], "RIGHT");
+        assert_eq!(sent["comments"][1]["side"], "LEFT");
+        // A single-line comment omits the range fields rather than sending them
+        // null, which GitHub rejects.
+        assert!(sent["comments"][1].get("start_line").is_none(), "got {}", sent["comments"][1]);
+        assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+    }
+
+    #[test]
+    fn every_verdict_sends_the_word_github_expects() {
+        // Three verbs, three wire words, and the screaming-snake spelling lives
+        // in exactly one place.
+        let ok = || StubTransport::json(200, r#"{"id":1}"#);
+        let (f, stub) = forge(vec![ok(), ok(), ok()]);
+        for event in [ReviewEvent::Approve, ReviewEvent::Comment, ReviewEvent::RequestChanges] {
+            f.submit_review(&repo(), 42, event, "body", &[]).unwrap();
+        }
+        let events: Vec<String> = stub
+            .bodies()
+            .iter()
+            .map(|b| serde_json::from_str::<Value>(b).unwrap()["event"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(events, vec!["APPROVE", "COMMENT", "REQUEST_CHANGES"]);
+    }
+
+    #[test]
+    fn a_review_the_author_cannot_leave_keeps_the_servers_own_wording() {
+        // The 422 this whole gate exists to avoid. If one slips through anyway,
+        // "Can not approve your own pull request" is the only useful thing to
+        // show, and it is in `errors[]`, not in the top-level message.
+        let (f, _stub) = forge(vec![StubTransport::json(
+            422,
+            r#"{"message":"Validation Failed","errors":[{"message":"Can not approve your own pull request"}]}"#,
+        )]);
+        let err = f.submit_review(&repo(), 42, ReviewEvent::Approve, "", &[]).unwrap_err();
+        assert!(format!("{err}").contains("Can not approve your own pull request"), "got {err}");
     }
 
     #[test]
