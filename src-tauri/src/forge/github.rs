@@ -453,6 +453,7 @@ fn thread_from_graphql(v: &Value) -> ReviewThread {
         id: str_at(v, "id"),
         path: str_at(v, "path"),
         line: v.get("line").and_then(|l| l.as_u64()).map(|l| l as u32),
+        start_line: v.get("startLine").and_then(|l| l.as_u64()).map(|l| l as u32),
         diff_hunk,
         is_resolved: v.get("isResolved").and_then(|r| r.as_bool()).unwrap_or(false),
         is_outdated: v.get("isOutdated").and_then(|o| o.as_bool()).unwrap_or(false),
@@ -487,7 +488,7 @@ query($owner:String!,$repo:String!,$number:Int!,$after:String){
     pullRequest(number:$number){
       reviewThreads(first:50, after:$after){
         nodes{
-          id path line isResolved isOutdated
+          id path line startLine isResolved isOutdated
           comments(first:50){
             nodes{ id body createdAt diffHunk author{ login } }
             pageInfo{ hasNextPage endCursor }
