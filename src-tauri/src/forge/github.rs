@@ -129,8 +129,14 @@ impl Transport for Recording {
             // Seconds since the epoch, so this one is wider than the counts.
             reset_at: resp.header("X-RateLimit-Reset").and_then(|v| v.trim().parse().ok()),
         };
-        if resp.status == 401 {
-            self.suspect.store(true, std::sync::atomic::Ordering::Relaxed);
+        match resp.status {
+            401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
+            // Any answered call clears the suspicion. A 401 from a proxy, a
+            // captive portal or a forge incident is transient, and without this
+            // the flag would latch on forever: the user would be told to sign
+            // in again to fix something that had already fixed itself.
+            200..=299 => self.suspect.store(false, std::sync::atomic::Ordering::Relaxed),
+            _ => {}
         }
         Ok(resp)
     }
@@ -826,6 +832,23 @@ mod tests {
         assert_eq!(f.auth_state(), AuthState::Suspect { login: None });
         // And the rate headers from the paged responses landed too.
         assert_eq!(f.rate_snapshot().remaining, Some(3999));
+    }
+
+    #[test]
+    fn a_transient_401_stops_being_suspect_once_a_call_answers() {
+        // A proxy or a forge incident can answer 401 once. If the flag latched
+        // forever the user would be told to sign in again to fix something that
+        // had already fixed itself.
+        let (f, _stub) = forge(vec![
+            StubTransport::json(401, r#"{"message":"Bad credentials"}"#),
+            StubTransport::json(200, r#"{"login":"skarif2"}"#),
+        ]);
+        assert_eq!(f.viewer().unwrap_err(), ForgeError::CredentialSuspect);
+        assert_eq!(f.auth_state(), AuthState::Suspect { login: None });
+
+        // The same token, retried, with nothing re-authenticated.
+        assert_eq!(f.viewer().unwrap().login, "skarif2");
+        assert_eq!(f.auth_state(), AuthState::SignedIn { login: String::new() });
     }
 
     #[test]
