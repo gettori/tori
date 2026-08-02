@@ -25,6 +25,7 @@ pub mod device_flow;
 pub mod github;
 pub mod http;
 pub mod model;
+pub mod prs;
 pub mod token;
 
 use model::{
