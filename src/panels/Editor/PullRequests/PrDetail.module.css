@@ -118,6 +118,26 @@
   color: var(--diff-deleted);
 }
 
+.threadCount {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+}
+
+/* Conversations that sit beside no diff row: outdated, or anchored outside the
+   lines this patch renders. */
+.threadGroup {
+  margin: calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.groupTitle {
+  padding: calc(4px * var(--ui-scale)) 0;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--sway-text-2xs);
+}
+
 .fileDiff {
   margin: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   overflow-x: auto;

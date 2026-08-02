@@ -705,19 +705,33 @@ impl Forge for GitHubForge {
         _repo: &RepoRef,
         thread_id: &str,
         body: &str,
-    ) -> Result<(), ForgeError> {
+    ) -> Result<ReviewComment, ForgeError> {
         self.require_token()?;
         // GraphQL, despite replies being a REST-friendly operation: the caller
         // holds a thread node id, and the REST reply endpoint keys off a numeric
         // *comment* id it has no way to know.
+        //
+        // The whole comment is selected, not just its id: the caller has already
+        // drawn an optimistic one, and the id, the author and the timestamp are
+        // the three things it had to guess.
         let query = r#"
 mutation($threadId:ID!,$body:String!){
   addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}){
-    comment { id }
+    comment { id body createdAt author{ login } }
   }
 }"#;
-        self.graphql(query, serde_json::json!({ "threadId": thread_id, "body": body }))?;
-        Ok(())
+        let data =
+            self.graphql(query, serde_json::json!({ "threadId": thread_id, "body": body }))?;
+        let c = data
+            .get("addPullRequestReviewThreadReply")
+            .and_then(|r| r.get("comment"))
+            .ok_or_else(|| ForgeError::Malformed { message: "reply returned no comment".into() })?;
+        Ok(ReviewComment {
+            id: str_at(c, "id"),
+            author: c.get("author").map(|a| str_at(a, "login")).unwrap_or_default(),
+            body: str_at(c, "body"),
+            created_at: str_at(c, "createdAt"),
+        })
     }
 
     fn set_thread_resolved(&self, thread_id: &str, resolved: bool) -> Result<(), ForgeError> {
@@ -1066,18 +1080,118 @@ mod tests {
     }
 
     #[test]
+    fn sixty_threads_arrive_whole_and_so_do_a_split_thread_s_comments() {
+        // The query asks for 50 threads a page, so 60 is the first count that
+        // pages at all, and the first thread's comments page separately on top
+        // of that. A connection walked correctly at the top level still returns
+        // only the first page of each nested one, which is the failure that
+        // looks like a thread quietly losing its older replies.
+        let thread = |n: usize, comments: &str, has_more: bool| {
+            format!(
+                r#"{{"id":"PRRT_{n}","path":"src/a.rs","line":{n},"isResolved":false,
+                    "isOutdated":false,"comments":{{"nodes":[{comments}],
+                    "pageInfo":{{"hasNextPage":{has_more},"endCursor":"cc"}}}}}}"#
+            )
+        };
+        let comment = |id: &str| {
+            format!(
+                r#"{{"id":"{id}","body":"b","createdAt":"2026-08-01T00:00:00Z",
+                    "diffHunk":"@@ -1 +1 @@","author":{{"login":"me"}}}}"#
+            )
+        };
+        let page = |from: usize, to: usize, has_more: bool, first_splits: bool| {
+            let nodes: Vec<String> = (from..to)
+                .map(|n| thread(n, &comment(&format!("C{n}")), first_splits && n == from))
+                .collect();
+            format!(
+                r#"{{"data":{{"repository":{{"pullRequest":{{"reviewThreads":{{
+                    "nodes":[{}],"pageInfo":{{"hasNextPage":{has_more},"endCursor":"tc"}}}}}}}}}}}}"#,
+                nodes.join(",")
+            )
+        };
+        // Queue order is the walker's order, and they are not interleaved: every
+        // top-level page is drained first, and only then is each node's inner
+        // connection filled. A queue written thread-page, comment-page,
+        // thread-page hands a comments response to the outer walker.
+        let (f, _stub) = forge(vec![
+            StubTransport::json(200, &page(0, 50, true, true)),
+            StubTransport::json(200, &page(50, 60, false, false)),
+            // The follow-up for thread 0's second page of comments.
+            StubTransport::json(
+                200,
+                &format!(
+                    r#"{{"data":{{"node":{{"comments":{{"nodes":[{}],
+                        "pageInfo":{{"hasNextPage":false,"endCursor":null}}}}}}}}}}"#,
+                    comment("C0b")
+                ),
+            ),
+        ]);
+
+        let threads = f.review_threads(&repo(), 42).unwrap();
+        assert_eq!(threads.items.len(), 60, "a second page of threads went missing");
+        assert!(!threads.truncated);
+        assert_eq!(threads.items[0].id, "PRRT_0");
+        assert_eq!(threads.items[59].id, "PRRT_59");
+        // Both pages of the split thread's comments, not just the first.
+        let ids: Vec<&str> = threads.items[0].comments.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["C0", "C0b"]);
+    }
+
+    #[test]
+    fn a_reply_comes_back_as_the_comment_the_server_stored() {
+        // The optimistic reply on screen guessed its id, its author and its
+        // timestamp. Returning `()` would leave all three guesses standing.
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"addPullRequestReviewThreadReply":{"comment":{
+                "id":"PRRC_kwDOABCD456","body":"fixed in 4d95fc3",
+                "createdAt":"2026-08-03T09:12:00Z","author":{"login":"skarif2"}}}}}"#,
+        )]);
+
+        let c = f.reply_to_thread(&repo(), "PRRT_kwDOABCD123", "fixed in 4d95fc3").unwrap();
+        assert_eq!(c.id, "PRRC_kwDOABCD456");
+        assert_eq!(c.author, "skarif2");
+        assert_eq!(c.created_at, "2026-08-03T09:12:00Z");
+        // And it went out addressed by the thread's node id, which is the only
+        // handle a caller holding a thread has.
+        assert!(stub.bodies()[0].contains("PRRT_kwDOABCD123"));
+    }
+
+    #[test]
+    fn a_reply_whose_response_carries_no_comment_is_malformed_not_a_blank() {
+        // A blank comment appended to the thread would look like a reply that
+        // posted and lost its text.
+        let (f, _stub) =
+            forge(vec![StubTransport::json(200, r#"{"data":{"addPullRequestReviewThreadReply":{}}}"#)]);
+        assert!(matches!(
+            f.reply_to_thread(&repo(), "PRRT_1", "hi").unwrap_err(),
+            ForgeError::Malformed { .. }
+        ));
+    }
+
+    #[test]
     fn resolve_and_unresolve_are_the_same_intent_with_different_mutations() {
         let ok = || StubTransport::json(200, r#"{"data":{"resolveReviewThread":{"thread":{"id":"T"}}}}"#);
         let (f, stub) = forge(vec![ok(), ok()]);
 
-        f.set_thread_resolved("PRRT_1", true).unwrap();
-        f.set_thread_resolved("PRRT_1", false).unwrap();
+        // A node id of the shape GitHub actually issues, not a placeholder: it
+        // is base64 and opaque, and the only reason threads are read over
+        // GraphQL at all is that REST never produces one of these.
+        let id = "PRRT_kwDOABCD123zM5Ab4Cd";
+        f.set_thread_resolved(id, true).unwrap();
+        f.set_thread_resolved(id, false).unwrap();
 
         // Same call shape from the caller's side; only the document differs.
         let seen = stub.bodies();
         assert!(seen[0].contains("resolveReviewThread"));
         assert!(seen[1].contains("unresolveReviewThread"));
-        assert!(seen[0].contains("PRRT_1"));
+        // The id rides as a variable on `input.threadId`, which is the one
+        // field either mutation takes.
+        assert!(seen[0].contains("input:{threadId:$id}"), "got {}", seen[0]);
+        for body in &seen {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(v["variables"]["id"], id);
+        }
     }
 
     #[test]
