@@ -36,6 +36,9 @@
    it sits in the same column as the editor, which takes the rest. */
 .conflictBanner {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   color: var(--danger-fg);

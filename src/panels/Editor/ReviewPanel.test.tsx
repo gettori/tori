@@ -288,6 +288,23 @@ describe("conflicts", () => {
     expect(screen.getByTitle("src/a.ts").querySelectorAll("button").length).toBeGreaterThan(0);
   });
 
+  it("opens the three-way view rather than git's marker-riddled file", async () => {
+    // The file on disk is git's attempt at the merge; the three versions behind
+    // it are the thing to choose between. Going via the file would mean finding
+    // the banner and clicking a second time.
+    statusRows = [CONFLICT];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
+    window.addEventListener(OPEN_IN_EDITOR, listener);
+    fireEvent.click(screen.getByTitle("src/c.ts"));
+    window.removeEventListener(OPEN_IN_EDITOR, listener);
+
+    expect(opened).toEqual([syntheticId("conflict", "/proj", "src/c.ts")]);
+  });
+
   it("does not offer to stash a tree git will not stash", async () => {
     // `git stash` refuses an unmerged tree outright, so an enabled button here
     // could only ever produce git's error message.
