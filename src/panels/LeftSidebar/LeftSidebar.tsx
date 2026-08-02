@@ -27,6 +27,8 @@ import {
   PURGE_UNDER_PATH,
   TOAST,
   TERMINAL_TAB_FOCUSED,
+  REMOVE_BRANCH_UNIT,
+  type RemoveBranchUnit,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
@@ -799,6 +801,27 @@ export default function LeftSidebar(props: {
     onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
   );
   onCleanup(onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error")));
+  // "Delete the branch" from the Pull Requests panel, after it landed one.
+  //
+  // Routed here rather than done there because this is where the guards live: a
+  // dirty worktree, unpushed commits, and agents still running in the folder.
+  // The unit's own kind picks which dialog it gets, since a worktree removal is
+  // a folder removal and a plain branch is not.
+  onCleanup(
+    onWith<RemoveBranchUnit>(REMOVE_BRANCH_UNIT, (d) => {
+      for (const g of config()?.spaces ?? []) {
+        for (const p of g.projects) {
+          if (p.path !== d.projectPath) continue;
+          const u = p.branchUnits.find((u) => u.branch === d.branch);
+          if (!u) continue;
+          if (u.kind === "worktree") openRemoveWorktree(p, u);
+          else openRemoveBranch(p, u);
+          return;
+        }
+      }
+      setError(`No branch unit named "${d.branch}" is open in this project.`);
+    }),
+  );
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
   // Deferred to the next frame so focus lands after the sidebar is revealed
   // (App un-hides it on the same event; a synchronous focus would hit a

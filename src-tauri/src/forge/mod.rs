@@ -33,6 +33,7 @@ use model::{
     AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef,
     ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
+use serde::{Deserialize, Serialize};
 
 /// Everything that can go wrong, as distinct variants rather than a `String`.
 ///
@@ -133,7 +134,12 @@ pub struct CreatePr {
 }
 
 /// How to land a PR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Serde-carried because it crosses the Tauri bridge: the picker is the user's
+/// choice and a repo can forbid any of the three, so the refusal has to come
+/// from the server rather than from a default chosen here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum MergeMethod {
     Merge,
     Squash,
@@ -248,6 +254,13 @@ pub trait Forge: Send + Sync {
         number: u64,
         method: MergeMethod,
     ) -> Result<(), ForgeError>;
+
+    /// Bring the pull request's head up to date with its base.
+    ///
+    /// The server's own merge of base into head, not a local one: the branch may
+    /// not be checked out anywhere on this machine, and a local merge would then
+    /// have to be pushed, which is two failure modes where the forge offers one.
+    fn update_branch(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
 }
 
 #[cfg(test)]
@@ -357,6 +370,9 @@ mod tests {
             _number: u64,
             _method: MergeMethod,
         ) -> Result<(), ForgeError> {
+            Err(ForgeError::NotAuthenticated)
+        }
+        fn update_branch(&self, _repo: &RepoRef, _number: u64) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
     }

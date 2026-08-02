@@ -97,6 +97,10 @@ const bridge = vi.hoisted(() => ({
   resolveFails: null as { kind: string; message: string } | null,
   viewer: null as string | null,
   submitFails: null as { kind: string; message: string } | null,
+  mergeable: "clean" as string,
+  mergeableFails: null as { kind: string; message: string } | null,
+  mergeFails: null as { kind: string; message: string } | null,
+  updateFails: null as { kind: string; message: string } | null,
   sessions: [] as unknown[],
   running: [] as string[],
 }));
@@ -126,6 +130,14 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.viewer ? Promise.resolve(bridge.viewer) : Promise.reject(new Error("signed out"));
     if (cmd === "github_submit_review")
       return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
+    if (cmd === "github_mergeability")
+      return bridge.mergeableFails
+        ? Promise.reject(bridge.mergeableFails)
+        : Promise.resolve(bridge.mergeable);
+    if (cmd === "github_merge")
+      return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
+    if (cmd === "github_update_branch")
+      return bridge.updateFails ? Promise.reject(bridge.updateFails) : Promise.resolve(null);
     if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
     if (cmd === "github_auth_state")
@@ -151,9 +163,9 @@ const { noteForgeUnits, probeBatch, resetSessionActivityForTests } = await impor
   "../../../utils/sessionActivity"
 );
 const { trackFolders, resetSessionStoreForTests } = await import("../../../utils/sessionStore");
-const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
-  "../../../utils/events"
-);
+const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, REMOVE_BRANCH_UNIT } =
+  await import("../../../utils/events");
+type RemoveBranchUnit = { projectPath: string; branch: string };
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
 
@@ -201,7 +213,7 @@ describe("the pull request detail", () => {
       }),
     ];
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
 
     await waitFor(() => expect(screen.queryByText("src/new.ts")).toBeTruthy());
     expect(screen.queryByText("src/gone.ts")).toBeTruthy();
@@ -230,7 +242,7 @@ describe("the pull request detail", () => {
     // fits on screen.
     bridge.files = Array.from({ length: 40 }, (_, i) => file({ path: `src/f${i}.ts` }));
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
 
     await waitFor(() => expect(screen.queryByText("src/f0.ts")).toBeTruthy());
     expect(document.querySelectorAll("[data-file-status]")).toHaveLength(40);
@@ -244,11 +256,15 @@ describe("the pull request detail", () => {
     bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
     bridge.slice = ["line four", "line five"];
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("src/edit.ts")).toBeTruthy());
     fireEvent.click(screen.getByText("src/edit.ts"));
 
     const gap = screen.getByText(/36 unchanged lines/);
+    // After the reads that opening a pull request makes (the files, the threads
+    // and the mergeability verdict), so this counts what *expanding* costs
+    // rather than what arriving costs.
+    await waitFor(() => expect(cmds("github_mergeability")).toHaveLength(1));
     const before = bridge.calls.length;
     fireEvent.click(gap);
 
@@ -277,7 +293,7 @@ describe("the pull request detail", () => {
     ];
     bridge.slice = ["line four"];
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("a.ts")).toBeTruthy());
 
     for (const path of ["a.ts", "b.ts"]) {
@@ -296,7 +312,7 @@ describe("the pull request detail", () => {
     bridge.files = [file({ path: "a.ts", patch: TWO_HUNKS })];
     bridge.sliceFails = "path does not exist in 9f1c2a3";
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("a.ts")).toBeTruthy());
     fireEvent.click(screen.getByText("a.ts"));
     fireEvent.click(screen.getByText(/36 unchanged lines/));
@@ -315,7 +331,7 @@ describe("the pull request detail", () => {
     bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
     bridge.fetchFails = "could not read from remote repository";
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("src/edit.ts")).toBeTruthy());
     fireEvent.click(screen.getByText("src/edit.ts"));
     fireEvent.click(screen.getByText(/36 unchanged lines/));
@@ -337,7 +353,7 @@ describe("the pull request detail", () => {
       file({ path: "to.ts", previousPath: "from.ts", status: "renamed", patch: null, additions: 0, deletions: 0 }),
     ];
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("big.json")).toBeTruthy());
 
     fireEvent.click(screen.getByText("big.json"));
@@ -365,7 +381,7 @@ describe("the pull request detail", () => {
     bridge.files = [file()];
     bridge.truncated = true;
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() =>
       expect(screen.queryByText(/more files than the API will describe/)).toBeTruthy(),
     );
@@ -376,7 +392,7 @@ describe("the pull request detail", () => {
   it("shows the server's own sentence when the files cannot be fetched", async () => {
     bridge.fail = { kind: "rateLimited", message: "the GitHub rate limit is spent" };
 
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("the GitHub rate limit is spent")).toBeTruthy());
   });
 
@@ -386,7 +402,7 @@ describe("the pull request detail", () => {
     // under another's number.
     bridge.files = [file({ path: "first.ts" })];
     const [current, setCurrent] = createSignal(pr({ number: 1 }));
-    render(() => <PrDetail root={ROOT} pr={current()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={current()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(screen.queryByText("first.ts")).toBeTruthy());
 
     bridge.files = [file({ path: "second.ts" })];
@@ -418,7 +434,7 @@ describe("review threads on a pull request's diff", () => {
   // The path is on the file row *and* in every thread card's header, so the row
   // is reached by its status word rather than by its text.
   const open = async () => {
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-file-status]")!);
   };
@@ -621,7 +637,7 @@ describe("review threads on a pull request's diff", () => {
     // A closed file with a conversation in it is otherwise indistinguishable
     // from one with none.
     bridge.threads = [thread({ id: "A", line: 2 }), thread({ id: "B", line: 41 })];
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-thread-count]")).toBeTruthy());
     expect(document.querySelector("[data-thread-count]")!.getAttribute("data-thread-count")).toBe("2");
   });
@@ -654,7 +670,7 @@ describe("writing and submitting a review", () => {
   });
 
   const openDiff = async (author = "skarif2") => {
-    render(() => <PrDetail root={ROOT} pr={pr({ author })} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr({ author })} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-file-status]")!);
   };
@@ -826,7 +842,7 @@ describe("reading without reviewing", () => {
     // handler, and its own source says why a read-only diff must not have them:
     // a five-thousand-line pull request would put five thousand controls in the
     // tab order, and lines would answer clicks that mean nothing.
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-file-status]")!);
 
@@ -876,7 +892,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
   }
 
   const openWithThread = async () => {
-    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} />);
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-file-status]")!);
     await waitFor(() => expect(document.querySelector("[data-thread-id]")).toBeTruthy());
@@ -1036,5 +1052,166 @@ describe("handing a review thread to the agent that owns the branch", () => {
       expect(document.querySelectorAll('[data-thread-id="PRRT_1"] [data-pending]')).toHaveLength(1);
       expect(sendButton().disabled).toBe(false);
     }
+  });
+});
+
+describe("landing a pull request", () => {
+  // Every control here is gated on the server's `mergeable_state`, never on a
+  // reading of the checks or the review verdict taken here: branch protection,
+  // required reviewers and required checks are invisible from this side, so a
+  // local verdict renders an enabled button the server then refuses.
+  const open = async (p = pr()) => {
+    render(() => <PrDetail root={ROOT} pr={p} onBack={() => {}} onLanded={() => {}} />);
+    await waitFor(() => expect(document.querySelector("[data-merge-state]")).toBeTruthy());
+  };
+
+  const button = (label: string) =>
+    screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")! as HTMLButtonElement;
+  const summary = () => document.querySelector("[data-merge-summary]")!.textContent;
+  const state = () => document.querySelector("[data-merge-state]")!.getAttribute("data-merge-state");
+
+  beforeEach(() => {
+    resetForgeStatusForTests();
+    resetSessionActivityForTests();
+    resetSessionStoreForTests();
+    bridge.calls.length = 0;
+    bridge.fail = null;
+    bridge.viewer = null;
+    bridge.threads = [];
+    bridge.threadsFail = null;
+    bridge.files = [file({ path: "src/edit.ts" })];
+    bridge.mergeable = "clean";
+    bridge.mergeableFails = null;
+    bridge.mergeFails = null;
+    bridge.updateFails = null;
+    bridge.sessions = [];
+    localStorage.clear();
+  });
+
+  it("merges a clean pull request nobody has approved", async () => {
+    // The case the whole gate is shaped around. On a single-owner repo the
+    // author cannot approve their own pull request, so a review-derived gate
+    // would block every merge Sway will ever offer, and the server would have
+    // taken all of them.
+    await signInAs("skarif2");
+    await open(pr({ author: "skarif2" }));
+    await waitFor(() => expect(state()).toBe("clean"));
+    expect(button("Merge").disabled).toBe(false);
+
+    fireEvent.click(button("Merge"));
+    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
+    // The picker's own value, not a method chosen here: a repo can forbid any of
+    // the three and that setting is not readable from this side.
+    expect(cmds("github_merge")[0].args).toMatchObject({ number: 42, method: "squash" });
+  });
+
+  it("holds the button shut on the server's verdict, and says which one", async () => {
+    bridge.mergeable = "blocked";
+    await open();
+    await waitFor(() => expect(state()).toBe("blocked"));
+    expect(button("Merge").disabled).toBe(true);
+    expect(summary()).toContain("rule on the base branch");
+    // Never a guess at *which* rule. That lives in a branch-protection setting
+    // this app cannot read, and inventing "needs one approval" would be Sway
+    // putting words in the server's mouth.
+    expect(summary()).not.toMatch(/approv|review/i);
+  });
+
+  it("shows the server's own sentence when it refuses the merge", async () => {
+    // The 405 that carries the only actionable thing in the exchange. A generic
+    // "could not merge" would throw it away.
+    bridge.mergeFails = {
+      kind: "notMergeable",
+      message: "At least 1 approving review is required by reviewers with write access.",
+    };
+    await open();
+    await waitFor(() => expect(state()).toBe("clean"));
+    fireEvent.click(button("Merge"));
+
+    await waitFor(() => expect(document.querySelector("[data-merge-error]")).toBeTruthy());
+    expect(document.querySelector("[data-merge-error]")!.textContent).toBe(
+      "At least 1 approving review is required by reviewers with write access.",
+    );
+    // Refused, so nothing claims it landed.
+    expect(summary()).not.toBe("Merged.");
+  });
+
+  it("offers an update only to a branch that is merely behind", async () => {
+    // A conflicted branch is the sharp one: update-branch is itself a merge, so
+    // offering it there is offering a button that cannot work.
+    bridge.mergeable = "dirty";
+    await open();
+    await waitFor(() => expect(state()).toBe("dirty"));
+    expect(screen.queryByText("Update branch")).toBeNull();
+    expect(button("Merge").disabled).toBe(true);
+  });
+
+  it("updates a behind branch and re-reads the verdict rather than assuming it", async () => {
+    // The update is queued on the server (202), so `behind` may still be the
+    // current answer for a moment. Assuming `clean` would offer a merge the
+    // server refuses.
+    bridge.mergeable = "behind";
+    await open();
+    await waitFor(() => expect(state()).toBe("behind"));
+    expect(button("Merge").disabled).toBe(true);
+
+    bridge.mergeable = "clean";
+    fireEvent.click(button("Update branch"));
+    await waitFor(() => expect(cmds("github_update_branch")).toHaveLength(1));
+    await waitFor(() => expect(state()).toBe("clean"));
+    expect(cmds("github_mergeability").length).toBeGreaterThan(1);
+  });
+
+  it("keeps the button inert while nobody has asked, which is not a verdict", async () => {
+    // A read that failed leaves the state unread. Rendering that as a verdict
+    // would put a live Merge button on a pull request nothing is known about.
+    bridge.mergeableFails = { kind: "transport", message: "offline" };
+    await open();
+    expect(state()).toBe("unread");
+    expect(button("Merge").disabled).toBe(true);
+    // And the diff is still worth reading: an unread verdict is not an error
+    // over the whole pull request.
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
+  });
+
+  it("hands the branch deletion to the sidebar, with its guards", async () => {
+    // Never deleted from here. The sidebar's dialogs already guard a dirty
+    // worktree, unpushed commits and agents still running in the folder, and a
+    // second delete path in this panel is a second place to forget all three.
+    noteForgeUnits([
+      {
+        folderPath: `${ROOT}/.worktrees/wave-3`,
+        projectPath: ROOT,
+        branch: "wave-3",
+        kind: "worktree",
+        isCurrent: false,
+        attention: false,
+      },
+    ]);
+    const asked: RemoveBranchUnit[] = [];
+    const off = onWith<RemoveBranchUnit>(REMOVE_BRANCH_UNIT, (d) => asked.push(d));
+
+    await open();
+    await waitFor(() => expect(state()).toBe("clean"));
+    fireEvent.click(button("Merge"));
+    await waitFor(() => expect(summary()).toBe("Merged."));
+
+    fireEvent.click(button("Delete branch…"));
+    off();
+    expect(asked).toEqual([{ projectPath: ROOT, branch: "wave-3" }]);
+    // And no delete of its own.
+    expect(cmds("remove_worktree_and_branch")).toHaveLength(0);
+    expect(cmds("delete_remote_branch")).toHaveLength(0);
+  });
+
+  it("does not offer to delete a branch this machine never checked out", async () => {
+    // Nothing local to remove, so the button would open a dialog about a branch
+    // the sidebar does not list: a dead end dressed as an action.
+    noteForgeUnits([]);
+    await open();
+    await waitFor(() => expect(state()).toBe("clean"));
+    fireEvent.click(button("Merge"));
+    await waitFor(() => expect(summary()).toBe("Merged."));
+    expect(screen.queryByText("Delete branch…")).toBeNull();
   });
 });
