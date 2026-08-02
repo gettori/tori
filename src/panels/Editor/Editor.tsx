@@ -22,10 +22,12 @@ import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
 import CommitDetail from "./CommitDetail";
+import ConflictView from "./ConflictView";
 import ImageView, { isImagePath } from "./ImageView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
+import Button from "../../components/Button/Button";
 import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
 import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
@@ -337,6 +339,17 @@ export default function Editor(props: {
   // every git action, so the banner appears and clears on the same beat as the
   // Changes panel's Conflicts section, with no second source of truth.
   const conflicted = () => isConflicted(root(), activeFileTab()?.path ?? null);
+
+  /** Open the open file's three-way view. A tab rather than a pane inside this
+   *  one: the file itself stays open beside it, which is where the reader ends
+   *  up once they know which side they want. */
+  function openConflictView() {
+    const r = root();
+    const path = activeFileTab()?.path;
+    const rel = r && path && repoRelative(path, r);
+    if (!r || !rel) return;
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("conflict", r, rel) });
+  }
 
   // The tab strip's right-click menu.
   const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
@@ -1053,7 +1066,10 @@ export default function Editor(props: {
             itself says that is why it looks like that. */}
         <Show when={conflicted()}>
           <div class={styles.conflictBanner} role="status">
-            Merge conflict: this file holds both sides. Resolve the markers, then stage it to mark it resolved.
+            <span>Merge conflict: this file holds both sides.</span>
+            <Button size="xs" onClick={openConflictView}>
+              Compare the versions
+            </Button>
           </div>
         </Show>
         {/* Mounted on the union, hidden on the visible strip. Gating the mount
@@ -1101,6 +1117,9 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+                <Show when={t().kind === "conflict"}>
+                  <ConflictView workspace={t().workspace} file={t().arg} />
                 </Show>
               </>
             )}

@@ -794,15 +794,22 @@ export default function ReviewPanel(props: {
    *  until then the row's whole job is to say which files are waiting and to
    *  open one.
    *
+   *  It opens the three-way view rather than the file. The file on disk is
+   *  git's marker-riddled attempt at a merge; the three versions behind it are
+   *  what the reader has to choose between, and going via the file means
+   *  finding the banner and clicking again.
+   *
    *  A `<button>` rather than the `<div onClick>` its siblings are: opening the
-   *  file is the row's only action, so a div would make the whole section
+   *  view is the row's only action, so a div would make the whole section
    *  mouse-only, which is the reason the commit views' rows are buttons too. */
   function conflictRow(f: FileStatus) {
     return (
       <button
         type="button"
         class={`${styles.reviewRow} ${styles.conflictRow}`}
-        onClick={() => openFile(f.path)}
+        onClick={() =>
+          props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", props.root, f.path) })
+        }
         title={f.path}
       >
         <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>

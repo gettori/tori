@@ -1,0 +1,115 @@
+.conflictView {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-card);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+}
+
+/* Which operation left the tree like this. Not decoration: it is the reason
+   the two side labels say what they say. */
+.op {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  background: var(--neutral-hover);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.counter {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.error {
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  color: var(--danger-fg);
+  font-size: var(--sway-text-md);
+}
+
+/* The base for the region under discussion. Capped rather than scrolling with
+   the panes: it is a reminder, and a long one would push the versions you are
+   choosing between off the screen. */
+.base {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  max-height: calc(120px * var(--ui-scale));
+  overflow: auto;
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.baseLabel {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.baseEmpty {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  font-style: italic;
+}
+
+.baseText {
+  margin: 0;
+  color: var(--fg-muted);
+  font-family: var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace);
+  font-size: var(--editor-font-size, 13px);
+  white-space: pre;
+}
+
+/* Each version's name, as a panel inside its own pane: it cannot drift away
+   from the document it names however the two columns are sized. */
+.sideLabel {
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-card);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.panes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.panes :global(.cm-mergeView),
+.panes :global(.cm-mergeViewEditors) {
+  height: 100%;
+}
+
+/* Both sides moved these lines: this is the decision. */
+.conflictLine {
+  background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
+}
+
+/* One side moved them, so they carry across without a decision. Muted, because
+   the eye should go to the conflicts. */
+.carriedLine {
+  background: var(--neutral-hover);
+}
