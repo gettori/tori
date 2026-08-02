@@ -7,6 +7,7 @@ import {
   MERGEABLE_STATES,
   PR_STATES,
   REVIEW_DECISIONS,
+  forgeErrorMessage,
   mayUseForge,
   needsAttention,
   type AuthState,
@@ -147,6 +148,25 @@ describe("mayUseForge", () => {
     const signedIn: AuthState = { kind: "signedIn", login: "skarif2" };
     expect(mayUseForge(signedIn, false)).toBe(false);
     expect(mayUseForge(signedIn, true)).toBe(true);
+  });
+});
+
+describe("forgeErrorMessage", () => {
+  it("reads the sentence out of a rejected forge command", () => {
+    // A rejected Tauri command hands back the serialized DTO, an object. The
+    // panels' `String(e)` renders that as "[object Object]", which is the least
+    // informative string in the app for the failures the user most needs to act
+    // on ("a pull request already exists", "no commits between").
+    expect(
+      forgeErrorMessage({ kind: "alreadyExists", message: "A pull request already exists." }),
+    ).toBe("A pull request already exists.");
+  });
+
+  it("falls back to stringifying anything that is not one", () => {
+    // A panic, a plugin error, a thrown string: still has to render as itself.
+    expect(forgeErrorMessage("plain failure")).toBe("plain failure");
+    expect(forgeErrorMessage(new Error("boom"))).toContain("boom");
+    expect(forgeErrorMessage({ kind: "alreadyExists" })).toContain("object");
   });
 });
 
