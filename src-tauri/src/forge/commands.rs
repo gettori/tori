@@ -10,7 +10,7 @@
 
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
-use super::model::{AuthState, PullRequest, RepoRef, StatusReport};
+use super::model::{AuthState, Paged, PullRequest, RepoRef, StatusReport};
 use super::{auth, github, prs, status, token, CreatePr, Forge, ForgeError};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -303,6 +303,30 @@ pub fn github_unit_statuses(
         result.map(|statuses| (statuses, forge.rate_snapshot()))
     })?;
     Ok(out)
+}
+
+/// Every open pull request on a project, for the Pull Requests panel.
+///
+/// Deliberately **not** cached and not coalesced, unlike the poll layer. This is
+/// a panel the user opened, so a stale answer is worse than a request; the
+/// things Phase 5 built its cache for (a tick every two minutes, per project,
+/// forever) do not apply to something that happens when somebody clicks.
+///
+/// The kill switch is checked first for the same reason it is on the poll
+/// command: `github.enabled` off has to mean no traffic, not merely no polling.
+///
+/// Checks and the review decision are **not** joined in here. The panel reads
+/// them from the same status store the sidebar chips do, which is what stops a
+/// row and its chip from being two answers to one question.
+#[tauri::command]
+pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeErrorDto> {
+    if !auth::may_call() {
+        return Err(ForgeError::NotAuthenticated.into());
+    }
+    let repo = repo_ref(&project_path)?;
+    let result = client().list_pull_requests(&repo);
+    auth::note_result(&result);
+    Ok(result?)
 }
 
 /// Restores the credential at startup and installs the keychain store.
@@ -611,6 +635,22 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.kind, "notAuthenticated", "a disabled integration reached the repo");
+
+        auth::restore(None, None, true);
+    }
+
+    #[test]
+    fn the_kill_switch_stops_a_pr_listing_too() {
+        // Same backstop, second door. `github.enabled` off has to mean no
+        // traffic at all, not merely no polling, and a panel the user opens is
+        // exactly the caller that would otherwise reach the wire while the
+        // scheduler sat paused. The path is not a repo, so a build missing the
+        // gate fails with a *remote* error instead.
+        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        auth::restore(Some(TOKEN.into()), Some("skarif2".into()), false);
+
+        let err = github_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
+        assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed pull requests");
 
         auth::restore(None, None, true);
     }

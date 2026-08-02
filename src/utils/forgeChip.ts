@@ -89,6 +89,24 @@ export function forgeChip(input: {
   };
 }
 
+/// The checks and verdict badges alone, for a surface listing pull requests the
+/// API just returned.
+///
+/// Every question `forgeChip` asks ahead of those two is already settled there:
+/// an API that answered serves this repo, a listed PR exists, and a paused
+/// poller could not have produced the list. What is left is the pair of badges,
+/// with the PR glyph deliberately absent because the row beside them already
+/// names the number.
+export function forgeBadges(status: UnitStatus | null): ForgeChip {
+  if (status === null || status.pullRequest === null) return { ...NOTHING, kind: "unknown" };
+  return {
+    kind: "pr",
+    pr: null,
+    checks: checksBadge(status.checks),
+    review: reviewBadge(status.reviewDecision),
+  };
+}
+
 function prWord(state: PrChipState): string {
   switch (state) {
     case "draft":

@@ -360,3 +360,54 @@ describe("a failing check reaching the session that owns the branch", () => {
     expect(shipped.querySelector('[title="Waiting for approval"]')).toBeNull();
   });
 });
+
+// The chip as a way in. Phase 6 made it a status surface; this makes the one
+// with a pull request behind it a control.
+describe("clicking a branch's forge chip", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    resetForgeStatusForTests();
+    bridge.calls.length = 0;
+    bridge.auth = { kind: "signedIn", login: "skarif2" };
+    bridge.sessions = [];
+    bridge.handlers = {};
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/gh"]));
+  });
+
+  it("selects the branch and opens the Pull Requests panel", async () => {
+    const selected: unknown[] = [];
+    render(() => (
+      <LeftSidebar selected={null} onSelect={(s) => selected.push(s)} liveTabs={[]} />
+    ));
+
+    const shipped = await row("shipped");
+    await waitFor(() => expect(shipped.querySelector("button[data-forge-state]")).toBeTruthy());
+
+    let detail: unknown = null;
+    const handler = (e: Event) => (detail = (e as CustomEvent).detail);
+    window.addEventListener("sway:set-right-mode", handler);
+    (shipped.querySelector("button[data-forge-state]") as HTMLButtonElement).click();
+    await waitFor(() => expect(detail).toEqual({ mode: "pulls" }));
+    window.removeEventListener("sway:set-right-mode", handler);
+
+    // The panel is workspace-scoped, so the selection has to land first or it
+    // opens onto whichever project was already showing.
+    expect(selected).toHaveLength(1);
+    expect((selected[0] as { branch: string }).branch).toBe("shipped");
+  });
+
+  it("leaves a branch with no pull request inert", async () => {
+    // There is nothing for the panel to show it: the list carries what exists,
+    // so a button here would look like a control and do nothing visible
+    // (`lesson_probe_the_capability_before_building_its_control`).
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
+
+    const fresh = await row("fresh");
+    await waitFor(() => expect(fresh.querySelector('[data-forge-state="noPr"]')).toBeTruthy());
+    expect(fresh.querySelector("button")).toBeNull();
+  });
+});

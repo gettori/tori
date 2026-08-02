@@ -1,0 +1,73 @@
+/* The forge chip: a pull request, its checks, and the review verdict.
+   Shared by the sidebar's branch rows and the Pull Requests panel's rows, so
+   the two cannot describe the same PR with different glyphs. */
+.forgeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  flex: 0 0 auto;
+  color: var(--fg-muted);
+}
+
+/* No `margin-left: auto` here. On a sidebar row `.label` is `flex: 1` and
+   already takes the free space; a second auto margin would split what is left
+   between this and the session rollup instead of keeping them together at the
+   row's end. */
+.forgeItem {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  font-size: var(--sway-text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.forgeItem :global(svg) {
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+/* A branch with no PR is the resting state of most branches, so it is drawn at
+   the quietest weight the row has: present enough to say "nothing opened yet",
+   never enough to read as a warning. */
+.forgeItem.pr_none {
+  opacity: 0.45;
+}
+.forgeItem.pr_open {
+  color: var(--success-fg);
+}
+.forgeItem.pr_draft {
+  color: var(--fg-muted);
+}
+.forgeItem.pr_merged {
+  color: var(--status-progress);
+}
+.forgeItem.pr_closed {
+  color: var(--danger-fg);
+}
+.forgeItem.good {
+  color: var(--success-fg);
+}
+.forgeItem.bad {
+  color: var(--danger-fg);
+}
+.forgeItem.busy {
+  color: var(--attention-fg);
+}
+
+/* The clickable variant. A button rather than a styled span, because it is a
+   control and has to reach the keyboard: the sidebar row it sits inside is a
+   div with an onClick, so nothing else here is tabbable. `stopPropagation` in
+   the handler is what keeps a click from also selecting the row. */
+button.forgeChip {
+  background: none;
+  border: 0;
+  padding: 0 calc(2px * var(--ui-scale));
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--sway-radius-sm, 4px);
+}
+button.forgeChip:hover,
+button.forgeChip:focus-visible {
+  background: var(--neutral-subtle);
+}

@@ -14,6 +14,7 @@ import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
+import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -40,6 +41,7 @@ import {
   FileHeart,
   Files,
   GitCompare,
+  GitPullRequest,
   TriangleAlert,
   Search,
   MessagesSquare,
@@ -123,11 +125,12 @@ type FileTab = { path: string; name: string };
 // its `<For>` is referentially keyed, and fresh literals would tear down and
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
-type RightMode = "files" | "changes" | "problems" | "shared" | "docs" | "session" | "search";
+type RightMode = "files" | "changes" | "pulls" | "problems" | "shared" | "docs" | "session" | "search";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
   changes: { mode: "changes", label: "Changes", icon: GitCompare },
+  pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
   search: { mode: "search", label: "Search", icon: Search },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
@@ -247,6 +250,7 @@ export default function Editor(props: {
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
     "changes",
+    "pulls",
     "problems",
     "search",
     "session",
@@ -1251,6 +1255,9 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />
+          </Match>
+          <Match when={rightMode() === "pulls"}>
+            <PullRequests root={root()} />
           </Match>
           <Match when={rightMode() === "search"}>
             <SearchPanel

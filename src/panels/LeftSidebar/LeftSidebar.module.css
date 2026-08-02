@@ -525,61 +525,6 @@
   opacity: 0.8;
 }
 
-/* The forge chip on a branch row: the PR, its checks, and the review verdict.
-   Sits just left of the session rollup, because a rollup is about a session
-   running *now* and this is about work already pushed - reading the row right to
-   left, "who is busy here" comes before "where did it get to".
-
-   No `margin-left: auto`. `.label` already takes the free space, and a second
-   auto margin here would split what is left between the chip and the rollup
-   instead of keeping them together at the row's end. */
-.forgeChip {
-  display: inline-flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  flex: 0 0 auto;
-  color: var(--fg-muted);
-}
-.forgeItem {
-  display: inline-flex;
-  align-items: center;
-  gap: calc(2px * var(--ui-scale));
-  font-size: var(--sway-text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-.forgeItem :global(svg) {
-  flex: none;
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
-}
-/* A branch with no PR is the resting state of most branches, so it is drawn at
-   the quietest weight the row has: present enough to say "nothing opened yet",
-   never enough to read as a warning. */
-.forgeItem.pr_none {
-  opacity: 0.45;
-}
-.forgeItem.pr_open {
-  color: var(--success-fg);
-}
-.forgeItem.pr_draft {
-  color: var(--fg-muted);
-}
-.forgeItem.pr_merged {
-  color: var(--status-progress);
-}
-.forgeItem.pr_closed {
-  color: var(--danger-fg);
-}
-.forgeItem.good {
-  color: var(--success-fg);
-}
-.forgeItem.bad {
-  color: var(--danger-fg);
-}
-.forgeItem.busy {
-  color: var(--attention-fg);
-}
-
 /* Space-tile badge: corner-pinned rollup for sessions hidden inside a
    non-active space (or a search-filtered-out project of the active space). */
 .spaceBubble {
