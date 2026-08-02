@@ -321,7 +321,7 @@ const STALE_DISCARD: &str = "The diff changed, refreshed. Nothing was discarded.
 /// to the repository itself. Discard is the only path that deletes through the
 /// filesystem directly, where `..` or an absolute path would simply escape, so
 /// the confinement git was providing has to be re-established explicitly.
-fn inside_repo(project_path: &str, file: &str) -> Result<PathBuf, String> {
+pub(crate) fn inside_repo(project_path: &str, file: &str) -> Result<PathBuf, String> {
     let root = std::fs::canonicalize(project_path).map_err(|e| e.to_string())?;
     let target = root.join(file);
     // The file must still exist to be canonicalised, so the parent is what gets

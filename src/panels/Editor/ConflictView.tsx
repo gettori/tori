@@ -1,20 +1,29 @@
 import { createSignal, createMemo, createEffect, on, onCleanup, batch, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { gitState } from "../../utils/gitActions";
+import { gitState, refreshStatus } from "../../utils/gitActions";
 import { EditorView, lineNumbers, showPanel, Decoration, type DecorationSet } from "@codemirror/view";
-import { EditorState, RangeSetBuilder, Text, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, RangeSetBuilder, Text, type Extension } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import {
   conflictRegions,
   conflictsOnly,
+  deletedSides,
   nextConflict,
   prevConflict,
+  resolvedText,
   sideLabels,
+  unresolved,
+  type Choice,
   type ConflictOp,
   type ConflictRegion,
   type ConflictStages,
+  type Side,
 } from "../../utils/conflict";
+import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { folderActors } from "../../utils/folderActors";
+import { revertGuard } from "../../utils/revertGuard";
 import Button from "../../components/Button/Button";
+import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import styles from "./ConflictView.module.css";
 
 /** What the operation is called in the header. `none` is where a conflicted
@@ -52,25 +61,34 @@ const paneTheme = EditorView.theme(
  * theirs differ, but only the base says whether that is a conflict (both sides
  * moved) or a change to carry across (one side did). So the merge view colours
  * the text, and this colours the line it sits on.
+ *
+ * Once a conflict is decided, the same lines say which way: the side that was
+ * taken and the side that was dropped have to look different, or a walk back
+ * through the file cannot tell an answered conflict from an unanswered one.
  */
 export function regionDecorations(
   regions: ConflictRegion[],
-  side: "ours" | "theirs",
+  side: Side,
   doc: Text,
+  choices: Record<string, Choice>,
 ): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const r of regions) {
     const { from, to } = r[side];
+    const choice = choices[r.id];
+    const cls = !r.both
+      ? styles.carriedLine
+      : !choice
+        ? styles.conflictLine
+        : choice === "both" || choice === side
+          ? styles.acceptedLine
+          : styles.droppedLine;
     for (let n = from; n < to; n++) {
       // A range can name a line past the end when a side ends without a
       // trailing newline. The range is still right; there is simply no line
       // there to decorate.
       if (n < 1 || n > doc.lines) continue;
-      builder.add(
-        doc.line(n).from,
-        doc.line(n).from,
-        Decoration.line({ class: r.both ? styles.conflictLine : styles.carriedLine }),
-      );
+      builder.add(doc.line(n).from, doc.line(n).from, Decoration.line({ class: cls }));
     }
   }
   return builder.finish();
@@ -78,18 +96,22 @@ export function regionDecorations(
 
 function paneExtensions(
   regions: ConflictRegion[],
-  side: "ours" | "theirs",
+  side: Side,
   doc: Text,
   label: string,
+  deco: Compartment,
+  choices: Record<string, Choice>,
 ): Extension {
   return [
     lineNumbers(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
     paneTheme,
-    // Computed once and held: both documents are read-only, so there are no
-    // changes for a decoration set to be mapped through.
-    EditorView.decorations.of(regionDecorations(regions, side, doc)),
+    // In a compartment because accepting a side repaints these lines and
+    // nothing else: rebuilding the panes for it would throw away the scroll
+    // position of the file you are working through. Both documents are
+    // read-only, so there is still no change for the set to be mapped through.
+    deco.of(EditorView.decorations.of(regionDecorations(regions, side, doc, choices))),
     // The name sits *inside* its pane rather than in a row above the pair. Two
     // columns laid over the merge view line up only while the panes are exactly
     // half each, which stops being true the moment Phase 12 turns on revert
@@ -119,15 +141,33 @@ function reveal(view: EditorView, line: number) {
  * this pane gets, and what the base is *for* is the region under discussion, so
  * it is shown one region at a time under the header.
  *
- * Read-only in this phase. Accepting a side, marking resolved, and handing the
- * conflict to an agent are the next two phases; what this one owes them is the
- * region model and a way to walk it.
+ * The choices are held here and written **once**, when the reader marks the
+ * file resolved. Until then the working copy is exactly as git left it, so a
+ * tab abandoned half way through leaves the merge untouched rather than a
+ * partly-rewritten file that looks finished.
  */
-export default function ConflictView(props: { workspace: string; file: string }) {
+export default function ConflictView(props: {
+  workspace: string;
+  file: string;
+  /** The same channel a discard or a checkpoint revert reports on: resolving
+   *  rewrites a file that may be open with unsaved edits, and that buffer has
+   *  to be offered keep-mine / take-disk rather than writing the old text back
+   *  over the resolution on its next save. */
+  onResolved?: (outcome: { backstop_ts: null; restored: string[]; deleted: string[] }) => void;
+}) {
   const [stages, setStages] = createSignal<ConflictStages | null>(null);
   const [op, setOp] = createSignal<ConflictOp>("none");
   const [error, setError] = createSignal("");
   const [currentId, setCurrentId] = createSignal<string | null>(null);
+  const [choices, setChoices] = createSignal<Record<string, Choice>>({});
+  /** For a conflict about the file's existence: whether to keep it or not. */
+  const [keepFile, setKeepFile] = createSignal<boolean | null>(null);
+  const [saving, setSaving] = createSignal(false);
+  const [done, setDone] = createSignal(false);
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+
+  const askConfirm = (opts: Omit<ConfirmReq, "resolve">): Promise<boolean> =>
+    new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
 
   // Which read is current. The pane reuses one view across tabs of the same
   // kind, so a slower answer for the file you left can land under the file you
@@ -142,6 +182,34 @@ export default function ConflictView(props: { workspace: string; file: string })
   const conflicts = createMemo(() => conflictsOnly(regions()));
   const at = createMemo(() => conflicts().findIndex((r) => r.id === currentId()));
   const currentRegion = createMemo(() => conflicts().find((r) => r.id === currentId()) ?? null);
+  const names = createMemo(() => sideLabels(op()));
+
+  /** One side has no version of the file at all, so the decision is whether the
+   *  file survives, not which lines it holds. Nothing to walk, and "accept
+   *  theirs" would mean an empty file where git means no file. */
+  const deleted = createMemo(() => (stages() ? deletedSides(stages()!) : []));
+  /** The side that still has the file, when the other one deleted it. */
+  const survivor = createMemo<Side | null>(() => {
+    const gone = deleted();
+    if (!gone.length || gone.length === 2) return null;
+    return gone[0] === "ours" ? "theirs" : "ours";
+  });
+  const left = createMemo(() => unresolved(regions(), choices()));
+
+  /** The file the choices add up to, or null while anything is undecided.
+   *  `undefined` is the deletion case, which has no text to build. */
+  const resolution = createMemo<string | null | undefined>(() => {
+    const s = stages();
+    if (!s || s.binary) return null;
+    if (deleted().length) {
+      if (keepFile() === null) return null;
+      if (!keepFile()) return undefined;
+      const side = survivor();
+      return side ? (s[side] ?? "") : null;
+    }
+    return resolvedText(s, regions(), choices());
+  });
+  const canResolve = () => !saving() && resolution() !== null;
 
   /** The base lines this conflict is a disagreement about. Empty when the two
    *  sides both inserted at a point (nothing of the base is involved) and null
@@ -156,6 +224,14 @@ export default function ConflictView(props: { workspace: string; file: string })
   async function load(workspace: string, file: string) {
     const mine = ++current;
     setCurrentId(null);
+    // The choices describe the stages that are being replaced, so they cannot
+    // outlive a read: a different file's ids would not match, and the same
+    // file's would match the wrong lines.
+    batch(() => {
+      setChoices({});
+      setKeepFile(null);
+      setDone(false);
+    });
     try {
       const [read, operation] = await Promise.all([
         invoke<ConflictStages>("git_conflict_stages", { projectPath: workspace, file }),
@@ -184,6 +260,19 @@ export default function ConflictView(props: { workspace: string; file: string })
 
   createEffect(on([() => props.workspace, () => props.file], ([w, f]) => void load(w, f)));
 
+  // The tab opens on the first conflict rather than on nothing. Everything that
+  // acts on a conflict acts on the one being looked at, so with nothing
+  // selected the only control on screen is navigation, and the reader has to
+  // discover that pressing it is what reveals the rest.
+  createEffect(
+    on(conflicts, (list) => {
+      if (!list.length) return;
+      const id = currentId();
+      if (id && list.some((r) => r.id === id)) return;
+      setCurrentId(list[0].id);
+    }),
+  );
+
   /**
    * Whether the shared store still lists this file as conflicted, or null when
    * it is describing some other workspace and so has nothing to say about it.
@@ -202,12 +291,91 @@ export default function ConflictView(props: { workspace: string; file: string })
   createEffect(
     on(listedConflicted, (now, before) => {
       if (now === null || before == null || now === before) return;
+      // Except when this tab is what resolved it: re-reading then would ask the
+      // backend for stages we just removed and answer with its refusal, which
+      // reads as a failure rather than as the success it followed.
+      if (done() && !now) return;
       void load(props.workspace, props.file);
     }),
   );
 
+  /**
+   * Write the resolution and mark the file merged.
+   *
+   * One write, at the end, rather than one per accepted region: until this runs
+   * the working copy is what git left, so closing the tab half way through
+   * changes nothing. Afterwards the file is staged, which is what takes it out
+   * of the Conflicts section.
+   */
+  async function markResolved() {
+    const text = resolution();
+    if (text === null || saving()) return;
+    // Held across the confirms, not just the write: the dialog is a singleton,
+    // so a second click behind it replaces the pending question and the answer
+    // lands on something else. Same reason the panel's `busy` exists.
+    setSaving(true);
+    try {
+      // A resolution rewrites a whole file, and can remove one, which is the
+      // blast radius the guard is about: an agent mid-turn in this folder may
+      // be writing the very file being replaced. Whole-file discard and every
+      // stash action ask the same question.
+      const candidates = await folderActors(props.workspace);
+      const verdict = revertGuard(candidates, { folderPath: props.workspace });
+      if (!verdict.allow) {
+        if (!verdict.overridable) {
+          emitWith<ToastEvent>(TOAST, { message: verdict.reason, kind: "error" });
+          return;
+        }
+        const go = await askConfirm({
+          title: "Another session may be running here",
+          message: `${verdict.reason}\n\nResolve anyway?`,
+          confirmLabel: "Resolve anyway",
+          danger: true,
+        });
+        if (!go) return;
+        if (!revertGuard(candidates, { folderPath: props.workspace, allowDetached: true }).allow) {
+          return;
+        }
+      }
+      // The one resolution with something to lose: `git rm` takes the file out
+      // of the worktree, and while the merge is unfinished the way back is a
+      // command, not a click.
+      if (text === undefined) {
+        const go = await askConfirm({
+          title: `Delete ${props.file}?`,
+          message: `Resolving this conflict the way ${names()[deleted()[0]]} did removes the file from the worktree and stages the deletion. While the ${OP_WORD[op()].toLowerCase()} is unfinished you can bring it back with \`git checkout -m -- ${props.file}\`.`,
+          confirmLabel: "Delete file",
+          danger: true,
+        });
+        if (!go) return;
+      }
+      await invoke("git_conflict_resolve", {
+        projectPath: props.workspace,
+        file: props.file,
+        content: text ?? null,
+      });
+      // Before the status refresh, so the buffer question is asked against the
+      // file that was just written rather than racing the store's re-read.
+      props.onResolved?.({
+        backstop_ts: null,
+        restored: text === undefined ? [] : [props.file],
+        deleted: text === undefined ? [props.file] : [],
+      });
+      setDone(true);
+      await refreshStatus(props.workspace);
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   let host: HTMLDivElement | undefined;
   let merge: MergeView | null = null;
+  // One per pane rather than one shared: a compartment is a position in a
+  // configuration, and these are two configurations.
+  const decoOurs = new Compartment();
+  const decoTheirs = new Compartment();
 
   function destroy() {
     merge?.destroy();
@@ -230,14 +398,43 @@ export default function ConflictView(props: { workspace: string; file: string })
       // string a second time would only make a second copy of the same lines.
       const ours = Text.of((s.ours ?? "").split("\n"));
       const theirs = Text.of((s.theirs ?? "").split("\n"));
-      const names = sideLabels(op());
+      // Read untracked on purpose, which is the opposite of what `op` needs
+      // here: a rebuild is for a different set of documents, and accepting a
+      // side is not that. The effect below repaints instead.
+      const picked = choices();
       merge = new MergeView({
-        a: { doc: ours, extensions: paneExtensions(rs, "ours", ours, names.ours) },
-        b: { doc: theirs, extensions: paneExtensions(rs, "theirs", theirs, names.theirs) },
+        a: {
+          doc: ours,
+          extensions: paneExtensions(rs, "ours", ours, names().ours, decoOurs, picked),
+        },
+        b: {
+          doc: theirs,
+          extensions: paneExtensions(rs, "theirs", theirs, names().theirs, decoTheirs, picked),
+        },
         parent: host,
         gutter: true,
         highlightChanges: true,
       });
+    }),
+  );
+
+  // Accepting a side repaints its lines and nothing else, so it reconfigures
+  // rather than rebuilds: the panes keep the scroll position of the file the
+  // reader is working through.
+  createEffect(
+    on(choices, (picked) => {
+      if (!merge) return;
+      const rs = regions();
+      for (const [view, side, deco] of [
+        [merge.a, "ours", decoOurs],
+        [merge.b, "theirs", decoTheirs],
+      ] as const) {
+        view.dispatch({
+          effects: deco.reconfigure(
+            EditorView.decorations.of(regionDecorations(rs, side, view.state.doc, picked)),
+          ),
+        });
+      }
     }),
   );
 
@@ -259,39 +456,120 @@ export default function ConflictView(props: { workspace: string; file: string })
           {props.file}
         </span>
         <span class={styles.op}>{OP_WORD[op()]}</span>
-        <Show when={conflicts().length}>
-          <span class={styles.counter}>
-            {at() < 0
-              ? `${conflicts().length} conflict${conflicts().length === 1 ? "" : "s"}`
-              : `Conflict ${at() + 1} of ${conflicts().length}`}
-          </span>
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={!prevConflict(regions(), currentId())}
-            title="Previous conflict"
-            onClick={() => setCurrentId(prevConflict(regions(), currentId())?.id ?? null)}
-          >
-            ↑
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={!nextConflict(regions(), currentId())}
-            title="Next conflict"
-            onClick={() => setCurrentId(nextConflict(regions(), currentId())?.id ?? null)}
-          >
-            ↓
-          </Button>
-        </Show>
+        <div class={styles.actions}>
+          <Show when={!deleted().length && conflicts().length}>
+            <span class={styles.counter}>
+              {at() < 0
+                ? `${conflicts().length} conflict${conflicts().length === 1 ? "" : "s"}`
+                : `Conflict ${at() + 1} of ${conflicts().length}`}
+            </span>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!prevConflict(regions(), currentId())}
+              title="Previous conflict"
+              onClick={() => setCurrentId(prevConflict(regions(), currentId())?.id ?? null)}
+            >
+              ↑
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!nextConflict(regions(), currentId())}
+              title="Next conflict"
+              onClick={() => setCurrentId(nextConflict(regions(), currentId())?.id ?? null)}
+            >
+              ↓
+            </Button>
+          </Show>
+          <Show when={stages() && !stages()!.binary && !done()}>
+            <Button
+              size="xs"
+              variant="primary"
+              disabled={!canResolve()}
+              title={
+                canResolve()
+                  ? "Write the resolution and stage it as merged"
+                  : deleted().length
+                    ? "Say whether the file survives first"
+                    : `${left().length} conflict${left().length === 1 ? "" : "s"} still undecided`
+              }
+              onClick={() => void markResolved()}
+            >
+              {resolution() === undefined ? "Delete and mark resolved" : "Mark resolved"}
+            </Button>
+          </Show>
+        </div>
       </div>
       <Show when={error()}>
         <div class={styles.error}>{error()}</div>
       </Show>
+      <Show when={done()}>
+        <div class={styles.resolved} role="status">
+          Resolved. {props.file} is staged as merged.
+        </div>
+      </Show>
       <Show when={stages()?.binary}>
         <div class={styles.error}>
-          This file is binary, so there are no lines to merge. Resolve it by choosing a whole version.
+          This file is binary, so there are no lines to merge. It has to be resolved in the terminal,
+          by choosing a whole version.
         </div>
+      </Show>
+      {/* A conflict about whether the file exists at all. No lines to choose
+          between, so no walk and no per-region buttons: one side deleted it and
+          the other did not, and that is the whole question. */}
+      <Show when={deleted().length && !stages()?.binary && !done()}>
+        <div class={styles.choices}>
+          <span class={styles.choiceLabel}>
+            {deleted().length === 2
+              ? "Both sides deleted this file."
+              : `${names()[deleted()[0]]} deleted this file; ${names()[survivor()!]} changed it.`}
+          </span>
+          <Show when={survivor()}>
+            <Button
+              size="xs"
+              variant={keepFile() === true ? "primary" : "default"}
+              aria-pressed={keepFile() === true}
+              title="Keep the file, with the surviving side's contents"
+              onClick={() => setKeepFile(true)}
+            >
+              Keep {names()[survivor()!]}
+            </Button>
+          </Show>
+          <Button
+            size="xs"
+            variant={keepFile() === false ? "primary" : "default"}
+            aria-pressed={keepFile() === false}
+            title="Accept the deletion"
+            onClick={() => setKeepFile(false)}
+          >
+            Delete the file
+          </Button>
+        </div>
+      </Show>
+      {/* The decision itself, for the conflict being looked at. The two side
+          buttons are named by the operation, not by stage: under a rebase the
+          version git calls "ours" is the upstream's, and a button that says
+          yours over somebody else's work is wrong in the most convincing way. */}
+      <Show when={!done() && currentRegion()}>
+        {(r) => (
+          <div class={styles.choices}>
+            <span class={styles.choiceLabel}>Take</span>
+            <For each={["ours", "theirs", "both"] as const}>
+              {(c) => (
+                <Button
+                  size="xs"
+                  variant={choices()[r().id] === c ? "primary" : "default"}
+                  aria-pressed={choices()[r().id] === c}
+                  title={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
+                  onClick={() => setChoices({ ...choices(), [r().id]: c })}
+                >
+                  {c === "both" ? "Both" : names()[c]}
+                </Button>
+              )}
+            </For>
+          </div>
+        )}
       </Show>
       {/* The third document, a region at a time. Without it the panes show two
           answers with no question: "what was here before" is most of what tells
@@ -314,6 +592,22 @@ export default function ConflictView(props: { workspace: string; file: string })
         </div>
       </Show>
       <div class={styles.panes} ref={host} />
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => {
+            confirmReq()!.resolve(true);
+            setConfirmReq(null);
+          }}
+          onCancel={() => {
+            confirmReq()!.resolve(false);
+            setConfirmReq(null);
+          }}
+        />
+      </Show>
     </div>
   );
 }

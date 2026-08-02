@@ -2,9 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   conflictRegions,
   conflictsOnly,
+  deletedSides,
   nextConflict,
   prevConflict,
+  resolvedText,
   sideLabels,
+  unresolved,
+  type Choice,
   type ConflictRegion,
 } from "./conflict";
 
@@ -205,6 +209,132 @@ describe("identity that survives a resolution", () => {
     expect(before[1].ours.from).not.toBe(after[0].ours.from);
     expect(after[0].id).toBe(before[1].id);
     expect(new Set(before.map((r) => r.id)).size).toBe(before.length);
+  });
+});
+
+describe("building the resolved file", () => {
+  // Two conflicts with an ours-only insertion between them, so the result has
+  // to carry a change nobody was asked about and the line numbers on the two
+  // sides really do differ.
+  const base = ["one", "two", "three", "four", "five", "six", "seven", ""].join("\n");
+  const ours = ["one", "OURS-A", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n");
+  const theirs = ["one", "THEIRS-A", "three", "four", "five", "THEIRS-B", "seven", ""].join("\n");
+  const stages = { base, ours, theirs, binary: false };
+  const regions = conflictRegions(base, ours, theirs);
+  const all = (choice: Choice): Record<string, Choice> =>
+    Object.fromEntries(conflictsOnly(regions).map((r) => [r.id, choice]));
+
+  it("reproduces a side exactly when every region is taken from it", () => {
+    // The property the whole reconstruction rests on: the walk copies the base
+    // between regions and the chosen side's own lines inside them, so choosing
+    // one side everywhere has to give that side's file back byte for byte. Any
+    // drift in the spans shows up here before it shows up in someone's repo.
+    // Every region here is disputed, so nothing is carried across and the two
+    // answers are the two files.
+    const b = ["one", "two", "three", "four", "five", ""].join("\n");
+    const o = ["one", "OURS-A", "three", "OURS-B", "five", ""].join("\n");
+    const t = ["one", "THEIRS-A", "three", "THEIRS-B", "five", ""].join("\n");
+    const rs = conflictRegions(b, o, t);
+    const s = { base: b, ours: o, theirs: t, binary: false };
+
+    expect(resolvedText(s, rs, all2(rs, "ours"))).toBe(o);
+    expect(resolvedText(s, rs, all2(rs, "theirs"))).toBe(t);
+  });
+
+  it("carries a change only one side made, whichever side is chosen", () => {
+    // `EXTRA` is nobody's decision: theirs never touched those lines, so taking
+    // theirs at both conflicts must not drop it. Losing it is how a merge tool
+    // silently reverts work that was never in dispute.
+    const taken = resolvedText(stages, regions, all("theirs"))!;
+
+    expect(taken).toContain("EXTRA");
+    expect(taken).toBe(
+      ["one", "THEIRS-A", "three", "EXTRA", "four", "five", "THEIRS-B", "seven", ""].join("\n"),
+    );
+  });
+
+  it("keeps both versions in git's own order when both are accepted", () => {
+    const taken = resolvedText(stages, regions, all("both"))!;
+
+    expect(taken).toBe(
+      // Ours then theirs, at each conflict: the order the markers had, so the
+      // result reads the way the file already did.
+      ["one", "OURS-A", "THEIRS-A", "three", "EXTRA", "four", "five", "OURS-B", "THEIRS-B", "seven", ""].join("\n"),
+    );
+  });
+
+  it("resolves one conflict without touching the other", () => {
+    const [first, second] = conflictsOnly(regions);
+
+    const taken = resolvedText(stages, regions, { [first.id]: "theirs", [second.id]: "ours" })!;
+
+    expect(taken).toBe(
+      ["one", "THEIRS-A", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n"),
+    );
+  });
+
+  it("refuses to build a file while a conflict is undecided", () => {
+    // A half-resolved file that looks finished is worse than no file: it would
+    // be staged as the answer, and the side that lost was never chosen.
+    const [first] = conflictsOnly(regions);
+
+    expect(unresolved(regions, {})).toHaveLength(2);
+    expect(resolvedText(stages, regions, {})).toBeNull();
+    expect(unresolved(regions, { [first.id]: "ours" })).toEqual([conflictsOnly(regions)[1]]);
+    expect(resolvedText(stages, regions, { [first.id]: "ours" })).toBeNull();
+  });
+
+  it("needs no decision at all for a file only one side changed", () => {
+    const oneSided = conflictRegions(base, ours, base);
+
+    expect(unresolved(oneSided, {})).toEqual([]);
+    expect(resolvedText({ base, ours, theirs: base, binary: false }, oneSided, {})).toBe(ours);
+  });
+
+  it("rebuilds a file both sides created from scratch", () => {
+    // An add/add conflict has no base to walk between, so the whole file is one
+    // region and the trailing empty line is all the walk has to work with.
+    const addAdd = { base: null, ours: "ours\nlines\n", theirs: "theirs\n", binary: false };
+    const rs = conflictRegions("", addAdd.ours, addAdd.theirs);
+
+    expect(resolvedText(addAdd, rs, all2(rs, "ours"))).toBe("ours\nlines\n");
+    expect(resolvedText(addAdd, rs, all2(rs, "theirs"))).toBe("theirs\n");
+  });
+
+  it("keeps a file that does not end in a newline ending that way", () => {
+    const rs = conflictRegions("one\ntwo", "one\nOURS", "one\nTHEIRS");
+    const s = { base: "one\ntwo", ours: "one\nOURS", theirs: "one\nTHEIRS", binary: false };
+
+    expect(resolvedText(s, rs, all2(rs, "ours"))).toBe("one\nOURS");
+  });
+});
+
+/** Every conflict in `rs` decided the same way. */
+function all2(rs: ConflictRegion[], choice: Choice): Record<string, Choice> {
+  return Object.fromEntries(conflictsOnly(rs).map((r) => [r.id, choice]));
+}
+
+describe("a conflict about whether the file exists", () => {
+  it("names the side that deleted it", () => {
+    // The stage is absent, not empty: "accept theirs" here means the file is
+    // gone, and offering it as a way to produce an empty file would resolve the
+    // merge into something neither side asked for.
+    expect(deletedSides({ base: "one\n", ours: "OURS\n", theirs: null, binary: false })).toEqual([
+      "theirs",
+    ]);
+    expect(deletedSides({ base: "one\n", ours: null, theirs: "THEIRS\n", binary: false })).toEqual([
+      "ours",
+    ]);
+    // Both deleted it, differently enough that git could not say so itself.
+    expect(deletedSides({ base: "one\n", ours: null, theirs: null, binary: false })).toEqual([
+      "ours",
+      "theirs",
+    ]);
+  });
+
+  it("is not what an add/add conflict is", () => {
+    // No base, but both sides have a version: this one really is about lines.
+    expect(deletedSides({ base: null, ours: "a\n", theirs: "b\n", binary: false })).toEqual([]);
   });
 });
 
