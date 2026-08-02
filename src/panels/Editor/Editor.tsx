@@ -45,6 +45,7 @@ import {
   BookOpen,
   PanelRight,
   History,
+  UserRound,
   type LucideIcon,
 } from "lucide-solid";
 import {
@@ -72,6 +73,7 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
+import { readBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import {
   refreshGit,
@@ -331,6 +333,13 @@ export default function Editor(props: {
 
   // The tab strip's right-click menu.
   const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
+
+  const [blameOn, setBlameOn] = createSignal(readBlamePref());
+  function toggleBlame() {
+    const next = !blameOn();
+    setBlameOn(next);
+    writeBlamePref(next);
+  }
 
   function openTabMenu(e: MouseEvent, t: FileTab) {
     const r = root();
@@ -1004,6 +1013,18 @@ export default function Editor(props: {
                   }
                 />
               </Show>
+              <Show when={activeFileTab()}>
+                <IconButton
+                  active={blameOn()}
+                  icon={<Icon icon={UserRound} />}
+                  onClick={toggleBlame}
+                  title={
+                    blameOn()
+                      ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
+                      : "Git blame: show who last changed each line, shaded by age."
+                  }
+                />
+              </Show>
               <IconButton
                 active={follow()}
                 icon={<Icon icon={Bot} />}
@@ -1040,6 +1061,7 @@ export default function Editor(props: {
               reverted={reverted()}
               selected={props.selected}
               hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
+              blame={blameOn()}
             />
           </Suspense>
         </Show>

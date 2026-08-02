@@ -878,6 +878,23 @@ pub fn git_log(
     Ok(parse_log(&out))
 }
 
+/// The commit HEAD names, or "" on an unborn branch.
+///
+/// Its own command rather than the first entry of `git_log` because it is read
+/// on every HEAD-moving event and everything derived from committed history
+/// caches against it: `rev-parse` is one cheap answer where a log page is a
+/// hundred.
+#[tauri::command]
+pub fn git_head_sha(project_path: String) -> Result<String, String> {
+    match git_capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"]) {
+        // Same reading as `git_log`: `--quiet` says nothing on stderr for an
+        // unborn HEAD, and anything with a complaint attached is a real error.
+        Err(complaint) if complaint.is_empty() => Ok(String::new()),
+        Err(complaint) => Err(complaint),
+        Ok(sha) => Ok(sha),
+    }
+}
+
 /// One file's place in a commit.
 #[derive(Serialize, Debug, PartialEq)]
 pub struct CommitFile {

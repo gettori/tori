@@ -10,11 +10,9 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // the shape that rots silently. This suite mounts the real pane and asserts what
 // CodeEditor is actually handed.
 
-globalThis.ResizeObserver ??= class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-} as unknown as typeof ResizeObserver;
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+
+installResizeObserver();
 
 const REPO = "/space/proj/main";
 
@@ -87,16 +85,7 @@ const { syntheticId, parseSyntheticId } = await import("../../utils/syntheticTab
 const LOG = syntheticId("log", REPO);
 const FILE = `${REPO}/src/a.ts`;
 
-const selection = {
-  spaceName: "space",
-  projectName: "proj",
-  projectPath: "/space/proj",
-  folderPath: REPO,
-  branch: "main",
-  projectKind: "plain",
-};
-
-const EMPTY_PANE = /Open a file from the tree/;
+const selection = selectionFor(REPO);
 
 /** The most recent set of props CodeEditor was rendered with. */
 const last = () => handed[handed.length - 1];

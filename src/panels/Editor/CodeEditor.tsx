@@ -1,4 +1,4 @@
-import { onCleanup, onMount, createEffect, on, createSignal, Show } from "solid-js";
+import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
@@ -13,6 +13,9 @@ import { json } from "@codemirror/lang-json";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
+import { blameExtension, setBlameMarkers } from "./blameGutter";
+import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
+import { gitState } from "../../utils/gitActions";
 import { lspPluginFor, onLspChange } from "./lspClient";
 import { reattachLsp } from "./lspReattach";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
@@ -170,6 +173,11 @@ export default function CodeEditor(props: {
   // showing for the active tab, so background buffers/undo history survive
   // the swap the same way TerminalView keeps inactive PTYs alive.
   hidden?: boolean;
+  // Show git blame: an age-shaded gutter stripe, and the commit behind the
+  // cursor's line beside it. Held in a compartment rather than gated inside the
+  // extension, so switching it off takes the whole column with it instead of
+  // leaving an empty one.
+  blame?: boolean;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -235,6 +243,11 @@ export default function CodeEditor(props: {
   // raise a conflict banner (now if active, on activation otherwise).
   async function handleExternalChange(path: string) {
     if (!buffers.has(path)) return;
+    // Somebody else wrote the file, so which of its lines are uncommitted is no
+    // longer what was read - even though HEAD has not moved, which is the one
+    // thing the cache key knows about. Dropped here rather than re-read: the
+    // reload below decides whether this buffer adopts the new text at all.
+    if (props.projectRoot) dropBlame(props.projectRoot, relTo(props.projectRoot, path));
     let text: string;
     try {
       text = await invoke<string>("fs_read_file", { path });
@@ -265,7 +278,12 @@ export default function CodeEditor(props: {
       buf.savedText = text; // set baseline first so the dirty listener stays clean
       setBufferText(path, text);
       props.onDirty(path, false);
-      if (path === shown) refreshDiff();
+      if (path === shown) {
+        refreshDiff();
+        // The buffer just adopted a different file, so its markers describe
+        // lines that are no longer there. Clean again, so a rebuild is safe.
+        void refreshBlame();
+      }
     } else {
       buf.pendingExternal = text;
       buf.pendingKind = "changed";
@@ -313,6 +331,33 @@ export default function CodeEditor(props: {
     setConflict(null);
   }
 
+  // Re-read the active file's blame and repaint its stripe.
+  //
+  // Called on a buffer swap, when blame is switched on, and when HEAD moves -
+  // **not** on save and not on a keystroke. The markers have already followed
+  // the edit through CM6's change mapping (see blameGutter.ts), which is a
+  // better answer than a re-read, not merely a cheaper one.
+  //
+  // Laying markers down is the delicate half. `blame.lines` is indexed by the
+  // line numbering of the file *on disk*, so it may only be laid onto a buffer
+  // that still matches disk. A dirty buffer already carries markers that were
+  // mapped through its own edits, and those are right; rebuilding would replace
+  // them with ones off by however much has been typed above.
+  async function refreshBlame() {
+    const path = shown;
+    const root = props.projectRoot;
+    if (!path || !root || !view) return;
+    if (!props.blame) return;
+    // HEAD comes from the shared git store, which re-reads it on exactly the
+    // events that move it. No HEAD (unborn, or a folder that is not a repo)
+    // means there is nothing to blame against.
+    const head = gitState().root === root ? (gitState().head ?? "") : "";
+    const blame = head ? await blameFor(root, relTo(root, path), head) : emptyBlame();
+    if (!view || shown !== path || !props.blame) return;
+    if (!canPlaceBlame(view.state.doc.toString(), buffers.get(path)?.savedText)) return;
+    setBlameMarkers(view, blame);
+  }
+
   // Re-diff the active file and repaint the gutter. Called directly on save and
   // on a genuine external fs://changed (a save's own echo is skipped via
   // isSelfWrite, so a save produces exactly one re-diff).
@@ -340,6 +385,11 @@ export default function CodeEditor(props: {
       if (buf) buf.savedText = text;
       props.onDirty(path, false);
       refreshDiff();
+      // The file on disk is no longer the file that was blamed, so the cached
+      // read is spent - but nothing is re-read *here*: the markers on screen
+      // were mapped through exactly the edits just saved and are still right.
+      // The next rebuild (a swap, a toggle) is what pays for a fresh read.
+      if (props.projectRoot) dropBlame(props.projectRoot, relTo(props.projectRoot, path));
     } catch (e) {
       console.error("save failed", path, e);
     }
@@ -397,6 +447,19 @@ export default function CodeEditor(props: {
     return true;
   }
 
+  // One compartment for the whole editor, unlike the LSP compartment beside it:
+  // that one is per buffer because `client.plugin(uri)` is file-addressed, while
+  // blame on/off is a single preference every buffer wants the same answer to.
+  // It starts empty and is filled by `syncBlame`, so exactly one place decides
+  // what the config is - a stashed buffer built while blame was off picks the
+  // current setting up when it is swapped in.
+  const blameConf = new Compartment();
+
+  function syncBlame() {
+    view?.dispatch({ effects: blameConf.reconfigure(props.blame ? blameExtension() : []) });
+    void refreshBlame();
+  }
+
   const commonExtensions: Extension[] = [
     lineNumbers(),
     highlightActiveLine(),
@@ -416,6 +479,7 @@ export default function CodeEditor(props: {
     foldGutter(),
     highlightSelectionMatches(),
     diffGutterExtension(),
+    blameConf.of([]),
     syntaxHighlighting(swayHighlight),
     swayTheme,
     keymap.of([
@@ -526,6 +590,7 @@ export default function CodeEditor(props: {
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
     refreshDiff();
+    syncBlame();
     applyGoto();
   }
 
@@ -597,6 +662,16 @@ export default function CodeEditor(props: {
   );
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
+  // Toggling blame reconfigures the compartment, which takes the field, the
+  // gutter and the inline widget with it in one go, so switching off leaves
+  // nothing behind to clean up.
+  createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
+  // A commit or a checkout moved HEAD, so the blame that was read at the old one
+  // no longer describes this file. Reading `head` alone (a memo, not the store
+  // signal) keeps this off the path of every file save, which rewrites the
+  // store's file list and nothing else this cares about.
+  const head = createMemo(() => gitState().head);
+  createEffect(on(head, () => void refreshBlame(), { defer: true }));
   // Editor font size (base setting × global zoom) reaches .cm-content through the
   // --editor-font-size CSS var, but CM6 caches the char/line geometry it measured
   // at the old size. Re-measure when either input changes so the cursor, gutter
