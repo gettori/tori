@@ -165,6 +165,49 @@ pub fn git_conflict_op(project_path: String) -> Result<ConflictOp, String> {
     })
 }
 
+/// Write the resolved file and mark the conflict finished.
+///
+/// `content` is the whole file as the reader's choices make it, built from the
+/// stages rather than by editing around the markers on disk (see
+/// `src/utils/conflict.ts`). `None` means the resolution is that the file is
+/// gone, which is the only sensible reading of accepting the side of a
+/// delete/modify conflict that deleted it: an empty file is a different answer
+/// from no file, and staging one where git means the other resolves the merge
+/// into something neither side asked for.
+///
+/// **Refuses a path that is no longer unmerged.** The tab holds a model of the
+/// conflict as it was when it opened, and the merge can be finished or aborted
+/// in the terminal underneath it. Without this check a stale tab would write its
+/// resolution over whatever is there now and stage it, which is the same class
+/// of mistake the discard fingerprints exist to prevent.
+#[tauri::command]
+pub fn git_conflict_resolve(
+    project_path: String,
+    file: String,
+    content: Option<String>,
+) -> Result<(), String> {
+    if staged_at(&project_path, &file)? == 0 {
+        return Err(format!("{file} is no longer conflicted, so nothing was written."));
+    }
+    match content {
+        Some(text) => {
+            // The path comes from the tab id, which came from `git status`, but
+            // this is the one place in the conflict surface that reaches the
+            // filesystem directly instead of going through git, so it is the one
+            // place that has to re-establish what git was providing.
+            let path = crate::git::inside_repo(&project_path, &file)?;
+            std::fs::write(&path, text).map_err(|e| e.to_string())?;
+            capture(&project_path, &["add", "--", &file])?;
+        }
+        // `-f` because the path is unmerged: git will not remove a file it
+        // cannot compare against a single index entry without being told to.
+        None => {
+            capture(&project_path, &["rm", "-f", "--", &file])?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,6 +402,104 @@ mod tests {
 
         git(&dir, &["worktree", "remove", "--force", &linked.to_string_lossy()]);
         std::fs::remove_dir_all(&linked).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The unmerged stages git still holds for `file`, as text.
+    fn unmerged(dir: &Path, file: &str) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["ls-files", "-u", "--", file])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    #[test]
+    fn a_resolution_is_written_to_the_file_and_staged_as_merged() {
+        // The two halves of finishing a conflict: the working copy stops holding
+        // markers, and the index stops holding three versions. Either one alone
+        // leaves the merge unfinished in a way that looks finished.
+        let dir = conflicted("resolve");
+        let p = dir.to_string_lossy().into_owned();
+        assert!(!unmerged(&dir, "f.txt").is_empty(), "starts unmerged");
+
+        git_conflict_resolve(p, "f.txt".into(), Some("one\nRESOLVED\nthree\n".into())).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dir.join("f.txt")).unwrap(),
+            "one\nRESOLVED\nthree\n"
+        );
+        assert!(unmerged(&dir, "f.txt").is_empty(), "the stages are gone");
+        let staged = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["diff", "--cached", "--name-only"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), "f.txt");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_conflict_that_was_already_finished_elsewhere_is_refused() {
+        // The tab holds the conflict as it was when it opened; the merge can be
+        // finished or aborted in the terminal underneath it. Writing the stale
+        // resolution anyway would overwrite whatever is there now and stage it.
+        let dir = conflicted("stale");
+        let p = dir.to_string_lossy().into_owned();
+        git(&dir, &["add", "f.txt"]);
+        std::fs::write(dir.join("f.txt"), "resolved by hand\n").unwrap();
+
+        let err = git_conflict_resolve(p, "f.txt".into(), Some("stale\n".into())).unwrap_err();
+
+        assert!(err.contains("no longer conflicted"), "unhelpful refusal: {err}");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("f.txt")).unwrap(),
+            "resolved by hand\n",
+            "the hand-written resolution survived"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn accepting_a_deletion_removes_the_file_rather_than_emptying_it() {
+        // The delete/modify conflict, resolved the way the deleting side meant.
+        // An empty file staged here would be a version neither side wrote.
+        let dir = repo("resolve_delete");
+        git(&dir, &["checkout", "-q", "feature"]);
+        git(&dir, &["rm", "-q", "f.txt"]);
+        git(&dir, &["commit", "-qm", "deleted"]);
+        git(&dir, &["checkout", "-q", "main"]);
+        std::fs::write(dir.join("f.txt"), "one\nOURS\nthree\n").unwrap();
+        git(&dir, &["commit", "-qam", "ours"]);
+        git(&dir, &["merge", "feature"]);
+        let p = dir.to_string_lossy().into_owned();
+
+        git_conflict_resolve(p, "f.txt".into(), None).unwrap();
+
+        assert!(!dir.join("f.txt").exists(), "the file is gone, not empty");
+        assert!(unmerged(&dir, "f.txt").is_empty(), "and the conflict with it");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_path_that_climbs_out_of_the_worktree_is_refused() {
+        // The one place in this module that reaches the filesystem instead of
+        // going through git, so the containment git was providing has to be
+        // re-established here.
+        let dir = conflicted("escape");
+        let p = dir.to_string_lossy().into_owned();
+        let outside = dir.parent().unwrap().join("escaped.txt");
+        std::fs::remove_file(&outside).ok();
+
+        let err = git_conflict_resolve(p, "../escaped.txt".into(), Some("owned\n".into()))
+            .unwrap_err();
+
+        // Refused before the write, whether by the containment check or by the
+        // stage read; what matters is that nothing landed outside.
+        assert!(!outside.exists(), "wrote outside the worktree: {err}");
         std::fs::remove_dir_all(&dir).ok();
     }
 
