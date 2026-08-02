@@ -23,12 +23,13 @@ use serde_json::Value;
 
 /// The OAuth app's client id.
 ///
-/// **Empty until the Sway GitHub OAuth app is registered** (device flow
-/// enabled, scope `repo`). A client id is public by design here: the device
-/// flow has no client secret, which is exactly why it suits a desktop app.
-/// [`is_configured`] is what every caller checks, so an unregistered build
-/// refuses to start a flow it cannot finish instead of failing at GitHub.
-pub const CLIENT_ID: &str = "";
+/// Public by design, and committed on purpose: the device flow has no client
+/// secret, which is exactly why it suits a desktop app. A secret shipped in a
+/// binary is a secret shipped to every user, so there is none to ship.
+/// A build with this left empty refuses to start a flow it cannot finish
+/// instead of failing at GitHub, which is why the shaping functions guard on an
+/// empty id rather than trusting the constant.
+pub const CLIENT_ID: &str = "Ov23liDBQcC2uWTVFpjp";
 
 /// The scope asked for. `repo` covers private repositories, PRs, and the
 /// Checks API. Deliberately nothing wider: no `workflow`, no `read:org`.
@@ -169,17 +170,21 @@ fn form_post(url: &str, body: String) -> HttpRequest {
 }
 
 // The two request-shaping functions take the client id explicitly rather than
-// reading the constant. With `CLIENT_ID` empty until the OAuth app is
-// registered, a version that guarded on the constant would bail before shaping
-// anything, so the form encoding, the URLs and the `grant_type` would first run
-// for real in production. Passing it in means they are exercised now, and the
-// registration only changes a value.
+// reading the constant. Built while `CLIENT_ID` was still empty, a version that
+// guarded on the constant would have bailed before shaping anything, so the form
+// encoding, the URLs and the `grant_type` would have run for real for the first
+// time on the day the app was registered. Passing the id in meant they were
+// exercised before that, and registration changed a value rather than a code
+// path. It still buys the tests a stand-in id instead of the live one.
 
 /// Step 1: ask for a device code.
 pub fn start_with(
     transport: &dyn Transport,
     client_id: &str,
 ) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
+    if client_id.is_empty() {
+        return Err(ForgeError::NotAuthenticated);
+    }
     let resp =
         transport.send(form_post(DEVICE_CODE_URL, format!("client_id={client_id}&scope={SCOPE}")))?;
     if let Some(err) = super::http::classify(&resp) {
@@ -195,6 +200,9 @@ pub fn poll_once_with(
     client_id: &str,
     flow: &PendingFlow,
 ) -> Result<PollOutcome, ForgeError> {
+    if client_id.is_empty() {
+        return Err(ForgeError::NotAuthenticated);
+    }
     let resp = transport.send(form_post(
         ACCESS_TOKEN_URL,
         format!(
@@ -216,16 +224,10 @@ pub fn poll_once_with(
 // --- thin wrappers over the registered client id ---
 
 pub fn start(transport: &dyn Transport) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
-    if !is_configured() {
-        return Err(ForgeError::NotAuthenticated);
-    }
     start_with(transport, CLIENT_ID)
 }
 
 pub fn poll_once(transport: &dyn Transport, flow: &PendingFlow) -> Result<PollOutcome, ForgeError> {
-    if !is_configured() {
-        return Err(ForgeError::NotAuthenticated);
-    }
     poll_once_with(transport, CLIENT_ID, flow)
 }
 
@@ -339,20 +341,40 @@ mod tests {
 
     #[test]
     fn an_unregistered_build_refuses_to_start_a_flow_it_cannot_finish() {
-        // CLIENT_ID is empty until the OAuth app exists. Starting anyway would
-        // send GitHub a request guaranteed to fail and report it as a server
-        // problem rather than a missing registration.
-        assert!(!is_configured(), "this test describes the pre-registration build");
+        // Without an id, starting anyway would send GitHub a request guaranteed
+        // to fail and report it as a server problem rather than a missing
+        // registration. The guard lives in the shaping functions rather than in
+        // `start`, so it stays reachable from a test now that the real constant
+        // is filled in.
         let t = StubTransport::new(vec![]);
-        assert_eq!(start(&t).unwrap_err(), ForgeError::NotAuthenticated);
+        assert_eq!(start_with(&t, "").unwrap_err(), ForgeError::NotAuthenticated);
+        let flow = PendingFlow { device_code: "d".into(), interval_secs: 5 };
+        assert_eq!(poll_once_with(&t, "", &flow).unwrap_err(), ForgeError::NotAuthenticated);
         assert_eq!(t.request_count(), 0, "nothing reached the wire");
     }
 
     #[test]
+    fn the_registered_client_id_is_the_one_the_flow_uses() {
+        // The gate this phase was blocked on. An empty constant would leave
+        // every sign-in attempt failing as `NotAuthenticated` with nothing on
+        // the wire, which looks identical to a rejected credential.
+        assert!(is_configured(), "the OAuth app's client id is committed");
+
+        let t = StubTransport::new(vec![StubTransport::json(
+            200,
+            r#"{"device_code":"d","user_code":"U","verification_uri":"https://x","interval":5}"#,
+        )]);
+        start(&t).unwrap();
+        assert!(
+            t.bodies()[0].contains(&format!("client_id={CLIENT_ID}")),
+            "the wrapper sends the registered id, not a stand-in"
+        );
+    }
+
+    #[test]
     fn step_one_sends_the_form_github_expects() {
-        // Exercised with a stand-in id precisely because the real one is empty
-        // until registration; otherwise this request would be shaped for the
-        // first time in production.
+        // Exercised with a stand-in id, so the assertion is about the shape of
+        // the request rather than about which app it names.
         let t = StubTransport::new(vec![StubTransport::json(
             200,
             r#"{"device_code":"d","user_code":"U","verification_uri":"https://x","interval":5}"#,
