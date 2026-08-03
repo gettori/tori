@@ -395,11 +395,35 @@ export async function stopAllLsp(): Promise<void> {
  *  this in a compartment and reconfigure on `onLspChange` rather than baking
  *  the result into the buffer's state. */
 export function lspPluginFor(path: string): Extension {
+  const claim = claimFor(path);
+  return claim ? claim.session.client.plugin(pathToUri(path), claim.languageId) : [];
+}
+
+/** The session and language id that will answer for `path`, or null.
+ *
+ *  One guard chain behind both the plugin and `claimedByLsp`, so what a buffer
+ *  actually got and what the completion fallback believes it got cannot drift
+ *  apart. Splitting them was how a file could end up with the server's
+ *  completions and the scraped-word list at the same time. */
+function claimFor(path: string): { session: Session; languageId: string } | null {
   const server = serverForPath(path);
-  if (!server) return [];
+  if (!server) return null;
   const session = sessionFor(path, server);
-  if (!session) return [];
+  if (!session) return null;
   const languageId = languageIdFor(server, path);
-  if (!languageId) return [];
-  return session.client.plugin(pathToUri(path), languageId);
+  if (!languageId) return null;
+  return { session, languageId };
+}
+
+/**
+ * Whether a live language server has taken this buffer on.
+ *
+ * Answers about *now*, not about the file type: it is false while the server is
+ * still starting, and false again if a project switch takes it away. That is
+ * what `fallbackCompletion.ts` reads, so a buffer opened before the server was
+ * ready is not left with no completion at all, and gives the scraped words up
+ * the moment the server does claim the file (`onLspChange`).
+ */
+export function claimedByLsp(path: string): boolean {
+  return claimFor(path) !== null;
 }

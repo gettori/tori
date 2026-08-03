@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Compartment, EditorState, type StateEffect } from "@codemirror/state";
-import { reattachLsp, type LspBuffer } from "./lspReattach";
+import { reattachLsp, reconfigureBuffers, type LspBuffer } from "./lspReattach";
 
 // `tabSize` stands in for the LSP plugin: it is a real facet living in a real
 // compartment, so "the configuration changed" is asserted against CM6 itself
@@ -72,5 +72,34 @@ describe("reattachLsp", () => {
     // An empty extension means the compartment now contributes nothing, so the
     // facet falls back to its default rather than keeping the stale value.
     expect(md.state.tabSize).toBe(4);
+  });
+});
+
+// A buffer has more than one compartment that moves when the client does: the
+// plugin, and the fallback completion that exists only while no server claims
+// the file. `pick` is what keeps them independent, so a settings change can
+// reach one without closing and reopening the document on the server.
+describe("reconfigureBuffers", () => {
+  it("reaches the named compartment and leaves its sibling alone", () => {
+    const lsp = new Compartment();
+    const completion = new Compartment();
+    const buf = {
+      lsp,
+      completion,
+      state: EditorState.create({
+        extensions: [lsp.of(EditorState.tabSize.of(TAB_BEFORE)), completion.of([])],
+      }),
+    };
+
+    reconfigureBuffers(
+      [["/a.md", buf]],
+      null,
+      (b) => b.completion,
+      () => EditorState.readOnly.of(true),
+      () => {},
+    );
+
+    expect(buf.state.readOnly).toBe(true);
+    expect(buf.state.tabSize).toBe(TAB_BEFORE);
   });
 });
