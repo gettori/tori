@@ -114,7 +114,7 @@ describe("expanding and shrinking a selection", () => {
 });
 
 describe("joining lines", () => {
-  const joined = (doc: string, at: At) => run(joinLines, stateFor(doc, at)).state.doc.toString();
+  const joined = (doc: string, at: At) => run(joinLines, stateFor(doc, at)).state.sliceDoc();
 
   it("collapses a multi-line selection onto one line, single-spaced", () => {
     expect(joined("one\n  two\n   three\nfour", { anchor: 0, head: 17 })).toBe("one two three\nfour");
@@ -144,7 +144,7 @@ describe("joining lines", () => {
       selection: EditorSelection.create([EditorSelection.cursor(0), EditorSelection.cursor(2)]),
       extensions: [MULTIPLE, selectionHistory],
     });
-    expect(run(joinLines, state).state.doc.toString()).toBe("one two\nthree");
+    expect(run(joinLines, state).state.sliceDoc()).toBe("one two\nthree");
   });
 });
 

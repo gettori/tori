@@ -2,7 +2,9 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, Compartment, Prec, type Text, type Extension, type StateCommand } from "@codemirror/state";
+// `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
+// the line-ending pass already split (see lineEndings.ts).
+import { EditorState, Compartment, Prec, Text, type Extension, type StateCommand } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -32,6 +34,7 @@ import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { fallbackCompletion } from "./fallbackCompletion";
+import { fromDisk, type DiskText } from "./lineEndings";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
@@ -158,11 +161,18 @@ const swayTheme = EditorView.theme(
 // rather than folded into `lsp`, because it also moves when a *setting* moves,
 // and reconfiguring `lsp` for that would close and reopen the document on the
 // server every time an unrelated editor toggle was flipped.
+// `eol` is a third, holding this file's line separator. A compartment rather
+// than a plain field because a file can change its endings on disk under an
+// open tab, and the value has to live in the state anyway: `state.lineBreak`
+// reads it back, so there is no second copy to fall out of step with it.
+// `savedText` is the buffer's *own* reading of the file (`sliceDoc`), not the
+// raw disk string, so a CRLF file compares equal to itself. See lineEndings.ts.
 type Buffer = {
   state: EditorState;
   savedText: string;
   lsp: Compartment;
   completion: Compartment;
+  eol: Compartment;
   pendingExternal?: string;
   pendingKind?: ConflictKind;
 };
@@ -264,9 +274,12 @@ export default function CodeEditor(props: {
     gotoReq = null;
   }
 
+  // A buffer's text as the buffer itself reads it: lines joined with this
+  // file's own ending. `sliceDoc` and never `doc.toString()`, which hard-codes
+  // "\n" and so answers a different question for every CRLF file.
   function docOf(path: string): string | null {
-    if (path === shown && view) return view.state.doc.toString();
-    return buffers.get(path)?.state.doc.toString() ?? null;
+    if (path === shown && view) return view.state.sliceDoc();
+    return buffers.get(path)?.state.sliceDoc() ?? null;
   }
 
   // The language workspace and the cross-file rename reach open buffers through
@@ -287,23 +300,32 @@ export default function CodeEditor(props: {
     adopt: (path, text) => {
       const buf = buffers.get(path);
       if (!buf) return;
-      setBufferText(path, text);
-      buf.savedText = text;
+      const disk = fromDisk(text);
+      setBufferText(path, disk);
+      buf.savedText = disk.text;
       props.onDirty(path, false);
       if (path === shown) refreshDiff();
     },
   });
 
-  // Replace a buffer's whole document with `text`, in the live view if it's the
-  // active buffer, otherwise in its stored state.
-  function setBufferText(path: string, text: string) {
+  // Replace a buffer's whole document with text just read from disk, in the live
+  // view if it's the active buffer, otherwise in its stored state. The file's
+  // ending is re-detected and reconfigured in the same transaction: whatever
+  // rewrote the file may have converted it, and a buffer left on the old
+  // separator would convert it back on the next save.
+  function setBufferText(path: string, disk: DiskText) {
     const buf = buffers.get(path);
     if (!buf) return;
+    // `Text.of` rather than the string, so the split is this module's and not a
+    // function of the separator being configured in the same breath.
+    const insert = Text.of(disk.lines);
+    const effects = buf.eol.reconfigure(EditorState.lineSeparator.of(disk.eol));
     if (path === shown && view) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert }, effects });
     } else {
       buf.state = buf.state.update({
-        changes: { from: 0, to: buf.state.doc.length, insert: text },
+        changes: { from: 0, to: buf.state.doc.length, insert },
+        effects,
       }).state;
     }
   }
@@ -323,9 +345,9 @@ export default function CodeEditor(props: {
       // one has nothing else to notice it.
       dropAgentLines(props.projectRoot, relTo(props.projectRoot, path));
     }
-    let text: string;
+    let raw: string;
     try {
-      text = await invoke<string>("fs_read_file", { path });
+      raw = await invoke<string>("fs_read_file", { path });
     } catch {
       // Unreadable: either the file is gone (a tree revert removing a
       // later-added file), or the read failed transiently. Only a confirmed
@@ -342,16 +364,21 @@ export default function CodeEditor(props: {
     }
     const buf = buffers.get(path);
     if (!buf) return; // closed while reading
+    // Compared as the buffer would hold it, not as the bytes arrived: a file
+    // whose endings the writer normalized differs byte for byte while saying
+    // exactly the same thing, and reloading on that would throw away the
+    // selection and the undo history for no change the user can see.
+    const disk = fromDisk(raw);
     const current = docOf(path);
-    if (current === null || text === current) {
-      buf.savedText = text;
+    if (current === null || (disk.text === current && disk.eol === buf.state.lineBreak)) {
+      buf.savedText = disk.text;
       if (path === shown) refreshDiff();
       return;
     }
     const dirty = current !== buf.savedText;
     if (!dirty) {
-      buf.savedText = text; // set baseline first so the dirty listener stays clean
-      setBufferText(path, text);
+      buf.savedText = disk.text; // set baseline first so the dirty listener stays clean
+      setBufferText(path, disk);
       props.onDirty(path, false);
       if (path === shown) {
         refreshDiff();
@@ -361,9 +388,12 @@ export default function CodeEditor(props: {
         void refreshAgentLines();
       }
     } else {
-      buf.pendingExternal = text;
+      // Stashed already normalized, so "take disk" adopts exactly what was
+      // compared here. `fromDisk` is idempotent over its own output, which is
+      // what lets the stash stay a plain string.
+      buf.pendingExternal = disk.text;
       buf.pendingKind = "changed";
-      if (path === shown) setConflict({ path, external: text, kind: "changed" });
+      if (path === shown) setConflict({ path, external: disk.text, kind: "changed" });
     }
   }
 
@@ -377,14 +407,14 @@ export default function CodeEditor(props: {
     delete buf.pendingExternal;
     delete buf.pendingKind;
     if (c.kind === "deleted") {
-      buf.savedText = buf.state.doc.toString(); // clean, so the close carries no discard prompt
+      buf.savedText = buf.state.sliceDoc(); // clean, so the close carries no discard prompt
       props.onDirty(c.path, false);
       setConflict(null);
       props.onCloseFile?.(c.path);
       return;
     }
     buf.savedText = c.external;
-    setBufferText(c.path, c.external);
+    setBufferText(c.path, fromDisk(c.external));
     props.onDirty(c.path, false);
     if (c.path === shown) refreshDiff();
     setConflict(null);
@@ -430,7 +460,7 @@ export default function CodeEditor(props: {
     const head = gitState().root === root ? (gitState().head ?? "") : "";
     const blame = head ? await blameFor(root, relTo(root, path), head) : emptyBlame();
     if (!view || shown !== path || !props.blame) return;
-    if (!canPlaceBlame(view.state.doc.toString(), buffers.get(path)?.savedText)) return;
+    if (!canPlaceBlame(view.state.sliceDoc(), buffers.get(path)?.savedText)) return;
     setBlameMarkers(view, blame);
   }
 
@@ -455,7 +485,7 @@ export default function CodeEditor(props: {
       ? await agentLinesFor(root, relTo(root, path), sessions)
       : emptyAgentLines();
     if (!view || shown !== path || !props.blame) return;
-    if (!canPlaceBlame(view.state.doc.toString(), buffers.get(path)?.savedText)) return;
+    if (!canPlaceBlame(view.state.sliceDoc(), buffers.get(path)?.savedText)) return;
     setAgentMarkers(view, agent);
   }
 
@@ -528,7 +558,9 @@ export default function CodeEditor(props: {
   async function saveActive() {
     const path = shown;
     if (!path || !view) return;
-    let text = view.state.doc.toString();
+    // `sliceDoc`, not `doc.toString()`: the latter hard-codes "\n" and would
+    // rewrite a CRLF file's endings on every save (see lineEndings.ts).
+    let text = view.state.sliceDoc();
     // Ahead of the write, so what lands on disk and what is in the buffer are
     // the same bytes. Gated on the setting first: detection is a directory walk
     // in the backend, and a project that has opted out should not pay for it.
@@ -690,6 +722,16 @@ export default function CodeEditor(props: {
     indentOnInput(),
     bracketMatching(),
     closeBrackets(),
+    // Text arriving from outside the editor is re-broken to this buffer's own
+    // ending. Setting `lineSeparator` (see lineEndings.ts) changes more than the
+    // way a document reads back: `EditorState.toText` splits an incoming string
+    // by it, and that is the function both paste and drop go through. Without
+    // this, three LF lines pasted into a CRLF file land as *one* line holding
+    // two literal "\n" characters, which `highlightSpecialChars` below then
+    // draws as placeholders and a save writes out as bytes.
+    EditorView.clipboardInputFilter.of((text, state) =>
+      text.replace(/\r\n?|\n/g, state.lineBreak),
+    ),
     highlightSpecialChars(),
     foldGutter(),
     highlightSelectionMatches(),
@@ -776,18 +818,23 @@ export default function CodeEditor(props: {
     });
   }
 
+  // `disk` rather than a string: the document is built from lines this module
+  // split, and the separator that will write them back is configured alongside
+  // them, so the two can never describe different files.
   function makeState(
     path: string,
-    text: string,
+    disk: DiskText,
     lang: Extension,
     lsp: Compartment,
     completion: Compartment,
+    eol: Compartment,
   ): EditorState {
     return EditorState.create({
-      doc: text,
+      doc: Text.of(disk.lines),
       extensions: [
         ...commonExtensions,
         lang,
+        eol.of(EditorState.lineSeparator.of(disk.eol)),
         lsp.of(lspPluginFor(path)),
         completion.of(currentFallbackCompletion(path)),
         EditorView.updateListener.of((u) => {
@@ -800,7 +847,7 @@ export default function CodeEditor(props: {
         EditorView.updateListener.of((u) => {
           if (!u.docChanged) return;
           const buf = buffers.get(path);
-          if (buf) props.onDirty(path, u.state.doc.toString() !== buf.savedText);
+          if (buf) props.onDirty(path, u.state.sliceDoc() !== buf.savedText);
           // Typing moves every symbol below the caret and can add or remove one,
           // so the outline is re-asked rather than mapped through the change:
           // only the server knows whether what was typed is a symbol yet.
@@ -925,11 +972,11 @@ export default function CodeEditor(props: {
     }
     let buf = buffers.get(path);
     if (!buf) {
-      let text: string;
+      let raw: string;
       try {
-        text = await invoke<string>("fs_read_file", { path });
+        raw = await invoke<string>("fs_read_file", { path });
       } catch (e) {
-        text = `// failed to open ${path}\n// ${String(e)}`;
+        raw = `// failed to open ${path}\n// ${String(e)}`;
       }
       // The first open of a language awaits its pack's chunk import; the
       // token check below covers this await too.
@@ -938,7 +985,17 @@ export default function CodeEditor(props: {
       if (token !== swapToken) return;
       const lsp = new Compartment();
       const completion = new Compartment();
-      buf = { state: makeState(path, text, lang, lsp, completion), savedText: text, lsp, completion };
+      const eol = new Compartment();
+      const disk = fromDisk(raw);
+      // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
+      // answer for this buffer, and every dirty check compares against that.
+      buf = {
+        state: makeState(path, disk, lang, lsp, completion, eol),
+        savedText: disk.text,
+        lsp,
+        completion,
+        eol,
+      };
       buffers.set(path, buf);
       // First open of this file: bring up the server for its language, at the
       // root the backend resolves for it. Fire-and-forget, because the plugin
@@ -951,7 +1008,7 @@ export default function CodeEditor(props: {
     view.setState(buf.state);
     view.focus();
     shown = path;
-    props.onDirty(path, buf.state.doc.toString() !== buf.savedText);
+    props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
