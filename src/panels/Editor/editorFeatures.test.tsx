@@ -194,13 +194,13 @@ describe("the minimap", () => {
       effects: conf.reconfigure(editorPrefExtensions({ ...BASE, minimap: true })),
     });
     expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(1);
-    expect(editor.state.doc.toString(), "the document never moved").toBe(FILE);
+    expect(editor.state.sliceDoc(), "the document never moved").toBe(FILE);
 
     editor.dispatch({
       effects: conf.reconfigure(editorPrefExtensions({ ...BASE, minimap: false })),
     });
     expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(0);
-    expect(editor.state.doc.toString()).toBe(FILE);
+    expect(editor.state.sliceDoc()).toBe(FILE);
   });
 });
 
