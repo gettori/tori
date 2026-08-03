@@ -46,17 +46,15 @@ describe("the Editor settings section", () => {
     expect(new Set(shown).size).toBe(shown.length);
   });
 
-  // One render for both halves. Two would need the first panel torn down
-  // between them, and `cleanup` does not currently dispose a `<Portal>` in this
-  // install: every portalled component's suite fails the same way, with or
-  // without this section. Rendering once keeps this file honest about the
-  // Editor rows rather than about that.
-  it("renders each row on the stored value, and writes the flipped key through set_settings", async () => {
+  it("renders each row on the stored value", () => {
     render(() => <Settings onClose={() => {}} />);
     for (const t of EDITOR_TOGGLES) {
       expect(boxFor(t.label).checked, t.label).toBe(PRISTINE[t.key]);
     }
+  });
 
+  it("writes the flipped key through set_settings, carrying its siblings", async () => {
+    render(() => <Settings onClose={() => {}} />);
     const minimap = EDITOR_TOGGLES.find((t) => t.key === "minimap")!;
     fireEvent.click(boxFor(minimap.label));
 
