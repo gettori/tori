@@ -51,6 +51,17 @@ export type ChatDefaults = {
   showSwayHooks: boolean;
 };
 export type Harness = { path?: string | null };
+/** Editor behaviour that is a preference rather than a project fact.
+ *
+ *  `formatOnSave` defaults **off**, even though the project's config is what
+ *  decides which formatter runs: a repo carrying a `.prettierrc` is not
+ *  necessarily a repo that is currently formatted, and the first save in one
+ *  would otherwise rewrite a file the user never touched. */
+export type EditorDefaults = { formatOnSave: boolean };
+/** One project's editor overrides. `null`/absent means "no answer here" and
+ *  falls through to `editorDefaults`, which is distinct from an explicit
+ *  `false` - that is this project saying no. */
+export type EditorPrefs = { formatOnSave?: boolean | null };
 
 /**
  * Spend ceilings. **Null means unlimited, and that is the default**: a budget
@@ -79,9 +90,12 @@ export type Settings = {
   github: Github;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
+  editorDefaults: EditorDefaults;
   harness: Harness;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
+  /** Keyed by project path, same shape and same reason as `chat`. */
+  editor: Record<string, EditorPrefs>;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -110,8 +124,10 @@ export const DEFAULT_SETTINGS: Settings = {
     showSwayHooks: false,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
+  editorDefaults: { formatOnSave: false },
   harness: {},
   chat: {},
+  editor: {},
 };
 
 const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
@@ -254,6 +270,35 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
   const next: Settings = {
     ...settings,
     chat: { ...settings.chat, [projectPath]: { ...chatPrefs(projectPath), ...prefs } },
+  };
+  void saveSettings(next).catch(() => {});
+}
+
+/**
+ * Whether a save in `projectPath` should run the project's formatter first.
+ *
+ * The project's own answer where it has one, the global default otherwise. The
+ * three-way distinction is the point: `undefined` and `null` both mean "this
+ * project has never been asked", while `false` is a project that was asked and
+ * said no, and must not be overruled by the global default being on.
+ *
+ * A null path (no workspace selected) can only be the default: there is no
+ * project to have an opinion.
+ */
+export function formatOnSaveFor(projectPath: string | null): boolean {
+  const own = projectPath ? settings.editor?.[projectPath]?.formatOnSave : undefined;
+  return own ?? settings.editorDefaults?.formatOnSave ?? false;
+}
+
+/** Remember this project's format-on-save answer. Swallowed on failure for the
+ *  same reason a chat pick is: the choice already took effect. */
+export function rememberFormatOnSave(projectPath: string, on: boolean | null): void {
+  const next: Settings = {
+    ...settings,
+    editor: {
+      ...settings.editor,
+      [projectPath]: { ...settings.editor?.[projectPath], formatOnSave: on },
+    },
   };
   void saveSettings(next).catch(() => {});
 }

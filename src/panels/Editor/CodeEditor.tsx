@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, Compartment, Prec, type Extension } from "@codemirror/state";
+import { EditorState, Compartment, Prec, type Text, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -25,6 +25,8 @@ import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
+import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
+import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
@@ -33,7 +35,7 @@ import { problemsFromState } from "./problemsFromState";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
-import { settings, zoom } from "../Settings/settingsStore";
+import { settings, zoom, formatOnSaveFor } from "../Settings/settingsStore";
 import {
   on as onEvent,
   onWith,
@@ -459,10 +461,69 @@ export default function CodeEditor(props: {
     if (view && shown === path) setDiffMarkers(view, hunks);
   }
 
+  /** Run the project's formatter over `text`, or hand it straight back when the
+   *  project has none. Never rejects for a formatter's own refusal. */
+  function runProjectFormatter(path: string, text: string): Promise<FormatResult> {
+    return invoke<FormatResult>("format_document", {
+      path,
+      text,
+      projectPath: props.projectRoot ?? "",
+    });
+  }
+
+  /** That path's live document, on screen or stashed, or null when no buffer
+   *  holds it. Addressed by path rather than by "whatever is shown": a format
+   *  takes long enough for an ordinary tab click, and the save it belongs to
+   *  still has to write the file it started on. */
+  function docFor(path: string): Text | null {
+    if (path === shown && view) return view.state.doc;
+    return buffers.get(path)?.state.doc ?? null;
+  }
+
+  const formatDeps: FormatDeps = {
+    format: runProjectFormatter,
+    // Read fresh each time: the whole guard is "is this still the document the
+    // formatter was given?", and a captured reference could not answer it.
+    current: (path) => {
+      const doc = docFor(path);
+      return doc ? { text: doc.toString(), id: doc } : null;
+    },
+    report: (message) => emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
+  };
+
+  /** Put formatted text into that file's buffer as a minimal change, so the
+   *  caret stays on the line it was on. A whole-document replacement maps every
+   *  position to the end of the change, which would move the cursor on every
+   *  single save.
+   *
+   *  Same shown-versus-stashed split as `setBufferText` and `reattachLsp`: a
+   *  buffer that is not on screen is in no view and can only be updated through
+   *  `state.update`. */
+  function applyFormatted(path: string, text: string) {
+    const doc = docFor(path);
+    if (!doc) return;
+    const changes = diffChanges(doc, toDoc(text));
+    if (path === shown && view) {
+      view.dispatch({ changes, userEvent: "format" });
+      return;
+    }
+    const buf = buffers.get(path);
+    if (buf) buf.state = buf.state.update({ changes, userEvent: "format" }).state;
+  }
+
   async function saveActive() {
     const path = shown;
     if (!path || !view) return;
-    const text = view.state.doc.toString();
+    let text = view.state.doc.toString();
+    // Ahead of the write, so what lands on disk and what is in the buffer are
+    // the same bytes. Gated on the setting first: detection is a directory walk
+    // in the backend, and a project that has opted out should not pay for it.
+    if (formatOnSaveFor(props.projectRoot)) {
+      const outcome = await formatForSave(formatDeps, path, { text, id: view.state.doc });
+      if (outcome.kind === "gone") return;
+      if (outcome.kind === "formatted") applyFormatted(path, outcome.text);
+      text = outcome.text;
+    }
     try {
       await invoke("fs_write_file", { path, contents: text });
       markSelfWrite(path);
@@ -860,6 +921,30 @@ export default function CodeEditor(props: {
     }
   }
 
+  /**
+   * Format the active buffer now, without saving.
+   *
+   * The project's own formatter wins, and the language server's is what runs
+   * only when there is none. A repo pins Biome or Prettier so that everyone's
+   * output matches; tsserver's formatter agrees with neither, so preferring it
+   * would mean the manual command and CI disagreed about the same file.
+   */
+  async function formatNow() {
+    const path = shown;
+    if (!path || !view) return;
+    const outcome = await formatForSave(formatDeps, path, {
+      text: view.state.doc.toString(),
+      id: view.state.doc,
+    });
+    if (outcome.kind === "gone") return;
+    if (outcome.kind === "formatted") return applyFormatted(path, outcome.text);
+    // Nothing to apply. Fall through to the server only when the project had no
+    // formatter at all: a detected one that refused has already said why, and
+    // reformatting with a different tool on top of that would be worse than
+    // doing nothing.
+    if (!outcome.formatter && view) formatDocument(view);
+  }
+
   // The palette's and the sheet's language-server entries, run against whatever
   // the view is showing. Each is the same CM6 command the library's own key
   // binding fires, and each returns false (a no-op) when the active file has no
@@ -868,7 +953,7 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_DEFINITION, () => void (view && jumpToDefinition(view))),
     onEvent(EDITOR_LSP_REFERENCES, () => void (view && findReferences(view))),
     onEvent(EDITOR_LSP_RENAME, () => void (view && swayRenameSymbol(view, renameIo))),
-    onEvent(EDITOR_LSP_FORMAT, () => void (view && formatDocument(view))),
+    onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
   ];
 
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.

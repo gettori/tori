@@ -408,6 +408,12 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "lsp-format",
+    // Not only the language server's, despite the id: the editor tries the
+    // project's own Biome or Prettier first and falls back to the server only
+    // where there is none. One entry rather than two, because "format this
+    // file" is one thing the user wants and the answer to "with what?" is the
+    // project's, not theirs.
+    //
     // Already reachable on a Mac keyboard, so it keeps the library's binding
     // rather than gaining a second one.
     keys: ["⇧", "⌥", "F"],
