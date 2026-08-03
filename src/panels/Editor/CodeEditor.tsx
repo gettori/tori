@@ -41,6 +41,7 @@ import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/ls
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import { problemsFromState } from "./problemsFromState";
+import { editorPrefExtensions } from "./editorPrefs";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
@@ -644,6 +645,24 @@ export default function CodeEditor(props: {
     view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimModeOn())) });
   }
 
+  // The editing-comfort preferences (settings.editor), on the same terms as
+  // `blameConf` beside it: one compartment for the whole editor, because these
+  // are single preferences every buffer wants the same answer to, filled by
+  // `syncEditorPrefs` so exactly one place decides what the config is.
+  //
+  // Wave 5 fills this in one line per feature. It resolves to nothing today,
+  // which is deliberate: the plumbing and its swap-time re-sync land once, and
+  // each later phase adds an entry rather than re-deriving where a preference
+  // is allowed to live.
+  const prefsConf = new Compartment();
+
+  // Reconfigure reaches the *active* state only; a stashed buffer keeps the
+  // config it was built with until it is swapped back in, which is why
+  // `swapTo` calls this too.
+  function syncEditorPrefs() {
+    view?.dispatch({ effects: prefsConf.reconfigure(editorPrefExtensions(settings.editor)) });
+  }
+
   const commonExtensions: Extension[] = [
     // First, and load-bearing. Vim intercepts keys through a ViewPlugin DOM
     // handler, and for a key both it and a keymap claim, whichever is earlier
@@ -670,6 +689,7 @@ export default function CodeEditor(props: {
     highlightSelectionMatches(),
     diffGutterExtension(),
     blameConf.of([]),
+    prefsConf.of(editorPrefExtensions(settings.editor)),
     syntaxHighlighting(swayHighlight),
     // After the highlight style, not before: the grammar colours everything
     // immediately and offline, and the server's answer lands on top of the
@@ -892,6 +912,7 @@ export default function CodeEditor(props: {
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
     refreshDiff();
     syncBlame();
+    syncEditorPrefs();
     syncVim();
     applyGoto();
     void refreshSymbols();
@@ -1073,6 +1094,10 @@ export default function CodeEditor(props: {
   // the file's text and undo history untouched: a compartment reconfigure, not
   // a rebuild.
   createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
+  // Every editing-comfort key at once: `Object.values` reads all of them, so a
+  // change to any one re-runs this without the list having to be repeated here
+  // each time a phase adds a key.
+  createEffect(on(() => Object.values(settings.editor), () => syncEditorPrefs(), { defer: true }));
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the
