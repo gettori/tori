@@ -487,9 +487,13 @@ describe("the workspace each client is given", () => {
     // wiring: the buffer text exists only inside the editor component, and
     // reading the file instead would answer with a copy the user cannot see.
     const m = await freshModule();
-    const { setLiveBufferReader } = await import("./liveBuffers");
+    const { setBufferAccess } = await import("./liveBuffers");
     disk["/proj/x/dirty.ts"] = "on disk";
-    const off = setLiveBufferReader((p) => (p === "/proj/x/dirty.ts" ? "unsaved edits" : null));
+    const off = setBufferAccess({
+      textOf: (p: string) => (p === "/proj/x/dirty.ts" ? "unsaved edits" : null),
+      isDirty: () => true,
+      adopt: () => {},
+    });
     try {
       await m.ensureLspFor("/proj/x/a.ts", "/proj/x");
       const ws = clients[0].workspace as Ws;

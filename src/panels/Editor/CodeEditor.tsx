@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, Compartment, type Extension } from "@codemirror/state";
+import { EditorState, Compartment, Prec, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -19,10 +19,12 @@ import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agen
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
 import { ensureLspFor, lspPluginFor, notifyLspFileChanged, onLspChange } from "./lspClient";
-import { setLiveBufferReader } from "./liveBuffers";
+import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
+import { swayRenameSymbol } from "./lspRenameCommand";
+import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp } from "./lspReattach";
-import { formatDocument, jumpToDefinition, findReferences, renameSymbol } from "@codemirror/lsp-client";
+import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import { problemsFromState } from "./problemsFromState";
@@ -189,6 +191,11 @@ export default function CodeEditor(props: {
   // extension, so switching it off takes the whole column with it instead of
   // leaving an empty one.
   blame?: boolean;
+  // The host's in-app confirm (WKWebView has no `window.confirm`). Used by the
+  // cross-file rename, which has to ask before saving a background tab's
+  // unsaved work. Absent means the rename refuses rather than deciding for the
+  // user.
+  confirm?: (opts: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -244,12 +251,30 @@ export default function CodeEditor(props: {
     return buffers.get(path)?.state.doc.toString() ?? null;
   }
 
-  // The language workspace reads open buffers through here rather than from
-  // disk, because a background tab is viewless and can be dirty: its text is in
-  // this map and nowhere else. Registered in the component body, not in
-  // `onMount`, so a server that comes up during the opening swap already sees
-  // it.
-  const offBufferReader = setLiveBufferReader(docOf);
+  // The language workspace and the cross-file rename reach open buffers through
+  // here rather than through the filesystem, because a background tab is
+  // viewless and can be dirty: its text is in this map and nowhere else.
+  // Registered in the component body, not in `onMount`, so a server that comes
+  // up during the opening swap already sees it.
+  const offBufferAccess = setBufferAccess({
+    textOf: docOf,
+    isDirty: (path) => {
+      const buf = buffers.get(path);
+      return !!buf && docOf(path) !== buf.savedText;
+    },
+    // The file on disk was just rewritten to exactly this, so the buffer takes
+    // it as its baseline too. Without that the tab keeps the pre-rename text,
+    // reads as dirty against a file that moved, and the next save quietly puts
+    // the old name back.
+    adopt: (path, text) => {
+      const buf = buffers.get(path);
+      if (!buf) return;
+      setBufferText(path, text);
+      buf.savedText = text;
+      props.onDirty(path, false);
+      if (path === shown) refreshDiff();
+    },
+  });
 
   // Replace a buffer's whole document with `text`, in the live view if it's the
   // active buffer, otherwise in its stored state.
@@ -585,6 +610,20 @@ export default function CodeEditor(props: {
     // Falls through to an ordinary click for a file with no server, so it costs
     // nothing in a buffer the LSP knows nothing about.
     cmdClickDefinitionExtension,
+    // F2 must reach Sway's rename, not the library's. `languageServerExtensions()`
+    // binds it to `renameSymbol`, whose `doRename` skips every file the user has
+    // not already opened - silently, which is the worst way for a rename to be
+    // wrong. Highest precedence because that keymap arrives through the LSP
+    // compartment, which is reconfigured after this array is built.
+    Prec.highest(
+      keymap.of([
+        {
+          key: "F2",
+          preventDefault: true,
+          run: (v) => swayRenameSymbol(v, renameIo),
+        },
+      ]),
+    ),
   ];
 
   // Mirror a buffer's lint state into the Problems store. Only files with a
@@ -739,6 +778,49 @@ export default function CodeEditor(props: {
   // table-level Mod-s would fire while a terminal had focus.
   const offSave = onEvent(EDITOR_SAVE, () => void saveActive());
 
+  // What a cross-file rename needs from the app: a question it cannot answer
+  // itself, and somewhere to say what it did.
+  const renameIo = {
+    projectRoot: () => props.projectRoot,
+    confirm: (opts: { title: string; message: string; confirmLabel: string }) =>
+      props.confirm
+        ? props.confirm(opts)
+        : // No host to ask means no informed consent, so the safe answer is no.
+          // The rename refuses rather than saving somebody's work for them.
+          Promise.resolve(false),
+    report: reportRename,
+  };
+
+  function reportRename(outcome: RenameOutcome, root: string | null) {
+    const said = describeRename(outcome);
+    if (!said) return; // a single-file rename is its own feedback, on screen
+    // The undo is offered here because here is where the user learns that files
+    // they were not looking at just changed, and a toast is the only place that
+    // moment exists.
+    const ts = outcome.kind === "applied" ? outcome.backstopTs : null;
+    const written = outcome.kind === "applied" ? outcome.written : [];
+    emitWith<ToastEvent>(TOAST, {
+      ...said,
+      action:
+        ts !== null && root
+          ? { label: "Undo", run: () => void revertRename(root, ts, written) }
+          : undefined,
+    });
+  }
+
+  async function revertRename(root: string, ts: number, written: string[]) {
+    try {
+      await invoke("backstop_restore_tree", { repoPath: root, ts });
+      // The files went back on disk; the open buffers still hold the rename.
+      // Routed through the external-change path so a clean buffer reloads in
+      // place and a dirty one gets the banner rather than being overwritten.
+      for (const p of written) if (buffers.has(p)) void handleExternalChange(p);
+      emitWith<ToastEvent>(TOAST, { message: "Rename undone.", kind: "info" });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: `Undo failed: ${String(e)}`, kind: "error" });
+    }
+  }
+
   // The palette's and the sheet's language-server entries, run against whatever
   // the view is showing. Each is the same CM6 command the library's own key
   // binding fires, and each returns false (a no-op) when the active file has no
@@ -746,7 +828,7 @@ export default function CodeEditor(props: {
   const offLspCommands = [
     onEvent(EDITOR_LSP_DEFINITION, () => void (view && jumpToDefinition(view))),
     onEvent(EDITOR_LSP_REFERENCES, () => void (view && findReferences(view))),
-    onEvent(EDITOR_LSP_RENAME, () => void (view && renameSymbol(view))),
+    onEvent(EDITOR_LSP_RENAME, () => void (view && swayRenameSymbol(view, renameIo))),
     onEvent(EDITOR_LSP_FORMAT, () => void (view && formatDocument(view))),
   ];
 
@@ -834,7 +916,7 @@ export default function CodeEditor(props: {
     offLsp?.();
     offSave();
     for (const off of offLspCommands) off();
-    offBufferReader();
+    offBufferAccess();
     view?.destroy();
   });
 

@@ -43,6 +43,13 @@
   flex: none;
   align-self: start;
 }
+/* Sits between the message and the close, and never wraps: a toast that
+   dismisses itself cannot afford its one action to be hard to hit. */
+.toastAction {
+  flex: none;
+  align-self: start;
+  white-space: nowrap;
+}
 
 @keyframes toast-in {
   from {

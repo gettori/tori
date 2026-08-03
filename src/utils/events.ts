@@ -265,7 +265,16 @@ export type RemoveBranchUnit = { projectPath: string; branch: string };
 // toast stack (setError), so components outside it (e.g. the editor's file tree)
 // emit this instead of holding their own notifier.
 export const TOAST = "sway:toast";
-export type ToastEvent = { message: string; kind?: "error" | "info" };
+// `action` is an optional single button. It exists for a notice whose undo has
+// nowhere else to live: a cross-file rename rewrote files nobody is looking at,
+// and the moment the user would want that back is the moment they are told.
+// The callback travels in the event detail rather than as an id, because both
+// ends are the same JS realm and an id would need a registry to mean anything.
+export type ToastEvent = {
+  message: string;
+  kind?: "error" | "info";
+  action?: { label: string; run: () => void };
+};
 
 // Payload-carrying event pair: the safe-send primitive (src/utils/safeSend.ts
 // `requestSend`). Any panel can ask to insert text at a session's prompt;

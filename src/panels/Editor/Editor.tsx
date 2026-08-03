@@ -1160,6 +1160,7 @@ export default function Editor(props: {
               selected={props.selected}
               hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
               blame={blameOn()}
+              confirm={askConfirm}
             />
           </Suspense>
         </Show>
