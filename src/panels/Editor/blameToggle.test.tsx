@@ -52,7 +52,7 @@ vi.mock("./CodeEditor", () => ({
     return null;
   },
 }));
-vi.mock("./lspClient", () => ({ ensureLsp: () => {} }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR } = await import("../../utils/events");

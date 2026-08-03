@@ -18,7 +18,7 @@ import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blam
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
-import { lspPluginFor, onLspChange } from "./lspClient";
+import { ensureLspFor, lspPluginFor, onLspChange } from "./lspClient";
 import { reattachLsp } from "./lspReattach";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
@@ -634,6 +634,12 @@ export default function CodeEditor(props: {
       const lsp = new Compartment();
       buf = { state: makeState(path, text, lang, lsp), savedText: text, lsp };
       buffers.set(path, buf);
+      // First open of this file: bring up the server for its language, at the
+      // root the backend resolves for it. Fire-and-forget, because the plugin
+      // arrives through `onLspChange` -> `relinkLsp`, the same path a file
+      // opened before its server was ready already takes. Opening only `.ts`
+      // files therefore never starts rust-analyzer.
+      if (props.projectRoot) void ensureLspFor(path, props.projectRoot);
     }
     if (token !== swapToken) return;
     view.setState(buf.state);
