@@ -34,7 +34,18 @@ const solidResolve = {
 // by one is not disposed when the other's root is - and a portalled dropdown
 // would survive `cleanup` into the next test, which is precisely what
 // `src/test/domSetup.ts` exists to prevent.
-const inlineSolid = { deps: { inline: [/lucide-solid/, /solid-js/] } };
+//
+// **`@solidjs/testing-library` has to be listed separately**, and this is the
+// trap: its path reads `@solidjs`, with no hyphen, so `/solid-js/` never matched
+// it. Left externalized, it imported its own copy of Solid, and `render` opened
+// a root in a reactive graph the components under test were not in: every
+// component ran as an orphan ("computations created outside a `createRoot`"),
+// `cleanup` disposed nothing of theirs, and the DOM only appeared to clear
+// because the library removes its own container by hand. Portals, which hang off
+// `document.body` instead, then piled up across the whole file.
+const inlineSolid = {
+  deps: { inline: [/lucide-solid/, /solid-js/, /@solidjs\/testing-library/] },
+};
 
 export default defineConfig({
   test: {
