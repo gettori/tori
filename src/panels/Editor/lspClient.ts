@@ -20,6 +20,7 @@ import {
   setRegistryListener,
   type LspServer,
 } from "../../utils/lspServers";
+import { symbolClientCapabilities } from "../../utils/symbols";
 import { liveBufferText } from "./liveBuffers";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
 
@@ -208,7 +209,13 @@ async function startFor(
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
     workspace: (c) => (workspace = new SwayWorkspace(c, workspaceDeps(server))),
-    extensions: languageServerExtensions(),
+    // The library advertises no symbol support at all, and a conformant server
+    // offers no provider for something the client never asked for, so without
+    // this the outline is empty against a *correct* server.
+    // Spread, not nested: `languageServerExtensions()` is itself a list of
+    // these, and one of them (`serverDiagnostics`) carries capabilities of its
+    // own that only get merged when the client sees it as a top-level entry.
+    extensions: [...languageServerExtensions(), symbolClientCapabilities],
   }).connect(transport);
 
   addSession({ handle, client, workspace: workspace! });
@@ -237,6 +244,61 @@ export function notifyLspFileChanged(path: string): void {
   for (const { workspace } of sessions.values()) {
     workspace.fileChanged(path).catch((e) => console.error("lsp fileChanged failed", path, e));
   }
+}
+
+/** What a running server is, to code that only wants to ask it something.
+ *
+ *  Narrow on purpose. A caller that held the `LSPClient` could reconfigure the
+ *  session or disconnect it; what the symbol surfaces need is to know whether a
+ *  provider exists and to send one request. */
+export type LspTarget = {
+  /** The root this session was started at, for naming and de-duplication. */
+  root: string;
+  /** Resolves once `initialize` has been answered, so `supports` is asking
+   *  about capabilities that exist. Settles either way: a server that failed to
+   *  initialize is not one to keep a caller waiting on. */
+  ready: Promise<void>;
+  /** Whether the server advertised this provider. False before `ready`, which
+   *  is the honest answer: nothing has been advertised yet, and asking anyway
+   *  is what draws a `MethodNotFound`. */
+  supports: (capability: keyof ServerCapabilities) => boolean;
+  /** Flush pending document changes. The library's own sync is debounced by
+   *  500 ms, so a question about positions asked sooner than that would be
+   *  answered against a document the server has not seen yet. */
+  sync: () => void;
+  request: <R>(method: string, params: unknown) => Promise<R>;
+};
+
+type ServerCapabilities = NonNullable<LSPClient["serverCapabilities"]>;
+
+function targetOf(session: Session): LspTarget {
+  return {
+    root: session.handle.root,
+    ready: session.client.initializing.then(
+      () => {},
+      () => {},
+    ),
+    supports: (capability) => !!session.client.serverCapabilities?.[capability],
+    sync: () => session.client.sync(),
+    request: (method, params) => session.client.request(method, params),
+  };
+}
+
+/** The server answering for `path`, or null when nothing does. Same
+ *  longest-root rule as the plugin, so a question about a file reaches the
+ *  server holding that file's compiler config. */
+export function lspTargetFor(path: string): LspTarget | null {
+  const server = serverForPath(path);
+  if (!server) return null;
+  const session = sessionFor(path, server);
+  return session ? targetOf(session) : null;
+}
+
+/** Every live server. What a workspace-wide question asks: `workspace/symbol`
+ *  is scoped to one server's own root, so a monorepo with a package-level
+ *  session and a repo-root session has to ask both to see the whole tree. */
+export function lspTargets(): LspTarget[] {
+  return [...sessions.values()].map(targetOf);
 }
 
 /** Tear down every client and stop every server. What a project switch calls:
