@@ -42,6 +42,10 @@ describe("the canonical binding table", () => {
         "command-palette",
         "filter-sidebar",
         "focus-terminal",
+        "lsp-definition",
+        "lsp-format",
+        "lsp-references",
+        "lsp-rename",
         "next-waiting",
         "project-search",
         "quick-open",
@@ -66,6 +70,20 @@ describe("the canonical binding table", () => {
     const rendered = bindingsByGroup().flatMap((g) => g.bindings);
     expect(rendered).toHaveLength(BINDINGS.length);
     for (const b of BINDINGS) expect(GROUP_LABELS[b.group]).toBeTruthy();
+  });
+
+  it("lists the language-server commands in the sheet's Editor group", () => {
+    // The four keys the LSP client binds privately (F12, ⇧F12, F2, ⇧⌥F) were
+    // shortcuts nothing in the app could print, and three of them need Fn on a
+    // Mac laptop. The Editor group used to drop out of the sheet entirely for
+    // having no key-carrying command in it.
+    const editor = bindingsByGroup().find((g) => g.group === "editor");
+    expect(editor?.bindings.map((b) => b.id)).toEqual([
+      "lsp-definition",
+      "lsp-references",
+      "lsp-rename",
+      "lsp-format",
+    ]);
   });
 
   it("gives every binding key chips and a label", () => {
@@ -131,6 +149,34 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     // focus and save a file nobody was looking at.
     expect(dispatchHotkey(key("s", { meta: true }))).toBe(false);
     expect(dispatchWindowHotkey(key("s", { meta: true }))).toBe(false);
+  });
+
+  it("does not fire an LSP command at an editor nobody is looking at", () => {
+    // `window` scope, not `global`: these act on the shown buffer, so firing
+    // one while a terminal has focus would rename a symbol in a file the user
+    // is not looking at. xterm swallows the keydown before it reaches window,
+    // which is exactly what the two dispatchers differ on.
+    const cmdOpt = (code: string) =>
+      ({ key: "", code, metaKey: true, altKey: true, shiftKey: false, ctrlKey: false }) as KeyboardEvent;
+    expect(dispatchHotkey(cmdOpt("KeyD"))).toBe(false);
+    expect(dispatchWindowHotkey(cmdOpt("KeyD"))).toBe(true);
+    expect(dispatchWindowHotkey(cmdOpt("KeyR"))).toBe(true);
+    expect(dispatchWindowHotkey(cmdOpt("KeyN"))).toBe(true);
+    const shiftOptF = {
+      key: "Ï",
+      code: "KeyF",
+      metaKey: false,
+      altKey: true,
+      shiftKey: true,
+      ctrlKey: false,
+    } as KeyboardEvent;
+    expect(dispatchWindowHotkey(shiftOptF)).toBe(true);
+    expect(dispatched.map((e) => e.type)).toEqual([
+      "sway:editor-lsp-definition",
+      "sway:editor-lsp-references",
+      "sway:editor-lsp-rename",
+      "sway:editor-lsp-format",
+    ]);
   });
 
   it("does not claim Cmd+F, which the focused terminal owns", () => {

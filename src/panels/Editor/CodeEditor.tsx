@@ -18,8 +18,11 @@ import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blam
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
-import { ensureLspFor, lspPluginFor, onLspChange } from "./lspClient";
+import { ensureLspFor, lspPluginFor, notifyLspFileChanged, onLspChange } from "./lspClient";
+import { setLiveBufferReader } from "./liveBuffers";
+import { cmdClickDefinitionExtension } from "./lspCommands";
 import { reattachLsp } from "./lspReattach";
+import { formatDocument, jumpToDefinition, findReferences, renameSymbol } from "@codemirror/lsp-client";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import { problemsFromState } from "./problemsFromState";
@@ -35,6 +38,10 @@ import {
   AGENT_WRITE_DEBOUNCE_MS,
   REFIT_PANES,
   EDITOR_SAVE,
+  EDITOR_LSP_DEFINITION,
+  EDITOR_LSP_REFERENCES,
+  EDITOR_LSP_RENAME,
+  EDITOR_LSP_FORMAT,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -202,6 +209,9 @@ export default function CodeEditor(props: {
       // while it was open, closed, then written to by five more turns would
       // otherwise come back to a stale answer on reopening.
       if (props.projectRoot) dropAgentLines(props.projectRoot, relTo(props.projectRoot, p));
+      // Same reason as the watcher's own loop: a headless workspace snapshot of
+      // a file no tab holds still has to hear about the write.
+      notifyLspFileChanged(p);
       if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
     }
   }, AGENT_WRITE_DEBOUNCE_MS);
@@ -233,6 +243,13 @@ export default function CodeEditor(props: {
     if (path === shown && view) return view.state.doc.toString();
     return buffers.get(path)?.state.doc.toString() ?? null;
   }
+
+  // The language workspace reads open buffers through here rather than from
+  // disk, because a background tab is viewless and can be dirty: its text is in
+  // this map and nowhere else. Registered in the component body, not in
+  // `onMount`, so a server that comes up during the opening swap already sees
+  // it.
+  const offBufferReader = setLiveBufferReader(docOf);
 
   // Replace a buffer's whole document with `text`, in the live view if it's the
   // active buffer, otherwise in its stored state.
@@ -565,6 +582,9 @@ export default function CodeEditor(props: {
     // already self-installs the lint state field when it publishes, but the
     // gutter is a separate extension and has to be asked for.
     lintGutter(),
+    // Falls through to an ordinary click for a file with no server, so it costs
+    // nothing in a buffer the LSP knows nothing about.
+    cmdClickDefinitionExtension,
   ];
 
   // Mirror a buffer's lint state into the Problems store. Only files with a
@@ -661,6 +681,12 @@ export default function CodeEditor(props: {
         buffers.delete(key);
         // The tab is gone, so its diagnostics leave the Problems list with it.
         dropDiagnostics(key);
+        // And the language workspace has to re-read it. Its snapshot is the
+        // text this buffer last held, unsaved edits included, and closing the
+        // tab discarded those - so without this the server goes on answering
+        // about a document nobody has. Same call as an external change, which
+        // resolves it through the buffer (now gone) to disk.
+        notifyLspFileChanged(key);
       }
     }
   }
@@ -683,6 +709,12 @@ export default function CodeEditor(props: {
     // also resyncs the gutter for the active file.
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       for (const p of e.payload.paths) {
+        // Every path, not only the open ones: the language workspace holds
+        // snapshots of files the user never opened, and a snapshot that keeps
+        // describing the old text is worse than no snapshot at all. Not gated
+        // on `isSelfWrite` - Sway only ever writes the file it is showing, and
+        // that one is view-backed, which `fileChanged` ignores anyway.
+        notifyLspFileChanged(p);
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
       }
     });
@@ -706,6 +738,17 @@ export default function CodeEditor(props: {
   // around. The key binding is still CM6's own, and stays the only key: a
   // table-level Mod-s would fire while a terminal had focus.
   const offSave = onEvent(EDITOR_SAVE, () => void saveActive());
+
+  // The palette's and the sheet's language-server entries, run against whatever
+  // the view is showing. Each is the same CM6 command the library's own key
+  // binding fires, and each returns false (a no-op) when the active file has no
+  // server, which is the state a `.txt` tab is permanently in.
+  const offLspCommands = [
+    onEvent(EDITOR_LSP_DEFINITION, () => void (view && jumpToDefinition(view))),
+    onEvent(EDITOR_LSP_REFERENCES, () => void (view && findReferences(view))),
+    onEvent(EDITOR_LSP_RENAME, () => void (view && renameSymbol(view))),
+    onEvent(EDITOR_LSP_FORMAT, () => void (view && formatDocument(view))),
+  ];
 
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
@@ -790,6 +833,8 @@ export default function CodeEditor(props: {
     offRefit?.();
     offLsp?.();
     offSave();
+    for (const off of offLspCommands) off();
+    offBufferReader();
     view?.destroy();
   });
 
