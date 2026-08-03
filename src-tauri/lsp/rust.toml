@@ -1,0 +1,28 @@
+# rust-analyzer, resolved from the user's login PATH (rustup component, brew,
+# or a manual install). Not bundled: it is a large binary that rustup already
+# manages, and a stale bundled copy would fight the toolchain the project
+# actually builds with.
+#
+# This is the config that proves the registry is real: adding a language is a
+# file like this one, not a branch in lsp.rs. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "rust"
+label = "Rust"
+
+# `Cargo.toml` walks to the crate, not the workspace root; rust-analyzer
+# discovers the enclosing workspace itself from there.
+root_markers = ["Cargo.toml", ".git"]
+
+# rust-analyzer indexes a cold cargo project for tens of seconds, and requests
+# made during that window queue rather than fail. A 3s timeout (the library
+# default) would reject nearly every first request on a real project.
+request_timeout_ms = 90000
+
+[languages]
+rs = "rust"
+
+[launch]
+kind = "path"
+program = "rust-analyzer"
+args = []
