@@ -11,6 +11,7 @@ import {
   type ChatDefaults,
   type Checkpoints,
   type DefaultSurface,
+  type EditorDefaults,
   type Harness,
   type TranscriptDensity,
   type Typography,
@@ -57,6 +58,8 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
   const setCheckpoints = (c: Partial<Checkpoints>) =>
     saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
+  const setEditorDefaults = (e: Partial<EditorDefaults>) =>
+    saveSettings({ ...settings, editorDefaults: { ...settings.editorDefaults, ...e } });
   const setChatDefaults = (c: Partial<ChatDefaults>) =>
     saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
   const setBudgets = (b: Partial<Budgets>) =>
@@ -243,6 +246,23 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                     setTypography({ lineHeight: clamp(e.currentTarget.value, 1, 2.5, settings.typography.lineHeight) })
                   }
                 />
+              </div>
+            </section>
+
+            <section class={styles.section}>
+              <div class={styles.sectionTitle}>Editor</div>
+              <div class={styles.row}>
+                <label class={styles.label}>Format on save</label>
+                <input
+                  type="checkbox"
+                  checked={settings.editorDefaults.formatOnSave}
+                  onChange={(e) => setEditorDefaults({ formatOnSave: e.currentTarget.checked })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Runs the project's own Biome or Prettier before writing, and nothing at all in a
+                project that has neither. Off by default: a repo carrying a formatter config is not
+                necessarily one that is currently formatted.
               </div>
             </section>
 

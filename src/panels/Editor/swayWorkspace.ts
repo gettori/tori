@@ -25,6 +25,7 @@
 import { ChangeSet, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { LSPPlugin, Workspace, type LSPClient, type WorkspaceFile } from "@codemirror/lsp-client";
+import { diffChanges, toDoc } from "./docDiff";
 
 // The library declares this shape but does not export it, so it is read back
 // off the method that returns it rather than restated here, where it could
@@ -56,48 +57,6 @@ export function uriToPath(uri: string): string | null {
   } catch {
     return null; // a malformed escape, so this is not a path we can address
   }
-}
-
-function docOf(text: string): Text {
-  return Text.of(text.split(/\r\n?|\n/));
-}
-
-const LOW_SURROGATE = (code: number) => code >= 0xdc00 && code <= 0xdfff;
-const HIGH_SURROGATE = (code: number) => code >= 0xd800 && code <= 0xdbff;
-
-/**
- * The change that turns `from` into `to`, for a file that changed outside any
- * editor: we have the before and the after and no record of how it got there.
- *
- * The matching prefix and suffix are kept out of it rather than replacing the
- * whole document. That is not an optimisation: `WorkspaceMapping` maps
- * positions *through* these changes, and a whole-document replacement collapses
- * every position in the file to zero, so a rename that spans a file an agent
- * touched mid-operation would silently aim every edit at offset 0. Trimming
- * means everything outside the region that actually moved still maps.
- */
-function diffChanges(from: Text, to: Text): ChangeSet {
-  const a = from.toString();
-  const b = to.toString();
-  const shortest = Math.min(a.length, b.length);
-  let start = 0;
-  while (start < shortest && a.charCodeAt(start) === b.charCodeAt(start)) start += 1;
-  // Never cut a surrogate pair in half: the halves are separate code units but
-  // one character, and splitting one produces a document CodeMirror cannot hold.
-  if (start > 0 && LOW_SURROGATE(a.charCodeAt(start)) && HIGH_SURROGATE(a.charCodeAt(start - 1))) {
-    start -= 1;
-  }
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a.charCodeAt(endA - 1) === b.charCodeAt(endB - 1)) {
-    endA -= 1;
-    endB -= 1;
-  }
-  if (endA < a.length && HIGH_SURROGATE(a.charCodeAt(endA - 1)) && LOW_SURROGATE(a.charCodeAt(endA))) {
-    endA += 1;
-    endB += 1;
-  }
-  return ChangeSet.of({ from: start, to: endA, insert: b.slice(start, endB) }, a.length);
 }
 
 class SwayFile implements WorkspaceFile {
@@ -237,7 +196,7 @@ export class SwayWorkspace extends Workspace {
       this.remove(path);
       return;
     }
-    const doc = docOf(text);
+    const doc = toDoc(text);
     // Compare against what the *next* sync will leave behind, so a second
     // change during one burst is not mistaken for a no-op.
     if ((file.pending?.doc ?? file.doc).eq(doc)) return;
@@ -338,7 +297,7 @@ export class SwayWorkspace extends Workspace {
     // The editor may have opened it while we were reading.
     const now = this.byPath.get(path);
     if (now) return now;
-    const file = new SwayFile(uri, path, languageId, this.nextVersion(path), docOf(text));
+    const file = new SwayFile(uri, path, languageId, this.nextVersion(path), toDoc(text));
     this.add(path, file);
     this.touchHeadless(path);
     this.client.didOpen(file);
