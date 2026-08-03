@@ -68,6 +68,41 @@ export type EditorDefaults = { formatOnSave: boolean; vimMode: boolean };
 export type EditorPrefs = { formatOnSave?: boolean | null };
 
 /**
+ * Editing comfort, one flat block of booleans read by the editor pane.
+ *
+ * Every key names the phase that consumes it, because a toggle the settings
+ * panel renders and nothing reads is worse than a missing feature: it reads as
+ * broken rather than absent.
+ *
+ * Flat rather than nested per feature, because these are all answers to "how
+ * should the code surface behave", and a user looking for soft wrap should not
+ * have to know whether it is a view concern or a language one.
+ */
+export type EditorPrefs = {
+  /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
+  indentGuides: boolean;
+  /** Wrap long lines rather than scrolling horizontally. The palette's
+   *  per-tab override outranks this for one buffer. (Phase 2) */
+  softWrap: boolean;
+  /** Show spaces and tabs as dots and arrows. (Phase 2) */
+  renderWhitespace: boolean;
+  /** Let the last line scroll up to the top of the viewport. (Phase 2) */
+  scrollPastEnd: boolean;
+  /** Colour brackets by nesting depth. (Phase 6) */
+  rainbowBrackets: boolean;
+  /** Vertical connectors between a bracket pair's two lines. (Phase 6) */
+  bracketPairGuides: boolean;
+  /** Document overview strip down the right edge. (Phase 7) */
+  minimap: boolean;
+  /** Word and snippet completion in buffers no language server claims.
+   *  (Phase 5) */
+  wordCompletion: boolean;
+  /** Keep unsaved buffers across a quit instead of prompting to discard
+   *  them. (Phase 10) */
+  hotExit: boolean;
+};
+
+/**
  * Spend ceilings. **Null means unlimited, and that is the default**: a budget
  * nobody asked for that quietly stops an agent mid-task would be worse than no
  * budget at all, so every ceiling here is opt-in.
@@ -96,6 +131,7 @@ export type Settings = {
   budgets: Budgets;
   editorDefaults: EditorDefaults;
   harness: Harness;
+  editor: EditorPrefs;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
   /** Keyed by project path, same shape and same reason as `chat`. */
@@ -130,6 +166,22 @@ export const DEFAULT_SETTINGS: Settings = {
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
   editorDefaults: { formatOnSave: false, vimMode: false },
   harness: {},
+  // Defaults follow the tickets: the three that only cost a line of pixels are
+  // on, the three cosmetic overlays are off (a stance nobody asked for is worse
+  // than a switch), and the two behavioural ones are on because a completion
+  // that never appears and a quit that still discards work are the states these
+  // features exist to end.
+  editor: {
+    indentGuides: true,
+    softWrap: false,
+    renderWhitespace: false,
+    scrollPastEnd: true,
+    rainbowBrackets: false,
+    bracketPairGuides: false,
+    minimap: false,
+    wordCompletion: true,
+    hotExit: true,
+  },
   chat: {},
   editor: {},
 };
