@@ -113,6 +113,11 @@ export const EDITOR_SAVE = "sway:editor-save";
 export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
 export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
+// Vim mode is a stored setting rather than editor state, but the toggle is an
+// event like the rest: `commands.ts` may import nothing but this module, so the
+// command cannot reach the settings store itself. CodeEditor listens, since it
+// is what the setting is about.
+export const EDITOR_TOGGLE_VIM = "sway:editor-toggle-vim";
 
 // The language-server commands. They exist as events, and not only as CM6 key
 // bindings, so the palette and the Cmd+/ sheet list them: a binding the library
