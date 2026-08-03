@@ -18,13 +18,22 @@ import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blam
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
-import { ensureLspFor, lspPluginFor, notifyLspFileChanged, onLspChange } from "./lspClient";
+import {
+  ensureLspFor,
+  lspPluginFor,
+  lspTargetFor,
+  notifyLspFileChanged,
+  onLspChange,
+  setSemanticRefreshListener,
+} from "./lspClient";
 import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
+import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
+import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
@@ -85,10 +94,12 @@ const swayHighlight = HighlightStyle.define([
   { tag: [t.className], color: "var(--syntax-class)" },
   { tag: [t.namespace], color: "var(--syntax-namespace)" },
   { tag: [t.variableName], color: "var(--syntax-variable)" },
-  // The closest lexical proxy for a parameter that a grammar alone can offer.
-  // Real parameter detection needs LSP semantic tokens, which are out of scope
-  // for this ticket; when they land this rule is what they replace.
-  { tag: [t.local(t.variableName)], color: "var(--syntax-parameter)" },
+  // No parameter rule here. There used to be a `t.local(t.variableName)` one
+  // standing in for it, but a grammar cannot tell a parameter from any other
+  // block-scoped binding, so it painted a good deal of ordinary local state as
+  // parameters. The real answer now comes from the language server, through
+  // `semanticHighlight()` below, which knows because it resolved the program.
+  // Files with no server keep the plain variable colour rather than a guess.
   { tag: [t.propertyName], color: "var(--syntax-property)" },
   { tag: [t.tagName, t.angleBracket], color: "var(--syntax-tag)" },
   { tag: [t.attributeName], color: "var(--syntax-attribute)" },
@@ -640,6 +651,10 @@ export default function CodeEditor(props: {
     diffGutterExtension(),
     blameConf.of([]),
     syntaxHighlighting(swayHighlight),
+    // After the highlight style, not before: the grammar colours everything
+    // immediately and offline, and the server's answer lands on top of the
+    // subset it has actually resolved.
+    semanticHighlight(),
     swayTheme,
     keymap.of([
       {
@@ -718,7 +733,14 @@ export default function CodeEditor(props: {
           // Typing moves every symbol below the caret and can add or remove one,
           // so the outline is re-asked rather than mapped through the change:
           // only the server knows whether what was typed is a symbol yet.
-          if (path === shown) refreshSymbolsSoon();
+          if (path === shown) {
+            refreshSymbolsSoon();
+            // The decorations already in the state map through this change, so
+            // the file stays coloured while it is being typed into; this is
+            // what eventually makes those colours right again. A new parameter
+            // is a parameter only once the server has parsed it.
+            refreshSemanticSoon();
+          }
         }),
       ],
     });
@@ -735,6 +757,9 @@ export default function CodeEditor(props: {
     // only thing that re-asks after a server finishes starting, which is the
     // state every file opened during startup is in.
     void refreshSymbols();
+    // Same reasoning for colour: a file that opened before its server was up
+    // has lexical highlighting only, and this is the moment that changes.
+    refreshSemantic();
   }
 
   // The active file's symbol tree, published for the outline panel and the
@@ -754,6 +779,46 @@ export default function CodeEditor(props: {
   // document itself, so this is only about how often the server is asked, not
   // about whether the answer is current.
   const refreshSymbolsSoon = debounce(() => void refreshSymbols(), 400);
+
+  // What the semantic-token refresh is allowed to know about this editor. The
+  // decisions it feeds - superseded, moved, nothing to do - all live in
+  // `lspSemanticTokens`, where they can be tested without a view; all this
+  // supplies is the buffer and the dispatch.
+  //
+  // `id` is `state.doc`: `Text` is immutable, so its identity is the only handle
+  // CodeMirror offers on "is this still the document I asked about?", and every
+  // token in an answer is a position. The same guard format-on-save uses.
+  const semanticDeps: SemanticDeps = {
+    current: (path) =>
+      path === shown && view ? { id: view.state.doc, painted: semanticTokenCount(view.state) } : null,
+    paint: (_path, tokens) => view?.dispatch({ effects: setSemanticTokens.of(tokens) }),
+    again: () => refreshSemanticSoon(),
+  };
+
+  // Caught rather than left to float: an unhandled rejection here is invisible,
+  // failing neither the suite nor the app, which Phase 2 learned the hard way.
+  function refreshSemantic() {
+    const path = shown;
+    if (!path) return;
+    refreshSemanticTokens(semanticDeps, path).catch((e) =>
+      console.error("semantic tokens failed", path, e),
+    );
+  }
+
+  const refreshSemanticSoon = debounce(refreshSemantic, 400);
+
+  // A server saying its own answers are stale. The trigger is usually a
+  // *different* file: semantic colour is a property of the resolved program, so
+  // editing a type in one file changes what a name in this one means without
+  // changing a character of it, and nothing observable here would ever prompt
+  // the re-ask.
+  //
+  // Filtered by root because `workspace/semanticTokens/refresh` is one session
+  // speaking for itself: in a monorepo, `packages/a`'s server going stale says
+  // nothing about a file `packages/b`'s server answers for.
+  const offSemanticRefresh = setSemanticRefreshListener((root) => {
+    if (shown && lspTargetFor(shown)?.root === root) refreshSemanticSoon();
+  });
 
   // The palette's `#` mode reaches the running servers through here, for the
   // same reason the language workspace reaches buffers through `liveBuffers`:
@@ -809,6 +874,7 @@ export default function CodeEditor(props: {
     syncBlame();
     applyGoto();
     void refreshSymbols();
+    refreshSemantic();
   }
 
   function evictClosed(openPaths: string[]) {
@@ -1042,10 +1108,12 @@ export default function CodeEditor(props: {
     for (const off of offLspCommands) off();
     offBufferAccess();
     offSymbolSearch();
-    // Nothing is shown any more, which is also what stops the symbol debounce:
-    // its timer is not cancellable, so a doc change 400 ms before teardown
-    // fires after the clear below and would publish one entry straight back
-    // into a store describing an editor that no longer exists.
+    offSemanticRefresh();
+    // Nothing is shown any more, which is also what stops both debounces: their
+    // timers are not cancellable, so a doc change 400 ms before teardown fires
+    // after the clear below and would publish one entry straight back into a
+    // store describing an editor that no longer exists. The semantic one bails
+    // on the same check before it can touch a destroyed view.
     shown = null;
     // No editor means no client, so every tree in the store describes a server
     // that is gone. Same rule as `clearEditorState`.

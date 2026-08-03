@@ -11,6 +11,11 @@ type StartArgs = { serverId: string; filePath: string; projectPath: string };
 
 const started: StartArgs[] = [];
 const stopped: string[] = [];
+// Every frame the module wrote back to a server, and every Channel it handed to
+// `lsp_start`. Together these are the only way to drive an incoming message and
+// see what went out in reply, which is what the refresh interception is.
+const sends: { handle: { serverId: string }; message: string }[] = [];
+const channels: { onmessage: ((m: string) => void) | null }[] = [];
 const clientConfigs: {
   rootUri?: string;
   timeout?: number;
@@ -68,6 +73,9 @@ const clients: {
   serverCapabilities: Record<string, unknown> | null;
   requests: { method: string; params: unknown }[];
   syncs: number;
+  /** Frames that reached the library, i.e. that the transport fanned out. What
+   *  the refresh interception is asserted *not* to appear in. */
+  received: string[];
 }[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -84,12 +92,21 @@ vi.mock("@tauri-apps/api/core", () => ({
       const path = args?.path as string;
       return path in disk ? Promise.resolve(disk[path]) : Promise.reject(new Error("ENOENT"));
     }
+    if (cmd === "lsp_send") {
+      sends.push({
+        handle: args?.handle as { serverId: string },
+        message: args?.message as string,
+      });
+    }
     if (cmd === "lsp_stop_all") stopped.push("all");
     if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
     return Promise.resolve();
   },
   Channel: class {
     onmessage: ((m: string) => void) | null = null;
+    constructor() {
+      channels.push(this);
+    }
   },
 }));
 
@@ -108,6 +125,7 @@ vi.mock("@codemirror/lsp-client", () => ({
     initializing = Promise.resolve(null);
     requests: { method: string; params: unknown }[] = [];
     syncs = 0;
+    received: string[] = [];
     constructor(config: (typeof clientConfigs)[number]) {
       clientConfigs.push(config);
       // The real client builds its workspace inside its own constructor, which
@@ -117,7 +135,12 @@ vi.mock("@codemirror/lsp-client", () => ({
       this.workspace = config.workspace?.(this);
       clients.push(this);
     }
-    connect() {
+    // The real client subscribes here, and everything it is handed goes to
+    // `receiveMessage`, which answers any request it did not expect with
+    // -32601. A stub that ignored the transport would hide whether a frame the
+    // module means to intercept ever reached the library at all.
+    connect(transport: { subscribe: (h: (m: string) => void) => void }) {
+      transport.subscribe((m) => this.received.push(m));
       return this;
     }
     didOpen() {}
@@ -149,6 +172,8 @@ beforeEach(() => {
   stopped.length = 0;
   clientConfigs.length = 0;
   clients.length = 0;
+  sends.length = 0;
+  channels.length = 0;
   disk = {};
   resolveRoot = (a) => a.projectPath;
   startFails = false;
@@ -403,6 +428,117 @@ describe("symbol capabilities", () => {
     expect(caps.clientCapabilities.textDocument.documentSymbol).toBeTruthy();
     expect(caps.clientCapabilities.workspace.symbol).toBeTruthy();
   });
+
+  it("advertises semantic tokens alongside them, not instead of them", async () => {
+    // Two separate capability extensions now, and the library merges them into
+    // one payload. Passing only the later one would leave the outline empty
+    // against a correct server while the colours worked, which is the kind of
+    // half-failure nobody attributes to this line.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/sem/a.ts", "/proj/sem");
+    const blocks = (clientConfigs[0].extensions ?? []).map(
+      (e) => (e as { clientCapabilities?: { textDocument?: Record<string, unknown> } }).clientCapabilities,
+    );
+    expect(blocks.some((b) => b?.textDocument?.documentSymbol)).toBe(true);
+    expect(blocks.some((b) => b?.textDocument?.semanticTokens)).toBe(true);
+  });
+});
+
+describe("workspace/semanticTokens/refresh", () => {
+  const refresh = (id: unknown) =>
+    JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });
+
+  it("answers it rather than letting the library reject it", async () => {
+    // `receiveMessage` replies -32601 to every server-initiated request, and
+    // offers an extension point for notifications only - so the transport is
+    // the only place this can be handled. A -32601 tells a conformant server
+    // the client lied in its capabilities, and rust-analyzer's answer to that
+    // is to stop asking, which is the whole feature.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf/a.ts", "/proj/rf");
+    const roots: string[] = [];
+    const off = m.setSemanticRefreshListener((root) => roots.push(root));
+    channels[0].onmessage?.(refresh(7));
+    expect(JSON.parse(sends[0].message)).toEqual({ jsonrpc: "2.0", id: 7, result: null });
+    expect(sends[0].handle.serverId).toBe("typescript");
+    expect(roots).toEqual(["/proj/rf"]);
+    expect(clients[0].received).toEqual([]);
+    off();
+  });
+
+  it("names the session that went stale, not just that one did", async () => {
+    // The claim is that session's alone. In a monorepo a refresh from
+    // `packages/a`'s server says nothing about a file `packages/b` answers for,
+    // and a listener with no root would re-request on every one of them.
+    const m = await freshModule();
+    resolveRoot = (a) => (a.filePath.includes("/packages/a/") ? "/proj/mr/packages/a" : "/proj/mr");
+    await m.ensureLspFor("/proj/mr/index.ts", "/proj/mr");
+    await m.ensureLspFor("/proj/mr/packages/a/index.ts", "/proj/mr");
+    const roots: string[] = [];
+    m.setSemanticRefreshListener((root) => roots.push(root));
+    channels[1].onmessage?.(refresh(2));
+    expect(roots).toEqual(["/proj/mr/packages/a"]);
+  });
+
+  it("passes every other frame straight through", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf2/a.ts", "/proj/rf2");
+    const diagnostic = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "textDocument/publishDiagnostics",
+      params: {},
+    });
+    channels[0].onmessage?.(diagnostic);
+    expect(clients[0].received).toEqual([diagnostic]);
+    expect(sends).toEqual([]);
+  });
+
+  it("leaves a frame that merely mentions the method to the library", async () => {
+    // A *response* naming the method, or a notification-shaped frame, is not
+    // this to answer: replying to something that carries no id would put a
+    // response with `"id": undefined` on the wire.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf3/a.ts", "/proj/rf3");
+    const notification = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "window/logMessage",
+      params: { message: "workspace/semanticTokens/refresh handled" },
+    });
+    channels[0].onmessage?.(notification);
+    expect(clients[0].received).toEqual([notification]);
+    expect(sends).toEqual([]);
+  });
+
+  it("survives a frame that is not JSON at all", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf4/a.ts", "/proj/rf4");
+    const junk = "workspace/semanticTokens/refresh";
+    expect(() => channels[0].onmessage?.(junk)).not.toThrow();
+    expect(clients[0].received).toEqual([junk]);
+  });
+
+  it("does not let a stale unregister silence a newer listener", async () => {
+    // The editor remounts (a project switch, a hot reload) and registers again
+    // before the old one's cleanup runs. Clearing the slot then would leave the
+    // live editor never hearing a refresh, and nothing would say so.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf5/a.ts", "/proj/rf5");
+    const seen: string[] = [];
+    const offOld = m.setSemanticRefreshListener(() => void seen.push("old"));
+    m.setSemanticRefreshListener(() => void seen.push("new"));
+    offOld();
+    channels[0].onmessage?.(refresh(1));
+    expect(seen).toEqual(["new"]);
+  });
+
+  it("still answers the server when nothing is listening", async () => {
+    // Between teardown and the next mount. The reply is owed regardless: an
+    // unanswered request leaves the server waiting on its own timeout.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/rf6/a.ts", "/proj/rf6");
+    channels[0].onmessage?.(refresh(3));
+    expect(JSON.parse(sends[0].message).id).toBe(3);
+  });
 });
 
 describe("lspTargetFor", () => {
@@ -439,6 +575,20 @@ describe("lspTargetFor", () => {
     clients[0].serverCapabilities = { documentSymbolProvider: true };
     expect(target.supports("documentSymbolProvider")).toBe(true);
     expect(target.supports("workspaceSymbolProvider")).toBe(false);
+  });
+
+  it("hands back what a capability carries, not just whether it is there", async () => {
+    // `semanticTokensProvider` ships the legend naming what each token index
+    // means; a token stream read without it is a list of integers, so a boolean
+    // is not enough for this one.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/v2/a.ts", "/proj/v2");
+    const target = m.lspTargetFor("/proj/v2/a.ts")!;
+    expect(target.capability("semanticTokensProvider")).toBeUndefined();
+    const legend = { tokenTypes: ["parameter"], tokenModifiers: [] };
+    clients[0].serverCapabilities = { semanticTokensProvider: { legend, full: true } };
+    expect(target.capability("semanticTokensProvider")).toEqual({ legend, full: true });
+    expect(target.capability("documentSymbolProvider")).toBeUndefined();
   });
 
   it("passes a request and a sync straight through to its client", async () => {
