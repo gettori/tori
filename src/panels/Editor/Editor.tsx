@@ -19,6 +19,8 @@ import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
+import { settings } from "../Settings/settingsStore";
+import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
@@ -66,6 +68,7 @@ import {
   SET_RIGHT_MODE,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
+  EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
@@ -298,6 +301,8 @@ export default function Editor(props: {
   // Source-vs-render preview toggle, per tab id (so switching tabs remembers
   // each previewable file's own choice: .md renders to HTML, .svg to its image).
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
+  // Per-tab soft-wrap overrides; the rule itself lives in `softWrapTabs.ts`.
+  const [wrapById, setWrapById] = createSignal<WrapOverrides>({});
   const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
@@ -356,6 +361,12 @@ export default function Editor(props: {
       return next;
     });
   }
+  function toggleSoftWrap() {
+    const id = activeId();
+    if (!id || isSyntheticId(id)) return;
+    setWrapById((prev) => toggledWrap(prev, id, settings.editor.softWrap));
+  }
+
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   const root = () => props.selected?.folderPath ?? null;
@@ -650,6 +661,9 @@ export default function Editor(props: {
       next.delete(id);
       return next;
     });
+    // Same reason the preview choice goes: a closed tab's per-tab state would
+    // otherwise come back to a file reopened days later with no explanation.
+    setWrapById((prev) => withoutTab(prev, id));
     if (activeId() === id) {
       setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
@@ -941,6 +955,7 @@ export default function Editor(props: {
         if (id) void closeTab(id);
       }),
       onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
+      onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
       onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
       onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
@@ -1186,6 +1201,10 @@ export default function Editor(props: {
               hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
               blame={blameOn()}
               confirm={askConfirm}
+              // The active tab's override, or null to follow the setting. Only
+              // the shown buffer's answer is needed: the others are re-resolved
+              // when they are swapped in.
+              softWrap={wrapById()[activeId() ?? ""] ?? null}
             />
           </Suspense>
         </Show>

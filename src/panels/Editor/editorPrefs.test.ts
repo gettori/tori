@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Compartment, EditorState, StateField } from "@codemirror/state";
-import { editorPrefExtensions } from "./editorPrefs";
+import { activeEditorFeatures, editorPrefExtensions } from "./editorPrefs";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
 // A literal rather than `DEFAULT_SETTINGS.editor`: this is a `unit` (node) test,
@@ -28,6 +28,62 @@ const isOn = (s: EditorState) => s.field(marker, false) === true;
 /** What the prefs compartment holds: whatever the module resolves today, plus a
  *  stand-in for the entry a later phase adds when the preference is on. */
 const prefsWith = (on: boolean) => [...editorPrefExtensions(PREFS), ...(on ? [marker] : [])];
+
+const withPrefs = (over: Partial<EditorPrefs>): EditorPrefs => ({ ...PREFS, ...over });
+
+describe("which comfort features a buffer gets", () => {
+  it("turns each one on from its own key, and nothing else", () => {
+    expect(activeEditorFeatures(withPrefs({ softWrap: true, scrollPastEnd: false }))).toEqual(["softWrap"]);
+    expect(activeEditorFeatures(withPrefs({ renderWhitespace: true, scrollPastEnd: false }))).toEqual([
+      "renderWhitespace",
+    ]);
+    expect(activeEditorFeatures(withPrefs({ scrollPastEnd: true }))).toEqual(["scrollPastEnd"]);
+  });
+
+  it("gives an all-off block nothing at all", () => {
+    const off = withPrefs({ softWrap: false, renderWhitespace: false, scrollPastEnd: false });
+    expect(activeEditorFeatures(off)).toEqual([]);
+    expect(editorPrefExtensions(off)).toEqual([]);
+  });
+
+  it("resolves one extension per active feature", () => {
+    const all = withPrefs({ softWrap: true, renderWhitespace: true, scrollPastEnd: true });
+    expect(editorPrefExtensions(all)).toHaveLength(activeEditorFeatures(all).length);
+  });
+});
+
+// The palette's per-tab toggle. Three answers, not two: a tab can be wrapped, be
+// unwrapped, or have no opinion and follow the setting - which is what lets a
+// second toggle hand the tab back to the default rather than only ever pinning
+// it away from one.
+describe("a tab's soft-wrap override", () => {
+  const wrapOff = withPrefs({ softWrap: false, scrollPastEnd: false });
+  const wrapOn = withPrefs({ softWrap: true, scrollPastEnd: false });
+
+  it("outranks the setting in both directions", () => {
+    expect(activeEditorFeatures(wrapOff, { softWrap: true })).toEqual(["softWrap"]);
+    expect(activeEditorFeatures(wrapOn, { softWrap: false })).toEqual([]);
+  });
+
+  it("falls back to the setting when the tab has no opinion", () => {
+    for (const none of [null, undefined]) {
+      expect(activeEditorFeatures(wrapOff, { softWrap: none }), `${none}`).toEqual([]);
+      expect(activeEditorFeatures(wrapOn, { softWrap: none }), `${none}`).toEqual(["softWrap"]);
+    }
+    // And with no overrides argument at all, which is how a buffer with no tab
+    // state resolves.
+    expect(activeEditorFeatures(wrapOn)).toEqual(["softWrap"]);
+  });
+
+  it("leaves the other features alone", () => {
+    const both = withPrefs({ softWrap: false, renderWhitespace: true, scrollPastEnd: true });
+    expect(activeEditorFeatures(both, { softWrap: true })).toEqual([
+      "softWrap",
+      "renderWhitespace",
+      "scrollPastEnd",
+    ]);
+  });
+});
 
 // The reason `swapTo` re-syncs rather than trusting the compartment: a
 // reconfigure dispatches into the *active* state only. A buffer sitting in the

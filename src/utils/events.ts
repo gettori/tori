@@ -112,6 +112,8 @@ export type SetRightMode = { mode: "files" | "changes" | "pulls" | "search" | "s
 export const EDITOR_SAVE = "sway:editor-save";
 export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
 export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
+/** Soft-wrap this one buffer, whatever `settings.editor.softWrap` says. */
+export const EDITOR_TOGGLE_SOFT_WRAP = "sway:editor-toggle-soft-wrap";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
 // Vim mode is a stored setting rather than editor state, but the toggle is an
 // event like the rest: `commands.ts` may import nothing but this module, so the
