@@ -37,7 +37,7 @@ describe("sanitizeForSend", () => {
     expect(sanitizeForSend("nice work\x1b[201~rm -rf /")).toBe("nice work[201~rm -rf /");
     // And a bare escape sequence, which would repaint or reposition the
     // terminal rather than appear in the prompt.
-    expect(sanitizeForSend("red \x1b[31malert")).toBe("red [31malert");
+    expect(sanitizeForSend("warn \x1b[31malert")).toBe("warn [31malert");
   });
 
   it("keeps a tab as the space it stands for, and drops the rest", () => {

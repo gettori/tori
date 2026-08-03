@@ -458,7 +458,7 @@ describe("a failing check on the branch a session owns", () => {
     dropLiveChat("c-budget");
   });
 
-  it("does not notify twice while the check stays red", async () => {
+  it("does not notify twice while the check stays failing", async () => {
     await seedSessions([meta("pty", "main")]);
     noteLiveTabs([tab("t1", "pty")]);
     bridge.running = ["pty"];
