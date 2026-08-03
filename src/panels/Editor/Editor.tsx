@@ -85,6 +85,7 @@ import {
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { readBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
+import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
 import {
   refreshGit,
   startGitWatch,
@@ -570,6 +571,12 @@ export default function Editor(props: {
   // What was stored last run. Read once, because it is the thing this run's
   // saves are merged into: re-reading would fold our own writes back in.
   const restorable = loadTabs(Date.now());
+  // The unsaved buffers last run's quit stashed, if any. Started here and
+  // awaited by the restore below, so a tab can never be handed to CodeEditor
+  // before the stash it should be built from has arrived. Deliberately not
+  // gated on `settings.editor.hotExit`: the key decides whether new work is
+  // stashed, and work already on disk is handed back whatever it says now.
+  const stashReady = loadPendingStash(Date.now());
   // Workspaces this run has opened tabs in, ever. `toStore` only sees what is
   // open right now, so at startup it yields `{}`; without this set a save would
   // erase every stored workspace before the first tab is opened.
@@ -602,12 +609,19 @@ export default function Editor(props: {
     // in the same breath, which lands while these probes are still in flight,
     // and that must not cost the workspace its file restore.
     if (openFileTabs(w).length) return;
+    await stashReady;
+    // A path with stashed unsaved work counts as alive whether or not the file
+    // is still there: the text that matters is in the stash, not on disk, and
+    // dropping the tab is the one outcome that loses it for good.
+    const stashed = new Set(pendingStashPaths());
     const alive = new Set<string>();
     await Promise.all(
       entry.paths.map(async (p) => {
         // A path that cannot be probed is treated as gone: a tab whose buffer
         // can only ever report that it failed to open is worse than no tab.
-        if (await invoke<boolean>("file_exists", { path: p }).catch(() => false)) alive.add(p);
+        if (stashed.has(p) || (await invoke<boolean>("file_exists", { path: p }).catch(() => false))) {
+          alive.add(p);
+        }
       }),
     );
     const { paths, active } = restoreFor(entry, alive);
@@ -622,6 +636,14 @@ export default function Editor(props: {
       [w]: [...(prev[w] ?? []), ...paths.map((p) => ({ path: p, name: basename(p) }))],
     }));
     setActiveByWs((prev) => ({ ...prev, [w]: prev[w] ?? active }));
+    // The dirty dot comes from the stash, not from a buffer. Only the active
+    // tab's buffer is ever built by a restore, so waiting for `onDirty` would
+    // leave the other stashed tabs looking clean until they were clicked, which
+    // is precisely when someone decides they have nothing to come back to.
+    const carrying = paths.filter((p) => stashed.has(p));
+    if (carrying.length) {
+      setDirty((d) => ({ ...d, ...Object.fromEntries(carrying.map((p) => [p, true])) }));
+    }
   }
 
   /** This workspace's real-file tabs; synthetic views are not restorable state. */
@@ -648,6 +670,11 @@ export default function Editor(props: {
       });
       if (!ok) return;
     }
+    // Discarded means discarded. A tab restored from the stash has its dirty
+    // dot before any buffer exists, so nothing has claimed its entry yet, and
+    // an entry left pending is carried through the next quit and handed back on
+    // the launch after that.
+    dropStashEntry(tab.path);
     const remaining = tabs().filter((t) => tabId(t) !== id);
     setTabs(remaining);
     setDirty((d) => {
@@ -822,6 +849,7 @@ export default function Editor(props: {
   // discard prompt here would ask the same thing twice.
   function forceCloseFile(path: string) {
     if (!tabs().some((t) => t.path === path)) return;
+    dropStashEntry(path);
     const remaining = tabs().filter((t) => t.path !== path);
     setTabs(remaining);
     setDirty((d) => {
@@ -852,6 +880,10 @@ export default function Editor(props: {
       for (const p of next.removed) delete out[p];
       return out;
     });
+    // The folder is going, so stashed work rooted under it has nowhere to be
+    // restored to; carrying it forward would resurrect a tab onto a path that
+    // no longer exists.
+    for (const p of next.removed) dropStashEntry(p);
   }
 
   // Published for the command palette, which is this pane's sibling and can
@@ -1019,6 +1051,15 @@ export default function Editor(props: {
       const anyDirty = Object.values(dirty()).some(Boolean);
       if (!anyDirty) return;
       event.preventDefault();
+      // Hot exit replaces the prompt rather than sitting beside it: there is
+      // nothing to warn about once the work is kept. But only once it *is*
+      // kept - the key being on is not evidence that anything reached the
+      // disk, so a refused or unanswered stash falls back to the same confirm
+      // that has always been here, and no buffer goes quietly.
+      if (settings.editor.hotExit && (await requestStash())) {
+        await getCurrentWindow().destroy();
+        return;
+      }
       const ok = await askConfirm({
         title: "You have unsaved changes.",
         message: "Close anyway? Unsaved edits will be lost.",
