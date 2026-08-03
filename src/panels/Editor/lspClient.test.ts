@@ -812,3 +812,36 @@ describe("an empty registry", () => {
     }
   });
 });
+
+// The same question `lspPluginFor` answers, asked without building anything,
+// because the fallback completion needs to know whether to stay out of the way.
+// It is about *now*, not about the file type: a buffer opened before the client
+// exists is unclaimed, and gains a claim when the client arrives.
+describe("claimedByLsp", () => {
+  it("says no before the client is up, even for a file the server would take", async () => {
+    vi.resetModules();
+    const fresh = await import("./lspClient");
+    expect(fresh.claimedByLsp("/proj/y/src/a.ts")).toBe(false);
+  });
+
+  it("says yes for a TS file under the active root", async () => {
+    await ensureLsp("/proj/j");
+    expect(claimedByLsp("/proj/j/src/a.ts")).toBe(true);
+  });
+
+  it("says no for a file the server does not handle, and for one outside the root", async () => {
+    await ensureLsp("/proj/k");
+    expect(claimedByLsp("/proj/k/notes.txt")).toBe(false);
+    expect(claimedByLsp("/elsewhere/notes/a.ts")).toBe(false);
+  });
+
+  it("agrees with what `lspPluginFor` actually attaches", async () => {
+    // The two answers are one answer; a drift between them would put word
+    // completion in a buffer that also has the server's, or in neither.
+    await ensureLsp("/proj/l");
+    for (const path of ["/proj/l/src/a.ts", "/proj/l/notes.txt", "/elsewhere/a.ts"]) {
+      const attached = lspPluginFor(path);
+      expect(claimedByLsp(path), path).toBe(!Array.isArray(attached));
+    }
+  });
+});
