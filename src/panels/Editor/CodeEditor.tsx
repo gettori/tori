@@ -741,7 +741,20 @@ export default function CodeEditor(props: {
   // config it was built with until it is swapped back in, which is why
   // `swapTo` calls this too.
   function syncEditorPrefs() {
-    view?.dispatch({ effects: prefsConf.reconfigure(currentPrefExtensions()) });
+    if (!view) return;
+    view.dispatch({ effects: prefsConf.reconfigure(currentPrefExtensions()) });
+    // A view plugin that this reconfigure just *constructed* never receives the
+    // update that transaction produced: it did not exist when the update was
+    // built. A plugin that only draws from `update()` therefore sits unpainted
+    // until the next transaction, whatever that turns out to be.
+    //
+    // The minimap is one. Its width is set inside the render it runs on update,
+    // so switching it on by itself left a zero-width column that the first
+    // keystroke, scroll or pane resize would fix - which reads as the setting
+    // not working. `requestMeasure` does not help, because the thing it missed
+    // is an update and not a measure. An empty transaction is exactly that
+    // update, and costs one no-op cycle on a settings change.
+    view.dispatch({});
   }
 
   const commonExtensions: Extension[] = [
