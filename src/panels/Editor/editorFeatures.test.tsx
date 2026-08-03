@@ -6,10 +6,11 @@
 // layout, but CodeMirror still builds its DOM, which is where both of these
 // features live: a class on the line for the guides, a widget for the swatches.
 import { describe, it, expect, afterEach } from "vitest";
-import { EditorView } from "@codemirror/view";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorView, gutter } from "@codemirror/view";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { editorPrefExtensions } from "./editorPrefs";
 import { DEPTH_COLORS } from "./bracketPairs";
+import { MINIMAP_CLASS } from "./minimap";
 import { langForPath } from "./languages";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
@@ -143,6 +144,63 @@ describe("bracket pair guides", () => {
       editorPrefExtensions({ ...BASE, bracketPairGuides: false }),
     ]);
     expect(el.querySelectorAll(".cm-bracket-guides")).toHaveLength(0);
+  });
+});
+
+describe("the minimap", () => {
+  const FILE = Array.from({ length: 40 }, (_, i) => `const line${i} = ${i}`).join("\n");
+
+  it("draws into a container the app can reach", () => {
+    const el = mount(FILE, editorPrefExtensions({ ...BASE, minimap: true }));
+    const container = el.querySelector(`.${MINIMAP_CLASS}`);
+    expect(container).toBeTruthy();
+    // The package turns our element into its gutter, which is what the App.css
+    // rules hang off: they are written one class longer than its own.
+    expect(container?.classList.contains("cm-minimap-gutter")).toBe(true);
+  });
+
+  it("is absent when the key is off", () => {
+    const el = mount(FILE, editorPrefExtensions({ ...BASE, minimap: false }));
+    expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(0);
+  });
+
+  it("lives inside the editor's own scroller, after the text", () => {
+    // Where it sits is what settles the overlap question, and jsdom can answer
+    // that even though it cannot measure a pixel. Inside the scroller, it is
+    // clipped by the editor pane and cannot reach the panel beside it; after the
+    // content, it is on the opposite side from the diff and blame gutters, which
+    // CodeMirror inserts before it.
+    const el = mount(FILE, [gutter({ class: "cm-diff-gutter" }), editorPrefExtensions({ ...BASE, minimap: true })]);
+    const scroller = el.querySelector(".cm-scroller")!;
+    const minimap = el.querySelector(`.${MINIMAP_CLASS}`)!;
+    const content = scroller.querySelector(".cm-content")!;
+    const gutters = scroller.querySelector(".cm-gutters")!;
+
+    expect(minimap.parentElement).toBe(scroller);
+    const order = [...scroller.children];
+    expect(order.indexOf(minimap)).toBeGreaterThan(order.indexOf(content));
+    expect(order.indexOf(gutters)).toBeLessThan(order.indexOf(content));
+  });
+
+  it("appears and disappears on a reconfigure, leaving the buffer alone", () => {
+    // The toggle path for real: the pane holds the preferences in a compartment
+    // and reconfigures it, so this must not need a new state or a reload.
+    const conf = new Compartment();
+    const el = mount(FILE, [conf.of(editorPrefExtensions({ ...BASE, minimap: false }))]);
+    const editor = view!;
+    expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(0);
+
+    editor.dispatch({
+      effects: conf.reconfigure(editorPrefExtensions({ ...BASE, minimap: true })),
+    });
+    expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(1);
+    expect(editor.state.doc.toString(), "the document never moved").toBe(FILE);
+
+    editor.dispatch({
+      effects: conf.reconfigure(editorPrefExtensions({ ...BASE, minimap: false })),
+    });
+    expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(0);
+    expect(editor.state.doc.toString()).toBe(FILE);
   });
 });
 
