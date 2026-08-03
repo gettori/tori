@@ -90,7 +90,10 @@ fn parse_version(output: &str) -> Option<String> {
 /// Compare a running version against the adapter's `verified_against`. Both
 /// sides go through `parse_version` so `"claude 1.18.3"` compares equal to a
 /// CLI printing `"1.18.3"`.
-fn compare(running: Option<&str>, verified: Option<&str>) -> BinaryStatus {
+///
+/// Shared with `crate::lsp`'s server health so a language server's card
+/// reports drift by the same rules an agent's does.
+pub(crate) fn compare(running: Option<&str>, verified: Option<&str>) -> BinaryStatus {
     match (running, verified.and_then(parse_version)) {
         (Some(running), Some(verified)) => {
             if running == verified {
@@ -103,7 +106,9 @@ fn compare(running: Option<&str>, verified: Option<&str>) -> BinaryStatus {
     }
 }
 
-fn run_version(path: &Path) -> Option<String> {
+/// Shared with `crate::lsp`'s server health: probing a language server binary
+/// for a version has the same shape and the same stderr fallback.
+pub(crate) fn run_version(path: &Path) -> Option<String> {
     // Bounded: an agent CLI that blocks on `--version` (prompting for auth, say)
     // would otherwise strand the memoized sweep and every later caller with it.
     let out = crate::env::output_with_timeout(

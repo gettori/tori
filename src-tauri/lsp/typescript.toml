@@ -1,0 +1,31 @@
+# Bundled TypeScript/JavaScript server. Sway ships this one (see
+# `pnpm lsp:install`), so it is the only config using the `bundled_node`
+# launch kind. See LSP-SERVERS.md for the schema.
+
+schema_version = 1
+id = "typescript"
+label = "TypeScript / JavaScript"
+
+# `tsconfig.json`/`jsconfig.json` first so a package inside a monorepo gets a
+# server rooted at its own compiler config rather than at the repo root.
+root_markers = ["tsconfig.json", "jsconfig.json", "package.json", ".git"]
+
+# tsserver answers from a warm project quickly, but a cold first `initialize`
+# on a large repo can take a few seconds. The library's own default is 3s,
+# which is too tight for the first request after a project opens.
+request_timeout_ms = 20000
+
+[languages]
+ts = "typescript"
+mts = "typescript"
+cts = "typescript"
+tsx = "typescriptreact"
+js = "javascript"
+mjs = "javascript"
+cjs = "javascript"
+jsx = "javascriptreact"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/typescript-language-server/lib/cli.mjs"
+args = ["--stdio"]
