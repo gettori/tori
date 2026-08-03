@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, Compartment, Prec, type Text, type Extension } from "@codemirror/state";
+import { EditorState, Compartment, Prec, type Text, type Extension, type StateCommand } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -41,6 +41,14 @@ import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import { problemsFromState } from "./problemsFromState";
 import { editorPrefExtensions } from "./editorPrefs";
+import {
+  selectionHistory,
+  selectionKeymap,
+  expandSelection,
+  shrinkSelection,
+  joinLines,
+  splitSelectionIntoLines,
+} from "./selectionCommands";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
@@ -59,6 +67,10 @@ import {
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
   EDITOR_TOGGLE_VIM,
+  EDITOR_EXPAND_SELECTION,
+  EDITOR_SHRINK_SELECTION,
+  EDITOR_JOIN_LINES,
+  EDITOR_SPLIT_SELECTION,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -676,6 +688,10 @@ export default function CodeEditor(props: {
     diffGutterExtension(),
     blameConf.of([]),
     prefsConf.of(currentPrefExtensions()),
+    // What the selection was before it last grew, so shrink has somewhere to go
+    // back to. Per buffer, like the undo history beside it: an expansion chain
+    // is about one document's syntax.
+    selectionHistory,
     syntaxHighlighting(swayHighlight),
     // After the highlight style, not before: the grammar colours everything
     // immediately and offline, and the server's answer lands on top of the
@@ -699,6 +715,9 @@ export default function CodeEditor(props: {
           return true;
         },
       },
+      // Before defaultKeymap, whose `Mod-i` runs `selectParentSyntax` without
+      // recording where the selection came from; see `selectionKeymap`.
+      ...selectionKeymap,
       // Before defaultKeymap so pair-aware Backspace wins over plain delete.
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -1057,6 +1076,27 @@ export default function CodeEditor(props: {
   // back through the `vimModeOn` effect rather than from this handler.
   const offToggleVim = onEvent(EDITOR_TOGGLE_VIM, () => toggleVimMode());
 
+  /** Run a CM6 command the palette asked for, and hand focus back: the palette
+   *  took it to be typed into, and a selection nobody can see moved is not a
+   *  selection command. */
+  function runSelectionCommand(cmd: StateCommand) {
+    const v = view;
+    if (!v) return;
+    cmd({ state: v.state, dispatch: (tr) => v.dispatch(tr) });
+    v.focus();
+  }
+
+  // The same four commands the keymap above carries, reached by name instead of
+  // by chord. They land here rather than in Editor for save's reason: the
+  // selection is the buffer's, and only this component holds it.
+  const offSelection = [
+    onEvent(EDITOR_EXPAND_SELECTION, () => runSelectionCommand(expandSelection)),
+    onEvent(EDITOR_SHRINK_SELECTION, () => runSelectionCommand(shrinkSelection)),
+    onEvent(EDITOR_JOIN_LINES, () => runSelectionCommand(joinLines)),
+    onEvent(EDITOR_SPLIT_SELECTION, () => runSelectionCommand(splitSelectionIntoLines)),
+  ];
+
+
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
   // no tabs open, so revealing it again is a case that did not exist when the
@@ -1156,6 +1196,7 @@ export default function CodeEditor(props: {
     offLsp?.();
     offSave();
     for (const off of offLspCommands) off();
+    for (const off of offSelection) off();
     offToggleVim();
     offBufferAccess();
     offSymbolSearch();

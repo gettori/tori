@@ -45,6 +45,10 @@ import {
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
+  EDITOR_EXPAND_SELECTION,
+  EDITOR_SHRINK_SELECTION,
+  EDITOR_JOIN_LINES,
+  EDITOR_SPLIT_SELECTION,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -444,6 +448,43 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: shiftOpt("KeyF"),
     run: () => emit(EDITOR_LSP_FORMAT),
+    requires: ["editorFile"],
+  },
+
+  // The chords for these four are CM6's, declared in CodeEditor's keymap and
+  // deliberately absent here: `Mod-i` already belongs to `defaultKeymap`, and a
+  // second binding in this table would fire on a buffer nobody is looking at.
+  // The rows exist so the commands are discoverable, and named the way the
+  // editor's other rows are.
+  {
+    id: "editor-expand-selection",
+    label: "Expand selection",
+    sub: "Grow to the enclosing syntax node.",
+    group: "editor",
+    run: () => emit(EDITOR_EXPAND_SELECTION),
+    requires: ["editorFile"],
+  },
+  {
+    id: "editor-shrink-selection",
+    label: "Shrink selection",
+    sub: "Step back down one expansion.",
+    group: "editor",
+    run: () => emit(EDITOR_SHRINK_SELECTION),
+    requires: ["editorFile"],
+  },
+  {
+    id: "editor-join-lines",
+    label: "Join lines",
+    group: "editor",
+    run: () => emit(EDITOR_JOIN_LINES),
+    requires: ["editorFile"],
+  },
+  {
+    id: "editor-split-selection",
+    label: "Split selection into lines",
+    sub: "One cursor per selected line.",
+    group: "editor",
+    run: () => emit(EDITOR_SPLIT_SELECTION),
     requires: ["editorFile"],
   },
   ...RIGHT_MODES.map(

@@ -87,6 +87,23 @@ describe("the canonical command table", () => {
     }
   });
 
+  it("lists every selection command as a visible, file-gated row", () => {
+    // Their chords are CM6's own, so they appear in no key sheet: the palette
+    // row is the only place they are named. A hidden one would be unreachable
+    // by name and undiscoverable by key at the same time.
+    for (const id of [
+      "editor-expand-selection",
+      "editor-shrink-selection",
+      "editor-join-lines",
+      "editor-split-selection",
+    ]) {
+      const c = COMMANDS.find((c) => c.id === id);
+      expect(c, `${id} is missing from the table`).toBeTruthy();
+      expect(c?.hidden, `${id} is hidden, and has no key to be found by instead`).toBeFalsy();
+      expect(c?.requires, `${id} acts on a buffer, so it needs one`).toContain("editorFile");
+    }
+  });
+
   it("imports nothing outside utils/events", () => {
     // Load-bearing, not stylistic. `hotkeys.ts` derives BINDINGS from this table
     // and TerminalView imports `hotkeys.ts`, so an import added here lands in
