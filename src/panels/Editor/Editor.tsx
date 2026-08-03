@@ -19,6 +19,7 @@ import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
+import { isMarkdownPath } from "../../utils/liveBuffer";
 import { settings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -336,7 +337,7 @@ export default function Editor(props: {
   };
   const isMarkdownTab = () => {
     const t = activeFileTab();
-    return t != null && t.path.toLowerCase().endsWith(".md");
+    return t != null && isMarkdownPath(t.path);
   };
   const isSvgTab = () => {
     const t = activeFileTab();

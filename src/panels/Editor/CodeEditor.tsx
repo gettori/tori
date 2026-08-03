@@ -46,6 +46,16 @@ import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
+import {
+  isMarkdownPath,
+  publishBufferText,
+  dropLiveBuffer,
+  handOff,
+  takeHandOff,
+  scrollFraction,
+  lineAtFraction,
+  fractionOfLine,
+} from "../../utils/liveBuffer";
 import { problemsFromState } from "./problemsFromState";
 import { editorPrefExtensions } from "./editorPrefs";
 import {
@@ -355,6 +365,12 @@ export default function CodeEditor(props: {
         effects,
       }).state;
     }
+    // The background branch above updates a stored state rather than the view,
+    // so no update listener fires - and a buffer being previewed is always the
+    // background one, since showing the preview is what nulls `activePath`.
+    // Without this an agent write landing under an open preview would render
+    // the text the buffer held before it.
+    publishText(path, disk.text);
   }
 
   // An open file changed on disk (already filtered to genuine external edits).
@@ -834,6 +850,14 @@ export default function CodeEditor(props: {
     publishDiagnostics(path, problemsFromState(state));
   }
 
+  // Mirror a buffer's text out to the surfaces that render the same file
+  // without owning it. Only the ones with such a surface: the store holds whole
+  // documents, and a second copy of every open buffer would be a real cost paid
+  // for nothing.
+  function publishText(path: string, text: string) {
+    if (isMarkdownPath(path)) publishBufferText(path, text);
+  }
+
   /** Completion for a buffer no language server is claiming, which is most of
    *  them: the server covers TS and JS under the project root, and brings its
    *  own completion with it. Re-resolved whenever either half of that answer
@@ -875,8 +899,13 @@ export default function CodeEditor(props: {
       }),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
+        const text = u.state.sliceDoc();
         const buf = buffers.get(path);
-        if (buf) props.onDirty(path, u.state.sliceDoc() !== buf.savedText);
+        if (buf) props.onDirty(path, text !== buf.savedText);
+        // The same reading the dirty check just took, so the preview costs
+        // nothing beyond the store write: it renders this buffer, unsaved
+        // edits included, rather than the file underneath it.
+        publishText(path, text);
         // Typing moves every symbol below the caret and can add or remove one,
         // so the outline is re-asked rather than mapped through the change:
         // only the server knows whether what was typed is a symbol yet.
@@ -1082,6 +1111,10 @@ export default function CodeEditor(props: {
             ...conf,
           };
       buffers.set(path, buf);
+      // First reading of a buffer nobody has typed in yet. Its text may differ
+      // from the file already (a hot-exit stash, a reopened tab), so the
+      // preview has to be told rather than left to read disk.
+      publishText(path, buf.state.sliceDoc());
       // First open of this file: bring up the server for its language, at the
       // root the backend resolves for it. Fire-and-forget, because the plugin
       // arrives through `onLspChange` -> `relinkLsp`, the same path a file
@@ -1097,7 +1130,28 @@ export default function CodeEditor(props: {
     // tab carries a scroll offset (`toJSON` holds the document, the selection
     // and the named fields, and a pixel offset would not survive a font or pane
     // width change anyway), so the selection is the anchor worth returning to.
-    view.dispatch({ effects: EditorView.scrollIntoView(buf.state.selection.main.head) });
+    //
+    // Unless the preview left a position behind, which only happens on the way
+    // back from it: then the file was being read rather than edited, and where
+    // the reader was beats where the cursor was. Proportional by line, because
+    // the two views share no units.
+    const handedOff = takeHandOff(path, "source");
+    const cursor = buf.state.selection.main.head;
+    const anchor =
+      handedOff === undefined
+        ? cursor
+        : buf.state.doc.line(lineAtFraction(handedOff, buf.state.doc.lines)).from;
+    view.dispatch({
+      effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? undefined : { y: "start" }),
+    });
+    // Landing on the cursor is itself a position, and saying so replaces
+    // whatever this file's last scroll left pending. Otherwise a tab swap away
+    // and back would leave the source at the cursor while the pending claim
+    // still pointed at where the reader was before the swap, and the next
+    // preview would open there.
+    if (handedOff === undefined && isMarkdownPath(path)) {
+      handOff(path, "source", fractionOfLine(buf.state.doc.lineAt(cursor).number, buf.state.doc.lines));
+    }
     view.focus();
     shown = path;
     props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
@@ -1134,6 +1188,10 @@ export default function CodeEditor(props: {
       // symbols leave the outline the same way.
       dropDiagnostics(key);
       dropSymbols(key);
+      // And the preview's copy of it, on the same rule and for the same
+      // reason: the store is bounded by what is open, not by what has ever
+      // been opened.
+      dropLiveBuffer(key);
       // And the language workspace has to re-read it. Its snapshot is the text
       // this buffer last held, unsaved edits included, and closing the tab
       // discarded those - so without this the server goes on answering about a
@@ -1147,11 +1205,24 @@ export default function CodeEditor(props: {
     }
   }
 
+  // Where the reader is in the shown file, for its preview to open at. Taken
+  // off the scroller and not off the state: a line number stops being a
+  // position on screen the moment anything wraps or folds.
+  function noteSourceScroll() {
+    if (!view || !shown || !isMarkdownPath(shown)) return;
+    const el = view.scrollDOM;
+    const fraction = scrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight);
+    if (fraction !== undefined) handOff(shown, "source", fraction);
+  }
+
   onMount(async () => {
     view = new EditorView({
       parent: host,
       state: EditorState.create({ doc: "", extensions: commonExtensions }),
     });
+    // Removed with the element itself: `view.destroy()` takes the scroller
+    // down, and this listener with it.
+    view.scrollDOM.addEventListener("scroll", noteSourceScroll, { passive: true });
     // Subscribed before the first await, and before the opening swap, because
     // the client can finish starting inside either. A fire that lands with no
     // subscriber leaves the buffer holding no plugin for good, which is the bug
