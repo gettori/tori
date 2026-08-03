@@ -38,6 +38,7 @@ import {
   EDITOR_SAVE,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
+  EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
   EDITOR_TOGGLE_VIM,
   EDITOR_LSP_DEFINITION,
@@ -353,6 +354,16 @@ export const COMMANDS: Command[] = [
     label: "Toggle preview (Markdown, SVG)",
     group: "editor",
     run: () => emit(EDITOR_TOGGLE_PREVIEW),
+    requires: ["editorFile"],
+  },
+  {
+    id: "editor-toggle-soft-wrap",
+    label: "Toggle soft wrap",
+    // Says which way the setting points, because the command reads as a
+    // question ("wrapped or not?") that the palette can already answer.
+    sub: "This tab only. Settings holds the default.",
+    group: "editor",
+    run: () => emit(EDITOR_TOGGLE_SOFT_WRAP),
     requires: ["editorFile"],
   },
   {
