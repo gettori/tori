@@ -131,6 +131,14 @@ export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
 export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
 export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
 
+// The selection commands, consumed by CodeEditor for the same reason as save:
+// they act on the live buffer's selection, which only it holds. Each has a CM6
+// chord as well; these carry the palette's copy of it.
+export const EDITOR_EXPAND_SELECTION = "sway:editor-expand-selection";
+export const EDITOR_SHRINK_SELECTION = "sway:editor-shrink-selection";
+export const EDITOR_JOIN_LINES = "sway:editor-join-lines";
+export const EDITOR_SPLIT_SELECTION = "sway:editor-split-selection";
+
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the
 // Changes panel knows the first but is usually not on screen, and has never
