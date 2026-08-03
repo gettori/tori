@@ -56,8 +56,12 @@ export type Harness = { path?: string | null };
  *  `formatOnSave` defaults **off**, even though the project's config is what
  *  decides which formatter runs: a repo carrying a `.prettierrc` is not
  *  necessarily a repo that is currently formatted, and the first save in one
- *  would otherwise rewrite a file the user never touched. */
-export type EditorDefaults = { formatOnSave: boolean };
+ *  would otherwise rewrite a file the user never touched.
+ *
+ *  `vimMode` is here and **not** in `EditorPrefs`: which formatter runs is a
+ *  property of the repo, but whether `hjkl` moves the caret is a property of
+ *  the person, and the same hands do not change between projects. */
+export type EditorDefaults = { formatOnSave: boolean; vimMode: boolean };
 /** One project's editor overrides. `null`/absent means "no answer here" and
  *  falls through to `editorDefaults`, which is distinct from an explicit
  *  `false` - that is this project saying no. */
@@ -124,7 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
     showSwayHooks: false,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
-  editorDefaults: { formatOnSave: false },
+  editorDefaults: { formatOnSave: false, vimMode: false },
   harness: {},
   chat: {},
   editor: {},
@@ -288,6 +292,24 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
 export function formatOnSaveFor(projectPath: string | null): boolean {
   const own = projectPath ? settings.editor?.[projectPath]?.formatOnSave : undefined;
   return own ?? settings.editorDefaults?.formatOnSave ?? false;
+}
+
+/** Whether the code editor is in vim mode. Global, with no per-project form:
+ *  see `EditorDefaults`. */
+export function vimModeOn(): boolean {
+  return settings.editorDefaults?.vimMode ?? false;
+}
+
+/** Flip vim mode and remember it. Lives here rather than in `Settings.tsx`
+ *  because the palette can toggle it too, and the Settings panel is not
+ *  necessarily open when it does. Swallowed on failure for the same reason a
+ *  chat pick is: the choice has already taken effect on screen. */
+export function toggleVimMode(): void {
+  const next: Settings = {
+    ...settings,
+    editorDefaults: { ...settings.editorDefaults, vimMode: !vimModeOn() },
+  };
+  void saveSettings(next).catch(() => {});
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

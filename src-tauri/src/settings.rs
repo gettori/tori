@@ -263,11 +263,17 @@ impl Default for ChatDefaults {
 /// one would otherwise rewrite a file the user never touched and put that diff
 /// in somebody's pull request. Opting in is cheap; opting out after the fact is
 /// a revert.
+///
+/// `vim_mode` lives here and **not** in `EditorPrefs`: which formatter runs is a
+/// property of the repo, but whether `hjkl` moves the caret is a property of the
+/// person, and the same person's hands do not change between projects.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorDefaults {
     #[serde(default)]
     pub format_on_save: bool,
+    #[serde(default)]
+    pub vim_mode: bool,
 }
 
 /// One project's editor overrides. Keyed like `Settings::chat` and for the same
@@ -514,6 +520,25 @@ mod tests {
         assert_eq!(back, s, "both the default and the per-project answers survived");
         assert_eq!(back.editor["/repo/quiet"].format_on_save, Some(false));
         assert_eq!(back.editor["/repo/silent"].format_on_save, None);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn vim_mode_is_a_global_default_with_no_per_project_answer() {
+        // Deliberately not in `EditorPrefs`. Which formatter runs is the repo's
+        // business; whether `hjkl` moves the caret is the person's, and a
+        // per-project vim setting would mean the same hands typing differently
+        // in two windows of the same editor.
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"editorDefaults":{"formatOnSave":true}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert!(loaded.editor_defaults.format_on_save, "the field that was written survived");
+        assert!(!loaded.editor_defaults.vim_mode, "and the one that was not reads as off");
+
+        let mut s = loaded;
+        s.editor_defaults.vim_mode = true;
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p), s);
         let _ = std::fs::remove_file(&p);
     }
 

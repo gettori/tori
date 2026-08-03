@@ -39,6 +39,7 @@ import {
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_GOTO_LINE,
+  EDITOR_TOGGLE_VIM,
   EDITOR_LSP_DEFINITION,
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
@@ -359,6 +360,16 @@ export const COMMANDS: Command[] = [
     label: "Go to line",
     group: "editor",
     run: () => emit(EDITOR_GOTO_LINE),
+    requires: ["editorFile"],
+  },
+  {
+    // Palette-only, deliberately: a key that switches modal editing on is a key
+    // that can do it by accident, and the thing it changes is how every other
+    // key behaves.
+    id: "editor-toggle-vim",
+    label: "Toggle vim keybindings",
+    group: "editor",
+    run: () => emit(EDITOR_TOGGLE_VIM),
     requires: ["editorFile"],
   },
 

@@ -264,6 +264,19 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 project that has neither. Off by default: a repo carrying a formatter config is not
                 necessarily one that is currently formatted.
               </div>
+              <div class={styles.row}>
+                <label class={styles.label}>Vim keybindings</label>
+                <input
+                  type="checkbox"
+                  checked={settings.editorDefaults.vimMode}
+                  onChange={(e) => setEditorDefaults({ vimMode: e.currentTarget.checked })}
+                />
+              </div>
+              <div class={styles.hint}>
+                Modal editing in the code editor, with a status line showing pending commands.
+                Sway's own shortcuts keep working: ⌘S still saves, and the language commands still
+                fire from normal mode. Also in the command palette.
+              </div>
             </section>
 
             <section class={styles.section}>
