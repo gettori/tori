@@ -24,12 +24,6 @@
 // worktree of the same name starts with an empty sidecar and a freshly minted id
 // and inherits nothing. `backstop_prune` sweeps the refs whose sidecar is gone.
 
-// `take` has no production caller yet: discard, the first thing that needs a
-// backstop, lands in the next phase, and this machinery is built and tested
-// first so that phase is only wiring. Without the allow, the whole ref/sidecar
-// layer reports as dead code, which reads as half-finished rather than staged.
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -311,6 +305,24 @@ fn restore_from(repo: &str, target: &str, only: Option<&str>) -> Result<RestoreO
         }
     }
     Ok(RestoreOutcome { restored, deleted })
+}
+
+/// Take a backstop before a mechanical, multi-file change the user did not type.
+///
+/// Errors on a non-git folder rather than silently going ahead: the caller has
+/// to decide what an un-undoable rewrite is worth, and a `take` that quietly
+/// returned nothing would let it write with no way back.
+#[tauri::command]
+pub fn backstop_take(repo_path: String, label: String) -> Result<BackstopRecord, String> {
+    take(&repo_path, &label)
+}
+
+/// Whether this folder can be backed up at all, so a caller can refuse a
+/// multi-file rewrite *before* asking the user to confirm one, rather than
+/// discovering it from a failed `backstop_take` halfway through.
+#[tauri::command]
+pub fn backstop_available(repo_path: String) -> bool {
+    is_git_worktree(&repo_path)
 }
 
 /// This worktree's backstops, newest last. Reads the sidecar, never the refs,
@@ -640,6 +652,58 @@ mod tests {
         assert_eq!(all(&main), 1, "only the departed worktree's ref went");
         assert_eq!(backstop_list(main.clone()).unwrap().len(), 1, "main keeps its own");
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // --- the command surface ------------------------------------------------
+
+    #[test]
+    fn taking_a_backstop_by_command_records_a_ref_and_a_sidecar_entry() {
+        let dir = tmp_repo();
+        let repo = s(&dir);
+        std::fs::write(dir.join("a.ts"), "const before = 1\n").unwrap();
+
+        let rec = backstop_take(repo.clone(), "Rename `before` in 3 files".into()).unwrap();
+
+        assert_eq!(rec.label, "Rename `before` in 3 files");
+        // Listed, so the timeline can offer it, and the ref exists so the tree
+        // it names survives gc.
+        let listed = backstop_list(repo.clone()).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].ts, rec.ts);
+        let refs = git_capture(&repo, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"]).unwrap();
+        assert_eq!(refs.lines().count(), 1);
+
+        // And it actually restores: the whole point of taking one before a
+        // mechanical rewrite.
+        std::fs::write(dir.join("a.ts"), "const after = 1\n").unwrap();
+        backstop_restore_tree(repo.clone(), rec.ts).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.ts")).unwrap(), "const before = 1\n");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_plain_folder_reports_no_backstop_and_refuses_to_take_one() {
+        // Sway opens folders that are not repositories. A caller has to be able
+        // to ask *before* it offers the user an operation it could not undo,
+        // rather than finding out from a failed take partway through.
+        let dir = std::env::temp_dir().join(format!("sway_backstop_plain_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = s(&dir);
+
+        assert!(!backstop_available(plain.clone()));
+        let err = backstop_take(plain.clone(), "whatever".into()).unwrap_err();
+        assert!(err.contains("isn't a git repository"), "{err}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_repository_reports_a_backstop_is_available() {
+        let dir = tmp_repo();
+        assert!(backstop_available(s(&dir)));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
