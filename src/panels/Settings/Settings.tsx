@@ -12,6 +12,7 @@ import {
   type Checkpoints,
   type DefaultSurface,
   type EditorDefaults,
+  type EditorPrefs,
   type Harness,
   type TranscriptDensity,
   type Typography,
@@ -44,6 +45,33 @@ function withFallback(primary: string, fallback: string): string {
   return `${quoted}, ${fallback}`;
 }
 
+/** The editing-comfort toggles, in the order they read as a list rather than in
+ *  the order the wave built them: what the text looks like, then what the
+ *  editor does for you, then what survives a quit. */
+export const EDITOR_TOGGLES: { key: keyof EditorPrefs; label: string; hint?: string }[] = [
+  { key: "indentGuides", label: "Indentation guides" },
+  {
+    key: "softWrap",
+    label: "Soft wrap long lines",
+    hint: "The default for every buffer. ⌘K's “Toggle soft wrap” overrides it for one tab.",
+  },
+  { key: "renderWhitespace", label: "Show spaces and tabs" },
+  { key: "scrollPastEnd", label: "Scroll past the last line" },
+  { key: "rainbowBrackets", label: "Colour brackets by depth" },
+  { key: "bracketPairGuides", label: "Bracket pair guide lines" },
+  { key: "minimap", label: "Minimap" },
+  {
+    key: "wordCompletion",
+    label: "Word completion without a language server",
+    hint: "Suggests words already in the buffer, only where no language server has claimed the file, so it never competes with real completions.",
+  },
+  {
+    key: "hotExit",
+    label: "Keep unsaved edits across a quit",
+    hint: "Quitting stashes unsaved buffers and restores them on the next launch instead of asking you to discard them. If the stash cannot be written, the discard prompt still appears.",
+  },
+];
+
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled overlay like the other modals: Escape / backdrop click closes, the
@@ -74,6 +102,8 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
   };
   const setHarness = (h: Partial<Harness>) =>
     saveSettings({ ...settings, harness: { ...settings.harness, ...h } });
+  const setEditor = (e: Partial<EditorPrefs>) =>
+    saveSettings({ ...settings, editor: { ...settings.editor, ...e } });
 
   // Reject empty/NaN/out-of-range commits (a blank or 0 font size would blank
   // the UI); fall back to the current value so an invalid entry is a no-op.
@@ -292,6 +322,31 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               <div class={styles.hint}>
                 Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt.
               </div>
+            </section>
+
+            <section class={styles.section}>
+              <div class={styles.sectionTitle}>Editor</div>
+              {/* Data-driven rather than nine hand-written rows: every one of
+                  these is the same boolean row, and the list is what the wave
+                  keeps adding to. The hint is optional, carried only by the
+                  keys whose effect is not obvious from the label. */}
+              <For each={EDITOR_TOGGLES}>
+                {(t) => (
+                  <>
+                    <div class={styles.row}>
+                      <label class={styles.label}>{t.label}</label>
+                      <input
+                        type="checkbox"
+                        checked={settings.editor[t.key]}
+                        onChange={(e) => setEditor({ [t.key]: e.currentTarget.checked })}
+                      />
+                    </div>
+                    <Show when={t.hint}>
+                      <div class={styles.hint}>{t.hint}</div>
+                    </Show>
+                  </>
+                )}
+              </For>
             </section>
 
             <section class={styles.section}>
