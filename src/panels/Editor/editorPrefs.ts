@@ -12,6 +12,7 @@
 // editor boundary and must never be imported from the eager side.
 import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view";
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
 import type { Extension } from "@codemirror/state";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
@@ -19,7 +20,13 @@ import type { EditorPrefs } from "../Settings/settingsStore";
  *  from the settings keys because deciding *which* are on is the part with
  *  rules in it (an override outranks a setting), and it is worth testing
  *  without a DOM to build extensions in. */
-export type EditorFeature = "indentGuides" | "softWrap" | "renderWhitespace" | "scrollPastEnd";
+export type EditorFeature =
+  | "indentGuides"
+  | "softWrap"
+  | "renderWhitespace"
+  | "scrollPastEnd"
+  | "rainbowBrackets"
+  | "bracketPairGuides";
 
 /**
  * Per-buffer answers that outrank the global setting.
@@ -40,6 +47,8 @@ export function activeEditorFeatures(
   if (overrides.softWrap ?? prefs.softWrap) on.push("softWrap");
   if (prefs.renderWhitespace) on.push("renderWhitespace");
   if (prefs.scrollPastEnd) on.push("scrollPastEnd");
+  if (prefs.rainbowBrackets) on.push("rainbowBrackets");
+  if (prefs.bracketPairGuides) on.push("bracketPairGuides");
   return on;
 }
 
@@ -67,6 +76,11 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
   softWrap: () => EditorView.lineWrapping,
   renderWhitespace: () => highlightWhitespace(),
   scrollPastEnd: () => scrollPastEnd(),
+  // Two views of one pass over the same bracket pairs, kept as separate keys
+  // because they answer different questions: which bracket closes which, and
+  // how far a block reaches. Either can be had without the other.
+  rainbowBrackets: () => rainbowBrackets(),
+  bracketPairGuides: () => bracketPairGuides(),
 };
 
 /**

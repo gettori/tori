@@ -9,6 +9,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { editorPrefExtensions } from "./editorPrefs";
+import { DEPTH_COLORS } from "./bracketPairs";
 import { langForPath } from "./languages";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
@@ -76,6 +77,73 @@ describe("indentation guides", () => {
   // `check-tokens.mjs` fails the build on a colour literal in `editorPrefs.ts`,
   // and asserting it again against the globally-injected stylesheet would only
   // restate that guard more weakly.
+});
+
+describe("rainbow brackets", () => {
+  const NESTED = "call(a, [b, {c: 1}])";
+
+  it("gives each depth its own colour, cycling back at the fourth", async () => {
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, rainbowBrackets: true }),
+    ]);
+    // Three pairs, two glyphs each, at depths 0, 1 and 2.
+    for (const depth of [0, 1, 2]) {
+      expect(el.querySelectorAll(`.cm-bracket-depth-${depth}`), `depth ${depth}`).toHaveLength(2);
+    }
+    const colours = [0, 1, 2].map(
+      (d) => el.querySelector(`.cm-bracket-depth-${d}`)?.getAttribute("style") ?? "",
+    );
+    expect(new Set(colours).size).toBe(3);
+  });
+
+  it("leaves the buffer alone when the key is off", async () => {
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, rainbowBrackets: false }),
+    ]);
+    expect(el.querySelectorAll('[class*="cm-bracket-depth"]')).toHaveLength(0);
+  });
+});
+
+describe("bracket pair guides", () => {
+  const BLOCK = "function f() {\n  if (a) {\n    g()\n  }\n}";
+
+  it("marks every line a multi-line pair runs through", async () => {
+    const el = mount(BLOCK, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, bracketPairGuides: true }),
+    ]);
+    // Lines 2 to 5 sit under the outer body; line 1 opens it and gets nothing.
+    const guided = el.querySelectorAll(".cm-bracket-guides");
+    expect(guided).toHaveLength(4);
+    expect(guided[0].getAttribute("style")).toContain("--bracket-guides:");
+  });
+
+  it("draws each pair's line in that pair's own colour", async () => {
+    const el = mount(BLOCK, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, bracketPairGuides: true, rainbowBrackets: true }),
+    ]);
+    const inner = [...el.querySelectorAll(".cm-bracket-guides")].find((n) =>
+      (n.getAttribute("style") ?? "").includes(DEPTH_COLORS[1]),
+    );
+    // The line inside both blocks carries the outer pair's colour and the inner
+    // pair's, which are the same two the brackets themselves are painted with.
+    const style = inner?.getAttribute("style") ?? "";
+    expect(style).toContain(DEPTH_COLORS[0]);
+    expect(style).toContain(DEPTH_COLORS[1]);
+    const openBracket = el.querySelector(".cm-bracket-depth-1")?.getAttribute("style") ?? "";
+    expect(openBracket).toContain(DEPTH_COLORS[1]);
+  });
+
+  it("draws nothing when the key is off", async () => {
+    const el = mount(BLOCK, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, bracketPairGuides: false }),
+    ]);
+    expect(el.querySelectorAll(".cm-bracket-guides")).toHaveLength(0);
+  });
 });
 
 describe("css colour swatches", () => {
