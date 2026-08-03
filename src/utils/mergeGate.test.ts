@@ -46,7 +46,7 @@ describe("what a mergeability verdict permits", () => {
     expect(updatable).toEqual(["behind"]);
   });
 
-  it("treats a state it has never seen as ask-again, not as a green light", () => {
+  it("treats a state it has never seen as ask-again, not as permission", () => {
     expect(mergeGate("something_new" as MergeableState).block).toBe(true);
     expect(mergeGate("unknown").block).toBe(true);
   });
