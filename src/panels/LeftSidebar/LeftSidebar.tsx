@@ -13,7 +13,7 @@ import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
-import Toasts, { type Toast } from "../../components/Toasts/Toasts";
+import Toasts, { type Toast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import {
   on as onEvent,
@@ -282,10 +282,10 @@ export default function LeftSidebar(props: {
   function dismissToast(id: number) {
     setToasts((ts) => ts.filter((t) => t.id !== id));
   }
-  function setError(msg: string, kind: "error" | "info" = "error") {
+  function setError(msg: string, kind: "error" | "info" = "error", action?: ToastAction) {
     const message = String(msg ?? "").trim();
     if (!message) return;
-    setToasts((ts) => [...ts, { id: ++toastSeq, message, kind }]);
+    setToasts((ts) => [...ts, { id: ++toastSeq, message, kind, action }]);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
   // Per-project origin URL, keyed by project path: gates whether Attach Existing
@@ -800,7 +800,7 @@ export default function LeftSidebar(props: {
   onCleanup(
     onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
   );
-  onCleanup(onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error")));
+  onCleanup(onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error", d.action)));
   // "Delete the branch" from the Pull Requests panel, after it landed one.
   //
   // Routed here rather than done there because this is where the guards live: a

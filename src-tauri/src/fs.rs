@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Serialize)]
@@ -108,6 +108,59 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
 #[tauri::command]
 pub fn file_exists(path: String) -> bool {
     Path::new(&path).exists()
+}
+
+/// One file in a batched write.
+#[derive(Deserialize)]
+pub struct FileWrite {
+    pub path: String,
+    pub contents: String,
+}
+
+/// Write a whole set of files as one operation, all or nothing.
+///
+/// A cross-file rename is the caller: it rewrites N files that only mean
+/// anything together, and N separate `fs_write_file` calls would fail halfway
+/// and leave the tree in a state no one asked for and nothing describes. Every
+/// target is checked for writability *before* the first byte is written, so a
+/// read-only file or a missing parent directory is an error that changed
+/// nothing rather than a half-applied rewrite.
+///
+/// The check is not a guarantee: another process can revoke a permission
+/// between the pre-flight and the write. It removes the failure that actually
+/// happens (one unwritable file in a set) rather than pretending to remove all
+/// of them, and a write that fails anyway still reports which path it was.
+#[tauri::command]
+pub fn fs_write_files(files: Vec<FileWrite>) -> Result<Vec<String>, String> {
+    for f in &files {
+        let path = Path::new(&f.path);
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                if meta.is_dir() {
+                    return Err(format!("{} is a directory, so it can't be written.", f.path));
+                }
+                if meta.permissions().readonly() {
+                    return Err(format!("{} is read-only, so nothing was changed.", f.path));
+                }
+            }
+            Err(_) => {
+                // A file the rename would create. Its directory has to exist:
+                // this command deliberately does not make directories, because
+                // every caller is rewriting files that are already there.
+                let parent = path.parent().ok_or_else(|| format!("{} has no parent directory.", f.path))?;
+                if !parent.is_dir() {
+                    return Err(format!("{} does not exist, so {} can't be written.", parent.display(), f.path));
+                }
+            }
+        }
+    }
+    let mut written = Vec::with_capacity(files.len());
+    for f in &files {
+        std::fs::write(&f.path, &f.contents)
+            .map_err(|e| format!("Writing {} failed: {e}", f.path))?;
+        written.push(f.path.clone());
+    }
+    Ok(written)
 }
 
 // --- containment-scoped mutation commands ---
@@ -375,6 +428,74 @@ mod tests {
         assert_eq!(entries[0].name, "sub");
         assert!(entries[0].is_dir);
         assert!(entries.iter().any(|e| e.name == "hello.txt" && !e.is_dir));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn write(path: &Path, contents: &str) -> FileWrite {
+        FileWrite {
+            path: path.to_string_lossy().into_owned(),
+            contents: contents.into(),
+        }
+    }
+
+    #[test]
+    fn a_batched_write_is_all_or_nothing() {
+        // The failure this exists to prevent: a cross-file rename that rewrites
+        // four files and dies on the fifth, leaving a tree that compiles nowhere
+        // and that nothing describes.
+        let dir = std::env::temp_dir().join(format!("sway-fs-batch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.ts");
+        let b = dir.join("b.ts");
+        std::fs::write(&a, "old a").unwrap();
+        std::fs::write(&b, "old b").unwrap();
+
+        let written = fs_write_files(vec![write(&a, "new a"), write(&b, "new b")]).unwrap();
+        assert_eq!(written.len(), 2);
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "new a");
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "new b");
+
+        // One unwritable target aborts the whole set, and the writable file it
+        // was listed *after* is untouched: the pre-flight runs before any write,
+        // not per file as it goes.
+        let ro = dir.join("locked.ts");
+        std::fs::write(&ro, "locked").unwrap();
+        let mut perms = std::fs::metadata(&ro).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&ro, perms).unwrap();
+
+        let err = fs_write_files(vec![write(&a, "should not land"), write(&ro, "nor this")])
+            .unwrap_err();
+        assert!(err.contains("read-only"), "{err}");
+        assert!(err.contains("locked.ts"), "{err}");
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "new a");
+
+        // A target whose directory does not exist is the same kind of refusal.
+        let orphan = dir.join("nope").join("c.ts");
+        let err = fs_write_files(vec![write(&a, "should not land"), write(&orphan, "x")]).unwrap_err();
+        assert!(err.contains("does not exist"), "{err}");
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "new a");
+
+        let mut perms = std::fs::metadata(&ro).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&ro, perms).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_batched_write_creates_a_file_whose_directory_exists() {
+        // A rename can introduce a file only in theory, but the command must not
+        // refuse a target that simply is not there yet.
+        let dir = std::env::temp_dir().join(format!("sway-fs-batch-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fresh = dir.join("fresh.ts");
+
+        fs_write_files(vec![write(&fresh, "hello")]).unwrap();
+        assert_eq!(std::fs::read_to_string(&fresh).unwrap(), "hello");
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

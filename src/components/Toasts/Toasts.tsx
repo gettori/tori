@@ -1,11 +1,18 @@
-import { For, onCleanup } from "solid-js";
+import { For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import Button from "../Button/Button";
 import styles from "./Toasts.module.css";
 
 // A transient notification. `error` toasts are the common case (a failed git op,
 // a rejected worktree removal); `info` is available for successes/notices.
-export type Toast = { id: number; message: string; kind: "error" | "info" };
+//
+// `action` is for a notice whose undo has nowhere else to live: a cross-file
+// rename rewrote files the user is not looking at, and the moment they would
+// want that back is the moment they are told about it. Not a general button
+// slot - a toast dismisses itself, so anything that matters later belongs
+// somewhere that persists.
+export type ToastAction = { label: string; run: () => void };
+export type Toast = { id: number; message: string; kind: "error" | "info"; action?: ToastAction };
 
 // One toast row that auto-dismisses after `ttl` ms, pausing its own timer while
 // hovered so a long git error stays readable. A manual close is always offered.
@@ -31,6 +38,20 @@ function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) =>
       onMouseLeave={() => arm()}
     >
       <span class={styles.toastMsg}>{props.toast.message}</span>
+      <Show when={props.toast.action}>
+        {(a) => (
+          <Button
+            class={styles.toastAction}
+            size="xs"
+            onClick={() => {
+              a().run();
+              props.onDismiss(props.toast.id);
+            }}
+          >
+            {a().label}
+          </Button>
+        )}
+      </Show>
       <Button class={styles.toastClose} variant="ghost" size="xs" aria-label="Dismiss" title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
         ×
       </Button>

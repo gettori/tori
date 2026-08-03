@@ -2,30 +2,54 @@
 // the editor component.
 //
 // `CodeEditor` owns the `Map<string, Buffer>` and the single `EditorView`, and
-// it is a Solid component: nothing outside its closure can reach either. The
-// language workspace needs exactly one thing from it - what text an open file
-// actually holds right now - because a background tab is viewless, can be
-// unsaved, and its text exists on no disk. Reading such a file from the
-// filesystem answers with a copy the user cannot see.
+// it is a Solid component: nothing outside its closure can reach either. Two
+// things need to, and both are about the same awkward object - a **background
+// buffer**, which is open, viewless, and can be dirty, so its text exists on no
+// disk and in no backstop:
 //
-// The reader is registered by the mounted editor and cleared on unmount. There
-// is one `CodeEditor` in the app, so this holds one reader; an unregister that
+//   * the language workspace, which must read a file's real text rather than
+//     its stale on-disk copy;
+//   * a cross-file rename, which must not save one of those out from under the
+//     user without saying so, and must leave the buffer agreeing with the file
+//     it just rewrote.
+//
+// The accessor is registered by the mounted editor and cleared on unmount.
+// There is one `CodeEditor` in the app, so this holds one; an unregister that
 // arrives after a newer editor registered is ignored rather than clearing it.
 
-type Reader = (path: string) => string | null;
+export type BufferAccess = {
+  /** The editor's text for `path`, or null when no buffer holds it. */
+  textOf: (path: string) => string | null;
+  /** Whether that buffer differs from what is on disk. False for a path no
+   *  buffer holds, which is the honest answer: there is nothing to lose. */
+  isDirty: (path: string) => boolean;
+  /** Take `text` as this buffer's content *and* its saved baseline, because the
+   *  file on disk was just written to match. A no-op for an unopened path. */
+  adopt: (path: string, text: string) => void;
+};
 
-let reader: Reader | null = null;
+let access: BufferAccess | null = null;
 
-/** Publish the editor's buffer reader. Returns the unregister. */
-export function setLiveBufferReader(fn: Reader): () => void {
-  reader = fn;
+/** Publish the editor's buffer accessor. Returns the unregister. */
+export function setBufferAccess(a: BufferAccess): () => void {
+  access = a;
   return () => {
-    if (reader === fn) reader = null;
+    if (access === a) access = null;
   };
 }
 
 /** The editor's text for `path`, or null when no buffer holds it (which
  *  includes "no editor is mounted", the state every non-editor test is in). */
 export function liveBufferText(path: string): string | null {
-  return reader ? reader(path) : null;
+  return access ? access.textOf(path) : null;
+}
+
+/** Which of `paths` are open with unsaved edits. */
+export function dirtyBuffers(paths: string[]): string[] {
+  return access ? paths.filter((p) => access!.isDirty(p)) : [];
+}
+
+/** Point an open buffer at text that was just written to its file. */
+export function adoptBufferText(path: string, text: string): void {
+  access?.adopt(path, text);
 }
