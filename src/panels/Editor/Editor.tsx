@@ -511,10 +511,13 @@ export default function Editor(props: {
       // A new project means a new language server; diagnostics from the old one
       // describe files that are no longer open here.
       clearDiagnostics();
-      // Start the TS/JS language server for this project. Already
+      // Stop every server from the previous project. Servers are no longer
+      // started here: a session is per (server, root), and which roots a
+      // project needs is only known once files are opened, so `CodeEditor`
+      // starts one lazily on the first file of each language instead. Already
       // fire-and-forget, so loading the client lazily changes nothing the
       // caller can observe, and it keeps CodeMirror out of the startup chunk.
-      void import("./lspClient").then((m) => m.ensureLsp(r));
+      void import("./lspClient").then((m) => m.stopAllLsp());
     }),
   );
 
