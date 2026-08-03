@@ -114,6 +114,16 @@ export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
 export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
 
+// The language-server commands. They exist as events, and not only as CM6 key
+// bindings, so the palette and the Cmd+/ sheet list them: a binding the library
+// installs privately is a shortcut nothing can print. Consumed by CodeEditor,
+// which owns the view they run against; each is a no-op when the active file
+// has no language server, exactly as its function-row key already is.
+export const EDITOR_LSP_DEFINITION = "sway:editor-lsp-definition";
+export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
+export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
+export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
+
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the
 // Changes panel knows the first but is usually not on screen, and has never

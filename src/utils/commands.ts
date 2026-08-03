@@ -39,6 +39,10 @@ import {
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_GOTO_LINE,
+  EDITOR_LSP_DEFINITION,
+  EDITOR_LSP_REFERENCES,
+  EDITOR_LSP_RENAME,
+  EDITOR_LSP_FORMAT,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -110,6 +114,12 @@ const cmdShift = (key: string) => (e: KeyboardEvent) =>
 // key-based match would silently never fire.
 const cmdOpt = (code: string) => (e: KeyboardEvent) =>
   e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey && e.code === code;
+
+// Same reason as `cmdOpt` for matching on `e.code`: Option rewrites `e.key`
+// (Shift+Opt+F -> "Ï"). This one is the library's own Shift-Alt-F, mirrored
+// here so the sheet can print it.
+const shiftOpt = (code: string) => (e: KeyboardEvent) =>
+  e.shiftKey && e.altKey && !e.metaKey && !e.ctrlKey && e.code === code;
 
 const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "files", label: "Files" },
@@ -349,6 +359,63 @@ export const COMMANDS: Command[] = [
     label: "Go to line",
     group: "editor",
     run: () => emit(EDITOR_GOTO_LINE),
+    requires: ["editorFile"],
+  },
+
+  // The language-server four. `languageServerExtensions()` already binds them
+  // to F12 / Shift-F12 / F2 / Shift-Alt-F inside the editor's own keymap, which
+  // is a set of shortcuts nothing in the app could print and a Mac laptop
+  // cannot press without holding Fn. They are registered here so the palette
+  // and the Cmd+/ sheet know them, with a Cmd-Opt combo alongside the
+  // function-row default.
+  //
+  // `window`, not `global`: an LSP action is aimed at the editor, and a global
+  // binding would fire it at a file nobody is looking at while a terminal had
+  // focus. The editor's own keymap preventDefaults whatever it handles, so
+  // pressing one of these with the editor focused cannot fire it twice.
+  {
+    id: "lsp-definition",
+    keys: ["⌘", "⌥", "D"],
+    label: "Go to definition",
+    sub: "F12",
+    group: "editor",
+    scope: "window",
+    match: cmdOpt("KeyD"),
+    run: () => emit(EDITOR_LSP_DEFINITION),
+    requires: ["editorFile"],
+  },
+  {
+    id: "lsp-references",
+    keys: ["⌘", "⌥", "R"],
+    label: "Find references",
+    sub: "⇧F12",
+    group: "editor",
+    scope: "window",
+    match: cmdOpt("KeyR"),
+    run: () => emit(EDITOR_LSP_REFERENCES),
+    requires: ["editorFile"],
+  },
+  {
+    id: "lsp-rename",
+    keys: ["⌘", "⌥", "N"],
+    label: "Rename symbol",
+    sub: "F2",
+    group: "editor",
+    scope: "window",
+    match: cmdOpt("KeyN"),
+    run: () => emit(EDITOR_LSP_RENAME),
+    requires: ["editorFile"],
+  },
+  {
+    id: "lsp-format",
+    // Already reachable on a Mac keyboard, so it keeps the library's binding
+    // rather than gaining a second one.
+    keys: ["⇧", "⌥", "F"],
+    label: "Format document",
+    group: "editor",
+    scope: "window",
+    match: shiftOpt("KeyF"),
+    run: () => emit(EDITOR_LSP_FORMAT),
     requires: ["editorFile"],
   },
   ...RIGHT_MODES.map(

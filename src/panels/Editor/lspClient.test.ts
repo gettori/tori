@@ -11,7 +11,11 @@ type StartArgs = { serverId: string; filePath: string; projectPath: string };
 
 const started: StartArgs[] = [];
 const stopped: string[] = [];
-const clientConfigs: { rootUri?: string; timeout?: number }[] = [];
+const clientConfigs: {
+  rootUri?: string;
+  timeout?: number;
+  workspace?: (client: unknown) => unknown;
+}[] = [];
 
 // Two servers with disjoint extensions, mirroring the bundled pair. `rs` has a
 // generous timeout the way rust.toml does; `ts` a smaller one.
@@ -52,6 +56,14 @@ let startFails = false;
 // can be interleaved with a start that is already in flight.
 let holdStart: Promise<void> | null = null;
 
+// What `fs_read_file` finds. A path that is not here reads as unreadable, which
+// is the state every file is in for the tests that never touch the workspace.
+let disk: Record<string, string> = {};
+
+// Every client the module built, so a test can reach the workspace that was
+// handed to it. There is no other route: the session map is private.
+const clients: { workspace: unknown }[] = [];
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "lsp_registry") return Promise.resolve(registry);
@@ -61,6 +73,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       if (startFails) return Promise.reject(new Error("`rust-analyzer` was not found on your PATH"));
       const result = { serverId: a.serverId, root: resolveRoot(a) };
       return holdStart ? holdStart.then(() => result) : Promise.resolve(result);
+    }
+    if (cmd === "fs_read_file") {
+      const path = args?.path as string;
+      return path in disk ? Promise.resolve(disk[path]) : Promise.reject(new Error("ENOENT"));
     }
     if (cmd === "lsp_stop_all") stopped.push("all");
     if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
@@ -72,13 +88,28 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@codemirror/lsp-client", () => ({
+  // `SwayWorkspace` extends this, so it has to be a real constructor even
+  // though nothing here exercises the library's own implementation.
+  Workspace: class {
+    constructor(readonly client: unknown) {}
+  },
+  LSPPlugin: { get: () => null },
   LSPClient: class {
-    constructor(config: { rootUri?: string; timeout?: number }) {
+    workspace: unknown;
+    constructor(config: (typeof clientConfigs)[number]) {
       clientConfigs.push(config);
+      // The real client builds its workspace inside its own constructor, which
+      // is what lets lspClient.ts capture it out of the factory. A stub that
+      // never called the factory would leave every session workspace-less and
+      // hide exactly the wiring these tests are here to check.
+      this.workspace = config.workspace?.(this);
+      clients.push(this);
     }
     connect() {
       return this;
     }
+    didOpen() {}
+    didClose() {}
     disconnect() {}
     // A marker rather than an extension: the assertions only need to tell
     // "attached, for this uri and language" apart from "attached nothing".
@@ -98,6 +129,8 @@ beforeEach(() => {
   started.length = 0;
   stopped.length = 0;
   clientConfigs.length = 0;
+  clients.length = 0;
+  disk = {};
   resolveRoot = (a) => a.projectPath;
   startFails = false;
   holdStart = null;
@@ -424,6 +457,88 @@ describe("a server that cannot start", () => {
     // The failed start queued on the rust chain; typescript is unaffected, and
     // a per-server chain that swallowed the rejection keeps working.
     expect(m.lspPluginFor("/proj/w/a.ts")).not.toEqual([]);
+  });
+});
+
+// What makes a cross-file operation possible at all: the client is given a
+// workspace that can reach a file nobody opened. The library's own workspace
+// knows only files with a live view, so without this every jump into another
+// file is a silent no-op.
+describe("the workspace each client is given", () => {
+  type Ws = {
+    requestFile: (uri: string) => Promise<{ doc: { toString(): string } } | null>;
+    displayFile: (uri: string) => Promise<unknown>;
+    syncFiles: () => readonly { file: { doc: { toString(): string } } }[];
+    disconnected: () => void;
+  };
+
+  it("materialises a file nobody opened, from disk", async () => {
+    const m = await freshModule();
+    disk["/proj/x/dep.ts"] = "export const dep = 1";
+    await m.ensureLspFor("/proj/x/a.ts", "/proj/x");
+
+    const ws = clients[0].workspace as Ws;
+    const file = await ws.requestFile("file:///proj/x/dep.ts");
+    expect(file?.doc.toString()).toBe("export const dep = 1");
+  });
+
+  it("prefers an unsaved background buffer to what is on disk", async () => {
+    // The dirty-background-tab case, end to end through the real dependency
+    // wiring: the buffer text exists only inside the editor component, and
+    // reading the file instead would answer with a copy the user cannot see.
+    const m = await freshModule();
+    const { setLiveBufferReader } = await import("./liveBuffers");
+    disk["/proj/x/dirty.ts"] = "on disk";
+    const off = setLiveBufferReader((p) => (p === "/proj/x/dirty.ts" ? "unsaved edits" : null));
+    try {
+      await m.ensureLspFor("/proj/x/a.ts", "/proj/x");
+      const ws = clients[0].workspace as Ws;
+      const file = await ws.requestFile("file:///proj/x/dirty.ts");
+      expect(file?.doc.toString()).toBe("unsaved edits");
+    } finally {
+      off();
+    }
+  });
+
+  it("hears about a file that changed underneath a snapshot", async () => {
+    const m = await freshModule();
+    disk["/proj/x/dep.ts"] = "export const dep = 1";
+    await m.ensureLspFor("/proj/x/a.ts", "/proj/x");
+    const ws = clients[0].workspace as Ws;
+    await ws.requestFile("file:///proj/x/dep.ts");
+
+    disk["/proj/x/dep.ts"] = "export const dep = 2";
+    m.notifyLspFileChanged("/proj/x/dep.ts");
+    await Promise.resolve(); // the notify is fire-and-forget
+    await Promise.resolve();
+
+    const [update] = ws.syncFiles();
+    expect(update.file.doc.toString()).toBe("export const dep = 2");
+  });
+
+  it("asks the app to open a file the server wants shown", async () => {
+    const m = await freshModule();
+    const { OPEN_IN_EDITOR } = await import("../../utils/events");
+    await m.ensureLspFor("/proj/y/a.ts", "/proj/y");
+    const ws = clients[0].workspace as Ws;
+
+    // `emitWith` dispatches on `window`, which this project's unit environment
+    // does not have; an EventTarget is all it actually needs.
+    const opened: string[] = [];
+    const bus = new EventTarget();
+    bus.addEventListener(OPEN_IN_EDITOR, (e) =>
+      opened.push((e as CustomEvent<{ path: string }>).detail.path),
+    );
+    vi.stubGlobal("window", bus);
+    try {
+      const pending = ws.displayFile("file:///proj/y/dep.ts");
+      expect(opened).toEqual(["/proj/y/dep.ts"]);
+      // Settle it rather than leaving its timeout running past the test.
+      ws.disconnected();
+      expect(await pending).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
