@@ -15,6 +15,7 @@ const clientConfigs: {
   rootUri?: string;
   timeout?: number;
   workspace?: (client: unknown) => unknown;
+  extensions?: unknown[];
 }[] = [];
 
 // Two servers with disjoint extensions, mirroring the bundled pair. `rs` has a
@@ -62,7 +63,12 @@ let disk: Record<string, string> = {};
 
 // Every client the module built, so a test can reach the workspace that was
 // handed to it. There is no other route: the session map is private.
-const clients: { workspace: unknown }[] = [];
+const clients: {
+  workspace: unknown;
+  serverCapabilities: Record<string, unknown> | null;
+  requests: { method: string; params: unknown }[];
+  syncs: number;
+}[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -96,6 +102,12 @@ vi.mock("@codemirror/lsp-client", () => ({
   LSPPlugin: { get: () => null },
   LSPClient: class {
     workspace: unknown;
+    // What a symbol request reads off the session. Settled and provider-less by
+    // default; a test that cares sets them on the captured client.
+    serverCapabilities: Record<string, unknown> | null = null;
+    initializing = Promise.resolve(null);
+    requests: { method: string; params: unknown }[] = [];
+    syncs = 0;
     constructor(config: (typeof clientConfigs)[number]) {
       clientConfigs.push(config);
       // The real client builds its workspace inside its own constructor, which
@@ -111,6 +123,13 @@ vi.mock("@codemirror/lsp-client", () => ({
     didOpen() {}
     didClose() {}
     disconnect() {}
+    sync() {
+      this.syncs += 1;
+    }
+    request(method: string, params: unknown) {
+      this.requests.push({ method, params });
+      return Promise.resolve(null);
+    }
     // A marker rather than an extension: the assertions only need to tell
     // "attached, for this uri and language" apart from "attached nothing".
     plugin(uri: string, languageId?: string) {
@@ -367,6 +386,86 @@ describe("per-server timeout", () => {
     resolveRoot = () => "/proj/s/packages/a";
     await m.ensureLspFor("/proj/s/packages/a/index.ts", "/proj/s");
     expect(clientConfigs[0].rootUri).toBe("file:///proj/s/packages/a");
+  });
+});
+
+describe("symbol capabilities", () => {
+  it("advertises them on every client it builds", async () => {
+    // The library advertises no symbol support at all, and a conformant server
+    // offers no provider for something the client never asked for - so without
+    // this the outline is empty against a *correct* server, which is the
+    // hardest kind of wrong to notice.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/sym/a.ts", "/proj/sym");
+    const caps = clientConfigs[0].extensions?.find(
+      (e) => !!(e as { clientCapabilities?: unknown }).clientCapabilities,
+    ) as { clientCapabilities: { textDocument: Record<string, unknown>; workspace: Record<string, unknown> } };
+    expect(caps.clientCapabilities.textDocument.documentSymbol).toBeTruthy();
+    expect(caps.clientCapabilities.workspace.symbol).toBeTruthy();
+  });
+});
+
+describe("lspTargetFor", () => {
+  it("hands back the session that answers for the file", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/t/a.ts", "/proj/t");
+    expect(m.lspTargetFor("/proj/t/a.ts")?.root).toBe("/proj/t");
+  });
+
+  it("is null for a file no server claims", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/t2/a.ts", "/proj/t2");
+    expect(m.lspTargetFor("/proj/t2/notes.txt")).toBeNull();
+    expect(m.lspTargetFor("/elsewhere/a.ts")).toBeNull();
+  });
+
+  it("picks the nearest root, the same rule the plugin uses", async () => {
+    // Otherwise a question about `packages/a` is answered by the repo-root
+    // server, out of the wrong compiler config.
+    const m = await freshModule();
+    resolveRoot = (a) => (a.filePath.includes("/packages/a/") ? "/proj/u/packages/a" : "/proj/u");
+    await m.ensureLspFor("/proj/u/index.ts", "/proj/u");
+    await m.ensureLspFor("/proj/u/packages/a/index.ts", "/proj/u");
+    expect(m.lspTargetFor("/proj/u/packages/a/index.ts")?.root).toBe("/proj/u/packages/a");
+  });
+
+  it("reports a provider only once the server has advertised it", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/v/a.ts", "/proj/v");
+    const target = m.lspTargetFor("/proj/v/a.ts")!;
+    // Null capabilities is the state between `lsp_start` and the initialize
+    // reply; claiming a provider then is what draws a MethodNotFound.
+    expect(target.supports("documentSymbolProvider")).toBe(false);
+    clients[0].serverCapabilities = { documentSymbolProvider: true };
+    expect(target.supports("documentSymbolProvider")).toBe(true);
+    expect(target.supports("workspaceSymbolProvider")).toBe(false);
+  });
+
+  it("passes a request and a sync straight through to its client", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/w/a.ts", "/proj/w");
+    const target = m.lspTargetFor("/proj/w/a.ts")!;
+    target.sync();
+    await target.request("textDocument/documentSymbol", { textDocument: { uri: "file:///proj/w/a.ts" } });
+    expect(clients[0].syncs).toBe(1);
+    expect(clients[0].requests[0].method).toBe("textDocument/documentSymbol");
+  });
+});
+
+describe("lspTargets", () => {
+  it("lists every live session, because a workspace query has to ask them all", async () => {
+    const m = await freshModule();
+    resolveRoot = (a) => (a.filePath.includes("/packages/a/") ? "/proj/x/packages/a" : "/proj/x");
+    await m.ensureLspFor("/proj/x/index.ts", "/proj/x");
+    await m.ensureLspFor("/proj/x/packages/a/index.ts", "/proj/x");
+    expect(m.lspTargets().map((t) => t.root).sort()).toEqual(["/proj/x", "/proj/x/packages/a"]);
+  });
+
+  it("is empty once the project is torn down", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/y/a.ts", "/proj/y");
+    await m.stopAllLsp();
+    expect(m.lspTargets()).toEqual([]);
   });
 });
 

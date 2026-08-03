@@ -53,6 +53,18 @@
   text-overflow: ellipsis;
 }
 
+/* Where a symbol row says its container, or the file it was found in. Pushed
+   right and given up first, so the name never loses room to it. */
+.qoMeta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
 .qoItem:hover {
   background: var(--neutral-hover);
 }
