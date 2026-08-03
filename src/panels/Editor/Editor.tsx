@@ -16,7 +16,9 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import ReviewPanel from "./ReviewPanel";
 import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
+import OutlinePanel from "./OutlinePanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
+import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
@@ -43,6 +45,7 @@ import {
   GitCompare,
   GitPullRequest,
   TriangleAlert,
+  ListTree,
   Search,
   MessagesSquare,
   Share2,
@@ -125,13 +128,23 @@ type FileTab = { path: string; name: string };
 // its `<For>` is referentially keyed, and fresh literals would tear down and
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
-type RightMode = "files" | "changes" | "pulls" | "problems" | "shared" | "docs" | "session" | "search";
+type RightMode =
+  | "files"
+  | "changes"
+  | "pulls"
+  | "problems"
+  | "outline"
+  | "shared"
+  | "docs"
+  | "session"
+  | "search";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
   changes: { mode: "changes", label: "Changes", icon: GitCompare },
   pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
+  outline: { mode: "outline", label: "Outline", icon: ListTree },
   search: { mode: "search", label: "Search", icon: Search },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
@@ -252,6 +265,7 @@ export default function Editor(props: {
     "changes",
     "pulls",
     "problems",
+    "outline",
     "search",
     "session",
     "shared",
@@ -270,6 +284,11 @@ export default function Editor(props: {
       // "Problems (0)" is noise on a clean tree.
       case "problems":
         return Object.keys(diagnostics()).length > 0;
+      // Only for a file whose server actually answers `documentSymbol`. A
+      // `.txt` tab, or a language with no server, has no outline to show, and
+      // an always-present empty panel reads as "this file has no symbols".
+      case "outline":
+        return symbolsSupported(activeId());
       default:
         return true;
     }
@@ -495,6 +514,9 @@ export default function Editor(props: {
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
     if (rightMode() === "problems" && !Object.keys(diagnostics()).length) setRightMode("files");
+    // And Outline disappears when the active tab is a file no server has
+    // symbols for, which switching tabs is enough to cause.
+    if (rightMode() === "outline" && !symbolsSupported(activeId())) setRightMode("files");
   });
 
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
@@ -509,8 +531,11 @@ export default function Editor(props: {
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // A new project means a new language server; diagnostics from the old one
-      // describe files that are no longer open here.
+      // describe files that are no longer open here, and so do its symbols.
+      // The tab set changing evicts both anyway, but that is one more thing
+      // than "the servers are gone" has to depend on.
       clearDiagnostics();
+      clearSymbols();
       // Stop every server from the previous project. Servers are no longer
       // started here: a session is per (server, root), and which roots a
       // project needs is only known once files are opened, so `CodeEditor`
@@ -1256,6 +1281,9 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "problems"}>
             <ProblemsPanel selected={props.selected} />
+          </Match>
+          <Match when={rightMode() === "outline"}>
+            <OutlinePanel path={activeId()} />
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />

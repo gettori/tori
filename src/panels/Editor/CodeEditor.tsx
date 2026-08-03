@@ -24,6 +24,8 @@ import { cmdClickDefinitionExtension } from "./lspCommands";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp } from "./lspReattach";
+import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
+import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
@@ -652,6 +654,10 @@ export default function CodeEditor(props: {
           if (!u.docChanged) return;
           const buf = buffers.get(path);
           if (buf) props.onDirty(path, u.state.doc.toString() !== buf.savedText);
+          // Typing moves every symbol below the caret and can add or remove one,
+          // so the outline is re-asked rather than mapped through the change:
+          // only the server knows whether what was typed is a symbol yet.
+          if (path === shown) refreshSymbolsSoon();
         }),
       ],
     });
@@ -663,7 +669,37 @@ export default function CodeEditor(props: {
   // from the previous project drops a plugin that now points at a dead client.
   function relinkLsp() {
     reattachLsp(buffers, shown, lspPluginFor, (effects) => view?.dispatch({ effects }));
+    // The server that answers for this file just changed (came up, went away),
+    // so what it would say about its symbols changed with it. This is also the
+    // only thing that re-asks after a server finishes starting, which is the
+    // state every file opened during startup is in.
+    void refreshSymbols();
   }
+
+  // The active file's symbol tree, published for the outline panel and the
+  // palette's `@` mode to read. Only the active file: the store is what those
+  // surfaces show, and neither of them can show a file that is not on screen.
+  //
+  // The ordering guard and the publish both live in `lspSymbols`; all this owns
+  // is which file is being asked about and whether it is still open by the time
+  // the answer arrives.
+  async function refreshSymbols() {
+    const path = shown;
+    if (!path) return;
+    await refreshDocumentSymbols(path, () => buffers.has(path));
+  }
+
+  // Long enough that a burst of typing asks once. The request syncs the
+  // document itself, so this is only about how often the server is asked, not
+  // about whether the answer is current.
+  const refreshSymbolsSoon = debounce(() => void refreshSymbols(), 400);
+
+  // The palette's `#` mode reaches the running servers through here, for the
+  // same reason the language workspace reaches buffers through `liveBuffers`:
+  // it is a sibling of the editor and must not import the module that owns the
+  // clients. Registered in the component body so a palette opened during the
+  // first swap already finds it.
+  const offSymbolSearch = setWorkspaceSymbolSearch(requestWorkspaceSymbols);
 
   async function swapTo(path: string | null) {
     if (!view) return;
@@ -711,6 +747,7 @@ export default function CodeEditor(props: {
     refreshDiff();
     syncBlame();
     applyGoto();
+    void refreshSymbols();
   }
 
   function evictClosed(openPaths: string[]) {
@@ -718,8 +755,10 @@ export default function CodeEditor(props: {
     for (const key of buffers.keys()) {
       if (!live.has(key)) {
         buffers.delete(key);
-        // The tab is gone, so its diagnostics leave the Problems list with it.
+        // The tab is gone, so its diagnostics leave the Problems list with it,
+        // and its symbols leave the outline the same way.
         dropDiagnostics(key);
+        dropSymbols(key);
         // And the language workspace has to re-read it. Its snapshot is the
         // text this buffer last held, unsaved edits included, and closing the
         // tab discarded those - so without this the server goes on answering
@@ -917,6 +956,15 @@ export default function CodeEditor(props: {
     offSave();
     for (const off of offLspCommands) off();
     offBufferAccess();
+    offSymbolSearch();
+    // Nothing is shown any more, which is also what stops the symbol debounce:
+    // its timer is not cancellable, so a doc change 400 ms before teardown
+    // fires after the clear below and would publish one entry straight back
+    // into a store describing an editor that no longer exists.
+    shown = null;
+    // No editor means no client, so every tree in the store describes a server
+    // that is gone. Same rule as `clearEditorState`.
+    clearSymbols();
     view?.destroy();
   });
 
