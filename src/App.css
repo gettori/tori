@@ -509,6 +509,30 @@ html {
   opacity: 0.2;
 }
 
+/* Minimap. The container is ours (src/panels/Editor/minimap.ts hands it to the
+   package), everything inside it is the package's, and two of the things it
+   paints there are fixed greys: the viewport overlay and the shadow it casts
+   when code is scrolled out of sight underneath it. Both are restated here in
+   roles, so the minimap follows the palette the way the rest of the editor does.
+
+   The selectors are deliberately one class longer than the package's own themed
+   rules, which reach three (`.ͼx .cm-minimap-overlay-container
+   .cm-minimap-overlay`). Equal specificity would leave the winner decided by
+   stylesheet order, which is a bundling detail, not a decision. */
+.cm-sway-minimap {
+  border-left: 1px solid var(--border-default);
+}
+
+.cm-sway-minimap.cm-minimap-gutter .cm-minimap-overlay-container .cm-minimap-overlay {
+  /* The package applies its own opacity on top, so this is the tint rather than
+     the finished colour: light over a dark canvas, dark over a light one. */
+  background: var(--fg-default);
+}
+
+.cm-sway-minimap.cm-minimap-gutter .cm-minimap-box-shadow {
+  box-shadow: var(--shadow-lg);
+}
+
 /* Who wrote the line the cursor is on, after the end of that line. Subtle and
    un-selectable: it is an annotation on the code, not part of it. */
 .cm-blame-inline {

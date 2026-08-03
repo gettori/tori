@@ -13,6 +13,7 @@
 import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view";
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
+import { minimap } from "./minimap";
 import type { Extension } from "@codemirror/state";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
@@ -26,7 +27,8 @@ export type EditorFeature =
   | "renderWhitespace"
   | "scrollPastEnd"
   | "rainbowBrackets"
-  | "bracketPairGuides";
+  | "bracketPairGuides"
+  | "minimap";
 
 /**
  * Per-buffer answers that outrank the global setting.
@@ -49,6 +51,7 @@ export function activeEditorFeatures(
   if (prefs.scrollPastEnd) on.push("scrollPastEnd");
   if (prefs.rainbowBrackets) on.push("rainbowBrackets");
   if (prefs.bracketPairGuides) on.push("bracketPairGuides");
+  if (prefs.minimap) on.push("minimap");
   return on;
 }
 
@@ -81,6 +84,7 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
   // how far a block reaches. Either can be had without the other.
   rainbowBrackets: () => rainbowBrackets(),
   bracketPairGuides: () => bracketPairGuides(),
+  minimap: () => minimap(),
 };
 
 /**
