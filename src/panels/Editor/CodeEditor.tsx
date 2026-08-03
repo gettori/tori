@@ -44,7 +44,8 @@ import { problemsFromState } from "./problemsFromState";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
-import { settings, zoom, formatOnSaveFor } from "../Settings/settingsStore";
+import { settings, zoom, formatOnSaveFor, vimModeOn, toggleVimMode } from "../Settings/settingsStore";
+import { vimExtension } from "./vimMode";
 import {
   on as onEvent,
   onWith,
@@ -57,6 +58,7 @@ import {
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
+  EDITOR_TOGGLE_VIM,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -615,6 +617,10 @@ export default function CodeEditor(props: {
   // current setting up when it is swapped in.
   const blameConf = new Compartment();
 
+  // Vim keybindings, on the same arrangement and for the same reason: one
+  // preference every buffer wants the same answer to, filled by `syncVim`.
+  const vimConf = new Compartment();
+
   // How the inline widget names a chat, and what clicking it does. The editor
   // holds both because neither is the gutter's business: one is the chat panel's
   // list of open sessions, the other is a pane the editor does not own.
@@ -630,7 +636,21 @@ export default function CodeEditor(props: {
     void refreshAgentLines();
   }
 
+  // Called on every swap as well as on the setting changing, which is what lets
+  // a background buffer built before the switch pick it up: only the shown
+  // buffer is in the view, so this is the one place the setting can land, and a
+  // buffer that was not on screen when it changed gets it on the way in.
+  function syncVim() {
+    view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimModeOn())) });
+  }
+
   const commonExtensions: Extension[] = [
+    // First, and load-bearing. Vim intercepts keys through a ViewPlugin DOM
+    // handler, and for a key both it and a keymap claim, whichever is earlier
+    // in this array takes it. `defaultKeymap`'s Mac Emacs bindings (Ctrl-A,
+    // Ctrl-E, Ctrl-D, Ctrl-K) collide with vim's Ctrl commands, and in normal
+    // mode vim is the one that should win. `vimMode.test.tsx` pins the rule.
+    vimConf.of([]),
     lineNumbers(),
     highlightActiveLine(),
     highlightActiveLineGutter(),
@@ -872,6 +892,7 @@ export default function CodeEditor(props: {
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
     refreshDiff();
     syncBlame();
+    syncVim();
     applyGoto();
     void refreshSymbols();
     refreshSemantic();
@@ -1022,6 +1043,13 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
   ];
 
+  // Not in the list above: this is a setting, not an LSP action, and that array
+  // is named for what is in it. It is listened for here for the same reason the
+  // others are, though - `commands.ts` may import nothing but `events`, so the
+  // palette entry cannot reach the settings store itself. The reconfigure comes
+  // back through the `vimModeOn` effect rather than from this handler.
+  const offToggleVim = onEvent(EDITOR_TOGGLE_VIM, () => toggleVimMode());
+
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
   // no tabs open, so revealing it again is a case that did not exist when the
@@ -1041,6 +1069,10 @@ export default function CodeEditor(props: {
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
   createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
+  // Toggling vim from Settings takes effect where the caret already is, with
+  // the file's text and undo history untouched: a compartment reconfigure, not
+  // a rebuild.
+  createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the
@@ -1106,6 +1138,7 @@ export default function CodeEditor(props: {
     offLsp?.();
     offSave();
     for (const off of offLspCommands) off();
+    offToggleVim();
     offBufferAccess();
     offSymbolSearch();
     offSemanticRefresh();
