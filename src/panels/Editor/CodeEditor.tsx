@@ -5,7 +5,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLi
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
 import { EditorState, Compartment, Prec, Text, type Extension, type StateCommand } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyField, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
@@ -35,6 +35,7 @@ import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
+import { rememberClosed, reviveClosed } from "./closedBuffers";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
@@ -183,6 +184,27 @@ type Buffer = {
 // would silently recreate the file and undo the revert.
 type ConflictKind = "changed" | "deleted";
 type Conflict = { path: string; external: string; kind: ConflictKind };
+
+/** The three per-buffer compartments, together because they are always built,
+ *  passed and stored as a set. */
+type BufferConf = { lsp: Compartment; completion: Compartment; eol: Compartment };
+
+// What `toJSON`/`fromJSON` carry beyond the document and the selection. The
+// undo history is the whole point of keeping a closed buffer at all; without
+// naming the field here it is simply dropped, silently, and a reopened tab
+// would look right and undo nothing.
+const SERIALIZED_FIELDS = { history: historyField };
+
+// Closed tabs, kept so reopening one is a return to where it was left rather
+// than a fresh read (undo history included). Bounded; see closedBuffers.ts,
+// which also explains why these are serialized rather than kept alive.
+//
+// **Module-level, not per component.** Editor.tsx mounts this pane only while
+// some tab is open (`Editor.tsx:1160`), so closing the last one unmounts it and
+// `onCleanup` destroys everything it held. A store living on the instance would
+// therefore be empty in exactly the case the ticket is named after: one file
+// open, closed, opened again.
+const closedBuffers = new Map<string, { savedText: string; json: ReturnType<EditorState["toJSON"]> }>();
 
 /** Multi-buffer CM6 editor: one EditorView, one EditorState per open file (so
  *  cursor, selection and undo history are preserved per tab). The active file is
@@ -818,50 +840,51 @@ export default function CodeEditor(props: {
     });
   }
 
-  // `disk` rather than a string: the document is built from lines this module
-  // split, and the separator that will write them back is configured alongside
-  // them, so the two can never describe different files.
-  function makeState(
-    path: string,
-    disk: DiskText,
-    lang: Extension,
-    lsp: Compartment,
-    completion: Compartment,
-    eol: Compartment,
-  ): EditorState {
-    return EditorState.create({
-      doc: Text.of(disk.lines),
-      extensions: [
-        ...commonExtensions,
-        lang,
-        eol.of(EditorState.lineSeparator.of(disk.eol)),
-        lsp.of(lspPluginFor(path)),
-        completion.of(currentFallbackCompletion(path)),
-        EditorView.updateListener.of((u) => {
-          // Diagnostics arrive as a transaction effect from the LSP client, so
-          // republish only when one actually lands rather than on every keypress.
-          if (u.transactions.some((t) => t.effects.some((e) => e.is(setDiagnosticsEffect)))) {
-            publishFrom(path, u.state);
-          }
-        }),
-        EditorView.updateListener.of((u) => {
-          if (!u.docChanged) return;
-          const buf = buffers.get(path);
-          if (buf) props.onDirty(path, u.state.sliceDoc() !== buf.savedText);
-          // Typing moves every symbol below the caret and can add or remove one,
-          // so the outline is re-asked rather than mapped through the change:
-          // only the server knows whether what was typed is a symbol yet.
-          if (path === shown) {
-            refreshSymbolsSoon();
-            // The decorations already in the state map through this change, so
-            // the file stays coloured while it is being typed into; this is
-            // what eventually makes those colours right again. A new parameter
-            // is a parameter only once the server has parsed it.
-            refreshSemanticSoon();
-          }
-        }),
-      ],
-    });
+  /**
+   * Everything one buffer's state is configured with.
+   *
+   * Its own function because a buffer is built two ways: from the file, and
+   * from a closed tab's serialized state. Both must land on *this* instance's
+   * configuration, since half of what is below belongs to the component that
+   * built it (the listeners close over `buffers` and `props`, and the
+   * compartments in `commonExtensions` are objects only this instance holds).
+   * A second copy of this list is a second chance for one of the two to be
+   * missing something.
+   *
+   * `disk` rather than a string, so the separator that will write the lines
+   * back is configured beside the lines themselves.
+   */
+  function bufferExtensions(path: string, disk: DiskText, lang: Extension, conf: BufferConf): Extension[] {
+    return [
+      ...commonExtensions,
+      lang,
+      conf.eol.of(EditorState.lineSeparator.of(disk.eol)),
+      conf.lsp.of(lspPluginFor(path)),
+      conf.completion.of(currentFallbackCompletion(path)),
+      EditorView.updateListener.of((u) => {
+        // Diagnostics arrive as a transaction effect from the LSP client, so
+        // republish only when one actually lands rather than on every keypress.
+        if (u.transactions.some((t) => t.effects.some((e) => e.is(setDiagnosticsEffect)))) {
+          publishFrom(path, u.state);
+        }
+      }),
+      EditorView.updateListener.of((u) => {
+        if (!u.docChanged) return;
+        const buf = buffers.get(path);
+        if (buf) props.onDirty(path, u.state.sliceDoc() !== buf.savedText);
+        // Typing moves every symbol below the caret and can add or remove one,
+        // so the outline is re-asked rather than mapped through the change:
+        // only the server knows whether what was typed is a symbol yet.
+        if (path === shown) {
+          refreshSymbolsSoon();
+          // The decorations already in the state map through this change, so
+          // the file stays coloured while it is being typed into; this is what
+          // eventually makes those colours right again. A new parameter is a
+          // parameter only once the server has parsed it.
+          refreshSemanticSoon();
+        }
+      }),
+    ];
   }
 
   /** Re-resolve every buffer's fallback completion in place, background buffers
@@ -983,18 +1006,25 @@ export default function CodeEditor(props: {
       const lang = await langForPath(path);
       // A newer swap superseded us while reading: drop this result.
       if (token !== swapToken) return;
-      const lsp = new Compartment();
-      const completion = new Compartment();
-      const eol = new Compartment();
       const disk = fromDisk(raw);
+      const conf: BufferConf = {
+        lsp: new Compartment(),
+        completion: new Compartment(),
+        eol: new Compartment(),
+      };
+      const extensions = bufferExtensions(path, disk, lang, conf);
+      // A tab reopened onto an unchanged file comes back with its undo history,
+      // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
+      // compared with what the buffer actually holds (see lineEndings.ts).
+      const kept = reviveClosed(closedBuffers, path, disk.text);
       // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
       // answer for this buffer, and every dirty check compares against that.
       buf = {
-        state: makeState(path, disk, lang, lsp, completion, eol),
+        state: kept
+          ? EditorState.fromJSON(kept.json, { extensions }, SERIALIZED_FIELDS)
+          : EditorState.create({ doc: Text.of(disk.lines), extensions }),
         savedText: disk.text,
-        lsp,
-        completion,
-        eol,
+        ...conf,
       };
       buffers.set(path, buf);
       // First open of this file: bring up the server for its language, at the
@@ -1023,20 +1053,35 @@ export default function CodeEditor(props: {
 
   function evictClosed(openPaths: string[]) {
     const live = new Set(openPaths);
-    for (const key of buffers.keys()) {
-      if (!live.has(key)) {
-        buffers.delete(key);
-        // The tab is gone, so its diagnostics leave the Problems list with it,
-        // and its symbols leave the outline the same way.
-        dropDiagnostics(key);
-        dropSymbols(key);
-        // And the language workspace has to re-read it. Its snapshot is the
-        // text this buffer last held, unsaved edits included, and closing the
-        // tab discarded those - so without this the server goes on answering
-        // about a document nobody has. Same call as an external change, which
-        // resolves it through the buffer (now gone) to disk.
-        notifyLspFileChanged(key);
+    for (const [key, buf] of buffers) {
+      if (live.has(key)) continue;
+      // Only a clean buffer is kept. Closing a dirty tab goes through a
+      // "the edits in this tab will be lost" confirm (`Editor.tsx:614`), and
+      // handing those edits back on reopen would make that promise a lie.
+      // Stashing unsaved work across a *quit* is hot exit's job, not this one.
+      if (buf.state.sliceDoc() === buf.savedText) {
+        rememberClosed(closedBuffers, key, {
+          savedText: buf.savedText,
+          json: buf.state.toJSON(SERIALIZED_FIELDS),
+        });
       }
+      buffers.delete(key);
+      // The tab is gone, so its diagnostics leave the Problems list with it,
+      // even for a buffer being kept: the Problems panel lists open files, and
+      // a closed one reappearing there would be a tab nobody can click. Its
+      // symbols leave the outline the same way.
+      dropDiagnostics(key);
+      dropSymbols(key);
+      // And the language workspace has to re-read it. Its snapshot is the text
+      // this buffer last held, unsaved edits included, and closing the tab
+      // discarded those - so without this the server goes on answering about a
+      // document nobody has. Same call as an external change, which resolves it
+      // through the buffer (now gone) to disk.
+      //
+      // After the eviction, not before: a *clean* buffer is kept in
+      // `closedBuffers` but is no longer in `buffers`, so the workspace has to
+      // resolve it to disk either way.
+      notifyLspFileChanged(key);
     }
   }
 
