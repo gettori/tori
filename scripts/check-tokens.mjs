@@ -52,6 +52,7 @@ const ALLOWLIST = new Map([
   ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
   ["src/utils/spaceTint.ts", "the space swatches: a space's colour is user data stored in sway.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for"],
   ["src/utils/spaceTint.test.ts", "test fixtures pinning the hex -> channel-triple conversion. A named input and its expected three numbers are the only way to catch a red/blue swap, which every wash in the app would then render in the wrong hue"],
+  ["src/panels/Editor/editorFeatures.test.tsx", "buffer contents, not UI styling: the CSS colour-swatch test has to put a colour literal in the document, because a swatch appearing beside one is the whole feature. The literal is the input under test and never reaches a stylesheet"],
 ]);
 
 // Directory prefixes, for families of files where every member is exempt for the

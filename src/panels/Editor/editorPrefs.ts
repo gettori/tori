@@ -11,6 +11,7 @@
 // Editor-side on purpose: this imports CodeMirror, so it sits behind the lazy
 // editor boundary and must never be imported from the eager side.
 import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import type { Extension } from "@codemirror/state";
 import type { EditorPrefs } from "../Settings/settingsStore";
 
@@ -18,7 +19,7 @@ import type { EditorPrefs } from "../Settings/settingsStore";
  *  from the settings keys because deciding *which* are on is the part with
  *  rules in it (an override outranks a setting), and it is worth testing
  *  without a DOM to build extensions in. */
-export type EditorFeature = "softWrap" | "renderWhitespace" | "scrollPastEnd";
+export type EditorFeature = "indentGuides" | "softWrap" | "renderWhitespace" | "scrollPastEnd";
 
 /**
  * Per-buffer answers that outrank the global setting.
@@ -35,6 +36,7 @@ export function activeEditorFeatures(
   overrides: EditorPrefOverrides = {},
 ): EditorFeature[] {
   const on: EditorFeature[] = [];
+  if (prefs.indentGuides) on.push("indentGuides");
   if (overrides.softWrap ?? prefs.softWrap) on.push("softWrap");
   if (prefs.renderWhitespace) on.push("renderWhitespace");
   if (prefs.scrollPastEnd) on.push("scrollPastEnd");
@@ -45,6 +47,23 @@ export function activeEditorFeatures(
 // an extension behind it fails to compile here, which is the one way this file
 // could otherwise ship a preference that quietly does nothing.
 const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
+  // The colours are handed over as `var()` references rather than left to the
+  // package's light/dark defaults, for two reasons. They then follow whichever
+  // theme is active, including an imported one, instead of picking between two
+  // literals; and they land in the same declaration the package writes, so
+  // there is no specificity race between its `baseTheme` and a rule of ours
+  // further up the tree. Sway's tokens already switch with the palette, so
+  // light and dark take the same value here.
+  indentGuides: () =>
+    indentationMarkers({
+      highlightActiveBlock: true,
+      colors: {
+        light: "var(--border-default)",
+        dark: "var(--border-default)",
+        activeLight: "var(--border-strong)",
+        activeDark: "var(--border-strong)",
+      },
+    }),
   softWrap: () => EditorView.lineWrapping,
   renderWhitespace: () => highlightWhitespace(),
   scrollPastEnd: () => scrollPastEnd(),

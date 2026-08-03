@@ -6,10 +6,9 @@ import { EditorState, Compartment, Prec, type Text, type Extension } from "@code
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap, StreamLanguage } from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
+import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
@@ -131,29 +130,6 @@ const swayTheme = EditorView.theme(
   },
   { dark: true },
 );
-
-// Packs beyond ts/js/json load on demand so the (already lazy) editor chunk
-// stays lean; the module cache makes every open after the first free. The
-// suffix comes from the basename so a dotted directory can't fake one, and
-// dotfiles like .zshrc resolve to their own name.
-async function langForPath(path: string): Promise<Extension> {
-  const file = path.split("/").pop()?.toLowerCase() ?? "";
-  const ext = file.split(".").pop() ?? "";
-  if (["ts", "mts", "cts"].includes(ext)) return javascript({ typescript: true });
-  if (ext === "tsx") return javascript({ typescript: true, jsx: true });
-  if (["js", "mjs", "cjs"].includes(ext)) return javascript();
-  if (ext === "jsx") return javascript({ jsx: true });
-  if (ext === "json") return json();
-  if (["md", "markdown"].includes(ext)) return (await import("@codemirror/lang-markdown")).markdown();
-  if (ext === "css") return (await import("@codemirror/lang-css")).css();
-  if (["html", "htm"].includes(ext)) return (await import("@codemirror/lang-html")).html();
-  if (ext === "rs") return (await import("@codemirror/lang-rust")).rust();
-  if (ext === "py") return (await import("@codemirror/lang-python")).python();
-  if (["yaml", "yml"].includes(ext)) return (await import("@codemirror/lang-yaml")).yaml();
-  if (ext === "toml") return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/toml")).toml);
-  if (["sh", "bash", "zsh", "zshrc", "bashrc"].includes(ext)) return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/shell")).shell);
-  return [];
-}
 
 // `pendingKind` (not a truthy `pendingExternal`) is what marks a deferred
 // conflict: a deleted file's stashed text is the empty string, which would

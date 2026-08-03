@@ -31,23 +31,32 @@ const prefsWith = (on: boolean) => [...editorPrefExtensions(PREFS), ...(on ? [ma
 
 const withPrefs = (over: Partial<EditorPrefs>): EditorPrefs => ({ ...PREFS, ...over });
 
+// Every key false, derived rather than written out, so a preference added to
+// the type later starts off here instead of quietly joining every expectation
+// below.
+const ALL_OFF = Object.fromEntries(Object.keys(PREFS).map((k) => [k, false])) as EditorPrefs;
+const only = (over: Partial<EditorPrefs>): EditorPrefs => ({ ...ALL_OFF, ...over });
+
 describe("which comfort features a buffer gets", () => {
   it("turns each one on from its own key, and nothing else", () => {
-    expect(activeEditorFeatures(withPrefs({ softWrap: true, scrollPastEnd: false }))).toEqual(["softWrap"]);
-    expect(activeEditorFeatures(withPrefs({ renderWhitespace: true, scrollPastEnd: false }))).toEqual([
-      "renderWhitespace",
-    ]);
-    expect(activeEditorFeatures(withPrefs({ scrollPastEnd: true }))).toEqual(["scrollPastEnd"]);
+    expect(activeEditorFeatures(only({ indentGuides: true }))).toEqual(["indentGuides"]);
+    expect(activeEditorFeatures(only({ softWrap: true }))).toEqual(["softWrap"]);
+    expect(activeEditorFeatures(only({ renderWhitespace: true }))).toEqual(["renderWhitespace"]);
+    expect(activeEditorFeatures(only({ scrollPastEnd: true }))).toEqual(["scrollPastEnd"]);
   });
 
   it("gives an all-off block nothing at all", () => {
-    const off = withPrefs({ softWrap: false, renderWhitespace: false, scrollPastEnd: false });
-    expect(activeEditorFeatures(off)).toEqual([]);
-    expect(editorPrefExtensions(off)).toEqual([]);
+    expect(activeEditorFeatures(ALL_OFF)).toEqual([]);
+    expect(editorPrefExtensions(ALL_OFF)).toEqual([]);
   });
 
   it("resolves one extension per active feature", () => {
-    const all = withPrefs({ softWrap: true, renderWhitespace: true, scrollPastEnd: true });
+    const all = withPrefs({
+      indentGuides: true,
+      softWrap: true,
+      renderWhitespace: true,
+      scrollPastEnd: true,
+    });
     expect(editorPrefExtensions(all)).toHaveLength(activeEditorFeatures(all).length);
   });
 });
@@ -57,8 +66,10 @@ describe("which comfort features a buffer gets", () => {
 // second toggle hand the tab back to the default rather than only ever pinning
 // it away from one.
 describe("a tab's soft-wrap override", () => {
-  const wrapOff = withPrefs({ softWrap: false, scrollPastEnd: false });
-  const wrapOn = withPrefs({ softWrap: true, scrollPastEnd: false });
+  // Everything but wrap is off, so each expectation below names only what the
+  // override did.
+  const wrapOff = only({ softWrap: false });
+  const wrapOn = only({ softWrap: true });
 
   it("outranks the setting in both directions", () => {
     expect(activeEditorFeatures(wrapOff, { softWrap: true })).toEqual(["softWrap"]);
@@ -76,8 +87,14 @@ describe("a tab's soft-wrap override", () => {
   });
 
   it("leaves the other features alone", () => {
-    const both = withPrefs({ softWrap: false, renderWhitespace: true, scrollPastEnd: true });
-    expect(activeEditorFeatures(both, { softWrap: true })).toEqual([
+    const rest = withPrefs({
+      indentGuides: true,
+      softWrap: false,
+      renderWhitespace: true,
+      scrollPastEnd: true,
+    });
+    expect(activeEditorFeatures(rest, { softWrap: true })).toEqual([
+      "indentGuides",
       "softWrap",
       "renderWhitespace",
       "scrollPastEnd",
