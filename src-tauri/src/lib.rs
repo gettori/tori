@@ -15,6 +15,7 @@ mod fs;
 mod git;
 mod health;
 mod hooks;
+mod hot_exit;
 mod icons;
 mod launch;
 mod lsp;
@@ -306,6 +307,8 @@ pub fn run() {
             health::agent_health,
             onboarding::onboarding_should_show,
             onboarding::onboarding_mark_shown,
+            hot_exit::hot_exit_load,
+            hot_exit::hot_exit_save,
             update::check_for_update,
             update::open_releases_page,
             sessions::list_sessions,

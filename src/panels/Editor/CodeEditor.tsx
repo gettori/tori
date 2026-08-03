@@ -36,6 +36,7 @@ import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
 import { rememberClosed, reviveClosed } from "./closedBuffers";
+import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
@@ -77,9 +78,13 @@ import {
   EDITOR_SHRINK_SELECTION,
   EDITOR_JOIN_LINES,
   EDITOR_SPLIT_SELECTION,
+  EDITOR_STASH_DIRTY,
+  EDITOR_STASH_RESULT,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
+  type EditorStashDirty,
+  type EditorStashResult,
   type RevealTurn,
   type ToastEvent,
   type FsChanged,
@@ -981,6 +986,51 @@ export default function CodeEditor(props: {
   // first swap already finds it.
   const offSymbolSearch = setWorkspaceSymbolSearch(requestWorkspaceSymbols);
 
+  /**
+   * Rebuild a buffer from unsaved work the last quit stashed.
+   *
+   * Two outcomes, and the difference is one argument to `fromJSON`. When the
+   * file has not moved, the history field comes back with the document and the
+   * buffer is exactly where it was left. When somebody rewrote the file while
+   * the app was shut, the same JSON is read *without* that field, so the text
+   * survives and only the history is dropped: it is a chain of positions into a
+   * document that no longer exists. The editor's own conflict banner is then
+   * raised over it, so the disk version is offered rather than silently lost.
+   *
+   * A stash that cannot be read at all falls back to the file. That is the loss
+   * this feature exists to prevent, so it is the last resort rather than the
+   * error path: refusing to open the buffer would lose the work *and* the tab.
+   */
+  function restoreStashed(
+    path: string,
+    stashed: StashEntry,
+    disk: DiskText,
+    extensions: Extension[],
+    conf: BufferConf,
+  ): Buffer {
+    const moved = disk.text !== stashed.savedText;
+    let state: EditorState;
+    try {
+      state = EditorState.fromJSON(
+        stashed.state,
+        { extensions },
+        moved ? undefined : SERIALIZED_FIELDS,
+      );
+    } catch (e) {
+      console.error("unreadable hot-exit stash, falling back to disk", path, e);
+      return { state: EditorState.create({ doc: Text.of(disk.lines), extensions }), savedText: disk.text, ...conf };
+    }
+    return {
+      state,
+      // The baseline the buffer was dirty against, so it comes back dirty by
+      // exactly the edits that were unsaved rather than against the new file.
+      savedText: stashed.savedText,
+      ...(moved ? { pendingExternal: disk.text, pendingKind: "changed" as const } : {}),
+      ...conf,
+    };
+  }
+
+
   async function swapTo(path: string | null) {
     if (!view) return;
     const token = ++swapToken;
@@ -1017,15 +1067,20 @@ export default function CodeEditor(props: {
       // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
       // compared with what the buffer actually holds (see lineEndings.ts).
       const kept = reviveClosed(closedBuffers, path, disk.text);
+      // Unsaved work the last quit stashed outranks both: the file on disk is
+      // by definition not what the user was looking at.
+      const stashed = takeStashEntry(path);
       // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
       // answer for this buffer, and every dirty check compares against that.
-      buf = {
-        state: kept
-          ? EditorState.fromJSON(kept.json, { extensions }, SERIALIZED_FIELDS)
-          : EditorState.create({ doc: Text.of(disk.lines), extensions }),
-        savedText: disk.text,
-        ...conf,
-      };
+      buf = stashed
+        ? restoreStashed(path, stashed, disk, extensions, conf)
+        : {
+            state: kept
+              ? EditorState.fromJSON(kept.json, { extensions }, SERIALIZED_FIELDS)
+              : EditorState.create({ doc: Text.of(disk.lines), extensions }),
+            savedText: disk.text,
+            ...conf,
+          };
       buffers.set(path, buf);
       // First open of this file: bring up the server for its language, at the
       // root the backend resolves for it. Fire-and-forget, because the plugin
@@ -1036,6 +1091,13 @@ export default function CodeEditor(props: {
     }
     if (token !== swapToken) return;
     view.setState(buf.state);
+    // `setState` puts the scroll back at the top whatever the selection says, so
+    // a buffer restored with its cursor five hundred lines down would open
+    // showing line one with the cursor off screen. Neither a stash nor a closed
+    // tab carries a scroll offset (`toJSON` holds the document, the selection
+    // and the named fields, and a pixel offset would not survive a font or pane
+    // width change anyway), so the selection is the anchor worth returning to.
+    view.dispatch({ effects: EditorView.scrollIntoView(buf.state.selection.main.head) });
     view.focus();
     shown = path;
     props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
@@ -1238,6 +1300,40 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_SPLIT_SELECTION, () => runSelectionCommand(splitSelectionIntoLines)),
   ];
 
+  /**
+   * Every buffer with unsaved edits, serialized for the stash.
+   *
+   * The shown buffer is read from the view rather than from its record: the
+   * record is only refreshed on a swap, so mid-edit it is one buffer behind,
+   * and a quit is exactly the moment that gap matters.
+   */
+  function dirtyStash(now: number): HotExitStore {
+    const out: HotExitStore = {};
+    for (const [path, buf] of buffers) {
+      const state = path === shown && view ? view.state : buf.state;
+      if (state.sliceDoc() === buf.savedText) continue;
+      out[path] = { savedText: buf.savedText, state: state.toJSON(SERIALIZED_FIELDS), savedAt: now };
+    }
+    return out;
+  }
+
+  // The quit handshake. Answered here rather than in Editor.tsx for save's
+  // reason: the buffers are this component's, and only it can serialize one.
+  // Always answers, including with `false`, because the caller is a window
+  // close waiting on it and silence would hold the app open until its timeout.
+  const offStash = onWith<EditorStashDirty>(EDITOR_STASH_DIRTY, ({ requestId }) => {
+    const answer = (ok: boolean) => emitWith<EditorStashResult>(EDITOR_STASH_RESULT, { requestId, ok });
+    // The try wraps the *serializing* too, not only the write: building the
+    // stash runs `toJSON` over every dirty buffer, and a throw there would
+    // leave this handler dead and the quit waiting out its whole timeout with
+    // no dialog and no window.
+    try {
+      void saveStash(stashToWrite(dirtyStash(Date.now()))).then(answer);
+    } catch (e) {
+      console.error("could not build the hot-exit stash", e);
+      answer(false);
+    }
+  });
 
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
@@ -1344,6 +1440,7 @@ export default function CodeEditor(props: {
     offLsp?.();
     offSave();
     for (const off of offLspCommands) off();
+    offStash();
     for (const off of offSelection) off();
     offToggleVim();
     offBufferAccess();

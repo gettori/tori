@@ -139,6 +139,17 @@ export const EDITOR_SHRINK_SELECTION = "sway:editor-shrink-selection";
 export const EDITOR_JOIN_LINES = "sway:editor-join-lines";
 export const EDITOR_SPLIT_SELECTION = "sway:editor-split-selection";
 
+// Hot exit's quit handshake. Editor.tsx asks, CodeEditor answers with whether
+// the unsaved buffers actually reached the disk, matched by `requestId` the way
+// SEND_TO_SESSION is. A request/result pair rather than a call, because the
+// buffers live behind the lazy editor boundary and Editor holds that component
+// only through props. `requestStash` in utils/hotExit.ts wraps both sides;
+// nothing should emit these directly.
+export const EDITOR_STASH_DIRTY = "sway:editor-stash-dirty";
+export type EditorStashDirty = { requestId: string };
+export const EDITOR_STASH_RESULT = "sway:editor-stash-result";
+export type EditorStashResult = { requestId: string; ok: boolean };
+
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the
 // Changes panel knows the first but is usually not on screen, and has never
