@@ -75,6 +75,18 @@ describe("the canonical command table", () => {
     }
   });
 
+  it("gives no editor command a key of its own", () => {
+    // The editor group is deliberately keyless: a table-level binding is
+    // dispatched through `dispatchHotkey`, which the terminal calls too, so it
+    // would act on a file nobody was looking at while a terminal had focus.
+    // CM6's own keymap owns the editor's chords, and it only ever sees keys
+    // that reach the editor's DOM. `Mod-s` is the standing example.
+    for (const c of COMMANDS.filter((c) => c.group === "editor")) {
+      expect(c.keys, `${c.id} carries a key; the editor group must stay keyless`).toBeUndefined();
+      expect(c.scope, `${c.id} carries a scope, which only a key-carrying command needs`).toBeUndefined();
+    }
+  });
+
   it("imports nothing outside utils/events", () => {
     // Load-bearing, not stylistic. `hotkeys.ts` derives BINDINGS from this table
     // and TerminalView imports `hotkeys.ts`, so an import added here lands in

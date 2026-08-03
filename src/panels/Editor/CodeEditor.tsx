@@ -214,6 +214,10 @@ export default function CodeEditor(props: {
   // unsaved work. Absent means the rename refuses rather than deciding for the
   // user.
   confirm?: (opts: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
+  // This tab's soft-wrap override, or null to follow `settings.editor.softWrap`.
+  // Per tab rather than global because wrapping is a property of the file you
+  // are looking at (a wide CSV, a prose paragraph), not of the editor.
+  softWrap?: boolean | null;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -656,11 +660,17 @@ export default function CodeEditor(props: {
   // is allowed to live.
   const prefsConf = new Compartment();
 
+  /** The settings, plus this tab's overrides. One reader, so a buffer built now
+   *  and a buffer swapped in later cannot be handed different arguments. */
+  function currentPrefExtensions(): Extension[] {
+    return editorPrefExtensions(settings.editor, { softWrap: props.softWrap });
+  }
+
   // Reconfigure reaches the *active* state only; a stashed buffer keeps the
   // config it was built with until it is swapped back in, which is why
   // `swapTo` calls this too.
   function syncEditorPrefs() {
-    view?.dispatch({ effects: prefsConf.reconfigure(editorPrefExtensions(settings.editor)) });
+    view?.dispatch({ effects: prefsConf.reconfigure(currentPrefExtensions()) });
   }
 
   const commonExtensions: Extension[] = [
@@ -689,7 +699,7 @@ export default function CodeEditor(props: {
     highlightSelectionMatches(),
     diffGutterExtension(),
     blameConf.of([]),
-    prefsConf.of(editorPrefExtensions(settings.editor)),
+    prefsConf.of(currentPrefExtensions()),
     syntaxHighlighting(swayHighlight),
     // After the highlight style, not before: the grammar colours everything
     // immediately and offline, and the server's answer lands on top of the
@@ -1096,8 +1106,15 @@ export default function CodeEditor(props: {
   createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
-  // each time a phase adds a key.
-  createEffect(on(() => Object.values(settings.editor), () => syncEditorPrefs(), { defer: true }));
+  // each time a phase adds a key. The per-tab override rides along, since the
+  // palette can flip it without any setting moving.
+  createEffect(
+    on(
+      () => [...Object.values(settings.editor), props.softWrap],
+      () => syncEditorPrefs(),
+      { defer: true },
+    ),
+  );
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the

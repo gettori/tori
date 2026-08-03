@@ -10,17 +10,55 @@
 //
 // Editor-side on purpose: this imports CodeMirror, so it sits behind the lazy
 // editor boundary and must never be imported from the eager side.
+import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import type { EditorPrefs } from "../Settings/settingsStore";
+
+/** A preference that resolves to a live-swappable extension. Named separately
+ *  from the settings keys because deciding *which* are on is the part with
+ *  rules in it (an override outranks a setting), and it is worth testing
+ *  without a DOM to build extensions in. */
+export type EditorFeature = "softWrap" | "renderWhitespace" | "scrollPastEnd";
+
+/**
+ * Per-buffer answers that outrank the global setting.
+ *
+ * `null` and `undefined` both mean "no override, follow the setting", which is
+ * what lets the palette's toggle return a tab to the default rather than only
+ * ever pinning it.
+ */
+export type EditorPrefOverrides = { softWrap?: boolean | null };
+
+/** Which features are on for this buffer, override first, setting second. */
+export function activeEditorFeatures(
+  prefs: EditorPrefs,
+  overrides: EditorPrefOverrides = {},
+): EditorFeature[] {
+  const on: EditorFeature[] = [];
+  if (overrides.softWrap ?? prefs.softWrap) on.push("softWrap");
+  if (prefs.renderWhitespace) on.push("renderWhitespace");
+  if (prefs.scrollPastEnd) on.push("scrollPastEnd");
+  return on;
+}
+
+// A total map rather than a chain of ifs: a feature added to the union without
+// an extension behind it fails to compile here, which is the one way this file
+// could otherwise ship a preference that quietly does nothing.
+const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
+  softWrap: () => EditorView.lineWrapping,
+  renderWhitespace: () => highlightWhitespace(),
+  scrollPastEnd: () => scrollPastEnd(),
+};
 
 /**
  * The extensions the current preferences call for.
  *
- * Empty while wave 5 is still landing: each phase adds the one entry its
- * feature needs (soft wrap, whitespace, indent guides, ...). A preference whose
- * extension cannot be added and removed live does not belong here, it belongs
- * in `makeState` with a rebuild.
+ * A preference whose extension cannot be added and removed live does not belong
+ * here, it belongs in `makeState` with a rebuild.
  */
-export function editorPrefExtensions(_prefs: EditorPrefs): Extension[] {
-  return [];
+export function editorPrefExtensions(
+  prefs: EditorPrefs,
+  overrides: EditorPrefOverrides = {},
+): Extension[] {
+  return activeEditorFeatures(prefs, overrides).map((f) => FEATURE_EXTENSIONS[f]());
 }
