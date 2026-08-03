@@ -255,6 +255,35 @@ impl Default for ChatDefaults {
     }
 }
 
+/// Editor behaviour that is a preference rather than a project fact.
+///
+/// **`format_on_save` defaults off**, even though the project's own config is
+/// what decides *which* formatter runs. A repo that carries a `.prettierrc` is
+/// not necessarily a repo that is currently formatted, and the first save in
+/// one would otherwise rewrite a file the user never touched and put that diff
+/// in somebody's pull request. Opting in is cheap; opting out after the fact is
+/// a revert.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorDefaults {
+    #[serde(default)]
+    pub format_on_save: bool,
+}
+
+/// One project's editor overrides. Keyed like `Settings::chat` and for the same
+/// reason: whether a save should reformat is a property of the repo, not of the
+/// user, and one global answer would make each project's choice overwrite the
+/// others'.
+///
+/// `None` means "no answer here", which falls through to `EditorDefaults` -
+/// distinct from `Some(false)`, which is this project saying no.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorPrefs {
+    #[serde(default)]
+    pub format_on_save: Option<bool>,
+}
+
 /// The harness binary this install drives.
 ///
 /// `path` overrides discovery. Empty means "use the discovered one", which is
@@ -281,12 +310,17 @@ pub struct Settings {
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
     #[serde(default)]
+    pub editor_defaults: EditorDefaults,
+    #[serde(default)]
     pub harness: Harness,
     /// Keyed by project path. Untyped as a map rather than a list so a project
     /// that has never been opened simply has no entry, instead of needing one
     /// written before the first pick can be stored.
     #[serde(default)]
     pub chat: std::collections::HashMap<String, ChatPrefs>,
+    /// Keyed by project path, same shape and same reason as `chat`.
+    #[serde(default)]
+    pub editor: std::collections::HashMap<String, EditorPrefs>,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -458,6 +492,29 @@ mod tests {
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+    }
+
+    #[test]
+    fn format_on_save_defaults_off_and_a_project_can_answer_for_itself() {
+        // A settings file written before this field existed must read as off
+        // from the default rather than from the key's absence, and a project
+        // saying "no" must be distinguishable from a project saying nothing.
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert!(!loaded.editor_defaults.format_on_save);
+        assert!(loaded.editor.is_empty());
+
+        let mut s = loaded;
+        s.editor_defaults.format_on_save = true;
+        s.editor.insert("/repo/quiet".into(), EditorPrefs { format_on_save: Some(false) });
+        s.editor.insert("/repo/silent".into(), EditorPrefs::default());
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back, s, "both the default and the per-project answers survived");
+        assert_eq!(back.editor["/repo/quiet"].format_on_save, Some(false));
+        assert_eq!(back.editor["/repo/silent"].format_on_save, None);
+        let _ = std::fs::remove_file(&p);
     }
 
     /// Sway now bundles JetBrainsMono Nerd Font Mono, so the terminal default

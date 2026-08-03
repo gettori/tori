@@ -10,6 +10,7 @@ mod config;
 mod conflict;
 mod env;
 pub mod forge;
+mod format;
 mod fs;
 mod git;
 mod health;
@@ -248,6 +249,7 @@ pub fn run() {
             config::detach_branch,
             config::delete_branch,
             config::attach_remote_branch,
+            format::format_document,
             fs::fs_read_dir,
             fs::fs_read_file,
             fs::fs_write_file,
