@@ -13,21 +13,36 @@ import type { EditorState, Compartment, Extension, StateEffect } from "@codemirr
 export type LspBuffer = { state: EditorState; lsp: Compartment };
 
 /**
- * Point every buffer's LSP compartment at what `resolve` now says.
+ * Point one compartment of every buffer at what `resolve` now says.
  *
  * The shown buffer's live truth is the view's own state, not the stashed one,
  * so its effect goes through `dispatch`. Every other buffer is updated in
  * place. Callers pass `shown: null` when no buffer is on screen.
+ *
+ * `pick` names which compartment, because a buffer has more than one thing that
+ * moves when the client does: the plugin itself, and the fallback completion
+ * that exists only while no server is claiming the file.
  */
+export function reconfigureBuffers<T extends { state: EditorState }>(
+  buffers: Iterable<[string, T]>,
+  shown: string | null,
+  pick: (buf: T) => Compartment,
+  resolve: (path: string) => Extension,
+  dispatch: (effects: StateEffect<unknown>) => void,
+): void {
+  for (const [path, buf] of buffers) {
+    const effects = pick(buf).reconfigure(resolve(path));
+    if (path === shown) dispatch(effects);
+    else buf.state = buf.state.update({ effects }).state;
+  }
+}
+
+/** Point every buffer's LSP compartment at what `resolve` now says. */
 export function reattachLsp<T extends LspBuffer>(
   buffers: Iterable<[string, T]>,
   shown: string | null,
   resolve: (path: string) => Extension,
   dispatch: (effects: StateEffect<unknown>) => void,
 ): void {
-  for (const [path, buf] of buffers) {
-    const effects = buf.lsp.reconfigure(resolve(path));
-    if (path === shown) dispatch(effects);
-    else buf.state = buf.state.update({ effects }).state;
-  }
+  reconfigureBuffers(buffers, shown, (buf) => buf.lsp, resolve, dispatch);
 }

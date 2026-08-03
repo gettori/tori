@@ -18,6 +18,7 @@ import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agen
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
 import {
+  claimedByLsp,
   ensureLspFor,
   lspPluginFor,
   lspTargetFor,
@@ -29,7 +30,8 @@ import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
-import { reattachLsp } from "./lspReattach";
+import { reattachLsp, reconfigureBuffers } from "./lspReattach";
+import { fallbackCompletion } from "./fallbackCompletion";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
@@ -151,10 +153,16 @@ const swayTheme = EditorView.theme(
 // so one compartment across buffers would hand every file the same file's
 // plugin. Reconfiguring it is what lets a file opened before the server was
 // ready pick LSP up in place, instead of needing a close and reopen.
+// `completion` is a second per-buffer compartment beside it, holding the
+// fallback completion a buffer gets only while no server claims it. Separate
+// rather than folded into `lsp`, because it also moves when a *setting* moves,
+// and reconfiguring `lsp` for that would close and reopen the document on the
+// server every time an unrelated editor toggle was flipped.
 type Buffer = {
   state: EditorState;
   savedText: string;
   lsp: Compartment;
+  completion: Compartment;
   pendingExternal?: string;
   pendingKind?: ConflictKind;
 };
@@ -757,13 +765,31 @@ export default function CodeEditor(props: {
     publishDiagnostics(path, problemsFromState(state));
   }
 
-  function makeState(path: string, text: string, lang: Extension, lsp: Compartment): EditorState {
+  /** Completion for a buffer no language server is claiming, which is most of
+   *  them: the server covers TS and JS under the project root, and brings its
+   *  own completion with it. Re-resolved whenever either half of that answer
+   *  moves, the client's liveness or the preference. */
+  function currentFallbackCompletion(path: string): Extension {
+    return fallbackCompletion(path, {
+      on: settings.editor.wordCompletion,
+      claimed: claimedByLsp(path),
+    });
+  }
+
+  function makeState(
+    path: string,
+    text: string,
+    lang: Extension,
+    lsp: Compartment,
+    completion: Compartment,
+  ): EditorState {
     return EditorState.create({
       doc: text,
       extensions: [
         ...commonExtensions,
         lang,
         lsp.of(lspPluginFor(path)),
+        completion.of(currentFallbackCompletion(path)),
         EditorView.updateListener.of((u) => {
           // Diagnostics arrive as a transaction effect from the LSP client, so
           // republish only when one actually lands rather than on every keypress.
@@ -791,12 +817,25 @@ export default function CodeEditor(props: {
     });
   }
 
+  /** Re-resolve every buffer's fallback completion in place, background buffers
+   *  included. Called from both directions: the client moving decides whether a
+   *  buffer is claimed, and the preference decides what the unclaimed ones get. */
+  function syncFallbackCompletion() {
+    reconfigureBuffers(buffers, shown, (buf) => buf.completion, currentFallbackCompletion, (effects) =>
+      view?.dispatch({ effects }),
+    );
+  }
+
   // The language client moved: came up, went away, or was replaced by a project
   // switch. Every open buffer re-asks `lspPluginFor` what it should hold, so a
   // file opened before the server was ready attaches in place, and one left over
   // from the previous project drops a plugin that now points at a dead client.
+  // The fallback completion goes the other way in the same breath: a buffer the
+  // server has just claimed gives up its scraped words in favour of the
+  // server's own list.
   function relinkLsp() {
     reattachLsp(buffers, shown, lspPluginFor, (effects) => view?.dispatch({ effects }));
+    syncFallbackCompletion();
     // The server that answers for this file just changed (came up, went away),
     // so what it would say about its symbols changed with it. This is also the
     // only thing that re-asks after a server finishes starting, which is the
@@ -898,7 +937,8 @@ export default function CodeEditor(props: {
       // A newer swap superseded us while reading: drop this result.
       if (token !== swapToken) return;
       const lsp = new Compartment();
-      buf = { state: makeState(path, text, lang, lsp), savedText: text, lsp };
+      const completion = new Compartment();
+      buf = { state: makeState(path, text, lang, lsp, completion), savedText: text, lsp, completion };
       buffers.set(path, buf);
       // First open of this file: bring up the server for its language, at the
       // root the backend resolves for it. Fire-and-forget, because the plugin
@@ -1130,6 +1170,12 @@ export default function CodeEditor(props: {
       () => syncEditorPrefs(),
       { defer: true },
     ),
+  );
+  // Its own effect rather than a line in the one above: this one reaches every
+  // buffer's compartment, and doing that for a whitespace toggle would be work
+  // for nothing.
+  createEffect(
+    on(() => settings.editor.wordCompletion, () => syncFallbackCompletion(), { defer: true }),
   );
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
