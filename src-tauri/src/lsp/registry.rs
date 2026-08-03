@@ -93,7 +93,16 @@ impl LspServer {
     #[allow(dead_code)]
     pub fn language_id_for(&self, path: &str) -> Option<&str> {
         let file = path.rsplit('/').next()?;
-        let ext = file.rsplit_once('.')?.1.to_lowercase();
+        let dot = file.rfind('.')?;
+        // A dotfile is its own name, not an extension: `.zshrc` must not read
+        // as extension `zshrc`. `rsplit_once` would say it does, and the
+        // frontend's `extensionOf` in utils/lspServers.ts must agree with this
+        // exactly, since a disagreement means one side asks a server about a
+        // file the other never claimed.
+        if dot == 0 {
+            return None;
+        }
+        let ext = file[dot + 1..].to_lowercase();
         self.languages.get(&ext).map(String::as_str)
     }
 }
@@ -537,6 +546,17 @@ program = "demo-server"
         let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
         assert_eq!(ts.language_id_for("/p/some.ts/README"), None);
         assert_eq!(ts.language_id_for("/p/no-extension"), None);
+    }
+
+    #[test]
+    fn a_dotfile_is_its_name_not_an_extension() {
+        let text = VALID.replace("demo = \"demo\"", "zshrc = \"shellscript\"");
+        let s = load_server_str(&text, "test").unwrap();
+        // Must agree with `extensionOf` in utils/lspServers.ts, which uses
+        // `lastIndexOf(".") > 0`. A split-on-last-dot rule would claim this.
+        assert_eq!(s.language_id_for("/home/me/.zshrc"), None);
+        // A real extension on a dotted name still resolves.
+        assert_eq!(s.language_id_for("/home/me/.config.zshrc"), Some("shellscript"));
     }
 
     // --- P1.4: root resolution ---
