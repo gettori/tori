@@ -21,6 +21,7 @@ import {
   type LspServer,
 } from "../../utils/lspServers";
 import { symbolClientCapabilities } from "../../utils/symbols";
+import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { liveBufferText } from "./liveBuffers";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
 
@@ -154,6 +155,11 @@ async function startFor(
   let handlers: ((value: string) => void)[] = [];
   const channel = new Channel<string>();
   channel.onmessage = (msg) => {
+    // `handle` is assigned when `lsp_start` resolves, which is before the
+    // client below is built - and a server sends nothing at all until it has
+    // been sent `initialize`, which only that client does. So by the time
+    // anything worth intercepting arrives, this is not reading an unset binding.
+    if (interceptRefresh(handle, msg)) return;
     for (const h of handlers) h(msg);
   };
 
@@ -215,7 +221,11 @@ async function startFor(
     // Spread, not nested: `languageServerExtensions()` is itself a list of
     // these, and one of them (`serverDiagnostics`) carries capabilities of its
     // own that only get merged when the client sees it as a top-level entry.
-    extensions: [...languageServerExtensions(), symbolClientCapabilities],
+    extensions: [
+      ...languageServerExtensions(),
+      symbolClientCapabilities,
+      semanticTokensClientCapabilities,
+    ],
   }).connect(transport);
 
   addSession({ handle, client, workspace: workspace! });
@@ -232,6 +242,69 @@ function workspaceDeps(server: LspServer) {
     languageId: (path: string) => languageIdFor(server, path),
     requestOpen: (path: string) => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path }),
   };
+}
+
+// ------------------------------------------- the one request Sway answers
+
+const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
+
+// Registered by the editor while it is mounted. One slot rather than a list for
+// the same reason `liveBuffers` has one: there is exactly one `CodeEditor`, and
+// a subscriber list is churn until there are two.
+let onSemanticRefresh: ((root: string) => void) | null = null;
+
+/** Be told when a server says its semantic tokens are stale. Returns an
+ *  unregister.
+ *
+ *  Worth having because semantic colour is a property of the whole program, not
+ *  of the file on screen: editing `types.ts` changes what a name in `main.ts`
+ *  *means* without changing a character of it, so nothing the editor can observe
+ *  locally would ever prompt the re-request.
+ *
+ *  Carries the root of the session that said so, because the claim is that
+ *  session's alone: in a monorepo, `packages/a`'s server going stale says
+ *  nothing about a file `packages/b`'s server answers for. */
+export function setSemanticRefreshListener(fn: (root: string) => void): () => void {
+  onSemanticRefresh = fn;
+  // Guarded: a later registration has already replaced this one, and clearing
+  // the slot then would unregister somebody else.
+  return () => {
+    if (onSemanticRefresh === fn) onSemanticRefresh = null;
+  };
+}
+
+/**
+ * Answer `workspace/semanticTokens/refresh` here rather than let the library
+ * see it. Returns whether the frame was consumed.
+ *
+ * `LSPClient.receiveMessage` replies to every server-initiated *request* with
+ * `-32601 MethodNotFound` (`lsp-client/dist/index.js:684-690`) and offers an
+ * extension point for notifications only, so there is no way to handle this one
+ * from above. A `-32601` is not fatal, but it tells a conformant server that
+ * this client lied in its capabilities, and rust-analyzer's response to that is
+ * to stop asking - which is precisely the feature being asked for.
+ *
+ * The substring test comes before the parse deliberately: every frame from a
+ * busy server would otherwise be `JSON.parse`d twice, once here and once by the
+ * library, for a message that arrives a handful of times a session.
+ */
+function interceptRefresh(handle: LspHandle, msg: string): boolean {
+  if (!msg.includes(SEMANTIC_REFRESH)) return false;
+  let value: { id?: unknown; method?: unknown };
+  try {
+    value = JSON.parse(msg) as { id?: unknown; method?: unknown };
+  } catch {
+    return false;
+  }
+  // Only the request form. A notification-shaped frame, or a *response* that
+  // merely mentions the method name, is the library's to deal with.
+  if (value.method !== SEMANTIC_REFRESH || value.id === undefined) return false;
+  void invoke("lsp_send", {
+    handle,
+    message: JSON.stringify({ jsonrpc: "2.0", id: value.id, result: null }),
+  }).catch(() => {});
+  onSemanticRefresh?.(handle.root);
+  return true;
 }
 
 /** Tell every live workspace that a file changed outside its editor, so a
@@ -262,6 +335,11 @@ export type LspTarget = {
    *  is the honest answer: nothing has been advertised yet, and asking anyway
    *  is what draws a `MethodNotFound`. */
   supports: (capability: keyof ServerCapabilities) => boolean;
+  /** What the server advertised, for the capabilities that carry data rather
+   *  than a yes. `semanticTokensProvider` ships the legend naming what each
+   *  token index means, and a token stream read without it is a list of
+   *  integers. Undefined before `ready`, same as `supports` being false. */
+  capability: <K extends keyof ServerCapabilities>(name: K) => ServerCapabilities[K] | undefined;
   /** Flush pending document changes. The library's own sync is debounced by
    *  500 ms, so a question about positions asked sooner than that would be
    *  answered against a document the server has not seen yet. */
@@ -279,6 +357,7 @@ function targetOf(session: Session): LspTarget {
       () => {},
     ),
     supports: (capability) => !!session.client.serverCapabilities?.[capability],
+    capability: (name) => session.client.serverCapabilities?.[name],
     sync: () => session.client.sync(),
     request: (method, params) => session.client.request(method, params),
   };

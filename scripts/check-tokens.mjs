@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the token layer. Six checks:
+// Guard the token layer. Seven checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
@@ -10,15 +10,16 @@
 //   4. Every name TerminalView.termColors() reads is a declared role.
 //   5. Every token the theme workbench names as a literal resolves.
 //   6. Every hue the generated seti mapping emits has a scale.* role.
+//   7. Every role semantic tokens paint with has a --syntax-* role.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
 // stack can see the token layer at all. This script reads files directly and
 // already gates `pnpm test`.
 //
-// Checks 4, 5, and 6 exist because those names are TypeScript string literals or
-// are built at runtime, so no CSS tooling and not even check 3 can see them; a
-// stale one degrades silently rather than failing.
+// Checks 4, 5, 6, and 7 exist because those names are TypeScript string literals
+// or are built at runtime, so no CSS tooling and not even check 3 can see them;
+// a stale one degrades silently rather than failing.
 //
 // Light mode is only as complete as the CSS is token-driven. A single stray
 // `#2ea043` renders identically in both themes, which is exactly the bug that
@@ -35,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import { ROLES, ROLE_BY_CSS_VAR, buildRoles } from "../src/theme/roles.ts";
 import { validatePalette } from "../src/theme/schema.ts";
 import { tokensCss } from "./gen-tokens.mjs";
+import { SEMANTIC_ROLES } from "../src/utils/semanticTokens.ts";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const SRC = join(ROOT, "src");
@@ -307,6 +309,16 @@ const DYNAMIC_VARS = new Map([
         "Check 6 below closes the loop by proving every hue that mapping can emit is a declared scale role",
     },
   ],
+  [
+    "src/panels/Editor/semanticHighlight.ts",
+    {
+      prefixes: ["--syntax-"],
+      reason:
+        "one CSS rule is generated per semantic token type, e.g. var(--syntax-${role}), from the map in " +
+        "src/utils/semanticTokens.ts. Check 7 below closes the loop by proving every role that map can " +
+        "emit is a declared syntax role",
+    },
+  ],
 ]);
 
 // Comments are stripped for the same reason check 1 strips them: prose talks
@@ -471,11 +483,39 @@ if (hueProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 7: every semantic-token role is a declared syntax role ----
+//
+// `semanticHighlight.ts` generates one CSS rule per entry of its token-type map,
+// as `var(--syntax-${role})`, so check 3 can only be told to trust it. This is
+// what earns that trust. The failure it catches is the quietest one in the
+// editor: a role with no token resolves to nothing, the element inherits, and
+// the identifier keeps the colour the *grammar* gave it - which is exactly what
+// it looks like when the language server is not running. Nobody attributes that
+// to a missing token.
+
+const semanticProblems = [];
+if (SEMANTIC_ROLES.length === 0) {
+  semanticProblems.push("src/utils/semanticTokens.ts exports no SEMANTIC_ROLES; the map this check reads changed");
+}
+for (const role of SEMANTIC_ROLES) {
+  if (!globalNames.has(`--syntax-${role}`)) {
+    semanticProblems.push(`semantic tokens paint with --syntax-${role}, which no role declares`);
+  }
+}
+
+if (semanticProblems.length > 0) {
+  console.error(`${semanticProblems.length} problem(s) in the semantic-token colours:\n`);
+  for (const problem of semanticProblems) console.error(`  ${problem}`);
+  console.error("\nA semantic role with no token silently leaves the grammar's colour in place.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
     `${ALLOWLIST_PREFIXES.size === 1 ? "directory" : "directories"}), ` +
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
-    `every token the workbench names resolving, and all ${emitted.size} seti hues backed by scale roles.`,
+    `every token the workbench names resolving, all ${emitted.size} seti hues backed by scale roles, ` +
+    `and all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles.`,
 );
