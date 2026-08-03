@@ -20,6 +20,47 @@ describe("the canonical command table", () => {
     }
   });
 
+  it("has no two bindings that the same keystroke can fire", () => {
+    // `dispatchHotkey` takes the FIRST binding whose `match` returns true, so a
+    // second command answering the same keystroke is not a conflict anybody
+    // sees: it is simply dead, while the sheet goes on printing its key. Probed
+    // with synthetic events rather than by comparing the `keys` chips, because
+    // the chips are display text and the matcher is the thing that fires.
+    const bindings = COMMANDS.filter((c) => c.match && c.scope);
+    const codes = [
+      ...Array.from({ length: 26 }, (_, i) => `Key${String.fromCharCode(65 + i)}`),
+      ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`),
+      "Slash",
+      "Period",
+      "Equal",
+      "Minus",
+      "Tab",
+      "F12",
+    ];
+    const mods = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (const code of codes) {
+      // `e.key` matters as much as `e.code`: half the matchers read one, half
+      // the other, so both are set the way a real keydown would.
+      const key = code.startsWith("Key")
+        ? code.slice(3).toLowerCase()
+        : code.startsWith("Digit")
+          ? code.slice(5)
+          : { Slash: "/", Period: ".", Equal: "=", Minus: "-", Tab: "Tab", F12: "F12" }[code]!;
+      for (const m of mods) {
+        const e = {
+          code,
+          key,
+          metaKey: !!(m & 1),
+          shiftKey: !!(m & 2),
+          altKey: !!(m & 4),
+          ctrlKey: false,
+        } as KeyboardEvent;
+        const hits = bindings.filter((c) => c.match!(e)).map((c) => c.id);
+        expect(hits.length, `${code} with mods ${m} fires ${hits.join(" and ")}`).toBeLessThan(2);
+      }
+    }
+  });
+
   it("gives every runnable palette command a run", () => {
     for (const c of COMMANDS.filter((c) => !c.hidden)) {
       expect(c.run, `${c.id} is offered in the palette but does nothing`).toBeTypeOf("function");
