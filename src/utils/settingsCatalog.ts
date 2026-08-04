@@ -139,6 +139,13 @@ export const SETTINGS: SettingEntry[] = [
   { id: "bracket-pair-guides", section: "editing", label: "Bracket pair guide lines", toggles: "bracketPairGuides" },
   { id: "minimap", section: "editing", label: "Minimap", toggles: "minimap" },
   {
+    id: "sticky-scroll",
+    section: "editing",
+    label: "Sticky scroll",
+    toggles: "stickyScroll",
+    hint: "Pins the class and function headers of whatever is at the top of the screen over it, so a long body still says what it belongs to. Needs a language whose grammar Sway parses.",
+  },
+  {
     id: "word-completion",
     section: "editing",
     label: "Word completion without a language server",

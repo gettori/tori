@@ -13,6 +13,7 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { editorPrefExtensions } from "./editorPrefs";
 import { DEPTH_COLORS } from "./bracketPairs";
 import { MINIMAP_CLASS } from "./minimap";
+import { STICKY_CLASS, STICKY_ROW_CLASS } from "./stickyScroll";
 import { langForPath } from "./languages";
 import type { EditorDefaults } from "../Settings/settingsStore";
 
@@ -28,6 +29,7 @@ const BASE: EditorDefaults = {
   rainbowBrackets: false,
   bracketPairGuides: false,
   minimap: false,
+  stickyScroll: false,
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
@@ -234,6 +236,98 @@ describe("the minimap", () => {
     });
     expect(el.querySelectorAll(`.${MINIMAP_CLASS}`)).toHaveLength(0);
     expect(editor.state.sliceDoc()).toBe(FILE);
+  });
+});
+
+describe("sticky scroll", () => {
+  const NESTED = `class Widget {\n  render() {\n    for (const c of this.cs) {\n      c.draw()\n    }\n  }\n}\n`;
+
+  /** jsdom measures nothing, so the overlay's own idea of the top visible line
+   *  is always the top of the document. Standing in for the scroll is what lets
+   *  the rows be asserted at all; where they land on screen is not a question
+   *  this environment can answer, and is not asked here.
+   *
+   *  The plugin defers its read to a measure phase, because layout may not be
+   *  read during an update. `measure()` runs the pending ones now; it is
+   *  CodeMirror's own flush and is not in the published types, which is worth a
+   *  cast here rather than an animation frame this suite would have to wait on
+   *  and could miss. */
+  function scrollTo(pos: number) {
+    view!.posAtCoords = () => pos;
+    view!.scrollDOM.dispatchEvent(new Event("scroll"));
+    (view as unknown as { measure(): void }).measure();
+  }
+
+  it("mounts nothing at all when the key is off", async () => {
+    // The whole of the gate: off means the plugin is never in the
+    // configuration, so no container exists, nothing listens for a scroll, and
+    // no walk of the syntax tree is ever made.
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, stickyScroll: false }),
+    ]);
+    expect(el.querySelectorAll(`.${STICKY_CLASS}`)).toHaveLength(0);
+  });
+
+  it("mounts an overlay when the key is on, empty at the top of a file", async () => {
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, stickyScroll: true }),
+    ]);
+    const overlay = el.querySelector(`.${STICKY_CLASS}`);
+    expect(overlay).toBeTruthy();
+    // Nothing has scrolled away yet, and the CSS hides an empty container so
+    // this is not a bare border across the top of an unscrolled file.
+    expect(overlay?.children).toHaveLength(0);
+  });
+
+  it("pins a row per enclosing scope once they have scrolled away", async () => {
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, stickyScroll: true }),
+    ]);
+    scrollTo(view!.state.doc.line(4).from);
+    const rows = [...el.querySelectorAll(`.${STICKY_ROW_CLASS}`)];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "class Widget {",
+      "  render() {",
+      "    for (const c of this.cs) {",
+    ]);
+  });
+
+  it("asks to scroll to a row's own line when it is clicked", async () => {
+    const scrolled: number[] = [];
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      editorPrefExtensions({ ...BASE, stickyScroll: true }),
+      // A view listener cannot see a scroll effect, so the transaction is read
+      // on its way past instead.
+      EditorState.transactionExtender.of((tr) => {
+        for (const e of tr.effects) {
+          const range = (e.value as { range?: { head?: number } } | undefined)?.range;
+          if (range?.head !== undefined) scrolled.push(range.head);
+        }
+        return null;
+      }),
+    ]);
+    scrollTo(view!.state.doc.line(4).from);
+    const before = view!.state.selection.main.head;
+    (el.querySelector(`.${STICKY_ROW_CLASS}`) as HTMLElement).click();
+    expect(scrolled).toEqual([view!.state.doc.line(1).from]);
+    // Looking somewhere is not going there: the caret stays where the reader
+    // was actually working.
+    expect(view!.state.selection.main.head).toBe(before);
+  });
+
+  it("takes its overlay away again on a reconfigure", () => {
+    const conf = new Compartment();
+    const el = mount(NESTED, [conf.of(editorPrefExtensions({ ...BASE, stickyScroll: true }))]);
+    expect(el.querySelectorAll(`.${STICKY_CLASS}`)).toHaveLength(1);
+    view!.dispatch({ effects: conf.reconfigure(editorPrefExtensions({ ...BASE, stickyScroll: false })) });
+    // The container lives in the editor's DOM rather than in a decoration, so
+    // turning the key off has to remove it by hand; a leak here would leave a
+    // dead overlay pinned over the file.
+    expect(el.querySelectorAll(`.${STICKY_CLASS}`)).toHaveLength(0);
   });
 });
 
