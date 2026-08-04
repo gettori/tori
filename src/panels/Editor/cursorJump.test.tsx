@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { cursorJumpListener } from "./cursorJump";
+import { caretListener, cursorJumpListener } from "./cursorJump";
 import { JUMP_LINE_THRESHOLD } from "../../utils/jumpList";
 
 const DOC = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join("\n");
@@ -90,5 +90,76 @@ describe("what the caret reports as a jump", () => {
       }),
     );
     expect(reported).toEqual([]);
+  });
+});
+
+// The other listener in the same file, wanting the opposite: every position,
+// because the breadcrumb trail has to name the symbol the caret is in *now*.
+describe("what the caret reports to the breadcrumb trail", () => {
+  let moves: [number, number][] = [];
+
+  function mountCaret(doc = DOC, at = 1): EditorView {
+    moves = [];
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc,
+        extensions: [caretListener((line, column) => moves.push([line, column]))],
+      }),
+    });
+    view.dispatch({ selection: { anchor: startOf(at) } });
+    moves = [];
+    return view;
+  }
+
+  it("reports drift, which the jump listener exists to throw away", () => {
+    mountCaret(DOC, 40);
+    view!.dispatch({ selection: { anchor: startOf(41) } });
+    view!.dispatch({ selection: { anchor: startOf(42) } });
+    expect(moves).toEqual([
+      [41, 1],
+      [42, 1],
+    ]);
+  });
+
+  it("reports the column, not only the line", () => {
+    // Two symbols can share a line; without the column the trail cannot say
+    // which of them holds the caret.
+    mountCaret(DOC, 10);
+    view!.dispatch({ selection: { anchor: startOf(10) + 4 } });
+    expect(moves).toEqual([[10, 5]]);
+  });
+
+  it("reports where an edit left the caret", () => {
+    // Typing a newline changes which line the caret is on, and pressing Enter at
+    // the end of a function is exactly when the trail should stop naming it.
+    mountCaret(DOC, 1);
+    view!.dispatch({ changes: { from: 0, insert: "x" }, selection: { anchor: 1 } });
+    expect(moves).toEqual([[1, 2]]);
+  });
+
+  it("hears nothing from a whole-state swap, which is why the pane reports one", () => {
+    // `setState` does not reach an update listener at all, in either direction:
+    // the buffer being put away sees nothing, and so does the one arriving. This
+    // is the fact `CodeEditor.swapTo` exists to cover, by reporting the caret of
+    // the buffer it just showed. Left as a test because it is the assumption the
+    // whole trail rests on, and it is not one this file can enforce.
+    mountCaret(DOC, 300);
+    view!.setState(
+      EditorState.create({
+        doc: "a\nb\nc",
+        selection: { anchor: 2 },
+        extensions: [caretListener((line, column) => moves.push([line, column]))],
+      }),
+    );
+    expect(moves).toEqual([]);
+  });
+
+  it("stays quiet on an update that left the caret alone", () => {
+    mountCaret(DOC, 40);
+    view!.dispatch({ annotations: [] });
+    expect(moves).toEqual([]);
   });
 });
