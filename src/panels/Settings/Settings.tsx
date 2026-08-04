@@ -69,6 +69,11 @@ export const EDITOR_TOGGLES: { key: keyof EditorDefaults; label: string; hint?: 
     label: "Keep unsaved edits across a quit",
     hint: "Quitting stashes unsaved buffers and restores them on the next launch instead of asking you to discard them. If the stash cannot be written, the discard prompt still appears.",
   },
+  {
+    key: "compactFolders",
+    label: "Compact single-child folders",
+    hint: "A folder whose only child is another folder renders as one row, src/utils/helpers, instead of a staircase. Gitignored folders are left alone.",
+  },
 ];
 
 // The in-app settings screen. Reads the reactive settings store and writes back

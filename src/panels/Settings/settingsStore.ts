@@ -93,6 +93,9 @@ export type EditorDefaults = {
   /** Keep unsaved buffers across a quit instead of prompting to discard
    *  them. (Phase 10) */
   hotExit: boolean;
+  /** Render a chain of single-child folders as one row, `src/utils/helpers`,
+   *  so a deep package layout costs one line instead of four. (Wave 6) */
+  compactFolders: boolean;
 };
 
 /** One project's editor overrides. `null`/absent means "no answer here" and
@@ -182,6 +185,7 @@ export const DEFAULT_SETTINGS: Settings = {
     minimap: false,
     wordCompletion: true,
     hotExit: true,
+    compactFolders: true,
   },
   harness: {},
   chat: {},

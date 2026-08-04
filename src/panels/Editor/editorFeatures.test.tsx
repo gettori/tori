@@ -30,6 +30,7 @@ const BASE: EditorDefaults = {
   minimap: false,
   wordCompletion: true,
   hotExit: true,
+  compactFolders: true,
 };
 
 const INDENTED = "function a() {\n    if (x) {\n        deep();\n    }\n}";
