@@ -4,13 +4,17 @@
 // changed, or removed in one surface without the others following, which is the
 // drift that makes a printed shortcut list lie.
 //
-// **This module imports `./events` and nothing else, deliberately.** `hotkeys.ts`
-// derives its bindings from here and `TerminalView` imports `hotkeys.ts`, so any
-// import added here lands in the terminal's chunk. That is why every `run` emits
-// an event instead of calling the thing it means, and why enablement travels as
-// a declarative `requires` tag rather than as a read of some store: resolving the
-// tags is the palette's job (see CommandPalette), and it already sits at the leaf
-// of the graph where reading the editor and git stores costs nothing.
+// **This module imports `./events` and `./settingsCatalog`, and nothing else,
+// deliberately.** `hotkeys.ts` derives its bindings from here and `TerminalView`
+// imports `hotkeys.ts`, so any import added here lands in the terminal's chunk.
+// That is why every `run` emits an event instead of calling the thing it means,
+// and why enablement travels as a declarative `requires` tag rather than as a
+// read of some store: resolving the tags is the palette's job (see
+// CommandPalette), and it already sits at the leaf of the graph where reading the
+// editor and git stores costs nothing. The catalogue is admitted on the same
+// terms: it is a list of labels that imports nothing at runtime, which
+// `commands.test.ts` checks rather than takes on trust.
+import { SECTION_TITLES, SETTINGS } from "./settingsCatalog";
 import {
   emit,
   emitWith,
@@ -47,7 +51,10 @@ import {
   EDITOR_SHRINK_SELECTION,
   EDITOR_JOIN_LINES,
   EDITOR_SPLIT_SELECTION,
-  EDITOR_TOGGLE_VIM,
+  PREFS_TOGGLE,
+  type PrefsToggle,
+  OPEN_SETTINGS,
+  type OpenSettings,
   EDITOR_LSP_DEFINITION,
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
@@ -67,6 +74,7 @@ export type CommandGroup =
   | "session"
   | "editor"
   | "git"
+  | "settings"
   | "help";
 
 /**
@@ -457,16 +465,6 @@ export const COMMANDS: Command[] = [
     run: () => emit(EDITOR_SPLIT_SELECTION),
     requires: ["editorFile"],
   },
-  {
-    // Palette-only, deliberately: a key that switches modal editing on is a key
-    // that can do it by accident, and the thing it changes is how every other
-    // key behaves.
-    id: "editor-toggle-vim",
-    label: "Toggle vim keybindings",
-    group: "editor",
-    run: () => emit(EDITOR_TOGGLE_VIM),
-    requires: ["editorFile"],
-  },
 
   // The language-server four. `languageServerExtensions()` already binds them
   // to F12 / Shift-F12 / F2 / Shift-Alt-F inside the editor's own keymap, which
@@ -568,4 +566,30 @@ export const COMMANDS: Command[] = [
     run: () => emit(GIT_PUSH),
     requires: ["gitRoot", "ahead"],
   },
+
+  // --- Preferences ---------------------------------------------------------
+  //
+  // One row per setting, generated rather than written out, so a setting added
+  // to the catalogue is reachable by name on the day it is added instead of on
+  // the day someone remembers this table.
+  //
+  // All prefixed, and all keyless. The prefix is what keeps thirty rows out of
+  // the way of the twenty that are actions: an empty palette is a list of things
+  // to do, and these only surface once you type towards one.
+  //
+  // A boolean the layer resolution answers for flips in place, in whichever
+  // layer is in force. Everything else opens the panel filtered to itself: a
+  // font stack has no other value to toggle to, and a command that guessed at
+  // one would be a worse affordance than the field.
+  ...SETTINGS.map(
+    (s): Command => ({
+      id: `prefs:${s.id}`,
+      label: `Preferences: ${s.label}`,
+      sub: SECTION_TITLES[s.section],
+      group: "settings",
+      run: s.toggles
+        ? () => emitWith<PrefsToggle>(PREFS_TOGGLE, { key: s.toggles! })
+        : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label }),
+    }),
+  ),
 ];

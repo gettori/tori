@@ -37,13 +37,17 @@ import {
   FOCUS_SEARCH,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
+  PREFS_TOGGLE,
+  type PrefsToggle,
+  OPEN_SETTINGS,
+  type OpenSettings,
   type LiveTab,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
-import { initSettings, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
+import { initSettings, toggleEditorDefault, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -146,6 +150,15 @@ function App() {
   const [liveTabs, setLiveTabs] = createSignal<LiveTab[]>([]);
   const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  // What the Settings panel's filter box opens with. A `Preferences: ...`
+  // command for a setting nothing can toggle (a font stack, a dollar ceiling)
+  // opens the panel *at* it rather than guessing at a value. Cleared on close,
+  // so opening Settings by hand is the whole panel again.
+  //
+  // `equals: false` because the panel may already be open: running the same row
+  // twice writes the same string, and a signal that swallowed it would leave the
+  // filter wherever the user had since typed.
+  const [settingsQuery, setSettingsQuery] = createSignal("", { equals: false });
   const [paletteOpen, setPaletteOpen] = createSignal(false);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   // First run: Settings opens on the Agents cards with a welcome note. The
@@ -271,6 +284,8 @@ function App() {
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
   let offStopChat: (() => void) | undefined;
+  let offPrefsToggle: (() => void) | undefined;
+  let offOpenSettings: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
@@ -296,6 +311,15 @@ function App() {
     // reveals of the right panel, so they un-hide the editor + file tree.
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, revealRightPanel);
     offSetRightMode = onEvent(SET_RIGHT_MODE, revealRightPanel);
+    // The palette's `Preferences: ...` commands. Handled here rather than in the
+    // Settings panel because the whole point is that they work with the panel
+    // shut: the store is global, and a toggle that first had to open a modal
+    // would be slower than the modal.
+    offPrefsToggle = onEventWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) => toggleEditorDefault(key));
+    offOpenSettings = onEventWith<OpenSettings>(OPEN_SETTINGS, ({ query }) => {
+      setSettingsQuery(query ?? "");
+      setSettingsOpen(true);
+    });
     // Stop, from Cmd+. or from a named palette row. Handled here rather than in
     // the chat panel because the whole point is that it works while something
     // else has focus - and `chat_interrupt` needs nothing from the panel but a
@@ -381,6 +405,8 @@ function App() {
     offFocusSearch?.();
     offProjectSearch?.();
     offSetRightMode?.();
+    offPrefsToggle?.();
+    offOpenSettings?.();
     document.body.classList.remove("dragging");
   });
 
@@ -479,7 +505,8 @@ function App() {
       <Show when={settingsOpen()}>
         <Settings
           welcome={welcome()}
-          onClose={() => (setSettingsOpen(false), setWelcome(false))}
+          query={settingsQuery()}
+          onClose={() => (setSettingsOpen(false), setWelcome(false), setSettingsQuery(""))}
         />
       </Show>
 

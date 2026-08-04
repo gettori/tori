@@ -462,30 +462,34 @@ export function vimModeOn(): boolean {
 }
 
 /**
- * Flip vim mode and remember it. Lives here rather than in `Settings.tsx`
- * because the palette can toggle it too, and the Settings panel is not
- * necessarily open when it does.
+ * Set one editor default, in whichever layer is in force.
  *
- * **Writes to whichever layer is in force**, exactly as the Settings checkbox
- * does. Always writing the global one would make this key look dead wherever a
- * workspace overrides it: the flip would land under the overlay, the overlay
- * would keep winning, and the shortcut would do nothing however often it was
- * pressed.
+ * The panel's checkboxes and the palette's `Preferences: ...` commands both come
+ * through here, so the two cannot disagree about where a click lands. Always
+ * writing the global layer would make a key look dead wherever a workspace
+ * overrides it: the write would land under the overlay, the overlay would keep
+ * winning, and the toggle would do nothing however often it was pressed.
  *
  * Swallowed on failure for the same reason a chat pick is: the choice has
  * already taken effect on screen.
  */
-export function toggleVimMode(): void {
-  const on = !vimModeOn();
-  if (editorOrigin().vimMode === "workspace") {
-    void setWorkspaceOverride("vimMode", on);
+export function setEditorDefault(key: keyof EditorDefaults, on: boolean): void {
+  if (editorOrigin()[key] === "workspace") {
+    void setWorkspaceOverride(key, on);
     return;
   }
   const next: Settings = {
     ...settings,
-    editorDefaults: { ...settings.editorDefaults, vimMode: on },
+    editorDefaults: { ...settings.editorDefaults, [key]: on },
   };
   void saveSettings(next).catch(() => {});
+}
+
+/** Flip one editor default. What a `Preferences: ...` command runs, which is why
+ *  it reads the resolved value rather than the stored one: the thing being
+ *  flipped is what the user can see. */
+export function toggleEditorDefault(key: keyof EditorDefaults): void {
+  setEditorDefault(key, !editorDefaults()[key]);
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

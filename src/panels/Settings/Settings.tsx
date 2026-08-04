@@ -1,14 +1,17 @@
-import { createMemo, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onMount, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
 import GithubSection from "./GithubSection";
 import LspSection from "./LspSection";
+import { matchingSections } from "./settingsSearch";
+import { SETTINGS, type SettingSection } from "../../utils/settingsCatalog";
 import {
   settings,
   saveSettings,
   editorDefaults,
   editorOrigin,
   overlayRoot,
+  setEditorDefault,
   setWorkspaceOverride,
   type Appearance,
   type Budgets,
@@ -48,45 +51,102 @@ function withFallback(primary: string, fallback: string): string {
   return `${quoted}, ${fallback}`;
 }
 
+type EditorToggle = { key: keyof EditorDefaults; label: string; hint?: string };
+
+/** The boolean editor rows of one section, read off the catalogue so a setting
+ *  is named in exactly one place (see `utils/settingsCatalog.ts`). */
+function togglesIn(section: SettingSection): EditorToggle[] {
+  return SETTINGS.filter((s) => s.section === section && s.toggles).map((s) => ({
+    key: s.toggles!,
+    label: s.label,
+    hint: s.hint,
+  }));
+}
+
 /** The editing-comfort toggles, in the order they read as a list rather than in
  *  the order the wave built them: what the text looks like, then what the
  *  editor does for you, then what survives a quit. */
-export const EDITOR_TOGGLES: { key: keyof EditorDefaults; label: string; hint?: string }[] = [
-  { key: "indentGuides", label: "Indentation guides" },
-  {
-    key: "softWrap",
-    label: "Soft wrap long lines",
-    hint: "The default for every buffer. ⌘K's “Toggle soft wrap” overrides it for one tab.",
-  },
-  { key: "renderWhitespace", label: "Show spaces and tabs" },
-  { key: "scrollPastEnd", label: "Scroll past the last line" },
-  { key: "rainbowBrackets", label: "Colour brackets by depth" },
-  { key: "bracketPairGuides", label: "Bracket pair guide lines" },
-  { key: "minimap", label: "Minimap" },
-  {
-    key: "wordCompletion",
-    label: "Word completion without a language server",
-    hint: "Suggests words already in the buffer, only where no language server has claimed the file, so it never competes with real completions.",
-  },
-  {
-    key: "hotExit",
-    label: "Keep unsaved edits across a quit",
-    hint: "Quitting stashes unsaved buffers and restores them on the next launch instead of asking you to discard them. If the stash cannot be written, the discard prompt still appears.",
-  },
-  {
-    key: "compactFolders",
-    label: "Compact single-child folders",
-    hint: "A folder whose only child is another folder renders as one row, src/utils/helpers, instead of a staircase. Gitignored folders are left alone.",
-  },
-];
+export const EDITOR_TOGGLES = togglesIn("editing");
+
+/** The two editor preferences that are behaviour rather than editing *comfort*.
+ *  Their own section above the list, because each needs a paragraph the rest do
+ *  not. */
+const OWN_ROW_TOGGLES = togglesIn("editor");
+
+/**
+ * One boolean row: the badge, the checkbox, and the per-workspace action.
+ *
+ * All three read and write whichever layer is in force. Showing one layer and
+ * writing another is the failure this shape exists to prevent: a click that
+ * changed a value the row was not displaying reads as the toggle being broken.
+ * The write goes through `setEditorDefault`, which the palette's `Preferences:
+ * ...` commands share, so the two surfaces cannot land in different layers.
+ */
+function ToggleRow(props: { entry: EditorToggle; workspaceName: string }) {
+  const key = () => props.entry.key;
+  const fromWorkspace = () => editorOrigin()[key()] === "workspace";
+  return (
+    <>
+      <div class={styles.row}>
+        <label class={styles.label}>{props.entry.label}</label>
+        {/* Only where the overlay actually supplies the value. "user" and
+            "default" are the ordinary case and would be a badge on almost every
+            row, which says nothing. */}
+        <Show when={fromWorkspace()}>
+          <span class={styles.originBadge} title={props.workspaceName}>
+            workspace
+          </span>
+        </Show>
+        <input
+          type="checkbox"
+          checked={editorDefaults()[key()]}
+          onChange={(e) => setEditorDefault(key(), e.currentTarget.checked)}
+        />
+        <Show when={overlayRoot()}>
+          <button
+            class={styles.originAction}
+            onClick={() =>
+              void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])
+            }
+            title={
+              fromWorkspace()
+                ? "Stop overriding this here and follow your global setting again"
+                : "Pin this setting for this workspace only, leaving your global setting alone"
+            }
+          >
+            {fromWorkspace() ? "Clear" : "Set here"}
+          </button>
+        </Show>
+      </div>
+      <Show when={props.entry.hint}>
+        <div class={styles.hint}>{props.entry.hint}</div>
+      </Show>
+    </>
+  );
+}
 
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled overlay like the other modals: Escape / backdrop click closes, the
 // first control takes focus on open.
-export default function Settings(props: { onClose: () => void; welcome?: boolean }) {
-  let firstControl: HTMLSelectElement | undefined;
+export default function Settings(props: { onClose: () => void; welcome?: boolean; query?: string }) {
+  let firstControl: HTMLInputElement | undefined;
   onMount(() => requestAnimationFrame(() => firstControl?.focus()));
+
+  /** The filter box. Seeded from the prop rather than bound to it, because a
+   *  `Preferences: ...` command opens the panel *at* a setting and the user has
+   *  to be able to type past it the moment it lands. */
+  const [query, setQuery] = createSignal(props.query ?? "");
+  // A later command re-filters a panel that is already open. ⌘K reaches the
+  // palette over this modal, and opening an open panel remounts nothing, so
+  // without this the row would close the palette and appear to do nothing.
+  // Deferred, so it is only a *change* of prop that overwrites what is typed.
+  createEffect(on(() => props.query, (q) => setQuery(q ?? ""), { defer: true }));
+  const shown = createMemo(() => matchingSections(query()));
+  const show = (section: SettingSection) => {
+    const only = shown();
+    return !only || only.has(section);
+  };
 
   /** The workspace an override would be written to, by its folder name. The
    *  editor pane owns which workspace is selected; this panel reads it rather
@@ -100,8 +160,6 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
   const setCheckpoints = (c: Partial<Checkpoints>) =>
     saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
-  const setEditorDefaults = (e: Partial<EditorDefaults>) =>
-    saveSettings({ ...settings, editorDefaults: { ...settings.editorDefaults, ...e } });
   const setChatDefaults = (c: Partial<ChatDefaults>) =>
     saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
   const setBudgets = (b: Partial<Budgets>) =>
@@ -164,421 +222,387 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 begin a session.
               </div>
             </Show>
-            <AgentsSection />
-            <LspSection />
-            <GithubSection />
+            {/* Above the sections, not inside one: it is the way through them
+                rather than one more thing to set. */}
+            <input
+              ref={firstControl}
+              class={`${styles.input} ${styles.search}`}
+              type="search"
+              aria-label="Search settings"
+              placeholder="Search settings"
+              value={query()}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+            />
+            <Show when={shown()?.size === 0}>
+              <div class={styles.hint}>No setting matches “{query().trim()}”.</div>
+            </Show>
 
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Appearance</div>
-              <div class={styles.row}>
-                <label class={styles.label}>Theme</label>
-                <div class={styles.control}>
-                  <select
-                    ref={firstControl}
-                    class={styles.select}
-                    value={currentTheme()}
-                    onChange={(e) => setAppearance({ theme: e.currentTarget.value })}
-                  >
-                    {/* Grouped by source so a user theme is visibly not one of
-                        Sway's, and a file dropped in the folder is visibly the
-                        thing that appeared. The user group is omitted entirely
-                        when the folder is empty, rather than shown empty. */}
-                    <optgroup label="Bundled">
-                      <For each={bundledThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
-                    </optgroup>
-                    <Show when={userThemes().length > 0}>
-                      <optgroup label="From ~/.config/sway/themes">
-                        <For each={userThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+            <Show when={show("agents")}>
+              <AgentsSection />
+            </Show>
+            <Show when={show("lsp")}>
+              <LspSection />
+            </Show>
+            <Show when={show("github")}>
+              <GithubSection />
+            </Show>
+
+            <Show when={show("appearance")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Appearance</div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Theme</label>
+                  <div class={styles.control}>
+                    <select
+                      class={styles.select}
+                      value={currentTheme()}
+                      onChange={(e) => setAppearance({ theme: e.currentTarget.value })}
+                    >
+                      {/* Grouped by source so a user theme is visibly not one of
+                          Sway's, and a file dropped in the folder is visibly the
+                          thing that appeared. The user group is omitted entirely
+                          when the folder is empty, rather than shown empty. */}
+                      <optgroup label="Bundled">
+                        <For each={bundledThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
                       </optgroup>
-                    </Show>
-                  </select>
+                      <Show when={userThemes().length > 0}>
+                        <optgroup label="From ~/.config/sway/themes">
+                          <For each={userThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+                        </optgroup>
+                      </Show>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            </Show>
 
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Typography</div>
-              <div class={styles.row}>
-                <label class={styles.label}>UI font family</label>
-                <input
-                  class={`${styles.input} ${styles.text}`}
-                  value={primaryFamily(settings.typography.uiFontFamily)}
-                  onChange={(e) =>
-                    setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })
-                  }
-                />
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>UI font size</label>
-                <input
-                  type="number"
-                  min="9"
-                  max="24"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.typography.uiFontSize}
-                  onChange={(e) =>
-                    setTypography({ uiFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.uiFontSize) })
-                  }
-                />
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Editor font family</label>
-                <input
-                  class={`${styles.input} ${styles.text}`}
-                  value={primaryFamily(settings.typography.editorFontFamily)}
-                  onChange={(e) =>
-                    setTypography({ editorFontFamily: withFallback(e.currentTarget.value, EDITOR_FONT_FALLBACK) })
-                  }
-                />
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Editor font size</label>
-                <input
-                  type="number"
-                  min="9"
-                  max="24"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.typography.editorFontSize}
-                  onChange={(e) =>
-                    setTypography({ editorFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.editorFontSize) })
-                  }
-                />
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Terminal font family</label>
-                <input
-                  class={`${styles.input} ${styles.text}`}
-                  value={primaryFamily(settings.typography.terminalFontFamily)}
-                  onChange={(e) =>
-                    setTypography({
-                      terminalFontFamily: withFallback(e.currentTarget.value, TERMINAL_FONT_FALLBACK),
-                    })
-                  }
-                />
-              </div>
-              {/* Worth naming: it is the one family here that needs no install,
-                  and its exact spelling is not guessable. */}
-              <div class={styles.hint}>
-                JetBrainsMono Nerd Font Mono ships with Sway, so its icon glyphs render without a
-                font install. Any family on this machine works too.
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Terminal font size</label>
-                <input
-                  type="number"
-                  min="9"
-                  max="24"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.typography.terminalFontSize}
-                  onChange={(e) =>
-                    setTypography({ terminalFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.terminalFontSize) })
-                  }
-                />
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Line height</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="2.5"
-                  step="0.1"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.typography.lineHeight}
-                  onChange={(e) =>
-                    setTypography({ lineHeight: clamp(e.currentTarget.value, 1, 2.5, settings.typography.lineHeight) })
-                  }
-                />
-              </div>
-            </section>
-
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Editor</div>
-              <div class={styles.row}>
-                <label class={styles.label}>Format on save</label>
-                <input
-                  type="checkbox"
-                  checked={settings.editorDefaults.formatOnSave}
-                  onChange={(e) => setEditorDefaults({ formatOnSave: e.currentTarget.checked })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Runs the project's own Biome or Prettier before writing, and nothing at all in a
-                project that has neither. Off by default: a repo carrying a formatter config is not
-                necessarily one that is currently formatted.
-              </div>
-              <div class={styles.row}>
-                <label class={styles.label}>Vim keybindings</label>
-                <input
-                  type="checkbox"
-                  checked={settings.editorDefaults.vimMode}
-                  onChange={(e) => setEditorDefaults({ vimMode: e.currentTarget.checked })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Modal editing in the code editor, with a status line showing pending commands.
-                Sway's own shortcuts keep working: ⌘S still saves, and the language commands still
-                fire from normal mode. Also in the command palette.
-              </div>
-            </section>
-
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Checkpoints</div>
-              <div class={styles.row}>
-                <label class={styles.label}>Snapshot on each prompt</label>
-                <input
-                  type="checkbox"
-                  checked={settings.checkpoints.enabled}
-                  onChange={(e) => setCheckpoints({ enabled: e.currentTarget.checked })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt.
-              </div>
-            </section>
-
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Editor</div>
-              {/* Data-driven rather than nine hand-written rows: every one of
-                  these is the same boolean row, and the list is what the wave
-                  keeps adding to. The hint is optional, carried only by the
-                  keys whose effect is not obvious from the label. */}
-              <For each={EDITOR_TOGGLES}>
-                {(t) => (
-                  <>
-                    <div class={styles.row}>
-                      <label class={styles.label}>{t.label}</label>
-                      {/* Only where the overlay actually supplies the value.
-                          "user" and "default" are the ordinary case and would be
-                          a badge on almost every row, which says nothing. */}
-                      <Show when={editorOrigin()[t.key] === "workspace"}>
-                        <span class={styles.originBadge} title={workspaceName()}>
-                          workspace
-                        </span>
-                      </Show>
-                      {/* The checkbox shows and sets whichever layer is in
-                          force: with an override present it edits the override,
-                          otherwise the user default. Writing to the layer being
-                          displayed is the only behaviour that does not surprise
-                          - a click that changed a value the row was not showing
-                          would read as the toggle being broken. */}
-                      <input
-                        type="checkbox"
-                        checked={editorDefaults()[t.key]}
-                        onChange={(e) =>
-                          editorOrigin()[t.key] === "workspace"
-                            ? void setWorkspaceOverride(t.key, e.currentTarget.checked)
-                            : setEditorDefaults({ [t.key]: e.currentTarget.checked })
-                        }
-                      />
-                      <Show when={overlayRoot()}>
-                        <button
-                          class={styles.originAction}
-                          onClick={() =>
-                            void setWorkspaceOverride(
-                              t.key,
-                              editorOrigin()[t.key] === "workspace" ? undefined : editorDefaults()[t.key],
-                            )
-                          }
-                          title={
-                            editorOrigin()[t.key] === "workspace"
-                              ? "Stop overriding this here and follow your global setting again"
-                              : "Pin this setting for this workspace only, leaving your global setting alone"
-                          }
-                        >
-                          {editorOrigin()[t.key] === "workspace" ? "Clear" : "Set here"}
-                        </button>
-                      </Show>
-                    </div>
-                    <Show when={t.hint}>
-                      <div class={styles.hint}>{t.hint}</div>
-                    </Show>
-                  </>
-                )}
-              </For>
-              <Show
-                when={overlayRoot()}
-                fallback={<div class={styles.hint}>Select a branch to override any of these for one workspace.</div>}
-              >
+            <Show when={show("typography")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Typography</div>
+                <div class={styles.row}>
+                  <label class={styles.label}>UI font family</label>
+                  <input
+                    class={`${styles.input} ${styles.text}`}
+                    value={primaryFamily(settings.typography.uiFontFamily)}
+                    onChange={(e) =>
+                      setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })
+                    }
+                  />
+                </div>
+                <div class={styles.row}>
+                  <label class={styles.label}>UI font size</label>
+                  <input
+                    type="number"
+                    min="9"
+                    max="24"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.typography.uiFontSize}
+                    onChange={(e) =>
+                      setTypography({ uiFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.uiFontSize) })
+                    }
+                  />
+                </div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Editor font family</label>
+                  <input
+                    class={`${styles.input} ${styles.text}`}
+                    value={primaryFamily(settings.typography.editorFontFamily)}
+                    onChange={(e) =>
+                      setTypography({ editorFontFamily: withFallback(e.currentTarget.value, EDITOR_FONT_FALLBACK) })
+                    }
+                  />
+                </div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Editor font size</label>
+                  <input
+                    type="number"
+                    min="9"
+                    max="24"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.typography.editorFontSize}
+                    onChange={(e) =>
+                      setTypography({ editorFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.editorFontSize) })
+                    }
+                  />
+                </div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Terminal font family</label>
+                  <input
+                    class={`${styles.input} ${styles.text}`}
+                    value={primaryFamily(settings.typography.terminalFontFamily)}
+                    onChange={(e) =>
+                      setTypography({
+                        terminalFontFamily: withFallback(e.currentTarget.value, TERMINAL_FONT_FALLBACK),
+                      })
+                    }
+                  />
+                </div>
+                {/* Worth naming: it is the one family here that needs no install,
+                    and its exact spelling is not guessable. */}
                 <div class={styles.hint}>
-                  “Set here” writes to {workspaceName()}/.sway/settings.json, which stays on this machine: Sway adds
-                  it to the repo's own ignore list, so it never reaches a commit or a teammate.
+                  JetBrainsMono Nerd Font Mono ships with Sway, so its icon glyphs render without a
+                  font install. Any family on this machine works too.
                 </div>
-              </Show>
-            </section>
-
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Chat</div>
-
-              <div class={styles.row}>
-                <label class={styles.label}>Open sessions in</label>
-                <div class={styles.control}>
-                  <select
-                    class={styles.select}
-                    value={settings.chatDefaults.defaultSurface}
-                    onChange={(e) => setChatDefaults({ defaultSurface: e.currentTarget.value as DefaultSurface })}
-                  >
-                    <option value="chat">Chat</option>
-                    <option value="agent">Terminal (agent tab)</option>
-                  </select>
+                <div class={styles.row}>
+                  <label class={styles.label}>Terminal font size</label>
+                  <input
+                    type="number"
+                    min="9"
+                    max="24"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.typography.terminalFontSize}
+                    onChange={(e) =>
+                      setTypography({ terminalFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.terminalFontSize) })
+                    }
+                  />
                 </div>
-              </div>
-              <div class={styles.hint}>
-                Which surface a click on a session opens. The other one stays available from the
-                split-button menu either way, and already-saved tabs reopen on the surface they were
-                saved on.
-              </div>
-
-              {/* No default model/effort/mode settings on purpose: a new chat
-                  opens on whatever the CLI itself would choose, and the
-                  composer's pickers change course mid-conversation. */}
-
-              <div class={styles.row}>
-                <label class={styles.label}>Stream responses</label>
-                <input
-                  type="checkbox"
-                  checked={settings.chatDefaults.streaming}
-                  onChange={(e) => setChatDefaults({ streaming: e.currentTarget.checked })}
-                />
-              </div>
-
-              <div class={styles.row}>
-                <label class={styles.label}>Transcript density</label>
-                <div class={styles.control}>
-                  <select
-                    class={styles.select}
-                    value={settings.chatDefaults.density}
-                    onChange={(e) => setChatDefaults({ density: e.currentTarget.value as TranscriptDensity })}
-                  >
-                    <option value="comfortable">Comfortable</option>
-                    <option value="compact">Compact</option>
-                  </select>
+                <div class={styles.row}>
+                  <label class={styles.label}>Line height</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="2.5"
+                    step="0.1"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.typography.lineHeight}
+                    onChange={(e) =>
+                      setTypography({ lineHeight: clamp(e.currentTarget.value, 1, 2.5, settings.typography.lineHeight) })
+                    }
+                  />
                 </div>
-              </div>
+              </section>
+            </Show>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Tool output lines</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="500"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.chatDefaults.toolOutputLines}
-                  onChange={(e) =>
-                    setChatDefaults({
-                      toolOutputLines: clamp(e.currentTarget.value, 0, 500, settings.chatDefaults.toolOutputLines),
-                    })
-                  }
-                />
-              </div>
-              <div class={styles.hint}>Lines shown before a tool's output folds. 0 shows all of it.</div>
+            <Show when={show("editor")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Editor</div>
+                {/* The same row as the comfort list below, so these two answer to
+                    the workspace overlay as well: before they did, the palette's
+                    “Preferences: Vim keybindings” wrote the layer in force while
+                    this row wrote and showed the global one, and a workspace that
+                    overrode either made the pair disagree on screen. */}
+                <For each={OWN_ROW_TOGGLES}>
+                  {(t) => <ToggleRow entry={t} workspaceName={workspaceName()} />}
+                </For>
+              </section>
+            </Show>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Auto-deny approvals after</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="3600"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.chatDefaults.approvalAutoDenySecs}
-                  onChange={(e) =>
-                    setChatDefaults({
-                      approvalAutoDenySecs: clamp(
-                        e.currentTarget.value,
-                        5,
-                        3600,
-                        settings.chatDefaults.approvalAutoDenySecs,
-                      ),
-                    })
-                  }
-                />
-              </div>
-              <div class={styles.hint}>
-                Seconds an unanswered tool approval waits before Sway denies it. Sway owns this
-                timeout so it always fires before the harness's own.
-              </div>
+            <Show when={show("checkpoints")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Checkpoints</div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Snapshot on each prompt</label>
+                  <input
+                    type="checkbox"
+                    checked={settings.checkpoints.enabled}
+                    onChange={(e) => setCheckpoints({ enabled: e.currentTarget.checked })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt.
+                </div>
+              </section>
+            </Show>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Stop this chat after</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="no limit"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.budgets.sessionUsd ?? ""}
-                  onChange={(e) => setBudgets({ sessionUsd: optionalNumber(e.currentTarget.value, 0) })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Dollars one chat may spend before it stops at its next tool call. Leave blank for no
-                limit, which is the default.
-              </div>
+            <Show when={show("editing")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Editor</div>
+                {/* Data-driven rather than ten hand-written rows: every one of
+                    these is the same boolean row, and the list is what the wave
+                    keeps adding to. The hint is optional, carried only by the
+                    keys whose effect is not obvious from the label. */}
+                <For each={EDITOR_TOGGLES}>
+                  {(t) => <ToggleRow entry={t} workspaceName={workspaceName()} />}
+                </For>
+                <Show
+                  when={overlayRoot()}
+                  fallback={<div class={styles.hint}>Select a branch to override any of these for one workspace.</div>}
+                >
+                  <div class={styles.hint}>
+                    “Set here” writes to {workspaceName()}/.sway/settings.json, which stays on this machine: Sway adds
+                    it to the repo's own ignore list, so it never reaches a commit or a teammate.
+                  </div>
+                </Show>
+              </section>
+            </Show>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Stop this project after</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="no limit"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.budgets.projectUsd ?? ""}
-                  onChange={(e) => setBudgets({ projectUsd: optionalNumber(e.currentTarget.value, 0) })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Dollars across every chat in one project. Two chats open on one repo spend one
-                budget.
-              </div>
+            <Show when={show("chat")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Chat</div>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Stop at context</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  placeholder="no limit"
-                  class={`${styles.input} ${styles.num}`}
-                  value={settings.budgets.contextPercent ?? ""}
-                  onChange={(e) => setBudgets({ contextPercent: optionalNumber(e.currentTarget.value, 1) })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Percent of the model's context window. Unlike the money limits this one recovers on
-                its own after a compaction.
-              </div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Open sessions in</label>
+                  <div class={styles.control}>
+                    <select
+                      class={styles.select}
+                      value={settings.chatDefaults.defaultSurface}
+                      onChange={(e) => setChatDefaults({ defaultSurface: e.currentTarget.value as DefaultSurface })}
+                    >
+                      <option value="chat">Chat</option>
+                      <option value="agent">Terminal (agent tab)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class={styles.hint}>
+                  Which surface a click on a session opens. The other one stays available from the
+                  split-button menu either way, and already-saved tabs reopen on the surface they were
+                  saved on.
+                </div>
 
-              <div class={styles.row}>
-                <label class={styles.label}>Show every hook event</label>
-                <input
-                  type="checkbox"
-                  checked={settings.chatDefaults.showSwayHooks}
-                  onChange={(e) => setChatDefaults({ showSwayHooks: e.currentTarget.checked })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Off, the transcript shows a hook only when it fails; a hook that ran as configured is
-                not news. On reveals every execution, Sway's own per-tool-call approval hook included.
-              </div>
-            </section>
+                {/* No default model/effort/mode settings on purpose: a new chat
+                    opens on whatever the CLI itself would choose, and the
+                    composer's pickers change course mid-conversation. */}
 
-            <section class={styles.section}>
-              <div class={styles.sectionTitle}>Harness</div>
-              <div class={styles.row}>
-                <label class={styles.label}>Binary path</label>
-                <input
-                  class={`${styles.input} ${styles.text}`}
-                  value={settings.harness.path ?? ""}
-                  placeholder="found on your login shell's PATH"
-                  onChange={(e) => setHarness({ path: e.currentTarget.value.trim() || null })}
-                />
-              </div>
-              <div class={styles.hint}>
-                Overrides the discovered binary for new chat sessions. Leave it empty to use the one
-                found above. The detected version and any drift from what Sway's adapter was built
-                against are shown in Agents.
-              </div>
-            </section>
+                <div class={styles.row}>
+                  <label class={styles.label}>Stream responses</label>
+                  <input
+                    type="checkbox"
+                    checked={settings.chatDefaults.streaming}
+                    onChange={(e) => setChatDefaults({ streaming: e.currentTarget.checked })}
+                  />
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Transcript density</label>
+                  <div class={styles.control}>
+                    <select
+                      class={styles.select}
+                      value={settings.chatDefaults.density}
+                      onChange={(e) => setChatDefaults({ density: e.currentTarget.value as TranscriptDensity })}
+                    >
+                      <option value="comfortable">Comfortable</option>
+                      <option value="compact">Compact</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Tool output lines</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="500"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.chatDefaults.toolOutputLines}
+                    onChange={(e) =>
+                      setChatDefaults({
+                        toolOutputLines: clamp(e.currentTarget.value, 0, 500, settings.chatDefaults.toolOutputLines),
+                      })
+                    }
+                  />
+                </div>
+                <div class={styles.hint}>Lines shown before a tool's output folds. 0 shows all of it.</div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Auto-deny approvals after</label>
+                  <input
+                    type="number"
+                    min="5"
+                    max="3600"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.chatDefaults.approvalAutoDenySecs}
+                    onChange={(e) =>
+                      setChatDefaults({
+                        approvalAutoDenySecs: clamp(
+                          e.currentTarget.value,
+                          5,
+                          3600,
+                          settings.chatDefaults.approvalAutoDenySecs,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Seconds an unanswered tool approval waits before Sway denies it. Sway owns this
+                  timeout so it always fires before the harness's own.
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Stop this chat after</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="no limit"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.budgets.sessionUsd ?? ""}
+                    onChange={(e) => setBudgets({ sessionUsd: optionalNumber(e.currentTarget.value, 0) })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Dollars one chat may spend before it stops at its next tool call. Leave blank for no
+                  limit, which is the default.
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Stop this project after</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="no limit"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.budgets.projectUsd ?? ""}
+                    onChange={(e) => setBudgets({ projectUsd: optionalNumber(e.currentTarget.value, 0) })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Dollars across every chat in one project. Two chats open on one repo spend one
+                  budget.
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Stop at context</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    placeholder="no limit"
+                    class={`${styles.input} ${styles.num}`}
+                    value={settings.budgets.contextPercent ?? ""}
+                    onChange={(e) => setBudgets({ contextPercent: optionalNumber(e.currentTarget.value, 1) })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Percent of the model's context window. Unlike the money limits this one recovers on
+                  its own after a compaction.
+                </div>
+
+                <div class={styles.row}>
+                  <label class={styles.label}>Show every hook event</label>
+                  <input
+                    type="checkbox"
+                    checked={settings.chatDefaults.showSwayHooks}
+                    onChange={(e) => setChatDefaults({ showSwayHooks: e.currentTarget.checked })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Off, the transcript shows a hook only when it fails; a hook that ran as configured is
+                  not news. On reveals every execution, Sway's own per-tool-call approval hook included.
+                </div>
+              </section>
+            </Show>
+
+            <Show when={show("harness")}>
+              <section class={styles.section}>
+                <div class={styles.sectionTitle}>Harness</div>
+                <div class={styles.row}>
+                  <label class={styles.label}>Binary path</label>
+                  <input
+                    class={`${styles.input} ${styles.text}`}
+                    value={settings.harness.path ?? ""}
+                    placeholder="found on your login shell's PATH"
+                    onChange={(e) => setHarness({ path: e.currentTarget.value.trim() || null })}
+                  />
+                </div>
+                <div class={styles.hint}>
+                  Overrides the discovered binary for new chat sessions. Leave it empty to use the one
+                  found above. The detected version and any drift from what Sway's adapter was built
+                  against are shown in Agents.
+                </div>
+              </section>
+            </Show>
           </div>
         </div>
       </div>

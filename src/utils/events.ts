@@ -1,6 +1,7 @@
 // Lightweight window-event bus for cross-component actions.
 import type { ContentBlock } from "./chatTypes";
 import type { AgentId } from "./agents";
+import type { EditorToggleKey } from "./settingsCatalog";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -147,11 +148,30 @@ export type EditorStashDirty = { requestId: string };
 export const EDITOR_STASH_RESULT = "sway:editor-stash-result";
 export type EditorStashResult = { requestId: string; ok: boolean };
 
-// Vim mode is a stored setting rather than editor state, but the toggle is an
-// event like the rest: `commands.ts` may import nothing but this module, so the
-// command cannot reach the settings store itself. CodeEditor listens, since it
-// is what the setting is about.
-export const EDITOR_TOGGLE_VIM = "sway:editor-toggle-vim";
+// Payload-carrying event: flip one `EditorDefaults` boolean in whichever layer
+// is currently in force (the workspace overlay where it supplies the value, the
+// user's settings file otherwise), exactly as the Settings checkbox does.
+//
+// A setting is not editor state, but the toggle is an event like the rest,
+// because `commands.ts` may reach nothing but this module and so cannot call the
+// settings store itself. App.tsx listens, since the store is global and the
+// command has to work with the panel closed.
+//
+// One event for every boolean rather than one per setting: the alternative is a
+// new event name and a new listener for each key a later phase adds, which is
+// the registration cost this generic payload exists to remove.
+export const PREFS_TOGGLE = "sway:prefs-toggle";
+export type PrefsToggle = { key: EditorToggleKey };
+
+// Payload-carrying event: open the Settings panel, optionally with its filter
+// box pre-filled so one setting is what the panel opens onto. Consumed by
+// App.tsx, which owns the panel's open flag.
+//
+// This is how a `Preferences: ...` command reaches a setting it cannot toggle: a
+// font stack or a dollar ceiling has no other value to flip to, so the command
+// takes you to it rather than guessing at one.
+export const OPEN_SETTINGS = "sway:open-settings";
+export type OpenSettings = { query?: string };
 
 // The language-server commands. They exist as events, and not only as CM6 key
 // bindings, so the palette and the Cmd+/ sheet list them: a binding the library

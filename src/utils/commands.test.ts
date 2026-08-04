@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 // Read as text rather than with `node:fs`: this project ships no `@types/node`,
 // and `?raw` is how the other source-inspecting test (revertGuard) does it.
 import commandsSource from "./commands.ts?raw";
+import catalogSource from "./settingsCatalog.ts?raw";
 import { COMMANDS } from "./commands";
+import { SETTINGS } from "./settingsCatalog";
 
 describe("the canonical command table", () => {
   it("has a unique id per command", () => {
@@ -124,12 +126,54 @@ describe("the canonical command table", () => {
     }
   });
 
-  it("imports nothing outside utils/events", () => {
+  it("imports nothing outside utils/events and the settings catalogue", () => {
     // Load-bearing, not stylistic. `hotkeys.ts` derives BINDINGS from this table
     // and TerminalView imports `hotkeys.ts`, so an import added here lands in
     // the terminal's chunk. That is the whole reason every `run` emits an event
     // and `requires` is a tag rather than a store read.
     const imports = [...commandsSource.matchAll(/^import[\s\S]*?from\s+"([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["./events"]);
+    expect([...imports].sort()).toEqual(["./events", "./settingsCatalog"]);
+  });
+
+  it("keeps the settings catalogue free of anything that survives the bundler", () => {
+    // The catalogue is admitted above on the terms its own header states: a list
+    // of labels. An ordinary import added to it would reach the terminal's chunk
+    // through this table, which is exactly what the rule above exists to stop, so
+    // it is checked rather than trusted. `import type` is erased and costs
+    // nothing.
+    const imports = [...catalogSource.matchAll(/^import\s+(type\s+)?[\s\S]*?from\s+"([^"]+)";$/gm)];
+    const runtime = imports.filter((m) => !m[1]).map((m) => m[2]);
+    expect(runtime).toEqual([]);
+  });
+});
+
+describe("the Preferences commands", () => {
+  const prefs = COMMANDS.filter((c) => c.id.startsWith("prefs:"));
+
+  it("offers one per setting, and nothing the catalogue does not name", () => {
+    // The registration a later phase forgets. A setting wired to a feature but
+    // missing from the catalogue is unreachable by name, which reads as the
+    // feature being absent rather than as the row being missing.
+    expect(prefs.map((c) => c.id).sort()).toEqual(SETTINGS.map((s) => `prefs:${s.id}`).sort());
+  });
+
+  it("names every one after its setting, under one prefix", () => {
+    // The prefix is what keeps thirty rows out of the way of the twenty that are
+    // actions: they surface only once you type towards one.
+    for (const s of SETTINGS) {
+      const c = prefs.find((c) => c.id === `prefs:${s.id}`)!;
+      expect(c.label).toBe(`Preferences: ${s.label}`);
+      expect(c.sub, `${s.id} does not say which section it lives in`).toBeTruthy();
+    }
+  });
+
+  it("carries no key, so none of them can shadow a real binding", () => {
+    for (const c of prefs) expect(c.keys, `${c.id} carries a key`).toBeUndefined();
+  });
+
+  it("gates nothing on a tab being open", () => {
+    // A preference is not an action on a buffer: "no file open" is a refusal
+    // that would make Settings unreachable from the palette in an empty window.
+    for (const c of prefs) expect(c.requires, `${c.id} is refused without a tab`).toBeUndefined();
   });
 });
