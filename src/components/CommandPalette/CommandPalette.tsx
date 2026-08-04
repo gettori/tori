@@ -6,14 +6,32 @@ import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
 import { stagedFiles, canPush } from "../../utils/gitActions";
-import { emitWith, NEW_SESSION, STOP_CHAT, type StopChat, type NewSession } from "../../utils/events";
+import {
+  emitWith,
+  NEW_SESSION,
+  OPEN_IN_EDITOR,
+  STOP_CHAT,
+  type OpenInEditor,
+  type StopChat,
+  type NewSession,
+} from "../../utils/events";
+import { loadFrecency, topFiles } from "../../utils/frecency";
+import { mentionPath } from "../../utils/pathScope";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import dialogStyles from "../Dialogs/Dialogs.module.css";
 import styles from "./CommandPalette.module.css";
 
+/** How many recent files the palette offers before the actions. Short on
+ *  purpose: this is a shortcut past Cmd+P for the two or three files you are
+ *  living in, not a second file picker. */
+const MAX_RECENTS = 5;
+
 type PaletteItem = {
   id: string;
   label: string;
+  /** Heading this row sits under. Rows carrying the same one must be adjacent;
+   *  the header renders once, where the value changes. */
+  section?: string;
   sub?: string;
   /** Key chips, for commands that also carry a binding. */
   keys?: string[];
@@ -76,6 +94,13 @@ export default function CommandPalette(props: {
   let input: HTMLInputElement | undefined;
   const rows: (HTMLDivElement | undefined)[] = [];
 
+  // The files this branch-unit is actually worked in, read once when the
+  // palette opens. Same source and same ranking as Cmd+P's empty box, through
+  // the shared helper, so the two surfaces cannot disagree about what "recent"
+  // means.
+  const openedAt = Date.now();
+  const recents = topFiles(loadFrecency(openedAt)[props.selected?.folderPath ?? ""] ?? {}, openedAt, MAX_RECENTS);
+
   onMount(() => {
     requestAnimationFrame(() => input?.focus());
   });
@@ -134,16 +159,39 @@ export default function CommandPalette(props: {
     return actionItems;
   });
 
-  const results = createMemo(() => {
-    const q = query().trim();
-    if (!q) return items();
+  // One row per recent file, ahead of the actions. Their own section, so a
+  // query that matches a file and an action cannot interleave the two into a
+  // list with no shape.
+  const recentItems = createMemo((): PaletteItem[] =>
+    recents.map((path) => ({
+      id: `recent:${path}`,
+      section: "Recent files",
+      // The workspace-relative path, as Cmd+P labels its rows: a bare basename
+      // makes two `index.ts` rows indistinguishable, and it is also what you
+      // would type to find one.
+      label: props.selected ? mentionPath(path, props.selected.folderPath) : path,
+      run: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path }),
+    })),
+  );
+
+  /** Fuzzy-filter one section against the query, best first. */
+  function filtered(list: PaletteItem[], q: string): PaletteItem[] {
+    if (!q) return list;
     const scored: { item: PaletteItem; score: number }[] = [];
-    for (const item of items()) {
+    for (const item of list) {
       const s = fuzzyScore(q, item.label);
       if (s !== null) scored.push({ item, score: s });
     }
     scored.sort((a, b) => b.score - a.score);
     return scored.map((r) => r.item);
+  }
+
+  // The sections stay separate through filtering and are concatenated after, so
+  // the recents keep their block (and their heading) instead of scattering
+  // through the actions by score.
+  const results = createMemo(() => {
+    const q = query().trim();
+    return [...filtered(recentItems(), q), ...filtered(items(), q)];
   });
 
   // A disabled row lists (that is how you learn why it is refused) but does not
@@ -219,31 +267,45 @@ export default function CommandPalette(props: {
             <div class={dialogStyles.pickerList} role="listbox" aria-label="Actions">
               <For each={results()}>
                 {(item, i) => (
-                  <div
-                    ref={(el) => (rows[i()] = el)}
-                    class={`${dialogStyles.pickerItem} ${styles.item}`}
-                    classList={{
-                      [dialogStyles.active]: i() === index(),
-                      [styles.disabled]: !!item.disabled,
-                    }}
-                    role="option"
-                    aria-selected={i() === index()}
-                    aria-disabled={!!item.disabled}
-                    onClick={() => pick(item)}
-                    onMouseEnter={() => setIndex(i())}
-                  >
-                    <span class={styles.itemLabel}>{item.label}</span>
-                    <Show when={item.sub}>
-                      <span class={styles.itemSub}>{item.sub}</span>
+                  <>
+                    {/* Once, where the section changes, and hidden from the
+                        accessibility tree. A heading is not an option, and this
+                        listbox promises selectable children: announcing one the
+                        arrow keys can never reach is the same fault the filter
+                        and "No matches" are kept out for. Nothing is lost by
+                        hiding it, since each row already reads as what it is -
+                        a path, or an action's name. */}
+                    <Show when={item.section && item.section !== results()[i() - 1]?.section}>
+                      <div class={styles.sectionHeader} aria-hidden="true">
+                        {item.section}
+                      </div>
                     </Show>
-                    <Show when={item.keys}>
-                      {(keys) => (
-                        <span class={styles.itemKeys}>
-                          <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
-                        </span>
-                      )}
-                    </Show>
-                  </div>
+                    <div
+                      ref={(el) => (rows[i()] = el)}
+                      class={`${dialogStyles.pickerItem} ${styles.item}`}
+                      classList={{
+                        [dialogStyles.active]: i() === index(),
+                        [styles.disabled]: !!item.disabled,
+                      }}
+                      role="option"
+                      aria-selected={i() === index()}
+                      aria-disabled={!!item.disabled}
+                      onClick={() => pick(item)}
+                      onMouseEnter={() => setIndex(i())}
+                    >
+                      <span class={styles.itemLabel}>{item.label}</span>
+                      <Show when={item.sub}>
+                        <span class={styles.itemSub}>{item.sub}</span>
+                      </Show>
+                      <Show when={item.keys}>
+                        {(keys) => (
+                          <span class={styles.itemKeys}>
+                            <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
+                          </span>
+                        )}
+                      </Show>
+                    </div>
+                  </>
                 )}
               </For>
             </div>

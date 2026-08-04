@@ -20,9 +20,10 @@ const { default: CommandPalette } = await import("./CommandPalette");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
 const { publishEditorState, clearEditorState } = await import("../../utils/editorState");
 const { refreshStatus } = await import("../../utils/gitActions");
-const { NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE } = await import(
+const { NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE, OPEN_IN_EDITOR } = await import(
   "../../utils/events"
 );
+const { note, saveFrecency } = await import("../../utils/frecency");
 
 const selection = {
   spaceName: "work",
@@ -64,6 +65,9 @@ function fire(label: string, event: string): unknown {
 beforeEach(async () => {
   bridge.calls.length = 0;
   onOpenSettings.mockClear();
+  // Recents are read from storage, which jsdom keeps between tests: a leftover
+  // record would put file rows in a test that never asked for any.
+  localStorage.clear();
   // Both stores are module-level and outlive any one palette, so each test says
   // what the editor and the index hold rather than inheriting the last one's.
   clearEditorState();
@@ -196,5 +200,73 @@ describe("CommandPalette", () => {
     expect(rowLabels().length).toBeLessThan(all);
     expect(rowLabels()).toContain("Show or hide the sidebar");
     expect(rowLabels()).toContain("Filter the sidebar");
+  });
+});
+
+describe("the recent files section", () => {
+  /** Remember working in these, newest last. */
+  function worked(...rels: string[]) {
+    const now = Date.now();
+    let store = {};
+    rels.forEach((rel, i) => {
+      store = note(store, REPO, `${REPO}/${rel}`, "edit", now - (rels.length - i) * 1000);
+    });
+    saveFrecency(store);
+  }
+
+  it("heads the list with nothing typed", () => {
+    worked("src/old.ts", "src/hot.ts");
+    open();
+    expect(screen.getByText("Recent files")).toBeTruthy();
+    // Newest-worked first, and ahead of every action.
+    expect(rowLabels().slice(0, 2)).toEqual(["src/hot.ts", "src/old.ts"]);
+  });
+
+  it("is absent entirely for a workspace nothing has been worked in", () => {
+    open();
+    expect(screen.queryByText("Recent files")).toBeNull();
+  });
+
+  it("goes away, heading and all, once a query filters its files out", () => {
+    worked("src/hot.ts");
+    open();
+    expect(screen.getByText("Recent files")).toBeTruthy();
+
+    fireEvent.input(screen.getByRole("textbox"), { target: { value: "sidebar" } });
+
+    expect(screen.queryByText("Recent files")).toBeNull();
+    expect(screen.queryByText("src/hot.ts")).toBeNull();
+    expect(rowLabels()).toContain("Filter the sidebar");
+  });
+
+  it("keeps its own block when a query matches both a file and an action", () => {
+    worked("src/sidebar-notes.ts");
+    open();
+
+    fireEvent.input(screen.getByRole("textbox"), { target: { value: "sidebar" } });
+
+    // The file leads under its heading rather than being scattered among the
+    // actions by score.
+    expect(screen.getByText("Recent files")).toBeTruthy();
+    expect(rowLabels()[0]).toBe("src/sidebar-notes.ts");
+    expect(rowLabels()).toContain("Filter the sidebar");
+  });
+
+  it("opens the file it names", () => {
+    worked("src/hot.ts");
+    open();
+    expect(fire("src/hot.ts", OPEN_IN_EDITOR)).toEqual({ path: `${REPO}/src/hot.ts` });
+  });
+
+  // The listbox promises selectable children, and the heading is not one: it is
+  // visible, but nothing in the accessibility tree may offer it, or the arrow
+  // keys would appear to skip a row that was announced.
+  it("keeps the heading out of the accessibility tree", () => {
+    worked("src/hot.ts");
+    open();
+    const list = screen.getByRole("listbox");
+    const announced = [...list.children].filter((el) => el.getAttribute("aria-hidden") !== "true");
+    expect(announced).toHaveLength(screen.getAllByRole("option").length);
+    expect(screen.getByText("Recent files").getAttribute("aria-hidden")).toBe("true");
   });
 });

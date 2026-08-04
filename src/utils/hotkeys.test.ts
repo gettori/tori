@@ -52,6 +52,7 @@ describe("the canonical binding table", () => {
         "project-search",
         "quick-open",
         "reload",
+        "reopen-closed-tab",
         "shortcut-sheet",
         "stop-chat",
         "tab-cycle",

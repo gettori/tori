@@ -23,6 +23,7 @@ const {
 } = await import("../../utils/symbols");
 const { publishEditorState, clearEditorState } = await import("../../utils/editorState");
 const { onWith, OPEN_IN_EDITOR } = await import("../../utils/events");
+const { note, saveFrecency } = await import("../../utils/frecency");
 type OpenInEditor = { path: string; line?: number; col?: number };
 
 const PATH = "/proj/src/alpha.ts";
@@ -61,7 +62,15 @@ function typeInto(value: string) {
   return input;
 }
 
+/** The rows on screen, in the order they are offered. */
+function rowLabels(): string[] {
+  return [...document.querySelectorAll("[class*=qoName]")].map((el) => el.textContent ?? "");
+}
+
 beforeEach(() => {
+  // The ranking is read from storage, which jsdom keeps between tests in a
+  // file: a leftover record would decide another test's order.
+  localStorage.clear();
   clearSymbols();
   clearEditorState();
   searched = [];
@@ -92,6 +101,35 @@ describe("the file finder", () => {
     await waitFor(() => expect(screen.getByText("src/beta.ts")).toBeTruthy());
     fireEvent.click(screen.getByText("src/beta.ts"));
     expect(opened).toEqual([{ path: "/proj/src/beta.ts" }]);
+  });
+
+  // The empty box is the one the ranking is for: with nothing typed there is no
+  // query to sort by, so the only useful order is what you actually work in.
+  it("puts the files you work in first before anything is typed", async () => {
+    // `beta` sorts second in the project's own order; one edit is enough to
+    // outrank a file with no record at all.
+    saveFrecency(note({}, "/proj", "/proj/src/beta.ts", "edit", Date.now()));
+
+    render(() => <QuickOpen root="/proj" onClose={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText("src/beta.ts")).toBeTruthy());
+    expect(rowLabels()).toEqual(["src/beta.ts", "src/alpha.ts"]);
+  });
+
+  it("leaves a typed query to the fuzzy score, not to what you opened last", async () => {
+    saveFrecency(note({}, "/proj", "/proj/src/beta.ts", "edit", Date.now()));
+    render(() => <QuickOpen root="/proj" onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText("src/beta.ts")).toBeTruthy());
+
+    typeInto("alpha");
+
+    expect(rowLabels()).toEqual(["src/alpha.ts"]);
+  });
+
+  it("ranks on the project's own order when nothing has been worked in yet", async () => {
+    render(() => <QuickOpen root="/proj" onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText("src/alpha.ts")).toBeTruthy());
+    expect(rowLabels()).toEqual(["src/alpha.ts", "src/beta.ts"]);
   });
 });
 
