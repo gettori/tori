@@ -178,6 +178,27 @@ describe("launching with a stash", () => {
     expect(ed.view.state.sliceDoc()).toBe(ORIGINAL);
   });
 
+  it("hands an untitled buffer's text back too", async () => {
+    // A scratch buffer is a file whose disk copy is empty and which lives
+    // nowhere near the project. Nothing here knows that, and that is the claim:
+    // it is keyed by an absolute path like every other buffer, so `dirtyStash`
+    // picks it up and the rebuild finds it with no scratch-shaped branch in the
+    // stash at all.
+    const SCRATCH = "/home/me/.config/sway/scratch/Untitled-1";
+    disk[SCRATCH] = "";
+    const first = await mountEditor(SCRATCH);
+    typeInto(first.view, "a thought worth keeping\n");
+    await requestStash();
+    mounted?.unmount();
+    mounted = null;
+    await loadPendingStash(Date.now());
+
+    const ed = await mountEditor(SCRATCH);
+
+    expect(ed.view.state.sliceDoc()).toBe("a thought worth keeping\n");
+    expect(ed.dirty[ed.dirty.length - 1]).toEqual({ path: SCRATCH, dirty: true });
+  });
+
   it("takes the entry, so a second buffer for the same file reads the file", async () => {
     await quitDirtyThenRelaunch("zero\n");
     expect(pendingStashPaths()).toEqual([]);
