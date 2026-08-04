@@ -30,10 +30,13 @@ beforeEach(() => {
  *  decision instead of a silent omission. */
 const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "vimMode"];
 
-/** Every comfort key of `EditorDefaults`, read off the defaults so a key added
- *  to the type shows up here rather than as a silent gap on screen. */
+/** Every comfort key of `EditorDefaults` that is a switch, read off the defaults
+ *  so a key added to the type shows up here rather than as a silent gap on
+ *  screen. A setting that is not a boolean cannot be a checkbox row: it has its
+ *  own control, and the catalogue's `edits` field is what keeps *it* from going
+ *  missing (see `settingsCatalog.test.tsx`). */
 const EDITOR_KEYS = (Object.keys(DEFAULT_SETTINGS.editorDefaults) as (keyof EditorDefaults)[]).filter(
-  (k) => !OWN_ROW.includes(k),
+  (k) => !OWN_ROW.includes(k) && typeof DEFAULT_SETTINGS.editorDefaults[k] === "boolean",
 );
 
 /** The defaults as they were *before* anything saved. `DEFAULT_SETTINGS` is the

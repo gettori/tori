@@ -53,6 +53,26 @@ export function composeDiagnostic(
   return `@${mention}#L${startLine}-L${endLine} ${severity}: ${flat}`;
 }
 
+// `@<file>#L<line> Fix this <tag>: <text>`, the TODO wire format (wave 6). Same
+// relativity rule and same mention-first shape as the composers above. The
+// instruction is spelled out because, unlike a diagnostic, the line itself does
+// not say what is wrong: a TODO is a note to a human, so what turns it into a
+// request is the sentence around it. Flattened for `composeDiagnostic`'s reason
+// - a raw newline submits the prompt on some agents, which would break the
+// insert-only contract this module exists to keep.
+export function composeTodo(
+  target: SessionTarget,
+  filePath: string,
+  line: number,
+  tag: string,
+  text: string,
+): string {
+  const cwd = target.sessionCwd || target.folderPath;
+  const mention = mentionPath(filePath, cwd);
+  const flat = text.replace(/\s*\n\s*/g, " ").trim();
+  return `@${mention}#L${line} Fix this ${tag}: ${flat}`;
+}
+
 // A resumed-but-not-yet-interactive session (mid-boot) probes "not-ready" and
 // gets queued; a session waiting on a permission prompt probes "blocked" and
 // is refused outright (the user must answer that prompt first, not queue

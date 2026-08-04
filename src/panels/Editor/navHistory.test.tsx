@@ -168,6 +168,19 @@ describe("recording where you have been", () => {
     await goBack(`${REPO}/src/thing.ts`);
   });
 
+  it("records a TODO opened from the explorer, at its line", async () => {
+    // The panel's own test proves the row leaves through OPEN_IN_EDITOR. This
+    // is the other half: a TODO is a place, so Back takes you off it and the
+    // line it carried is what you came back from.
+    await mountEditor();
+    await arrive({ path: `${REPO}/a.ts` });
+    await arrive({ path: `${REPO}/src/leaky.ts`, line: 42 });
+
+    expect(code?.goto).toMatchObject({ path: `${REPO}/src/leaky.ts`, line: 42 });
+    expect(backBtn().disabled).toBe(false);
+    await goBack(`${REPO}/a.ts`);
+  });
+
   it("greys out both arrows with nothing open, and forward until you have gone back", async () => {
     await mountEditor();
     await arrive({ path: `${REPO}/a.ts` });

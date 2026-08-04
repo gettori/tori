@@ -107,7 +107,28 @@ export type EditorDefaults = {
   /** Render a chain of single-child folders as one row, `src/utils/helpers`,
    *  so a deep package layout costs one line instead of four. (Wave 6) */
   compactFolders: boolean;
+  /**
+   * Comma-separated tags the TODO panel looks for, e.g. `TODO,FIXME,HACK`.
+   * The one value here that is not a switch, and the reason it is a string
+   * rather than a list: the overlay validates a workspace override by comparing
+   * `typeof` against this default and decides its origin badge by inequality.
+   * Both are exact for a string; on an array the first would admit
+   * `[1, {}]` and the second would call every workspace value an override.
+   * Split into tags by `todoTags` in `utils/todoScan.ts`. (Wave 6)
+   */
+  todoPatterns: string;
 };
+
+/** The keys of `EditorDefaults` a command can flip and the panel draws as a
+ *  checkbox, which is every one whose value is a boolean.
+ *
+ *  Derived from the shape rather than written out, so a setting that is not a
+ *  switch cannot quietly become flippable by being added to the type: the
+ *  compiler rejects `toggles: "todoPatterns"` rather than a `Preferences:`
+ *  command turning a list of tags into `true`. */
+export type EditorToggleKey = {
+  [K in keyof EditorDefaults]: EditorDefaults[K] extends boolean ? K : never;
+}[keyof EditorDefaults];
 
 /** One project's editor overrides. `null`/absent means "no answer here" and
  *  falls through to `editorDefaults`, which is distinct from an explicit
@@ -198,6 +219,7 @@ export const DEFAULT_SETTINGS: Settings = {
     wordCompletion: true,
     hotExit: true,
     compactFolders: true,
+    todoPatterns: "TODO,FIXME,HACK,XXX",
   },
   harness: {},
   chat: {},
@@ -427,9 +449,9 @@ export function editorOrigin(): Record<keyof EditorDefaults, Layer> {
  * preference here makes (see `rememberChatPrefs`), and is reported rather than
  * swallowed because this one writes into the user's repo.
  */
-export async function setWorkspaceOverride(
-  key: keyof EditorDefaults,
-  value: boolean | undefined,
+export async function setWorkspaceOverride<K extends keyof EditorDefaults>(
+  key: K,
+  value: EditorDefaults[K] | undefined,
 ): Promise<void> {
   const root = overlayRoot();
   if (!root) return;
@@ -476,7 +498,10 @@ export function vimModeOn(): boolean {
  * Swallowed on failure for the same reason a chat pick is: the choice has
  * already taken effect on screen.
  */
-export function setEditorDefault(key: keyof EditorDefaults, on: boolean): void {
+export function setEditorDefault<K extends keyof EditorDefaults>(
+  key: K,
+  on: EditorDefaults[K],
+): void {
   if (editorOrigin()[key] === "workspace") {
     void setWorkspaceOverride(key, on);
     return;
@@ -490,8 +515,9 @@ export function setEditorDefault(key: keyof EditorDefaults, on: boolean): void {
 
 /** Flip one editor default. What a `Preferences: ...` command runs, which is why
  *  it reads the resolved value rather than the stored one: the thing being
- *  flipped is what the user can see. */
-export function toggleEditorDefault(key: keyof EditorDefaults): void {
+ *  flipped is what the user can see. Only the boolean settings have an "other"
+ *  value to flip to, which is what `EditorToggleKey` says in the type. */
+export function toggleEditorDefault(key: EditorToggleKey): void {
   setEditorDefault(key, !editorDefaults()[key]);
 }
 
