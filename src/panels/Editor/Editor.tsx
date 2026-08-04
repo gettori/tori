@@ -18,6 +18,7 @@ import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import Breadcrumbs from "./Breadcrumbs";
+import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
@@ -52,6 +53,9 @@ import {
   GitPullRequest,
   TriangleAlert,
   ListTree,
+  // Aliased: `Bookmark` here is the glyph, and the type of the same name is the
+  // thing it stands for.
+  Bookmark as BookmarkGlyph,
   Search,
   MessagesSquare,
   Share2,
@@ -130,6 +134,18 @@ import {
   type FrecencyStore,
   type Touch,
 } from "../../utils/frecency";
+import {
+  bookmarkRows,
+  bookmarksFor,
+  labelBookmark,
+  loadBookmarks,
+  mapPaths as mapBookmarkPaths,
+  saveBookmarks,
+  setFileBookmarks,
+  toggleBookmark,
+  type Bookmark,
+  type BookmarkStore,
+} from "../../utils/bookmarks";
 import { rememberClosedTab, sweepClosed, takeClosedTab, type ClosedStore } from "./reopenStack";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
@@ -169,6 +185,7 @@ type RightMode =
   | "pulls"
   | "problems"
   | "outline"
+  | "bookmarks"
   | "shared"
   | "docs"
   | "session"
@@ -180,6 +197,7 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
   outline: { mode: "outline", label: "Outline", icon: ListTree },
+  bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
@@ -301,6 +319,7 @@ export default function Editor(props: {
     "pulls",
     "problems",
     "outline",
+    "bookmarks",
     "search",
     "session",
     "shared",
@@ -324,6 +343,11 @@ export default function Editor(props: {
       // an always-present empty panel reads as "this file has no symbols".
       case "outline":
         return symbolsSupported(activeId());
+      // Bookmarks is deliberately *not* gated on having any, unlike Problems and
+      // Outline above. A mark is made by clicking a gutter column that is empty
+      // until you do, and this panel's empty state is the only place that says
+      // so; hiding it until a mark exists would hide the instructions behind the
+      // thing they explain.
       default:
         return true;
     }
@@ -365,6 +389,36 @@ export default function Editor(props: {
     return at.path === activeFileTab()?.path ? { line: at.line, column: at.column } : null;
   };
 
+  /** Mark or unmark a line, from a click on the gutter. */
+  function toggleMark(path: string, line: number) {
+    setBookmarkStore((s) => toggleBookmark(s, ws(), path, line));
+  }
+
+  /** An edit moved the marks in an open buffer, so the store follows. The buffer
+   *  is the authority for the lines it holds: its positions were mapped through
+   *  the change, and the line numbers in storage were not.
+   *
+   *  Only for the lines it holds, though. A file can be shorter than it was when
+   *  a mark was made (a checkout, a revert), and the buffer has no way to report
+   *  a mark past its own end. Taking its answer as the whole truth would delete
+   *  those on the next keystroke, which is a permanent loss of something a person
+   *  put there by hand, so they are carried across untouched. */
+  function marksMoved(path: string, marks: Bookmark[], docLines: number) {
+    setBookmarkStore((s) => {
+      const beyond = bookmarksFor(s, ws(), path).filter((b) => b.line > docLines);
+      return setFileBookmarks(s, ws(), path, [...marks, ...beyond]);
+    });
+  }
+
+  /** Name a mark from the panel, or clear the name with an empty answer. The
+   *  gutter has one gesture and it is already spent on the toggle; naming is a
+   *  thing you do to a list, so it lives where the list is. */
+  async function labelMark(row: { path: string; line: number; label?: string }) {
+    const label = await askText(`Name the bookmark at line ${row.line}`, row.label ?? "");
+    if (label === null) return;
+    setBookmarkStore((s) => labelBookmark(s, ws(), row.path, row.line, label));
+  }
+
   /** Note arriving somewhere. Synthetic views are skipped: a commit-log or
    *  conflict tab is a thing you opened, not a place in the code you would want
    *  Back to take you to. */
@@ -372,6 +426,14 @@ export default function Editor(props: {
     if (isSyntheticId(entry.path)) return;
     setJumpsByWs((s) => recordIn(s, ws(), entry));
   }
+
+  // The lines you marked, per workspace. Read once at start and written back on
+  // every change, like frecency below: nothing else needs to be plumbed for it,
+  // and a mark has to outlive the tab it was made in.
+  const [bookmarks, setBookmarkStore] = createSignal<BookmarkStore>(loadBookmarks());
+  createEffect(() => saveBookmarks(bookmarks()));
+  const marksHere = () => bookmarksFor(bookmarks(), ws(), activeFileTab()?.path ?? "");
+  const bookmarkList = () => bookmarkRows(bookmarks(), ws());
 
   // How much you work in each file, for the pickers' empty box. Read once at
   // start and written back on every change; the pickers read the same storage
@@ -1006,6 +1068,7 @@ export default function Editor(props: {
     // dangling reference this sweep exists to stop.
     setJumpsByWs((s) => mapPathsIn(s, (p) => (isUnderPath(p, path) ? null : p)));
     setFrecency((s) => mapFrecencyPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
+    setBookmarkStore((s) => mapBookmarkPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
     setClosedByWs((s) => sweepClosed(s, (p) => (isUnderPath(p, path) ? null : p)));
     const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
     if (!next.removed.length) return;
@@ -1032,6 +1095,7 @@ export default function Editor(props: {
     // "did any tab move" return.
     setJumpsByWs((s) => mapPathsIn(s, (p) => repoint(p, from, to) ?? p));
     setFrecency((s) => mapFrecencyPaths(s, (p) => repoint(p, from, to) ?? p));
+    setBookmarkStore((s) => mapBookmarkPaths(s, (p) => repoint(p, from, to) ?? p));
     setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
     const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
     if (!next.moved.length) return;
@@ -1454,6 +1518,9 @@ export default function Editor(props: {
               onDirty={handleDirty}
               onCursorJump={(path, line) => recordJump({ path, line })}
               onCaretMove={noteCaret}
+              bookmarks={marksHere()}
+              onToggleBookmark={toggleMark}
+              onBookmarksMoved={marksMoved}
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}
@@ -1569,6 +1636,14 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "outline"}>
             <OutlinePanel path={activeId()} />
+          </Match>
+          <Match when={rightMode() === "bookmarks"}>
+            <BookmarksPanel
+              rows={bookmarkList()}
+              root={root()}
+              onLabel={labelMark}
+              onRemove={(row) => toggleMark(row.path, row.line)}
+            />
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />
