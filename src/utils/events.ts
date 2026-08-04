@@ -115,6 +115,13 @@ export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
 /** Soft-wrap this one buffer, whatever `settings.editorDefaults.softWrap` says. */
 export const EDITOR_TOGGLE_SOFT_WRAP = "sway:editor-toggle-soft-wrap";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
+
+// Back and forward through the jump list. Consumed by Editor.tsx, which is
+// where the list lives: it is bucketed by workspace exactly as the tab strip is,
+// and this pane is the only thing that knows which workspace is selected.
+export const EDITOR_NAV_BACK = "sway:editor-nav-back";
+export const EDITOR_NAV_FORWARD = "sway:editor-nav-forward";
+
 // The selection commands, consumed by CodeEditor for the same reason as save:
 // they act on the live buffer's selection, which only it holds. Each has a CM6
 // chord as well; these carry the palette's copy of it.
