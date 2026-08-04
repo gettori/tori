@@ -11,7 +11,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 import type { Extension } from "@codemirror/state";
-import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import {
   ensureLspServersLoaded,
@@ -22,8 +22,12 @@ import {
 } from "../../utils/lspServers";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
-import { liveBufferText } from "./liveBuffers";
+import { writeFilesSuppressingEcho } from "./batchWrite";
+import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
+import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
+import { createRequestRouter } from "./serverRequests";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
+import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
 
 /** Identifies one running server session. Produced by the backend; the
  *  frontend only ever holds and returns it. */
@@ -159,7 +163,7 @@ async function startFor(
     // client below is built - and a server sends nothing at all until it has
     // been sent `initialize`, which only that client does. So by the time
     // anything worth intercepting arrives, this is not reading an unset binding.
-    if (interceptRefresh(handle, msg)) return;
+    if (interceptServerRequest(handle, msg)) return;
     for (const h of handlers) h(msg);
   };
 
@@ -225,6 +229,7 @@ async function startFor(
       ...languageServerExtensions(),
       symbolClientCapabilities,
       semanticTokensClientCapabilities,
+      workspaceEditClientCapabilities,
     ],
   }).connect(transport);
 
@@ -244,9 +249,10 @@ function workspaceDeps(server: LspServer) {
   };
 }
 
-// ------------------------------------------- the one request Sway answers
+// ------------------------------------------- the requests Sway answers
 
 const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
+const APPLY_EDIT = "workspace/applyEdit";
 
 // Registered by the editor while it is mounted. One slot rather than a list for
 // the same reason `liveBuffers` has one: there is exactly one `CodeEditor`, and
@@ -274,37 +280,60 @@ export function setSemanticRefreshListener(fn: (root: string) => void): () => vo
 }
 
 /**
- * Answer `workspace/semanticTokens/refresh` here rather than let the library
- * see it. Returns whether the frame was consumed.
+ * The server-initiated requests Sway answers, and the whole reason the router
+ * exists. See `serverRequests.ts` for why the transport is the only seam where
+ * this can be done at all.
  *
- * `LSPClient.receiveMessage` replies to every server-initiated *request* with
- * `-32601 MethodNotFound` (`lsp-client/dist/index.js:684-690`) and offers an
- * extension point for notifications only, so there is no way to handle this one
- * from above. A `-32601` is not fatal, but it tells a conformant server that
- * this client lied in its capabilities, and rust-analyzer's response to that is
- * to stop asking - which is precisely the feature being asked for.
- *
- * The substring test comes before the parse deliberately: every frame from a
- * busy server would otherwise be `JSON.parse`d twice, once here and once by the
- * library, for a message that arrives a handful of times a session.
+ * A handler answers `null` by returning nothing, which is what both of these
+ * requests expect.
  */
-function interceptRefresh(handle: LspHandle, msg: string): boolean {
-  if (!msg.includes(SEMANTIC_REFRESH)) return false;
-  let value: { id?: unknown; method?: unknown };
-  try {
-    value = JSON.parse(msg) as { id?: unknown; method?: unknown };
-  } catch {
-    return false;
-  }
-  // Only the request form. A notification-shaped frame, or a *response* that
-  // merely mentions the method name, is the library's to deal with.
-  if (value.method !== SEMANTIC_REFRESH || value.id === undefined) return false;
-  void invoke("lsp_send", {
-    handle,
-    message: JSON.stringify({ jsonrpc: "2.0", id: value.id, result: null }),
-  }).catch(() => {});
-  onSemanticRefresh?.(handle.root);
-  return true;
+const serverRequests = createRequestRouter<LspHandle>({
+  [SEMANTIC_REFRESH]: (_params, handle) => {
+    onSemanticRefresh?.(handle.root);
+  },
+  [APPLY_EDIT]: (params, handle) =>
+    answerApplyEdit(params, applyDepsFor(handle), (message) =>
+      emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
+    ),
+});
+
+/**
+ * What `applyWorkspaceEdit` needs, built from the session the request arrived
+ * on rather than from whatever is on screen: a server can send an edit for a
+ * file in a different package than the one the caret is in.
+ *
+ * Keyed by the whole handle, never by root alone. Two servers can resolve the
+ * same root - both bundled configs list `.git` as a marker - and borrowing the
+ * other one's workspace would materialise the edit's files into the wrong
+ * server's document set and map positions through the wrong client.
+ *
+ * Null when that session is gone, which is a real state - a project switch
+ * while the server was mid-command.
+ */
+function applyDepsFor(handle: LspHandle): ApplyDeps | null {
+  const session = sessions.get(key(handle));
+  if (!session) return null;
+  const { client, workspace } = session;
+  return {
+    requestFile: (uri) => workspace.requestFile(uri) as Promise<MaterialisedFile | null>,
+    retainMapping: () => workspace.retainMapping(),
+    makeMapping: () => client.workspaceMapping() as unknown as Mapping,
+    dirtyBuffers,
+    adoptBufferText,
+    writeFiles: writeFilesSuppressingEcho,
+    notifyWritten: (paths) => {
+      for (const p of paths) notifyLspFileChanged(p);
+    },
+    dispatch: (view, changes) => view.dispatch({ changes, userEvent: "lsp.applyEdit" }),
+  };
+}
+
+/** Route one inbound frame, replying on the same session it arrived on.
+ *  Returns whether the frame was consumed. */
+function interceptServerRequest(handle: LspHandle, msg: string): boolean {
+  return serverRequests(handle, msg, (message) => {
+    void invoke("lsp_send", { handle, message }).catch(() => {});
+  });
 }
 
 /** Tell every live workspace that a file changed outside its editor, so a
@@ -378,6 +407,28 @@ export function lspTargetFor(path: string): LspTarget | null {
  *  session and a repo-root session has to ask both to see the whole tree. */
 export function lspTargets(): LspTarget[] {
   return [...sessions.values()].map(targetOf);
+}
+
+/**
+ * Run one of the server's own commands.
+ *
+ * The other half of a code action: an action that arrives carrying a `command`
+ * instead of an `edit` has nowhere to run without this, and the way a server
+ * usually answers one is by pushing a `workspace/applyEdit` straight back at
+ * us - which the router above is what answers.
+ *
+ * Null when the server offers no `executeCommandProvider`, the same
+ * "asked and refused" that the symbol surfaces return, so a caller can tell it
+ * apart from a command that genuinely answered nothing.
+ */
+export async function executeServerCommand(
+  target: LspTarget,
+  command: string,
+  args?: unknown[],
+): Promise<unknown> {
+  await target.ready;
+  if (!target.supports("executeCommandProvider")) return null;
+  return target.request("workspace/executeCommand", { command, arguments: args });
 }
 
 /** Tear down every client and stop every server. What a project switch calls:
