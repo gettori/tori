@@ -385,10 +385,57 @@ pub struct Settings {
 
 /// Read settings from `path`. A missing or unparseable file yields defaults; a
 /// partial file fills the missing sections from defaults (`#[serde(default)]`).
+/// Move a pre-rename `editor` block into `editorDefaults`.
+///
+/// The editing-comfort switches shipped as a flat `editor` block of booleans.
+/// That key now holds per-project overrides, so an untouched file deserializes
+/// `editor` as a map of `EditorPrefs` and **fails** - and `load_from` has no
+/// per-section recovery, so the failure takes the theme, the fonts and every
+/// other section down to defaults with it. Exactly the hazard `ChatDefaults`
+/// documents, arrived at from the other direction.
+///
+/// Run before deserializing, on the raw JSON, because by the time serde has an
+/// opinion the file is already lost. Moved rather than dropped: those booleans
+/// are the user's answers, and `editorDefaults` is where that question lives
+/// now. An explicit `editorDefaults` key wins, being the newer of the two.
+fn migrate_editor_block(mut value: serde_json::Value) -> serde_json::Value {
+    let Some(obj) = value.as_object_mut() else {
+        return value;
+    };
+    let Some(editor) = obj.get("editor").and_then(|v| v.as_object()).cloned() else {
+        return value;
+    };
+    // The new shape maps a project path to an object; the old one maps a key to
+    // a boolean. A file with neither (an empty block, or one already migrated)
+    // says nothing and is left exactly as it is.
+    if !editor.values().any(|v| v.is_boolean()) {
+        return value;
+    }
+    let mut defaults = obj
+        .get("editorDefaults")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    for (key, v) in &editor {
+        if v.is_boolean() {
+            defaults.entry(key.clone()).or_insert_with(|| v.clone());
+        }
+    }
+    // A file can hold both shapes at once if it was written across the rename,
+    // so the per-project entries that were already there are kept.
+    let kept: serde_json::Map<String, serde_json::Value> =
+        editor.into_iter().filter(|(_, v)| v.is_object()).collect();
+    obj.insert("editorDefaults".into(), serde_json::Value::Object(defaults));
+    obj.insert("editor".into(), serde_json::Value::Object(kept));
+    value
+}
+
 fn load_from(path: &Path) -> Settings {
     let mut settings: Settings = std::fs::read_to_string(path)
         .ok()
-        .and_then(|t| json5::from_str::<Settings>(&t).ok())
+        .and_then(|t| json5::from_str::<serde_json::Value>(&t).ok())
+        .map(migrate_editor_block)
+        .and_then(|v| serde_json::from_value::<Settings>(v).ok())
         .unwrap_or_default();
     if let Some(id) = migrate_theme_id(&settings.appearance.theme) {
         settings.appearance.theme = id.into();
@@ -669,6 +716,74 @@ mod tests {
     /// twice over: a file from before wave 5 has no `editor` key at all, and a
     /// hand-edited one may set a single key inside it. Neither may read as
     /// "every on-by-default feature off".
+    /// The comfort switches moved from `editor` to `editorDefaults`. A file
+    /// written before that move must not cost the user anything, and above all
+    /// must not cost them the sections that have nothing to do with it: a
+    /// section that fails to deserialize takes the whole file to defaults.
+    #[test]
+    fn a_pre_rename_editor_block_is_moved_rather_than_lost() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{ "appearance": { "theme": "catppuccin-mocha" },
+                 "editor": { "rainbowBrackets": true, "minimap": true, "hotExit": false } }"#,
+        )
+        .unwrap();
+
+        let back = load_from(&p);
+
+        // The whole point: an unrelated section is untouched by an editor key.
+        assert_eq!(back.appearance.theme, "catppuccin-mocha");
+        // The answers themselves survive, in their new home.
+        assert!(back.editor_defaults.rainbow_brackets);
+        assert!(back.editor_defaults.minimap);
+        assert!(!back.editor_defaults.hot_exit, "an explicit off is an answer too");
+        // A key the old block never carried still lands on its default.
+        assert!(back.editor_defaults.indent_guides);
+        // And `editor` is now what it means today: per-project, and empty.
+        assert!(back.editor.is_empty());
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_file_written_across_the_rename_keeps_both_halves() {
+        let p = tmp_file();
+        // Both shapes at once, which is what a file touched either side of the
+        // rename looks like. The newer block wins where they disagree, and the
+        // per-project entry is not collateral.
+        std::fs::write(
+            &p,
+            r#"{ "editorDefaults": { "minimap": false },
+                 "editor": { "minimap": true, "rainbowBrackets": true,
+                             "/repo/a": { "formatOnSave": true } } }"#,
+        )
+        .unwrap();
+
+        let back = load_from(&p);
+
+        assert!(!back.editor_defaults.minimap, "the explicit editorDefaults key wins");
+        assert!(back.editor_defaults.rainbow_brackets, "and the old block fills the rest");
+        assert_eq!(back.editor.get("/repo/a").and_then(|e| e.format_on_save), Some(true));
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_current_file_is_left_alone() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{ "editorDefaults": { "minimap": true },
+                 "editor": { "/repo/a": { "formatOnSave": false } } }"#,
+        )
+        .unwrap();
+
+        let back = load_from(&p);
+
+        assert!(back.editor_defaults.minimap);
+        assert_eq!(back.editor.get("/repo/a").and_then(|e| e.format_on_save), Some(false));
+        let _ = std::fs::remove_file(&p);
+    }
+
     #[test]
     fn the_editor_block_defaults_on_a_legacy_file_and_on_a_partial_one() {
         let p = tmp_file();
