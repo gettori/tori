@@ -35,6 +35,7 @@ import {
   REFIT_PANES,
   FOCUS_SEARCH,
   FOCUS_PROJECT_SEARCH,
+  RUN_LAST_TASK,
   SET_RIGHT_MODE,
   PREFS_TOGGLE,
   type PrefsToggle,
@@ -44,6 +45,7 @@ import {
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
+import { rerunLast } from "./utils/runTask";
 import Omnibox from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
 import { initSettings, toggleEditorDefault, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
@@ -288,6 +290,7 @@ function App() {
   let offStopChat: (() => void) | undefined;
   let offPrefsToggle: (() => void) | undefined;
   let offOpenSettings: (() => void) | undefined;
+  let offRunLastTask: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => setOmnibox({ prefix }));
@@ -343,6 +346,21 @@ function App() {
       invoke("chat_interrupt", { sessionId: target }).catch((e) =>
         emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
       );
+    });
+    // Rerun the last task, from ⌘⇧B or its palette row. Handled here because the
+    // registry owns the binding but knows no workspace, and the Tasks panel is
+    // torn down whenever another right-hand mode is showing - a rerun that only
+    // worked while its own panel was open would not be a shortcut past it.
+    offRunLastTask = onEvent(RUN_LAST_TASK, () => {
+      const outcome = rerunLast(selected()?.folderPath ?? null);
+      if (outcome === "ran") return;
+      emitWith<ToastEvent>(TOAST, {
+        message:
+          outcome === "no-workspace"
+            ? "Select a branch first."
+            : "No task has been run here yet. Pick one from the Tasks panel.",
+        kind: "info",
+      });
     });
     // Collapse the rail to the intrinsic width of the top-left cluster (lights
     // + toggles), so a hidden sidebar still keeps the breadcrumb clear of them.
@@ -407,6 +425,7 @@ function App() {
     offSetRightMode?.();
     offPrefsToggle?.();
     offOpenSettings?.();
+    offRunLastTask?.();
     document.body.classList.remove("dragging");
   });
 

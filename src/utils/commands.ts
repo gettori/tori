@@ -20,6 +20,7 @@ import {
   emitWith,
   FOCUS_SEARCH,
   FOCUS_TERMINAL,
+  RUN_LAST_TASK,
   FOCUS_PROJECT_SEARCH,
   TAB_JUMP,
   TAB_CYCLE,
@@ -154,6 +155,8 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "changes", label: "Changes" },
   { mode: "pulls", label: "Pull requests" },
   { mode: "search", label: "Search" },
+  { mode: "todos", label: "TODOs" },
+  { mode: "tasks", label: "Tasks" },
   { mode: "session", label: "Session" },
   { mode: "shared", label: "Shared" },
   { mode: "docs", label: "Docs" },
@@ -343,6 +346,22 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmd("j"),
     run: () => emit(FOCUS_TERMINAL),
+  },
+  {
+    // The build-and-watch loop: run it, read the output, fix, run it again. The
+    // second half is the whole point, so it costs a keystroke rather than a
+    // picker that would ask the question already answered.
+    //
+    // Global rather than window, unlike ⌘P: the reason to keep the omnibox out
+    // of a running program's keys does not apply, since re-running the build is
+    // exactly what you want while reading the last one's output.
+    id: "rerun-last-task",
+    keys: ["⌘", "⇧", "B"],
+    label: "Run the last task again",
+    group: "terminal",
+    scope: "global",
+    match: cmdShift("b"),
+    run: () => emit(RUN_LAST_TASK),
   },
   {
     id: "tab-jump",

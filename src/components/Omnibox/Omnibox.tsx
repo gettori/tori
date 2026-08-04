@@ -17,6 +17,9 @@ import {
   type NewSession,
 } from "../../utils/events";
 import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
+import { loadTasks, type Task } from "../../utils/tasks";
+import { loadTaskRuns } from "../../utils/taskRecents";
+import { runTask } from "../../utils/runTask";
 import { MODES, parseLine, parseQuery, specOf } from "../../utils/omniboxModes";
 import { debounce } from "../../utils/debounce";
 import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
@@ -127,6 +130,7 @@ export default function Omnibox(props: {
   const [query, setQuery] = createSignal(props.prefix ?? "");
   const [index, setIndex] = createSignal(0);
   const [files, setFiles] = createSignal<string[]>([]);
+  const [tasks, setTasks] = createSignal<Task[]>([]);
   const [wsHits, setWsHits] = createSignal<SymbolNode[]>([]);
   let input: HTMLInputElement | undefined;
   const rows: (HTMLDivElement | undefined)[] = [];
@@ -150,6 +154,23 @@ export default function Omnibox(props: {
     const at = root();
     if (!at) return;
     void invoke<string[]>("list_project_files", { projectPath: at }).then(setFiles, () => setFiles([]));
+  });
+
+  // Not on mount, unlike the file list: `fs_read_dir` shells out to
+  // `git check-ignore`, and ⌘P is the most-pressed key in the app while never
+  // showing a task row. Read the first time the box is actually in `>` mode, and
+  // once per open after that - a `scripts` block does not change while a picker
+  // is on screen, and the Tasks panel re-reads on fs changes.
+  let tasksRead = false;
+  createEffect(() => {
+    const at = root();
+    if (mode() !== "command" || tasksRead || !at) return;
+    tasksRead = true;
+    void loadTasks(
+      at,
+      (path) => invoke<{ name: string }[]>("fs_read_dir", { path }),
+      (path) => invoke<string>("fs_read_file", { path }),
+    ).then(setTasks, () => setTasks([]));
   });
 
   // `workspace/symbol` is a round trip per running server, so it is not sent on
@@ -310,6 +331,21 @@ export default function Omnibox(props: {
         disabled: why,
         run: () => c.run?.(),
       });
+    }
+    // One row per task this project defines, from the same reader the Tasks
+    // panel uses, so the two surfaces cannot come to disagree about what the
+    // project can be told to do. Labelled with the verb because the box is
+    // searched by what you want to happen, not by a bare script name.
+    const at = root();
+    if (at) {
+      for (const t of tasks()) {
+        out.push({
+          id: `task:${t.id}`,
+          label: `Run task: ${t.name}`,
+          sub: t.command,
+          run: () => runTask(loadTaskRuns(), at, t),
+        });
+      }
     }
     // One row per chat that a stop would actually do something to, named. The
     // hotkey covers the common case; this covers the case the hotkey refuses to
