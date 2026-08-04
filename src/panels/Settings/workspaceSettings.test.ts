@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import configSource from "../../../src-tauri/src/config.rs?raw";
+import settingsSource from "../../../src-tauri/src/settings.rs?raw";
 import { editorOrigins, overlayFile, parseOverlay, resolveEditorDefaults, withOverride } from "./workspaceSettings";
 import type { EditorDefaults } from "./settingsStore";
 
@@ -15,6 +16,7 @@ const DEFAULTS: EditorDefaults = {
   rainbowBrackets: false,
   bracketPairGuides: false,
   minimap: false,
+  stickyScroll: false,
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
@@ -46,6 +48,17 @@ describe("which layer wins", () => {
   it("leaves every other setting alone when one is overridden", () => {
     const resolved = resolveEditorDefaults(DEFAULTS, DEFAULTS, { minimap: true });
     expect(resolved).toEqual({ ...DEFAULTS, minimap: true });
+  });
+
+  // Named rather than left to the generic cases above, because the rule this
+  // phase was handed was "register the setting here and the layers come free",
+  // and a rule is worth one test that says the name out loud.
+  it("gives sticky scroll the same three layers, off by default", () => {
+    expect(DEFAULTS.stickyScroll).toBe(false);
+    const user = { ...DEFAULTS, stickyScroll: true };
+    expect(resolveEditorDefaults(DEFAULTS, user, {}).stickyScroll).toBe(true);
+    expect(resolveEditorDefaults(DEFAULTS, user, { stickyScroll: false }).stickyScroll).toBe(false);
+    expect(editorOrigins(DEFAULTS, user, { stickyScroll: false }).stickyScroll).toBe("workspace");
   });
 });
 
@@ -119,6 +132,18 @@ it("leaves sway.toml out of editor behaviour, so there is only one place to set 
   ]);
   const found = spellings.filter((s) => new RegExp(`\\b${s}\\b`).test(configSource));
   expect(found).toEqual([]);
+});
+
+// The mirror of the guard above, and the one that was missing. `set_settings`
+// takes a *typed* `EditorDefaults`, so a key the frontend has and the struct
+// does not is dropped by serde on the way in and written back out gone: the
+// preference cannot be saved, and it snaps back to its default on the next
+// round trip. `compactFolders` shipped that way and nothing said so.
+it("gives every editor default a field in the struct that persists it", () => {
+  const missing = Object.keys(DEFAULTS).filter(
+    (key) => !new RegExp(`\\b${key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}\\b`).test(settingsSource),
+  );
+  expect(missing).toEqual([]);
 });
 
 describe("changing a workspace answer", () => {
