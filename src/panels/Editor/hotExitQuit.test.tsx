@@ -127,6 +127,12 @@ function requestClose() {
 }
 
 beforeEach(async () => {
+  // Tabs persist to localStorage and `Editor` restores them on mount, so a test
+  // that opens a file leaves the next one mounting with that tab already
+  // active. The stubbed pane marks any active path dirty, which silently turns
+  // "nothing is dirty" cases into "something is" - and those park on the
+  // confirm dialog rather than failing an assertion.
+  localStorage.clear();
   hotExit = true;
   stashLands = true;
   destroyed = 0;
