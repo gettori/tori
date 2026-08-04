@@ -50,7 +50,7 @@ describe("the canonical binding table", () => {
         "nav-forward",
         "next-waiting",
         "project-search",
-        "quick-open",
+        "omnibox",
         "reload",
         "reopen-closed-tab",
         "shortcut-sheet",
@@ -237,9 +237,18 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     dispatchHotkey(key("k", { meta: true }));
     dispatchHotkey(key("/", { meta: true }));
     expect(dispatched.map((e) => e.type)).toEqual([
-      "sway:open-quick-open",
-      "sway:open-palette",
+      "sway:open-omnibox",
+      "sway:open-omnibox",
       "sway:toggle-shortcuts",
     ]);
+  });
+
+  it("opens the one box at the mode each of its two keys is for", () => {
+    // ⌘P and ⌘K are an entry and its alias, not two overlays: same event, same
+    // component, different prefix. Asserted on the payload because the event
+    // name can no longer tell them apart, which is the point.
+    dispatchWindowHotkey(key("p", { meta: true }));
+    dispatchHotkey(key("k", { meta: true }));
+    expect(dispatched.map((e) => e.detail?.prefix)).toEqual(["", ">"]);
   });
 });

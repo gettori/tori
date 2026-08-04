@@ -115,6 +115,7 @@ import {
   current,
   listFor,
   mapPathsIn,
+  recentTargets,
   recordIn,
   stepIn,
   type JumpEntry,
@@ -1044,6 +1045,7 @@ export default function Editor(props: {
       dirty: file ? !!dirty()[file] : false,
       tabCount: tabs().length,
       projectRoot: root(),
+      recentJumps: recentTargets(jumps()),
     });
   });
   onCleanup(clearEditorState);

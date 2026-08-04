@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   EMPTY_JUMPS,
   JUMP_LINE_THRESHOLD,
+  MAX_RECENT_TARGETS,
   canGoBack,
   canGoForward,
   current,
@@ -9,10 +10,12 @@ import {
   listFor,
   mapPaths,
   mapPathsIn,
+  recentTargets,
   record,
   recordIn,
   step,
   stepIn,
+  type JumpList,
 } from "./jumpList";
 
 /** Record a run of positions into an empty list. */
@@ -201,5 +204,50 @@ describe("one list per workspace", () => {
     expect(recordIn(store, "/ws", { path: "/ws/a.ts", line: 5 })).toBe(store);
     expect(stepIn(store, "/ws", 1)).toBe(store);
     expect(stepIn(store, "/ws", -1)).toBe(store);
+  });
+});
+
+describe("the places the omnibox offers", () => {
+  const list = (paths: string[], index: number): JumpList => ({
+    entries: paths.map((p) => ({ path: p })),
+    index,
+  });
+
+  it("offers where you have been, newest first", () => {
+    expect(recentTargets(list(["/a", "/b", "/c"], 2)).map((e) => e.path)).toEqual(["/b", "/a"]);
+  });
+
+  it("leaves out the place you are standing on", () => {
+    // Offering to send you where you already are can only waste a keystroke.
+    expect(recentTargets(list(["/a", "/b"], 1)).map((e) => e.path)).toEqual(["/a"]);
+  });
+
+  it("offers nothing from a list with nowhere behind it", () => {
+    expect(recentTargets(EMPTY_JUMPS)).toEqual([]);
+    expect(recentTargets(list(["/a"], 0))).toEqual([]);
+  });
+
+  it("keeps a file and a symbol inside it as two destinations", () => {
+    // Deduped on path *and* line: collapsing them would hide the precise one
+    // behind the vague one exactly when both are wanted.
+    const jumps: JumpList = {
+      entries: [{ path: "/a" }, { path: "/a", line: 40 }, { path: "/b" }],
+      index: 2,
+    };
+    expect(recentTargets(jumps)).toEqual([{ path: "/a", line: 40 }, { path: "/a" }]);
+  });
+
+  it("drops a repeat of the same place", () => {
+    const jumps: JumpList = {
+      entries: [{ path: "/a", line: 2 }, { path: "/b" }, { path: "/a", line: 2 }, { path: "/c" }],
+      index: 3,
+    };
+    expect(recentTargets(jumps).map((e) => e.path)).toEqual(["/a", "/b"]);
+  });
+
+  it("stops at the cap", () => {
+    const paths = Array.from({ length: 20 }, (_, i) => `/f${i}`);
+    expect(recentTargets(list(paths, 19), 3)).toHaveLength(3);
+    expect(recentTargets(list(paths, 19))).toHaveLength(MAX_RECENT_TARGETS);
   });
 });

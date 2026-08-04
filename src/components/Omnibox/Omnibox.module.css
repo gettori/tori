@@ -17,8 +17,29 @@
   font-size: var(--sway-text-md);
 }
 
-/* Names the block of rows below it (currently just "Recent files"). Quiet and
-   small: it is a label on the list, not a row in it, and nothing selects it. */
+/* A row's icon: a file glyph, or the symbol kind. Never shrunk, so a long path
+   gives up room before the thing that says what kind of row this is. */
+.itemIcon {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Where a symbol row says its container, or the file it was found in. Pushed
+   right and given up first, so the name never loses room to it. */
+.itemMeta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+/* Names the block of rows below it ("Recently visited", "Recent files"). Quiet
+   and small: it is a label on the list, not a row in it, and nothing selects
+   it. */
 .sectionHeader {
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
   color: var(--fg-subtle);

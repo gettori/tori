@@ -6,7 +6,6 @@ import Editor from "./panels/Editor/Editor";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
-import QuickOpen from "./components/QuickOpen/QuickOpen";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import Settings from "./panels/Settings/Settings";
 import UpdatePill from "./components/UpdatePill/UpdatePill";
@@ -22,8 +21,8 @@ import {
   emitWith,
   TOAST,
   type ToastEvent,
-  OPEN_PALETTE,
-  OPEN_QUICK_OPEN,
+  OPEN_OMNIBOX,
+  type OpenOmnibox,
   TOGGLE_SHORTCUTS,
   ZOOM_IN,
   ZOOM_OUT,
@@ -45,7 +44,7 @@ import {
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
-import CommandPalette from "./components/CommandPalette/CommandPalette";
+import Omnibox from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
 import { initSettings, toggleEditorDefault, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
@@ -148,7 +147,6 @@ function App() {
   // Live terminal tabs, surfaced from the terminal area so the sidebar's confirms
   // can count what is actually running in a folder.
   const [liveTabs, setLiveTabs] = createSignal<LiveTab[]>([]);
-  const [quickOpen, setQuickOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   // What the Settings panel's filter box opens with. A `Preferences: ...`
   // command for a setting nothing can toggle (a font stack, a dollar ceiling)
@@ -159,7 +157,12 @@ function App() {
   // twice writes the same string, and a signal that swallowed it would leave the
   // filter wherever the user had since typed.
   const [settingsQuery, setSettingsQuery] = createSignal("", { equals: false });
-  const [paletteOpen, setPaletteOpen] = createSignal(false);
+  // The omnibox's opening prefix, and `null` for "not open". One signal where
+  // there were two, because there is one overlay: an open flag per shortcut is
+  // what let ⌘P and ⌘K be two boxes in the first place. A fresh object per open
+  // so the `keyed` Show below remounts, which is what lets ⌘K over an already
+  // open box put it in `>` mode instead of leaving it wherever it was.
+  const [omnibox, setOmnibox] = createSignal<{ prefix: string } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   // First run: Settings opens on the Agents cards with a welcome note. The
   // backend decides (it scans every adapter's sessions dir and checks a
@@ -269,8 +272,7 @@ function App() {
     if (dispatchWindowHotkey(e)) e.preventDefault();
   }
 
-  let offPalette: (() => void) | undefined;
-  let offQuickOpen: (() => void) | undefined;
+  let offOmnibox: (() => void) | undefined;
   let offShortcuts: (() => void) | undefined;
   let offZoomIn: (() => void) | undefined;
   let offZoomOut: (() => void) | undefined;
@@ -288,8 +290,7 @@ function App() {
   let offOpenSettings: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
-    offPalette = onEvent(OPEN_PALETTE, () => setPaletteOpen(true));
-    offQuickOpen = onEvent(OPEN_QUICK_OPEN, () => setQuickOpen(true));
+    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => setOmnibox({ prefix }));
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => setShortcutsOpen((open) => !open));
     offZoomIn = onEvent(ZOOM_IN, zoomIn);
     offZoomOut = onEvent(ZOOM_OUT, zoomOut);
@@ -390,8 +391,7 @@ function App() {
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);
-    offPalette?.();
-    offQuickOpen?.();
+    offOmnibox?.();
     offShortcuts?.();
     offZoomIn?.();
     offZoomOut?.();
@@ -490,16 +490,15 @@ function App() {
         </div>
       </div>
 
-      <Show when={quickOpen()}>
-        <QuickOpen root={selected()?.folderPath ?? null} onClose={() => setQuickOpen(false)} />
-      </Show>
-
-      <Show when={paletteOpen()}>
-        <CommandPalette
-          selected={selected()}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onClose={() => setPaletteOpen(false)}
-        />
+      <Show when={omnibox()} keyed>
+        {(open) => (
+          <Omnibox
+            prefix={open.prefix}
+            selected={selected()}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onClose={() => setOmnibox(null)}
+          />
+        )}
       </Show>
 
       <Show when={settingsOpen()}>
