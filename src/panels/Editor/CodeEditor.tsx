@@ -71,7 +71,7 @@ import {
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
-import { settings, zoom, formatOnSaveFor, vimModeOn, toggleVimMode } from "../Settings/settingsStore";
+import { settings, zoom, editorDefaults, formatOnSaveFor, vimModeOn, toggleVimMode } from "../Settings/settingsStore";
 import { vimExtension } from "./vimMode";
 import {
   on as onEvent,
@@ -262,7 +262,7 @@ export default function CodeEditor(props: {
   // leaving an empty one.
   blame?: boolean;
   // This tab's soft-wrap override, or null to follow
-  // `settings.editorDefaults.softWrap`. Per tab rather than global because
+  // the resolved `softWrap`. Per tab rather than global because
   // wrapping is a property of the file you are looking at (a wide CSV, a prose
   // paragraph), not of the editor.
   softWrap?: boolean | null;
@@ -762,7 +762,7 @@ export default function CodeEditor(props: {
   /** The settings, plus this tab's overrides. One reader, so a buffer built now
    *  and a buffer swapped in later cannot be handed different arguments. */
   function currentPrefExtensions(): Extension[] {
-    return editorPrefExtensions(settings.editorDefaults, { softWrap: props.softWrap });
+    return editorPrefExtensions(editorDefaults(), { softWrap: props.softWrap });
   }
 
   // Reconfigure reaches the *active* state only; a stashed buffer keeps the
@@ -913,7 +913,7 @@ export default function CodeEditor(props: {
    *  moves, the client's liveness or the preference. */
   function currentFallbackCompletion(path: string): Extension {
     return fallbackCompletion(path, {
-      on: settings.editorDefaults.wordCompletion,
+      on: editorDefaults().wordCompletion,
       claimed: claimedByLsp(path),
     });
   }
@@ -1486,7 +1486,7 @@ export default function CodeEditor(props: {
   // palette can flip it without any setting moving.
   createEffect(
     on(
-      () => [...Object.values(settings.editorDefaults), props.softWrap],
+      () => [...Object.values(editorDefaults()), props.softWrap],
       () => syncEditorPrefs(),
       { defer: true },
     ),
@@ -1495,7 +1495,7 @@ export default function CodeEditor(props: {
   // buffer's compartment, and doing that for a whitespace toggle would be work
   // for nothing.
   createEffect(
-    on(() => settings.editorDefaults.wordCompletion, () => syncFallbackCompletion(), { defer: true }),
+    on(() => editorDefaults().wordCompletion, () => syncFallbackCompletion(), { defer: true }),
   );
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not

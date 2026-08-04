@@ -19,7 +19,7 @@ import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { isMarkdownPath } from "../../utils/liveBuffer";
-import { settings } from "../Settings/settingsStore";
+import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -446,7 +446,7 @@ export default function Editor(props: {
   function toggleSoftWrap() {
     const id = activeId();
     if (!id || isSyntheticId(id)) return;
-    setWrapById((prev) => toggledWrap(prev, id, settings.editorDefaults.softWrap));
+    setWrapById((prev) => toggledWrap(prev, id, editorDefaults().softWrap));
   }
 
   // The session/branch-unit working folder is the anchor for the editor, file
@@ -621,6 +621,10 @@ export default function Editor(props: {
       // anything else, and the palette's git commands still have to know whether
       // this workspace has anything staged or anything to push.
       void refreshGit(r);
+      // The per-workspace settings overlay, for the same reason: this pane is
+      // always mounted and is what knows which workspace is selected, and the
+      // Settings panel (which badges the overlay) is usually not open.
+      void loadWorkspaceSettings(r);
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // A new project means a new language server; diagnostics from the old one
@@ -655,7 +659,7 @@ export default function Editor(props: {
   // The unsaved buffers last run's quit stashed, if any. Started here and
   // awaited by the restore below, so a tab can never be handed to CodeEditor
   // before the stash it should be built from has arrived. Deliberately not
-  // gated on `settings.editorDefaults.hotExit`: the key decides whether new work is
+  // gated on the resolved `hotExit`: the key decides whether new work is
   // stashed, and work already on disk is handed back whatever it says now.
   const stashReady = loadPendingStash(Date.now());
   // Workspaces this run has opened tabs in, ever. `toStore` only sees what is
@@ -1216,14 +1220,14 @@ export default function Editor(props: {
       // milliseconds; `stashToWrite` then yields whatever is still genuinely
       // pending (a stashed tab nobody clicked keeps its entry, a claimed or
       // saved one does not).
-      if (!anyDirty && !settings.editorDefaults.hotExit) return;
+      if (!anyDirty && !editorDefaults().hotExit) return;
       event.preventDefault();
       // Hot exit replaces the prompt rather than sitting beside it: there is
       // nothing to warn about once the work is kept. But only once it *is*
       // kept - the key being on is not evidence that anything reached the
       // disk, so a refused or unanswered stash falls back to the same confirm
       // that has always been here, and no buffer goes quietly.
-      if (settings.editorDefaults.hotExit && (await requestStash())) {
+      if (editorDefaults().hotExit && (await requestStash())) {
         await getCurrentWindow().destroy();
         return;
       }

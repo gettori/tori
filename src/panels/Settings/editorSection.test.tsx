@@ -7,14 +7,14 @@
 // then exists, works when hand-edited, and is invisible to everyone who does
 // not read settings.json.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 import Settings, { EDITOR_TOGGLES } from "./Settings";
-import { DEFAULT_SETTINGS, type EditorDefaults } from "./settingsStore";
+import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, type EditorDefaults } from "./settingsStore";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -75,5 +75,107 @@ describe("the Editor settings section", () => {
     // defaults, so a section written this way cannot reset a sibling.
     const moved = EDITOR_KEYS.filter((k) => written[k] !== PRISTINE[k]);
     expect(moved).toEqual(["minimap"]);
+  });
+});
+
+describe("overriding a setting for one workspace", () => {
+  const WS = "/space/proj/main";
+  const minimap = () => EDITOR_TOGGLES.find((t) => t.key === "minimap")!;
+
+  /** The controls beside a labelled row. */
+  const rowOf = (label: string) => screen.getByText(label).closest("div")!;
+
+  /**
+   * Put the global layer back to what shipped, then select a workspace.
+   *
+   * The reset is not ceremony: `createStore` proxies `DEFAULT_SETTINGS` itself,
+   * so an earlier test's save is still in the store when this one runs, and a
+   * user layer that has drifted is exactly what these assertions are about.
+   */
+  async function useWorkspace(root: string | null, overlay: Record<string, unknown> = {}) {
+    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "set_settings") return args.settings;
+      if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
+      if (cmd === "get_workspace_settings") return { editor: overlay };
+      if (cmd === "set_workspace_settings") return args.settings;
+      return DEFAULT_SETTINGS;
+    });
+    await loadSettings();
+    await loadWorkspaceSettings(root);
+  }
+
+  const selectWorkspace = (overlay: Record<string, unknown> = {}) => useWorkspace(WS, overlay);
+
+  it("offers nothing to override until a workspace is selected", async () => {
+    await useWorkspace(null);
+    render(() => <Settings onClose={() => {}} />);
+    expect(screen.queryByText("Set here")).toBeNull();
+    expect(screen.getByText(/Select a branch to override/)).toBeTruthy();
+  });
+
+  // The badge's one hard promise.
+  it("badges a row only when the overlay is what supplies its value", async () => {
+    await selectWorkspace({ minimap: true });
+    render(() => <Settings onClose={() => {}} />);
+
+    expect(rowOf(minimap().label).textContent).toContain("workspace");
+    // Every other row follows the global setting and carries no badge.
+    for (const t of EDITOR_TOGGLES.filter((t) => t.key !== "minimap")) {
+      expect(rowOf(t.label).textContent, t.label).not.toContain("workspace");
+    }
+  });
+
+  it("shows the overlay's answer, not the global one", async () => {
+    await selectWorkspace({ minimap: true });
+    render(() => <Settings onClose={() => {}} />);
+    expect(PRISTINE.minimap).toBe(false);
+    expect(boxFor(minimap().label).checked).toBe(true);
+  });
+
+  it("writes an override to this workspace without touching the global file", async () => {
+    await selectWorkspace();
+    render(() => <Settings onClose={() => {}} />);
+
+    fireEvent.click(within(rowOf(minimap().label)).getByText("Set here"));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("set_workspace_settings", expect.anything()));
+    const [, args] = invoke.mock.calls.find(([c]) => c === "set_workspace_settings")!;
+    expect(args).toEqual({ root: WS, settings: { editor: { minimap: false } } });
+    // A per-workspace pick is not a global one.
+    expect(invoke.mock.calls.some(([c]) => c === "set_settings")).toBe(false);
+  });
+
+  it("hands the setting back to the global layer when the override is cleared", async () => {
+    await selectWorkspace({ minimap: true });
+    render(() => <Settings onClose={() => {}} />);
+
+    fireEvent.click(within(rowOf(minimap().label)).getByText("Clear"));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("set_workspace_settings", expect.anything()));
+    const [, args] = invoke.mock.calls.find(([c]) => c === "set_workspace_settings")!;
+    // Cleared, not pinned to the value it happened to have.
+    expect(args).toEqual({ root: WS, settings: { editor: {} } });
+    expect(rowOf(minimap().label).textContent).not.toContain("workspace");
+  });
+
+  // A click that changed a value the row was not showing would read as broken.
+  it("edits the layer the row is displaying", async () => {
+    await selectWorkspace({ minimap: true });
+    render(() => <Settings onClose={() => {}} />);
+
+    fireEvent.click(boxFor(minimap().label));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("set_workspace_settings", expect.anything()));
+    const [, args] = invoke.mock.calls.find(([c]) => c === "set_workspace_settings")!;
+    expect(args).toEqual({ root: WS, settings: { editor: { minimap: false } } });
+    expect(invoke.mock.calls.some(([c]) => c === "set_settings")).toBe(false);
+  });
+
+  it("leaves the workspace's answers behind when the selection clears", async () => {
+    await selectWorkspace({ minimap: true });
+    await loadWorkspaceSettings(null);
+    render(() => <Settings onClose={() => {}} />);
+    expect(rowOf(minimap().label).textContent).not.toContain("workspace");
+    expect(boxFor(minimap().label).checked).toBe(PRISTINE.minimap);
   });
 });
