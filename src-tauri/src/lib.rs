@@ -28,6 +28,7 @@ mod pty;
 mod search;
 mod sessions;
 mod settings;
+mod workspace_settings;
 mod themes;
 mod update;
 mod worktree;
@@ -381,6 +382,8 @@ pub fn run() {
             forge::commands::github_update_branch,
             settings::get_settings,
             settings::set_settings,
+            workspace_settings::get_workspace_settings,
+            workspace_settings::set_workspace_settings,
             settings::settings_watch_start,
             settings::take_theme_import_notice,
             themes::list_user_themes,

@@ -22,11 +22,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 let saved: unknown = null;
 
+let wsWrites: { root: string; settings: unknown }[] = [];
+let wsOverlay: Record<string, unknown> = {};
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "set_settings") {
       saved = args!.settings;
       return Promise.resolve(saved);
+    }
+    if (cmd === "get_workspace_settings") return Promise.resolve({ editor: wsOverlay });
+    if (cmd === "set_workspace_settings") {
+      wsWrites.push(args as { root: string; settings: unknown });
+      return Promise.resolve(args!.settings);
     }
     return Promise.resolve(null);
   },
@@ -41,6 +49,8 @@ const {
   toggleVimMode,
   rememberFormatOnSave,
   settings,
+  loadWorkspaceSettings,
+  editorDefaults,
 } = await import("./settingsStore");
 
 /** Seed the store through the real save path, which is the only way in.
@@ -61,8 +71,19 @@ async function seed(patch: Partial<typeof DEFAULT_SETTINGS>) {
 
 beforeEach(async () => {
   saved = null;
+  wsWrites = [];
+  wsOverlay = {};
+  // The overlay outlives any one test, so a workspace selected by one would
+  // otherwise still be answering for the next.
+  await loadWorkspaceSettings(null);
   await seed({});
 });
+
+/** Select a workspace whose overlay holds these answers. */
+async function useWorkspace(root: string, overlay: Record<string, unknown>) {
+  wsOverlay = overlay;
+  await loadWorkspaceSettings(root);
+}
 
 describe("formatOnSaveFor", () => {
   it("is off when nothing has been chosen", async () => {
@@ -163,5 +184,57 @@ describe("vimModeOn", () => {
     });
     expect(vimModeOn()).toBe(true);
     expect(formatOnSaveFor("/repo/a")).toBe(false);
+  });
+});
+
+describe("the layer a write lands in", () => {
+  // Always writing the global layer would make this key look dead wherever a
+  // workspace overrides it: the flip lands underneath the overlay, the overlay
+  // keeps winning, and the shortcut does nothing however often it is pressed.
+  it("flips vim mode in the workspace's overlay when that is what is in force", async () => {
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: false, vimMode: true } });
+    await useWorkspace("/repo/a", { vimMode: false });
+    expect(vimModeOn()).toBe(false);
+    saved = null;
+
+    toggleVimMode();
+
+    await vi.waitFor(() => expect(vimModeOn()).toBe(true));
+    expect(wsWrites).toEqual([{ root: "/repo/a", settings: { editor: { vimMode: true } } }]);
+    // And the global answer is left exactly where it was.
+    expect(saved).toBeNull();
+  });
+
+  it("still flips the global answer where no workspace has one", async () => {
+    await useWorkspace("/repo/a", {});
+    toggleVimMode();
+    await vi.waitFor(() => expect(vimModeOn()).toBe(true));
+    expect(wsWrites).toEqual([]);
+    expect(saved).not.toBeNull();
+  });
+});
+
+describe("which workspace an overlay answers for", () => {
+  // The overlay is loaded for one workspace. A function handed an explicit path
+  // must not borrow it: that would report a different project's settings under
+  // the name of the one that was asked about.
+  it("does not lend one workspace's answers to another project", async () => {
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
+    await useWorkspace("/repo/a", { formatOnSave: false });
+
+    expect(formatOnSaveFor("/repo/a")).toBe(false);
+    // A different project, and no project at all, both fall through to the user
+    // layer rather than to /repo/a's overlay.
+    expect(formatOnSaveFor("/repo/b")).toBe(true);
+    expect(formatOnSaveFor(null)).toBe(true);
+  });
+
+  it("stops answering once the selection clears", async () => {
+    await useWorkspace("/repo/a", { minimap: true });
+    expect(editorDefaults().minimap).toBe(true);
+
+    await loadWorkspaceSettings(null);
+
+    expect(editorDefaults().minimap).toBe(DEFAULT_SETTINGS.editorDefaults.minimap);
   });
 });

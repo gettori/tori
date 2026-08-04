@@ -19,7 +19,7 @@ import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
-import { settings } from "../../Settings/settingsStore";
+import { editorDefaults } from "../../Settings/settingsStore";
 import styles from "./FileTree.module.css";
 
 type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
@@ -548,7 +548,7 @@ export default function FileTree(props: {
   // both ends. Stable across `ctx()` calls, which rebuild the rest each time.
   const mounted = new Map<string, () => Promise<void>>();
 
-  const compactFolders = () => settings.editorDefaults.compactFolders;
+  const compactFolders = () => editorDefaults().compactFolders;
 
   async function reloadRoots() {
     setRoots(props.root ? await listChildren(props.root, compactFolders()) : []);

@@ -31,7 +31,8 @@ const bridge: {
   existing: Set<string>;
   failRename: boolean;
   projectFiles: string[];
-} = { calls: [], dirs: {}, existing: new Set(), failRename: false, projectFiles: [] };
+  overlay: Record<string, unknown>;
+} = { calls: [], dirs: {}, existing: new Set(), failRename: false, projectFiles: [], overlay: {} };
 
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 const readsOf = (path: string) => sent("fs_read_dir").filter((c) => c.args.path === path);
@@ -44,11 +45,15 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "file_exists") return Promise.resolve(bridge.existing.has(args.path as string));
     if (cmd === "fs_rename" && bridge.failRename)
       return Promise.reject("A file or folder with that name already exists.");
+    // The per-workspace overlay. Empty unless a test says otherwise, so every
+    // other case here runs on the user layer exactly as it always did.
+    if (cmd === "get_workspace_settings") return Promise.resolve({ editor: bridge.overlay });
     return Promise.resolve(null);
   },
 }));
 
 import FileTree from "./FileTree";
+import { loadWorkspaceSettings } from "../../Settings/settingsStore";
 
 const ROOT = "/proj";
 
@@ -90,11 +95,16 @@ function dataTransfer() {
  *  the name span inside it. */
 const rowFor = (name: string) => screen.getByText(name).parentElement!;
 
-beforeEach(() => {
+beforeEach(async () => {
   bridge.calls = [];
   bridge.existing = new Set();
   bridge.failRename = false;
   bridge.projectFiles = [];
+  bridge.overlay = {};
+  // The overlay lives in a module-level store that outlives any one mount, so a
+  // test that selected a workspace would otherwise hand its answers to every
+  // test after it.
+  await loadWorkspaceSettings(null);
   bridge.dirs = {
     [ROOT]: [folder(ROOT, "src"), folder(ROOT, "docs"), file(ROOT, "README.md")],
     [`${ROOT}/src`]: [folder(`${ROOT}/src`, "utils"), file(`${ROOT}/src`, "main.ts")],
@@ -289,6 +299,26 @@ describe("filtering, collapsing and compaction", () => {
 
     await screen.findByText("node_modules");
     expect(readsOf(`${ROOT}/node_modules`)).toHaveLength(0);
+  });
+
+  // Compact folders is the first setting to go through the three-layer
+  // resolution, and this is the arrow nothing else checks: the layering is unit
+  // tested and the panel writes the overlay, but a tree still reading
+  // `settings.editorDefaults` would leave both of those green and the setting
+  // inert in the one place it is supposed to act.
+  it("follows this workspace's answer over the user's", async () => {
+    bridge.dirs = {
+      [ROOT]: [folder(ROOT, "pkg")],
+      [`${ROOT}/pkg`]: [folder(`${ROOT}/pkg`, "inner")],
+      [`${ROOT}/pkg/inner`]: [file(`${ROOT}/pkg/inner`, "thing.ts")],
+    };
+    // The user says compact (which is also the default); this workspace says no.
+    bridge.overlay = { compactFolders: false };
+    await loadWorkspaceSettings(ROOT);
+    mountProject();
+
+    await screen.findByText("pkg");
+    expect(screen.queryByText("pkg/inner")).toBeNull();
   });
 });
 

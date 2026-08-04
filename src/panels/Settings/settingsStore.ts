@@ -10,6 +10,15 @@ import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
 import type { ToastEvent } from "../../utils/events";
 import { getTheme, reloadUserThemes, setTheme } from "../../theme";
 import { editorFontSizePx, terminalFontSizePx, uiScale } from "./scale";
+import {
+  editorOrigins,
+  overlayFile,
+  parseOverlay,
+  resolveEditorDefaults,
+  withOverride,
+  type EditorOverlay,
+  type Layer,
+} from "./workspaceSettings";
 
 export type Appearance = { theme: string };
 export type Typography = {
@@ -192,6 +201,17 @@ export const DEFAULT_SETTINGS: Settings = {
   editor: {},
 };
 
+/**
+ * What shipped, captured before anything can write over it.
+ *
+ * `createStore` below proxies `DEFAULT_SETTINGS` *itself*, so the first save
+ * rewrites that very object: read it afterwards and it reports the user's
+ * values, not the built-in ones. Without this copy the bottom two layers of the
+ * three-layer resolution collapse into one, and "where did this value come
+ * from" can never answer "the default".
+ */
+const BUILT_IN_EDITOR: EditorDefaults = { ...DEFAULT_SETTINGS.editorDefaults };
+
 const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
 export { settings };
 
@@ -336,10 +356,94 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
   void saveSettings(next).catch(() => {});
 }
 
+// ---- The per-workspace overlay ------------------------------------------
+//
+// `<workspace>/.sway/settings.json`, the third layer under the built-in
+// defaults and this user's settings file. The rule for which layer wins lives
+// in `workspaceSettings.ts`; what lives here is the one loaded overlay and the
+// workspace it belongs to.
+//
+// One at a time, not a map keyed by path, because only the selected workspace's
+// answers are ever in force: the editor reads them, the Settings panel badges
+// them, and a background workspace's overlay would be a cache with no reader.
+
+const [overlayRoot, setOverlayRoot] = createSignal<string | null>(null);
+const [overlay, setOverlay] = createSignal<EditorOverlay>({});
+export { overlayRoot };
+
+/**
+ * Read the overlay for a workspace, or clear it when nothing is selected.
+ *
+ * Cleared *before* the read rather than after it, so the moment the selection
+ * changes the editor stops applying the previous workspace's answers. Leaving
+ * them up during the round trip would show one project's settings applied to
+ * another's files, which is worse than a flicker of the user defaults.
+ */
+export async function loadWorkspaceSettings(root: string | null): Promise<void> {
+  setOverlayRoot(root);
+  setOverlay({});
+  if (!root) return;
+  const raw = await invoke<unknown>("get_workspace_settings", { root }).catch(() => null);
+  // Re-checked after the await: the selection can move while the read is in
+  // flight, and a slow answer for the old workspace must not overwrite the new.
+  if (overlayRoot() !== root) return;
+  setOverlay(parseOverlay(raw, BUILT_IN_EDITOR));
+}
+
+/**
+ * The editor settings in force for one named workspace.
+ *
+ * The overlay answers only for the workspace it was loaded from. Asking about a
+ * different project has to fall through to the user layer rather than borrow
+ * this one's answers, or a function handed an explicit path would quietly
+ * report a *different* project's settings.
+ */
+function editorDefaultsFor(root: string | null): EditorDefaults {
+  const own = root && root === overlayRoot() ? overlay() : {};
+  return resolveEditorDefaults(BUILT_IN_EDITOR, settings.editorDefaults, own);
+}
+
+/** The editor settings in force here: workspace answer, user answer, default.
+ *  Reactive - read this rather than `settings.editorDefaults`, which is only the
+ *  middle layer. */
+export function editorDefaults(): EditorDefaults {
+  return editorDefaultsFor(overlayRoot());
+}
+
+/** Which layer supplied each value, for the Settings panel's badge. */
+export function editorOrigin(): Record<keyof EditorDefaults, Layer> {
+  return editorOrigins(BUILT_IN_EDITOR, settings.editorDefaults, overlay());
+}
+
+/**
+ * Set or clear this workspace's answer for one setting; `undefined` clears it.
+ *
+ * The store moves first and the file is written after, so the editor reacts at
+ * the speed of a click rather than of a disk. A write that fails leaves the two
+ * disagreeing until the next load, which is the same bargain every other
+ * preference here makes (see `rememberChatPrefs`), and is reported rather than
+ * swallowed because this one writes into the user's repo.
+ */
+export async function setWorkspaceOverride(
+  key: keyof EditorDefaults,
+  value: boolean | undefined,
+): Promise<void> {
+  const root = overlayRoot();
+  if (!root) return;
+  const next = withOverride(overlay(), key, value);
+  setOverlay(next);
+  try {
+    await invoke("set_workspace_settings", { root, settings: overlayFile(next) });
+  } catch (e) {
+    emitWith<ToastEvent>(TOAST, { message: `Saving this workspace's settings failed: ${e}`, kind: "error" });
+  }
+  emit(SETTINGS_CHANGED);
+}
+
 /**
  * Whether a save in `projectPath` should run the project's formatter first.
  *
- * The project's own answer where it has one, the global default otherwise. The
+ * The project's own answer where it has one, the resolved default otherwise. The
  * three-way distinction is the point: `undefined` and `null` both mean "this
  * project has never been asked", while `false` is a project that was asked and
  * said no, and must not be overruled by the global default being on.
@@ -349,23 +453,37 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
  */
 export function formatOnSaveFor(projectPath: string | null): boolean {
   const own = projectPath ? settings.editor?.[projectPath]?.formatOnSave : undefined;
-  return own ?? settings.editorDefaults?.formatOnSave ?? false;
+  return own ?? editorDefaultsFor(projectPath).formatOnSave ?? false;
 }
 
-/** Whether the code editor is in vim mode. Global, with no per-project form:
- *  see `EditorDefaults`. */
+/** Whether the code editor is in vim mode, in the workspace in force. */
 export function vimModeOn(): boolean {
-  return settings.editorDefaults?.vimMode ?? false;
+  return editorDefaults().vimMode ?? false;
 }
 
-/** Flip vim mode and remember it. Lives here rather than in `Settings.tsx`
- *  because the palette can toggle it too, and the Settings panel is not
- *  necessarily open when it does. Swallowed on failure for the same reason a
- *  chat pick is: the choice has already taken effect on screen. */
+/**
+ * Flip vim mode and remember it. Lives here rather than in `Settings.tsx`
+ * because the palette can toggle it too, and the Settings panel is not
+ * necessarily open when it does.
+ *
+ * **Writes to whichever layer is in force**, exactly as the Settings checkbox
+ * does. Always writing the global one would make this key look dead wherever a
+ * workspace overrides it: the flip would land under the overlay, the overlay
+ * would keep winning, and the shortcut would do nothing however often it was
+ * pressed.
+ *
+ * Swallowed on failure for the same reason a chat pick is: the choice has
+ * already taken effect on screen.
+ */
 export function toggleVimMode(): void {
+  const on = !vimModeOn();
+  if (editorOrigin().vimMode === "workspace") {
+    void setWorkspaceOverride("vimMode", on);
+    return;
+  }
   const next: Settings = {
     ...settings,
-    editorDefaults: { ...settings.editorDefaults, vimMode: !vimModeOn() },
+    editorDefaults: { ...settings.editorDefaults, vimMode: on },
   };
   void saveSettings(next).catch(() => {});
 }

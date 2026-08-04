@@ -108,6 +108,40 @@
     margin-top: var(--sway-space-2);
   }
 
+  /* Marks a row whose value comes from this workspace's overlay rather than
+     from the global settings. `margin-left: auto` puts it against the control,
+     so it reads as a note on the value rather than on the label. Accent, not
+     brand: it is an annotation, not something you can press. */
+  .originBadge {
+    margin-left: auto;
+    flex: 0 0 auto;
+    padding: 0 var(--sway-space-2);
+    font-size: var(--sway-text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-fg);
+    background: var(--accent-subtle);
+    border-radius: var(--sway-radius-sm);
+  }
+
+  /* "Set here" / "Clear": the write-to-workspace affordance. Deliberately quiet
+     (text, not a Button) because there is one per row and nine loud buttons
+     would make the section read as a list of actions rather than of settings. */
+  .originAction {
+    flex: 0 0 auto;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    font-family: inherit;
+    font-size: var(--sway-text-xs);
+    cursor: pointer;
+  }
+  .originAction:hover {
+    color: var(--accent-fg);
+    text-decoration: underline;
+  }
+
   /* --- Agents cards --- */
 
   .card {

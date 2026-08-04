@@ -6,6 +6,10 @@ import LspSection from "./LspSection";
 import {
   settings,
   saveSettings,
+  editorDefaults,
+  editorOrigin,
+  overlayRoot,
+  setWorkspaceOverride,
   type Appearance,
   type Budgets,
   type ChatDefaults,
@@ -83,6 +87,12 @@ export const EDITOR_TOGGLES: { key: keyof EditorDefaults; label: string; hint?: 
 export default function Settings(props: { onClose: () => void; welcome?: boolean }) {
   let firstControl: HTMLSelectElement | undefined;
   onMount(() => requestAnimationFrame(() => firstControl?.focus()));
+
+  /** The workspace an override would be written to, by its folder name. The
+   *  editor pane owns which workspace is selected; this panel reads it rather
+   *  than taking a prop, since it is opened from the top bar and from the
+   *  palette and neither of those knows. */
+  const workspaceName = () => overlayRoot()?.split("/").pop() ?? "";
 
   const setAppearance = (a: Partial<Appearance>) =>
     saveSettings({ ...settings, appearance: { ...settings.appearance, ...a } });
@@ -337,11 +347,47 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                   <>
                     <div class={styles.row}>
                       <label class={styles.label}>{t.label}</label>
+                      {/* Only where the overlay actually supplies the value.
+                          "user" and "default" are the ordinary case and would be
+                          a badge on almost every row, which says nothing. */}
+                      <Show when={editorOrigin()[t.key] === "workspace"}>
+                        <span class={styles.originBadge} title={workspaceName()}>
+                          workspace
+                        </span>
+                      </Show>
+                      {/* The checkbox shows and sets whichever layer is in
+                          force: with an override present it edits the override,
+                          otherwise the user default. Writing to the layer being
+                          displayed is the only behaviour that does not surprise
+                          - a click that changed a value the row was not showing
+                          would read as the toggle being broken. */}
                       <input
                         type="checkbox"
-                        checked={settings.editorDefaults[t.key]}
-                        onChange={(e) => setEditorDefaults({ [t.key]: e.currentTarget.checked })}
+                        checked={editorDefaults()[t.key]}
+                        onChange={(e) =>
+                          editorOrigin()[t.key] === "workspace"
+                            ? void setWorkspaceOverride(t.key, e.currentTarget.checked)
+                            : setEditorDefaults({ [t.key]: e.currentTarget.checked })
+                        }
                       />
+                      <Show when={overlayRoot()}>
+                        <button
+                          class={styles.originAction}
+                          onClick={() =>
+                            void setWorkspaceOverride(
+                              t.key,
+                              editorOrigin()[t.key] === "workspace" ? undefined : editorDefaults()[t.key],
+                            )
+                          }
+                          title={
+                            editorOrigin()[t.key] === "workspace"
+                              ? "Stop overriding this here and follow your global setting again"
+                              : "Pin this setting for this workspace only, leaving your global setting alone"
+                          }
+                        >
+                          {editorOrigin()[t.key] === "workspace" ? "Clear" : "Set here"}
+                        </button>
+                      </Show>
                     </div>
                     <Show when={t.hint}>
                       <div class={styles.hint}>{t.hint}</div>
@@ -349,6 +395,15 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                   </>
                 )}
               </For>
+              <Show
+                when={overlayRoot()}
+                fallback={<div class={styles.hint}>Select a branch to override any of these for one workspace.</div>}
+              >
+                <div class={styles.hint}>
+                  “Set here” writes to {workspaceName()}/.sway/settings.json, which stays on this machine: Sway adds
+                  it to the repo's own ignore list, so it never reaches a commit or a teammate.
+                </div>
+              </Show>
             </section>
 
             <section class={styles.section}>
