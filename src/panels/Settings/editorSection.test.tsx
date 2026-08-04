@@ -3,7 +3,7 @@
 // others?
 //
 // The first half is the one that rots. A later wave-5 phase adds a key to
-// `EditorPrefs`, wires the feature, and never touches this panel: the setting
+// `EditorDefaults`, wires the feature, and never touches this panel: the setting
 // then exists, works when hand-edited, and is invisible to everyone who does
 // not read settings.json.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 import Settings, { EDITOR_TOGGLES } from "./Settings";
-import { DEFAULT_SETTINGS, type EditorPrefs } from "./settingsStore";
+import { DEFAULT_SETTINGS, type EditorDefaults } from "./settingsStore";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -24,14 +24,22 @@ beforeEach(() => {
   );
 });
 
-/** Every key of `EditorPrefs`, read off the defaults so a key added to the type
- *  shows up here rather than as a silent gap on screen. */
-const EDITOR_KEYS = Object.keys(DEFAULT_SETTINGS.editor) as (keyof EditorPrefs)[];
+/** The two `EditorDefaults` keys that are editor behaviour but not editing
+ *  *comfort*: each has its own row, with its own explanation, above the toggle
+ *  list. Named here rather than filtered by shape so adding a third has to be a
+ *  decision instead of a silent omission. */
+const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "vimMode"];
+
+/** Every comfort key of `EditorDefaults`, read off the defaults so a key added
+ *  to the type shows up here rather than as a silent gap on screen. */
+const EDITOR_KEYS = (Object.keys(DEFAULT_SETTINGS.editorDefaults) as (keyof EditorDefaults)[]).filter(
+  (k) => !OWN_ROW.includes(k),
+);
 
 /** The defaults as they were *before* anything saved. `DEFAULT_SETTINGS` is the
  *  object `createStore` proxies, so a save writes through it: comparing against
  *  it after a flip compares the new value with itself. */
-const PRISTINE: EditorPrefs = structuredClone(DEFAULT_SETTINGS.editor);
+const PRISTINE: EditorDefaults = structuredClone(DEFAULT_SETTINGS.editorDefaults);
 
 /** The checkbox belonging to a labelled row. */
 function boxFor(label: string): HTMLInputElement {
@@ -60,7 +68,7 @@ describe("the Editor settings section", () => {
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("set_settings", expect.anything()));
     const [, args] = invoke.mock.calls.find(([c]) => c === "set_settings")!;
-    const written = (args as { settings: { editor: EditorPrefs } }).settings.editor;
+    const written = (args as { settings: { editorDefaults: EditorDefaults } }).settings.editorDefaults;
 
     expect(written.minimap).toBe(true);
     // Exactly one key moved: the block is carried through, not rebuilt from

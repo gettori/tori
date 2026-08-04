@@ -112,25 +112,9 @@ export type SetRightMode = { mode: "files" | "changes" | "pulls" | "search" | "s
 export const EDITOR_SAVE = "sway:editor-save";
 export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
 export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
-/** Soft-wrap this one buffer, whatever `settings.editor.softWrap` says. */
+/** Soft-wrap this one buffer, whatever `settings.editorDefaults.softWrap` says. */
 export const EDITOR_TOGGLE_SOFT_WRAP = "sway:editor-toggle-soft-wrap";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
-// Vim mode is a stored setting rather than editor state, but the toggle is an
-// event like the rest: `commands.ts` may import nothing but this module, so the
-// command cannot reach the settings store itself. CodeEditor listens, since it
-// is what the setting is about.
-export const EDITOR_TOGGLE_VIM = "sway:editor-toggle-vim";
-
-// The language-server commands. They exist as events, and not only as CM6 key
-// bindings, so the palette and the Cmd+/ sheet list them: a binding the library
-// installs privately is a shortcut nothing can print. Consumed by CodeEditor,
-// which owns the view they run against; each is a no-op when the active file
-// has no language server, exactly as its function-row key already is.
-export const EDITOR_LSP_DEFINITION = "sway:editor-lsp-definition";
-export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
-export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
-export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
-
 // The selection commands, consumed by CodeEditor for the same reason as save:
 // they act on the live buffer's selection, which only it holds. Each has a CM6
 // chord as well; these carry the palette's copy of it.
@@ -149,6 +133,22 @@ export const EDITOR_STASH_DIRTY = "sway:editor-stash-dirty";
 export type EditorStashDirty = { requestId: string };
 export const EDITOR_STASH_RESULT = "sway:editor-stash-result";
 export type EditorStashResult = { requestId: string; ok: boolean };
+
+// Vim mode is a stored setting rather than editor state, but the toggle is an
+// event like the rest: `commands.ts` may import nothing but this module, so the
+// command cannot reach the settings store itself. CodeEditor listens, since it
+// is what the setting is about.
+export const EDITOR_TOGGLE_VIM = "sway:editor-toggle-vim";
+
+// The language-server commands. They exist as events, and not only as CM6 key
+// bindings, so the palette and the Cmd+/ sheet list them: a binding the library
+// installs privately is a shortcut nothing can print. Consumed by CodeEditor,
+// which owns the view they run against; each is a no-op when the active file
+// has no language server, exactly as its function-row key already is.
+export const EDITOR_LSP_DEFINITION = "sway:editor-lsp-definition";
+export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
+export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
+export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
 
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the

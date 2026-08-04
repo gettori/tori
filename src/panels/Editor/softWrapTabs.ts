@@ -5,7 +5,7 @@
 // only be tested by mounting the whole pane.
 //
 // **Three answers, not two.** A tab can be wrapped, be unwrapped, or have no
-// opinion and follow `settings.editor.softWrap`. A `Set` of wrapped tab ids
+// opinion and follow `settings.editorDefaults.softWrap`. A `Set` of wrapped tab ids
 // could not express the third, so a tab could never be handed back to the
 // setting once it had been toggled away from it.
 
