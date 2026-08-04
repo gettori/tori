@@ -65,7 +65,7 @@ function sourcesFor(path: string, on: boolean): CompletionSource[] {
  * opened before the server was ready is covered until the moment it is not; the
  * caller holds this in a compartment and re-resolves on `onLspChange`.
  *
- * The preference (`settings.editor.wordCompletion`) governs the *sources*, not
+ * The preference (`settings.editorDefaults.wordCompletion`) governs the *sources*, not
  * the machinery. With it off, a stylesheet still completes property names,
  * because those come from `lang-css` and were only ever missing for want of an
  * `autocompletion()` to render them; what goes away is the scraped words, which

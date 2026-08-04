@@ -48,8 +48,13 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 vi.mock("./lspClient", () => ({
   claimedByLsp: () => false,
+  ensureLspFor: () => Promise.resolve(),
   lspPluginFor: () => [],
+  lspTargetFor: () => null,
+  notifyLspFileChanged: () => {},
   onLspChange: () => () => {},
+  setSemanticRefreshListener: () => () => {},
+  stopAllLsp: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -77,10 +82,10 @@ async function mount() {
  *  path a real toggle takes, so the pane's own effect is what reacts. Built
  *  from the defaults rather than from the live store, which is a Solid proxy
  *  and cannot be cloned. */
-function setEditorPref(patch: Partial<typeof DEFAULT_SETTINGS.editor>) {
+function setEditorPref(patch: Partial<typeof DEFAULT_SETTINGS.editorDefaults>) {
   return saveSettings({
     ...structuredClone(DEFAULT_SETTINGS),
-    editor: { ...DEFAULT_SETTINGS.editor, ...patch },
+    editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, ...patch },
   });
 }
 

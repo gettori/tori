@@ -60,25 +60,18 @@ export type Harness = { path?: string | null };
  *
  *  `vimMode` is here and **not** in `EditorPrefs`: which formatter runs is a
  *  property of the repo, but whether `hjkl` moves the caret is a property of
- *  the person, and the same hands do not change between projects. */
-export type EditorDefaults = { formatOnSave: boolean; vimMode: boolean };
-/** One project's editor overrides. `null`/absent means "no answer here" and
- *  falls through to `editorDefaults`, which is distinct from an explicit
- *  `false` - that is this project saying no. */
-export type EditorPrefs = { formatOnSave?: boolean | null };
-
-/**
- * Editing comfort, one flat block of booleans read by the editor pane.
+ *  the person, and the same hands do not change between projects.
  *
- * Every key names the phase that consumes it, because a toggle the settings
- * panel renders and nothing reads is worse than a missing feature: it reads as
- * broken rather than absent.
- *
- * Flat rather than nested per feature, because these are all answers to "how
- * should the code surface behave", and a user looking for soft wrap should not
- * have to know whether it is a view concern or a language one.
- */
-export type EditorPrefs = {
+ *  The editing-comfort switches below join them for the same reason `vimMode`
+ *  is here: they are answers to "how should the code surface behave", which is
+ *  a property of the person rather than of the repo. Every one names the phase
+ *  that consumes it, because a toggle the settings panel renders and nothing
+ *  reads is worse than a missing feature - it reads as broken rather than
+ *  absent. Flat rather than nested per feature, so a user looking for soft wrap
+ *  does not have to know whether it is a view concern or a language one. */
+export type EditorDefaults = {
+  formatOnSave: boolean;
+  vimMode: boolean;
   /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
   indentGuides: boolean;
   /** Wrap long lines rather than scrolling horizontally. The palette's
@@ -101,6 +94,15 @@ export type EditorPrefs = {
    *  them. (Phase 10) */
   hotExit: boolean;
 };
+
+/** One project's editor overrides. `null`/absent means "no answer here" and
+ *  falls through to `editorDefaults`, which is distinct from an explicit
+ *  `false` - that is this project saying no.
+ *
+ *  Only `formatOnSave` is overridable per project, because only it is a
+ *  property of the repo. The comfort switches in `EditorDefaults` are the
+ *  person's and stay global. */
+export type EditorPrefs = { formatOnSave?: boolean | null };
 
 /**
  * Spend ceilings. **Null means unlimited, and that is the default**: a budget
@@ -131,7 +133,6 @@ export type Settings = {
   budgets: Budgets;
   editorDefaults: EditorDefaults;
   harness: Harness;
-  editor: EditorPrefs;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
   /** Keyed by project path, same shape and same reason as `chat`. */
@@ -164,14 +165,14 @@ export const DEFAULT_SETTINGS: Settings = {
     showSwayHooks: false,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
-  editorDefaults: { formatOnSave: false, vimMode: false },
-  harness: {},
-  // Defaults follow the tickets: the three that only cost a line of pixels are
-  // on, the three cosmetic overlays are off (a stance nobody asked for is worse
-  // than a switch), and the two behavioural ones are on because a completion
-  // that never appears and a quit that still discards work are the states these
-  // features exist to end.
-  editor: {
+  // The comfort defaults follow the tickets: the three that only cost a line of
+  // pixels are on, the three cosmetic overlays are off (a stance nobody asked
+  // for is worse than a switch), and the two behavioural ones are on because a
+  // completion that never appears and a quit that still discards work are the
+  // states these features exist to end.
+  editorDefaults: {
+    formatOnSave: false,
+    vimMode: false,
     indentGuides: true,
     softWrap: false,
     renderWhitespace: false,
@@ -182,6 +183,7 @@ export const DEFAULT_SETTINGS: Settings = {
     wordCompletion: true,
     hotExit: true,
   },
+  harness: {},
   chat: {},
   editor: {},
 };

@@ -23,7 +23,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     switch (cmd) {
       case "get_settings":
-        return Promise.resolve({ ...BASE_SETTINGS, editor: { ...BASE_SETTINGS.editor, hotExit } });
+        return Promise.resolve({ ...BASE_SETTINGS, editorDefaults: { ...BASE_SETTINGS.editorDefaults, hotExit } });
       case "file_exists":
         return Promise.resolve(String(args.path) === FILE);
       case "hot_exit_load":
@@ -79,7 +79,7 @@ vi.mock("./CodeEditor", async () => {
     },
   };
 });
-vi.mock("./lspClient", () => ({ ensureLsp: () => {} }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { DEFAULT_SETTINGS, loadSettings } = await import("../Settings/settingsStore");

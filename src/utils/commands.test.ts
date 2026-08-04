@@ -75,15 +75,35 @@ describe("the canonical command table", () => {
     }
   });
 
-  it("gives no editor command a key of its own", () => {
-    // The editor group is deliberately keyless: a table-level binding is
-    // dispatched through `dispatchHotkey`, which the terminal calls too, so it
-    // would act on a file nobody was looking at while a terminal had focus.
-    // CM6's own keymap owns the editor's chords, and it only ever sees keys
-    // that reach the editor's DOM. `Mod-s` is the standing example.
+  it("never gives an editor command the global scope", () => {
+    // The property that matters, and the reason the editor group was keyless to
+    // begin with: `global` is dispatched through `dispatchHotkey`, which the
+    // terminal calls too, so a global editor binding acts on a file nobody is
+    // looking at while a terminal has focus. `window` does not have that
+    // problem, which is what lets the language-server commands carry a chord
+    // the shortcut sheet can print - a binding the library installs privately
+    // is one nothing can tell the user about.
     for (const c of COMMANDS.filter((c) => c.group === "editor")) {
-      expect(c.keys, `${c.id} carries a key; the editor group must stay keyless`).toBeUndefined();
-      expect(c.scope, `${c.id} carries a scope, which only a key-carrying command needs`).toBeUndefined();
+      expect(c.scope, `${c.id} is global; an editor action must not fire at a terminal`).not.toBe(
+        "global",
+      );
+    }
+  });
+
+  it("leaves the chord to CodeMirror for every command CodeMirror already binds", () => {
+    // These four are `defaultKeymap`'s, so a table-level binding would be a
+    // second one firing on the same press. They are listed for discoverability
+    // and reached by name only.
+    for (const id of [
+      "editor-expand-selection",
+      "editor-shrink-selection",
+      "editor-join-lines",
+      "editor-split-selection",
+      "editor-save",
+    ]) {
+      const c = COMMANDS.find((c) => c.id === id);
+      if (!c) continue; // named by id so a rename shows up as a miss, not a pass
+      expect(c.keys, `${id} carries a key CodeMirror already owns`).toBeUndefined();
     }
   });
 

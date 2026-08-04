@@ -63,7 +63,7 @@ vi.mock("./CodeEditor", () => ({
     return null;
   },
 }));
-vi.mock("./lspClient", () => ({ ensureLsp: () => {} }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { clearPendingStash, pendingStashPaths } = await import("../../utils/hotExit");

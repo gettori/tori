@@ -18,10 +18,10 @@ import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
-import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { settings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
+import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import SessionPanel from "./SessionPanel";
@@ -366,7 +366,7 @@ export default function Editor(props: {
   function toggleSoftWrap() {
     const id = activeId();
     if (!id || isSyntheticId(id)) return;
-    setWrapById((prev) => toggledWrap(prev, id, settings.editor.softWrap));
+    setWrapById((prev) => toggledWrap(prev, id, settings.editorDefaults.softWrap));
   }
 
   // The session/branch-unit working folder is the anchor for the editor, file
@@ -575,7 +575,7 @@ export default function Editor(props: {
   // The unsaved buffers last run's quit stashed, if any. Started here and
   // awaited by the restore below, so a tab can never be handed to CodeEditor
   // before the stash it should be built from has arrived. Deliberately not
-  // gated on `settings.editor.hotExit`: the key decides whether new work is
+  // gated on `settings.editorDefaults.hotExit`: the key decides whether new work is
   // stashed, and work already on disk is handed back whatever it says now.
   const stashReady = loadPendingStash(Date.now());
   // Workspaces this run has opened tabs in, ever. `toStore` only sees what is
@@ -1070,7 +1070,7 @@ export default function Editor(props: {
       // kept - the key being on is not evidence that anything reached the
       // disk, so a refused or unanswered stash falls back to the same confirm
       // that has always been here, and no buffer goes quietly.
-      if (settings.editor.hotExit && (await requestStash())) {
+      if (settings.editorDefaults.hotExit && (await requestStash())) {
         await getCurrentWindow().destroy();
         return;
       }
@@ -1255,11 +1255,11 @@ export default function Editor(props: {
               selected={props.selected}
               hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
               blame={blameOn()}
-              confirm={askConfirm}
               // The active tab's override, or null to follow the setting. Only
               // the shown buffer's answer is needed: the others are re-resolved
               // when they are swapped in.
               softWrap={wrapById()[activeId() ?? ""] ?? null}
+              confirm={askConfirm}
             />
           </Suspense>
         </Show>

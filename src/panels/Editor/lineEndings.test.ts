@@ -9,12 +9,19 @@ import { detectEol, fromDisk } from "./lineEndings";
 
 /** Every source file in this folder, as text. Vite's own glob rather than
  *  `node:fs`, so no `@types/node` is needed and the same import works whichever
- *  environment the file is run in. */
-const PANEL_SOURCES = import.meta.glob<string>("./*.{ts,tsx}", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
+ *  environment the file is run in.
+ *
+ *  Test files are excluded, and the exclusion is the point rather than a
+ *  convenience: the ban is on the *editor* reading a document it will write
+ *  back, because that reading has to use the file's own ending. A test
+ *  asserting on a `Text` it built itself is not that, and several legitimately
+ *  do (the language workspace hands back a `Text`, and `toString` is how you
+ *  say what it should contain). */
+const PANEL_SOURCES = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>("./*.{ts,tsx}", { query: "?raw", import: "default", eager: true }),
+  ).filter(([path]) => !/\.test\.tsx?$/.test(path)),
+);
 
 describe("detecting a file's ending", () => {
   it("reads a file written entirely one way", () => {

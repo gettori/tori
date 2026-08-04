@@ -12,7 +12,6 @@ import {
   type Checkpoints,
   type DefaultSurface,
   type EditorDefaults,
-  type EditorPrefs,
   type Harness,
   type TranscriptDensity,
   type Typography,
@@ -48,7 +47,7 @@ function withFallback(primary: string, fallback: string): string {
 /** The editing-comfort toggles, in the order they read as a list rather than in
  *  the order the wave built them: what the text looks like, then what the
  *  editor does for you, then what survives a quit. */
-export const EDITOR_TOGGLES: { key: keyof EditorPrefs; label: string; hint?: string }[] = [
+export const EDITOR_TOGGLES: { key: keyof EditorDefaults; label: string; hint?: string }[] = [
   { key: "indentGuides", label: "Indentation guides" },
   {
     key: "softWrap",
@@ -102,8 +101,6 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
   };
   const setHarness = (h: Partial<Harness>) =>
     saveSettings({ ...settings, harness: { ...settings.harness, ...h } });
-  const setEditor = (e: Partial<EditorPrefs>) =>
-    saveSettings({ ...settings, editor: { ...settings.editor, ...e } });
 
   // Reject empty/NaN/out-of-range commits (a blank or 0 font size would blank
   // the UI); fall back to the current value so an invalid entry is a no-op.
@@ -337,8 +334,8 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                       <label class={styles.label}>{t.label}</label>
                       <input
                         type="checkbox"
-                        checked={settings.editor[t.key]}
-                        onChange={(e) => setEditor({ [t.key]: e.currentTarget.checked })}
+                        checked={settings.editorDefaults[t.key]}
+                        onChange={(e) => setEditorDefaults({ [t.key]: e.currentTarget.checked })}
                       />
                     </div>
                     <Show when={t.hint}>

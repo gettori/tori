@@ -14,9 +14,13 @@ import { editorPrefExtensions } from "./editorPrefs";
 import { DEPTH_COLORS } from "./bracketPairs";
 import { MINIMAP_CLASS } from "./minimap";
 import { langForPath } from "./languages";
-import type { EditorPrefs } from "../Settings/settingsStore";
+import type { EditorDefaults } from "../Settings/settingsStore";
 
-const BASE: EditorPrefs = {
+const BASE: EditorDefaults = {
+  // Not what this suite is about, but part of the type: format-on-save and vim
+  // are editor behaviour too, and neither resolves to an extension here.
+  formatOnSave: false,
+  vimMode: false,
   indentGuides: false,
   softWrap: false,
   renderWhitespace: false,

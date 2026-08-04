@@ -15,7 +15,7 @@ import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
 import { minimap } from "./minimap";
 import type { Extension } from "@codemirror/state";
-import type { EditorPrefs } from "../Settings/settingsStore";
+import type { EditorDefaults } from "../Settings/settingsStore";
 
 /** A preference that resolves to a live-swappable extension. Named separately
  *  from the settings keys because deciding *which* are on is the part with
@@ -41,7 +41,7 @@ export type EditorPrefOverrides = { softWrap?: boolean | null };
 
 /** Which features are on for this buffer, override first, setting second. */
 export function activeEditorFeatures(
-  prefs: EditorPrefs,
+  prefs: EditorDefaults,
   overrides: EditorPrefOverrides = {},
 ): EditorFeature[] {
   const on: EditorFeature[] = [];
@@ -94,7 +94,7 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
  * here, it belongs in `makeState` with a rebuild.
  */
 export function editorPrefExtensions(
-  prefs: EditorPrefs,
+  prefs: EditorDefaults,
   overrides: EditorPrefOverrides = {},
 ): Extension[] {
   return activeEditorFeatures(prefs, overrides).map((f) => FEATURE_EXTENSIONS[f]());
