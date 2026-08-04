@@ -1050,7 +1050,20 @@ export default function Editor(props: {
     // (destroy bypasses this handler, so there is no re-prompt loop).
     offClose = await getCurrentWindow().onCloseRequested(async (event) => {
       const anyDirty = Object.values(dirty()).some(Boolean);
-      if (!anyDirty) return;
+      // Hot exit rewrites the stash on *every* quit, not only when something is
+      // unsaved. The file is the whole of this feature's memory, and a quit
+      // that wrote nothing left the previous run's entries sitting in it: the
+      // next launch loaded them, marked those tabs dirty, and handed the old
+      // text back over files that had since been saved. Worse than useless,
+      // because `savedText` still matched disk, so it did not even raise the
+      // conflict banner - it just quietly reintroduced edits the user had
+      // already dealt with.
+      //
+      // With nothing dirty the write costs one small file and resolves in
+      // milliseconds; `stashToWrite` then yields whatever is still genuinely
+      // pending (a stashed tab nobody clicked keeps its entry, a claimed or
+      // saved one does not).
+      if (!anyDirty && !settings.editorDefaults.hotExit) return;
       event.preventDefault();
       // Hot exit replaces the prompt rather than sitting beside it: there is
       // nothing to warn about once the work is kept. But only once it *is*
