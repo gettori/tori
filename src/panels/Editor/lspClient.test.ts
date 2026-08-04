@@ -460,6 +460,55 @@ describe("symbol capabilities", () => {
   });
 });
 
+describe("workspace-edit capabilities", () => {
+  const workspaceBlocks = () =>
+    (clientConfigs[0].extensions ?? []).map(
+      (e) => (e as { clientCapabilities?: { workspace?: Record<string, unknown> } }).clientCapabilities?.workspace,
+    );
+
+  it("advertises applyEdit, documentChanges and executeCommand", async () => {
+    // Each one is a promise kept somewhere: the router answers applyEdit,
+    // `editsByUri` reads documentChanges, `executeServerCommand` sends the
+    // third. A server offers no provider for what the client never asked for.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/we/a.ts", "/proj/we");
+    const blocks = workspaceBlocks();
+
+    expect(blocks.some((b) => b?.applyEdit === true)).toBe(true);
+    expect(blocks.some((b) => (b?.workspaceEdit as { documentChanges?: boolean })?.documentChanges === true)).toBe(true);
+    expect(blocks.some((b) => !!b?.executeCommand)).toBe(true);
+  });
+
+  it("advertises no resource operations, because it supports none", async () => {
+    // Absent means "none of them" to a conformant server, which is how create,
+    // rename and delete never arrive in the first place. The applier's refusal
+    // is the backstop for servers that send them anyway, not the front line.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/we2/a.ts", "/proj/we2");
+
+    const edit = workspaceBlocks().find((b) => b?.workspaceEdit) as
+      | { workspaceEdit: Record<string, unknown> }
+      | undefined;
+
+    expect(edit?.workspaceEdit).toBeTruthy();
+    expect(edit!.workspaceEdit.resourceOperations).toBeUndefined();
+  });
+
+  it("keeps the symbol and semantic blocks alongside, not instead of them", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/we3/a.ts", "/proj/we3");
+    const blocks = (clientConfigs[0].extensions ?? []).map(
+      (e) =>
+        (e as { clientCapabilities?: { textDocument?: Record<string, unknown>; workspace?: Record<string, unknown> } })
+          .clientCapabilities,
+    );
+
+    expect(blocks.some((b) => b?.textDocument?.documentSymbol)).toBe(true);
+    expect(blocks.some((b) => b?.textDocument?.semanticTokens)).toBe(true);
+    expect(blocks.some((b) => b?.workspace?.applyEdit)).toBe(true);
+  });
+});
+
 describe("workspace/semanticTokens/refresh", () => {
   const refresh = (id: unknown) =>
     JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });
