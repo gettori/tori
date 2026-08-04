@@ -67,6 +67,7 @@ import {
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
+  FILE_RENAMED,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
@@ -81,6 +82,7 @@ import {
   type PurgeUnderPath,
   type LiveTab,
   type SetRightMode,
+  type FileRenamed,
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
@@ -100,6 +102,7 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
+import { renameTabsUnder } from "./renameTabs";
 import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
@@ -887,6 +890,29 @@ export default function Editor(props: {
     for (const p of next.removed) dropStashEntry(p);
   }
 
+  // A file or folder moved on disk: repoint every tab addressing it instead of
+  // closing anything. A rename is not a removal, so a dirty buffer has to come
+  // along with its unsaved text; the sweep itself is pure and lives in
+  // `renameTabs`, next to `purgeTabs` for the same reasons.
+  function followRename(from: string, to: string) {
+    const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
+    if (!next.moved.length) return;
+    setTabsByWs(next.tabs);
+    setActiveByWs(next.active);
+    // Dirty flags are keyed by path, so they move with the tab or the strip
+    // would show a clean file that still holds unsaved edits.
+    setDirty((d) => {
+      const out = { ...d };
+      for (const m of next.moved) {
+        if (m.from in out) {
+          out[m.to] = out[m.from];
+          delete out[m.from];
+        }
+      }
+      return out;
+    });
+  }
+
   // Published for the command palette, which is this pane's sibling and can
   // reach none of the above. One effect over everything the snapshot names, so
   // its parts can never describe two different moments.
@@ -975,6 +1001,7 @@ export default function Editor(props: {
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
+  let offFileRenamed: (() => void) | undefined;
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
 
@@ -1018,6 +1045,9 @@ export default function Editor(props: {
     });
     offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
       if (d?.mode) setRightMode(d.mode);
+    });
+    offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
+      if (d?.from && d.to) followRename(d.from, d.to);
     });
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
@@ -1092,6 +1122,7 @@ export default function Editor(props: {
     offFollow?.();
     offProjectSearch?.();
     offSetRightMode?.();
+    offFileRenamed?.();
     offGitWatch?.();
     for (const off of offCommands) off();
   });
@@ -1351,7 +1382,14 @@ export default function Editor(props: {
         />
         <Switch>
           <Match when={rightMode() === "files"}>
-            <FileTree root={root()} />
+            <FileTree
+              root={root()}
+              editable
+              noun="project folder"
+              activePath={activeId()}
+              askText={askText}
+              askConfirm={askConfirm}
+            />
           </Match>
           <Match when={rightMode() === "problems"}>
             <ProblemsPanel selected={props.selected} />
@@ -1384,7 +1422,13 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "shared"}>
-            <FileTree root={sharedPath()} editable askText={askText} askConfirm={askConfirm} />
+            <FileTree
+              root={sharedPath()}
+              editable
+              noun="shared folder"
+              askText={askText}
+              askConfirm={askConfirm}
+            />
           </Match>
           <Match when={rightMode() === "docs"}>
             <FileTree root={docsPath()} />

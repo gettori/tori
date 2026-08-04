@@ -20,6 +20,7 @@ const PREFS: EditorDefaults = {
   minimap: false,
   wordCompletion: true,
   hotExit: true,
+  compactFolders: true,
 };
 
 // A stand-in for whatever a phase puts in the compartment: present or absent is
