@@ -25,6 +25,7 @@ pub mod palette;
 mod patch;
 mod presence;
 mod pty;
+mod scratch;
 mod search;
 mod sessions;
 mod settings;
@@ -310,6 +311,8 @@ pub fn run() {
             onboarding::onboarding_mark_shown,
             hot_exit::hot_exit_load,
             hot_exit::hot_exit_save,
+            scratch::scratch_dir,
+            scratch::scratch_new,
             update::check_for_update,
             update::open_releases_page,
             sessions::list_sessions,

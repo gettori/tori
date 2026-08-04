@@ -40,6 +40,8 @@ import {
   SET_RIGHT_MODE,
   type SetRightMode,
   EDITOR_SAVE,
+  EDITOR_SAVE_AS,
+  EDITOR_NEW_SCRATCH,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
@@ -393,13 +395,38 @@ export const COMMANDS: Command[] = [
 
   // --- Editor -------------------------------------------------------------
   //
-  // No keys. CM6's own `Mod-s` stays the sole save key: a table-level binding
-  // would fire while a terminal had focus, saving a file nobody was looking at.
+  // Almost no keys. CM6's own `Mod-s` stays the sole save key: a table-level
+  // binding would fire while a terminal had focus, saving a file nobody was
+  // looking at. The one exception is Cmd+N below, which is not a CM6 binding at
+  // all - it has to work with no buffer open, which is exactly when there is no
+  // keymap to hold it.
+  {
+    id: "editor-new-scratch",
+    keys: ["⌘", "N"],
+    label: "New scratch buffer",
+    sub: "An untitled file, kept until you save it somewhere.",
+    group: "editor",
+    // `window` for the tab strip's reason: this opens an editor tab, and a
+    // program running in the terminal keeps its own claim on the key.
+    scope: "window",
+    match: cmd("n"),
+    run: () => emit(EDITOR_NEW_SCRATCH),
+  },
   {
     id: "editor-save",
     label: "Save file",
     group: "editor",
     run: () => emit(EDITOR_SAVE),
+    requires: ["editorFile"],
+  },
+  {
+    id: "editor-save-as",
+    label: "Save as a new file",
+    // Says what happens to the tab, because that is the part a person cannot
+    // guess: it follows the file rather than staying on the old one.
+    sub: "The tab follows it. A scratch buffer's own file is removed.",
+    group: "editor",
+    run: () => emit(EDITOR_SAVE_AS),
     requires: ["editorFile"],
   },
   {

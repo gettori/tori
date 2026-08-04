@@ -40,6 +40,7 @@ describe("the canonical binding table", () => {
     expect(BINDINGS.map((b) => b.id).sort()).toEqual(
       [
         "command-palette",
+        "editor-new-scratch",
         "filter-sidebar",
         "focus-terminal",
         "lsp-definition",
@@ -75,13 +76,18 @@ describe("the canonical binding table", () => {
     for (const b of BINDINGS) expect(GROUP_LABELS[b.group]).toBeTruthy();
   });
 
-  it("lists the language-server commands in the sheet's Editor group", () => {
+  it("lists the keyed editor commands in the sheet's Editor group", () => {
     // The four keys the LSP client binds privately (F12, ⇧F12, F2, ⇧⌥F) were
     // shortcuts nothing in the app could print, and three of them need Fn on a
     // Mac laptop. The Editor group used to drop out of the sheet entirely for
     // having no key-carrying command in it.
+    //
+    // Cmd+N joins them because it is the one editor action with no buffer to
+    // hold its key: CM6's keymap cannot bind "open a new buffer" when there is
+    // no buffer open, which is exactly when it is wanted.
     const editor = bindingsByGroup().find((g) => g.group === "editor");
     expect(editor?.bindings.map((b) => b.id)).toEqual([
+      "editor-new-scratch",
       "lsp-definition",
       "lsp-references",
       "lsp-rename",

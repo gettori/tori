@@ -121,6 +121,14 @@ export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
 export const EDITOR_TOGGLE_SOFT_WRAP = "sway:editor-toggle-soft-wrap";
 export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
 
+// A new untitled buffer, and saving one under a real name. Both consumed by
+// Editor: it owns the tabs, and SAVE_AS asks for a path the way GOTO_LINE asks
+// for a line, so the palette closes before the prompt opens. The text itself
+// comes from `liveBuffers`, which is how the pane reaches a buffer it does not
+// own.
+export const EDITOR_NEW_SCRATCH = "sway:editor-new-scratch";
+export const EDITOR_SAVE_AS = "sway:editor-save-as";
+
 // Back and forward through the jump list. Consumed by Editor.tsx, which is
 // where the list lives: it is bucketed by workspace exactly as the tab strip is,
 // and this pane is the only thing that knows which workspace is selected.

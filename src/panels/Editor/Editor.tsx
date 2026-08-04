@@ -79,6 +79,8 @@ import {
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
+  EDITOR_NEW_SCRATCH,
+  EDITOR_SAVE_AS,
   EDITOR_NAV_BACK,
   EDITOR_NAV_FORWARD,
   EDITOR_REOPEN_CLOSED,
@@ -162,7 +164,18 @@ import { askAgentToResolve } from "../../utils/conflictAsk";
 import { findAgent } from "../../utils/agents";
 import type { SessionTarget } from "../../utils/safeSend";
 import type { RevertCandidate } from "../../utils/revertGuard";
-import { isSelfWrite } from "../../utils/selfWrites";
+import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
+import {
+  defaultSaveName,
+  isScratchPath,
+  newScratchFile,
+  resolveSavePath,
+  scratchDirPath,
+} from "../../utils/scratch";
+// The window onto CodeEditor's buffers, for the two things Save-as needs and
+// this pane cannot hold: the text of a buffer it does not own, and the way to
+// tell that buffer its file has been rewritten to match.
+import { adoptBufferText, liveBufferText } from "./liveBuffers";
 // Not a static import: lspClient pulls @codemirror/lsp-client, which reaches
 // the rest of CodeMirror and would put the whole graph back in the startup
 // chunk. The only call is the fire-and-forget warm-up below.
@@ -661,6 +674,17 @@ export default function Editor(props: {
     req?.resolve(v);
   }
 
+  // Where scratch buffers live, fetched once for the same reason the docs root
+  // below is: it is a fixed directory the backend owns. The pane needs it for
+  // the one place a scratch differs from any other file tab, which is that its
+  // file can be taken away (closing an untouched one, promoting one with
+  // Save-as). Until it arrives `isScratchPath` answers false for everything, so
+  // both of those decline rather than guess.
+  const [scratchDir, setScratchDir] = createSignal<string | null>(null);
+  onMount(async () => {
+    setScratchDir(await scratchDirPath());
+  });
+
   // A parallel docs/notes tree mirroring <docsRoot>/<space>/<project>, keyed on
   // the canonical space/project (not the branch-unit folder), surfaced as its own
   // Docs tab only when that folder actually exists.
@@ -734,6 +758,64 @@ export default function Editor(props: {
       setTabs([...tabs(), { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }]);
     }
     setActiveId(path);
+  }
+
+  /**
+   * Open a new untitled buffer (Cmd+N).
+   *
+   * The file is created *before* the tab, and that ordering is the whole
+   * feature: a tab with a real path behind it is stored by `editorTabPersist`,
+   * probed alive by the restore, stashed by hot exit and read and written by
+   * CodeEditor with no special case anywhere. A synthetic `sway://scratch/…` id
+   * would have needed one in each, and `toStore` drops synthetic ids on
+   * purpose, so an untitled tab could never have survived a relaunch.
+   *
+   * It lands in whichever workspace is selected, like every other tab. With
+   * none selected it goes to the transient no-selection bucket and so does not
+   * persist - the same rule the rest of the strip lives under, and the file
+   * itself is still there to reopen.
+   *
+   * Through OPEN_IN_EDITOR rather than `openFile`, so arriving in a scratch is
+   * recorded the way arriving anywhere else is: it is a place Back returns to.
+   */
+  async function newScratch() {
+    const path = await newScratchFile();
+    if (!path) {
+      emitWith<ToastEvent>(TOAST, {
+        message: "Could not create a scratch file.",
+        kind: "error",
+      });
+      return;
+    }
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path });
+  }
+
+  /**
+   * Take a scratch's backing file away, into the trash `fs_delete` uses.
+   *
+   * A no-op for anything else, which is what makes Save-as safe on an ordinary
+   * file: that one keeps its original where it was, exactly as Save As does
+   * everywhere.
+   */
+  async function removeScratchFile(path: string) {
+    const dir = scratchDir();
+    if (!isScratchPath(path, dir)) return;
+    await invoke("fs_delete", { root: dir, path, noun: "scratch folder" }).catch(() => {});
+  }
+
+  /**
+   * Does this file hold nothing at all?
+   *
+   * The *file*, deliberately, and not the buffer that was showing it. A close
+   * that went through the discard confirm threw the buffer's text away without
+   * touching disk, so a buffer-shaped answer would keep an empty scratch in
+   * exactly the case that produces one. It is also the only answer available
+   * for a tab restored from last run that nobody clicked, which has no buffer.
+   *
+   * A read that fails answers false, so nothing is ever deleted on a guess.
+   */
+  async function isEmptyOnDisk(path: string): Promise<boolean> {
+    return (await invoke<string>("fs_read_file", { path }).catch(() => null)) === "";
   }
 
   // What was stored last run. Read once, because it is the thing this run's
@@ -843,10 +925,19 @@ export default function Editor(props: {
     // an entry left pending is carried through the next quit and handed back on
     // the launch after that.
     dropStashEntry(tab.path);
+    // An untitled buffer holding nothing takes its file with it. Cmd+N creates
+    // one every time, so without this the scratch directory fills with empty
+    // files and the numbering climbs past anything anyone has written.
+    //
+    // Short-circuited on the scratch test, so closing an ordinary file costs no
+    // read at all and can never reach the delete below.
+    const spent = isScratchPath(tab.path, scratchDir()) && (await isEmptyOnDisk(tab.path));
+    if (spent) void removeScratchFile(tab.path);
     // Only real files are reopenable. A synthetic view is rebuilt from whatever
     // opened it (a commit, a conflict), so putting its id back would name a tab
-    // rather than a file.
-    if (!isSyntheticId(tab.path)) setClosedByWs((s) => rememberClosedTab(s, ws(), tab.path));
+    // rather than a file; and a scratch just deleted would come back as a failed
+    // read of a file that is no longer there.
+    if (!isSyntheticId(tab.path) && !spent) setClosedByWs((s) => rememberClosedTab(s, ws(), tab.path));
     const remaining = tabs().filter((t) => tabId(t) !== id);
     setTabs(remaining);
     setDirty((d) => {
@@ -1154,6 +1245,76 @@ export default function Editor(props: {
     setGotoTarget({ path, line, nonce: ++gotoNonce });
   }
 
+  /**
+   * Write the active buffer somewhere new and take the tab with it.
+   *
+   * Built as **a rename with a write in front of it**. Once the bytes are on
+   * disk, `FILE_RENAMED` is the event Phase 1 already gave the tab strip,
+   * CodeEditor's buffer map (so the undo history comes along), the jump list,
+   * the bookmarks and the reopen stack, so every one of them follows the file
+   * without being told about scratch buffers at all.
+   *
+   * The order is the safety: write, then repoint, then remove the old file. A
+   * failed write leaves the untitled buffer exactly where it was, and a scratch
+   * whose file is gone before the new one exists is the one sequence that could
+   * lose the text.
+   */
+  async function saveAsFromPrompt() {
+    const from = activeFileTab()?.path;
+    if (!from) return;
+    // The pane does not own the text. `null` is "no buffer holds this path",
+    // which is nothing to write rather than an empty file to write.
+    const text = liveBufferText(from);
+    if (text === null) return;
+    const answer = await askText("Save as", defaultSaveName(from));
+    // A cancelled prompt is owed no explanation; an answer that named no file
+    // is, or the box just closes and nothing appears anywhere.
+    if (answer === null) return;
+    const to = resolveSavePath(answer, root());
+    if (!to) {
+      emitWith<ToastEvent>(TOAST, {
+        message: root()
+          ? `"${answer.trim()}" does not name a file.`
+          : "Select a workspace first, or type a path starting with /.",
+        kind: "error",
+      });
+      return;
+    }
+    // Saving a file onto itself, which is the ordinary save and not this one.
+    if (to === from) return;
+    if (await invoke<boolean>("file_exists", { path: to }).catch(() => false)) {
+      const ok = await askConfirm({
+        title: `${basename(to)} already exists.`,
+        message: "Saving here replaces what is in it.",
+        confirmLabel: "Replace",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    try {
+      await invoke("fs_write_file", { path: to, contents: text });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, {
+        message: `Could not save ${basename(to)}: ${String(e)}`,
+        kind: "error",
+      });
+      return;
+    }
+    // Our own write, so follow mode and the diff gutter do not treat it as
+    // somebody else editing the file.
+    markSelfWrite(to);
+    emitWith<FileRenamed>(FILE_RENAMED, { from, to });
+    // The buffer that just moved holds exactly what the file now holds, so it
+    // takes that as its baseline too. Without this the promoted tab reads dirty
+    // against a file it agrees with, and the next save would be a no-op nobody
+    // could explain.
+    adoptBufferText(to, text);
+    // Whatever the last quit stashed under the old path describes a file that
+    // is about to stop existing.
+    dropStashEntry(from);
+    void removeScratchFile(from);
+  }
+
   // Repo-relative, which is what every git_* command takes. A file outside the
   // workspace (a Docs note, a `.shared/` file) has no path git would accept, so
   // it is refused by name rather than staged against the wrong repo.
@@ -1220,6 +1381,8 @@ export default function Editor(props: {
       onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
       onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
       onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
+      onEvent(EDITOR_NEW_SCRATCH, () => void newScratch()),
+      onEvent(EDITOR_SAVE_AS, () => void saveAsFromPrompt()),
       onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
       onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
