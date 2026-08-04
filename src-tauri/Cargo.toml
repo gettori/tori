@@ -39,6 +39,11 @@ tauri-plugin-clipboard-manager = "2.3.2"
 # its credential stores should link core plus the specific store, since `keyring`
 # itself exists to serve its CLI and would drag in every platform's backend.
 keyring-core = "1"
+# Deleting from a file tree means the macOS Trash, never `rm`: a tree delete is
+# one wrong click away and must stay recoverable. Default features off because
+# they exist for listing/restoring trash contents (and pull `chrono` to do it);
+# `trash::delete` is all the editor asks for.
+trash = { version = "5.2.6", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
