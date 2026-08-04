@@ -110,6 +110,64 @@
   font-size: var(--sway-text-md);
 }
 
+/* Saved searches, the second disclosure under the toggle row. Stacked rather
+   than laid out like .globRow: this one holds a list, and a list that grows
+   sideways stops being one. */
+.savedRow {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+.saveBar {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+}
+
+/* Why a rename was refused, inside the row it happened in rather than in the
+   search-error slot above the results. */
+.savedNotice {
+  color: var(--danger-fg);
+  font-size: var(--sway-text-md);
+}
+
+.savedList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.savedItem {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+}
+
+/* Takes the slack, so the rename and delete buttons line up down the list
+   however long the names are. */
+.savedName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: calc(3px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border: none;
+  background: none;
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.savedName:hover {
+  background: var(--canvas-head);
+}
+
 .truncatedNotice {
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);

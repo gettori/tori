@@ -31,6 +31,29 @@ export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
 export const TOGGLE_KEYS = ["case", "regex", "wholeWord", "noIgnore"] as const;
 export type ToggleKey = (typeof TOGGLE_KEYS)[number];
 
+/** Read a stored options record back, field by field, defaulting anything that
+ *  is missing or of the wrong type.
+ *
+ *  Here rather than in either store because both `searchHistory` and
+ *  `savedSearches` persist this shape, and a validator that lives next to one
+ *  of them is a validator the other one drifts from. Field-by-field rather than
+ *  a cast: this comes off `localStorage`, which is last session's schema at
+ *  best, and a `regex: "yes"` reaching `grep_project` fails at the backend
+ *  boundary instead of here. */
+export function parseSearchOptions(raw: unknown): SearchOptions {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const bool = (k: ToggleKey) => (typeof o[k] === "boolean" ? (o[k] as boolean) : DEFAULT_SEARCH_OPTIONS[k]);
+  const text = (k: "include" | "exclude") => (typeof o[k] === "string" ? (o[k] as string) : "");
+  return {
+    case: bool("case"),
+    regex: bool("regex"),
+    wholeWord: bool("wholeWord"),
+    noIgnore: bool("noIgnore"),
+    include: text("include"),
+    exclude: text("exclude"),
+  };
+}
+
 /** Shape the `grep_project` invoke payload. Kept here so the argument names are
  *  asserted by a test rather than only by a failing round-trip at runtime. */
 export function grepArgs(root: string, query: string, options: SearchOptions, max: number) {
