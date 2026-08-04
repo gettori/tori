@@ -34,6 +34,8 @@ const writes: { path: string; contents: string }[] = [];
 /** How many times the editor has re-read each path, so a test can wait for the
  *  external-change handler to have actually run rather than for a timeout. */
 const reads: string[] = [];
+/** Local-history snapshots the save path asked the backend to take. */
+const noted: { repoPath: string; path: string }[] = [];
 
 const HEAD = "a".repeat(40);
 /** One commit covering every line, so a placed blame is visible in the gutter. */
@@ -54,6 +56,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         writes.push({ path, contents: String(args.contents) });
         disk[path] = String(args.contents);
         return Promise.resolve(null);
+      case "local_history_note":
+        noted.push({ repoPath: String(args.repoPath), path });
+        return Promise.resolve(true);
       case "file_exists":
         return Promise.resolve(path in disk);
       case "git_head_sha":
@@ -144,6 +149,7 @@ beforeEach(async () => {
   disk = { [CRLF_FILE]: CRLF, [LF_FILE]: LF, [MIXED_FILE]: MIXED };
   writes.length = 0;
   reads.length = 0;
+  noted.length = 0;
   clearBlameCache();
   await refreshStatus(REPO);
   await refreshMeta(REPO);
@@ -232,6 +238,19 @@ describe("saving", () => {
     expect(writes[0].contents).toBe("zero\r\none\r\ntwo\r\nthree\r\n");
     expect(writes[0].contents).not.toMatch(/[^\r]\n/);
     expect(last(dirty).dirty).toBe(false);
+  });
+
+  it("keeps a local-history version of what it just wrote", async () => {
+    // Every save, whether or not it is ever committed: the version somebody
+    // goes looking for is usually the one that was never staged. After the
+    // write, and by path, so what is recorded is what landed on disk.
+    const { view } = await open(CRLF_FILE);
+    typeInto(view, "zero\r\n");
+
+    emitWith(EDITOR_SAVE, undefined);
+    await waitFor(() => expect(noted).toHaveLength(1));
+    expect(noted[0]).toEqual({ repoPath: REPO, path: CRLF_FILE });
+    expect(writes.length).toBe(1);
   });
 
   it("leaves an LF file on LF", async () => {

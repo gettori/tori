@@ -160,6 +160,46 @@ describe("the editable project tree", () => {
     });
   });
 
+  it("carries the file's saved versions to the new path", async () => {
+    // Local history is keyed by path, so without this a rename orphans every
+    // version under a name nothing will ever ask about again. After the move,
+    // because a folder rename is read off the destination.
+    mountProject({ askText: answering("guide.md") });
+    await screen.findByText("README.md");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    fireEvent.click(await screen.findByText("Rename"));
+
+    await waitFor(() => expect(sent("local_history_rename")).toHaveLength(1));
+    expect(sent("local_history_rename")[0].args).toEqual({
+      repoPath: ROOT,
+      from: `${ROOT}/README.md`,
+      to: `${ROOT}/guide.md`,
+    });
+    expect(bridge.calls.findIndex((c) => c.cmd === "fs_rename")).toBeLessThan(
+      bridge.calls.findIndex((c) => c.cmd === "local_history_rename"),
+    );
+  });
+
+  it("drops the file's saved versions before it goes to the Trash", async () => {
+    // Before, not after: a folder's versions can only be found by walking it,
+    // and by the time it is in the Trash there is nothing left to walk.
+    mountProject({ askConfirm: confirming(true) });
+    await screen.findByText("README.md");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    fireEvent.click(await screen.findByText("Delete"));
+
+    await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
+    expect(sent("local_history_forget")[0].args).toEqual({
+      repoPath: ROOT,
+      path: `${ROOT}/README.md`,
+    });
+    expect(bridge.calls.findIndex((c) => c.cmd === "local_history_forget")).toBeLessThan(
+      bridge.calls.findIndex((c) => c.cmd === "fs_delete"),
+    );
+  });
+
   it("deletes only after a confirmation, and fences the delete to the root", async () => {
     const askConfirm = confirming(true);
     mountProject({ askConfirm });

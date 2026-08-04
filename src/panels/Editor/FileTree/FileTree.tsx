@@ -164,6 +164,12 @@ async function newFolderIn(ctx: EditCtx, dir: string, reload: () => Promise<void
  *  backwards through a history nobody is tracking. */
 async function applyRename(ctx: EditCtx, from: string, to: string, undo?: string) {
   await invoke("fs_rename", { root: ctx.root, from, to, noun: ctx.noun });
+  // After the move, because that is where the files are now: local history is
+  // keyed by path, so without this every saved version stays filed under a name
+  // nothing will ever ask about again. Not awaited, and failure is silent - the
+  // file has moved either way, and a toast about a version store would be about
+  // something the user did not do.
+  void invoke("local_history_rename", { repoPath: ctx.root, from, to }).catch(() => {});
   emitWith<FileRenamed>(FILE_RENAMED, { from, to });
   await reloadDirs(ctx, parentOf(from), parentOf(to));
   if (!undo) return;
@@ -220,6 +226,11 @@ async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
   const failed: string[] = [];
   for (const path of targets) {
     try {
+      // Before the delete, not after: a folder's saved versions can only be
+      // found by walking it, and by the time it is in the Trash there is
+      // nothing left to walk. Awaited for the same reason, and forgiving,
+      // since a version store that will not answer must not block the delete.
+      await invoke("local_history_forget", { repoPath: ctx.root, path }).catch(() => {});
       await invoke("fs_delete", { root: ctx.root, path, noun: ctx.noun });
     } catch (e) {
       failed.push(String(e));

@@ -1,0 +1,130 @@
+/* One file's local history, as a full-pane view like the commit log. Rows are
+   the checkpoint timeline's shape and its diff is rendered by the same rule, so
+   two lists of versions in this app do not read as two different features. */
+.localHistory {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+}
+
+/* Takes the slack and truncates from the left of its box, so a deep path still
+   shows the filename that names the view. */
+.sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.list {
+  flex: 1;
+  overflow: auto;
+  padding: calc(4px * var(--ui-scale)) 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--canvas-head);
+}
+
+.rowOn {
+  background: var(--canvas-card);
+}
+
+.when {
+  flex: none;
+  min-width: calc(96px * var(--ui-scale));
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Takes the slack so Restore stays pinned right whether or not the row is
+   tagged. */
+.tag {
+  flex: 1;
+  min-width: 0;
+  color: var(--accent-fg);
+  font-size: var(--sway-text-md);
+}
+
+.size {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Only on hover or keyboard focus, following the Problems and TODO panels: a
+   button on every row turns the list into a column of buttons. Transparent
+   rather than hidden, so it keeps its place in the tab order. */
+.restore {
+  flex: none;
+  opacity: 0;
+}
+
+.row:hover .restore,
+.restore:focus-visible {
+  opacity: 1;
+}
+
+.diff {
+  padding: calc(4px * var(--ui-scale)) 0;
+  background: var(--canvas-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  overflow-x: auto;
+}
+
+.same {
+  padding: 0 calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+.diffLine {
+  white-space: pre;
+  padding: 0 calc(12px * var(--ui-scale));
+}
+
+.diffLine.add {
+  color: var(--diff-added);
+}
+.diffLine.del {
+  color: var(--diff-deleted);
+}
+.diffLine.hunk {
+  color: var(--accent-fg);
+}
+.diffLine.meta {
+  color: var(--fg-muted);
+}
