@@ -71,7 +71,7 @@ import {
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
-import { settings, zoom, editorDefaults, formatOnSaveFor, vimModeOn, toggleVimMode } from "../Settings/settingsStore";
+import { settings, zoom, editorDefaults, formatOnSaveFor, vimModeOn } from "../Settings/settingsStore";
 import { vimExtension } from "./vimMode";
 import {
   on as onEvent,
@@ -92,7 +92,6 @@ import {
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
-  EDITOR_TOGGLE_VIM,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -1454,12 +1453,11 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
   ];
 
-  // Not in the list above: this is a setting, not an LSP action, and that array
-  // is named for what is in it. It is listened for here for the same reason the
-  // others are, though - `commands.ts` may import nothing but `events`, so the
-  // palette entry cannot reach the settings store itself. The reconfigure comes
-  // back through the `vimModeOn` effect rather than from this handler.
-  const offToggleVim = onEvent(EDITOR_TOGGLE_VIM, () => toggleVimMode());
+  // No listener for the vim-mode toggle: it is a setting rather than an editor
+  // action, so it rides the generic `PREFS_TOGGLE` that every `Preferences: ...`
+  // command emits, and App writes the layer in force. The reconfigure arrives
+  // here through the `vimModeOn` effect either way, which is what it always did
+  // - the old handler only supplied the flip.
 
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
@@ -1568,7 +1566,6 @@ export default function CodeEditor(props: {
     offStash();
     for (const off of offSelection) off();
     for (const off of offLspCommands) off();
-    offToggleVim();
     offBufferAccess();
     offSymbolSearch();
     offSemanticRefresh();
