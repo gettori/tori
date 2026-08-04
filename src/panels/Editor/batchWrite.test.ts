@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// The echo-suppression half of a cross-file rename. `isSelfWrite` exists so the
-// editor does not read its own saves as somebody else's edits, and its window
-// is sized for one save. A rename writes a hundred and fifty files, and if the
-// window runs out before the watcher's debounced echo arrives, the tail of the
-// rename raises a reload banner on every file it touched.
+// The echo-suppression half of any batch the editor writes itself: a cross-file
+// rename, or a `WorkspaceEdit` from a server. `isSelfWrite` exists so the editor
+// does not read its own saves as somebody else's edits, and its window is sized
+// for one save. A rename writes a hundred and fifty files, and if the window
+// runs out before the watcher's debounced echo arrives, the tail of the batch
+// raises a reload banner on every file it touched.
 
 let held: (() => void) | null = null;
 let refuse: string | null = null;
@@ -22,7 +23,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { writeRenamedFiles } = await import("./lspRenameCommand");
+const { writeFilesSuppressingEcho } = await import("./batchWrite");
 const { isSelfWrite } = await import("../../utils/selfWrites");
 
 beforeEach(() => {
@@ -35,10 +36,10 @@ beforeEach(() => {
 const batch = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ path: `/repo/f${i}.ts`, contents: "x" }));
 
-describe("writeRenamedFiles", () => {
+describe("writeFilesSuppressingEcho", () => {
   it("sends the whole set as one call", async () => {
     const files = batch(150);
-    const written = await writeRenamedFiles(files);
+    const written = await writeFilesSuppressingEcho(files);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toHaveLength(150);
@@ -47,7 +48,7 @@ describe("writeRenamedFiles", () => {
 
   it("suppresses the echo for every file, first and last alike", async () => {
     const files = batch(150);
-    await writeRenamedFiles(files);
+    await writeFilesSuppressingEcho(files);
 
     // Per-file marking done as each write goes out would have let the first
     // file's window expire long before the batch finished.
@@ -57,7 +58,7 @@ describe("writeRenamedFiles", () => {
   it("covers an echo that arrives while the batch is still writing", async () => {
     held = () => {};
     const files = batch(3);
-    const pending = writeRenamedFiles(files);
+    const pending = writeFilesSuppressingEcho(files);
 
     // The watcher fires for the files already on disk before the call returns.
     expect(files.every((f) => isSelfWrite(f.path))).toBe(true);
@@ -74,7 +75,7 @@ describe("writeRenamedFiles", () => {
     vi.useFakeTimers();
     const files = batch(2);
     held = () => {};
-    const pending = writeRenamedFiles(files);
+    const pending = writeFilesSuppressingEcho(files);
     vi.advanceTimersByTime(1500); // longer than the self-write TTL
     expect(isSelfWrite(files[0].path)).toBe(false);
 
@@ -88,7 +89,7 @@ describe("writeRenamedFiles", () => {
     // then dispatch into the editor, or the file on screen shows a rename that
     // exists nowhere else.
     refuse = "/repo/f1.ts is read-only, so nothing was changed.";
-    await expect(writeRenamedFiles(batch(2))).rejects.toThrow("read-only");
+    await expect(writeFilesSuppressingEcho(batch(2))).rejects.toThrow("read-only");
     expect(calls).toHaveLength(1);
   });
 
@@ -100,7 +101,7 @@ describe("writeRenamedFiles", () => {
     refuse = "read-only";
     const files = batch(2);
     held = () => {};
-    const pending = writeRenamedFiles(files);
+    const pending = writeFilesSuppressingEcho(files);
     vi.advanceTimersByTime(1500);
     held();
     await expect(pending).rejects.toThrow();
