@@ -304,10 +304,20 @@ pub struct EditorDefaults {
     pub hot_exit: bool,
     #[serde(default = "default_true")]
     pub compact_folders: bool,
+    /// Comma-separated tags the TODO panel looks for. A string rather than a
+    /// list because the workspace overlay validates an override by comparing
+    /// `typeof` against the default and reports its origin by inequality;
+    /// both are exact for a string and neither works on an array.
+    #[serde(default = "default_todo_patterns")]
+    pub todo_patterns: String,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_todo_patterns() -> String {
+    "TODO,FIXME,HACK,XXX".to_string()
 }
 
 impl Default for EditorDefaults {
@@ -326,6 +336,7 @@ impl Default for EditorDefaults {
             word_completion: true,
             hot_exit: true,
             compact_folders: true,
+            todo_patterns: default_todo_patterns(),
         }
     }
 }
@@ -821,6 +832,33 @@ mod tests {
         s.editor_defaults.hot_exit = false;
         save_to(&p, &s).unwrap();
         assert!(!load_from(&p).editor_defaults.hot_exit);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// The one key in this block that is not a switch. A file written before it
+    /// existed must come back with the built-in tags rather than an empty
+    /// string, which the panel would read as "no tags configured" and show
+    /// nothing at all.
+    #[test]
+    fn todo_patterns_default_to_the_built_in_tags_and_survive_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{ "editorDefaults": { "minimap": true } }"#).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.editor_defaults.todo_patterns, "TODO,FIXME,HACK,XXX");
+
+        let mut s = back;
+        s.editor_defaults.todo_patterns = "REVIEW,NOTE".to_string();
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.editor_defaults.todo_patterns, "REVIEW,NOTE");
+        // A sibling switch is untouched by writing this one.
+        assert!(back.editor_defaults.minimap);
+
+        // An empty list is a real answer: a project that wants no TODO panel
+        // must not have the defaults handed back to it on every load.
+        s.editor_defaults.todo_patterns = String::new();
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).editor_defaults.todo_patterns, "");
         let _ = std::fs::remove_file(&p);
     }
 

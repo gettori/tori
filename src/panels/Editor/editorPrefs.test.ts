@@ -22,6 +22,7 @@ const PREFS: EditorDefaults = {
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
+  todoPatterns: "TODO,FIXME,HACK,XXX",
 };
 
 // A stand-in for whatever a phase puts in the compartment: present or absent is
@@ -36,10 +37,13 @@ const prefsWith = (on: boolean) => [...editorPrefExtensions(PREFS), ...(on ? [ma
 
 const withPrefs = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...PREFS, ...over });
 
-// Every key false, derived rather than written out, so a preference added to
+// Every switch false, derived rather than written out, so a preference added to
 // the type later starts off here instead of quietly joining every expectation
-// below.
-const ALL_OFF = Object.fromEntries(Object.keys(PREFS).map((k) => [k, false])) as EditorDefaults;
+// below. A setting that is not a switch has no "off" to be put in, so it keeps
+// its default: `todoPatterns` is a list of tags, and `false` is not one.
+const ALL_OFF = Object.fromEntries(
+  Object.entries(PREFS).map(([k, v]) => [k, typeof v === "boolean" ? false : v]),
+) as EditorDefaults;
 const only = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...ALL_OFF, ...over });
 
 describe("which comfort features a buffer gets", () => {

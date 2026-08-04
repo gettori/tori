@@ -35,9 +35,22 @@ describe("the settings catalogue", () => {
     // The rule Phase 4 recorded, checked rather than remembered: a setting is
     // registered in `EditorDefaults` and read through the layer resolution, and
     // this is what fails when the second half of that is skipped.
+    //
+    // Two fields, because not every setting the resolution answers for is a
+    // switch: `toggles` for the booleans a command can flip, `edits` for the
+    // ones that get a row and no command. Both count as registered; what must
+    // never happen is a key in the type that appears in neither.
     const declared = Object.keys(DEFAULT_SETTINGS.editorDefaults).sort();
-    const listed = SETTINGS.filter((s) => s.toggles).map((s) => s.toggles!);
+    const listed = SETTINGS.flatMap((s) => [s.toggles, s.edits]).filter(Boolean) as string[];
     expect([...listed].sort()).toEqual(declared);
+  });
+
+  it("never marks one setting as both a toggle and a row of its own", () => {
+    // They are alternatives, not layers: a key claiming both would be drawn
+    // twice and flipped by a command that its own row cannot show.
+    for (const s of SETTINGS) {
+      expect(!(s.toggles && s.edits), `${s.id} claims both`).toBe(true);
+    }
   });
 
   it("puts every editor default in a section the panel renders as toggles", () => {

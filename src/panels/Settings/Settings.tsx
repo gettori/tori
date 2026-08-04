@@ -4,7 +4,7 @@ import AgentsSection from "./AgentsSection";
 import GithubSection from "./GithubSection";
 import LspSection from "./LspSection";
 import { matchingSections } from "./settingsSearch";
-import { SETTINGS, type SettingSection } from "../../utils/settingsCatalog";
+import { SETTINGS, type SettingSection, type EditorToggleKey } from "../../utils/settingsCatalog";
 import {
   settings,
   saveSettings,
@@ -18,7 +18,6 @@ import {
   type ChatDefaults,
   type Checkpoints,
   type DefaultSurface,
-  type EditorDefaults,
   type Harness,
   type TranscriptDensity,
   type Typography,
@@ -51,7 +50,7 @@ function withFallback(primary: string, fallback: string): string {
   return `${quoted}, ${fallback}`;
 }
 
-type EditorToggle = { key: keyof EditorDefaults; label: string; hint?: string };
+type EditorToggle = { key: EditorToggleKey; label: string; hint?: string };
 
 /** The boolean editor rows of one section, read off the catalogue so a setting
  *  is named in exactly one place (see `utils/settingsCatalog.ts`). */
@@ -72,6 +71,64 @@ export const EDITOR_TOGGLES = togglesIn("editing");
  *  Their own section above the list, because each needs a paragraph the rest do
  *  not. */
 const OWN_ROW_TOGGLES = togglesIn("editor");
+
+/** The one editing setting that is not a switch, read off the catalogue like
+ *  the toggles are so its label and hint are still named in one place. Found by
+ *  the key it edits rather than by its id, so the row and the setting cannot
+ *  drift apart the way two strings can. */
+const TODO_TAGS = SETTINGS.find((s) => s.edits === "todoPatterns")!;
+
+/**
+ * The TODO tags row: a text box where the rest of the section has checkboxes.
+ *
+ * Written out rather than folded into `ToggleRow` because only the control
+ * differs; the badge, the "Set here" action and the layer they read are the
+ * same, and they are the part that has to stay identical. A setting that showed
+ * one layer and wrote another would read as broken here exactly as it would
+ * there.
+ */
+function TodoTagsRow(props: { workspaceName: string }) {
+  const fromWorkspace = () => editorOrigin().todoPatterns === "workspace";
+  return (
+    <>
+      <div class={styles.row}>
+        <label class={styles.label}>{TODO_TAGS.label}</label>
+        <Show when={fromWorkspace()}>
+          <span class={styles.originBadge} title={props.workspaceName}>
+            workspace
+          </span>
+        </Show>
+        <input
+          class={`${styles.input} ${styles.text}`}
+          aria-label={TODO_TAGS.label}
+          value={editorDefaults().todoPatterns}
+          onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
+        />
+        <Show when={overlayRoot()}>
+          <button
+            class={styles.originAction}
+            onClick={() =>
+              void setWorkspaceOverride(
+                "todoPatterns",
+                fromWorkspace() ? undefined : editorDefaults().todoPatterns,
+              )
+            }
+            title={
+              fromWorkspace()
+                ? "Stop overriding this here and follow your global setting again"
+                : "Pin these tags for this workspace only, leaving your global setting alone"
+            }
+          >
+            {fromWorkspace() ? "Clear" : "Set here"}
+          </button>
+        </Show>
+      </div>
+      <Show when={TODO_TAGS.hint}>
+        <div class={styles.hint}>{TODO_TAGS.hint}</div>
+      </Show>
+    </>
+  );
+}
 
 /**
  * One boolean row: the badge, the checkbox, and the per-workspace action.
@@ -414,6 +471,7 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 <For each={EDITOR_TOGGLES}>
                   {(t) => <ToggleRow entry={t} workspaceName={workspaceName()} />}
                 </For>
+                <TodoTagsRow workspaceName={workspaceName()} />
                 <Show
                   when={overlayRoot()}
                   fallback={<div class={styles.hint}>Select a branch to override any of these for one workspace.</div>}

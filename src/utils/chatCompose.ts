@@ -70,6 +70,16 @@ export function diagnosticBlocks(
   ];
 }
 
+/** A TODO: the line it sits on, then the request. One line rather than a range,
+ *  because a tag marks a point and a made-up end line would claim the note
+ *  covers code it says nothing about. */
+export function todoBlocks(path: string, line: number, tag: string, text: string): ContentBlock[] {
+  return [
+    { type: "fileRef", path, startLine: line, endLine: line, text: null },
+    { type: "text", text: `Fix this ${tag}: ${text.replace(/\s*\n\s*/g, " ").trim()}` },
+  ];
+}
+
 // Attachment limits, enforced where a thing is *offered* rather than where it is
 // sent. A file that cannot be sent must never become a chip: a chip is a promise
 // that the next turn will carry it, and discovering at send time that it cannot

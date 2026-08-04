@@ -20,6 +20,7 @@ const DEFAULTS: EditorDefaults = {
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
+  todoPatterns: "TODO,FIXME,HACK,XXX",
 };
 
 describe("which layer wins", () => {
@@ -60,6 +61,30 @@ describe("which layer wins", () => {
     expect(resolveEditorDefaults(DEFAULTS, user, { stickyScroll: false }).stickyScroll).toBe(false);
     expect(editorOrigins(DEFAULTS, user, { stickyScroll: false }).stickyScroll).toBe("workspace");
   });
+
+  // The first setting here that is not a switch, and the reason it is a string
+  // rather than a list of tags: every rule in this module is written against
+  // `typeof` and `!==`, and both are exact for a string. On an array the
+  // validator would admit anything object-shaped and the origin badge would
+  // call every workspace value an override, because no two arrays are equal.
+  it("gives the TODO tags the same three layers", () => {
+    const user = { ...DEFAULTS, todoPatterns: "TODO,FIXME" };
+    expect(resolveEditorDefaults(DEFAULTS, user, {}).todoPatterns).toBe("TODO,FIXME");
+    // A repo that calls them something else says so, and wins.
+    expect(resolveEditorDefaults(DEFAULTS, user, { todoPatterns: "REVIEW" }).todoPatterns).toBe(
+      "REVIEW",
+    );
+    expect(editorOrigins(DEFAULTS, user, { todoPatterns: "REVIEW" }).todoPatterns).toBe("workspace");
+    expect(editorOrigins(DEFAULTS, user, {}).todoPatterns).toBe("user");
+  });
+
+  it("takes an empty tag list from a workspace as an answer, not an absence", () => {
+    // A repo that wants no TODO panel at all can say so, and it must not read
+    // as "no opinion" and fall through to the user's tags.
+    const user = { ...DEFAULTS, todoPatterns: "TODO" };
+    expect(resolveEditorDefaults(DEFAULTS, user, { todoPatterns: "" }).todoPatterns).toBe("");
+    expect(resolveEditorDefaults(DEFAULTS, user, {}).todoPatterns).toBe("TODO");
+  });
 });
 
 describe("reading an overlay file", () => {
@@ -81,6 +106,17 @@ describe("reading an overlay file", () => {
   it("drops a key it does not know and a value of the wrong type", () => {
     const raw = { editor: { minimap: true, notASetting: true, compactFolders: "yes" } };
     expect(parseOverlay(raw, DEFAULTS)).toEqual({ minimap: true });
+  });
+
+  // The type check runs off the default's own type, so it admits a string where
+  // the default is a string and refuses one where the default is a boolean.
+  it("takes a string setting as a string and refuses anything else", () => {
+    expect(parseOverlay({ editor: { todoPatterns: "REVIEW,NOTE" } }, DEFAULTS)).toEqual({
+      todoPatterns: "REVIEW,NOTE",
+    });
+    for (const bad of [true, 7, ["TODO"], null, {}]) {
+      expect(parseOverlay({ editor: { todoPatterns: bad } }, DEFAULTS), `${JSON.stringify(bad)}`).toEqual({});
+    }
   });
 
   it("round-trips through the shape the file holds", () => {

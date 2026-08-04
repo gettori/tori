@@ -9,6 +9,7 @@ import {
   type ProbeState,
   type SessionTarget,
   composeDiagnostic,
+  composeTodo,
 } from "./safeSend";
 
 describe("sanitizeForSend", () => {
@@ -184,5 +185,35 @@ describe("composeDiagnostic", () => {
 
   it("trims surrounding whitespace", () => {
     expect(composeDiagnostic(target, "/repo/a.ts", 1, 1, "info", "  padded  ")).toBe("@a.ts#L1-L1 info: padded");
+  });
+});
+
+describe("composeTodo", () => {
+  const target = { sessionCwd: "/repo", folderPath: "/repo" } as Parameters<typeof composeTodo>[0];
+
+  it("names the location, then asks for the fix", () => {
+    // A TODO is a note to a human, so unlike a diagnostic the line does not say
+    // what is wrong: the sentence around it is what turns it into a request.
+    expect(composeTodo(target, "/repo/src/a.ts", 42, "TODO", "// TODO wire this up")).toBe(
+      "@src/a.ts#L42 Fix this TODO: // TODO wire this up",
+    );
+  });
+
+  it("carries the tag that matched, not a hard-coded one", () => {
+    expect(composeTodo(target, "/repo/a.ts", 3, "FIXME", "leaks")).toBe(
+      "@a.ts#L3 Fix this FIXME: leaks",
+    );
+  });
+
+  it("flattens and trims, so the prompt is never submitted for you", () => {
+    const composed = composeTodo(target, "/repo/a.ts", 1, "HACK", "  one\n  two  ");
+    expect(composed).not.toMatch(/[\n\r]/);
+    expect(composed).toBe("@a.ts#L1 Fix this HACK: one two");
+  });
+
+  it("uses an absolute path outside the session cwd", () => {
+    expect(composeTodo(target, "/elsewhere/b.ts", 9, "XXX", "hm")).toBe(
+      "@/elsewhere/b.ts#L9 Fix this XXX: hm",
+    );
   });
 });

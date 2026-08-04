@@ -1,0 +1,140 @@
+/* The TODO panel. Same rhythm as the Search panel's results (a file header with
+   a count, then its rows), because they are the same thing to the eye: hits in
+   files, grouped, click to go there. */
+.todoPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.tagRow {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--canvas-head);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: var(--fg-default);
+}
+
+.chipOn {
+  background: var(--canvas-card);
+  border-color: var(--border-strong);
+  color: var(--fg-default);
+}
+
+.chipCount {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  flex: none;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.results {
+  flex: 1;
+  overflow: auto;
+  padding: calc(4px * var(--ui-scale)) 0;
+  user-select: none;
+}
+
+.fileGroup {
+  margin-bottom: calc(4px * var(--ui-scale));
+}
+
+.fileHead {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.todoRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.todoRow:hover {
+  background: var(--canvas-head);
+}
+
+.tag {
+  flex: none;
+  color: var(--accent-fg);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.loc {
+  flex: none;
+  min-width: calc(28px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Takes the slack, so Send stays pinned right however long the line is. */
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only on hover or keyboard focus: a button on every row turns the list into a
+   column of buttons with some text beside them. Transparent rather than hidden,
+   following the Problems panel: `visibility: hidden` takes the button out of the
+   tab order, which would make the focus rule below unreachable by the very
+   keyboard it exists for. */
+.sendButton {
+  flex: none;
+  opacity: 0;
+}
+
+.todoRow:hover .sendButton,
+.sendButton:focus-visible {
+  opacity: 1;
+}

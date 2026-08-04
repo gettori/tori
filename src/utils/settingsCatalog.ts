@@ -12,11 +12,12 @@
 // the terminal's chunk. The one import below is `import type`, which the bundler
 // erases; the matching rule that searches this list lives next to the panel, in
 // `panels/Settings/settingsSearch.ts`, for the same reason.
-import type { EditorDefaults } from "../panels/Settings/settingsStore";
-
 /** A boolean the three-layer resolution answers for (default < user <
- *  workspace), so it can be flipped without opening the panel. */
-export type EditorToggleKey = keyof EditorDefaults;
+ *  workspace), so it can be flipped without opening the panel. Defined beside
+ *  `EditorDefaults` because it is derived from that shape; re-exported here
+ *  because this is where the catalog names it. */
+export type { EditorToggleKey } from "../panels/Settings/settingsStore";
+import type { EditorDefaults, EditorToggleKey } from "../panels/Settings/settingsStore";
 
 /**
  * A section of the panel, in the order the panel renders them.
@@ -65,6 +66,12 @@ export type SettingEntry = {
    *  Everything else is reached by opening the panel filtered to it: a font
    *  stack or a dollar ceiling has no "other" value to toggle to. */
   toggles?: EditorToggleKey;
+  /** Set for an `EditorDefaults` setting that is **not** a boolean, so it gets
+   *  a row of its own rather than a checkbox and no `Preferences:` command.
+   *  Named here for `toggles`' reason: every key the three-layer resolution
+   *  answers for is registered in this file, and a test compares the two lists
+   *  so a setting cannot exist in the type and nowhere on screen. */
+  edits?: Exclude<keyof EditorDefaults, EditorToggleKey>;
 };
 
 /**
@@ -165,6 +172,15 @@ export const SETTINGS: SettingEntry[] = [
     label: "Compact single-child folders",
     toggles: "compactFolders",
     hint: "A folder whose only child is another folder renders as one row, src/utils/helpers, instead of a staircase. Gitignored folders are left alone.",
+  },
+  {
+    // No `toggles`: a list of tags has no other value to flip to, so it is
+    // reached by opening the panel the way a font stack is.
+    id: "todo-patterns",
+    section: "editing",
+    edits: "todoPatterns",
+    label: "TODO tags",
+    hint: "Comma-separated tags the TODO panel searches for, matched case-sensitively so a TODO marker is not confused with the word in prose. Set it per workspace to follow a repo's own convention.",
   },
 
   {

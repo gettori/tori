@@ -81,11 +81,12 @@ export function editorOrigins(
 
 /** Set or clear one workspace answer. `undefined` clears it, which is how a
  *  setting is handed back to the layer below rather than pinned to a value that
- *  happens to match it today. */
-export function withOverride(
+ *  happens to match it today. Generic in the key, so the value has to be that
+ *  setting's own type rather than any setting's. */
+export function withOverride<K extends keyof EditorDefaults>(
   overlay: EditorOverlay,
-  key: keyof EditorDefaults,
-  value: boolean | undefined,
+  key: K,
+  value: EditorDefaults[K] | undefined,
 ): EditorOverlay {
   const next = { ...overlay };
   if (value === undefined) delete next[key];

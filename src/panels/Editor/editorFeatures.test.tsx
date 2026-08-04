@@ -33,6 +33,7 @@ const BASE: EditorDefaults = {
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
+  todoPatterns: "TODO,FIXME,HACK,XXX",
 };
 
 const INDENTED = "function a() {\n    if (x) {\n        deep();\n    }\n}";
