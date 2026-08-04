@@ -10,6 +10,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // gap. Keep this a lazy edge: a static import of CodeEditor, lspClient or
 // diffGutter anywhere on the eager path silently undoes the split.
 const CodeEditor = lazy(() => import("./CodeEditor"));
+// The editable search results are a second CodeMirror instance, so they sit
+// behind the same edge for the same reason. `searchResultsStore` and
+// `searchResultsDoc` are deliberately free of any CodeMirror *value* import, so
+// the Search panel can reach them on the eager path without dragging the
+// library in behind them.
+const SearchResultsBuffer = lazy(() => import("./SearchResultsBuffer"));
 import FileTree from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
@@ -1718,6 +1724,15 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+                {/* Its own CodeMirror instance, not a buffer in CodeEditor:
+                    this document has no file behind it and lives under rules no
+                    file buffer has (its line count is fixed, and only a result's
+                    own text is editable). */}
+                <Show when={t().kind === "search"}>
+                  <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
+                    <SearchResultsBuffer id={activeId()!} />
+                  </Suspense>
                 </Show>
                 <Show when={t().kind === "conflict"}>
                   {/* Resolving rewrites the file, so it reports on the same

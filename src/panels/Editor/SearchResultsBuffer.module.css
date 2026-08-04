@@ -1,0 +1,70 @@
+/* The editable search-results buffer, as an editor tab. Same header rhythm as
+   the commit log (CommitLog.module.css), since both are tabs that are not files
+   and both put one bar of context above their content. */
+.resultsBuffer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--canvas-card);
+}
+
+.headerBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--sway-text-lg);
+}
+
+.query {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* Takes the slack, so the button stays pinned to the right however long the
+   outcome line is - and, rendered empty, so that it does when there is none. */
+.meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+
+/* Why a keystroke was refused. Under the header rather than in it: it appears
+   mid-typing, and a line that pushes the toolbar around as you type is worse
+   than one that pushes the text down. */
+.refusal {
+  flex: none;
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--danger-fg);
+  background: var(--canvas-head);
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--sway-text-lg);
+}
+
+.editorHost {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editorHost :global(.cm-editor) {
+  height: 100%;
+}
+
+.editorHost :global(.cm-scroller) {
+  overflow: auto;
+  font-family: var(--sway-font-mono);
+}
