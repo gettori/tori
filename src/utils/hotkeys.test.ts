@@ -54,6 +54,7 @@ describe("the canonical binding table", () => {
         "omnibox",
         "reload",
         "reopen-closed-tab",
+        "rerun-last-task",
         "shortcut-sheet",
         "stop-chat",
         "tab-cycle",
