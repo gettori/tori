@@ -5,6 +5,7 @@ import commandsSource from "./commands.ts?raw";
 import catalogSource from "./settingsCatalog.ts?raw";
 import { COMMANDS } from "./commands";
 import { SETTINGS } from "./settingsCatalog";
+import * as events from "./events";
 
 describe("the canonical command table", () => {
   it("has a unique id per command", () => {
@@ -144,6 +145,39 @@ describe("the canonical command table", () => {
     const imports = [...catalogSource.matchAll(/^import\s+(type\s+)?[\s\S]*?from\s+"([^"]+)";$/gm)];
     const runtime = imports.filter((m) => !m[1]).map((m) => m[2]);
     expect(runtime).toEqual([]);
+  });
+});
+
+describe("the registry after the omnibox absorbed the two pickers", () => {
+  it("emits no event nothing listens for", () => {
+    // The retirement half of merging them: `quick-open` and `command-palette`
+    // were two ids emitting two events into two App signals, and a table that
+    // kept naming either after the box replaced them would advertise a command
+    // that does nothing. Checked against the event module's own exports, so an
+    // event deleted there fails here rather than at runtime.
+    const names = new Set(
+      Object.entries(events)
+        .filter(([, v]) => typeof v === "string" && v.startsWith("sway:"))
+        .map(([, v]) => v as string),
+    );
+    const emitted = [...commandsSource.matchAll(/emitWith?<?[^(]*\(\s*([A-Z_]+)/g)].map((m) => m[1]);
+    for (const constant of new Set(emitted)) {
+      const value = (events as Record<string, unknown>)[constant];
+      expect(typeof value, `${constant} is emitted but not exported by events.ts`).toBe("string");
+      expect(names.has(value as string)).toBe(true);
+    }
+  });
+
+  it("keeps ⌘P and ⌘K as one entry and its alias", () => {
+    // Two keys, because "which file" and "what can I run" are asked differently
+    // often. One overlay, because they are the same list read two ways.
+    const box = COMMANDS.find((c) => c.id === "omnibox")!;
+    const alias = COMMANDS.find((c) => c.id === "command-palette")!;
+    expect(box.keys).toEqual(["⌘", "P"]);
+    expect(alias.keys).toEqual(["⌘", "K"]);
+    // Neither lists itself: opening the box is what you already did.
+    expect(box.hidden).toBe(true);
+    expect(alias.hidden).toBe(true);
   });
 });
 

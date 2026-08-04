@@ -8,11 +8,17 @@ beforeEach(() => clearEditorState());
 
 describe("published editor state", () => {
   it("reads as empty before the editor says anything", () => {
-    expect(editorState()).toEqual({ activePath: null, dirty: false, tabCount: 0, projectRoot: null });
+    expect(editorState()).toEqual({
+      activePath: null,
+      dirty: false,
+      tabCount: 0,
+      projectRoot: null,
+      recentJumps: [],
+    });
   });
 
   it("hands a consumer the active file and its dirty flag", () => {
-    publishEditorState({ activePath: "/proj/src/a.ts", dirty: true, tabCount: 2, projectRoot: "/proj" });
+    publishEditorState({ activePath: "/proj/src/a.ts", dirty: true, tabCount: 2, projectRoot: "/proj", recentJumps: [] });
     expect(editorState().activePath).toBe("/proj/src/a.ts");
     expect(editorState().dirty).toBe(true);
     expect(editorState().tabCount).toBe(2);
@@ -23,8 +29,8 @@ describe("published editor state", () => {
     // Half-updating is the failure this shape exists to prevent: an active path
     // from one moment beside a dirty flag from another would have the palette
     // offering to save a file that is already saved.
-    publishEditorState({ activePath: "/proj/src/a.ts", dirty: true, tabCount: 1, projectRoot: "/proj" });
-    publishEditorState({ activePath: null, dirty: false, tabCount: 0, projectRoot: "/proj" });
-    expect(editorState()).toEqual({ activePath: null, dirty: false, tabCount: 0, projectRoot: "/proj" });
+    publishEditorState({ activePath: "/proj/src/a.ts", dirty: true, tabCount: 1, projectRoot: "/proj", recentJumps: [] });
+    publishEditorState({ activePath: null, dirty: false, tabCount: 0, projectRoot: "/proj", recentJumps: [] });
+    expect(editorState()).toEqual({ activePath: null, dirty: false, tabCount: 0, projectRoot: "/proj", recentJumps: [] });
   });
 });

@@ -1,5 +1,5 @@
 // The one canonical command table. Everything that can be *run* by name is here:
-// the Cmd+K palette lists it, the Cmd+/ sheet lists the subset that carries keys,
+// the omnibox lists it, the Cmd+/ sheet lists the subset that carries keys,
 // and `hotkeys.ts` dispatches that same subset. A command cannot be added,
 // changed, or removed in one surface without the others following, which is the
 // drift that makes a printed shortcut list lie.
@@ -9,8 +9,8 @@
 // imports `hotkeys.ts`, so any import added here lands in the terminal's chunk.
 // That is why every `run` emits an event instead of calling the thing it means,
 // and why enablement travels as a declarative `requires` tag rather than as a
-// read of some store: resolving the tags is the palette's job (see
-// CommandPalette), and it already sits at the leaf of the graph where reading the
+// read of some store: resolving the tags is the omnibox's job (see
+// components/Omnibox), and it already sits at the leaf of the graph where reading the
 // editor and git stores costs nothing. The catalogue is admitted on the same
 // terms: it is a list of labels that imports nothing at runtime, which
 // `commands.test.ts` checks rather than takes on trust.
@@ -26,8 +26,8 @@ import {
   NEXT_WAITING_SESSION,
   STOP_CHAT,
   type StopChat,
-  OPEN_PALETTE,
-  OPEN_QUICK_OPEN,
+  OPEN_OMNIBOX,
+  type OpenOmnibox,
   TOGGLE_SHORTCUTS,
   ZOOM_IN,
   ZOOM_OUT,
@@ -86,7 +86,7 @@ export type CommandGroup =
  *   while an xterm textarea has DOM focus (which otherwise swallows keydown
  *   before it reaches window).
  * - `window`: window listener only. Cmd+P is deliberately here, not global:
- *   quick-open should not steal the key from a program running in the terminal.
+ *   the omnibox should not steal the key from a program running in the terminal.
  * - `terminal`: owned by the focused terminal itself and has no table-level
  *   action, because it acts on one xterm instance rather than emitting a
  *   global event. Listed here so the sheet stays complete.
@@ -164,23 +164,28 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
  */
 export const COMMANDS: Command[] = [
   {
-    id: "quick-open",
+    id: "omnibox",
     keys: ["⌘", "P"],
-    label: "Open a file by name",
+    label: "Go to a file, action, symbol or line",
     group: "navigate",
     scope: "window",
     match: cmd("p"),
-    run: () => emit(OPEN_QUICK_OPEN),
+    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: "" }),
+    // Listing the box inside the box.
+    hidden: true,
   },
   {
+    // An alias, not a second overlay: the same box, opened on the mode `>`
+    // selects. Two keys because "which file" and "what can I run" are asked
+    // differently often, and one of them being a prefix away does not make the
+    // other worth a detour through it.
     id: "command-palette",
     keys: ["⌘", "K"],
-    label: "Command palette: sessions, actions, panels",
+    label: "Run an action",
     group: "navigate",
     scope: "global",
     match: cmd("k"),
-    run: () => emit(OPEN_PALETTE),
-    // Listing the palette inside the palette.
+    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: ">" }),
     hidden: true,
   },
   {
@@ -188,7 +193,7 @@ export const COMMANDS: Command[] = [
     keys: ["⌃", "−"],
     label: "Go back to where you were",
     group: "navigate",
-    // `window`, not `global`, for quick-open's reason: these act on the editor's
+    // `window`, not `global`, for the omnibox's reason: these act on the editor's
     // jump list, and a program running in the terminal should keep its own
     // control keys.
     scope: "window",
