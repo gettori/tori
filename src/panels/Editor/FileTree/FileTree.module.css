@@ -43,6 +43,39 @@
   background: var(--tree-row-hover);
 }
 
+/* The folder a drop would land in. An inset outline rather than a border so the
+   row does not shift by a pixel as the highlight comes and goes, which reads as
+   the tree flinching away from the cursor. Also used on the tree background,
+   where a drop means "move to the workspace root". */
+.dropInto {
+  background: var(--accent-subtle);
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}
+
+/* Cmd-click selection. Flatter than the drop highlight on purpose: selection is
+   a resting state you may sit in while deciding, not a live drag cue. */
+.treeRow.selected {
+  background: var(--tree-row-active);
+}
+
+.filterBox {
+  margin: calc(4px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  width: calc(100% - 8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.filterBox:focus {
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}
+
 /* Gitignored entries read as present-but-inactive: the whole row drops to the
    faint text color (matching other quiet chrome), name and icon alike. The seti
    icon sets its type colour inline, so !important is needed to override it. */

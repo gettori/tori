@@ -198,6 +198,14 @@ export type FsChanged = { paths: string[] };
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
 export type OpenInEditor = { path: string; line?: number; col?: number };
 
+// Payload-carrying event: a file or folder the file tree just renamed or moved.
+// A rename is not a removal, so nothing closes: open tabs repoint to the new
+// path (`renameTabs.ts`) and their buffers move with them, keeping unsaved text
+// and undo history. Renaming a folder moves everything open inside it, which is
+// why consumers match on prefix rather than on equality.
+export const FILE_RENAMED = "sway:file-renamed";
+export type FileRenamed = { from: string; to: string };
+
 // Payload-carrying event: the files a chat session's tool call just wrote,
 // straight off its `toolCallCompleted`/`fileEdit` events.
 //

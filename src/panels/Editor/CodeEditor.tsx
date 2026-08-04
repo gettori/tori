@@ -13,6 +13,7 @@ import { tags as t } from "@lezer/highlight";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
+import { repoint } from "./renameTabs";
 import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
 import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
@@ -75,6 +76,7 @@ import {
   on as onEvent,
   onWith,
   emitWith,
+  FILE_RENAMED,
   AGENT_FILES_WRITTEN,
   AGENT_WRITE_DEBOUNCE_MS,
   REFIT_PANES,
@@ -93,6 +95,7 @@ import {
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
+  type FileRenamed,
   type EditorStashDirty,
   type EditorStashResult,
   type RevealTurn,
@@ -293,6 +296,23 @@ export default function CodeEditor(props: {
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
   let swapToken = 0;
+
+  // A file the tree renamed or moved: carry its buffer to the new key. The
+  // unsaved text and the undo history live in the buffer, so leaving it under
+  // the old key would strand them and hand the repointed tab a fresh read of
+  // disk, silently discarding edits the tab still claims to hold. `shown` moves
+  // too, or the next swap would think the visible buffer is a different file.
+  const offRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
+    if (!d?.from || !d.to) return;
+    for (const [key, buf] of [...buffers]) {
+      const next = repoint(key, d.from, d.to);
+      if (next === null) continue;
+      buffers.delete(key);
+      buffers.set(next, buf);
+      if (shown === key) shown = next;
+    }
+  });
+  onCleanup(() => offRenamed());
   // The active buffer has an external on-disk change conflicting with unsaved
   // edits (drives the reload banner).
   const [conflict, setConflict] = createSignal<Conflict | null>(null);
