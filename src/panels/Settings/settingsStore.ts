@@ -96,6 +96,8 @@ export type EditorDefaults = {
   bracketPairGuides: boolean;
   /** Document overview strip down the right edge. (Phase 7) */
   minimap: boolean;
+  /** Pin the enclosing scopes of the top visible line over the file. (Wave 6) */
+  stickyScroll: boolean;
   /** Word and snippet completion in buffers no language server claims.
    *  (Phase 5) */
   wordCompletion: boolean;
@@ -192,6 +194,7 @@ export const DEFAULT_SETTINGS: Settings = {
     rainbowBrackets: false,
     bracketPairGuides: false,
     minimap: false,
+    stickyScroll: false,
     wordCompletion: true,
     hotExit: true,
     compactFolders: true,

@@ -296,10 +296,14 @@ pub struct EditorDefaults {
     pub bracket_pair_guides: bool,
     #[serde(default)]
     pub minimap: bool,
+    #[serde(default)]
+    pub sticky_scroll: bool,
     #[serde(default = "default_true")]
     pub word_completion: bool,
     #[serde(default = "default_true")]
     pub hot_exit: bool,
+    #[serde(default = "default_true")]
+    pub compact_folders: bool,
 }
 
 fn default_true() -> bool {
@@ -318,8 +322,10 @@ impl Default for EditorDefaults {
             rainbow_brackets: false,
             bracket_pair_guides: false,
             minimap: false,
+            sticky_scroll: false,
             word_completion: true,
             hot_exit: true,
+            compact_folders: true,
         }
     }
 }

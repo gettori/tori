@@ -14,6 +14,7 @@ import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
 import { minimap } from "./minimap";
+import { stickyScroll } from "./stickyScroll";
 import type { Extension } from "@codemirror/state";
 import type { EditorDefaults } from "../Settings/settingsStore";
 
@@ -28,7 +29,8 @@ export type EditorFeature =
   | "scrollPastEnd"
   | "rainbowBrackets"
   | "bracketPairGuides"
-  | "minimap";
+  | "minimap"
+  | "stickyScroll";
 
 /**
  * Per-buffer answers that outrank the global setting.
@@ -52,6 +54,7 @@ export function activeEditorFeatures(
   if (prefs.rainbowBrackets) on.push("rainbowBrackets");
   if (prefs.bracketPairGuides) on.push("bracketPairGuides");
   if (prefs.minimap) on.push("minimap");
+  if (prefs.stickyScroll) on.push("stickyScroll");
   return on;
 }
 
@@ -85,6 +88,10 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
   rainbowBrackets: () => rainbowBrackets(),
   bracketPairGuides: () => bracketPairGuides(),
   minimap: () => minimap(),
+  // Off means the plugin is never in the configuration, so nothing walks the
+  // syntax tree and nothing listens for a scroll. That is the whole of the
+  // gate: there is no "on but idle" state to get wrong.
+  stickyScroll: () => stickyScroll(),
 };
 
 /**

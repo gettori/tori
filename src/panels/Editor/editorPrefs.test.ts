@@ -18,6 +18,7 @@ const PREFS: EditorDefaults = {
   rainbowBrackets: false,
   bracketPairGuides: false,
   minimap: false,
+  stickyScroll: false,
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
