@@ -40,6 +40,8 @@ import {
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
+  EDITOR_NAV_BACK,
+  EDITOR_NAV_FORWARD,
   EDITOR_EXPAND_SELECTION,
   EDITOR_SHRINK_SELECTION,
   EDITOR_JOIN_LINES,
@@ -127,6 +129,15 @@ const cmdOpt = (code: string) => (e: KeyboardEvent) =>
 const shiftOpt = (code: string) => (e: KeyboardEvent) =>
   e.shiftKey && e.altKey && !e.metaKey && !e.ctrlKey && e.code === code;
 
+// Ctrl chords, on `e.code` for the same reason the Option ones are: Shift
+// rewrites `e.key` for a punctuation key (Shift+- -> "_"), so the shifted half
+// of a pair would never match its own unshifted spelling.
+const ctrl = (code: string) => (e: KeyboardEvent) =>
+  e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === code;
+
+const ctrlShift = (code: string) => (e: KeyboardEvent) =>
+  e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === code;
+
 const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "files", label: "Files" },
   { mode: "changes", label: "Changes" },
@@ -162,6 +173,27 @@ export const COMMANDS: Command[] = [
     run: () => emit(OPEN_PALETTE),
     // Listing the palette inside the palette.
     hidden: true,
+  },
+  {
+    id: "nav-back",
+    keys: ["⌃", "−"],
+    label: "Go back to where you were",
+    group: "navigate",
+    // `window`, not `global`, for quick-open's reason: these act on the editor's
+    // jump list, and a program running in the terminal should keep its own
+    // control keys.
+    scope: "window",
+    match: ctrl("Minus"),
+    run: () => emit(EDITOR_NAV_BACK),
+  },
+  {
+    id: "nav-forward",
+    keys: ["⌃", "⇧", "−"],
+    label: "Go forward again",
+    group: "navigate",
+    scope: "window",
+    match: ctrlShift("Minus"),
+    run: () => emit(EDITOR_NAV_FORWARD),
   },
   {
     id: "filter-sidebar",

@@ -46,6 +46,8 @@ describe("the canonical binding table", () => {
         "lsp-format",
         "lsp-references",
         "lsp-rename",
+        "nav-back",
+        "nav-forward",
         "next-waiting",
         "project-search",
         "quick-open",
@@ -141,6 +143,26 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     // key from a program running in the terminal.
     expect(dispatchHotkey(key("p", { meta: true }))).toBe(false);
     expect(dispatchWindowHotkey(key("p", { meta: true }))).toBe(true);
+  });
+
+  it("routes Back and Forward to the window only, matching on e.code", () => {
+    // ⌃− and ⌃⇧− walk the editor's jump list, so they are `window` scope for
+    // quick-open's reason: a program in the terminal keeps its own control
+    // keys. On `e.code` because Shift rewrites `e.key` for a punctuation key
+    // (⇧− is "_"), which would leave the forward half never matching.
+    const ctrlMinus = (shift: boolean) =>
+      ({
+        key: shift ? "_" : "-",
+        code: "Minus",
+        metaKey: false,
+        altKey: false,
+        shiftKey: shift,
+        ctrlKey: true,
+      }) as KeyboardEvent;
+    expect(dispatchHotkey(ctrlMinus(false))).toBe(false);
+    expect(dispatchWindowHotkey(ctrlMinus(false))).toBe(true);
+    expect(dispatchWindowHotkey(ctrlMinus(true))).toBe(true);
+    expect(dispatched.map((e) => e.type)).toEqual(["sway:editor-nav-back", "sway:editor-nav-forward"]);
   });
 
   it("does not claim Cmd+S, which the focused editor owns", () => {

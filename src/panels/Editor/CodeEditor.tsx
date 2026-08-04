@@ -31,6 +31,7 @@ import {
 } from "./lspClient";
 import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
+import { cursorJumpListener } from "./cursorJump";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
@@ -234,6 +235,11 @@ export default function CodeEditor(props: {
   projectRoot: string | null;
   goto: { path: string; line: number; col?: number; nonce: number } | null;
   onDirty: (path: string, dirty: boolean) => void;
+  // The caret crossed enough lines in one step to count as a jump rather than
+  // drift, so the pane's Back/Forward list has somewhere new to remember. Only
+  // this component sees the caret, and only the pane knows which workspace the
+  // file belongs to, so the decision is here and the list is there.
+  onCursorJump?: (path: string, line: number) => void;
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
@@ -940,6 +946,9 @@ export default function CodeEditor(props: {
           publishFrom(path, u.state);
         }
       }),
+      // A caret jump, for the pane's Back/Forward list. The rule for what counts
+      // as one lives in `cursorJump.ts`.
+      cursorJumpListener((line) => props.onCursorJump?.(path, line)),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();

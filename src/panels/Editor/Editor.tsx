@@ -40,6 +40,8 @@ import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
 import {
   X,
+  ArrowLeft,
+  ArrowRight,
   Bot,
   FileCodeCorner,
   FileTypeCorner,
@@ -72,6 +74,8 @@ import {
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
+  EDITOR_NAV_BACK,
+  EDITOR_NAV_FORWARD,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -102,8 +106,19 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
-import { renameTabsUnder } from "./renameTabs";
+import { renameTabsUnder, repoint } from "./renameTabs";
 import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
+import {
+  canGoBack,
+  canGoForward,
+  current,
+  listFor,
+  mapPathsIn,
+  recordIn,
+  stepIn,
+  type JumpEntry,
+  type JumpStore,
+} from "../../utils/jumpList";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -313,6 +328,40 @@ export default function Editor(props: {
     { path: string; line: number; col?: number; nonce: number } | null
   >(null);
   let gotoNonce = 0;
+  // Where you have been, per workspace, for the Back/Forward arrows. Bucketed
+  // the same way the tab strip is, and for the same reason: a path open in one
+  // worktree names nothing in another. The rule lives in `jumpList.ts`.
+  const [jumpsByWs, setJumpsByWs] = createSignal<JumpStore>({});
+  const jumps = () => listFor(jumpsByWs(), ws());
+
+  /** Note arriving somewhere. Synthetic views are skipped: a commit-log or
+   *  conflict tab is a thing you opened, not a place in the code you would want
+   *  Back to take you to. */
+  function recordJump(entry: JumpEntry) {
+    if (isSyntheticId(entry.path)) return;
+    setJumpsByWs((s) => recordIn(s, ws(), entry));
+  }
+
+  /**
+   * Walk the list and go where it lands.
+   *
+   * Deliberately not routed through OPEN_IN_EDITOR: that is where arrivals are
+   * recorded, so going back through it would record the place you came back to
+   * as a new destination and take the forward leg with it.
+   */
+  function goJump(dir: -1 | 1) {
+    const before = jumpsByWs();
+    const after = stepIn(before, ws(), dir);
+    if (after === before) return;
+    setJumpsByWs(after);
+    const entry = current(listFor(after, ws()));
+    if (!entry) return;
+    openFile(entry.path);
+    // No line means "wherever that file sits", which is what an entry recorded
+    // by a tree click means: the tab may already be open a long way down, and
+    // scrolling it to the top would be a worse answer than leaving it alone.
+    if (entry.line) setGotoTarget({ path: entry.path, line: entry.line, nonce: ++gotoNonce });
+  }
 
   const filePaths = () => tabs().map((t) => t.path);
   // Every workspace's open paths, not just the visible strip's. CodeEditor
@@ -875,6 +924,10 @@ export default function Editor(props: {
   // itself is pure and lives in `purgeTabs`, so it can be tested without a
   // mounted editor and both maps come back from one pass.
   function purgeUnder(path: string) {
+    // Ahead of the early return: a place can be in the jump list without a tab
+    // still holding it open, and an arrow onto a trashed file is exactly the
+    // dangling reference this sweep exists to stop.
+    setJumpsByWs((s) => mapPathsIn(s, (p) => (isUnderPath(p, path) ? null : p)));
     const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
     if (!next.removed.length) return;
     setTabsByWs(next.tabs);
@@ -895,6 +948,10 @@ export default function Editor(props: {
   // along with its unsaved text; the sweep itself is pure and lives in
   // `renameTabs`, next to `purgeTabs` for the same reasons.
   function followRename(from: string, to: string) {
+    // Same reason as the purge sweep, and the same place: a file can be a
+    // recorded place without being an open tab, so this cannot sit behind the
+    // "did any tab move" return.
+    setJumpsByWs((s) => mapPathsIn(s, (p) => repoint(p, from, to) ?? p));
     const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
     if (!next.moved.length) return;
     setTabsByWs(next.tabs);
@@ -1017,6 +1074,8 @@ export default function Editor(props: {
       onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
       onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
       onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
+      onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
+      onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
       onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
       onEvent(GIT_COMMIT, () => void commitFromPrompt()),
@@ -1035,6 +1094,12 @@ export default function Editor(props: {
       if (!d?.path) return;
       openFile(d.path);
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
+      // The one place arrivals are recorded. Go-to-definition, a search hit and
+      // a quick-open pick all reach the editor through this event, so recording
+      // it here is what keeps each of them worth exactly one entry - a second
+      // recording site per feature is how a jump list ends up with two entries
+      // for one destination.
+      recordJump({ path: d.path, line: d.line });
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
@@ -1204,6 +1269,22 @@ export default function Editor(props: {
           )}
           trailing={
             <>
+              {/* Always mounted rather than shown only once there is somewhere
+                  to go: a control that appears and disappears moves everything
+                  beside it, and the greyed-out pair is what says the list has
+                  an end. */}
+              <IconButton
+                icon={<Icon icon={ArrowLeft} />}
+                disabled={!canGoBack(jumps())}
+                onClick={() => goJump(-1)}
+                title="Go back to where you were (⌃−)"
+              />
+              <IconButton
+                icon={<Icon icon={ArrowRight} />}
+                disabled={!canGoForward(jumps())}
+                onClick={() => goJump(1)}
+                title="Go forward again (⌃⇧−)"
+              />
               <Show when={isPreviewableTab()}>
                 <IconButton
                   active={showingPreview()}
@@ -1281,6 +1362,7 @@ export default function Editor(props: {
               projectRoot={root()}
               goto={gotoTarget()}
               onDirty={handleDirty}
+              onCursorJump={(path, line) => recordJump({ path, line })}
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}
