@@ -10,6 +10,7 @@
 // A snapshot rather than live signals, so a reader cannot half-update: the
 // active path and its dirty flag always describe the same moment.
 import { createSignal } from "solid-js";
+import type { JumpEntry } from "./jumpList";
 
 export type EditorSnapshot = {
   /** Absolute path of the active tab, or null when nothing is open. */
@@ -20,9 +21,20 @@ export type EditorSnapshot = {
   tabCount: number;
   /** The selected workspace (branch-unit folder), which is the editor's root. */
   projectRoot: string | null;
+  /** Where the jump list has just been, newest first, for the omnibox's empty
+   *  box. Published rather than read out of the editor for this module's whole
+   *  reason: the omnibox is the editor's sibling, and the list is session-lived,
+   *  so there is no storage for it to read the way it reads frecency. */
+  recentJumps: readonly JumpEntry[];
 };
 
-const EMPTY: EditorSnapshot = { activePath: null, dirty: false, tabCount: 0, projectRoot: null };
+const EMPTY: EditorSnapshot = {
+  activePath: null,
+  dirty: false,
+  tabCount: 0,
+  projectRoot: null,
+  recentJumps: [],
+};
 
 const [editorState, setEditorState] = createSignal<EditorSnapshot>(EMPTY);
 export { editorState };

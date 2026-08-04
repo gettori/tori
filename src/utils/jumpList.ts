@@ -62,6 +62,35 @@ export function canGoForward(list: JumpList): boolean {
   return list.index >= 0 && list.index < list.entries.length - 1;
 }
 
+/** How many places the omnibox offers before it falls back to the files you
+ *  work in. Short: this is "take me back to what I was just doing", and a list
+ *  long enough to read is one you would have searched instead. */
+export const MAX_RECENT_TARGETS = 5;
+
+/**
+ * Where you have just been, newest first, for the omnibox's empty box.
+ *
+ * The entries *behind* the cursor, which is where Back would take you, and not
+ * the one you are standing on: offering to send you to the place you are already
+ * looking at is a row that can only waste a keystroke.
+ *
+ * Deduped on path *and* line, so a file and a symbol inside it stay two
+ * destinations. Collapsing them by path would hide the more precise one behind
+ * the vaguer one exactly when both are wanted.
+ */
+export function recentTargets(list: JumpList, max = MAX_RECENT_TARGETS): JumpEntry[] {
+  const out: JumpEntry[] = [];
+  const seen = new Set<string>();
+  for (let i = list.index - 1; i >= 0 && out.length < max; i--) {
+    const entry = list.entries[i];
+    const key = `${entry.path}:${entry.line ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
+}
+
 /**
  * Record arriving somewhere.
  *

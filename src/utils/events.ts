@@ -53,13 +53,17 @@ export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
 export const STOP_CHAT = "sway:stop-chat";
 export type StopChat = { sessionId: string | null };
 
-// Opens the Cmd+K command palette. Consumed by App.tsx.
-export const OPEN_PALETTE = "sway:open-palette";
-
-// Opens the Cmd+P quick-open file finder. Consumed by App.tsx. Emitted only
-// from the window-level listener, never from a focused terminal - see the
-// `window` scope in utils/hotkeys.ts.
-export const OPEN_QUICK_OPEN = "sway:open-quick-open";
+// Payload-carrying event: open the omnibox, in the mode the prefix selects
+// (`""` files, `">"` actions, and the rest of `utils/omniboxModes.ts`). Consumed
+// by App.tsx, which owns the only signal behind it.
+//
+// One event and one overlay where there were two of each. Cmd+P and Cmd+K are
+// still two bindings, because the two questions ("which file" and "what can I
+// run") are asked differently often enough to deserve separate keys, but they
+// now open the same box at different prefixes, and either can be typed into the
+// other without closing anything.
+export const OPEN_OMNIBOX = "sway:open-omnibox";
+export type OpenOmnibox = { prefix: string };
 
 // Toggles the Cmd+/ shortcut sheet. Consumed by App.tsx. A toggle rather than
 // an open, so the same key that summons it dismisses it.

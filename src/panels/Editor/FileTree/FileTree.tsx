@@ -579,7 +579,7 @@ export default function FileTree(props: {
       // Shorter wins a tie. `fuzzyScore` does not penalise length, so a deeply
       // nested file scores the same as the one sitting at the root with the same
       // name, and the ranked list would then just echo directory order. Broken
-      // here rather than in `fuzzyScore`, which QuickOpen and the sidebar share.
+      // here rather than in `fuzzyScore`, which the omnibox and the sidebar share.
       .sort((a, b) => b.score - a.score || a.rel.length - b.rel.length)
       .slice(0, 200);
   };
