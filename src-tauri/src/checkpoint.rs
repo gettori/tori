@@ -345,14 +345,14 @@ fn attribution_state(rec: Option<&Touched>) -> AttributionState {
 /// Repo-relative form of an absolute path, for comparing against `git diff`
 /// output. A path outside the repo has no relative form and is dropped: it
 /// cannot appear in the tree diff anyway.
-fn relative_to(repo: &str, path: &str) -> Option<String> {
+pub(crate) fn relative_to(repo: &str, path: &str) -> Option<String> {
     Path::new(path)
         .strip_prefix(repo)
         .ok()
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-fn is_git_worktree(repo: &str) -> bool {
+pub(crate) fn is_git_worktree(repo: &str) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -362,7 +362,7 @@ fn is_git_worktree(repo: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
+pub(crate) fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -375,7 +375,7 @@ fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -390,7 +390,7 @@ fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
 
 /// Raw (untrimmed) stdout, for unified-diff text where leading/trailing lines
 /// matter.
-fn git_output(repo: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn git_output(repo: &str, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)

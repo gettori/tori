@@ -18,6 +18,7 @@ mod hooks;
 mod hot_exit;
 mod icons;
 mod launch;
+mod local_history;
 mod lsp;
 mod model;
 mod onboarding;
@@ -338,6 +339,14 @@ pub fn run() {
             checkpoint::checkpoint_revert_file,
             checkpoint::checkpoint_revert_tree,
             checkpoint::checkpoint_prune,
+            local_history::local_history_note,
+            local_history::local_history_list,
+            local_history::local_history_read,
+            local_history::local_history_diff,
+            local_history::local_history_restore,
+            local_history::local_history_rename,
+            local_history::local_history_forget,
+            local_history::local_history_prune,
             git::git_discard_hunks,
             git::git_discard_files,
             git::git_stash_list,

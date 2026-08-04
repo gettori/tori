@@ -693,6 +693,14 @@ export default function CodeEditor(props: {
     try {
       await invoke("fs_write_file", { path, contents: text });
       markSelfWrite(path);
+      // A version of the file as it was just saved, whether or not it is ever
+      // committed. One blob write, deduped against the newest entry, and not
+      // awaited: the save has already landed, and local history is a record of
+      // it rather than part of it, so a repo that cannot store one must not make
+      // the save look like it failed.
+      if (props.projectRoot) {
+        void invoke("local_history_note", { repoPath: props.projectRoot, path }).catch(() => {});
+      }
       const buf = buffers.get(path);
       if (buf) buf.savedText = text;
       props.onDirty(path, false);

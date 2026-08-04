@@ -93,6 +93,9 @@ export function syntheticTabName(id: string): string {
   // known by the file's name, not by the folders above it.
   if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
   if (t.kind === "history") return `History: ${t.arg.split("/").pop() || t.arg}`;
+  // "Local" rather than "History", so the two version lists for one file are
+  // told apart by the word that differs rather than by the one they share.
+  if (t.kind === "localhistory") return `Local: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
   // The query, because that is the only thing distinguishing one results buffer
   // from another, and it is what the reader typed.
