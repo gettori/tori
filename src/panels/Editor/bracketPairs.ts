@@ -18,7 +18,7 @@
 // peering it, which invites a second copy of CM6 and breaks facet identity).
 
 import { syntaxTree } from "@codemirror/language";
-import { countColumn, type EditorState, type Range } from "@codemirror/state";
+import { countColumn, Prec, type EditorState, type Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -253,8 +253,22 @@ function pass(build: (view: EditorView) => DecorationSet) {
   );
 }
 
-/** Colour each bracket by how deeply it is nested. */
-export const rainbowBrackets = () => pass(bracketMarks);
+/**
+ * Colour each bracket by how deeply it is nested.
+ *
+ * `Prec.highest` is load-bearing, and the reasoning runs the opposite way to
+ * the intuition (the same trap `semanticHighlight.ts` documents). Overlapping
+ * mark decorations become nested spans, and the *innermost* element is the one
+ * whose `color` paints the glyph - an outer element's inline style never enters
+ * into it. `@codemirror/language` registers `treeHighlighter` at `Prec.high`,
+ * and `swayHighlight` gives `t.bracket`/`t.paren`/`t.brace` the punctuation
+ * colour, so at default precedence every depth colour is wrapped *around* a
+ * grey span and none of it is ever seen.
+ *
+ * It looks exactly like the feature being switched off, which is why it went
+ * unnoticed: the decorations are all there, correct, and invisible.
+ */
+export const rainbowBrackets = () => Prec.highest(pass(bracketMarks));
 
 /** Link each multi-line pair's halves with a vertical line in the pair's own
  *  colour. */
