@@ -37,6 +37,7 @@ import TasksPanel from "./TasksPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
+import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
 import ImageView, { isImagePath } from "./ImageView";
@@ -653,6 +654,14 @@ export default function Editor(props: {
         label: "File history",
         onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
       },
+      {
+        // Beside it, not instead of it: git's list is what was committed, this
+        // one is what was saved, and the version somebody is hunting for is
+        // usually in exactly the half the other one never kept.
+        label: "Local history",
+        onClick: () =>
+          emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
+      },
     ];
     setTabMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -750,6 +759,11 @@ export default function Editor(props: {
       void loadWorkspaceSettings(r);
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
+      // Sweep local history for what a save can never reach: versions past the
+      // age cap in files nobody has saved since, and the timelines of worktrees
+      // that have been removed. Once per project open is enough for a store
+      // whose caps are otherwise applied on every write.
+      invoke("local_history_prune", { repoPath: r }).catch(() => {});
       // A new project means a new language server; diagnostics from the old one
       // describe files that are no longer open here, and so do its symbols.
       // The tab set changing evicts both anyway, but that is one more thing
@@ -1731,6 +1745,11 @@ export default function Editor(props: {
                     is the same component, not a near-copy of it. */}
                 <Show when={t().kind === "history"}>
                   <CommitLog workspace={t().workspace} file={t().arg} />
+                </Show>
+                {/* The other half of the same question: git's list is what was
+                    committed, this one is what was saved. */}
+                <Show when={t().kind === "localhistory"}>
+                  <LocalHistory workspace={t().workspace} file={t().arg} />
                 </Show>
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
