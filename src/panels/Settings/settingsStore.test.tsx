@@ -46,7 +46,7 @@ const {
   saveSettings,
   formatOnSaveFor,
   vimModeOn,
-  toggleVimMode,
+  toggleEditorDefault,
   rememberFormatOnSave,
   settings,
   loadWorkspaceSettings,
@@ -158,9 +158,9 @@ describe("vimModeOn", () => {
     // The palette's toggle goes through here rather than through Settings.tsx,
     // which is not necessarily open when it fires.
     await seed({});
-    toggleVimMode();
+    toggleEditorDefault("vimMode");
     await vi.waitFor(() => expect(vimModeOn()).toBe(true));
-    toggleVimMode();
+    toggleEditorDefault("vimMode");
     await vi.waitFor(() => expect(vimModeOn()).toBe(false));
   });
 
@@ -168,7 +168,7 @@ describe("vimModeOn", () => {
     // The two share `editorDefaults`, so a toggle that rebuilt the object
     // instead of spreading it would silently switch formatting off.
     await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
-    toggleVimMode();
+    toggleEditorDefault("vimMode");
     await vi.waitFor(() => expect(vimModeOn()).toBe(true));
     expect(formatOnSaveFor(null)).toBe(true);
   });
@@ -197,7 +197,7 @@ describe("the layer a write lands in", () => {
     expect(vimModeOn()).toBe(false);
     saved = null;
 
-    toggleVimMode();
+    toggleEditorDefault("vimMode");
 
     await vi.waitFor(() => expect(vimModeOn()).toBe(true));
     expect(wsWrites).toEqual([{ root: "/repo/a", settings: { editor: { vimMode: true } } }]);
@@ -207,7 +207,7 @@ describe("the layer a write lands in", () => {
 
   it("still flips the global answer where no workspace has one", async () => {
     await useWorkspace("/repo/a", {});
-    toggleVimMode();
+    toggleEditorDefault("vimMode");
     await vi.waitFor(() => expect(vimModeOn()).toBe(true));
     expect(wsWrites).toEqual([]);
     expect(saved).not.toBeNull();

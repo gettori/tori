@@ -24,6 +24,7 @@ export const GROUP_LABELS: Record<BindingGroup, string> = {
   session: "Sessions",
   editor: "Editor",
   git: "Git",
+  settings: "Settings",
   help: "Help",
 };
 
