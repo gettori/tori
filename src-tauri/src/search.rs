@@ -723,6 +723,129 @@ pub fn replace_in_files(
     Ok(ReplaceResult { changed, skipped, occurrences })
 }
 
+// --- write-back from the editable results buffer ---
+//
+// The results buffer edits whole **lines**, not spans: a line is what a result
+// row shows, and the map from a row back to its source is a line number. So an
+// edit carries the line it means to rewrite *and the text it saw there*, and a
+// file whose line no longer reads that way is refused whole rather than written
+// at a number that has since moved.
+//
+// The guard is the line's own text rather than `replace_in_files`' file digest,
+// and deliberately so. A results buffer is edited over minutes, not in the
+// instant after a search; something else touching an unrelated region of a
+// matched file is ordinary, and refusing every file for it would make the
+// buffer unusable on a repo with an agent running in it. Comparing the line
+// answers the question that actually matters, which is whether *this* edit
+// still lands where it was aimed.
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineEdit {
+    /// 1-based, as the search reported it.
+    pub line: u32,
+    /// The line's text as the buffer received it, without its terminator.
+    pub was: String,
+    pub now: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEdits {
+    /// Root-relative, the way a `SearchMatch` names its file.
+    pub path: String,
+    pub edits: Vec<LineEdit>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyResult {
+    pub changed: Vec<String>,
+    pub skipped: Vec<SkippedFile>,
+}
+
+/// Rewrite whole lines, file by file. Fail-closed per file: a path outside
+/// `root`, a line that is gone, a line whose text has moved, or an edit that
+/// would add a line skips that file entirely and reports why. Every other file
+/// in the batch still lands, which is what makes a mixed outcome retryable.
+#[tauri::command]
+pub fn apply_line_edits(root: String, files: Vec<FileEdits>) -> Result<ApplyResult, String> {
+    let mut changed = Vec::new();
+    let mut skipped = Vec::new();
+
+    for file in files {
+        let abs = Path::new(&root).join(&file.path);
+        let abs_str = abs.to_string_lossy().into_owned();
+        let mut skip = |reason: &str| {
+            skipped.push(SkippedFile { path: file.path.clone(), reason: reason.to_string() });
+        };
+
+        if let Err(e) = crate::fs::ensure_inside_named(&root, &abs_str, "project folder") {
+            skip(&e);
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&abs) else {
+            skip("unreadable");
+            continue;
+        };
+
+        let lines = line_spans(&content);
+        let mut edits: Vec<(usize, usize, &str)> = Vec::new();
+        let mut seen: Vec<u32> = Vec::new();
+        let mut refused: Option<&str> = None;
+        for e in &file.edits {
+            // A line count that changed under the map is the one failure the
+            // buffer cannot describe, so it is refused at both ends: the buffer
+            // will not let a line be split, and this will not write one that is.
+            if e.now.contains('\n') || e.now.contains('\r') {
+                refused = Some("an edit would add a line");
+                break;
+            }
+            // Two rewrites of one line would apply in whichever order they
+            // arrived and silently keep the last. The buffer has one row per
+            // line and cannot produce it; this command is reachable anyway.
+            if seen.contains(&e.line) {
+                refused = Some("two edits on one line");
+                break;
+            }
+            seen.push(e.line);
+            let Some(&(ls, le)) = lines.get(e.line.saturating_sub(1) as usize) else {
+                refused = Some("changed since the search");
+                break;
+            };
+            if &content[ls..le] != e.was {
+                refused = Some("changed since the search");
+                break;
+            }
+            edits.push((ls, le, e.now.as_str()));
+        }
+        if let Some(reason) = refused {
+            skip(reason);
+            continue;
+        }
+        if edits.is_empty() {
+            continue;
+        }
+
+        // Back to front, so an earlier rewrite never shifts a later one's
+        // offsets, and through the atomic shape for the same reason a replace
+        // uses it: this spans many files and has no undo, so a crash mid-write
+        // must not be able to leave a source file short.
+        edits.sort_by_key(|e| e.0);
+        let mut text = content;
+        for (s, e, new) in edits.iter().rev() {
+            text.replace_range(*s..*e, new);
+        }
+        if let Err(e) = crate::chat::rules::write_atomically(&abs, &text) {
+            skip(&e);
+            continue;
+        }
+        changed.push(file.path.clone());
+    }
+
+    Ok(ApplyResult { changed, skipped })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1669,6 +1792,178 @@ mod tests {
         let result = grep_project(root, String::new(), opts(), 500).unwrap();
         assert!(result.matches.is_empty());
         assert!(!result.backend.is_empty(), "the panel needs the backend before the first query");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // --- line write-back (the editable results buffer) ---
+
+    fn edit(line: u32, was: &str, now: &str) -> LineEdit {
+        LineEdit { line, was: was.into(), now: now.into() }
+    }
+
+    #[test]
+    fn line_edits_rewrite_only_the_lines_they_name() {
+        let dir = temp_dir("lineedits");
+        std::fs::write(dir.join("a.txt"), "one\nneedle\nthree\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits { path: "a.txt".into(), edits: vec![edit(2, "needle", "pin")] }],
+        )
+        .unwrap();
+
+        assert_eq!(out.changed, vec!["a.txt".to_string()]);
+        assert!(out.skipped.is_empty());
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\npin\nthree\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_line_that_moved_since_the_search_refuses_its_whole_file() {
+        let dir = temp_dir("linestale");
+        std::fs::write(dir.join("a.txt"), "someone else got here\nneedle\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        // Two edits, one of which no longer describes its line. The other must
+        // not land either: half a write-back is the outcome with no honest
+        // report.
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![edit(1, "one", "ONE"), edit(2, "needle", "pin")],
+            }],
+        )
+        .unwrap();
+
+        assert!(out.changed.is_empty());
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].path, "a.txt");
+        assert_eq!(out.skipped[0].reason, "changed since the search");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+            "someone else got here\nneedle\n",
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn one_refused_file_does_not_hold_up_the_rest() {
+        let dir = temp_dir("linemixed");
+        std::fs::write(dir.join("a.txt"), "needle a\n").unwrap();
+        std::fs::write(dir.join("b.txt"), "needle b\n").unwrap();
+        std::fs::write(dir.join("c.txt"), "moved on\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![
+                FileEdits { path: "a.txt".into(), edits: vec![edit(1, "needle a", "pin a")] },
+                FileEdits { path: "b.txt".into(), edits: vec![edit(1, "needle b", "pin b")] },
+                FileEdits { path: "c.txt".into(), edits: vec![edit(1, "needle c", "pin c")] },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(out.changed, vec!["a.txt".to_string(), "b.txt".to_string()]);
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].path, "c.txt");
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "pin a\n");
+        assert_eq!(std::fs::read_to_string(dir.join("c.txt")).unwrap(), "moved on\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_edit_carrying_a_newline_is_refused_rather_than_splitting_a_line() {
+        let dir = temp_dir("linesplit");
+        std::fs::write(dir.join("a.txt"), "needle\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits { path: "a.txt".into(), edits: vec![edit(1, "needle", "pin\nmore")] }],
+        )
+        .unwrap();
+
+        assert_eq!(out.skipped[0].reason, "an edit would add a line");
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "needle\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn two_edits_on_one_line_refuse_rather_than_keeping_whichever_came_last() {
+        let dir = temp_dir("linedupe");
+        std::fs::write(dir.join("a.txt"), "needle\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![edit(1, "needle", "pin"), edit(1, "needle", "nail")],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(out.skipped[0].reason, "two edits on one line");
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "needle\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn line_write_back_refuses_a_path_outside_the_root() {
+        let dir = temp_dir("lineescape");
+        std::fs::create_dir_all(dir.join("proj")).unwrap();
+        std::fs::write(dir.join("outside.txt"), "needle\n").unwrap();
+        let root = dir.join("proj").to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits {
+                path: "../outside.txt".into(),
+                edits: vec![edit(1, "needle", "pin")],
+            }],
+        )
+        .unwrap();
+
+        assert!(out.changed.is_empty());
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(std::fs::read_to_string(dir.join("outside.txt")).unwrap(), "needle\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn line_write_back_leaves_crlf_and_a_missing_final_newline_alone() {
+        let dir = temp_dir("lineeol");
+        std::fs::write(dir.join("a.txt"), "one\r\nneedle\r\nlast").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![edit(2, "needle", "pin"), edit(3, "last", "final")],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(out.changed, vec!["a.txt".to_string()]);
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\r\npin\r\nfinal");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_line_edit_that_changes_nothing_writes_nothing() {
+        let dir = temp_dir("lineempty");
+        std::fs::write(dir.join("a.txt"), "needle\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        let out =
+            apply_line_edits(root, vec![FileEdits { path: "a.txt".into(), edits: vec![] }]).unwrap();
+
+        assert!(out.changed.is_empty(), "a file with no edits is not a file that was written");
+        assert!(out.skipped.is_empty(), "and it is not a failure either");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

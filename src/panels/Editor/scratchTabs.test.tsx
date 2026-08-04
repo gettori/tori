@@ -170,6 +170,8 @@ beforeEach(() => {
       texts[p] = t;
       dirtyPaths.delete(p);
     },
+    // Save-as never patches a buffer; the search results buffer is what does.
+    patch: () => "absent" as const,
   });
 });
 afterEach(() => {

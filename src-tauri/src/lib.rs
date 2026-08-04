@@ -266,6 +266,7 @@ pub fn run() {
             search::grep_project,
             search::preview_replace,
             search::replace_in_files,
+            search::apply_line_edits,
             git::git_status,
             git::git_diff_file,
             git::git_diff_text,

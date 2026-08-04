@@ -758,6 +758,7 @@ describe("the workspace each client is given", () => {
       textOf: (p: string) => (p === "/proj/x/dirty.ts" ? "unsaved edits" : null),
       isDirty: () => true,
       adopt: () => {},
+      patch: () => "absent" as const,
     });
     try {
       await m.ensureLspFor("/proj/x/a.ts", "/proj/x");
