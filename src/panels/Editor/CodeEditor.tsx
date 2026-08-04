@@ -31,7 +31,7 @@ import {
 } from "./lspClient";
 import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
-import { cursorJumpListener } from "./cursorJump";
+import { caretListener, cursorJumpListener } from "./cursorJump";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
@@ -239,6 +239,11 @@ export default function CodeEditor(props: {
   // this component sees the caret, and only the pane knows which workspace the
   // file belongs to, so the decision is here and the list is there.
   onCursorJump?: (path: string, line: number) => void;
+  // Where the caret is now, 1-based, whenever it could have moved. The trail
+  // above the editor needs the drift `onCursorJump` deliberately throws away:
+  // arrowing into the next function changes which symbol you are in without
+  // being anywhere worth going Back to.
+  onCaretMove?: (path: string, line: number, column: number) => void;
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
@@ -948,6 +953,11 @@ export default function CodeEditor(props: {
       // A caret jump, for the pane's Back/Forward list. The rule for what counts
       // as one lives in `cursorJump.ts`.
       cursorJumpListener((line) => props.onCursorJump?.(path, line)),
+      // Every caret position, for the breadcrumb trail. Its own listener rather
+      // than a second job for the one above: the two want opposite things from
+      // the same updates, and the pair reads as one rule with an exception when
+      // they share a body.
+      caretListener((line, column) => props.onCaretMove?.(path, line, column)),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();
@@ -1210,6 +1220,12 @@ export default function CodeEditor(props: {
     view.focus();
     shown = path;
     props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
+    // Where this buffer was left, for the trail above the editor. Reported here
+    // rather than by `caretListener`, because a `setState` never reaches an
+    // update listener: without this the trail would sit blank until the caret
+    // moved, on every tab swap and on every first open.
+    const at = buf.state.doc.lineAt(cursor);
+    props.onCaretMove?.(path, at.number, cursor - at.from + 1);
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
