@@ -122,6 +122,12 @@ export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
 export const EDITOR_NAV_BACK = "sway:editor-nav-back";
 export const EDITOR_NAV_FORWARD = "sway:editor-nav-forward";
 
+// Put the most recently closed tab back. Consumed by Editor.tsx, which owns
+// both the tab strip and the per-workspace stack of what was closed; the
+// document behind it comes back through `closedBuffers` on the normal open
+// path, so this carries no payload.
+export const EDITOR_REOPEN_CLOSED = "sway:editor-reopen-closed";
+
 // The selection commands, consumed by CodeEditor for the same reason as save:
 // they act on the live buffer's selection, which only it holds. Each has a CM6
 // chord as well; these carry the palette's copy of it.

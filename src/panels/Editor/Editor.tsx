@@ -76,6 +76,7 @@ import {
   EDITOR_GOTO_LINE,
   EDITOR_NAV_BACK,
   EDITOR_NAV_FORWARD,
+  EDITOR_REOPEN_CLOSED,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -119,6 +120,15 @@ import {
   type JumpEntry,
   type JumpStore,
 } from "../../utils/jumpList";
+import {
+  loadFrecency,
+  mapPaths as mapFrecencyPaths,
+  note,
+  saveFrecency,
+  type FrecencyStore,
+  type Touch,
+} from "../../utils/frecency";
+import { rememberClosedTab, sweepClosed, takeClosedTab, type ClosedStore } from "./reopenStack";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -340,6 +350,24 @@ export default function Editor(props: {
   function recordJump(entry: JumpEntry) {
     if (isSyntheticId(entry.path)) return;
     setJumpsByWs((s) => recordIn(s, ws(), entry));
+  }
+
+  // How much you work in each file, for the pickers' empty box. Read once at
+  // start and written back on every change; the pickers read the same storage
+  // when they open rather than being handed it, so nothing has to be plumbed
+  // through App to two components that mount and unmount on a keystroke.
+  const [frecency, setFrecency] = createSignal<FrecencyStore>(loadFrecency(Date.now()));
+  createEffect(() => saveFrecency(frecency()));
+  // The tabs you closed, for Cmd+Shift+T. Session-lived on purpose: reopening
+  // is an undo of something you just did, and last week's closes are what the
+  // pickers above are for.
+  const [closedByWs, setClosedByWs] = createSignal<ClosedStore>({});
+
+  /** Note working in a file. Synthetic views are skipped for `recordJump`'s
+   *  reason: `sway://` is not a path any picker can offer. */
+  function noteTouch(path: string, kind: Touch) {
+    if (isSyntheticId(path)) return;
+    setFrecency((s) => note(s, ws(), path, kind, Date.now()));
   }
 
   /**
@@ -728,6 +756,10 @@ export default function Editor(props: {
     // an entry left pending is carried through the next quit and handed back on
     // the launch after that.
     dropStashEntry(tab.path);
+    // Only real files are reopenable. A synthetic view is rebuilt from whatever
+    // opened it (a commit, a conflict), so putting its id back would name a tab
+    // rather than a file.
+    if (!isSyntheticId(tab.path)) setClosedByWs((s) => rememberClosedTab(s, ws(), tab.path));
     const remaining = tabs().filter((t) => tabId(t) !== id);
     setTabs(remaining);
     setDirty((d) => {
@@ -747,6 +779,22 @@ export default function Editor(props: {
     if (activeId() === id) {
       setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
+  }
+
+  /**
+   * Put the most recently closed tab back (Cmd+Shift+T).
+   *
+   * Nothing here restores the *document*: reopening goes through `openFile`, so
+   * `CodeEditor` swaps the buffer back in through the path it always uses, and
+   * `reviveClosed` decides whether the text it kept still describes the file.
+   * A file changed on disk since the close therefore opens fresh rather than
+   * replaying an undo history into a document that has moved.
+   */
+  function reopenClosedTab() {
+    const taken = takeClosedTab(closedByWs(), ws());
+    if (!taken.path) return;
+    setClosedByWs(taken.store);
+    openFile(taken.path);
   }
 
   // Agent-touched markers: the selected session's written files, refreshed on
@@ -916,6 +964,10 @@ export default function Editor(props: {
   }
 
   function handleDirty(path: string, isDirty: boolean) {
+    // The clean-to-dirty edge, not every keypress: CodeEditor reports this on
+    // each document change, so counting them all would score a file by how much
+    // was typed into it rather than by how often it was worked in.
+    if (isDirty && !dirty()[path]) noteTouch(path, "edit");
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
   }
 
@@ -928,6 +980,8 @@ export default function Editor(props: {
     // still holding it open, and an arrow onto a trashed file is exactly the
     // dangling reference this sweep exists to stop.
     setJumpsByWs((s) => mapPathsIn(s, (p) => (isUnderPath(p, path) ? null : p)));
+    setFrecency((s) => mapFrecencyPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
+    setClosedByWs((s) => sweepClosed(s, (p) => (isUnderPath(p, path) ? null : p)));
     const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
     if (!next.removed.length) return;
     setTabsByWs(next.tabs);
@@ -952,6 +1006,8 @@ export default function Editor(props: {
     // recorded place without being an open tab, so this cannot sit behind the
     // "did any tab move" return.
     setJumpsByWs((s) => mapPathsIn(s, (p) => repoint(p, from, to) ?? p));
+    setFrecency((s) => mapFrecencyPaths(s, (p) => repoint(p, from, to) ?? p));
+    setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
     const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
     if (!next.moved.length) return;
     setTabsByWs(next.tabs);
@@ -1076,6 +1132,7 @@ export default function Editor(props: {
       onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
       onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
+      onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
       onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
       onEvent(GIT_COMMIT, () => void commitFromPrompt()),
@@ -1100,6 +1157,7 @@ export default function Editor(props: {
       // recording site per feature is how a jump list ends up with two entries
       // for one destination.
       recordJump({ path: d.path, line: d.line });
+      noteTouch(d.path, "open");
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel

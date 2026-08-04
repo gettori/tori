@@ -4,6 +4,7 @@ import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import { fuzzyScore } from "../../utils/fuzzy";
+import { loadFrecency, rankByFrecency } from "../../utils/frecency";
 import { debounce } from "../../utils/debounce";
 import { editorState } from "../../utils/editorState";
 import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
@@ -39,6 +40,13 @@ export default function QuickOpen(props: { root: string | null; onClose: () => v
   const [query, setQuery] = createSignal("");
   const [index, setIndex] = createSignal(0);
   const [wsHits, setWsHits] = createSignal<SymbolNode[]>([]);
+  // Read once, when the overlay opens, and held for its lifetime. The editor
+  // writes this back on every open and edit, so storage is current by the time
+  // anyone can press Cmd+P; reading it here keeps the ranking out of App's prop
+  // chain, and freezing `now` with it keeps the order from drifting under the
+  // cursor while someone types.
+  const openedAt = Date.now();
+  const stats = loadFrecency(openedAt)[props.root ?? ""] ?? {};
   let input!: HTMLInputElement;
 
   const mode = () => modeOf(query());
@@ -101,7 +109,19 @@ export default function QuickOpen(props: { root: string | null; onClose: () => v
       return wsHits().slice(0, MAX_RESULTS).map((node) => ({ kind: "symbol", node }));
     }
     const all = files();
-    if (!q) return all.slice(0, MAX_RESULTS).map((rel) => ({ kind: "file", rel }));
+    // No query: the files you actually work in, then the rest of the project in
+    // its own order. Ranked through the shared helper rather than here, because
+    // the omnibox ranks the same list the same way and two copies of the rule
+    // would drift. Untracked files score zero and keep their order, so this is
+    // a promotion of the few rather than a shuffle of everything.
+    if (!q) {
+      // Without a root there is no absolute path to look a file up by, and no
+      // stats either; ranked or not, the answer is the same list, so say so
+      // here rather than building a key out of the word "null".
+      const root = props.root;
+      const ranked = root ? rankByFrecency(all, (rel) => `${root}/${rel}`, stats, openedAt) : all;
+      return ranked.slice(0, MAX_RESULTS).map((rel) => ({ kind: "file", rel }) as const);
+    }
     const scored: { rel: string; score: number }[] = [];
     for (const rel of all) {
       const s = fuzzyScore(q, rel);

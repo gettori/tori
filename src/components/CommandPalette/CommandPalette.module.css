@@ -17,6 +17,16 @@
   font-size: var(--sway-text-md);
 }
 
+/* Names the block of rows below it (currently just "Recent files"). Quiet and
+   small: it is a label on the list, not a row in it, and nothing selects it. */
+.sectionHeader {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* A command whose requirements are unmet still lists - the row is where its
    reason is shown - but reads as unavailable and does not run. */
 .disabled {
