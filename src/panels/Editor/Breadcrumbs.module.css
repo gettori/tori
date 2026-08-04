@@ -1,0 +1,62 @@
+/* The trail between the tab strip and the buffer. Deliberately quieter than
+   both: it names where you are, and the thing worth reading is below it. */
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(1px * var(--ui-scale));
+  min-height: calc(24px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--sway-text-md);
+  -webkit-user-select: none;
+  user-select: none;
+  /* A deep path in a narrow pane scrolls rather than wrapping: a second row
+     would move the editor down every time you opened a nested file. The bar is
+     24px tall, so a scrollbar in it would be most of the bar. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bar::-webkit-scrollbar {
+  display: none;
+}
+
+.crumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(1px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border: 0;
+  border-radius: var(--sway-radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.crumb:hover {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.sep,
+.kind {
+  flex: none;
+  display: flex;
+  color: var(--fg-subtle);
+}
+
+/* Picker rows. Gitignored entries are dimmed rather than hidden, matching the
+   tree: node_modules is somewhere people do go, just not often. */
+.dimmed {
+  color: var(--fg-muted);
+}
+
+/* The file already open. Marked rather than dropped: its absence from its own
+   folder's list would read as the list being wrong. */
+.here {
+  color: var(--brand-default);
+}

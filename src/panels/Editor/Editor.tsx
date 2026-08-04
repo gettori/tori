@@ -17,6 +17,7 @@ import ReviewPanel from "./ReviewPanel";
 import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
+import Breadcrumbs from "./Breadcrumbs";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
@@ -344,6 +345,25 @@ export default function Editor(props: {
   // worktree names nothing in another. The rule lives in `jumpList.ts`.
   const [jumpsByWs, setJumpsByWs] = createSignal<JumpStore>({});
   const jumps = () => listFor(jumpsByWs(), ws());
+
+  // Where the caret is, for the breadcrumb trail. Carries its own path so a tab
+  // swap cannot leave the trail naming a symbol from the file you just left: the
+  // bar reads this only while the path still matches what is on screen.
+  const [caret, setCaret] = createSignal<{ path: string; line: number; column: number } | null>(null);
+  function noteCaret(path: string, line: number, column: number) {
+    const at = caret();
+    if (at && at.path === path && at.line === line && at.column === column) return;
+    setCaret({ path, line, column });
+  }
+  // Only while the buffer that caret belongs to is the thing on screen. The path
+  // test alone is not enough: toggling a Markdown or SVG preview keeps the path
+  // and takes the caret away with the source, so the trail would go on naming a
+  // symbol in a rendered page where nothing is being edited.
+  const caretHere = () => {
+    const at = caret();
+    if (!at || isImageTab() || showingPreview()) return null;
+    return at.path === activeFileTab()?.path ? { line: at.line, column: at.column } : null;
+  };
 
   /** Note arriving somewhere. Synthetic views are skipped: a commit-log or
    *  conflict tab is a thing you opened, not a place in the code you would want
@@ -1391,6 +1411,12 @@ export default function Editor(props: {
             </>
           }
         />
+        {/* Where the open file sits and where the caret sits in it. Below the
+            tabs and above everything else in the column: a tab says which file,
+            and this says the rest of the answer. Only for a real file - a commit
+            log or a conflict view has a `sway://` id, which names no folder any
+            picker could list. */}
+        <Breadcrumbs root={root()} path={activeFileTab()?.path ?? null} caret={caretHere()} />
         {/* Above the editor rather than inside it: the file on screen is the
             merged working-tree copy, markers and all, and nothing in the buffer
             itself says that is why it looks like that. */}
@@ -1427,6 +1453,7 @@ export default function Editor(props: {
               goto={gotoTarget()}
               onDirty={handleDirty}
               onCursorJump={(path, line) => recordJump({ path, line })}
+              onCaretMove={noteCaret}
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}

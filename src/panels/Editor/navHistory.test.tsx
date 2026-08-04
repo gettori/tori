@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 
 // Back and Forward, from the pane's side.
 //
@@ -18,8 +18,12 @@ globalThis.ResizeObserver ??= class {
 const REPO = "/space/proj/main";
 const OTHER = "/space/proj/feature";
 
+// Folders the backend would list. Empty unless a test fills one in, so the tree
+// stays as bare as it always was and only the breadcrumb picker sees anything.
+const dirs: Record<string, { name: string; path: string; is_dir: boolean; ignored: boolean }[]> = {};
+
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => {
+  invoke: (cmd: string, args: Record<string, unknown>) => {
     switch (cmd) {
       case "git_status":
         return Promise.resolve([]);
@@ -34,7 +38,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "file_exists":
         return Promise.resolve(false);
       case "fs_read_dir":
-        return Promise.resolve([]);
+        return Promise.resolve(dirs[args.path as string] ?? []);
       default:
         return Promise.resolve(null);
     }
@@ -112,9 +116,12 @@ async function goForward(to: string) {
   await waitFor(() => expect(code?.activePath).toBe(to));
 }
 
+const inTrail = () => within(document.querySelector("nav[aria-label='Breadcrumbs']") as HTMLElement);
+
 beforeEach(() => {
   code = null;
   listening.ready = false;
+  for (const key of Object.keys(dirs)) delete dirs[key];
 });
 afterEach(() => {
   mounted?.unmount();
@@ -140,6 +147,25 @@ describe("recording where you have been", () => {
     await goBack(`${REPO}/def.ts`);
     await goBack(`${REPO}/tree.ts`);
     expect(backBtn().disabled).toBe(true);
+  });
+
+  it("records a sibling picked from the breadcrumb trail", async () => {
+    // The trail's own test proves the pick leaves through OPEN_IN_EDITOR. This
+    // is the other half: that arriving that way is an arrival like any other,
+    // so Back can take you off the file the picker put you on.
+    dirs[`${REPO}/src`] = [
+      { name: "other.ts", path: `${REPO}/src/other.ts`, is_dir: false, ignored: false },
+      { name: "thing.ts", path: `${REPO}/src/thing.ts`, is_dir: false, ignored: false },
+    ];
+    await mountEditor();
+    await arrive({ path: `${REPO}/src/thing.ts` });
+    expect(backBtn().disabled).toBe(true);
+
+    fireEvent.click(inTrail().getByText("thing.ts"));
+    fireEvent.click(await screen.findByText("other.ts"));
+    await waitFor(() => expect(code?.activePath).toBe(`${REPO}/src/other.ts`));
+    expect(backBtn().disabled).toBe(false);
+    await goBack(`${REPO}/src/thing.ts`);
   });
 
   it("greys out both arrows with nothing open, and forward until you have gone back", async () => {
