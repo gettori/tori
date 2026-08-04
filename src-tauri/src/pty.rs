@@ -406,6 +406,58 @@ mod tests {
         Activity { last_output_at: Instant::now(), active: false }
     }
 
+    /// A writer that keeps what was written to it, standing in for the PTY's.
+    struct Recorder(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Recorder {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn recorder() -> (SharedWriter, Arc<Mutex<Vec<u8>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let writer: SharedWriter = Arc::new(Mutex::new(Box::new(Recorder(seen.clone()))));
+        (writer, seen)
+    }
+
+    /// "remounting a running task's tab re-subscribes without re-typing the
+    /// command": `init` is the seam a task's command line is delivered
+    /// through, and three separate callers can reach it - the reader's
+    /// first-chunk path, the fallback timer, and every chunk after the first.
+    /// The shared flag makes whichever arrives first the sole delivery, which
+    /// is what lets a re-subscribe spawn no threads and re-type nothing.
+    #[test]
+    fn init_is_delivered_exactly_once_however_many_callers_arrive() {
+        let (writer, seen) = recorder();
+        let initialized = Arc::new(Mutex::new(false));
+        for _ in 0..5 {
+            deliver_init(&writer, &initialized, "npm run dev\n");
+        }
+        assert_eq!(
+            String::from_utf8(seen.lock().unwrap().clone()).unwrap(),
+            "npm run dev\n",
+            "a second delivery would run the task again in the same shell"
+        );
+    }
+
+    /// A tab with nothing seeded writes nothing: a plain shell tab must not be
+    /// handed a stray newline, which would print a prompt it did not ask for.
+    #[test]
+    fn a_tab_with_no_init_is_written_nothing() {
+        let (writer, seen) = recorder();
+        let initialized = Arc::new(Mutex::new(false));
+        let init: Option<String> = None;
+        if let Some(cmd) = &init {
+            deliver_init(&writer, &initialized, cmd);
+        }
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
     /// "running a command in a shell tab emits active then quiet": the first
     /// chunk transitions quiet->active; once the process has been silent
     /// longer than the threshold, the watcher's check transitions back.

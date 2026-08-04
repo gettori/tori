@@ -11,7 +11,10 @@ import type { EditorToggleKey } from "./settingsCatalog";
 export type LiveTab = {
   id: string;
   workspace: string;
-  kind: "shell" | "agent" | "command" | "chat";
+  // A running task counts as live work in the folder exactly as a shell does:
+  // "3 tabs are running here" must include the build somebody kicked off, or a
+  // checkout confirm undercounts what it is about to disturb.
+  kind: "shell" | "agent" | "command" | "chat" | "task";
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.
@@ -104,7 +107,9 @@ export const PR_OPENED = "sway:pr-opened";
 export type PrOpened = { projectPath: string };
 
 export const SET_RIGHT_MODE = "sway:set-right-mode";
-export type SetRightMode = { mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" };
+export type SetRightMode = {
+  mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" | "todos" | "tasks";
+};
 
 // The command registry's editor entries (utils/commands.ts). Each acts on
 // whatever tab is active, so none of them carries a path: the editor is the only
@@ -309,7 +314,24 @@ export type OpenTerminal = {
   program: string;
   args: string[];
   rediscoverOnExit?: boolean;
+  /** How the tab is hosted. `command` (the default) spawns `program` directly,
+   *  which is what clone/bootstrap want: the tab stays put on failure. `task`
+   *  hosts a login shell instead and is seeded with `init`, so the task sees the
+   *  PATH the user's own terminal has, and is excluded from tab persistence for
+   *  the same reason a clone is: re-running it on relaunch is not a restore. */
+  kind?: "command" | "task";
+  /** The command line typed into the shell once it is ready, newline included.
+   *  Delivered **backend-once** by `pty_spawn`, so a remount re-subscribes to
+   *  the live process rather than running the command a second time. Only
+   *  shell-hosted kinds carry one. */
+  init?: string;
 };
+
+// Fire-and-forget: run this workspace's most recently run task again. The
+// command registry owns the binding but not the workspace, so App resolves the
+// selection and the recents store; nothing here says which task, because the
+// answer changes with the selected branch-unit.
+export const RUN_LAST_TASK = "sway:run-last-task";
 
 // Payload-carrying event: start a fresh agent session in a branch-unit folder.
 // Emitted by the sidebar's "New session" menu item; the terminal area owns the

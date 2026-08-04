@@ -78,7 +78,10 @@ function termColors() {
 export default function TerminalView(props: {
   id: string;
   cwd: string;
-  kind: "shell" | "agent" | "command";
+  // `task` is shell-hosted like `shell`/`agent`: the backend branches on
+  // `command` alone, so anything else gets the login shell and, if it carries
+  // one, a backend-once `init`.
+  kind: "shell" | "agent" | "command" | "task";
   program: string;
   args: string[];
   init?: string;

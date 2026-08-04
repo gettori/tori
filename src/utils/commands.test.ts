@@ -211,3 +211,23 @@ describe("the Preferences commands", () => {
     for (const c of prefs) expect(c.requires, `${c.id} is refused without a tab`).toBeUndefined();
   });
 });
+
+describe("the rerun-task binding", () => {
+  const rerun = COMMANDS.find((c) => c.id === "rerun-last-task")!;
+
+  it("fires on ⌘⇧B, which nothing else answers", () => {
+    // ⌘B is the sidebar toggle and refuses Shift, so the pair is a real pair;
+    // the table-wide duplicate probe above is what keeps it one.
+    const press = (mods: Partial<KeyboardEvent>) =>
+      rerun.match!({ key: "b", code: "KeyB", metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...mods } as KeyboardEvent);
+    expect(press({ metaKey: true, shiftKey: true })).toBe(true);
+    expect(press({ metaKey: true })).toBe(false);
+  });
+
+  it("survives terminal focus, unlike the omnibox", () => {
+    // ⌘P is window-scoped so it cannot steal a key from a program running in the
+    // terminal. Re-running the build while reading the last one's output is
+    // exactly the case that argument does not cover.
+    expect(rerun.scope).toBe("global");
+  });
+});

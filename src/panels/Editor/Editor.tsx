@@ -33,6 +33,7 @@ import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
+import TasksPanel from "./TasksPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
@@ -60,6 +61,7 @@ import {
   GitPullRequest,
   TriangleAlert,
   ListChecks,
+  Play,
   ListTree,
   // Aliased: `Bookmark` here is the glyph, and the type of the same name is the
   // thing it stands for.
@@ -211,7 +213,8 @@ type RightMode =
   | "docs"
   | "session"
   | "search"
-  | "todos";
+  | "todos"
+  | "tasks";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
@@ -222,6 +225,7 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
   todos: { mode: "todos", label: "TODOs", icon: ListChecks },
+  tasks: { mode: "tasks", label: "Tasks", icon: Play },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
   docs: { mode: "docs", label: "Docs", icon: BookOpen },
@@ -344,6 +348,8 @@ export default function Editor(props: {
     "outline",
     "bookmarks",
     "search",
+    "todos",
+    "tasks",
     "session",
     "shared",
     "docs",
@@ -1843,6 +1849,9 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "todos"}>
             <TodoPanel root={root()} selected={props.selected} />
+          </Match>
+          <Match when={rightMode() === "tasks"}>
+            <TasksPanel root={root()} />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel

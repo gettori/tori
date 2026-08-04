@@ -66,7 +66,11 @@ type TailState = "working" | "done" | "blocked-candidate";
 // Selection (spaceName, projectKind, ... it never touches).
 type ResumeTarget = Pick<Selection, "sessionId" | "agent" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath">;
 
-type TabKind = "shell" | "agent" | "command" | "chat";
+// A `task` tab is a shell tab seeded with the task's command line, kept a kind
+// of its own for one reason: `tabPersist` restores shell tabs, and restoring a
+// task would either re-run it or bring back a bare shell wearing its name.
+// Excluded there exactly as a command tab is, and for the same reason.
+type TabKind = "shell" | "agent" | "command" | "chat" | "task";
 
 type OpenTerm = {
   id: string;
@@ -76,15 +80,17 @@ type OpenTerm = {
   // spawn), NOT the tab cwd: a nested session still groups with its branch unit.
   // Command tabs (clone/bootstrap) group under their own cwd.
   workspace: string;
-  // Every shell/agent tab hosts a login shell; an agent tab is that shell seeded
-  // with `init`. Command tabs (clone/bootstrap) spawn the program directly. A
-  // chat tab hosts no PTY at all: it drives the agent as a stream-json child
-  // through the chat host, and renders `ChatView` instead of `TerminalView`.
+  // Every shell/agent/task tab hosts a login shell; an agent or task tab is that
+  // shell seeded with `init`. Command tabs (clone/bootstrap) spawn the program
+  // directly. A chat tab hosts no PTY at all: it drives the agent as a
+  // stream-json child through the chat host, and renders `ChatView` instead of
+  // `TerminalView`.
   kind: TabKind;
   program: string;
   args: string[];
-  // Agent tabs: the command line typed into the shell once it's ready. Exiting
-  // the agent drops back to the live shell rather than closing the tab.
+  // Agent and task tabs: the command line typed into the shell once it's ready.
+  // Exiting the agent, or a task finishing, drops back to the live shell rather
+  // than closing the tab.
   init?: string;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
@@ -590,11 +596,14 @@ export default function Terminal(props: {
         title: t.title,
         cwd: t.cwd,
         // Clone/bootstrap have no branch-unit yet, so they group under their own
-        // cwd; opening one reveals that group so its progress is visible.
+        // cwd; opening one reveals that group so its progress is visible. A task
+        // runs *at* its branch-unit, so the same line groups it with that unit's
+        // other tabs.
         workspace: t.cwd,
-        kind: "command",
+        kind: t.kind ?? "command",
         program: t.program,
         args: t.args,
+        ...(t.init ? { init: t.init } : {}),
       });
     });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).

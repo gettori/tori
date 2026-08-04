@@ -1,0 +1,74 @@
+/* The Tasks panel. A flat list of rows under section headers, closer to the
+   Bookmarks panel than to Search: there is nothing to group by file and nothing
+   to count, only names and the line each one runs. */
+.tasksPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.list {
+  flex: 1;
+  overflow: auto;
+  padding: calc(4px * var(--ui-scale)) 0;
+  user-select: none;
+}
+
+.sectionHead {
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.taskRow:hover {
+  background: var(--canvas-head);
+}
+
+/* Dim until the row is under the cursor: a column of green arrows reads as a
+   list of controls, and every row here is one, so the arrow says nothing. */
+.play {
+  flex: none;
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+.taskRow:hover .play,
+.taskRow:focus-visible .play {
+  color: var(--accent-fg);
+}
+
+.name {
+  flex: none;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* Takes the slack and truncates: the name is what you look for, the command is
+   what confirms you found it, and a long one must not push the name around. */
+.command {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
