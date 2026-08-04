@@ -165,10 +165,15 @@ pub fn fs_write_files(files: Vec<FileWrite>) -> Result<Vec<String>, String> {
 
 // --- containment-scoped mutation commands ---
 //
-// The Shared tab lets the editor create/rename/delete files under a single
-// `.shared` root. These commands are the only write surface for that, and each
-// one is fail-closed: it resolves the target and refuses anything that is not
-// inside the passed `root`, so a recursive delete can never escape the folder.
+// The editable file trees (the Shared tab's `.shared` root, and the project tree
+// rooted at the workspace) create/rename/delete through these commands. They are
+// the only write surface for that, and each one is fail-closed: it resolves the
+// target and refuses anything that is not inside the passed `root`, so a
+// recursive delete can never escape the folder.
+//
+// The boundary is the caller's `root`, never a name baked in here; `noun` only
+// picks the word the refusal uses, so a project-tree refusal reads "outside the
+// project folder" and a Shared-tab one reads "outside the shared folder".
 
 /// Canonicalize the deepest existing ancestor of `p`, then re-append the trailing
 /// components that do not exist yet. This yields a symlink-resolved absolute path
@@ -220,37 +225,66 @@ pub(crate) fn ensure_inside_named(root: &str, path: &str, noun: &str) -> Result<
     }
 }
 
-fn ensure_inside(root: &str, path: &str) -> Result<PathBuf, String> {
-    ensure_inside_named(root, path, "shared folder")
+/// The word a refusal names the boundary with. Cosmetic only: containment is
+/// decided by `root`, so an unnamed caller still gets the same fail-closed
+/// answer, just a vaguer sentence.
+fn ensure_inside(root: &str, path: &str, noun: Option<&str>) -> Result<PathBuf, String> {
+    ensure_inside_named(root, path, noun.unwrap_or("workspace folder"))
 }
 
 /// `mkdir -p` a directory inside `root` (used to create `.shared` on first add).
 #[tauri::command]
-pub fn fs_mkdir(root: String, path: String) -> Result<(), String> {
-    let p = ensure_inside(&root, &path)?;
+pub fn fs_mkdir(root: String, path: String, noun: Option<String>) -> Result<(), String> {
+    let p = ensure_inside(&root, &path, noun.as_deref())?;
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())
 }
 
-/// Delete a file or directory (recursive) inside `root`. `symlink_metadata` does
-/// not follow, so a symlink is removed as a link, never followed into.
-#[tauri::command]
-pub fn fs_delete(root: String, path: String) -> Result<(), String> {
-    let p = ensure_inside(&root, &path)?;
-    let meta = std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
-    if meta.is_dir() {
-        std::fs::remove_dir_all(&p).map_err(|e| e.to_string())
-    } else {
-        std::fs::remove_file(&p).map_err(|e| e.to_string())
+/// How a delete disposes of its target, so the suite can watch a delete happen
+/// without a test ever reaching the developer's real Trash.
+///
+/// This exists because the interesting assertion is negative: *nothing here
+/// unlinks*. A recording disposer leaves the file on disk, so a stray
+/// `remove_file`/`remove_dir_all` creeping back into the command would fail the
+/// test by making the file disappear.
+pub(crate) trait Disposer {
+    fn dispose(&self, p: &Path) -> Result<(), String>;
+}
+
+/// The only disposer production uses: the macOS Trash, never `rm`.
+pub(crate) struct TrashDisposer;
+
+impl Disposer for TrashDisposer {
+    fn dispose(&self, p: &Path) -> Result<(), String> {
+        trash::delete(p).map_err(|e| format!("Moving {} to the Trash failed: {e}", p.display()))
     }
+}
+
+/// Move a file or directory inside `root` to the Trash. `symlink_metadata` does
+/// not follow, so a symlink is checked as a link and trashed as one, never
+/// followed into. A missing target is an error, as it was when this unlinked.
+fn fs_delete_with(
+    root: &str,
+    path: &str,
+    noun: Option<&str>,
+    disposer: &dyn Disposer,
+) -> Result<(), String> {
+    let p = ensure_inside(root, path, noun)?;
+    std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
+    disposer.dispose(&p)
+}
+
+#[tauri::command]
+pub fn fs_delete(root: String, path: String, noun: Option<String>) -> Result<(), String> {
+    fs_delete_with(&root, &path, noun.as_deref(), &TrashDisposer)
 }
 
 /// Rename `from` to `to`, both required to stay inside `root`. Refuses to
 /// overwrite: `std::fs::rename` would silently replace an existing destination
 /// file, so an existing `to` is rejected up front (no clobber, no data loss).
 #[tauri::command]
-pub fn fs_rename(root: String, from: String, to: String) -> Result<(), String> {
-    let f = ensure_inside(&root, &from)?;
-    let t = ensure_inside(&root, &to)?;
+pub fn fs_rename(root: String, from: String, to: String, noun: Option<String>) -> Result<(), String> {
+    let f = ensure_inside(&root, &from, noun.as_deref())?;
+    let t = ensure_inside(&root, &to, noun.as_deref())?;
     if t.symlink_metadata().is_ok() {
         return Err("A file or folder with that name already exists.".into());
     }
@@ -395,6 +429,27 @@ pub fn fs_watch_start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Records what would have been trashed and disposes of nothing, so the
+    /// suite never touches the developer's real Trash. Because it leaves the
+    /// file on disk, every delete test doubles as a check that the command body
+    /// itself does not unlink.
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<PathBuf>>);
+
+    impl Disposer for Recorder {
+        fn dispose(&self, p: &Path) -> Result<(), String> {
+            self.0.lock().unwrap().push(p.to_path_buf());
+            Ok(())
+        }
+    }
+
+    impl Recorder {
+        fn taken(&self) -> Vec<PathBuf> {
+            self.0.lock().unwrap().clone()
+        }
+    }
 
     #[test]
     fn ignored_dirs_filtered_anywhere_in_path() {
@@ -509,7 +564,7 @@ mod tests {
 
         // mkdir auto-creates the root and a nested dir.
         let nested = root.join("cfg");
-        fs_mkdir(root_s.clone(), nested.to_string_lossy().into_owned()).unwrap();
+        fs_mkdir(root_s.clone(), nested.to_string_lossy().into_owned(), None).unwrap();
         assert!(nested.is_dir());
 
         // A file created and then renamed inside the root.
@@ -520,6 +575,7 @@ mod tests {
             root_s.clone(),
             f.to_string_lossy().into_owned(),
             f2.to_string_lossy().into_owned(),
+            None,
         )
         .unwrap();
         assert!(!f.exists() && f2.exists());
@@ -531,13 +587,18 @@ mod tests {
             root_s.clone(),
             f2.to_string_lossy().into_owned(),
             occupied.to_string_lossy().into_owned(),
+            None,
         )
         .is_err());
         assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "keep");
 
-        // Recursive delete of a directory inside the root.
-        fs_delete(root_s.clone(), nested.to_string_lossy().into_owned()).unwrap();
-        assert!(!nested.exists());
+        // A directory inside the root is handed to the disposer, not unlinked.
+        // The disposer gets the caller's path, not a resolved one: containment
+        // resolves symlinks to *decide*, then hands back what was asked for.
+        let rec = Recorder::default();
+        fs_delete_with(&root_s, &nested.to_string_lossy(), None, &rec).unwrap();
+        assert_eq!(rec.taken(), vec![nested.clone()]);
+        assert!(nested.exists(), "the command itself must never unlink");
 
         std::fs::remove_dir_all(&base).unwrap();
     }
@@ -549,16 +610,18 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let root_s = root.to_string_lossy().into_owned();
 
-        // A `..` escape is rejected up front.
+        // A `..` escape is rejected up front, before anything reaches a disposer.
+        let rec = Recorder::default();
         let via_parent = root.join("../secret.txt");
-        assert!(fs_delete(root_s.clone(), via_parent.to_string_lossy().into_owned()).is_err());
-        assert!(fs_mkdir(root_s.clone(), via_parent.to_string_lossy().into_owned()).is_err());
+        assert!(fs_delete_with(&root_s, &via_parent.to_string_lossy(), None, &rec).is_err());
+        assert!(fs_mkdir(root_s.clone(), via_parent.to_string_lossy().into_owned(), None).is_err());
 
         // A sibling absolute path outside the root is rejected too.
         let sibling = base.join("outside.txt");
         std::fs::write(&sibling, "x").unwrap();
-        assert!(fs_delete(root_s.clone(), sibling.to_string_lossy().into_owned()).is_err());
+        assert!(fs_delete_with(&root_s, &sibling.to_string_lossy(), None, &rec).is_err());
         assert!(sibling.exists(), "the outside file must be untouched");
+        assert!(rec.taken().is_empty(), "containment must refuse before disposal");
 
         // A rename whose destination escapes the root is refused.
         let inside = root.join("keep.txt");
@@ -567,8 +630,82 @@ mod tests {
             root_s.clone(),
             inside.to_string_lossy().into_owned(),
             sibling.to_string_lossy().into_owned(),
+            None,
         )
         .is_err());
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_project_root_is_contained_the_same_way_a_shared_folder_is() {
+        // The boundary was hard-wired to `.shared` in name only; the project tree
+        // passes its workspace as `root` and must be fenced identically. A repo
+        // checkout is the realistic shape: a dotfile-free root with real siblings
+        // next to it, where an escape lands on someone else's worktree.
+        let base = std::env::temp_dir().join(format!("sway-fs-project-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let project = base.join("my-repo");
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        let project_s = project.to_string_lossy().into_owned();
+
+        // A sibling worktree is what an escape would reach.
+        let sibling = base.join("other-worktree");
+        std::fs::create_dir_all(&sibling).unwrap();
+        let secret = sibling.join("secret.txt");
+        std::fs::write(&secret, "not yours").unwrap();
+
+        // `..` out of the project is refused, and the refusal names the project.
+        let rec = Recorder::default();
+        let escape = project.join("../other-worktree/secret.txt");
+        let err = fs_delete_with(&project_s, &escape.to_string_lossy(), Some("project folder"), &rec)
+            .unwrap_err();
+        assert!(err.contains("project folder"), "{err}");
+        assert!(secret.exists(), "the sibling worktree must be untouched");
+
+        // So is an absolute path that never mentions `..`.
+        assert!(
+            fs_delete_with(&project_s, &secret.to_string_lossy(), Some("project folder"), &rec).is_err()
+        );
+        assert!(secret.exists());
+        assert!(rec.taken().is_empty(), "no refused path may reach the Trash");
+
+        // A rename that would carry a file out of the project is refused.
+        let inside = project.join("src").join("main.rs");
+        std::fs::write(&inside, "fn main() {}").unwrap();
+        assert!(fs_rename(
+            project_s.clone(),
+            inside.to_string_lossy().into_owned(),
+            sibling.join("stolen.rs").to_string_lossy().into_owned(),
+            Some("project folder".into()),
+        )
+        .is_err());
+        assert!(inside.exists(), "a refused rename must not move the source");
+
+        // And the ordinary in-project case still works, so the fence is a fence
+        // and not a wall: nested create, then rename within the project.
+        let nested = project.join("src").join("utils");
+        fs_mkdir(project_s.clone(), nested.to_string_lossy().into_owned(), Some("project folder".into()))
+            .unwrap();
+        assert!(nested.is_dir());
+        fs_rename(
+            project_s.clone(),
+            inside.to_string_lossy().into_owned(),
+            project.join("src").join("lib.rs").to_string_lossy().into_owned(),
+            Some("project folder".into()),
+        )
+        .unwrap();
+        assert!(project.join("src").join("lib.rs").exists());
+
+        // An unnamed caller is fenced identically, only the wording is vaguer.
+        let err = fs_delete_with(&project_s, &secret.to_string_lossy(), None, &rec).unwrap_err();
+        assert!(err.contains("workspace folder"), "{err}");
+
+        // A file inside the project does reach the disposer, so the fence is not
+        // what makes the earlier refusals pass.
+        let doomed = project.join("src").join("lib.rs");
+        fs_delete_with(&project_s, &doomed.to_string_lossy(), Some("project folder"), &rec).unwrap();
+        assert_eq!(rec.taken(), vec![doomed.clone()]);
 
         std::fs::remove_dir_all(&base).unwrap();
     }
