@@ -194,10 +194,36 @@ describe("closing the window with unsaved edits", () => {
     expect(destroyed).toBe(0);
   });
 
-  it("does not touch any of this when nothing is dirty", async () => {
-    // No preventDefault, so the window closes the ordinary way and the handler
-    // stays out of it entirely.
+  it("still rewrites the stash with nothing dirty, so a stale entry cannot outlive it", async () => {
+    // The bug this exists to prevent: the stash file is the whole of the
+    // feature's memory, and a quit that wrote nothing left the *previous* run's
+    // entries in it. The next launch loaded them, marked those tabs dirty and
+    // handed the old text back - over files that had since been saved, and
+    // without even a conflict banner, because `savedText` still matched disk.
+    //
+    // So a clean quit is not a quit with nothing to do. It has to write, and
+    // then close without asking about edits that do not exist.
     answerStashWith(true);
+    const asked: string[] = [];
+    offStash = onWith<{ requestId: string }>(EDITOR_STASH_DIRTY, ({ requestId }) => asked.push(requestId));
+    mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
+    await waitFor(() => expect(onClose).not.toBeNull());
+
+    const closing = requestClose();
+    await closing.done;
+
+    expect(asked, "the stash was rewritten even though nothing was dirty").toHaveLength(1);
+    expect(closing.wasPrevented()).toBe(true);
+    // Closed on its own, with no "unsaved edits will be lost" prompt in the way.
+    await waitFor(() => expect(destroyed).toBe(1));
+    expect(screen.queryByText(CONFIRM)).toBeNull();
+  });
+
+  it("stays out of the way entirely when hot exit is off and nothing is dirty", async () => {
+    // With the key off there is no stash to keep current, so there is nothing
+    // worth blocking a close for.
+    hotExit = false;
+    await loadSettings();
     mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
     await waitFor(() => expect(onClose).not.toBeNull());
 
