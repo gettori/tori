@@ -279,31 +279,11 @@ fn attempt_folder(container: &Path, branch: &str) -> Result<String, String> {
     Err(format!("Too many attempts named \"{base}\"; remove some first."))
 }
 
-/// Keep the attempts directory out of the repo, in the repo's own ignore file
-/// rather than the user's `.gitignore`.
-///
-/// `.git/info/exclude` is the right home: the directory is a Sway working
-/// detail, and writing it into a tracked `.gitignore` would put it in the user's
-/// next commit and then in everyone else's checkout.
+/// Keep the attempts directory out of the repo. The rule (and why it is
+/// `.git/info/exclude` rather than the user's `.gitignore`) lives in
+/// `git::exclude_from_repo`, which the per-workspace settings overlay shares.
 fn ignore_attempts_dir(root: &str) {
-    let Ok(out) = Command::new("git").arg("-C").arg(root).args(["rev-parse", "--git-dir"]).output() else {
-        return;
-    };
-    if !out.status.success() {
-        return;
-    }
-    let git_dir = Path::new(root).join(String::from_utf8_lossy(&out.stdout).trim());
-    let exclude = git_dir.join("info/exclude");
-    let existing = std::fs::read_to_string(&exclude).unwrap_or_default();
-    let entry = format!("{ATTEMPTS_DIR}/");
-    if existing.lines().any(|l| l.trim() == entry || l.trim() == ATTEMPTS_DIR) {
-        return;
-    }
-    if std::fs::create_dir_all(git_dir.join("info")).is_err() {
-        return;
-    }
-    let sep = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
-    let _ = std::fs::write(&exclude, format!("{existing}{sep}{entry}\n"));
+    crate::git::exclude_from_repo(root, ATTEMPTS_DIR);
 }
 
 /// Promote one attempt and discard the rest of its group.

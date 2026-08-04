@@ -1850,6 +1850,39 @@ pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
     Ok(out.status.success() && !value.trim().is_empty())
 }
 
+/// Keep a Sway working directory out of the repo, in the repo's own ignore file
+/// rather than the user's `.gitignore`.
+///
+/// `.git/info/exclude` is the right home: these directories are Sway's business,
+/// and writing one into a tracked `.gitignore` would put it in the user's next
+/// commit and then in everyone else's checkout. Nothing tracked is touched, and
+/// a teammate who never runs Sway sees nothing.
+///
+/// Idempotent, and silent on every failure: a repo that cannot be excluded still
+/// works, it just shows the directory as untracked.
+pub(crate) fn exclude_from_repo(root: &str, dir: &str) {
+    let Ok(out) = Command::new("git").arg("-C").arg(root).args(["rev-parse", "--git-dir"]).output() else {
+        return;
+    };
+    if !out.status.success() {
+        return;
+    }
+    let git_dir = Path::new(root).join(String::from_utf8_lossy(&out.stdout).trim());
+    let exclude = git_dir.join("info/exclude");
+    let existing = std::fs::read_to_string(&exclude).unwrap_or_default();
+    let entry = format!("{dir}/");
+    // Both spellings count as already there: a user who wrote the bare name by
+    // hand has said the same thing, and a second line would only be noise.
+    if existing.lines().any(|l| l.trim() == entry || l.trim() == dir) {
+        return;
+    }
+    if std::fs::create_dir_all(git_dir.join("info")).is_err() {
+        return;
+    }
+    let sep = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+    let _ = std::fs::write(&exclude, format!("{existing}{sep}{entry}\n"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
