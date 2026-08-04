@@ -42,6 +42,7 @@ import {
   EDITOR_GOTO_LINE,
   EDITOR_NAV_BACK,
   EDITOR_NAV_FORWARD,
+  EDITOR_REOPEN_CLOSED,
   EDITOR_EXPAND_SELECTION,
   EDITOR_SHRINK_SELECTION,
   EDITOR_JOIN_LINES,
@@ -194,6 +195,17 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: ctrlShift("Minus"),
     run: () => emit(EDITOR_NAV_FORWARD),
+  },
+  {
+    id: "reopen-closed-tab",
+    keys: ["⌘", "⇧", "T"],
+    label: "Reopen the tab you just closed",
+    group: "navigate",
+    // `window` for the same reason as its neighbours: this acts on the editor's
+    // tab strip, and a terminal has its own claim on Cmd+Shift+T.
+    scope: "window",
+    match: cmdShift("t"),
+    run: () => emit(EDITOR_REOPEN_CLOSED),
   },
   {
     id: "filter-sidebar",
