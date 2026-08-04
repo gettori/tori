@@ -387,6 +387,34 @@ export default function CodeEditor(props: {
       props.onDirty(path, false);
       if (path === shown) refreshDiff();
     },
+    // The other half of the search buffer's write-back: this file has unsaved
+    // edits, so its buffer is the copy that matters and disk is not. Checked
+    // against `was` before anything is dispatched, so a buffer that has moved
+    // on since the search takes none of the edits rather than some of them.
+    // No baseline change: the buffer stays dirty, because it is.
+    patch: (path, edits) => {
+      const buf = buffers.get(path);
+      if (!buf) return "absent";
+      const live = path === shown && view ? view.state : buf.state;
+      const changes: { from: number; to: number; insert: string }[] = [];
+      for (const e of edits) {
+        if (e.line < 1 || e.line > live.doc.lines) return "stale";
+        const line = live.doc.line(e.line);
+        if (live.sliceDoc(line.from, line.to) !== e.was) return "stale";
+        changes.push({ from: line.from, to: line.to, insert: e.now });
+      }
+      if (!changes.length) return "applied";
+      if (path === shown && view) {
+        view.dispatch({ changes });
+      } else {
+        buf.state = buf.state.update({ changes }).state;
+        // The background branch updates a stored state, so no update listener
+        // fires: the same reason `setBufferText` publishes by hand.
+        publishText(path, buf.state.sliceDoc());
+        props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
+      }
+      return "applied";
+    },
   });
 
   // Replace a buffer's whole document with text just read from disk, in the live

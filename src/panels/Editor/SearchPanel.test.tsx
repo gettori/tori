@@ -689,3 +689,42 @@ describe("highlighting", () => {
     expect(marks(container)).toEqual([]);
   });
 });
+
+describe("handing the results to an editable buffer", () => {
+  const button = () => screen.getByLabelText("Edit results in a buffer");
+
+  it("has nothing to hand over until something matched", async () => {
+    mount();
+    await waitFor(() => expect((button() as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  it("materialises the matches it is showing, as a tab", async () => {
+    // The rows go across as the backend reported them, which is what lets the
+    // buffer claim each row *is* a line of a file. Re-deriving them there would
+    // give the write-back a second answer to be wrong about.
+    bridge.respond = () => ok([match("const needle = 1", [[6, 12]], 12, "src/a.ts")]);
+    mount();
+    await type("needle");
+    await waitFor(() => expect((button() as HTMLButtonElement).disabled).toBe(false));
+
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
+    window.addEventListener("sway:open-in-editor", listener);
+    try {
+      fireEvent.click(button());
+    } finally {
+      window.removeEventListener("sway:open-in-editor", listener);
+    }
+
+    const { searchBuffer } = await import("./searchResultsStore");
+    expect(opened.length).toBe(1);
+    const buf = searchBuffer(opened[0])!;
+    expect(buf.doc.root).toBe("/proj");
+    expect(buf.doc.rows).toContainEqual({
+      kind: "match",
+      file: "src/a.ts",
+      line: 12,
+      original: "const needle = 1",
+    });
+  });
+});

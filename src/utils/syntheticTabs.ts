@@ -17,7 +17,10 @@
 //     would leave its log tab behind, addressing a worktree that no longer exists.
 //
 // Everything downstream keys off `isSyntheticId`: these ids are never persisted,
-// never given a CodeMirror buffer, and therefore never attach a language server.
+// never given a buffer in `CodeEditor`, and therefore never attach a language
+// server. A view may still own a CodeMirror instance privately - the editable
+// search results do - which is a different thing: the pane's buffer map, its
+// dirty flags and the hot-exit stash still know nothing about it.
 
 const PREFIX = "sway://";
 
@@ -91,5 +94,8 @@ export function syntheticTabName(id: string): string {
   if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
   if (t.kind === "history") return `History: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
+  // The query, because that is the only thing distinguishing one results buffer
+  // from another, and it is what the reader typed.
+  if (t.kind === "search") return `Search: ${t.arg}`;
   return t.arg ? `${t.kind} ${t.arg}` : t.kind;
 }

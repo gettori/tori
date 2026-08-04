@@ -14,6 +14,7 @@ import {
   CaseSensitive,
   Ellipsis,
   EyeOff,
+  FilePen,
   Regex,
   Replace,
   ReplaceAll,
@@ -39,6 +40,7 @@ import {
   type Submatch,
   type ToggleKey,
 } from "../../utils/searchOptions";
+import { openSearchResults } from "./searchResultsStore";
 import styles from "./SearchPanel.module.css";
 
 // `submatches` are UTF-16 code-unit offsets into `text`, so they can index the
@@ -378,6 +380,15 @@ export default function SearchPanel(props: {
     if (root) emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
   }
 
+  /** Hand the current results to an editable buffer, as a tab. The matches go
+   *  as they are: the buffer's whole claim is that each row is the line the
+   *  search read, so re-deriving them here would give it a second answer to be
+   *  wrong about. */
+  function openResultsBuffer() {
+    const root = props.root;
+    if (root && result().matches.length) openSearchResults(root, query(), result().matches);
+  }
+
   let unlistenFs: UnlistenFn | undefined;
   onMount(() => {
     inputEl?.focus();
@@ -451,6 +462,19 @@ export default function SearchPanel(props: {
             }}
           </For>
           <span class={styles.toggleSpacer} />
+          {/* Replace rewrites one pattern everywhere; this hands the same hits
+              over as text and lets each one be edited on its own terms, which
+              is the thing a regex cannot express. A capped result set is still
+              offered here, unlike Replace All: the buffer writes back only the
+              lines it is showing, so "the first 500" is exactly what it says. */}
+          <IconButton
+            size="xs"
+            icon={<Icon icon={FilePen} size={14} />}
+            aria-label="Edit results in a buffer"
+            title="Edit results in a buffer and write them back"
+            disabled={!result().matches.length}
+            onClick={openResultsBuffer}
+          />
           <IconButton
             size="xs"
             icon={<Icon icon={Replace} size={14} />}
