@@ -453,6 +453,40 @@ html {
 /* The overflow-tab dropdown (+N) renders through the shared <Menu> component;
    its container/row styling lives in Menu.module.css. */
 
+/* Bookmarks. Emitted as literal class strings by
+   src/panels/Editor/bookmarkGutter.ts, so like the two gutters below they are
+   global rather than CSS-module scoped.
+
+   A scale hue rather than a role of its own: the scale family exists to be a set
+   of colours with no meaning attached, and the contrast gate already holds every
+   one of them to the graphic floor against `canvas.card`, which is the editor's
+   own background. Orange because the two gutters beside this one own red/green
+   (diff) and one shaded hue (blame), and a mark has to be told apart from both
+   at a glance. */
+.cm-bookmark-gutter {
+  width: calc(12px * var(--ui-scale));
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--sway-text-sm);
+  line-height: 1;
+  text-align: center;
+}
+
+.cm-bookmark-gutter .cm-gutterElement.cm-bookmark {
+  color: var(--scale-orange);
+}
+
+/* An empty column is a target nobody can see, and this feature has no other
+   affordance. So every unmarked line carries a dot of its own, invisible until
+   the column is hovered, which is what says a click here would do something. */
+.cm-bookmark-gutter .cm-gutterElement.cm-bookmark-hint {
+  color: transparent;
+}
+
+.cm-bookmark-gutter:hover .cm-gutterElement.cm-bookmark-hint {
+  color: var(--fg-subtle);
+}
+
 /* Git diff gutter */
 .cm-diff-gutter {
   width: calc(3px * var(--ui-scale));

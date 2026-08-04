@@ -32,6 +32,8 @@ import {
 import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
 import { caretListener, cursorJumpListener } from "./cursorJump";
+import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
+import type { Bookmark } from "../../utils/bookmarks";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
@@ -244,6 +246,13 @@ export default function CodeEditor(props: {
   // arrowing into the next function changes which symbol you are in without
   // being anywhere worth going Back to.
   onCaretMove?: (path: string, line: number, column: number) => void;
+  // The active file's marked lines, and the two ways they change from in here:
+  // a click on the gutter, and an edit that moved one. The pane owns the store
+  // (it is per workspace and outlives every buffer), so this component only ever
+  // renders what it is handed and says what happened.
+  bookmarks?: readonly Bookmark[];
+  onToggleBookmark?: (path: string, line: number) => void;
+  onBookmarksMoved?: (path: string, marks: Bookmark[], docLines: number) => void;
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
@@ -958,6 +967,12 @@ export default function CodeEditor(props: {
       // the same updates, and the pair reads as one rule with an exception when
       // they share a body.
       caretListener((line, column) => props.onCaretMove?.(path, line, column)),
+      // Per buffer rather than in `commonExtensions`, because both handlers have
+      // to name the file they are talking about and only this closure knows it.
+      bookmarkGutter({
+        onToggle: (line) => props.onToggleBookmark?.(path, line),
+        onMoved: (marks, docLines) => props.onBookmarksMoved?.(path, marks, docLines),
+      }),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();
@@ -980,6 +995,13 @@ export default function CodeEditor(props: {
         }
       }),
     ];
+  }
+
+  /** Lay the pane's marks onto the buffer on screen. Only the shown one: a
+   *  background buffer is not being edited, so its positions cannot have drifted
+   *  and it is re-seeded when it comes back. */
+  function syncBookmarks() {
+    if (view && shown) setBookmarkMarkers(view, props.bookmarks ?? []);
   }
 
   /** Re-resolve every buffer's fallback completion in place, background buffers
@@ -1226,6 +1248,10 @@ export default function CodeEditor(props: {
     // moved, on every tab swap and on every first open.
     const at = buf.state.doc.lineAt(cursor);
     props.onCaretMove?.(path, at.number, cursor - at.from + 1);
+    // The marks the pane holds for this file, laid onto the buffer now showing
+    // it. Safe to re-seed on every swap because the field reports any edit that
+    // moved a mark straight back, so the store is never behind the buffer.
+    syncBookmarks();
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
@@ -1494,6 +1520,10 @@ export default function CodeEditor(props: {
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
   createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
+  // The pane's answer changed: a click toggled one, a rename swept them, or the
+  // panel removed one. `defer` because the swap already seeds the buffer it
+  // shows, and doing it twice on open would be a dispatch nobody asked for.
+  createEffect(on(() => props.bookmarks, () => syncBookmarks(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the
