@@ -74,8 +74,13 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 // nothing under test here depends on a buffer being claimed.
 vi.mock("./lspClient", () => ({
   claimedByLsp: () => false,
+  ensureLspFor: () => Promise.resolve(),
   lspPluginFor: () => [],
+  lspTargetFor: () => null,
+  notifyLspFileChanged: () => {},
   onLspChange: () => () => {},
+  setSemanticRefreshListener: () => () => {},
+  stopAllLsp: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");

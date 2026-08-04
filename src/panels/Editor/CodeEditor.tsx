@@ -33,10 +33,6 @@ import { cmdClickDefinitionExtension } from "./lspCommands";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
-import { fallbackCompletion } from "./fallbackCompletion";
-import { fromDisk, type DiskText } from "./lineEndings";
-import { rememberClosed, reviveClosed } from "./closedBuffers";
-import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
@@ -44,6 +40,10 @@ import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSav
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
+import { fallbackCompletion } from "./fallbackCompletion";
+import { fromDisk, type DiskText } from "./lineEndings";
+import { rememberClosed, reviveClosed } from "./closedBuffers";
+import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
 import {
@@ -79,17 +79,17 @@ import {
   AGENT_WRITE_DEBOUNCE_MS,
   REFIT_PANES,
   EDITOR_SAVE,
-  EDITOR_LSP_DEFINITION,
-  EDITOR_LSP_REFERENCES,
-  EDITOR_LSP_RENAME,
-  EDITOR_LSP_FORMAT,
-  EDITOR_TOGGLE_VIM,
   EDITOR_EXPAND_SELECTION,
   EDITOR_SHRINK_SELECTION,
   EDITOR_JOIN_LINES,
   EDITOR_SPLIT_SELECTION,
   EDITOR_STASH_DIRTY,
   EDITOR_STASH_RESULT,
+  EDITOR_LSP_DEFINITION,
+  EDITOR_LSP_REFERENCES,
+  EDITOR_LSP_RENAME,
+  EDITOR_LSP_FORMAT,
+  EDITOR_TOGGLE_VIM,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -252,15 +252,16 @@ export default function CodeEditor(props: {
   // extension, so switching it off takes the whole column with it instead of
   // leaving an empty one.
   blame?: boolean;
+  // This tab's soft-wrap override, or null to follow
+  // `settings.editorDefaults.softWrap`. Per tab rather than global because
+  // wrapping is a property of the file you are looking at (a wide CSV, a prose
+  // paragraph), not of the editor.
+  softWrap?: boolean | null;
   // The host's in-app confirm (WKWebView has no `window.confirm`). Used by the
   // cross-file rename, which has to ask before saving a background tab's
   // unsaved work. Absent means the rename refuses rather than deciding for the
   // user.
   confirm?: (opts: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
-  // This tab's soft-wrap override, or null to follow `settings.editor.softWrap`.
-  // Per tab rather than global because wrapping is a property of the file you
-  // are looking at (a wide CSV, a prose paragraph), not of the editor.
-  softWrap?: boolean | null;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -334,6 +335,10 @@ export default function CodeEditor(props: {
     // it as its baseline too. Without that the tab keeps the pre-rename text,
     // reads as dirty against a file that moved, and the next save quietly puts
     // the old name back.
+    //
+    // Through `fromDisk` rather than straight in, because the baseline has to be
+    // the buffer's *own* reading of those bytes: a CRLF file compared against
+    // the raw string is dirty the instant it is adopted (see lineEndings.ts).
     adopt: (path, text) => {
       const buf = buffers.get(path);
       if (!buf) return;
@@ -573,7 +578,11 @@ export default function CodeEditor(props: {
     // formatter was given?", and a captured reference could not answer it.
     current: (path) => {
       const doc = docFor(path);
-      return doc ? { text: doc.toString(), id: doc } : null;
+      // `docOf`, not `doc.toString()`: the identity check wants the same
+      // reading of the text that the save will write, and `toString` hard-codes
+      // "\n" for every CRLF file (see lineEndings.ts).
+      const text = docOf(path);
+      return doc && text !== null ? { text, id: doc } : null;
     },
     report: (message) => emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
   };
@@ -601,8 +610,9 @@ export default function CodeEditor(props: {
   async function saveActive() {
     const path = shown;
     if (!path || !view) return;
-    // `sliceDoc`, not `doc.toString()`: the latter hard-codes "\n" and would
-    // rewrite a CRLF file's endings on every save (see lineEndings.ts).
+    // `sliceDoc`, never `doc.toString()`: the latter hard-codes "\n" and so
+    // answers a different question for every CRLF file, which is what makes the
+    // bytes written below the buffer's own (see lineEndings.ts).
     let text = view.state.sliceDoc();
     // Ahead of the write, so what lands on disk and what is in the buffer are
     // the same bytes. Gated on the setting first: detection is a directory walk
@@ -712,14 +722,6 @@ export default function CodeEditor(props: {
     void refreshAgentLines();
   }
 
-  // Called on every swap as well as on the setting changing, which is what lets
-  // a background buffer built before the switch pick it up: only the shown
-  // buffer is in the view, so this is the one place the setting can land, and a
-  // buffer that was not on screen when it changed gets it on the way in.
-  function syncVim() {
-    view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimModeOn())) });
-  }
-
   // The editing-comfort preferences (settings.editor), on the same terms as
   // `blameConf` beside it: one compartment for the whole editor, because these
   // are single preferences every buffer wants the same answer to, filled by
@@ -734,7 +736,7 @@ export default function CodeEditor(props: {
   /** The settings, plus this tab's overrides. One reader, so a buffer built now
    *  and a buffer swapped in later cannot be handed different arguments. */
   function currentPrefExtensions(): Extension[] {
-    return editorPrefExtensions(settings.editor, { softWrap: props.softWrap });
+    return editorPrefExtensions(settings.editorDefaults, { softWrap: props.softWrap });
   }
 
   // Reconfigure reaches the *active* state only; a stashed buffer keeps the
@@ -755,6 +757,14 @@ export default function CodeEditor(props: {
     // is an update and not a measure. An empty transaction is exactly that
     // update, and costs one no-op cycle on a settings change.
     view.dispatch({});
+  }
+
+  // Called on every swap as well as on the setting changing, which is what lets
+  // a background buffer built before the switch pick it up: only the shown
+  // buffer is in the view, so this is the one place the setting can land, and a
+  // buffer that was not on screen when it changed gets it on the way in.
+  function syncVim() {
+    view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimModeOn())) });
   }
 
   const commonExtensions: Extension[] = [
@@ -877,7 +887,7 @@ export default function CodeEditor(props: {
    *  moves, the client's liveness or the preference. */
   function currentFallbackCompletion(path: string): Extension {
     return fallbackCompletion(path, {
-      on: settings.editor.wordCompletion,
+      on: settings.editorDefaults.wordCompletion,
       claimed: claimedByLsp(path),
     });
   }
@@ -963,6 +973,50 @@ export default function CodeEditor(props: {
     refreshSemantic();
   }
 
+  /**
+   * Rebuild a buffer from unsaved work the last quit stashed.
+   *
+   * Two outcomes, and the difference is one argument to `fromJSON`. When the
+   * file has not moved, the history field comes back with the document and the
+   * buffer is exactly where it was left. When somebody rewrote the file while
+   * the app was shut, the same JSON is read *without* that field, so the text
+   * survives and only the history is dropped: it is a chain of positions into a
+   * document that no longer exists. The editor's own conflict banner is then
+   * raised over it, so the disk version is offered rather than silently lost.
+   *
+   * A stash that cannot be read at all falls back to the file. That is the loss
+   * this feature exists to prevent, so it is the last resort rather than the
+   * error path: refusing to open the buffer would lose the work *and* the tab.
+   */
+  function restoreStashed(
+    path: string,
+    stashed: StashEntry,
+    disk: DiskText,
+    extensions: Extension[],
+    conf: BufferConf,
+  ): Buffer {
+    const moved = disk.text !== stashed.savedText;
+    let state: EditorState;
+    try {
+      state = EditorState.fromJSON(
+        stashed.state,
+        { extensions },
+        moved ? undefined : SERIALIZED_FIELDS,
+      );
+    } catch (e) {
+      console.error("unreadable hot-exit stash, falling back to disk", path, e);
+      return { state: EditorState.create({ doc: Text.of(disk.lines), extensions }), savedText: disk.text, ...conf };
+    }
+    return {
+      state,
+      // The baseline the buffer was dirty against, so it comes back dirty by
+      // exactly the edits that were unsaved rather than against the new file.
+      savedText: stashed.savedText,
+      ...(moved ? { pendingExternal: disk.text, pendingKind: "changed" as const } : {}),
+      ...conf,
+    };
+  }
+
   // The active file's symbol tree, published for the outline panel and the
   // palette's `@` mode to read. Only the active file: the store is what those
   // surfaces show, and neither of them can show a file that is not on screen.
@@ -1027,51 +1081,6 @@ export default function CodeEditor(props: {
   // clients. Registered in the component body so a palette opened during the
   // first swap already finds it.
   const offSymbolSearch = setWorkspaceSymbolSearch(requestWorkspaceSymbols);
-
-  /**
-   * Rebuild a buffer from unsaved work the last quit stashed.
-   *
-   * Two outcomes, and the difference is one argument to `fromJSON`. When the
-   * file has not moved, the history field comes back with the document and the
-   * buffer is exactly where it was left. When somebody rewrote the file while
-   * the app was shut, the same JSON is read *without* that field, so the text
-   * survives and only the history is dropped: it is a chain of positions into a
-   * document that no longer exists. The editor's own conflict banner is then
-   * raised over it, so the disk version is offered rather than silently lost.
-   *
-   * A stash that cannot be read at all falls back to the file. That is the loss
-   * this feature exists to prevent, so it is the last resort rather than the
-   * error path: refusing to open the buffer would lose the work *and* the tab.
-   */
-  function restoreStashed(
-    path: string,
-    stashed: StashEntry,
-    disk: DiskText,
-    extensions: Extension[],
-    conf: BufferConf,
-  ): Buffer {
-    const moved = disk.text !== stashed.savedText;
-    let state: EditorState;
-    try {
-      state = EditorState.fromJSON(
-        stashed.state,
-        { extensions },
-        moved ? undefined : SERIALIZED_FIELDS,
-      );
-    } catch (e) {
-      console.error("unreadable hot-exit stash, falling back to disk", path, e);
-      return { state: EditorState.create({ doc: Text.of(disk.lines), extensions }), savedText: disk.text, ...conf };
-    }
-    return {
-      state,
-      // The baseline the buffer was dirty against, so it comes back dirty by
-      // exactly the edits that were unsaved rather than against the new file.
-      savedText: stashed.savedText,
-      ...(moved ? { pendingExternal: disk.text, pendingKind: "changed" as const } : {}),
-      ...conf,
-    };
-  }
-
 
   async function swapTo(path: string | null) {
     if (!view) return;
@@ -1284,6 +1293,60 @@ export default function CodeEditor(props: {
   // table-level Mod-s would fire while a terminal had focus.
   const offSave = onEvent(EDITOR_SAVE, () => void saveActive());
 
+  /** Run a CM6 command the palette asked for, and hand focus back: the palette
+   *  took it to be typed into, and a selection nobody can see moved is not a
+   *  selection command. */
+  function runSelectionCommand(cmd: StateCommand) {
+    const v = view;
+    if (!v) return;
+    cmd({ state: v.state, dispatch: (tr) => v.dispatch(tr) });
+    v.focus();
+  }
+
+  // The same four commands the keymap above carries, reached by name instead of
+  // by chord. They land here rather than in Editor for save's reason: the
+  // selection is the buffer's, and only this component holds it.
+  const offSelection = [
+    onEvent(EDITOR_EXPAND_SELECTION, () => runSelectionCommand(expandSelection)),
+    onEvent(EDITOR_SHRINK_SELECTION, () => runSelectionCommand(shrinkSelection)),
+    onEvent(EDITOR_JOIN_LINES, () => runSelectionCommand(joinLines)),
+    onEvent(EDITOR_SPLIT_SELECTION, () => runSelectionCommand(splitSelectionIntoLines)),
+  ];
+
+  /**
+   * Every buffer with unsaved edits, serialized for the stash.
+   *
+   * The shown buffer is read from the view rather than from its record: the
+   * record is only refreshed on a swap, so mid-edit it is one buffer behind,
+   * and a quit is exactly the moment that gap matters.
+   */
+  function dirtyStash(now: number): HotExitStore {
+    const out: HotExitStore = {};
+    for (const [path, buf] of buffers) {
+      const state = path === shown && view ? view.state : buf.state;
+      if (state.sliceDoc() === buf.savedText) continue;
+      out[path] = { savedText: buf.savedText, state: state.toJSON(SERIALIZED_FIELDS), savedAt: now };
+    }
+    return out;
+  }
+
+  // The quit handshake. Answered here rather than in Editor.tsx for save's
+  // reason: the buffers are this component's, and only it can serialize one.
+  // Always answers, including with `false`, because the caller is a window
+  // close waiting on it and silence would hold the app open until its timeout.
+  const offStash = onWith<EditorStashDirty>(EDITOR_STASH_DIRTY, ({ requestId }) => {
+    const answer = (ok: boolean) => emitWith<EditorStashResult>(EDITOR_STASH_RESULT, { requestId, ok });
+    // The try wraps the *serializing* too, not only the write: building the
+    // stash runs `toJSON` over every dirty buffer, and a throw there would
+    // leave this handler dead and the quit waiting out its whole timeout with
+    // no dialog and no window.
+    try {
+      void saveStash(stashToWrite(dirtyStash(Date.now()))).then(answer);
+    } catch (e) {
+      console.error("could not build the hot-exit stash", e);
+      answer(false);
+    }
+  });
   // What a cross-file rename needs from the app: a question it cannot answer
   // itself, and somewhere to say what it did.
   const renameIo = {
@@ -1339,7 +1402,7 @@ export default function CodeEditor(props: {
     const path = shown;
     if (!path || !view) return;
     const outcome = await formatForSave(formatDeps, path, {
-      text: view.state.doc.toString(),
+      text: view.state.sliceDoc(),
       id: view.state.doc,
     });
     if (outcome.kind === "gone") return;
@@ -1369,61 +1432,6 @@ export default function CodeEditor(props: {
   // back through the `vimModeOn` effect rather than from this handler.
   const offToggleVim = onEvent(EDITOR_TOGGLE_VIM, () => toggleVimMode());
 
-  /** Run a CM6 command the palette asked for, and hand focus back: the palette
-   *  took it to be typed into, and a selection nobody can see moved is not a
-   *  selection command. */
-  function runSelectionCommand(cmd: StateCommand) {
-    const v = view;
-    if (!v) return;
-    cmd({ state: v.state, dispatch: (tr) => v.dispatch(tr) });
-    v.focus();
-  }
-
-  // The same four commands the keymap above carries, reached by name instead of
-  // by chord. They land here rather than in Editor for save's reason: the
-  // selection is the buffer's, and only this component holds it.
-  const offSelection = [
-    onEvent(EDITOR_EXPAND_SELECTION, () => runSelectionCommand(expandSelection)),
-    onEvent(EDITOR_SHRINK_SELECTION, () => runSelectionCommand(shrinkSelection)),
-    onEvent(EDITOR_JOIN_LINES, () => runSelectionCommand(joinLines)),
-    onEvent(EDITOR_SPLIT_SELECTION, () => runSelectionCommand(splitSelectionIntoLines)),
-  ];
-
-  /**
-   * Every buffer with unsaved edits, serialized for the stash.
-   *
-   * The shown buffer is read from the view rather than from its record: the
-   * record is only refreshed on a swap, so mid-edit it is one buffer behind,
-   * and a quit is exactly the moment that gap matters.
-   */
-  function dirtyStash(now: number): HotExitStore {
-    const out: HotExitStore = {};
-    for (const [path, buf] of buffers) {
-      const state = path === shown && view ? view.state : buf.state;
-      if (state.sliceDoc() === buf.savedText) continue;
-      out[path] = { savedText: buf.savedText, state: state.toJSON(SERIALIZED_FIELDS), savedAt: now };
-    }
-    return out;
-  }
-
-  // The quit handshake. Answered here rather than in Editor.tsx for save's
-  // reason: the buffers are this component's, and only it can serialize one.
-  // Always answers, including with `false`, because the caller is a window
-  // close waiting on it and silence would hold the app open until its timeout.
-  const offStash = onWith<EditorStashDirty>(EDITOR_STASH_DIRTY, ({ requestId }) => {
-    const answer = (ok: boolean) => emitWith<EditorStashResult>(EDITOR_STASH_RESULT, { requestId, ok });
-    // The try wraps the *serializing* too, not only the write: building the
-    // stash runs `toJSON` over every dirty buffer, and a throw there would
-    // leave this handler dead and the quit waiting out its whole timeout with
-    // no dialog and no window.
-    try {
-      void saveStash(stashToWrite(dirtyStash(Date.now()))).then(answer);
-    } catch (e) {
-      console.error("could not build the hot-exit stash", e);
-      answer(false);
-    }
-  });
-
   // Same reason as REFIT_PANES: geometry measured while display:none is stale.
   // The editor now stays mounted but hidden whenever the selected workspace has
   // no tabs open, so revealing it again is a case that did not exist when the
@@ -1443,17 +1451,13 @@ export default function CodeEditor(props: {
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
   createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
-  // Toggling vim from Settings takes effect where the caret already is, with
-  // the file's text and undo history untouched: a compartment reconfigure, not
-  // a rebuild.
-  createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the
   // palette can flip it without any setting moving.
   createEffect(
     on(
-      () => [...Object.values(settings.editor), props.softWrap],
+      () => [...Object.values(settings.editorDefaults), props.softWrap],
       () => syncEditorPrefs(),
       { defer: true },
     ),
@@ -1462,8 +1466,12 @@ export default function CodeEditor(props: {
   // buffer's compartment, and doing that for a whitespace toggle would be work
   // for nothing.
   createEffect(
-    on(() => settings.editor.wordCompletion, () => syncFallbackCompletion(), { defer: true }),
+    on(() => settings.editorDefaults.wordCompletion, () => syncFallbackCompletion(), { defer: true }),
   );
+  // Toggling vim from Settings takes effect where the caret already is, with
+  // the file's text and undo history untouched: a compartment reconfigure, not
+  // a rebuild.
+  createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the
@@ -1528,9 +1536,9 @@ export default function CodeEditor(props: {
     offRefit?.();
     offLsp?.();
     offSave();
-    for (const off of offLspCommands) off();
     offStash();
     for (const off of offSelection) off();
+    for (const off of offLspCommands) off();
     offToggleVim();
     offBufferAccess();
     offSymbolSearch();

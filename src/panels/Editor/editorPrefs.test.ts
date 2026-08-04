@@ -1,13 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { Compartment, EditorState, StateField } from "@codemirror/state";
 import { activeEditorFeatures, editorPrefExtensions } from "./editorPrefs";
-import type { EditorPrefs } from "../Settings/settingsStore";
+import type { EditorDefaults } from "../Settings/settingsStore";
 
 // A literal rather than `DEFAULT_SETTINGS.editor`: this is a `unit` (node) test,
 // and importing the store for real runs its module body, which reads
 // `localStorage` for the zoom level. The type still comes from the store, so a
 // renamed key fails here.
-const PREFS: EditorPrefs = {
+const PREFS: EditorDefaults = {
+  // Part of the type, not of this pass: neither resolves to a live extension.
+  formatOnSave: false,
+  vimMode: false,
   indentGuides: true,
   softWrap: false,
   renderWhitespace: false,
@@ -29,13 +32,13 @@ const isOn = (s: EditorState) => s.field(marker, false) === true;
  *  stand-in for the entry a later phase adds when the preference is on. */
 const prefsWith = (on: boolean) => [...editorPrefExtensions(PREFS), ...(on ? [marker] : [])];
 
-const withPrefs = (over: Partial<EditorPrefs>): EditorPrefs => ({ ...PREFS, ...over });
+const withPrefs = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...PREFS, ...over });
 
 // Every key false, derived rather than written out, so a preference added to
 // the type later starts off here instead of quietly joining every expectation
 // below.
-const ALL_OFF = Object.fromEntries(Object.keys(PREFS).map((k) => [k, false])) as EditorPrefs;
-const only = (over: Partial<EditorPrefs>): EditorPrefs => ({ ...ALL_OFF, ...over });
+const ALL_OFF = Object.fromEntries(Object.keys(PREFS).map((k) => [k, false])) as EditorDefaults;
+const only = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...ALL_OFF, ...over });
 
 describe("which comfort features a buffer gets", () => {
   it("turns each one on from its own key, and nothing else", () => {

@@ -53,7 +53,7 @@ const {
 async function seed(patch: Partial<typeof DEFAULT_SETTINGS>) {
   await saveSettings({
     ...structuredClone(DEFAULT_SETTINGS),
-    editorDefaults: { formatOnSave: false, vimMode: false },
+    editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: false, vimMode: false },
     editor: {},
     ...patch,
   });
@@ -74,13 +74,13 @@ describe("formatOnSaveFor", () => {
   });
 
   it("follows the global default for a project that has never been asked", async () => {
-    await seed({ editorDefaults: { formatOnSave: true, vimMode: false } });
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
     expect(formatOnSaveFor("/repo/never-asked")).toBe(true);
   });
 
   it("lets a project opt out of a default that is on", async () => {
     await seed({
-      editorDefaults: { formatOnSave: true, vimMode: false },
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false },
       editor: { "/repo/legacy": { formatOnSave: false } },
     });
     expect(formatOnSaveFor("/repo/legacy")).toBe(false);
@@ -97,14 +97,14 @@ describe("formatOnSaveFor", () => {
     // What clearing a project's choice writes. It has to fall back to the
     // default, not pin the project to off.
     await seed({
-      editorDefaults: { formatOnSave: true, vimMode: false },
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false },
       editor: { "/repo/cleared": { formatOnSave: null } },
     });
     expect(formatOnSaveFor("/repo/cleared")).toBe(true);
   });
 
   it("has only the default to go on with no project selected", async () => {
-    await seed({ editorDefaults: { formatOnSave: true, vimMode: false } });
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
     expect(formatOnSaveFor(null)).toBe(true);
   });
 });
@@ -119,7 +119,7 @@ describe("rememberFormatOnSave", () => {
   });
 
   it("clears an answer back to the default", async () => {
-    await seed({ editorDefaults: { formatOnSave: true, vimMode: false }, editor: { "/repo/a": { formatOnSave: false } } });
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false }, editor: { "/repo/a": { formatOnSave: false } } });
     rememberFormatOnSave("/repo/a", null);
     await vi.waitFor(() => expect(formatOnSaveFor("/repo/a")).toBe(true));
   });
@@ -129,7 +129,7 @@ describe("vimModeOn", () => {
   it("is off until it is turned on", async () => {
     await seed({});
     expect(vimModeOn()).toBe(false);
-    await seed({ editorDefaults: { formatOnSave: false, vimMode: true } });
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: false, vimMode: true } });
     expect(vimModeOn()).toBe(true);
   });
 
@@ -146,7 +146,7 @@ describe("vimModeOn", () => {
   it("leaves format-on-save where it was", async () => {
     // The two share `editorDefaults`, so a toggle that rebuilt the object
     // instead of spreading it would silently switch formatting off.
-    await seed({ editorDefaults: { formatOnSave: true, vimMode: false } });
+    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
     toggleVimMode();
     await vi.waitFor(() => expect(vimModeOn()).toBe(true));
     expect(formatOnSaveFor(null)).toBe(true);
@@ -158,7 +158,7 @@ describe("vimModeOn", () => {
     // caret is the person's, and a per-project answer would mean the same hands
     // typing differently in two windows of the same editor.
     await seed({
-      editorDefaults: { formatOnSave: false, vimMode: true },
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: false, vimMode: true },
       editor: { "/repo/a": { formatOnSave: false } },
     });
     expect(vimModeOn()).toBe(true);

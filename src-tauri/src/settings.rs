@@ -266,14 +266,62 @@ impl Default for ChatDefaults {
 ///
 /// `vim_mode` lives here and **not** in `EditorPrefs`: which formatter runs is a
 /// property of the repo, but whether `hjkl` moves the caret is a property of the
-/// person, and the same person's hands do not change between projects.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// person, and the same person's hands do not change between projects. The
+/// editing-comfort switches below are here for the same reason.
+///
+/// **Each field carries its own default, not just the struct.** A bare
+/// `#[serde(default)]` on a `bool` deserializes a *missing* key as `false`, so a
+/// hand-edited file that sets one key inside `editorDefaults` would silently
+/// turn every on-by-default feature off. The named `default_true` keeps a
+/// partial block filling from defaults the same way a missing block does, which
+/// is also why `Default` is written out rather than derived.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorDefaults {
     #[serde(default)]
     pub format_on_save: bool,
     #[serde(default)]
     pub vim_mode: bool,
+    #[serde(default = "default_true")]
+    pub indent_guides: bool,
+    #[serde(default)]
+    pub soft_wrap: bool,
+    #[serde(default)]
+    pub render_whitespace: bool,
+    #[serde(default = "default_true")]
+    pub scroll_past_end: bool,
+    #[serde(default)]
+    pub rainbow_brackets: bool,
+    #[serde(default)]
+    pub bracket_pair_guides: bool,
+    #[serde(default)]
+    pub minimap: bool,
+    #[serde(default = "default_true")]
+    pub word_completion: bool,
+    #[serde(default = "default_true")]
+    pub hot_exit: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for EditorDefaults {
+    fn default() -> Self {
+        Self {
+            format_on_save: false,
+            vim_mode: false,
+            indent_guides: true,
+            soft_wrap: false,
+            render_whitespace: false,
+            scroll_past_end: true,
+            rainbow_brackets: false,
+            bracket_pair_guides: false,
+            minimap: false,
+            word_completion: true,
+            hot_exit: true,
+        }
+    }
 }
 
 /// One project's editor overrides. Keyed like `Settings::chat` and for the same
@@ -302,56 +350,6 @@ pub struct Harness {
     pub path: Option<String>,
 }
 
-/// Editing comfort, mirroring `EditorPrefs` in `settingsStore.ts`.
-///
-/// **Each field carries its own default, not just the struct.** A bare
-/// `#[serde(default)]` on a `bool` deserializes a *missing* key as `false`, so
-/// a hand-edited file that sets one key inside `editor` would silently turn
-/// every on-by-default feature off. The named `default_true` keeps a partial
-/// block filling from defaults the same way a missing block does.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct EditorPrefs {
-    #[serde(default = "default_true")]
-    pub indent_guides: bool,
-    #[serde(default)]
-    pub soft_wrap: bool,
-    #[serde(default)]
-    pub render_whitespace: bool,
-    #[serde(default = "default_true")]
-    pub scroll_past_end: bool,
-    #[serde(default)]
-    pub rainbow_brackets: bool,
-    #[serde(default)]
-    pub bracket_pair_guides: bool,
-    #[serde(default)]
-    pub minimap: bool,
-    #[serde(default = "default_true")]
-    pub word_completion: bool,
-    #[serde(default = "default_true")]
-    pub hot_exit: bool,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl Default for EditorPrefs {
-    fn default() -> Self {
-        Self {
-            indent_guides: true,
-            soft_wrap: false,
-            render_whitespace: false,
-            scroll_past_end: true,
-            rainbow_brackets: false,
-            bracket_pair_guides: false,
-            minimap: false,
-            word_completion: true,
-            hot_exit: true,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -369,8 +367,6 @@ pub struct Settings {
     pub editor_defaults: EditorDefaults,
     #[serde(default)]
     pub harness: Harness,
-    #[serde(default)]
-    pub editor: EditorPrefs,
     /// Keyed by project path. Untyped as a map rather than a list so a project
     /// that has never been opened simply has no entry, instead of needing one
     /// written before the first pick can be stored.
@@ -789,28 +785,36 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{ "appearance": { "theme": "sway-dark" } }"#).unwrap();
         let back = load_from(&p);
-        assert_eq!(back.editor, EditorPrefs::default(), "no editor key at all");
-        assert!(back.editor.indent_guides);
-        assert!(back.editor.scroll_past_end);
-        assert!(back.editor.word_completion);
-        assert!(back.editor.hot_exit);
+        assert_eq!(
+            back.editor_defaults,
+            EditorDefaults::default(),
+            "no editorDefaults key at all"
+        );
+        assert!(back.editor_defaults.indent_guides);
+        assert!(back.editor_defaults.scroll_past_end);
+        assert!(back.editor_defaults.word_completion);
+        assert!(back.editor_defaults.hot_exit);
         // The cosmetic overlays stay off: a stance nobody asked for.
-        assert!(!back.editor.minimap);
-        assert!(!back.editor.rainbow_brackets);
+        assert!(!back.editor_defaults.minimap);
+        assert!(!back.editor_defaults.rainbow_brackets);
 
         // One key set by hand must not zero its siblings.
-        std::fs::write(&p, r#"{ "editor": { "minimap": true } }"#).unwrap();
+        std::fs::write(&p, r#"{ "editorDefaults": { "minimap": true } }"#).unwrap();
         let back = load_from(&p);
-        assert!(back.editor.minimap);
-        assert!(back.editor.indent_guides, "a sibling key kept its default");
-        assert!(back.editor.hot_exit);
+        assert!(back.editor_defaults.minimap);
+        assert!(back.editor_defaults.indent_guides, "a sibling key kept its default");
+        assert!(back.editor_defaults.hot_exit);
+        // And the two that were already in this block before the comfort
+        // switches joined it: a partial write must not zero those either.
+        assert!(!back.editor_defaults.format_on_save);
+        assert!(!back.editor_defaults.vim_mode);
 
         // And an explicit off survives the round trip, or a user who turned hot
         // exit off would find it re-armed on the next launch.
         let mut s = load_from(&p);
-        s.editor.hot_exit = false;
+        s.editor_defaults.hot_exit = false;
         save_to(&p, &s).unwrap();
-        assert!(!load_from(&p).editor.hot_exit);
+        assert!(!load_from(&p).editor_defaults.hot_exit);
         let _ = std::fs::remove_file(&p);
     }
 
