@@ -7,6 +7,8 @@
 // features live: a class on the line for the guides, a widget for the swatches.
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView, gutter } from "@codemirror/view";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { editorPrefExtensions } from "./editorPrefs";
 import { DEPTH_COLORS } from "./bracketPairs";
@@ -104,6 +106,32 @@ describe("rainbow brackets", () => {
       editorPrefExtensions({ ...BASE, rainbowBrackets: false }),
     ]);
     expect(el.querySelectorAll('[class*="cm-bracket-depth"]')).toHaveLength(0);
+  });
+
+  it("paints the glyph itself, rather than wrapping something that paints it grey", async () => {
+    // The whole feature turns on this and nothing else. Overlapping mark
+    // decorations become nested spans and only the *innermost* one colours the
+    // text, so a depth mark on the outside is correct, present, and invisible -
+    // which reads as the setting doing nothing. The app's real highlight style
+    // gives brackets the punctuation colour, so there is always an inner
+    // candidate to lose to; a style that ignores brackets (CodeMirror's own
+    // default) hides this entirely, which is how it shipped.
+    const punctuation = HighlightStyle.define([
+      { tag: [t.punctuation, t.bracket, t.paren, t.brace, t.squareBracket], color: "#808080" },
+    ]);
+    const el = mount(NESTED, [
+      await langForPath("/repo/a.ts"),
+      syntaxHighlighting(punctuation),
+      editorPrefExtensions({ ...BASE, rainbowBrackets: true }),
+    ]);
+
+    const marks = el.querySelectorAll('[class*="cm-bracket-depth"]');
+    expect(marks.length).toBeGreaterThan(0);
+    for (const mark of marks) {
+      // Innermost: the bracket glyph is this element's own text, not a child's.
+      expect(mark.children, `${mark.className} wraps another span`).toHaveLength(0);
+      expect(mark.textContent).toMatch(/^[[\]{}()]$/);
+    }
   });
 });
 
