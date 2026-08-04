@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // The Search panel's controls, driven through the real component. Match
@@ -135,6 +136,9 @@ async function type(value: string) {
 }
 
 beforeEach(() => {
+  // The history and the saved list are read from storage on mount, so a test
+  // that did not put something there must not inherit it from one that did.
+  localStorage.clear();
   bridge.calls = [];
   bridge.replaces = [];
   bridge.previews = [];
@@ -726,5 +730,259 @@ describe("handing the results to an editable buffer", () => {
       line: 12,
       original: "const needle = 1",
     });
+  });
+});
+
+// --- history and saved searches ---
+
+const queryInput = () => screen.getByPlaceholderText("Search project") as HTMLInputElement;
+const lastSearch = () => searches()[searches().length - 1];
+
+/** Type a query and press Enter, which is what puts it in the history. */
+async function commit(value: string) {
+  await type(value);
+  fireEvent.keyDown(queryInput(), { key: "Enter" });
+  await waitFor(() => expect(lastSearch().query).toBe(value));
+}
+
+/** Open the saved-searches disclosure. */
+function openSavedRow() {
+  fireEvent.click(screen.getByLabelText("Saved searches"));
+}
+
+describe("query history", () => {
+  it("recalls the last query, with the toggles it was run with", async () => {
+    // The reason an entry is a (query, options) pair: handing back "alpha"
+    // without the case flag it was run under is handing back a search the user
+    // never ran, and the results would not be the ones they remember.
+    mount();
+    await commit("alpha");
+    fireEvent.click(screen.getByLabelText("Match case"));
+    await commit("beta");
+    // Back to the panel's default before recalling, so a restored `case: true`
+    // can only have come out of the history.
+    fireEvent.click(screen.getByLabelText("Match case"));
+    await waitFor(() => expect(lastSearch().options.case).toBe(false));
+
+    // Both halves inside the wait: "beta" is already the query on screen, so
+    // waiting only on the text would pass before the recalled search ran and
+    // read the toggle state the recall was meant to replace.
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(lastSearch().query).toBe("beta");
+      expect(lastSearch().options.case).toBe(true);
+    });
+    expect(queryInput().value).toBe("beta");
+
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(lastSearch().query).toBe("alpha");
+      expect(lastSearch().options.case).toBe(false);
+    });
+  });
+
+  it("gives back what you were typing when you arrow past the newest entry", async () => {
+    mount();
+    await commit("alpha");
+    fireEvent.input(queryInput(), { target: { value: "half-typed" } });
+
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    await waitFor(() => expect(queryInput().value).toBe("alpha"));
+    fireEvent.keyDown(queryInput(), { key: "ArrowDown" });
+    await waitFor(() => expect(queryInput().value).toBe("half-typed"));
+  });
+
+  it("records the query you stood behind, not every prefix on the way to it", async () => {
+    // The box searches as you type. Recording each search would leave a history
+    // of "n", "ne", "nee" that nobody can arrow through.
+    mount();
+    await type("needle");
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    await waitFor(() => expect(queryInput().value).toBe("needle"));
+
+    const { historyFor, loadSearchHistory } = await import("../../utils/searchHistory");
+    expect(historyFor(loadSearchHistory(), "/proj").map((h) => h.query)).toEqual([]);
+  });
+
+  it("leaves the previous project's recall behind when the root changes", async () => {
+    // The cursor indexes the history that was on screen, and the draft it would
+    // restore is a query for the project you just left. Carried over, the first
+    // arrow press in the new project types someone else's half-finished text.
+    localStorage.setItem(
+      "sway.searchHistory",
+      JSON.stringify({ "/other": [{ query: "elsewhere" }] }),
+    );
+    const [root, setRoot] = createSignal<string | null>("/proj");
+    render(() => <SearchPanel root={root()} focusNonce={0} />);
+
+    await commit("here");
+    fireEvent.input(queryInput(), { target: { value: "half-typed" } });
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    await waitFor(() => expect(queryInput().value).toBe("here"));
+
+    setRoot("/other");
+    await waitFor(() => expect(bridge.calls.some((c) => c.query === "")).toBe(true));
+    // Down would walk back to the draft if the cursor had come along; here it
+    // has nowhere to go, because recall starts over in a new project.
+    fireEvent.keyDown(queryInput(), { key: "ArrowDown" });
+    expect(queryInput().value).not.toBe("half-typed");
+  });
+
+  it("keeps each workspace's history to itself", async () => {
+    const r = mount();
+    await commit("here");
+    r.unmount();
+
+    mount({ root: "/other" });
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+    fireEvent.keyDown(queryInput(), { key: "ArrowUp" });
+    // Nothing has been searched in this project, so Up has nowhere to go.
+    expect(queryInput().value).toBe("");
+  });
+});
+
+describe("saved searches", () => {
+  /** Save the current query under `name`. */
+  function saveAs(name: string) {
+    fireEvent.input(screen.getByLabelText("Name this search"), { target: { value: name } });
+    fireEvent.click(screen.getByText("Save"));
+  }
+
+  it("survives a relaunch, with the query and toggles it was saved with", async () => {
+    const r = mount();
+    await type("needle");
+    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    await waitFor(() => expect(lastSearch().options.regex).toBe(true));
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+    r.unmount();
+
+    // A fresh mount reads storage the way a fresh launch does.
+    mount();
+    openSavedRow();
+    expect(screen.getByText("todos")).toBeTruthy();
+
+    const { loadSavedSearches, savedFor } = await import("../../utils/savedSearches");
+    expect(savedFor(loadSavedSearches(), "/proj")).toEqual([
+      { name: "todos", query: "needle", options: expect.objectContaining({ regex: true }) },
+    ]);
+  });
+
+  it("renames one without disturbing what it runs", async () => {
+    mount();
+    await type("needle");
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+
+    fireEvent.click(screen.getByLabelText("Rename todos"));
+    const box = screen.getByLabelText("New name for todos") as HTMLInputElement;
+    fireEvent.keyDown(box, { key: "Enter", target: { value: "chores" } });
+
+    await waitFor(() => expect(screen.getByText("chores")).toBeTruthy());
+    const { loadSavedSearches, savedFor } = await import("../../utils/savedSearches");
+    expect(savedFor(loadSavedSearches(), "/proj")[0].query).toBe("needle");
+  });
+
+  it("refuses a rename onto a name in use, and says so where it happened", async () => {
+    // Not in the search-error slot: that is where an invalid regex reports, and
+    // a naming complaint sitting above the hits reads as though the search
+    // below it was the thing that failed.
+    bridge.respond = () => ONE_FILE();
+    mount();
+    await type("ab");
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+    saveAs("hooks");
+    await waitFor(() => expect(screen.getByText("hooks")).toBeTruthy());
+
+    fireEvent.click(screen.getByLabelText("Rename todos"));
+    fireEvent.keyDown(screen.getByLabelText("New name for todos"), {
+      key: "Enter",
+      target: { value: "hooks" },
+    });
+
+    await waitFor(() => expect(screen.getByText(/already named "hooks"/)).toBeTruthy());
+    // Both survive, and the results are still on screen underneath.
+    expect(screen.getByText("todos")).toBeTruthy();
+    expect(screen.getByText("hooks")).toBeTruthy();
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+  });
+
+  it("deletes one, and says so to storage", async () => {
+    mount();
+    await type("needle");
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+
+    fireEvent.click(screen.getByLabelText("Delete todos"));
+    await waitFor(() => expect(screen.queryByText("todos")).toBeNull());
+    const { loadSavedSearches, savedFor } = await import("../../utils/savedSearches");
+    expect(savedFor(loadSavedSearches(), "/proj")).toEqual([]);
+  });
+
+  it("opens as an editable results buffer, not just a list to click through", async () => {
+    // The point of saving a search after Phase 11: opening one lands you on the
+    // thing you can edit and write back, with the panel restored underneath so
+    // the toggles on screen still describe what you are looking at.
+    bridge.respond = () => ok([match("const needle = 1", [[6, 12]], 12, "src/a.ts")]);
+    const r = mount();
+    await type("needle");
+    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    await waitFor(() => expect(lastSearch().options.regex).toBe(true));
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+    r.unmount();
+
+    mount();
+    openSavedRow();
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
+    window.addEventListener("sway:open-in-editor", listener);
+    try {
+      fireEvent.click(screen.getByText("todos"));
+      await waitFor(() => expect(opened.length).toBe(1));
+    } finally {
+      window.removeEventListener("sway:open-in-editor", listener);
+    }
+
+    const { searchBuffer } = await import("./searchResultsStore");
+    const buf = searchBuffer(opened[0])!;
+    expect(buf.doc.query).toBe("needle");
+    expect(buf.doc.rows).toContainEqual({
+      kind: "match",
+      file: "src/a.ts",
+      line: 12,
+      original: "const needle = 1",
+    });
+    // Restored, not merely run: the search it fired carries the saved toggles.
+    expect(lastSearch().options.regex).toBe(true);
+    expect(queryInput().value).toBe("needle");
+  });
+
+  it("opens no tab for a saved search that now matches nothing", async () => {
+    // An empty results buffer is a tab to close, not an answer.
+    bridge.respond = () => ok([match("const needle = 1", [[6, 12]], 12, "src/a.ts")]);
+    mount();
+    await type("needle");
+    openSavedRow();
+    saveAs("todos");
+    await waitFor(() => expect(screen.getByText("todos")).toBeTruthy());
+
+    bridge.respond = () => ok([]);
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
+    window.addEventListener("sway:open-in-editor", listener);
+    try {
+      fireEvent.click(screen.getByText("todos"));
+      await waitFor(() => expect(lastSearch().query).toBe("needle"));
+      expect(opened.length).toBe(0);
+    } finally {
+      window.removeEventListener("sway:open-in-editor", listener);
+    }
   });
 });
