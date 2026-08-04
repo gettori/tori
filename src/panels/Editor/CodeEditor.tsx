@@ -1154,8 +1154,13 @@ export default function CodeEditor(props: {
       handedOff === undefined
         ? cursor
         : buf.state.doc.line(lineAtFraction(handedOff, buf.state.doc.lines)).from;
+    // `center` rather than the default `nearest` for the cursor: `nearest`
+    // scrolls the minimum to bring the line into view, which from a fresh
+    // `setState` (scrolled to the top) means it lands hard against the bottom
+    // edge with the whole file above it. The buffer is supposed to come back
+    // looking like it was left, and a line pinned to the edge does not.
     view.dispatch({
-      effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? undefined : { y: "start" }),
+      effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
     });
     // Landing on the cursor is itself a position, and saying so replaces
     // whatever this file's last scroll left pending. Otherwise a tab swap away
