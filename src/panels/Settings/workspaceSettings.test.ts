@@ -8,6 +8,7 @@ import type { EditorDefaults } from "./settingsStore";
  *  about rather than inheriting whatever the shipped defaults are today. */
 const DEFAULTS: EditorDefaults = {
   formatOnSave: false,
+  organizeImportsOnSave: false,
   vimMode: false,
   indentGuides: true,
   softWrap: false,

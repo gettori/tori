@@ -106,3 +106,37 @@ export function dropDiagnostics(path: string) {
 export function clearDiagnostics() {
   setDiagnostics({});
 }
+
+/** What the server would offer to do about one problem, by title. */
+export type FixLookup = (path: string, problem: Problem) => Promise<string[]>;
+
+// Registered by the editor while it is mounted, exactly as
+// `setWorkspaceSymbolSearch` is and for the same reason: asking a language
+// server what it would fix needs the LSP client, importing the client here
+// would drag CodeMirror into the startup chunk, and the Problems panel is on
+// the eager side of that boundary. So the capability is handed *in* rather than
+// reached for.
+let lookup: FixLookup | null = null;
+
+/** Let the editor answer "what could be done about this?". Returns an
+ *  unregister. Guarded, so a later registration replacing this one is not
+ *  cleared by its predecessor's cleanup. */
+export function setDiagnosticFixLookup(fn: FixLookup): () => void {
+  lookup = fn;
+  return () => {
+    if (lookup === fn) lookup = null;
+  };
+}
+
+/**
+ * The fixes on offer for one problem, by title. Empty when no editor is
+ * mounted, which is the honest answer: no client is running to ask.
+ *
+ * Never rejects. This runs on the way to composing a message for an agent, and
+ * a server that will not answer is a reason to send the diagnostic alone rather
+ * than to send nothing.
+ */
+export function fixesFor(path: string, problem: Problem): Promise<string[]> {
+  if (!lookup) return Promise.resolve([]);
+  return lookup(path, problem).catch(() => []);
+}

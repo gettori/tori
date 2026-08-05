@@ -10,6 +10,7 @@ import type { EditorDefaults } from "../Settings/settingsStore";
 const PREFS: EditorDefaults = {
   // Part of the type, not of this pass: neither resolves to a live extension.
   formatOnSave: false,
+  organizeImportsOnSave: false,
   vimMode: false,
   indentGuides: true,
   softWrap: false,

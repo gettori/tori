@@ -26,6 +26,7 @@ const {
   requestCodeActions,
   normalizeCodeActions,
   refreshCodeActions,
+  requestSourceAction,
   currentCodeActions,
   onCodeActionsChange,
   clearCodeActions,
@@ -151,6 +152,73 @@ describe("requestCodeActions", () => {
     // the difference, so they must not collapse into one value here.
     targets = [target({ provides: ["codeActionProvider"], res: [] })];
     expect(await requestCodeActions("/proj/a.ts", range(0, 0, 0, 0))).toEqual([]);
+  });
+});
+
+describe("requestSourceAction", () => {
+  const whole = range(0, 0, 40, 0);
+
+  it("names the kind it wants, since a server computes a source action only when asked", () => {
+    // tsserver does not volunteer organize-imports in an unfiltered answer, so
+    // without `only` the command comes back empty against a working server.
+    const t = target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports" }] });
+    targets = [t];
+
+    return requestSourceAction("/proj/a.ts", "source.organizeImports", whole).then(() => {
+      const params = t.asked[0].params as { context: { only?: string[] } };
+      expect(params.context.only).toEqual(["source.organizeImports"]);
+    });
+  });
+
+  it("hands back the one action the server offered", async () => {
+    targets = [target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports" }] })];
+
+    const action = await requestSourceAction("/proj/a.ts", "source.organizeImports", whole);
+
+    expect(action?.title).toBe("Organize");
+  });
+
+  it("takes the first where a server answers with several", async () => {
+    // A server ordering its own answers puts the one it means first, and a
+    // command named "Organize imports" cannot ask which one was meant.
+    targets = [
+      target({
+        provides: ["codeActionProvider"],
+        res: [
+          { title: "first", kind: "source.organizeImports" },
+          { title: "second", kind: "source.organizeImports" },
+        ],
+      }),
+    ];
+
+    expect((await requestSourceAction("/proj/a.ts", "source.organizeImports", whole))?.title).toBe("first");
+  });
+
+  it("refuses an action of a kind it did not ask for", async () => {
+    // Servers answer a filtered request with what they think is close enough.
+    // An "add missing imports" arriving in answer to "organize imports" would
+    // be a different edit running under the command's name.
+    targets = [
+      target({
+        provides: ["codeActionProvider"],
+        res: [{ title: "Add all missing imports", kind: "source.addMissingImports" }],
+      }),
+    ];
+
+    expect(await requestSourceAction("/proj/a.ts", "source.organizeImports", whole)).toBeNull();
+  });
+
+  it("accepts a more specific kind beneath the one asked for", async () => {
+    targets = [
+      target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports.ts" }] }),
+    ];
+
+    expect((await requestSourceAction("/proj/a.ts", "source.organizeImports", whole))?.title).toBe("Organize");
+  });
+
+  it("answers null when the server has nothing, rather than throwing", async () => {
+    targets = [target({ provides: ["codeActionProvider"], res: [] })];
+    expect(await requestSourceAction("/proj/a.ts", "source.organizeImports", whole)).toBeNull();
   });
 });
 

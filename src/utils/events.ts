@@ -202,6 +202,24 @@ export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
 // Not a library binding like the four above: nothing in `@codemirror/lsp-client`
 // asks for a code action at all, so this one is Sway's from end to end.
 export const EDITOR_LSP_CODE_ACTION = "sway:editor-lsp-code-action";
+// A whole-file action, named by its LSP kind. One event carrying the kind
+// rather than one event per command: the three differ only in which string
+// goes on the wire, and three handlers would be three copies of one function.
+export const EDITOR_LSP_SOURCE_ACTION = "sway:editor-lsp-source-action";
+export type SourceAction = { kind: string; label: string };
+
+/** The LSP kinds those commands are spelled with. Here rather than beside the
+ *  rest of the source-action logic because `commands.ts` needs them and is
+ *  allowed to import this module and one other, on purpose (see its header).
+ *
+ *  `source.sortImports` rather than a "sort members" kind: the spec has no such
+ *  kind, so a command spelled that way would be one nothing ever answers. These
+ *  three are what `typescript-language-server` actually advertises. */
+export const SOURCE_KINDS = {
+  organizeImports: "source.organizeImports",
+  removeUnused: "source.removeUnused",
+  sortImports: "source.sortImports",
+} as const;
 
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the

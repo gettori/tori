@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
-import { diagnostics, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
-import { composeDiagnostic, requestSend, type SessionTarget } from "../../utils/safeSend";
+import { diagnostics, fixesFor, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
+import { composeDiagnosticWithFixes, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { diagnosticBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
 import Button from "../../components/Button/Button";
@@ -65,7 +65,12 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
       return;
     }
     if (!t) return;
-    const text = composeDiagnostic(t, path, p.line, p.endLine, p.severity, p.message);
+    // Asked before composing, not cached: what the server would fix depends on
+    // the file as it is now, and this row may have been on screen for a while.
+    // Answers `[]` when no editor is mounted or the server will not say, and
+    // the message goes without them rather than not going.
+    const fixes = await fixesFor(path, p);
+    const text = composeDiagnosticWithFixes(t, path, p.line, p.endLine, p.severity, p.message, fixes);
     const result = await requestSend({
       ...t,
       text,

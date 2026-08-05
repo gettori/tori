@@ -169,7 +169,11 @@ export function normalizeCodeActions(res: unknown): CodeAction[] {
  * is debounced by 500 ms - asking sooner would be asking about a document the
  * server has not been sent.
  */
-export async function requestCodeActions(path: string, range: LspRange): Promise<CodeAction[] | null> {
+export async function requestCodeActions(
+  path: string,
+  range: LspRange,
+  only?: readonly string[],
+): Promise<CodeAction[] | null> {
   const target = lspTargetFor(path);
   if (!target) return null;
   await target.ready;
@@ -181,6 +185,11 @@ export async function requestCodeActions(path: string, range: LspRange): Promise
       textDocument: { uri },
       range,
       context: {
+        // Named when the caller wants one specific thing. Not an optimisation:
+        // tsserver computes a source action only when it is asked for by kind,
+        // so an unfiltered request over the whole file comes back without the
+        // organize-imports the caller is there for.
+        ...(only ? { only: [...only] } : {}),
         diagnostics: diagnosticsIn(uri, range),
         // 1 is Invoked: a person asked. The other value is Automatic, which
         // licenses a server to answer more cheaply and skip the expensive
@@ -194,6 +203,33 @@ export async function requestCodeActions(path: string, range: LspRange): Promise
     console.error("codeAction failed", path, e);
     return null;
   }
+}
+
+/**
+ * The one whole-file action of `kind` the server offers, or null.
+ *
+ * Asked over the whole document because that is what a source action is about:
+ * "organize the imports" is a claim about the file, not about wherever the
+ * caret happens to be. Servers differ on whether they read the range at all,
+ * and the ones that do expect this.
+ *
+ * The first match wins where a server answers with several. That is not
+ * arbitrary either: a server ordering its own answers puts the one it means
+ * first, and a command named "Organize imports" has no way to ask the user
+ * which organize-imports they meant.
+ */
+export async function requestSourceAction(
+  path: string,
+  kind: string,
+  wholeFile: LspRange,
+): Promise<CodeAction | null> {
+  const actions = await requestCodeActions(path, wholeFile, [kind]);
+  if (!actions?.length) return null;
+  // A server may answer a filtered request with kinds it thinks are close
+  // enough. Only what was actually asked for is run: an "add missing imports"
+  // arriving in answer to "organize imports" would be a different edit under
+  // the command's name.
+  return actions.find((a) => a.kind === kind || a.kind?.startsWith(`${kind}.`)) ?? null;
 }
 
 // ----------------------------------------------------------- ordering a menu

@@ -280,6 +280,12 @@ impl Default for ChatDefaults {
 pub struct EditorDefaults {
     #[serde(default)]
     pub format_on_save: bool,
+    /// Ask the language server to organize the file's imports before writing.
+    /// Off for `format_on_save`'s reason and one of its own: it deletes imports
+    /// nothing references *yet*, which is what a file looks like halfway
+    /// through being written.
+    #[serde(default)]
+    pub organize_imports_on_save: bool,
     #[serde(default)]
     pub vim_mode: bool,
     #[serde(default = "default_true")]
@@ -324,6 +330,7 @@ impl Default for EditorDefaults {
     fn default() -> Self {
         Self {
             format_on_save: false,
+            organize_imports_on_save: false,
             vim_mode: false,
             indent_guides: true,
             soft_wrap: false,
@@ -632,6 +639,34 @@ mod tests {
         assert_eq!(back, s, "both the default and the per-project answers survived");
         assert_eq!(back.editor["/repo/quiet"].format_on_save, Some(false));
         assert_eq!(back.editor["/repo/silent"].format_on_save, None);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn organize_imports_on_save_survives_a_round_trip() {
+        // The failure this guards is silent and total: a field the frontend
+        // sends but the struct has no home for is dropped by serde on the way
+        // in and written back out gone, so the toggle flips, saves, and snaps
+        // back on the next read with nothing said. `compactFolders` shipped
+        // that way once.
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert!(
+            !loaded.editor_defaults.organize_imports_on_save,
+            "a file written before the field existed reads as off from the default"
+        );
+
+        let mut s = loaded;
+        s.editor_defaults.organize_imports_on_save = true;
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert!(back.editor_defaults.organize_imports_on_save, "and the value written comes back");
+        assert_eq!(back, s);
+
+        // Written under its camelCase name, which is what the frontend sends.
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("organizeImportsOnSave"), "serialized under the name the frontend uses");
         let _ = std::fs::remove_file(&p);
     }
 
