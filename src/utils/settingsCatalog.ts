@@ -122,6 +122,13 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Runs the project's own Biome or Prettier before writing, and nothing at all in a project that has neither. Off by default: a repo carrying a formatter config is not necessarily one that is currently formatted.",
   },
   {
+    id: "organize-imports-on-save",
+    section: "editor",
+    label: "Organize imports on save",
+    toggles: "organizeImportsOnSave",
+    hint: "Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs. Off by default: it removes imports nothing references yet, which is what a file looks like halfway through being written.",
+  },
+  {
     id: "vim-mode",
     section: "editor",
     label: "Vim keybindings",

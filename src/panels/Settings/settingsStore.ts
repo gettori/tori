@@ -80,6 +80,11 @@ export type Harness = { path?: string | null };
  *  does not have to know whether it is a view concern or a language one. */
 export type EditorDefaults = {
   formatOnSave: boolean;
+  /** Ask the language server to organize this file's imports before writing it.
+   *  Off by default for `formatOnSave`'s reason and one of its own: it deletes
+   *  imports nothing references yet, which is exactly the state a file is in
+   *  halfway through being written. (Wave 7) */
+  organizeImportsOnSave: boolean;
   vimMode: boolean;
   /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
   indentGuides: boolean;
@@ -207,6 +212,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // states these features exist to end.
   editorDefaults: {
     formatOnSave: false,
+    organizeImportsOnSave: false,
     vimMode: false,
     indentGuides: true,
     softWrap: false,
@@ -479,6 +485,16 @@ export async function setWorkspaceOverride<K extends keyof EditorDefaults>(
 export function formatOnSaveFor(projectPath: string | null): boolean {
   const own = projectPath ? settings.editor?.[projectPath]?.formatOnSave : undefined;
   return own ?? editorDefaultsFor(projectPath).formatOnSave ?? false;
+}
+
+/** Whether a save should organize this project's imports first.
+ *
+ *  Reads the plain default rather than `formatOnSave`'s per-project override:
+ *  which formatter runs is a property of the repo, and a repo can carry a
+ *  config saying so. Whether a language server should rewrite your import block
+ *  on every save is a habit, and the person who has it has it everywhere. */
+export function organizeImportsOnSaveFor(projectPath: string | null): boolean {
+  return editorDefaultsFor(projectPath).organizeImportsOnSave ?? false;
 }
 
 /** Whether the code editor is in vim mode, in the workspace in force. */

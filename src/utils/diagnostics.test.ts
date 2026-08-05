@@ -5,6 +5,8 @@ import {
   capDiagnostics,
   diagnostics,
   dropDiagnostics,
+  fixesFor,
+  setDiagnosticFixLookup,
   MAX_PER_FILE,
   orderFiles,
   publishDiagnostics,
@@ -168,5 +170,53 @@ describe("store round trip", () => {
 
     dropDiagnostics("/b.ts");
     expect(diagnostics()).toEqual({});
+  });
+});
+
+describe("the fix lookup the editor registers", () => {
+  // Registered rather than imported: the Problems panel is on the eager side of
+  // the lazy editor boundary, so it cannot reach the LSP client itself without
+  // pulling CodeMirror into the startup chunk.
+  const problem = p(12, "error", "Cannot find name 'foo'.");
+
+  it("answers empty when no editor is mounted", async () => {
+    // The honest answer: no client is running to ask.
+    expect(await fixesFor("/a.ts", problem)).toEqual([]);
+  });
+
+  it("asks whoever registered, about whichever file it was given", async () => {
+    // Any path, not only the one on screen. A problem in a background tab is
+    // one of the main reasons to send one to an agent at all.
+    const seen: string[] = [];
+    const off = setDiagnosticFixLookup(async (path) => {
+      seen.push(path);
+      return ["Add import from './b'"];
+    });
+
+    expect(await fixesFor("/not-the-active-tab.ts", problem)).toEqual(["Add import from './b'"]);
+    expect(seen).toEqual(["/not-the-active-tab.ts"]);
+    off();
+  });
+
+  it("answers empty rather than rejecting when the lookup fails", async () => {
+    // This runs on the way to composing a message for an agent: a server that
+    // will not answer is a reason to send the diagnostic alone, not to send
+    // nothing.
+    const off = setDiagnosticFixLookup(() => Promise.reject(new Error("server died")));
+    expect(await fixesFor("/a.ts", problem)).toEqual([]);
+    off();
+  });
+
+  it("lets a later registration replace an earlier one, and does not let the old cleanup clear it", async () => {
+    // Two editors never coexist, but a remount registers before the old one
+    // cleans up, and an unguarded cleanup would leave the panel with nothing.
+    const offFirst = setDiagnosticFixLookup(async () => ["first"]);
+    const offSecond = setDiagnosticFixLookup(async () => ["second"]);
+
+    offFirst();
+
+    expect(await fixesFor("/a.ts", problem)).toEqual(["second"]);
+    offSecond();
+    expect(await fixesFor("/a.ts", problem)).toEqual([]);
   });
 });

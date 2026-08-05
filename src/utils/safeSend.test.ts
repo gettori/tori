@@ -9,6 +9,7 @@ import {
   type ProbeState,
   type SessionTarget,
   composeDiagnostic,
+  composeDiagnosticWithFixes,
   composeTodo,
 } from "./safeSend";
 
@@ -185,6 +186,44 @@ describe("composeDiagnostic", () => {
 
   it("trims surrounding whitespace", () => {
     expect(composeDiagnostic(target, "/repo/a.ts", 1, 1, "info", "  padded  ")).toBe("@a.ts#L1-L1 info: padded");
+  });
+});
+
+describe("composeDiagnosticWithFixes", () => {
+  const target = { sessionCwd: "/repo", folderPath: "/repo" } as Parameters<typeof composeDiagnostic>[0];
+  const compose = (fixes: string[], message = "Cannot find name 'foo'.") =>
+    composeDiagnosticWithFixes(target, "/repo/src/a.ts", 12, 12, "error", message, fixes);
+
+  it("names the diagnostic and every fix the server offered", () => {
+    // The titles are what makes this worth sending: an agent reading the
+    // complaint has to work out what to do, one reading the server's own
+    // answers has been handed them.
+    expect(compose(["Add import from './b'", "Create local variable foo"])).toBe(
+      `@src/a.ts#L12-L12 error: Cannot find name 'foo'. Fixes the language server offers: "Add import from './b'", "Create local variable foo".`,
+    );
+  });
+
+  it("is exactly the plain composer when there are no fixes", () => {
+    // A trailing "Fixes: none" is noise in a message somebody has to read.
+    expect(compose([])).toBe(composeDiagnostic(target, "/repo/src/a.ts", 12, 12, "error", "Cannot find name 'foo'."));
+  });
+
+  it("stays on one line, whatever a fix title contains", () => {
+    // The insert-only contract: a raw newline submits the prompt on some
+    // agents, which would send half a message.
+    const composed = compose(["Add\n  import", "Do\tsomething"], "Line one.\nLine two.");
+    expect(composed).not.toMatch(/[\n\r]/);
+    expect(composed).toContain(`"Add import"`);
+  });
+
+  it("drops a title that is only whitespace rather than quoting nothing", () => {
+    expect(compose(["  ", "Real fix"])).toContain(`offers: "Real fix".`);
+  });
+
+  it("adds the sentence break only where the server's message lacks one", () => {
+    // TypeScript's messages end in a full stop; rust-analyzer's often do not.
+    expect(compose(["Fix"], "Cannot find name 'foo'.")).toContain("'foo'. Fixes");
+    expect(compose(["Fix"], "unused variable")).toContain("unused variable. Fixes");
   });
 });
 

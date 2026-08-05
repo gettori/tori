@@ -29,8 +29,9 @@ const {
   normalizeWorkspaceSymbols,
   setWorkspaceSymbolSearch,
 } = await import("../../utils/symbols");
-const { onWith, NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE, OPEN_IN_EDITOR } =
+const { onWith, NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE, OPEN_IN_EDITOR, EDITOR_LSP_SOURCE_ACTION, SOURCE_KINDS } =
   await import("../../utils/events");
+const { publishSourceActionKinds } = await import("../../utils/sourceActions");
 const { note, saveFrecency } = await import("../../utils/frecency");
 type OpenInEditor = { path: string; line?: number; col?: number };
 
@@ -128,6 +129,9 @@ afterEach(() => {
   dropLiveChat("chat-1");
   clearSymbols();
   clearEditorState();
+  // Module-level, like the two above: a leftover answer would put three rows
+  // into another test's palette.
+  publishSourceActionKinds(null);
 });
 
 describe("the prefix router", () => {
@@ -427,6 +431,42 @@ describe("> - actions", () => {
     open(">");
     expect(screen.getByText("Commit staged changes").parentElement!.textContent).toContain("Nothing staged");
     expect(screen.getByText("Push to origin").parentElement!.textContent).toContain("Nothing to push");
+  });
+
+  it("leaves the whole-file actions out entirely when no server offers them", () => {
+    // Not greyed out, gone. Every other requirement names something the user
+    // has not done yet, which is worth saying; this one names something the
+    // language cannot do, and three permanent dead rows in every Python buffer
+    // is a worse answer than three absent ones.
+    publishEditorState({ activePath: PATH, dirty: false, tabCount: 1, projectRoot: REPO, recentJumps: [] });
+    publishSourceActionKinds(null);
+    open(">");
+
+    expect(screen.queryByText("Organize imports")).toBeNull();
+    expect(screen.queryByText("Sort imports")).toBeNull();
+    expect(screen.queryByText("Remove unused code")).toBeNull();
+  });
+
+  it("lists them once a server says it does them", () => {
+    publishEditorState({ activePath: PATH, dirty: false, tabCount: 1, projectRoot: REPO, recentJumps: [] });
+    publishSourceActionKinds([SOURCE_KINDS.organizeImports, SOURCE_KINDS.removeUnused, SOURCE_KINDS.sortImports]);
+    open(">");
+
+    expect(screen.getByText("Organize imports")).toBeTruthy();
+    expect(fire("Organize imports", EDITOR_LSP_SOURCE_ACTION)).toEqual({
+      kind: SOURCE_KINDS.organizeImports,
+      label: "Organize imports",
+    });
+  });
+
+  it("still lists them for a server that does code actions without enumerating kinds", () => {
+    // `codeActionKinds` is optional in the spec, so an empty list is "I have
+    // not told you" rather than "I have none".
+    publishEditorState({ activePath: PATH, dirty: false, tabCount: 1, projectRoot: REPO, recentJumps: [] });
+    publishSourceActionKinds([]);
+    open(">");
+
+    expect(screen.getByText("Organize imports")).toBeTruthy();
   });
 
   it("stops a running chat", () => {

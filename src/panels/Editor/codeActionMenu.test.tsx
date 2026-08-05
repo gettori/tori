@@ -102,7 +102,11 @@ vi.mock("./lspClient", async () => {
 });
 
 const { default: CodeEditor } = await import("./CodeEditor");
-const { emit, onWith, EDITOR_LSP_CODE_ACTION, TOAST } = await import("../../utils/events");
+const { emit, emitWith, onWith, EDITOR_LSP_CODE_ACTION, EDITOR_LSP_SOURCE_ACTION, SOURCE_KINDS, TOAST } =
+  await import("../../utils/events");
+const { offersAnySourceAction, publishSourceActionKinds, sourceActionKinds } = await import(
+  "../../utils/sourceActions"
+);
 const { clearCodeActions, refreshCodeActions } = await import("./lspCodeActions");
 const { CODE_ACTION_GUTTER_CLASS, CODE_ACTION_MARKER_CLASS } = await import("./codeActionGutter");
 
@@ -150,6 +154,7 @@ beforeEach(() => {
   hold = false;
   held = [];
   clearCodeActions();
+  publishSourceActionKinds(null);
   toasts = [];
   offToast = onWith<{ message: string }>(TOAST, (t) => toasts.push(t.message));
 });
@@ -284,6 +289,74 @@ describe("the lightbulb in the gutter", () => {
 
     await new Promise((r) => setTimeout(r, 0));
     expect(bulbs()).toHaveLength(0);
+  });
+});
+
+describe("what the palette is told about whole-file actions", () => {
+  it("publishes the kinds the server enumerated", async () => {
+    provider = { codeActionKinds: ["quickfix", SOURCE_KINDS.organizeImports] };
+    await mount();
+
+    await waitFor(() => expect(sourceActionKinds()).toEqual(["quickfix", SOURCE_KINDS.organizeImports]));
+    expect(offersAnySourceAction()).toBe(true);
+  });
+
+  it("publishes an empty list for a server that does code actions without enumerating", async () => {
+    // Which the palette reads as "I have not told you" rather than "I have
+    // none", so the commands stay listed.
+    provider = true;
+    await mount();
+
+    await waitFor(() => expect(sourceActionKinds()).toEqual([]));
+  });
+
+  it("publishes nothing for a server with no code actions at all", async () => {
+    provider = undefined;
+    await mount();
+
+    await waitFor(() => expect(sourceActionKinds()).toBeNull());
+    expect(offersAnySourceAction()).toBe(false);
+  });
+
+  it("stops offering them when the editor goes away", async () => {
+    provider = { codeActionKinds: [SOURCE_KINDS.organizeImports] };
+    await mount();
+    await waitFor(() => expect(offersAnySourceAction()).toBe(true));
+
+    mounted!.unmount();
+    mounted = null;
+
+    expect(sourceActionKinds(), "no editor, no server answering for anything").toBeNull();
+  });
+});
+
+describe("running a whole-file action", () => {
+  it("asks for the kind the command named, over the whole document", async () => {
+    provider = { codeActionKinds: [SOURCE_KINDS.organizeImports] };
+    offered = [{ title: "Organize imports", kind: SOURCE_KINDS.organizeImports, edit: { changes: {} } }];
+    await mount();
+
+    emitWith(EDITOR_LSP_SOURCE_ACTION, { kind: SOURCE_KINDS.organizeImports, label: "Organize imports" });
+
+    await waitFor(() => expect(asked.some((a) => a.method === "textDocument/codeAction")).toBe(true));
+    const params = asked.find((a) => a.method === "textDocument/codeAction")!.params as {
+      context: { only: string[] };
+      range: { start: { line: number; character: number }; end: { line: number } };
+    };
+    expect(params.context.only).toEqual([SOURCE_KINDS.organizeImports]);
+    expect(params.range.start, "the whole file, not the caret").toEqual({ line: 0, character: 0 });
+    expect(params.range.end.line).toBeGreaterThan(0);
+  });
+
+  it("says so when the server has no such action for this file", async () => {
+    // Silence after running a command by name reads as a broken command.
+    provider = { codeActionKinds: [SOURCE_KINDS.organizeImports] };
+    offered = [];
+    await mount();
+
+    emitWith(EDITOR_LSP_SOURCE_ACTION, { kind: SOURCE_KINDS.organizeImports, label: "Organize imports" });
+
+    await waitFor(() => expect(toasts).toContain('This server has no "Organize imports" action for this file.'));
   });
 });
 

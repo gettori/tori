@@ -53,6 +53,18 @@ export function caretRange(view: EditorView): LspRange | null {
   return { start: plugin.toPosition(from), end: plugin.toPosition(to) };
 }
 
+/** The whole document, as a source action is asked about it. Built from the
+ *  same plugin as `caretRange` so both speak the client's coordinates, and
+ *  falling back to nothing for a buffer with no client. */
+export function wholeFileRange(view: EditorView): LspRange {
+  const doc = view.state.doc;
+  const plugin = LSPPlugin.get(view);
+  const end = doc.length;
+  return plugin
+    ? { start: plugin.toPosition(0), end: plugin.toPosition(end) }
+    : { start: { line: 0, character: 0 }, end: { line: doc.lines - 1, character: doc.line(doc.lines).length } };
+}
+
 /**
  * The apply-and-run half, built from the client the view is attached to.
  *

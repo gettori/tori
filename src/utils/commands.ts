@@ -63,6 +63,9 @@ import {
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
   EDITOR_LSP_CODE_ACTION,
+  EDITOR_LSP_SOURCE_ACTION,
+  SOURCE_KINDS,
+  type SourceAction,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -103,7 +106,19 @@ export type CommandScope = "global" | "window" | "terminal";
  * importing either here would put them in the terminal's chunk (see the module
  * comment). The palette resolves these into a refusal reason.
  */
-export type Requirement = "editorTab" | "editorFile" | "gitRoot" | "staged" | "ahead";
+export type Requirement =
+  | "editorTab"
+  | "editorFile"
+  | "gitRoot"
+  | "staged"
+  | "ahead"
+  /** The active file's server offers whole-file actions. Unlike the tags above,
+   *  an unmet `sourceActions` **hides** the command rather than disabling it:
+   *  the others mean "you have not done the prerequisite yet", which is worth
+   *  saying, and this one means "this language has no such feature", which is
+   *  not actionable and would put three dead rows in every palette. Same rule
+   *  the Outline tab uses to hide itself. */
+  | "sourceActions";
 
 export type Command = {
   id: string;
@@ -576,6 +591,26 @@ export const COMMANDS: Command[] = [
     run: () => emit(EDITOR_LSP_CODE_ACTION),
     requires: ["editorFile"],
   },
+  // The whole-file actions. No keys: each is a thing you do to a file
+  // occasionally and by name, and three more chords would cost more than they
+  // saved. `sourceActions` keeps them out of the palette entirely in a language
+  // whose server has none, which is most of them.
+  ...(
+    [
+      ["lsp-organize-imports", "Organize imports", SOURCE_KINDS.organizeImports, "Sorts them and drops the ones nothing uses."],
+      ["lsp-remove-unused", "Remove unused code", SOURCE_KINDS.removeUnused, "Whatever the language server can prove is unreachable."],
+      ["lsp-sort-imports", "Sort imports", SOURCE_KINDS.sortImports, "Order only. Nothing is added or removed."],
+    ] as const
+  ).map(
+    ([id, label, kind, sub]): Command => ({
+      id,
+      label,
+      sub,
+      group: "editor",
+      run: () => emitWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, { kind, label }),
+      requires: ["editorFile", "sourceActions"],
+    }),
+  ),
   {
     id: "lsp-format",
     // Not only the language server's, despite the id: the editor tries the

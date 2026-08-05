@@ -7,6 +7,7 @@ import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
 import { stagedFiles, canPush } from "../../utils/gitActions";
+import { offersAnySourceAction } from "../../utils/sourceActions";
 import {
   emitWith,
   NEW_SESSION,
@@ -87,7 +88,25 @@ function unmetReason(req: Requirement): string | null {
       return stagedFiles().length ? null : "Nothing staged";
     case "ahead":
       return canPush() ? null : "Nothing to push";
+    case "sourceActions":
+      return offersAnySourceAction() ? null : "This language server has no whole-file actions";
   }
+}
+
+/**
+ * Requirements whose absence removes the row rather than greying it out.
+ *
+ * Every other tag names something the user has not done yet - nothing staged,
+ * no file open - and saying so teaches them what to do. This one names
+ * something the *language* cannot do, which no amount of doing will change, so
+ * the row would be permanent clutter in every Python or Rust buffer. Same rule
+ * the Outline tab uses when a server advertises no symbol provider.
+ */
+const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions"]);
+
+/** Whether a command should not be listed at all right now. */
+function suppressed(c: Command): boolean {
+  return (c.requires ?? []).some((req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null);
 }
 
 /** The first unmet requirement's reason, in the order the command listed them. */
@@ -321,7 +340,7 @@ export default function Omnibox(props: {
     // whose target is the key that fired it, the terminal-owned search, and the
     // unqualified stop that the per-chat rows below say better.
     for (const c of COMMANDS) {
-      if (c.hidden || !c.run) continue;
+      if (c.hidden || !c.run || suppressed(c)) continue;
       const why = refusal(c);
       out.push({
         id: c.id,
