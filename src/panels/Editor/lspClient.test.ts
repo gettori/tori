@@ -159,7 +159,16 @@ vi.mock("@codemirror/lsp-client", () => ({
       return { uri, languageId };
     }
   },
-  languageServerExtensions: () => [],
+  // The entries carried over from `languageServerExtensions()`, stubbed to
+  // markers. What matters here is that each is still handed to the client as a
+  // *top-level* entry, since that is the only place an extension's own
+  // `clientCapabilities` get merged. Which keys are bound is asserted against
+  // the real library in `lspCompletion.test.tsx`.
+  hoverTooltips: () => ({ marker: "hoverTooltips" }),
+  signatureHelp: () => ({ marker: "signatureHelp" }),
+  serverDiagnostics: () => ({ marker: "serverDiagnostics" }),
+  jumpToDefinitionKeymap: [{ key: "F12" }],
+  findReferencesKeymap: [{ key: "Shift-F12" }],
 }));
 
 async function freshModule() {
