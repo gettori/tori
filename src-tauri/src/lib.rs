@@ -306,6 +306,7 @@ pub fn run() {
             lsp::lsp_stop,
             lsp::lsp_stop_all,
             lsp::lsp_registry,
+            lsp::lsp_schema_associations,
             lsp::lsp_health,
             agents::list_agents,
             health::agent_health,

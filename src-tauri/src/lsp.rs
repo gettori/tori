@@ -30,6 +30,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::env::augmented_path;
 
 pub mod registry;
+pub mod schemastore;
 
 use registry::{Launch, LspServer};
 
@@ -268,6 +269,22 @@ pub fn lsp_stop_all(state: State<LspState>) -> Result<(), String> {
 #[tauri::command]
 pub fn lsp_registry() -> Vec<LspServer> {
     registry::registry().to_vec()
+}
+
+/// What to send a server whose config sets `schema_associations`.
+///
+/// Empty is a normal answer, not an error: offline, or with a catalog that will
+/// not parse, JSON files edit exactly as they did before any of this existed.
+/// The work behind this happens once per process however many times it is
+/// called (see `schemastore::associations`).
+///
+/// `async` for the reason `check_for_update` and `model_context_caps` are: on a
+/// cold cache this fetches, and a synchronous command runs on the main thread,
+/// so the first JSON file opened on a fresh machine would freeze the window for
+/// as long as the request took.
+#[tauri::command]
+pub async fn lsp_schema_associations() -> Vec<schemastore::SchemaAssociation> {
+    schemastore::associations().to_vec()
 }
 
 // --- health ---

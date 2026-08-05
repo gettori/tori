@@ -1,6 +1,6 @@
 // Language-server registry: what used to be one hard-coded
-// `typescript-language-server` in lsp.rs is now data. Two servers ship bundled
-// (`lsp/typescript.toml`, `lsp/rust.toml`, embedded at compile time); a user
+// `typescript-language-server` in lsp.rs is now data. Four servers ship bundled
+// (`lsp/{typescript,rust,json,yaml}.toml`, embedded at compile time); a user
 // can add or whole-replace one by dropping a `schema_version = 1` TOML file
 // into `~/.config/sway/lsp/`. See LSP-SERVERS.md for the schema.
 //
@@ -70,6 +70,16 @@ pub struct LspServer {
     pub launch: Launch,
     /// Free-form `initializationOptions`, passed through to the server as-is.
     pub initialization_options: Option<serde_json::Value>,
+    /// Free-form server configuration. Reaches the server two ways, because
+    /// servers differ in which one they read: pushed once as
+    /// `workspace/didChangeConfiguration`, and answered section by section
+    /// whenever the server pulls with `workspace/configuration`.
+    pub settings: Option<serde_json::Value>,
+    /// Send this server the SchemaStore catalog as `json/schemaAssociations`
+    /// after initialize. Only `vscode-json-languageserver` understands that
+    /// notification, which is why this is a flag a config opts into rather than
+    /// something every server gets.
+    pub schema_associations: bool,
     /// The server version this config's conventions were captured against.
     /// `None` is normal and renders neutral, never as drift.
     pub verified_against: Option<String>,
@@ -124,6 +134,10 @@ struct ServerToml {
     #[serde(default)]
     initialization_options: Option<toml::Value>,
     #[serde(default)]
+    settings: Option<toml::Value>,
+    #[serde(default)]
+    schema_associations: bool,
+    #[serde(default)]
     verified_against: Option<String>,
 }
 
@@ -151,6 +165,8 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "request_timeout_ms",
     "launch",
     "initialization_options",
+    "settings",
+    "schema_associations",
     "verified_against",
 ];
 
@@ -237,6 +253,17 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         None => None,
     };
 
+    // Same conversion, same reason: what the frontend sends as the
+    // `didChangeConfiguration` payload and as each `workspace/configuration`
+    // section is this value verbatim.
+    let settings = match raw.settings {
+        Some(v) => Some(
+            serde_json::to_value(v)
+                .map_err(|e| format!("{source}: settings is not representable: {e}"))?,
+        ),
+        None => None,
+    };
+
     Ok(LspServer {
         id: raw.id,
         label: raw.label,
@@ -245,6 +272,8 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         request_timeout_ms: raw.request_timeout_ms,
         launch,
         initialization_options,
+        settings,
+        schema_associations: raw.schema_associations,
         verified_against: raw.verified_against,
         source: source.to_string(),
     })
@@ -252,6 +281,8 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
 
 const BUILTIN_TYPESCRIPT: &str = include_str!("../../lsp/typescript.toml");
 const BUILTIN_RUST: &str = include_str!("../../lsp/rust.toml");
+const BUILTIN_JSON: &str = include_str!("../../lsp/json.toml");
+const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
 
 fn user_lsp_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/sway/lsp")
@@ -265,9 +296,12 @@ fn user_lsp_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
     let mut by_id: HashMap<String, LspServer> = HashMap::new();
 
-    for (source, text) in
-        [("bundled:typescript", BUILTIN_TYPESCRIPT), ("bundled:rust", BUILTIN_RUST)]
-    {
+    for (source, text) in [
+        ("bundled:typescript", BUILTIN_TYPESCRIPT),
+        ("bundled:rust", BUILTIN_RUST),
+        ("bundled:json", BUILTIN_JSON),
+        ("bundled:yaml", BUILTIN_YAML),
+    ] {
         match load_server_str(text, source) {
             Ok(s) => {
                 by_id.insert(s.id.clone(), s);
@@ -470,7 +504,7 @@ program = "demo-server"
     fn bundled_servers_load_with_no_user_dir() {
         let list = build_registry_from(Path::new("/nonexistent/sway/lsp"));
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, vec!["rust", "typescript"]);
+        assert_eq!(ids, vec!["json", "rust", "typescript", "yaml"]);
         assert!(list.iter().all(|s| !s.is_override()));
     }
 
@@ -530,7 +564,7 @@ program = "demo-server"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), 2);
+        assert_eq!(build_registry_from(&dir).len(), 4);
     }
 
     #[test]
@@ -663,6 +697,154 @@ program = "demo-server"
         assert_eq!(s.id, "python");
         assert_eq!(s.language_id_for("/p/a.py"), Some("python"));
         assert_eq!(s.launch.program(), "pyright-langserver");
+    }
+
+    // --- wave 7: the JSON and YAML servers, and the `[settings]` table ---
+
+    /// The monorepo the JSON server's `root_markers` exist for.
+    fn monorepo(name: &str) -> PathBuf {
+        let dir = temp_dir(name);
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        for pkg in ["a", "b", "c"] {
+            let path = dir.join("packages").join(pkg);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join("package.json"), "{}").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn json_resolves_one_root_for_a_whole_monorepo() {
+        // Every package has a `package.json`, and none of them means anything
+        // to this server: it has no per-package configuration to be right
+        // about, so a session per package would differ in nothing but cost.
+        let dir = monorepo("json_roots");
+        let json = load_server_str(BUILTIN_JSON, "bundled:json").unwrap();
+
+        let roots: Vec<PathBuf> = ["a", "b", "c"]
+            .iter()
+            .map(|p| root_for(&json, &dir.join("packages").join(p).join("tsconfig.json"), &dir))
+            .collect();
+
+        assert_eq!(roots, vec![dir.clone(), dir.clone(), dir.clone()]);
+    }
+
+    #[test]
+    fn adding_package_json_back_is_what_splits_the_monorepo() {
+        // The reason `root_markers` omits `package.json` rather than merely
+        // ordering `.git` first: `root_for` returns the first ancestor holding
+        // *any* marker, so while `package.json` is in the list at all, the
+        // order changes nothing. Pinned here so the omission cannot be
+        // "tidied" back into an ordering.
+        let dir = monorepo("json_roots_split");
+        let split = load_server_str(
+            &BUILTIN_JSON.replace(r#"root_markers = [".git"]"#, r#"root_markers = [".git", "package.json"]"#),
+            "test",
+        )
+        .unwrap();
+
+        let pkg = dir.join("packages/a");
+        assert_eq!(root_for(&split, &pkg.join("tsconfig.json"), &dir), pkg);
+    }
+
+    #[test]
+    fn yaml_roots_the_same_way() {
+        let dir = monorepo("yaml_roots");
+        let yaml = load_server_str(BUILTIN_YAML, "bundled:yaml").unwrap();
+        assert_eq!(root_for(&yaml, &dir.join("packages/a/ci.yml"), &dir), dir);
+    }
+
+    #[test]
+    fn the_yaml_config_turns_the_schema_store_on() {
+        // The exact payload, because every one of these keys is read by name
+        // and a typo is a setting that silently keeps its default. The server
+        // defaults `schemaStore.enable` to true, but only builds the store
+        // inside its configuration handler, so a config that never arrives is
+        // a store that never loads.
+        let yaml = load_server_str(BUILTIN_YAML, "bundled:yaml").unwrap();
+        let settings = yaml.settings.expect("yaml.toml must carry a [settings] table");
+
+        assert_eq!(
+            settings,
+            serde_json::json!({
+                "yaml": {
+                    "validate": true,
+                    "completion": true,
+                    "hover": true,
+                    "schemaStore": {
+                        "enable": true,
+                        // The same catalog Sway fetches for the JSON server.
+                        // Two servers reading two different catalogs would be
+                        // a difference nobody could see from the outside.
+                        "url": crate::lsp::schemastore::CATALOG_URL
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn only_the_json_server_asks_for_schema_associations() {
+        // A flag rather than something every server gets: `json/schemaAssociations`
+        // is one server's protocol extension, and sending it to another draws a
+        // warning at best.
+        let by_id = |text, source| load_server_str(text, source).unwrap();
+        assert!(by_id(BUILTIN_JSON, "bundled:json").schema_associations);
+        assert!(!by_id(BUILTIN_YAML, "bundled:yaml").schema_associations);
+        assert!(!by_id(BUILTIN_TYPESCRIPT, "bundled:typescript").schema_associations);
+        assert!(!by_id(BUILTIN_RUST, "bundled:rust").schema_associations);
+    }
+
+    #[test]
+    fn a_config_with_no_settings_behaves_exactly_as_before() {
+        // The whole point of the table being optional. Neither existing bundled
+        // config gains anything by its addition.
+        for (text, source) in
+            [(BUILTIN_TYPESCRIPT, "bundled:typescript"), (BUILTIN_RUST, "bundled:rust")]
+        {
+            let server = load_server_str(text, source).unwrap();
+            assert!(server.settings.is_none(), "{source} should carry no settings");
+            assert!(!server.schema_associations, "{source} should not ask for associations");
+        }
+    }
+
+    #[test]
+    fn a_settings_table_is_carried_through_verbatim() {
+        let text = format!("{VALID}\n[settings.some]\nnested = {{ deep = [1, 2] }}\n");
+        let server = load_server_str(&text, "test").unwrap();
+        assert_eq!(
+            server.settings.unwrap(),
+            serde_json::json!({ "some": { "nested": { "deep": [1, 2] } } })
+        );
+    }
+
+    /// The block in LSP-SERVERS.md is what a config author copies, so it has to
+    /// be TOML that parses, and it has to parse into the shape it claims.
+    #[test]
+    fn the_documented_schema_block_parses_and_keeps_its_keys_top_level() {
+        let doc = include_str!("../../../LSP-SERVERS.md");
+        // The heading, exactly. A bare `"## Schema"` also matches inside
+        // `### Schemas for JSON and YAML`, which is a different section and
+        // has no block to find.
+        let after = doc.split("\n## Schema\n").nth(1).expect("the doc must have a Schema section");
+        let start = after.find("```toml").expect("the Schema section must show a toml block") + 7;
+        let block = &after[start..][..after[start..].find("```").expect("unterminated toml block")];
+
+        let value: toml::Value = toml::from_str(block).expect("the documented schema block must parse");
+        let table = value.as_table().unwrap();
+
+        // In TOML a bare key written after a table header belongs to that
+        // table. Every one of these sat below `[languages]` or
+        // `[initialization_options]` at some point in this file's life, and
+        // nothing said so: `verified_against` really was a member of
+        // `initialization_options` until wave 7.
+        for key in ["schema_version", "id", "label", "root_markers", "request_timeout_ms",
+                    "schema_associations", "verified_against"] {
+            assert!(table.contains_key(key), "`{key}` is not top-level in the documented block");
+        }
+        for table_key in ["languages", "launch", "initialization_options", "settings"] {
+            assert!(table.get(table_key).is_some_and(|v| v.is_table()), "`{table_key}` should be a table");
+        }
     }
 
     /// Every schema field the loader knows must appear in the doc, so adding

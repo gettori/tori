@@ -35,6 +35,7 @@ import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
 import { completionClientCapabilities, swayCompletion } from "./lspCompletion";
+import { configurationClientCapabilities, configurationFor } from "./lspConfiguration";
 import { clearDiagnosticContext, diagnosticContextCapture } from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
@@ -45,7 +46,16 @@ import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
  *  frontend only ever holds and returns it. */
 type LspHandle = { serverId: string; root: string };
 
-type Session = { handle: LspHandle; client: LSPClient; workspace: SwayWorkspace };
+type Session = {
+  handle: LspHandle;
+  client: LSPClient;
+  workspace: SwayWorkspace;
+  /** The config this session was started from. Held so the requests Sway
+   *  answers can read the server's own `[settings]`: a `workspace/configuration`
+   *  arrives with nothing but section names, and the answer is this server's,
+   *  not whatever the last-started one happened to want. */
+  server: LspServer;
+};
 
 const key = (h: LspHandle) => `${h.serverId}\u0000${h.root}`;
 
@@ -237,7 +247,53 @@ async function startFor(
     extensions: clientExtensions(),
   }).connect(transport);
 
-  addSession({ handle, client, workspace: workspace! });
+  addSession({ handle, client, workspace: workspace!, server });
+  void configureSession(handle, client, server);
+}
+
+/** Fire-and-forget one JSON-RPC notification at a session's server. */
+function notifyServer(handle: LspHandle, method: string, params: unknown): void {
+  const message = JSON.stringify({ jsonrpc: "2.0", method, params });
+  void invoke("lsp_send", { handle, message }).catch(() => {});
+}
+
+/**
+ * Everything a session is told once it has finished handshaking.
+ *
+ * After `initializing` rather than before, because a server is entitled to
+ * ignore anything sent before it has answered `initialize`. Re-checked against
+ * the live session afterwards: a project switch during the handshake leaves
+ * this holding a handle whose server has already been stopped.
+ *
+ * Both steps are optional and both fail soft. A server with no `[settings]` is
+ * told nothing, and a JSON server whose catalog could not be fetched is sent no
+ * associations rather than an empty list that would clear the ones it has.
+ */
+async function configureSession(handle: LspHandle, client: LSPClient, server: LspServer): Promise<void> {
+  let initialized = true;
+  await client.initializing.catch(() => {
+    initialized = false;
+  });
+  if (!initialized || sessions.get(key(handle))?.client !== client) return;
+
+  if (server.settings) notifyServer(handle, "workspace/didChangeConfiguration", { settings: server.settings });
+
+  if (server.schema_associations) {
+    // Empty covers every uninteresting case identically - offline, a catalog
+    // that would not parse, a cache that was never written - because the answer
+    // to all of them is the same: no associations, so JSON files edit without
+    // validation, exactly as they did before this server existed. The backend
+    // logs the reason once per process rather than once per session.
+    const associations = await invoke<unknown[]>("lsp_schema_associations").catch(() => []);
+    if (!associations.length || sessions.get(key(handle))?.client !== client) return;
+    // Wrapped in an array, and that is the whole notification working or not.
+    // This server is built on `vscode-jsonrpc`, which reads a JSON-RPC `params`
+    // *array* as a positional argument list and spreads it across the handler.
+    // Sending the associations bare therefore delivers only the first one, with
+    // no error anywhere: the server simply knows about one schema. `[list]` is
+    // one positional argument that happens to be a list, which is what it wants.
+    notifyServer(handle, "json/schemaAssociations", [associations]);
+  }
 }
 
 /**
@@ -305,6 +361,7 @@ export function clientExtensions() {
     workspaceEditClientCapabilities,
     codeActionClientCapabilities,
     completionClientCapabilities,
+    configurationClientCapabilities,
   ];
 }
 
@@ -325,6 +382,7 @@ function workspaceDeps(server: LspServer) {
 
 const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
 const APPLY_EDIT = "workspace/applyEdit";
+const CONFIGURATION = "workspace/configuration";
 
 // Registered by the editor while it is mounted. One slot rather than a list for
 // the same reason `liveBuffers` has one: there is exactly one `CodeEditor`, and
@@ -367,6 +425,12 @@ const serverRequests = createRequestRouter<LspHandle>({
     answerApplyEdit(params, applyDepsFor(handle), (message) =>
       emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
     ),
+  // Synchronous, which the router requires and this can honour: the answer is
+  // a lookup in a config that was loaded at startup. A session that has gone
+  // answers null for every section rather than throwing, since the request can
+  // outlive the project it was asked about.
+  [CONFIGURATION]: (params, handle) =>
+    configurationFor(sessions.get(key(handle))?.server.settings ?? null, params),
 });
 
 /**

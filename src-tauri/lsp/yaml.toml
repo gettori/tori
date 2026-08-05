@@ -1,0 +1,42 @@
+# Bundled YAML server: `yaml-language-server`, the one behind Red Hat's VS Code
+# YAML extension. Installed by `pnpm lsp:install`. See LSP-SERVERS.md.
+#
+# This server brings its own SchemaStore support, so unlike the JSON one it
+# needs no catalog from Sway - only for `[settings]` below to reach it. Which is
+# less obvious than it sounds: it answers `workspace/didChangeConfiguration` by
+# *pulling* its configuration back with `workspace/configuration`, and it is
+# that answer, not the push, that carries these values.
+
+schema_version = 1
+id = "yaml"
+label = "YAML"
+
+# `.git` alone, for `json.toml`'s reason: nothing about this server is
+# per-package, so a marker that appears in every package of a monorepo would
+# buy a session per package and no correctness.
+root_markers = [".git"]
+
+verified_against = "yaml-language-server 1.24.0"
+
+[languages]
+yaml = "yaml"
+yml = "yaml"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/yaml-language-server/bin/yaml-language-server"
+args = ["--stdio"]
+
+# The server's own defaults are these values, but a default it never reads is
+# not a default it applies: its schema store is only built inside the
+# configuration handler, which does not run until a configuration arrives. So
+# this table is what turns SchemaStore on, restating the defaults rather than
+# changing them.
+[settings.yaml]
+validate = true
+completion = true
+hover = true
+
+[settings.yaml.schemaStore]
+enable = true
+url = "https://www.schemastore.org/api/json/catalog.json"

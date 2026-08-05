@@ -9,17 +9,39 @@ deliberately so, down to the override and error-handling rules.
 
 ## Supported servers
 
-Two ship bundled:
+Three ship bundled, one is expected on your PATH:
 
 | id | Server | Launch | Notes |
 |---|---|---|---|
 | `typescript` | `typescript-language-server` | `bundled_node` | Ships inside the app; run `pnpm lsp:install` in a dev tree. |
+| `json` | `vscode-json-languageserver` | `bundled_node` | The server behind VS Code's own JSON support. Schemas come from SchemaStore, fed in by Sway. |
+| `yaml` | `yaml-language-server` | `bundled_node` | The server behind Red Hat's VS Code YAML extension. Brings its own SchemaStore support. |
 | `rust` | `rust-analyzer` | `path` | Not bundled: rustup already manages it, and a stale bundled copy would fight the toolchain the project builds with. |
 
 A language with no server is a supported state, not a broken one. Sway has
-grammars for several languages it has no server for (Python, YAML, CSS, HTML);
-those files open, edit, highlight and save exactly as before, they just get no
+grammars for several languages it has no server for (Python, CSS, HTML); those
+files open, edit, highlight and save exactly as before, they just get no
 language intelligence.
+
+### Schemas for JSON and YAML
+
+Both servers validate against [JSON Schema](https://json-schema.org), and both
+find the right schema for a file the same way: [SchemaStore](https://www.schemastore.org)'s
+catalog maps filename patterns (`package.json`, `.github/workflows/*.yml`) to
+schema URLs.
+
+They get there differently, and the difference is not cosmetic:
+
+- **YAML** has catalog support built in. Sway's only job is to make sure its
+  configuration actually arrives, which is what `[settings]` in `yaml.toml` does.
+- **JSON** has none. VS Code feeds it the associations, so Sway does the same:
+  it fetches the catalog once, caches it under `~/.config/sway/cache/` for a
+  day, and sends the associations as `json/schemaAssociations`.
+
+**Offline, both degrade to no validation, never to a broken editor.** A catalog
+that cannot be fetched yields no associations and is logged once; a schema URL
+that cannot be resolved is the server's own problem and it carries on. JSON and
+YAML files still open, edit, highlight and save.
 
 ## File location and loading
 
@@ -39,10 +61,34 @@ Loading is bundled-first, then every `*.toml` in the user directory:
 
 ## Schema
 
+Every bare key comes first and every `[table]` comes last, which is not a style
+choice: in TOML a bare key written after a table header **belongs to that
+table**. A top-level field placed below one of these tables silently becomes
+part of it, and nothing complains.
+
 ```toml
 schema_version = 1          # required; this build supports: 1
 id = "typescript"           # required; unique, and the override key
 label = "TypeScript"        # required; shown on the Settings health card
+
+# required: filenames marking a project root. See "Root resolution" below.
+root_markers = ["tsconfig.json", "package.json", ".git"]
+
+# optional (default 20000): how long the editor waits for a request.
+request_timeout_ms = 20000
+
+# optional (default false): send this server the SchemaStore catalog as a
+# `json/schemaAssociations` notification after initialize. Only
+# vscode-json-languageserver understands that notification, so this is opt-in
+# per config rather than something every server is handed.
+schema_associations = false
+
+# optional: the server version this config's conventions were captured
+# against, e.g. "rust-analyzer 0.3.1900". Omitting it is normal and makes the
+# health card render neutral; it never renders as drift.
+verified_against = "some-language-server 1.2.3"
+
+# --- tables below this line; nothing top-level may follow them ---
 
 # required: which file extensions this server claims, and the LSP language id
 # to open each one as. Extensions are matched case-insensitively and a leading
@@ -50,12 +96,6 @@ label = "TypeScript"        # required; shown on the Settings health card
 [languages]
 ts = "typescript"
 tsx = "typescriptreact"
-
-# required: filenames marking a project root. See "Root resolution" below.
-root_markers = ["tsconfig.json", "package.json", ".git"]
-
-# optional (default 20000): how long the editor waits for a request.
-request_timeout_ms = 20000
 
 # required: how the server process is started. See "Launch kinds" below.
 [launch]
@@ -67,11 +107,27 @@ args = ["--stdio"]
 [initialization_options]
 someServerSpecificFlag = true
 
-# optional: the server version this config's conventions were captured
-# against, e.g. "rust-analyzer 0.3.1900". Omitting it is normal and makes the
-# health card render neutral; it never renders as drift.
-verified_against = "some-language-server 1.2.3"
+# optional: server configuration. See "Configuration" below.
+[settings.someServer]
+validate = true
 ```
+
+### Configuration
+
+`[settings]` is free-form and reaches the server **two ways**, because servers
+disagree about which one they read:
+
+- pushed once after initialize as `workspace/didChangeConfiguration`, with the
+  whole table as the `settings` payload;
+- and answered, section by section, every time the server pulls with
+  `workspace/configuration`. A requested section is looked up as a top-level key
+  of `[settings]`, and a section this config says nothing about is answered
+  `null` rather than left unanswered.
+
+Both, rather than a choice, because the two bundled servers here differ:
+`vscode-json-languageserver` reads the push, and `yaml-language-server` answers
+the push by *pulling its configuration back*, so for that one it is the second
+route that carries the values. A config author should not have to know which.
 
 An unrecognized top-level field is warned about and ignored, so a config written
 for a newer Sway still loads. A missing **required** field is an error, and the
