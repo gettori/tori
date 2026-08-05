@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
-import { EditorState, Compartment, Prec, Text, type Extension, type StateCommand } from "@codemirror/state";
+import { EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateField } from "@codemirror/state";
 import { defaultKeymap, history, historyField, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -39,6 +39,8 @@ import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
 import { publishSourceActionKinds } from "../../utils/sourceActions";
 import { codeActionGutter, setCodeActionLine } from "./codeActionGutter";
+import { openPeek, selectPeekResult } from "./peekCommand";
+import { peekField, peekKeymap, peekTheme, type PeekState } from "./peekView";
 import {
   clearCodeActions,
   currentCodeActions,
@@ -115,6 +117,8 @@ import {
   EDITOR_LSP_FORMAT,
   EDITOR_LSP_CODE_ACTION,
   EDITOR_LSP_SOURCE_ACTION,
+  EDITOR_PEEK_DEFINITION,
+  EDITOR_PEEK_REFERENCES,
   SOURCE_KINDS,
   type SourceAction,
   REVEAL_TURN,
@@ -907,6 +911,20 @@ export default function CodeEditor(props: {
     view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimModeOn())) });
   }
 
+  // Declared before the extension list so the field can be handed to both the
+  // list and the event handlers. The select callback closes over `peek` itself,
+  // which is only read when a row is clicked, long after this line has run.
+  const peek: StateField<PeekState | null> = peekField((v, index) => void selectPeekResult(v, peek, index));
+
+  /** Peek from the caret, in whichever file is on screen. A no-op with no file
+   *  open, which is the state the palette's `editorFile` requirement usually
+   *  keeps this out of but the event bus cannot promise. */
+  function peekFromCaret(kind: "definition" | "references") {
+    const path = props.activePath;
+    if (!view || !path) return;
+    void openPeek(view, kind, path);
+  }
+
   const commonExtensions: Extension[] = [
     // First, and load-bearing. Vim intercepts keys through a ViewPlugin DOM
     // handler, and for a key both it and a keymap claim, whichever is earlier
@@ -989,6 +1007,17 @@ export default function CodeEditor(props: {
           return true;
         },
       },
+      {
+        // VS Code's peek chord. Declines rather than preventing the default in
+        // a buffer no server claims, for `Alt-Enter`'s reason above: a binding
+        // that swallows a key it cannot act on is worse than no binding.
+        key: "Alt-F12",
+        run: () => {
+          if (!props.activePath || !claimedByLsp(props.activePath)) return false;
+          peekFromCaret("definition");
+          return true;
+        },
+      },
       // Before defaultKeymap, whose `Mod-i` runs `selectParentSyntax` without
       // recording where the selection came from; see `selectionKeymap`.
       ...selectionKeymap,
@@ -1018,6 +1047,14 @@ export default function CodeEditor(props: {
     // Falls through to an ordinary click for a file with no server, so it costs
     // nothing in a buffer the LSP knows nothing about.
     cmdClickDefinitionExtension,
+    // The peek and its Esc binding. Ordinary precedence, deliberately: with vim
+    // on and the *outer* editor focused, Esc belongs to vim (leaving insert
+    // mode is the more common intent, and stealing it would be a regression in
+    // every buffer). Esc from inside the widget is handled by the widget's own
+    // capture-phase listener, which a keymap out here cannot reach anyway.
+    peek,
+    peekKeymap(peek),
+    peekTheme,
     // F2 must reach Sway's rename, not the library's. `languageServerExtensions()`
     // binds it to `renameSymbol`, whose `doRename` skips every file the user has
     // not already opened - silently, which is the worst way for a rename to be
@@ -1823,6 +1860,8 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
     onEvent(EDITOR_LSP_CODE_ACTION, () => void openCodeActions()),
     onWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, ({ kind, label }) => void runSourceAction(kind, label)),
+    onEvent(EDITOR_PEEK_DEFINITION, () => peekFromCaret("definition")),
+    onEvent(EDITOR_PEEK_REFERENCES, () => peekFromCaret("references")),
   ];
 
   // No listener for the vim-mode toggle: it is a setting rather than an editor

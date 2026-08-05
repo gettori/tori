@@ -207,6 +207,13 @@ export const EDITOR_LSP_CODE_ACTION = "sway:editor-lsp-code-action";
 // goes on the wire, and three handlers would be three copies of one function.
 export const EDITOR_LSP_SOURCE_ACTION = "sway:editor-lsp-source-action";
 export type SourceAction = { kind: string; label: string };
+// Looking somewhere rather than going there: the answer is rendered inside the
+// file being read, so nothing opens and nothing scrolls away. Separate events
+// from the two above because the destination is the same and the *gesture* is
+// not - "show me" and "take me there" are different intentions about the same
+// symbol, and one command doing both would have to guess which was meant.
+export const EDITOR_PEEK_DEFINITION = "sway:editor-peek-definition";
+export const EDITOR_PEEK_REFERENCES = "sway:editor-peek-references";
 
 /** The LSP kinds those commands are spelled with. Here rather than beside the
  *  rest of the source-action logic because `commands.ts` needs them and is
