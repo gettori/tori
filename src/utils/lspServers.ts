@@ -7,6 +7,7 @@
 // than camel-casing at the boundary.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { isSwaySettingsFile } from "./swaySettingsFiles";
 
 export type LspLaunch =
   | { kind: "bundled_node"; entry: string; args: string[] }
@@ -90,8 +91,21 @@ export function serverForPath(path: string): LspServer | null {
   return servers().find((s) => ext in s.languages) ?? null;
 }
 
-/** The LSP language id to open this path as, for its claiming server. */
+/** The LSP language id to open this path as, for its claiming server.
+ *
+ *  Sway's own settings files are the one exception to "the extension decides".
+ *  They end in `.json` but are read with json5, so a comment in one is
+ *  supported; the JSON server reports comments as errors under every language
+ *  id but `jsonc`. Only offered to a server that declared it speaks `jsonc`,
+ *  since an id a server never advertised is one it may not answer for.
+ *
+ *  This changes the id, never *which* server is asked, so it stays consistent
+ *  with `registry.rs`'s `language_id_for`: the backend reads that only as "does
+ *  some server claim this file", and the answer here is unchanged. */
 export function languageIdFor(server: LspServer, path: string): string | null {
   const ext = extensionOf(path);
-  return ext ? (server.languages[ext] ?? null) : null;
+  if (!ext) return null;
+  const id = server.languages[ext] ?? null;
+  if (id && isSwaySettingsFile(path) && Object.values(server.languages).includes("jsonc")) return "jsonc";
+  return id;
 }

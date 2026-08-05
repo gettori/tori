@@ -58,6 +58,11 @@ let registry: unknown[] = [
 // case that must not put an association-clearing notification on the wire.
 let associations: unknown[] = [];
 
+// What `lsp_schema_dir` answers: where this build's own settings schemas are.
+// `null` is a build without them, which is the default here so every test that
+// predates them sees exactly the wire traffic it was written against.
+let schemaDir: string | null = null;
+
 // The root the fake backend resolves. Keyed by a prefix so a test can make two
 // files collapse to one root, or split into two.
 let resolveRoot: (args: StartArgs) => string = (a) => a.projectPath;
@@ -90,6 +95,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "lsp_registry") return Promise.resolve(registry);
     if (cmd === "lsp_schema_associations") return Promise.resolve(associations);
+    if (cmd === "lsp_schema_dir") return Promise.resolve(schemaDir);
     if (cmd === "lsp_start") {
       const a = args as unknown as StartArgs;
       started.push({ serverId: a.serverId, filePath: a.filePath, projectPath: a.projectPath });
@@ -817,6 +823,7 @@ describe("schema associations", () => {
   const real = registry;
   afterEach(() => {
     registry = real;
+    schemaDir = null;
   });
 
   const JSON_SERVER = {
@@ -855,10 +862,11 @@ describe("schema associations", () => {
     expect(frame?.params).toEqual([associations]);
   });
 
-  it("sends nothing when the catalog came back empty", async () => {
-    // Offline, or a catalog that would not parse. An empty notification is not
-    // the same as no notification: it would clear whatever associations the
-    // server already had, so degrading has to mean staying quiet.
+  it("sends nothing when there is nothing at all to send", async () => {
+    // Offline, or a catalog that would not parse, on a build carrying no
+    // schemas of its own either. An empty notification is not the same as no
+    // notification: it would clear whatever associations the server already
+    // had, so degrading has to mean staying quiet.
     registry = [JSON_SERVER];
     associations = [];
     const m = await freshModule();
@@ -866,6 +874,51 @@ describe("schema associations", () => {
     await settle();
 
     expect(frames().map((f) => f.method)).not.toContain("json/schemaAssociations");
+  });
+
+  it("describes Sway's own settings files even with no catalog at all", async () => {
+    // The offline half of the phase, and the reason these are gathered
+    // separately from the catalog's: they are files this build ships, so they
+    // are there whether or not the network was. Folded into the same list, they
+    // would have been dropped by the early return above.
+    registry = [JSON_SERVER];
+    associations = [];
+    schemaDir = "/Applications/Sway.app/Contents/Resources/resources/schemas";
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/js4/a.json", "/proj/js4");
+    await settle();
+
+    const frame = frames().find((f) => f.method === "json/schemaAssociations");
+    expect(frame?.params).toEqual([
+      [
+        {
+          uri: `file://${schemaDir}/sway-settings.schema.json`,
+          fileMatch: ["**/.config/sway/settings.json"],
+        },
+        {
+          uri: `file://${schemaDir}/sway-workspace-settings.schema.json`,
+          fileMatch: ["**/.sway/settings.json"],
+        },
+      ],
+    ]);
+  });
+
+  it("puts its own schemas ahead of the catalog's", async () => {
+    registry = [JSON_SERVER];
+    associations = [{ uri: "https://json.schemastore.org/package.json", fileMatch: ["package.json"] }];
+    schemaDir = "/res/schemas";
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/js5/a.json", "/proj/js5");
+    await settle();
+
+    const sent = (frames().find((f) => f.method === "json/schemaAssociations")?.params as unknown[])[0] as {
+      uri: string;
+    }[];
+    expect(sent.map((a) => a.uri)).toEqual([
+      "file:///res/schemas/sway-settings.schema.json",
+      "file:///res/schemas/sway-workspace-settings.schema.json",
+      "https://json.schemastore.org/package.json",
+    ]);
   });
 
   it("never sends it to a server that did not ask", async () => {

@@ -29,6 +29,7 @@ import {
   setRegistryListener,
   type LspServer,
 } from "../../utils/lspServers";
+import { SWAY_SETTINGS_FILES } from "../../utils/swaySettingsFiles";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
@@ -258,6 +259,25 @@ function notifyServer(handle: LspHandle, method: string, params: unknown): void 
 }
 
 /**
+ * Associations for Sway's own settings files, or none if this build has no
+ * schema directory.
+ *
+ * The `file:` URI is the point of the exercise: these schemas are on disk
+ * beside the app rather than on SchemaStore, and the server reads a `file:`
+ * schema itself (`jsonServerMain.js:32-45`). That is safe here for the reason
+ * `associations_from_catalog` refuses one: this path is Sway's own resource
+ * directory, not a URL out of a document written by somebody else.
+ */
+async function swaySettingsAssociations(): Promise<{ uri: string; fileMatch: string[] }[]> {
+  const dir = await invoke<string | null>("lsp_schema_dir").catch(() => null);
+  if (!dir) return [];
+  return SWAY_SETTINGS_FILES.map((file) => ({
+    uri: pathToUri(`${dir}/${file.schema}`),
+    fileMatch: [file.fileMatch],
+  }));
+}
+
+/**
  * Everything a session is told once it has finished handshaking.
  *
  * After `initializing` rather than before, because a server is entitled to
@@ -284,7 +304,12 @@ async function configureSession(handle: LspHandle, client: LSPClient, server: Ls
     // to all of them is the same: no associations, so JSON files edit without
     // validation, exactly as they did before this server existed. The backend
     // logs the reason once per process rather than once per session.
-    const associations = await invoke<unknown[]>("lsp_schema_associations").catch(() => []);
+    const catalog = await invoke<unknown[]>("lsp_schema_associations").catch(() => []);
+    // Sway's own schemas first, and gathered separately from the catalog's: they
+    // are files this build ships, so they are there whether or not the network
+    // was, and folding them in here is what keeps the settings files described
+    // on the offline path that returns nothing above.
+    const associations = [...(await swaySettingsAssociations()), ...catalog];
     if (!associations.length || sessions.get(key(handle))?.client !== client) return;
     // Wrapped in an array, and that is the whole notification working or not.
     // This server is built on `vscode-jsonrpc`, which reads a JSON-RPC `params`

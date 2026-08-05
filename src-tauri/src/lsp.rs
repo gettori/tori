@@ -287,6 +287,27 @@ pub async fn lsp_schema_associations() -> Vec<schemastore::SchemaAssociation> {
     schemastore::associations().to_vec()
 }
 
+/// Where this build's settings schemas live, or `None` if they are not there.
+///
+/// The frontend pairs this directory with the filenames in
+/// `utils/swaySettingsFiles.ts` and sends the result as more
+/// `json/schemaAssociations`. Only the *path* comes from here, because
+/// resolving a bundled resource is the one part of the job that needs to know
+/// whether this is a packaged app or a `cargo run`, and `bundled_entry` already
+/// answers that for the language servers next door.
+///
+/// `None` rather than a guess: a missing resource directory costs completion in
+/// two files, and inventing a path for the server to fail to read would turn
+/// that into an error with nothing behind it.
+/// `async` for `lsp_health`'s reason, which resolves the same bundled paths: a
+/// synchronous command runs on the main thread, and `bundled_entry` touches the
+/// filesystem. One stat is nothing next to Phase 5's fetch, but the reason this
+/// is a convention is that nobody weighs it call by call.
+#[tauri::command]
+pub async fn lsp_schema_dir(app: AppHandle) -> Option<String> {
+    bundled_entry(&app, "resources/schemas").map(|p| p.to_string_lossy().into_owned())
+}
+
 // --- health ---
 
 /// Per-server install state, mirroring `crate::health::AgentHealth` so the
@@ -589,5 +610,67 @@ mod tests {
         assert_eq!(json, r#"{"serverId":"typescript","root":"/p"}"#);
         // Round-trips, so the frontend can hand back exactly what it was given.
         assert_eq!(serde_json::from_str::<LspHandle>(&json).unwrap(), handle);
+    }
+
+    /// Every command this module defines has to be *registered*, or it does not
+    /// exist to the frontend.
+    ///
+    /// Forgetting the line in `lib.rs` compiles cleanly, and the caller of the
+    /// missing command sees a rejected promise. `swaySettingsAssociations`
+    /// catches that and answers "no schemas", so an unregistered
+    /// `lsp_schema_dir` would look exactly like a build that ships none: the
+    /// settings file validates nothing and says nothing about why.
+    #[test]
+    fn every_command_here_is_registered_with_the_app() {
+        // Only the half above `#[cfg(test)]`. Scanning the whole file means
+        // scanning *this* function, whose own source mentions the attribute it
+        // searches for and yields a fragment of this parser as a command name.
+        let module = include_str!("lsp.rs").split("#[cfg(test)]").next().unwrap();
+        let lib = include_str!("lib.rs");
+
+        let defined: Vec<&str> = module
+            .split("#[tauri::command]")
+            .skip(1)
+            .filter_map(|after| {
+                // The name follows the attribute, past an optional `async`.
+                let sig = after.split("fn ").nth(1)?;
+                Some(sig.split(['(', '<', ' ']).next()?.trim())
+            })
+            .collect();
+
+        assert!(defined.len() >= 8, "the parse found no commands, so this test proves nothing: {defined:?}");
+        let missing: Vec<&&str> =
+            defined.iter().filter(|name| !lib.contains(&format!("lsp::{name},"))).collect();
+        assert!(missing.is_empty(), "add these to `generate_handler!` in lib.rs: {missing:?}");
+    }
+
+    /// The settings schemas have to be *bundled*, not merely present.
+    ///
+    /// `bundled_entry` falls back to `CARGO_MANIFEST_DIR`, so a schema missing
+    /// from `tauri.conf.json` resolves perfectly in every dev run and every test
+    /// here, and is simply absent from the packaged app - where the failure is
+    /// silent, because a schema the server cannot read is a file it validates
+    /// nothing against rather than an error it reports.
+    #[test]
+    fn the_settings_schemas_are_bundled_as_resources() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json parses");
+        let resources = conf["bundle"]["resources"].as_array().expect("bundle.resources is a list");
+        let listed: Vec<&str> = resources.iter().filter_map(|r| r.as_str()).collect();
+        assert!(
+            listed.iter().any(|r| r.starts_with("resources/schemas/")),
+            "the schemas directory must be bundled, got {listed:?}"
+        );
+
+        // And every schema the frontend names is actually in the tree it points
+        // at, since an association naming a file that is not there is the same
+        // silence one more time.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/schemas");
+        for name in ["sway-settings.schema.json", "sway-workspace-settings.schema.json"] {
+            let path = dir.join(name);
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            serde_json::from_str::<serde_json::Value>(&text)
+                .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+        }
     }
 }
