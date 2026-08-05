@@ -199,6 +199,9 @@ export const EDITOR_LSP_DEFINITION = "sway:editor-lsp-definition";
 export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
 export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
 export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
+// Not a library binding like the four above: nothing in `@codemirror/lsp-client`
+// asks for a code action at all, so this one is Sway's from end to end.
+export const EDITOR_LSP_CODE_ACTION = "sway:editor-lsp-code-action";
 
 // The command registry's git entries. Consumed by Editor.tsx, which is always
 // mounted and knows both the selected workspace and the active file - the

@@ -62,6 +62,7 @@ import {
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
+  EDITOR_LSP_CODE_ACTION,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -559,6 +560,20 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: cmdOpt("KeyN"),
     run: () => emit(EDITOR_LSP_RENAME),
+    requires: ["editorFile"],
+  },
+  {
+    id: "lsp-code-action",
+    keys: ["⌘", "⌥", "A"],
+    label: "Show code actions",
+    // The chord every other editor uses, bound in CodeEditor's own keymap
+    // beside F2. `⌘.` is not free: it is `stop-chat`, deliberately global so a
+    // runaway turn can be stopped from any surface, including this one.
+    sub: "⌥⏎",
+    group: "editor",
+    scope: "window",
+    match: cmdOpt("KeyA"),
+    run: () => emit(EDITOR_LSP_CODE_ACTION),
     requires: ["editorFile"],
   },
   {
