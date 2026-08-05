@@ -9,8 +9,17 @@
 // and hands back the handle; nothing here re-derives it.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
+import {
+  findReferencesKeymap,
+  hoverTooltips,
+  jumpToDefinitionKeymap,
+  LSPClient,
+  serverDiagnostics,
+  signatureHelp,
+  type Transport,
+} from "@codemirror/lsp-client";
 import type { Extension } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import {
@@ -25,6 +34,7 @@ import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
+import { completionClientCapabilities, swayCompletion } from "./lspCompletion";
 import { clearDiagnosticContext, diagnosticContextCapture } from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
@@ -224,29 +234,78 @@ async function startFor(
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
     workspace: (c) => (workspace = new SwayWorkspace(c, workspaceDeps(server))),
-    // The library advertises no symbol support at all, and a conformant server
-    // offers no provider for something the client never asked for, so without
-    // this the outline is empty against a *correct* server.
-    // Spread, not nested: `languageServerExtensions()` is itself a list of
-    // these, and one of them (`serverDiagnostics`) carries capabilities of its
-    // own that only get merged when the client sees it as a top-level entry.
-    extensions: [
-      // Ahead of `languageServerExtensions()`, and that is load-bearing rather
-      // than tidy: the client stops at the first extension whose handler
-      // returns true, and `serverDiagnostics()` returns true for every publish
-      // it renders. Behind it, this would see only the publishes for files
-      // nobody has open, which is the opposite of the set a code action is
-      // ever asked about.
-      diagnosticContextCapture,
-      ...languageServerExtensions(),
-      symbolClientCapabilities,
-      semanticTokensClientCapabilities,
-      workspaceEditClientCapabilities,
-      codeActionClientCapabilities,
-    ],
+    extensions: clientExtensions(),
   }).connect(transport);
 
   addSession({ handle, client, workspace: workspace! });
+}
+
+/**
+ * Everything every client is built with: the editor extensions it hands each
+ * buffer, and the capability blocks it merges into `initialize`.
+ *
+ * The library advertises no symbol support at all, and a conformant server
+ * offers no provider for something the client never asked for, so without the
+ * blocks below the outline is empty against a *correct* server.
+ *
+ * Written out rather than spread from `languageServerExtensions()`, which is
+ * these same four library entries plus `serverCompletion()` where
+ * `swayCompletion()` is here. Auto-import needs `completionItem/resolve` sent
+ * between the pick and the commit, and the library builds each option's `apply`
+ * while mapping the reply, with `apply` synchronous - so there is nothing to
+ * wrap or configure, only to replace (see `lspCompletion.ts`). The rest are
+ * carried over unchanged apart from the keymap (see below), and each stays a
+ * **top-level** entry because that is the only place the client merges an
+ * extension's own `clientCapabilities`, which `serverDiagnostics()` has.
+ *
+ * Exported so a test can build the same client the app does, rather than a
+ * hand-assembled one that could drift from it.
+ */
+export function clientExtensions() {
+  return [
+    // Ahead of `serverDiagnostics()`, and that is load-bearing rather than
+    // tidy: the client stops at the first extension whose handler returns
+    // true, and `serverDiagnostics()` returns true for every publish it
+    // renders. Behind it, this would see only the publishes for files nobody
+    // has open, which is the opposite of the set a code action is ever asked
+    // about.
+    diagnosticContextCapture,
+    swayCompletion(),
+    hoverTooltips(),
+    // Two of the library's four keymaps, and the array around them is not a
+    // formatting choice.
+    //
+    // The client keeps a configured extension only if it is an array or carries
+    // `.extension` (`lsp-client/dist/index.js:551`), and `keymap.of(...)` is a
+    // bare `FacetProvider`, which is neither. Spread out of
+    // `languageServerExtensions()` as a top-level entry it was therefore
+    // *dropped*, and F12, ⇧F12, F2 and ⇧⌥F have never actually been bound here.
+    // `commands.ts` advertises the first three as `sub:` labels, so wrapping it
+    // is what makes those labels true.
+    //
+    // But only for the two Sway has no answer of its own to, because the other
+    // two would each be a regression the moment the keymap started working:
+    //
+    //   - `formatKeymap` (⇧⌥F) runs the *server's* formatter. Sway's own
+    //     `lsp-format` is on that chord already and tries the project's Biome
+    //     or Prettier first, which is the better answer; and since CodeMirror
+    //     honours `preventDefault` even when a command declines, the library's
+    //     binding would swallow ⇧⌥F in every buffer with no server too - a
+    //     stylesheet or a Markdown file, where the project formatter is the
+    //     only formatter there is.
+    //   - `renameKeymap` (F2) runs `renameSymbol`, whose `doRename` skips every
+    //     file the user has not already opened, silently. `lspRename.ts` exists
+    //     because of that. `CodeEditor` already binds F2 to Sway's rename at
+    //     `Prec.highest`, so this would only ever be the fallback nobody wants.
+    [keymap.of([...jumpToDefinitionKeymap, ...findReferencesKeymap])],
+    signatureHelp(),
+    serverDiagnostics(),
+    symbolClientCapabilities,
+    semanticTokensClientCapabilities,
+    workspaceEditClientCapabilities,
+    codeActionClientCapabilities,
+    completionClientCapabilities,
+  ];
 }
 
 function workspaceDeps(server: LspServer) {
