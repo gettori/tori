@@ -487,6 +487,24 @@ html {
   color: var(--fg-subtle);
 }
 
+/* The code-action lightbulb. Unlike the bookmark column beside it, this one
+   holds no width of its own: the bulb appears and disappears as the caret
+   moves, and a permanently reserved column would be a stripe of empty space in
+   every buffer, including the ones no language server has ever looked at. So
+   the width lives on the marker, and an empty gutter is a zero-width one. */
+.cm-code-action-gutter {
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--sway-text-sm);
+  line-height: 1;
+  text-align: center;
+}
+
+.cm-code-action-gutter .cm-gutterElement.cm-code-action {
+  width: calc(12px * var(--ui-scale));
+  color: var(--scale-yellow);
+}
+
 /* Git diff gutter */
 .cm-diff-gutter {
   width: calc(3px * var(--ui-scale));
