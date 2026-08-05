@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Sway workspace settings",
+  "description": "One project's editor overrides, at <workspace>/.sway/settings.json. This file holds nothing but the editor block; anything else in it is read by nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "editor": {
+      "type": "object",
+      "description": "Editor behaviour. Every key is optional: an absent key is not an answer, so it falls through to the layer below rather than meaning false.",
+      "additionalProperties": false,
+      "properties": {
+        "formatOnSave": {
+          "type": "boolean",
+          "description": "Format on save. Runs the project's own Biome or Prettier before writing, and nothing at all in a project that has neither.",
+          "default": false
+        },
+        "organizeImportsOnSave": {
+          "type": "boolean",
+          "description": "Organize imports on save. Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs.",
+          "default": false
+        },
+        "vimMode": {
+          "type": "boolean",
+          "description": "Vim keybindings. Modal editing in the code editor, with a status line showing pending commands.",
+          "default": false
+        },
+        "indentGuides": {
+          "type": "boolean",
+          "description": "Indentation guides. Vertical guides at each indent level, the active one highlighted.",
+          "default": true
+        },
+        "softWrap": {
+          "type": "boolean",
+          "description": "Soft wrap long lines. The default for every buffer; the palette's toggle overrides it for one tab.",
+          "default": false
+        },
+        "renderWhitespace": {
+          "type": "boolean",
+          "description": "Show spaces and tabs. Draws them as dots and arrows.",
+          "default": false
+        },
+        "scrollPastEnd": {
+          "type": "boolean",
+          "description": "Scroll past the last line. Lets the last line scroll up to the top of the viewport.",
+          "default": true
+        },
+        "rainbowBrackets": {
+          "type": "boolean",
+          "description": "Colour brackets by depth.",
+          "default": false
+        },
+        "bracketPairGuides": {
+          "type": "boolean",
+          "description": "Bracket pair guide lines. Vertical connectors between a bracket pair's two lines.",
+          "default": false
+        },
+        "minimap": {
+          "type": "boolean",
+          "description": "Minimap. Document overview strip down the right edge.",
+          "default": false
+        },
+        "stickyScroll": {
+          "type": "boolean",
+          "description": "Sticky scroll. Pins the class and function headers of whatever is at the top of the screen over it. Needs a language whose grammar Sway parses.",
+          "default": false
+        },
+        "wordCompletion": {
+          "type": "boolean",
+          "description": "Word completion without a language server. Suggests words already in the buffer, only where no language server has claimed the file.",
+          "default": true
+        },
+        "hotExit": {
+          "type": "boolean",
+          "description": "Keep unsaved edits across a quit. Quitting stashes unsaved buffers and restores them next launch instead of asking you to discard them.",
+          "default": true
+        },
+        "compactFolders": {
+          "type": "boolean",
+          "description": "Compact single-child folders. A folder whose only child is another folder renders as one row rather than a staircase.",
+          "default": true
+        },
+        "todoPatterns": {
+          "type": "string",
+          "description": "TODO tags. Comma-separated tags the TODO panel searches for, matched case-sensitively so a marker is not confused with the word in prose.",
+          "default": "TODO,FIXME,HACK,XXX"
+        }
+      }
+    }
+  }
+}
