@@ -53,6 +53,38 @@ export function composeDiagnostic(
   return `@${mention}#L${startLine}-L${endLine} ${severity}: ${flat}`;
 }
 
+// The diagnostic wire format with the server's own fixes named after it (wave
+// 7): `<the line above>. Fixes the language server offers: "A", "B".`
+//
+// The titles are what makes this worth sending rather than just the complaint.
+// An agent reading `Cannot find name 'foo'` has to work out what to do; one
+// reading that the server already offers "Add import from './bar'" has been
+// handed the answer, and can apply it or say why not.
+//
+// Quoted, because a title is a phrase with spaces in it and an unquoted list
+// reads as one long sentence. Flattened for `composeDiagnostic`'s reason: a raw
+// newline in a title would submit the prompt on some agents, which would break
+// the insert-only contract this module exists to keep. With no fixes it is
+// exactly `composeDiagnostic`, since a trailing "Fixes: none" is noise.
+export function composeDiagnosticWithFixes(
+  target: SessionTarget,
+  filePath: string,
+  startLine: number,
+  endLine: number,
+  severity: string,
+  message: string,
+  fixes: string[],
+): string {
+  const base = composeDiagnostic(target, filePath, startLine, endLine, severity, message);
+  const titles = fixes.map((f) => f.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+  if (!titles.length) return base;
+  // Server messages usually end in a full stop and occasionally do not, so the
+  // separator is added only where the sentence lacks one. TypeScript's end in
+  // one; rust-analyzer's often do not.
+  const stop = /[.!?]$/.test(base) ? "" : ".";
+  return `${base}${stop} Fixes the language server offers: ${titles.map((t) => `"${t}"`).join(", ")}.`;
+}
+
 // `@<file>#L<line> Fix this <tag>: <text>`, the TODO wire format (wave 6). Same
 // relativity rule and same mention-first shape as the composers above. The
 // instruction is spelled out because, unlike a diagnostic, the line itself does

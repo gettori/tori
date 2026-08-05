@@ -36,7 +36,8 @@ import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
 import type { Bookmark } from "../../utils/bookmarks";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
-import { applyCodeAction, caretRange } from "./codeActionCommand";
+import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
+import { publishSourceActionKinds } from "../../utils/sourceActions";
 import { codeActionGutter, setCodeActionLine } from "./codeActionGutter";
 import {
   clearCodeActions,
@@ -44,6 +45,9 @@ import {
   groupedCodeActions,
   onCodeActionsChange,
   refreshCodeActions,
+  requestCodeActions,
+  requestSourceAction,
+  resolveCodeAction,
   sameRange,
   type CodeAction,
 } from "./lspCodeActions";
@@ -53,6 +57,9 @@ import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
+import { organizeForSave, type OrganizeDeps } from "./organizeOnSave";
+import { editsByUri } from "./workspaceEdit";
+import { uriToPath } from "./swayWorkspace";
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
@@ -61,7 +68,7 @@ import { fromDisk, type DiskText } from "./lineEndings";
 import { rememberClosed, reviveClosed } from "./closedBuffers";
 import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
 import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
-import { publishDiagnostics, dropDiagnostics } from "../../utils/diagnostics";
+import { publishDiagnostics, dropDiagnostics, setDiagnosticFixLookup } from "../../utils/diagnostics";
 import {
   isMarkdownPath,
   publishBufferText,
@@ -85,7 +92,7 @@ import {
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAgent } from "../../utils/agents";
-import { settings, zoom, editorDefaults, formatOnSaveFor, vimModeOn } from "../Settings/settingsStore";
+import { settings, zoom, editorDefaults, formatOnSaveFor, organizeImportsOnSaveFor, vimModeOn } from "../Settings/settingsStore";
 import { vimExtension } from "./vimMode";
 import {
   on as onEvent,
@@ -107,6 +114,9 @@ import {
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
   EDITOR_LSP_CODE_ACTION,
+  EDITOR_LSP_SOURCE_ACTION,
+  SOURCE_KINDS,
+  type SourceAction,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -672,6 +682,29 @@ export default function CodeEditor(props: {
     report: (message) => emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
   };
 
+  /** The organize-imports half of a save. Shares `formatDeps.current`, which is
+   *  the same question asked of the same buffer, and adds the one thing only
+   *  this side needs: the server's edits for the file.
+   *
+   *  No `report`. A formatter's complaint is usually a syntax error at a line
+   *  number, which is worth reading; a server that has no organize-imports for
+   *  this file has nothing to say about a save the user just asked for. */
+  const organizeDeps: OrganizeDeps = {
+    current: formatDeps.current,
+    organize: async (path) => {
+      if (!view || path !== shown) return null;
+      const action = await requestSourceAction(path, SOURCE_KINDS.organizeImports, wholeFileRange(view));
+      if (!action) return null;
+      // A command-only action cannot be applied to text on its way to disk: it
+      // would run through the server and come back as a `workspace/applyEdit`
+      // dispatched into the buffer, arriving after this save had already
+      // written the file. Skipped rather than raced.
+      const full = action.edit ? action : await resolveCodeAction(path, action);
+      const forThisFile = editsByUri(full.edit).find((t) => uriToPath(t.uri) === path);
+      return forThisFile?.edits ?? null;
+    },
+  };
+
   /** Put formatted text into that file's buffer as a minimal change, so the
    *  caret stays on the line it was on. A whole-document replacement maps every
    *  position to the end of the change, which would move the cursor on every
@@ -699,9 +732,23 @@ export default function CodeEditor(props: {
     // answers a different question for every CRLF file, which is what makes the
     // bytes written below the buffer's own (see lineEndings.ts).
     let text = view.state.sliceDoc();
+    // Before the formatter, not after: organizing rewrites the import block and
+    // the formatter is what decides how that block is laid out, so the other
+    // order would leave the file formatted the way it was *before* the rewrite.
+    // Bounded inside `organizeForSave`, because this one asks a language server
+    // and a server can simply not answer.
+    if (organizeImportsOnSaveFor(props.projectRoot)) {
+      const outcome = await organizeForSave(organizeDeps, path, { text, id: view.state.doc });
+      if (outcome.kind === "gone") return;
+      if (outcome.kind === "organized") applyFormatted(path, outcome.text);
+      text = outcome.text;
+    }
     // Ahead of the write, so what lands on disk and what is in the buffer are
     // the same bytes. Gated on the setting first: detection is a directory walk
     // in the backend, and a project that has opted out should not pay for it.
+    // `view.state.doc` is read here rather than reused from above: organizing
+    // may have just replaced it, and handing the formatter the old identity
+    // would make it discard its own result every time both settings are on.
     if (formatOnSaveFor(props.projectRoot)) {
       const outcome = await formatForSave(formatDeps, path, { text, id: view.state.doc });
       if (outcome.kind === "gone") return;
@@ -1114,6 +1161,9 @@ export default function CodeEditor(props: {
     // Same reasoning for colour: a file that opened before its server was up
     // has lexical highlighting only, and this is the moment that changes.
     refreshSemantic();
+    // And the same for the whole-file commands: which of them the palette
+    // should list is the server's answer, so it is unknown until there is one.
+    publishSourceActions();
   }
 
   /**
@@ -1219,6 +1269,82 @@ export default function CodeEditor(props: {
     setCodeActionLine(view, mine ? at.range.start.line + 1 : null);
   });
   onCleanup(offCodeActions);
+
+  /**
+   * Answer the Problems panel's "what could be done about this?".
+   *
+   * Registered rather than imported: that panel is on the eager side of the
+   * lazy editor boundary, so it cannot reach the LSP client itself without
+   * putting CodeMirror in the startup chunk. Same shape as
+   * `setWorkspaceSymbolSearch`.
+   *
+   * Deliberately not restricted to the file on screen. A problem in a
+   * background tab is one of the main reasons to send one to an agent at all,
+   * and `lspTargetFor` answers for any path a live session covers.
+   */
+  const offFixLookup = setDiagnosticFixLookup(async (path, problem) => {
+    // A zero-width range at the diagnostic's own start. The store keeps no end
+    // column, and a caret there is what a person asking "fix this" would put
+    // the cursor on - `diagnosticsIn` counts a touching range as overlapping,
+    // so the diagnostic itself still reaches the server as context.
+    const at = { line: Math.max(problem.line - 1, 0), character: Math.max(problem.column - 1, 0) };
+    // Quick fixes only, and asked for by kind rather than filtered afterwards.
+    // A refactor is something the user might want; a fix is an answer to the
+    // problem being sent, and the rest would pad the message with things that
+    // have nothing to do with it. Asking is also the cheaper half of that: the
+    // server skips computing what it is not going to be asked about.
+    const actions = await requestCodeActions(path, { start: at, end: at }, ["quickfix"]);
+    return (actions ?? [])
+      // A backstop for a server that answers a filtered request with more than
+      // it was asked for. A kindless action passes: under a quickfix-only
+      // filter, that is what the server is saying it is.
+      .filter((a) => !a.kind || a.kind === "quickfix" || a.kind.startsWith("quickfix."))
+      .map((a) => a.title);
+  });
+  onCleanup(offFixLookup);
+
+  /** Tell the palette which whole-file actions this file's server offers, so
+   *  three commands nothing can answer never appear in a language that has
+   *  none. Re-read on a tab swap and on every client lifecycle change, because
+   *  both change the answer and neither is observable from the store. */
+  function publishSourceActions() {
+    const path = shown;
+    const target = path ? lspTargetFor(path) : null;
+    if (!target) return publishSourceActionKinds(null);
+    void target.ready.then(() => {
+      // Compared against the file this call was *started* for, not against
+      // whatever is on screen now: `initialize` can take a cold rust-analyzer
+      // a long time, and answering for the tab the user has since left would
+      // put one language's commands in another language's palette.
+      if (shown !== path) return;
+      const provider = target.capability("codeActionProvider");
+      if (!provider) return publishSourceActionKinds(null);
+      // `true` is a server that does code actions without enumerating kinds,
+      // which is "I have not told you" rather than "I have none".
+      publishSourceActionKinds(
+        provider === true ? [] : ((provider as { codeActionKinds?: string[] }).codeActionKinds ?? []),
+      );
+    });
+  }
+
+  /** Run one whole-file action by kind. Its own path rather than the menu's,
+   *  because a source action is a claim about the file and there is no caret
+   *  involved: the range asked about is the whole document. */
+  async function runSourceAction(kind: string, label: string) {
+    const path = shown;
+    if (!path || !view) return;
+    const action = await requestSourceAction(path, kind, wholeFileRange(view));
+    // Swapped tabs while the server was answering. `applyCodeAction` reads the
+    // client off the view, and the view is now showing somebody else's file -
+    // in a monorepo that is a different server, whose workspace and mapping
+    // would be the wrong ones to apply this file's edit through.
+    if (path !== shown || !view) return;
+    if (!action) {
+      emitWith<ToastEvent>(TOAST, { message: `This server has no "${label}" action for this file.`, kind: "info" });
+      return;
+    }
+    await applyCodeAction(view, path, action, codeActionIo);
+  }
 
   // What the semantic-token refresh is allowed to know about this editor. The
   // decisions it feeds - superseded, moved, nothing to do - all live in
@@ -1392,6 +1518,7 @@ export default function CodeEditor(props: {
     applyGoto();
     void refreshSymbols();
     refreshSemantic();
+    publishSourceActions();
   }
 
   function evictClosed(openPaths: string[]) {
@@ -1695,6 +1822,7 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_RENAME, () => void (view && swayRenameSymbol(view, renameIo))),
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
     onEvent(EDITOR_LSP_CODE_ACTION, () => void openCodeActions()),
+    onWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, ({ kind, label }) => void runSourceAction(kind, label)),
   ];
 
   // No listener for the vim-mode toggle: it is a setting rather than an editor
@@ -1827,6 +1955,9 @@ export default function CodeEditor(props: {
     // that is gone. Same rule as `clearEditorState`.
     clearSymbols();
     clearCodeActions();
+    // No editor, no server answering for anything, so the palette must stop
+    // offering three commands with nothing behind them.
+    publishSourceActionKinds(null);
     view?.destroy();
   });
 

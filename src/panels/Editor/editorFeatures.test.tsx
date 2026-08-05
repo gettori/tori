@@ -21,6 +21,7 @@ const BASE: EditorDefaults = {
   // Not what this suite is about, but part of the type: format-on-save and vim
   // are editor behaviour too, and neither resolves to an extension here.
   formatOnSave: false,
+  organizeImportsOnSave: false,
   vimMode: false,
   indentGuides: false,
   softWrap: false,
