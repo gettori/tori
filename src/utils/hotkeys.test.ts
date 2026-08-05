@@ -51,6 +51,7 @@ describe("the canonical binding table", () => {
         "nav-back",
         "nav-forward",
         "next-waiting",
+        "peek-definition",
         "project-search",
         "omnibox",
         "reload",
@@ -95,6 +96,7 @@ describe("the canonical binding table", () => {
       "lsp-rename",
       "lsp-code-action",
       "lsp-format",
+      "peek-definition",
     ]);
   });
 

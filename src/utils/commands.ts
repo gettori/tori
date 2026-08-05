@@ -63,6 +63,8 @@ import {
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
   EDITOR_LSP_CODE_ACTION,
+  EDITOR_PEEK_DEFINITION,
+  EDITOR_PEEK_REFERENCES,
   EDITOR_LSP_SOURCE_ACTION,
   SOURCE_KINDS,
   type SourceAction,
@@ -627,6 +629,31 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: shiftOpt("KeyF"),
     run: () => emit(EDITOR_LSP_FORMAT),
+    requires: ["editorFile"],
+  },
+  {
+    id: "peek-definition",
+    keys: ["⌘", "⌥", "P"],
+    label: "Peek definition",
+    // VS Code's own chord for this, bound in CodeEditor's keymap beside F2 and
+    // ⌥⏎. Peek is the counterpart to `⌘⌥D`, not a replacement: that one takes
+    // you there, this one brings it here.
+    sub: "⌥F12",
+    group: "editor",
+    scope: "window",
+    match: cmdOpt("KeyP"),
+    run: () => emit(EDITOR_PEEK_DEFINITION),
+    requires: ["editorFile"],
+  },
+  {
+    // No chord. The references *panel* already has ⌘⌥R, and a second reference
+    // gesture is worth a palette entry rather than a third combination nobody
+    // would remember which half of.
+    id: "peek-references",
+    label: "Peek references",
+    sub: "Show them here instead of in the panel.",
+    group: "editor",
+    run: () => emit(EDITOR_PEEK_REFERENCES),
     requires: ["editorFile"],
   },
   ...RIGHT_MODES.map(
