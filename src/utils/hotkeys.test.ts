@@ -43,6 +43,7 @@ describe("the canonical binding table", () => {
         "editor-new-scratch",
         "filter-sidebar",
         "focus-terminal",
+        "lsp-code-action",
         "lsp-definition",
         "lsp-format",
         "lsp-references",
@@ -92,6 +93,7 @@ describe("the canonical binding table", () => {
       "lsp-definition",
       "lsp-references",
       "lsp-rename",
+      "lsp-code-action",
       "lsp-format",
     ]);
   });
@@ -192,6 +194,7 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchWindowHotkey(cmdOpt("KeyD"))).toBe(true);
     expect(dispatchWindowHotkey(cmdOpt("KeyR"))).toBe(true);
     expect(dispatchWindowHotkey(cmdOpt("KeyN"))).toBe(true);
+    expect(dispatchWindowHotkey(cmdOpt("KeyA"))).toBe(true);
     const shiftOptF = {
       key: "Ï",
       code: "KeyF",
@@ -205,8 +208,17 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
       "sway:editor-lsp-definition",
       "sway:editor-lsp-references",
       "sway:editor-lsp-rename",
+      "sway:editor-lsp-code-action",
       "sway:editor-lsp-format",
     ]);
+  });
+
+  it("leaves ⌘. to stop-chat, which the editor must not take", () => {
+    // Every other editor puts code actions on ⌘., and Sway cannot: ⌘. stops a
+    // running agent turn and is global on purpose, so it has to keep working
+    // with the editor focused. ⌘⌥A is the chord that exists instead.
+    expect(dispatchHotkey(key(".", { meta: true }))).toBe(true);
+    expect(dispatched.map((e) => e.type)).toEqual(["sway:stop-chat"]);
   });
 
   it("does not claim Cmd+F, which the focused terminal owns", () => {

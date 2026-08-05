@@ -36,6 +36,18 @@ import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
 import type { Bookmark } from "../../utils/bookmarks";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
+import { applyCodeAction, caretRange } from "./codeActionCommand";
+import { codeActionGutter, setCodeActionLine } from "./codeActionGutter";
+import {
+  clearCodeActions,
+  currentCodeActions,
+  groupedCodeActions,
+  onCodeActionsChange,
+  refreshCodeActions,
+  sameRange,
+  type CodeAction,
+} from "./lspCodeActions";
+import type { LspRange } from "./lspDiagnosticContext";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
@@ -94,6 +106,7 @@ import {
   EDITOR_LSP_REFERENCES,
   EDITOR_LSP_RENAME,
   EDITOR_LSP_FORMAT,
+  EDITOR_LSP_CODE_ACTION,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
@@ -106,6 +119,7 @@ import {
 } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
+import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
 import styles from "./CodeEditor.module.css";
 
 function relTo(root: string, abs: string): string {
@@ -335,6 +349,10 @@ export default function CodeEditor(props: {
   // The active buffer has an external on-disk change conflicting with unsaved
   // edits (drives the reload banner).
   const [conflict, setConflict] = createSignal<Conflict | null>(null);
+  // The code-action menu, open at the caret. Held here rather than in a CM6
+  // panel so it is the same menu component as every other list of choices in
+  // the app, with the same keyboard and outside-click behaviour.
+  const [actionMenu, setActionMenu] = createSignal<MenuState | null>(null);
 
   // A pending "jump to line/col", applied once that file is the shown buffer
   // (the open may still be reading the file when the request arrives).
@@ -906,6 +924,24 @@ export default function CodeEditor(props: {
           return true;
         },
       },
+      {
+        // The chord every other editor uses for this. ⌘. is not free here: it
+        // stops a running agent turn, from any surface including this one.
+        key: "Alt-Enter",
+        // Deliberately no `preventDefault`, unlike its neighbours above.
+        // CodeMirror honours that flag even when the command *declines*
+        // (`@codemirror/view/dist/index.js:9154`), which would swallow the key
+        // in every buffer with no language client. Returning true already
+        // prevents the default on its own, so the flag would only ever change
+        // the case this binding wants to keep out of.
+        run: (v) => {
+          // Falls through in a buffer with no language client, so it stays an
+          // ordinary unbound key rather than a dead one.
+          if (!caretRange(v)) return false;
+          void openCodeActions();
+          return true;
+        },
+      },
       // Before defaultKeymap, whose `Mod-i` runs `selectParentSyntax` without
       // recording where the selection came from; see `selectionKeymap`.
       ...selectionKeymap,
@@ -921,6 +957,17 @@ export default function CodeEditor(props: {
     // already self-installs the lint state field when it publishes, but the
     // gutter is a separate extension and has to be asked for.
     lintGutter(),
+    // The lightbulb. Its column is empty in every buffer no server has an
+    // opinion about, and an empty one takes no width - see `App.css`.
+    // Clicking it asks again rather than reusing what the bulb was drawn from:
+    // a click is a deliberate act, and the answer behind the bulb is up to half
+    // a second old by construction.
+    codeActionGutter({ onClick: () => void openCodeActions() }),
+    // What moves the bulb. Both triggers matter: typing changes what the server
+    // would say, and moving the caret changes which line is being asked about.
+    EditorView.updateListener.of((u) => {
+      if (u.selectionSet || u.docChanged) refreshCodeActionsSoon();
+    }),
     // Falls through to an ordinary click for a file with no server, so it costs
     // nothing in a buffer the LSP knows nothing about.
     cmdClickDefinitionExtension,
@@ -1131,6 +1178,48 @@ export default function CodeEditor(props: {
   // about whether the answer is current.
   const refreshSymbolsSoon = debounce(() => void refreshSymbols(), 400);
 
+  // What the bulb is drawn from: the caret's own line, because that is the only
+  // line anything has been asked about. Asking per fixable line would be a
+  // `textDocument/codeAction` per line, and tsserver answers one of those with
+  // a compile.
+  async function refreshCodeActionsHere() {
+    const path = shown;
+    if (!path || !view) return;
+    const asked = caretRange(view);
+    // No language client on this buffer, so there is nothing to ask and nothing
+    // left over from a previous file to keep drawing.
+    if (!asked) return clearCodeActions();
+    await refreshCodeActions(path, asked, caretStillAt);
+  }
+
+  /** Whether an answer is still about where the caret is.
+   *
+   *  The file alone is not enough: a caret move re-asks only after the debounce,
+   *  so between the move and that re-ask nothing would supersede a reply that is
+   *  already about the wrong line, and the bulb would sit there describing it. */
+  function caretStillAt(path: string, asked: LspRange): boolean {
+    if (path !== shown || !view) return false;
+    const now = caretRange(view);
+    return !!now && sameRange(now, asked);
+  }
+
+  // Longer than the symbol refresh beside it: this one runs on caret movement
+  // as well as typing, so it fires on arrow keys too, and a code action is the
+  // more expensive question of the two.
+  const refreshCodeActionsSoon = debounce(() => void refreshCodeActionsHere(), 500);
+
+  // The offer changed, so the bulb does. Not inside the update listener that
+  // asks for it: this arrives a server round trip later, and dispatching from
+  // inside an update is the one thing CodeMirror refuses outright.
+  const offCodeActions = onCodeActionsChange(() => {
+    if (!view) return;
+    const at = currentCodeActions();
+    const mine = at && at.path === shown && at.actions?.length;
+    // LSP counts lines from zero and CodeMirror from one.
+    setCodeActionLine(view, mine ? at.range.start.line + 1 : null);
+  });
+  onCleanup(offCodeActions);
+
   // What the semantic-token refresh is allowed to know about this editor. The
   // decisions it feeds - superseded, moved, nothing to do - all live in
   // `lspSemanticTokens`, where they can be tested without a view; all this
@@ -1181,6 +1270,11 @@ export default function CodeEditor(props: {
   async function swapTo(path: string | null) {
     if (!view) return;
     const token = ++swapToken;
+    // An action is an offer about a range in a document, and neither survives
+    // the file leaving the screen. Dropped before the swap rather than after,
+    // so nothing can pick from a menu describing the tab being left.
+    setActionMenu(null);
+    clearCodeActions();
     // Stash the live state of the buffer we're leaving.
     if (shown && shown !== path) {
       const prev = buffers.get(shown);
@@ -1520,6 +1614,77 @@ export default function CodeEditor(props: {
     if (!outcome.formatter && view) formatDocument(view);
   }
 
+  // What running a code action needs from the app: the same question the rename
+  // asks about unsaved work, and somewhere to say what it did.
+  const codeActionIo = {
+    projectRoot: () => props.projectRoot,
+    confirm: (opts: { title: string; message: string; confirmLabel: string }) =>
+      // No host to ask means no informed consent, so the safe answer is no,
+      // exactly as the rename decides it.
+      props.confirm ? props.confirm(opts) : Promise.resolve(false),
+    notify: (message: string, kind: "error" | "info") => emitWith<ToastEvent>(TOAST, { message, kind }),
+  };
+
+  /**
+   * Ask what is on offer at the caret and put it on screen.
+   *
+   * Silence is the right answer for a file no server claims: ⌘⌥A in a `.txt`
+   * tab should feel like the key does nothing, which is how F12 already
+   * behaves. An *empty* list is different - the server looked and had nothing -
+   * and saying so is what keeps a working server from looking broken.
+   */
+  async function openCodeActions() {
+    const path = shown;
+    if (!path || !view) return;
+    const asked = caretRange(view);
+    // No LSP plugin on this buffer: no client, so nothing to ask.
+    if (!asked) return;
+
+    await refreshCodeActions(path, asked, caretStillAt);
+    const at = currentCodeActions();
+    // Superseded while the server was answering, or about a file that is no
+    // longer on screen. Compared by value rather than by identity: the caret
+    // refresh below runs on a debounce and can ask the very same question at
+    // the same moment, and whichever of the two the store ends up holding
+    // answers this press. By identity, that coincidence would swallow the
+    // keystroke and say nothing.
+    if (!at || at.path !== shown || !sameRange(at.range, asked)) return;
+    if (!at.actions) return;
+    if (!at.actions.length) {
+      emitWith<ToastEvent>(TOAST, { message: "No code actions here.", kind: "info" });
+      return;
+    }
+    setActionMenu(menuAt(view, path, at.actions));
+  }
+
+  /** The menu, anchored on the caret rather than the mouse: this opens from a
+   *  keystroke, and the caret is where the user is looking. */
+  function menuAt(v: EditorView, path: string, actions: CodeAction[]): MenuState {
+    const coords = v.coordsAtPos(v.state.selection.main.head);
+    const items: MenuItem[] = [];
+    for (const group of groupedCodeActions(actions)) {
+      if (items.length) items.push({ separator: true });
+      for (const action of group) {
+        items.push({ label: action.title, onClick: () => void runAction(path, action) });
+      }
+    }
+    // Null coords means the caret is scrolled out of the rendered viewport,
+    // which a keystroke cannot cause but a stale selection can. The editor's
+    // own top-left is a worse anchor than the caret and a better one than
+    // nowhere.
+    const box = v.dom.getBoundingClientRect();
+    return { x: coords?.left ?? box.left, y: coords?.bottom ?? box.top, items };
+  }
+
+  async function runAction(path: string, action: CodeAction) {
+    if (!view) return;
+    await applyCodeAction(view, path, action, codeActionIo);
+    // The document moved, so whatever the menu was built from describes a file
+    // that no longer exists in that shape.
+    clearCodeActions();
+    view?.focus();
+  }
+
   // The palette's and the sheet's language-server entries, run against whatever
   // the view is showing. Each is the same CM6 command the library's own key
   // binding fires, and each returns false (a no-op) when the active file has no
@@ -1529,6 +1694,7 @@ export default function CodeEditor(props: {
     onEvent(EDITOR_LSP_REFERENCES, () => void (view && findReferences(view))),
     onEvent(EDITOR_LSP_RENAME, () => void (view && swayRenameSymbol(view, renameIo))),
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
+    onEvent(EDITOR_LSP_CODE_ACTION, () => void openCodeActions()),
   ];
 
   // No listener for the vim-mode toggle: it is a setting rather than an editor
@@ -1660,6 +1826,7 @@ export default function CodeEditor(props: {
     // No editor means no client, so every tree in the store describes a server
     // that is gone. Same rule as `clearEditorState`.
     clearSymbols();
+    clearCodeActions();
     view?.destroy();
   });
 
@@ -1680,6 +1847,21 @@ export default function CodeEditor(props: {
         )}
       </Show>
       <div class={styles.codeEditor} ref={host} />
+      <Show when={actionMenu()}>
+        {(m) => (
+          <Menu
+            x={m().x}
+            y={m().y}
+            items={m().items}
+            onClose={() => {
+              setActionMenu(null);
+              // Closing without picking should leave the caret where it was and
+              // the focus where it came from.
+              view?.focus();
+            }}
+          />
+        )}
+      </Show>
     </div>
   );
 }
