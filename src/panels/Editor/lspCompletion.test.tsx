@@ -234,6 +234,7 @@ describe("the client's extension list", () => {
     const { workspaceEditClientCapabilities } = await import("./serverEdits");
     const { codeActionClientCapabilities } = await import("./lspCodeActions");
     const { diagnosticContextCapture } = await import("./lspDiagnosticContext");
+    const { configurationClientCapabilities } = await import("./lspConfiguration");
 
     const capabilitiesFor = (extensions: unknown[]) => {
       sent = [];
@@ -248,6 +249,11 @@ describe("the client's extension list", () => {
       semanticTokensClientCapabilities,
       workspaceEditClientCapabilities,
       codeActionClientCapabilities,
+      // Not part of the completion change, but a capability block all the
+      // same: the baseline is "the old extension list plus every block Sway
+      // declares", so that what this test measures stays the *completion*
+      // delta rather than drifting into a record of everything since.
+      configurationClientCapabilities,
     ]);
     const after = capabilitiesFor(clientExtensions());
 

@@ -1,0 +1,34 @@
+# Bundled JSON server: `vscode-json-languageserver`, the same one VS Code's own
+# JSON support is built on. Installed by `pnpm lsp:install`. See LSP-SERVERS.md.
+#
+# Schemas are deliberately not listed here. The server has no catalog logic of
+# its own (VS Code feeds it the associations), so Sway fetches SchemaStore's
+# catalog, caches it, and sends the result as `json/schemaAssociations`. That is
+# what `schema_associations` below asks for.
+
+schema_version = 1
+id = "json"
+label = "JSON"
+
+# `.git` alone, and `package.json` deliberately absent. `root_for` returns the
+# first ancestor holding *any* marker, so a monorepo with a `package.json` in
+# every package would get a server per package - and unlike tsserver, this one
+# has no per-package configuration to be right about, so those sessions would
+# differ in nothing but their cost. One session for the repo is both correct
+# and much cheaper.
+root_markers = [".git"]
+
+verified_against = "vscode-json-languageserver 1.3.4"
+
+# Send this server the SchemaStore catalog after initialize. Nothing else needs
+# configuring: the notification handler applies the associations itself.
+schema_associations = true
+
+[languages]
+json = "json"
+jsonc = "jsonc"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/vscode-json-languageserver/bin/vscode-json-languageserver"
+args = ["--stdio"]

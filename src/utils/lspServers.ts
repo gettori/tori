@@ -23,6 +23,16 @@ export type LspServer = {
   request_timeout_ms: number;
   launch: LspLaunch;
   initialization_options: unknown | null;
+  /** Free-form server configuration, delivered both ways: pushed once as
+   *  `workspace/didChangeConfiguration`, and answered section by section
+   *  whenever the server pulls with `workspace/configuration`. Servers
+   *  disagree about which one they read, and a config author should not have
+   *  to know which. */
+  settings: Record<string, unknown> | null;
+  /** Send this server the SchemaStore catalog as `json/schemaAssociations`
+   *  after initialize. One server's protocol extension, so it is opted into by
+   *  config rather than handed to everything. */
+  schema_associations: boolean;
   verified_against: string | null;
   source: string;
 };

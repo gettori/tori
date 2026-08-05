@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // The client's lifecycle signal, and which session answers for a given file.
 // Everything below the module (Tauri and @codemirror/lsp-client) is stubbed:
@@ -34,6 +34,8 @@ let registry: unknown[] = [
     request_timeout_ms: 20000,
     launch: { kind: "path", program: "tsserver", args: [] },
     initialization_options: null,
+    settings: null,
+    schema_associations: false,
     verified_against: null,
     source: "bundled:typescript",
   },
@@ -45,10 +47,16 @@ let registry: unknown[] = [
     request_timeout_ms: 90000,
     launch: { kind: "path", program: "rust-analyzer", args: [] },
     initialization_options: null,
+    settings: null,
+    schema_associations: false,
     verified_against: null,
     source: "bundled:rust",
   },
 ];
+
+// What `lsp_schema_associations` answers. Empty is the offline answer, and the
+// case that must not put an association-clearing notification on the wire.
+let associations: unknown[] = [];
 
 // The root the fake backend resolves. Keyed by a prefix so a test can make two
 // files collapse to one root, or split into two.
@@ -81,6 +89,7 @@ const clients: {
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "lsp_registry") return Promise.resolve(registry);
+    if (cmd === "lsp_schema_associations") return Promise.resolve(associations);
     if (cmd === "lsp_start") {
       const a = args as unknown as StartArgs;
       started.push({ serverId: a.serverId, filePath: a.filePath, projectPath: a.projectPath });
@@ -184,6 +193,7 @@ beforeEach(() => {
   sends.length = 0;
   channels.length = 0;
   disk = {};
+  associations = [];
   resolveRoot = (a) => a.projectPath;
   startFails = false;
   holdStart = null;
@@ -679,6 +689,194 @@ describe("workspace/semanticTokens/refresh", () => {
     await m.ensureLspFor("/proj/rf6/a.ts", "/proj/rf6");
     channels[0].onmessage?.(refresh(3));
     expect(JSON.parse(sends[0].message).id).toBe(3);
+  });
+});
+
+// The `[settings]` table reaching the server, and the two routes it takes.
+// Both exist because the two bundled servers this wave adds disagree about
+// which one they read: `vscode-json-languageserver` reads the push,
+// `yaml-language-server` answers the push by pulling its configuration back.
+describe("server configuration", () => {
+  const YAML_SETTINGS = { yaml: { schemaStore: { enable: true } } };
+
+  // The registry is module state, and a describe that swaps it without putting
+  // it back leaves every later test asking about servers that no longer exist.
+  // One of those spins on `started.length`, so the cost of forgetting is a run
+  // that never finishes rather than a failure that names itself.
+  const real = registry;
+  afterEach(() => {
+    registry = real;
+  });
+
+  /** Swap the registry for one carrying a configured server. */
+  function withServer(extra: Record<string, unknown>) {
+    registry = [
+      {
+        id: "cfg",
+        label: "Configured",
+        languages: { cfg: "configured" },
+        root_markers: [".git"],
+        request_timeout_ms: 20000,
+        launch: { kind: "path", program: "cfg-server", args: [] },
+        initialization_options: null,
+        settings: null,
+        schema_associations: false,
+        verified_against: null,
+        source: "bundled:cfg",
+        ...extra,
+      },
+    ];
+  }
+
+  /** `configureSession` runs behind `client.initializing`, so the notifications
+   *  land a few microtasks after `ensureLspFor` resolves. */
+  async function settle() {
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+  }
+
+  const sentMethods = () => sends.map((s) => (JSON.parse(s.message) as { method?: string }).method);
+  const sentFrame = (method: string) =>
+    sends.map((s) => JSON.parse(s.message) as { method?: string; params?: unknown }).find((f) => f.method === method);
+
+  it("pushes the settings once the handshake is done", async () => {
+    withServer({ settings: YAML_SETTINGS });
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cfg/a.cfg", "/proj/cfg");
+    await settle();
+
+    expect(sentFrame("workspace/didChangeConfiguration")?.params).toEqual({ settings: YAML_SETTINGS });
+  });
+
+  it("says nothing at all for a server whose config carries no settings", async () => {
+    // Most servers. A `didChangeConfiguration` with an empty payload is not the
+    // same as silence: it tells a server its configuration just changed to
+    // nothing, and rust-analyzer would act on that.
+    withServer({});
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cfg2/a.cfg", "/proj/cfg2");
+    await settle();
+
+    expect(sentMethods()).not.toContain("workspace/didChangeConfiguration");
+  });
+
+  it("answers workspace/configuration from that session's own settings", async () => {
+    // Positionally, and from the session the request arrived on. The router
+    // hands the handle through precisely so this cannot read another server's
+    // table, which matters as soon as two configured servers are live.
+    withServer({ settings: YAML_SETTINGS });
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cfg3/a.cfg", "/proj/cfg3");
+    await settle();
+    sends.length = 0;
+
+    channels[0].onmessage?.(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "workspace/configuration",
+        params: { items: [{ section: "yaml" }, { section: "http" }] },
+      }),
+    );
+
+    expect(JSON.parse(sends[0].message)).toEqual({
+      jsonrpc: "2.0",
+      id: 9,
+      result: [YAML_SETTINGS.yaml, null],
+    });
+    // Answered here, so the library never sees it and never replies -32601.
+    expect(clients[0].received).toEqual([]);
+  });
+
+  it("answers null sections rather than letting the library refuse the request", async () => {
+    // A server with no `[settings]` still owes an answer of the right length.
+    // The -32601 the library would send says the client lied about declaring
+    // `workspace.configuration`, and a conformant server stops asking.
+    withServer({});
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cfg4/a.cfg", "/proj/cfg4");
+    await settle();
+    sends.length = 0;
+
+    channels[0].onmessage?.(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "workspace/configuration",
+        params: { items: [{ section: "yaml" }, { section: "files" }] },
+      }),
+    );
+
+    expect(JSON.parse(sends[0].message).result).toEqual([null, null]);
+  });
+});
+
+// The SchemaStore catalog reaching the JSON server. It has no catalog logic of
+// its own, so a bundled JSON server nobody feeds validates nothing - which
+// looks exactly like a server that is not running.
+describe("schema associations", () => {
+  const real = registry;
+  afterEach(() => {
+    registry = real;
+  });
+
+  const JSON_SERVER = {
+    id: "json",
+    label: "JSON",
+    languages: { json: "json" },
+    root_markers: [".git"],
+    request_timeout_ms: 20000,
+    launch: { kind: "path", program: "json-server", args: [] },
+    initialization_options: null,
+    settings: null,
+    schema_associations: true,
+    verified_against: null,
+    source: "bundled:json",
+  };
+
+  async function settle() {
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+  }
+
+  const frames = () => sends.map((s) => JSON.parse(s.message) as { method?: string; params?: unknown });
+
+  it("sends the catalog to a server whose config asks for it", async () => {
+    registry = [JSON_SERVER];
+    associations = [{ uri: "https://json.schemastore.org/package.json", fileMatch: ["package.json"] }];
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/js/a.json", "/proj/js");
+    await settle();
+
+    const frame = frames().find((f) => f.method === "json/schemaAssociations");
+    // The list as a single positional argument, not as the argument list.
+    // `vscode-jsonrpc` spreads a JSON-RPC `params` array across the handler's
+    // parameters, so sending the associations bare delivers only the first one
+    // and says nothing about the rest. Verified against the real server: bare,
+    // a two-entry list produces no diagnostics at all; wrapped, it validates.
+    expect(frame?.params).toEqual([associations]);
+  });
+
+  it("sends nothing when the catalog came back empty", async () => {
+    // Offline, or a catalog that would not parse. An empty notification is not
+    // the same as no notification: it would clear whatever associations the
+    // server already had, so degrading has to mean staying quiet.
+    registry = [JSON_SERVER];
+    associations = [];
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/js2/a.json", "/proj/js2");
+    await settle();
+
+    expect(frames().map((f) => f.method)).not.toContain("json/schemaAssociations");
+  });
+
+  it("never sends it to a server that did not ask", async () => {
+    // `json/schemaAssociations` is one server's protocol extension. Every other
+    // server would log an unknown-notification warning for it, once per start.
+    associations = [{ uri: "https://example.com/s.json", fileMatch: ["a.json"] }];
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/js3/a.ts", "/proj/js3");
+    await settle();
+
+    expect(frames().map((f) => f.method)).not.toContain("json/schemaAssociations");
   });
 });
 
