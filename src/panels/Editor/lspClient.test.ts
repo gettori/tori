@@ -509,6 +509,73 @@ describe("workspace-edit capabilities", () => {
   });
 });
 
+describe("code-action capabilities", () => {
+  const codeActionBlock = async (root: string) => {
+    const m = await freshModule();
+    await m.ensureLspFor(`${root}/a.ts`, root);
+    return (clientConfigs[0].extensions ?? [])
+      .map(
+        (e) =>
+          (e as { clientCapabilities?: { textDocument?: { codeAction?: Record<string, unknown> } } })
+            .clientCapabilities?.textDocument?.codeAction,
+      )
+      .find(Boolean);
+  };
+
+  it("advertises literal support with the kinds Sway groups by", async () => {
+    // Without `codeActionLiteralSupport` a server may answer with bare
+    // `Command`s, which carry no kind to group by and no edit to apply.
+    const block = await codeActionBlock("/proj/ca");
+    const kinds = (block?.codeActionLiteralSupport as { codeActionKind?: { valueSet?: string[] } })
+      ?.codeActionKind?.valueSet;
+
+    expect(kinds).toContain("quickfix");
+    expect(kinds).toContain("source.organizeImports");
+  });
+
+  it("advertises data and resolve support, so an action may arrive without its edit", async () => {
+    // The pair is one promise: `data` is the token the server round-trips
+    // through `codeAction/resolve`, and `resolveSupport` is what licenses it to
+    // leave the expensive half out of the first reply.
+    const block = await codeActionBlock("/proj/ca2");
+
+    expect(block?.dataSupport).toBe(true);
+    expect(block?.isPreferredSupport).toBe(true);
+    expect((block?.resolveSupport as { properties?: string[] })?.properties).toEqual(["edit"]);
+  });
+
+  it("puts the raw-diagnostic capture first in the list", async () => {
+    // The client stops at the first extension handler returning true, and
+    // `serverDiagnostics()` (inside `languageServerExtensions()`) returns true
+    // for every publish it renders. Behind it, the capture would only ever see
+    // files nobody has open - the opposite of the set a code action is asked
+    // about. That the library really behaves that way is checked against the
+    // real client in `lspDiagnosticContext.test.ts`; this pins the order here.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/ca4/a.ts", "/proj/ca4");
+    const first = (clientConfigs[0].extensions ?? [])[0] as {
+      notificationHandlers?: Record<string, unknown>;
+    };
+
+    expect(first.notificationHandlers?.["textDocument/publishDiagnostics"]).toBeTypeOf("function");
+  });
+
+  it("keeps the other capability blocks alongside, not instead of them", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/ca3/a.ts", "/proj/ca3");
+    const blocks = (clientConfigs[0].extensions ?? []).map(
+      (e) =>
+        (e as { clientCapabilities?: { textDocument?: Record<string, unknown>; workspace?: Record<string, unknown> } })
+          .clientCapabilities,
+    );
+
+    expect(blocks.some((b) => b?.textDocument?.documentSymbol)).toBe(true);
+    expect(blocks.some((b) => b?.textDocument?.semanticTokens)).toBe(true);
+    expect(blocks.some((b) => b?.workspace?.applyEdit)).toBe(true);
+    expect(blocks.some((b) => b?.textDocument?.codeAction)).toBe(true);
+  });
+});
+
 describe("workspace/semanticTokens/refresh", () => {
   const refresh = (id: unknown) =>
     JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });

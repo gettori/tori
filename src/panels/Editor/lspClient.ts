@@ -24,6 +24,8 @@ import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
+import { codeActionClientCapabilities } from "./lspCodeActions";
+import { clearDiagnosticContext, diagnosticContextCapture } from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
@@ -79,6 +81,9 @@ function dropAllSessions() {
     }
   }
   sessions.clear();
+  // Every diagnostic held there was published by a server that is now gone, and
+  // the next project's files can spell their URIs the same way.
+  clearDiagnosticContext();
   notify();
 }
 
@@ -226,10 +231,18 @@ async function startFor(
     // these, and one of them (`serverDiagnostics`) carries capabilities of its
     // own that only get merged when the client sees it as a top-level entry.
     extensions: [
+      // Ahead of `languageServerExtensions()`, and that is load-bearing rather
+      // than tidy: the client stops at the first extension whose handler
+      // returns true, and `serverDiagnostics()` returns true for every publish
+      // it renders. Behind it, this would see only the publishes for files
+      // nobody has open, which is the opposite of the set a code action is
+      // ever asked about.
+      diagnosticContextCapture,
       ...languageServerExtensions(),
       symbolClientCapabilities,
       semanticTokensClientCapabilities,
       workspaceEditClientCapabilities,
+      codeActionClientCapabilities,
     ],
   }).connect(transport);
 
