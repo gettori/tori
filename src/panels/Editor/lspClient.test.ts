@@ -698,6 +698,58 @@ describe("workspace/semanticTokens/refresh", () => {
   });
 });
 
+// The second request on the same seam, added in wave 7 for code lens. Its own
+// describe rather than a case in the one above, because what has to be true of
+// it is the *pair*: the capability invites the request, and the router is what
+// makes the invitation honest.
+describe("workspace/codeLens/refresh", () => {
+  const refresh = (id: unknown) => JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/codeLens/refresh" });
+
+  it("answers it rather than letting the library reject it", async () => {
+    // Sway declares `workspace.codeLens.refreshSupport`, so a -32601 here is
+    // the client contradicting its own capabilities. A conformant server reads
+    // that as a lie and stops asking, and the lenses would then only ever be as
+    // fresh as the next edit to the file they happen to be drawn in - which is
+    // exactly the case they cannot detect for themselves, since a reference
+    // count changes when a *different* file does.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cl/a.ts", "/proj/cl");
+    const roots: string[] = [];
+    const off = m.setCodeLensRefreshListener((root: string) => roots.push(root));
+    channels[0].onmessage?.(refresh(11));
+    expect(JSON.parse(sends[0].message)).toEqual({ jsonrpc: "2.0", id: 11, result: null });
+    expect(roots).toEqual(["/proj/cl"]);
+    // Never reached the library, which is what would have produced the -32601.
+    expect(clients[0].received).toEqual([]);
+    off();
+  });
+
+  it("names the session that went stale, and does not answer the other one's listener", async () => {
+    // The two slots are separate on purpose: a server pushing one kind of
+    // refresh is saying nothing about the other, and a shared slot would turn
+    // every stale reference count into a re-request for the whole file's
+    // colours as well.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cl2/a.ts", "/proj/cl2");
+    const lensRoots: string[] = [];
+    const semanticRoots: string[] = [];
+    m.setCodeLensRefreshListener((root: string) => lensRoots.push(root));
+    m.setSemanticRefreshListener((root: string) => semanticRoots.push(root));
+    channels[0].onmessage?.(refresh(1));
+    expect(lensRoots).toEqual(["/proj/cl2"]);
+    expect(semanticRoots).toEqual([]);
+  });
+
+  it("still answers the server when nothing is listening", async () => {
+    // Between teardown and the next mount. The reply is owed regardless: an
+    // unanswered request leaves the server waiting on its own timeout.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/cl3/a.ts", "/proj/cl3");
+    channels[0].onmessage?.(refresh(4));
+    expect(JSON.parse(sends[0].message).id).toBe(4);
+  });
+});
+
 // The `[settings]` table reaching the server, and the two routes it takes.
 // Both exist because the two bundled servers this wave adds disagree about
 // which one they read: `vscode-json-languageserver` reads the push,

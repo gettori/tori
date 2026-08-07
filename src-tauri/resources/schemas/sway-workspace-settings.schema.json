@@ -20,6 +20,11 @@
           "description": "Organize imports on save. Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs.",
           "default": false
         },
+        "codeLens": {
+          "type": "boolean",
+          "description": "Code lens. Draws the language server's reference and implementation counts above the lines they describe.",
+          "default": false
+        },
         "vimMode": {
           "type": "boolean",
           "description": "Vim keybindings. Modal editing in the code editor, with a status line showing pending commands.",

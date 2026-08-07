@@ -36,6 +36,7 @@ import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
+import { codeLensClientCapabilities } from "./lspCodeLens";
 import { completionClientCapabilities, swayCompletion } from "./lspCompletion";
 import { configurationClientCapabilities, configurationFor } from "./lspConfiguration";
 import { clearDiagnosticContext, diagnosticContextCapture } from "./lspDiagnosticContext";
@@ -385,6 +386,7 @@ export function clientExtensions() {
     symbolClientCapabilities,
     semanticTokensClientCapabilities,
     callHierarchyClientCapabilities,
+    codeLensClientCapabilities,
     workspaceEditClientCapabilities,
     codeActionClientCapabilities,
     completionClientCapabilities,
@@ -408,33 +410,58 @@ function workspaceDeps(server: LspServer) {
 // ------------------------------------------- the requests Sway answers
 
 const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
+const CODE_LENS_REFRESH = "workspace/codeLens/refresh";
 const APPLY_EDIT = "workspace/applyEdit";
 const CONFIGURATION = "workspace/configuration";
 
-// Registered by the editor while it is mounted. One slot rather than a list for
-// the same reason `liveBuffers` has one: there is exactly one `CodeEditor`, and
-// a subscriber list is churn until there are two.
-let onSemanticRefresh: ((root: string) => void) | null = null;
+/**
+ * One "a server says its own answers went stale" slot.
+ *
+ * Registered by the editor while it is mounted, and one slot rather than a list
+ * for the reason `liveBuffers` has one: there is exactly one `CodeEditor`, and a
+ * subscriber list is churn until there are two.
+ *
+ * Every such request carries the root of the session that sent it, because the
+ * claim is that session's alone: in a monorepo, `packages/a`'s server going
+ * stale says nothing about a file `packages/b`'s server answers for.
+ */
+function refreshSlot() {
+  let listener: ((root: string) => void) | null = null;
+  return {
+    /** Subscribe. Returns an unregister that is guarded, because a later
+     *  registration may already have replaced this one and clearing the slot
+     *  then would unregister somebody else. */
+    set(fn: (root: string) => void): () => void {
+      listener = fn;
+      return () => {
+        if (listener === fn) listener = null;
+      };
+    },
+    fire(root: string): void {
+      listener?.(root);
+    },
+  };
+}
 
-/** Be told when a server says its semantic tokens are stale. Returns an
- *  unregister.
+const semanticRefresh = refreshSlot();
+const codeLensRefresh = refreshSlot();
+
+/** Be told when a server says its semantic tokens are stale.
  *
  *  Worth having because semantic colour is a property of the whole program, not
  *  of the file on screen: editing `types.ts` changes what a name in `main.ts`
  *  *means* without changing a character of it, so nothing the editor can observe
- *  locally would ever prompt the re-request.
+ *  locally would ever prompt the re-request. */
+export const setSemanticRefreshListener = semanticRefresh.set;
+
+/** Be told when a server says its code lenses are stale.
  *
- *  Carries the root of the session that said so, because the claim is that
- *  session's alone: in a monorepo, `packages/a`'s server going stale says
- *  nothing about a file `packages/b`'s server answers for. */
-export function setSemanticRefreshListener(fn: (root: string) => void): () => void {
-  onSemanticRefresh = fn;
-  // Guarded: a later registration has already replaced this one, and clearing
-  // the slot then would unregister somebody else.
-  return () => {
-    if (onSemanticRefresh === fn) onSemanticRefresh = null;
-  };
-}
+ *  The same argument one step further: a reference count is a property of the
+ *  whole program, so adding a call in `main.ts` changes the number drawn above a
+ *  function in `types.ts` without touching that file at all. Nothing observable
+ *  in the buffer on screen would ever prompt the re-request, which is what
+ *  `workspace.codeLens.refreshSupport` exists to say. */
+export const setCodeLensRefreshListener = codeLensRefresh.set;
 
 /**
  * The server-initiated requests Sway answers, and the whole reason the router
@@ -446,7 +473,14 @@ export function setSemanticRefreshListener(fn: (root: string) => void): () => vo
  */
 const serverRequests = createRequestRouter<LspHandle>({
   [SEMANTIC_REFRESH]: (_params, handle) => {
-    onSemanticRefresh?.(handle.root);
+    semanticRefresh.fire(handle.root);
+  },
+  // Answered rather than left to the library, which would reply `-32601` to a
+  // request Sway's own capabilities invited. A conformant server reads that as
+  // the client having lied and stops asking, so the lenses would then only ever
+  // be as fresh as the next edit to the file they are drawn in.
+  [CODE_LENS_REFRESH]: (_params, handle) => {
+    codeLensRefresh.fire(handle.root);
   },
   [APPLY_EDIT]: (params, handle) =>
     answerApplyEdit(params, applyDepsFor(handle), (message) =>

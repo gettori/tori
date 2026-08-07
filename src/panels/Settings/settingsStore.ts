@@ -85,6 +85,12 @@ export type EditorDefaults = {
    *  imports nothing references yet, which is exactly the state a file is in
    *  halfway through being written. (Wave 7) */
   organizeImportsOnSave: boolean;
+  /** Draw the language server's lenses (reference counts, implementations)
+   *  above the lines they describe. Off by default, and the only editor setting
+   *  whose cost is paid whether or not anybody reads it: a lens is not an answer
+   *  to a question the user asked, so it is a request per file per edit that
+   *  nothing else would have made. (Wave 7) */
+  codeLens: boolean;
   vimMode: boolean;
   /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
   indentGuides: boolean;
@@ -213,6 +219,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editorDefaults: {
     formatOnSave: false,
     organizeImportsOnSave: false,
+    codeLens: false,
     vimMode: false,
     indentGuides: true,
     softWrap: false,
