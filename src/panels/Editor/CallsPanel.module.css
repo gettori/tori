@@ -1,0 +1,104 @@
+.callsPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+  background: var(--canvas-card);
+  font-size: var(--sway-text-lg);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.toggle {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: calc(4px * var(--ui-scale));
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--sway-text-sm);
+}
+.toggle:hover {
+  background: var(--neutral-hover);
+}
+.toggleOn {
+  background: var(--neutral-subtle);
+  color: var(--fg-default);
+}
+
+.rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.empty {
+  padding: calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+/* padding-left is set inline, per row, from the node's depth. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding-top: calc(3px * var(--ui-scale));
+  padding-bottom: calc(3px * var(--ui-scale));
+  padding-right: calc(8px * var(--ui-scale));
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--neutral-hover);
+}
+
+/* The disclosure column is always drawn, even for a row that cannot expand, so
+   names line up down the tree instead of stepping in and out by a chevron. */
+.twisty {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.kind {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+}
+
+.where {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+/* A symbol that already appears above it in this branch. Marked rather than
+   hidden: the edge is real and worth seeing, it just has nowhere further to go. */
+.cycle {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+}

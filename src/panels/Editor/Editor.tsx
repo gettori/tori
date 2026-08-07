@@ -23,6 +23,7 @@ import ReviewPanel from "./ReviewPanel";
 import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
+import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
@@ -30,6 +31,7 @@ import { isMarkdownPath } from "../../utils/liveBuffer";
 import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
+import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
@@ -64,6 +66,8 @@ import {
   ListChecks,
   Play,
   ListTree,
+  // A call graph, not a telephone: `PhoneCall` reads as telephony.
+  Network,
   // Aliased: `Bookmark` here is the glyph, and the type of the same name is the
   // thing it stands for.
   Bookmark as BookmarkGlyph,
@@ -209,6 +213,7 @@ type RightMode =
   | "pulls"
   | "problems"
   | "outline"
+  | "calls"
   | "bookmarks"
   | "shared"
   | "docs"
@@ -223,6 +228,7 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
   outline: { mode: "outline", label: "Outline", icon: ListTree },
+  calls: { mode: "calls", label: "Calls", icon: Network },
   bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
   todos: { mode: "todos", label: "TODOs", icon: ListChecks },
@@ -347,6 +353,7 @@ export default function Editor(props: {
     "pulls",
     "problems",
     "outline",
+    "calls",
     "bookmarks",
     "search",
     "todos",
@@ -373,6 +380,14 @@ export default function Editor(props: {
       // an always-present empty panel reads as "this file has no symbols".
       case "outline":
         return symbolsSupported(activeId());
+      // Same three-state rule, and the middle state is the point: hidden when
+      // the server has no `callHierarchyProvider`, shown when it has one even
+      // if the caret is not on anything callable - because "this language
+      // cannot do this" and "you are not pointing at a function" are different
+      // things to be told, and hiding on empty says the first when it means the
+      // second.
+      case "calls":
+        return callsSupported(activeId());
       // Bookmarks is deliberately *not* gated on having any, unlike Problems and
       // Outline above. A mark is made by clicking a gutter column that is empty
       // until you do, and this panel's empty state is the only place that says
@@ -742,6 +757,9 @@ export default function Editor(props: {
     // And Outline disappears when the active tab is a file no server has
     // symbols for, which switching tabs is enough to cause.
     if (rightMode() === "outline" && !symbolsSupported(activeId())) setRightMode("files");
+    // And Calls goes the same way when the active tab's server has no call
+    // hierarchy, which switching tabs is enough to cause.
+    if (rightMode() === "calls" && !callsSupported(activeId())) setRightMode("files");
   });
 
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
@@ -770,6 +788,7 @@ export default function Editor(props: {
       // than "the servers are gone" has to depend on.
       clearDiagnostics();
       clearSymbols();
+      clearCallRoots();
       // Stop every server from the previous project. Servers are no longer
       // started here: a session is per (server, root), and which roots a
       // project needs is only known once files are opened, so `CodeEditor`
@@ -1707,6 +1726,7 @@ export default function Editor(props: {
               }
               openPaths={allOpenPaths()}
               projectRoot={root()}
+              callsVisible={rightMode() === "calls"}
               goto={gotoTarget()}
               onDirty={handleDirty}
               onCursorJump={(path, line) => recordJump({ path, line })}
@@ -1843,6 +1863,9 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "outline"}>
             <OutlinePanel path={activeId()} />
+          </Match>
+          <Match when={rightMode() === "calls"}>
+            <CallsPanel path={activeId()} />
           </Match>
           <Match when={rightMode() === "bookmarks"}>
             <BookmarksPanel
