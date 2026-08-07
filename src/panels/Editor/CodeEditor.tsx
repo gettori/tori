@@ -56,6 +56,7 @@ import {
 import type { LspRange } from "./lspDiagnosticContext";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
+import { callFetcher, noteCallSupport, rootCallHierarchy } from "./lspCallHierarchy";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
@@ -64,6 +65,7 @@ import { editsByUri } from "./workspaceEdit";
 import { uriToPath } from "./swayWorkspace";
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
+import { clearCallRoots, dropCallRoots, setCallFetcher } from "../../utils/callHierarchy";
 import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
@@ -260,6 +262,10 @@ const closedBuffers = new Map<string, { savedText: string; json: ReturnType<Edit
  *  state of closed tabs. Dirty transitions are pushed up via `props.onDirty`. */
 export default function CodeEditor(props: {
   activePath: string | null;
+  /** Whether the Calls panel is on screen. Rooting a call hierarchy is a
+   *  request per caret settle, and it is worth exactly nothing while nobody is
+   *  looking at the answer; the tab's *visibility* costs no request at all. */
+  callsVisible?: boolean;
   openPaths: string[];
   projectRoot: string | null;
   goto: { path: string; line: number; col?: number; nonce: number } | null;
@@ -1042,7 +1048,10 @@ export default function CodeEditor(props: {
     // What moves the bulb. Both triggers matter: typing changes what the server
     // would say, and moving the caret changes which line is being asked about.
     EditorView.updateListener.of((u) => {
-      if (u.selectionSet || u.docChanged) refreshCodeActionsSoon();
+      if (u.selectionSet || u.docChanged) {
+        refreshCodeActionsSoon();
+        refreshCallsSoon();
+      }
     }),
     // Falls through to an ordinary click for a file with no server, so it costs
     // nothing in a buffer the LSP knows nothing about.
@@ -1265,6 +1274,40 @@ export default function CodeEditor(props: {
   // about whether the answer is current.
   const refreshSymbolsSoon = debounce(() => void refreshSymbols(), 400);
 
+  // What the Calls tab is rooted at: the symbol under the caret, in the file on
+  // screen. Unlike the outline this follows the *selection*, because a call
+  // hierarchy is about one symbol rather than about a file.
+  //
+  // The ordering guard and the publish both live in `lspCallHierarchy`; this
+  // owns only which position is being asked about and whether the file is still
+  // open by the time the answer lands. A server with no `callHierarchyProvider`
+  // costs no request at all - the publish is `null` and the tab stays hidden.
+  async function refreshCalls() {
+    const path = shown;
+    if (!path || !view) return;
+    const head = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(head);
+    await rootCallHierarchy(
+      path,
+      // LSP counts lines from 0 and CodeMirror from 1.
+      { line: line.number - 1, character: head - line.from },
+      () => buffers.has(path),
+    );
+  }
+
+  // Same 500 ms as the code-action refresh beside it, and for the same reason:
+  // this one fires on arrow keys too, so a walk through a file must cost one
+  // request rather than one per line.
+  //
+  // Gated on the panel being open, which is the difference between one request
+  // per caret settle in every buffer and one only where the answer is on
+  // screen. The tab still appears and disappears correctly without this
+  // running at all: that comes from `noteCallSupport`, which reads a capability
+  // the server already sent.
+  const refreshCallsSoon = debounce(() => {
+    if (props.callsVisible) void refreshCalls();
+  }, 500);
+
   // What the bulb is drawn from: the caret's own line, because that is the only
   // line anything has been asked about. Asking per fixable line would be a
   // `textDocument/codeAction` per line, and tsserver answers one of those with
@@ -1429,10 +1472,16 @@ export default function CodeEditor(props: {
   // clients. Registered in the component body so a palette opened during the
   // first swap already finds it.
   const offSymbolSearch = setWorkspaceSymbolSearch(requestWorkspaceSymbols);
+  // The panel expands a level at a time and cannot hold a client of its own.
+  const offCallFetcher = setCallFetcher(callFetcher);
 
   async function swapTo(path: string | null) {
     if (!view) return;
     const token = ++swapToken;
+    // Whether the Calls tab exists for the file being swapped to. Free: it
+    // reads a capability the server already sent at `initialize`. The roots
+    // themselves are a request, and only happen while the panel is open.
+    if (path) void noteCallSupport(path, () => buffers.has(path));
     // An action is an offer about a range in a document, and neither survives
     // the file leaving the screen. Dropped before the swap rather than after,
     // so nothing can pick from a menu describing the tab being left.
@@ -1579,6 +1628,7 @@ export default function CodeEditor(props: {
       // symbols leave the outline the same way.
       dropDiagnostics(key);
       dropSymbols(key);
+      dropCallRoots(key);
       // And the preview's copy of it, on the same rule and for the same
       // reason: the store is bounded by what is open, not by what has ever
       // been opened.
@@ -1884,6 +1934,17 @@ export default function CodeEditor(props: {
     ),
   );
   createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
+  // Opening the panel roots it at once; waiting for the next caret move would
+  // show an empty panel over a caret that is already on a function.
+  createEffect(
+    on(
+      () => props.callsVisible,
+      (visible) => {
+        if (visible) void refreshCalls();
+      },
+      { defer: true },
+    ),
+  );
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
   // Toggling blame reconfigures the compartment, which takes the field, the
   // gutter and the inline widget with it in one go, so switching off leaves
@@ -1983,6 +2044,7 @@ export default function CodeEditor(props: {
     for (const off of offLspCommands) off();
     offBufferAccess();
     offSymbolSearch();
+    offCallFetcher();
     offSemanticRefresh();
     // Nothing is shown any more, which is also what stops both debounces: their
     // timers are not cancellable, so a doc change 400 ms before teardown fires
@@ -1993,6 +2055,7 @@ export default function CodeEditor(props: {
     // No editor means no client, so every tree in the store describes a server
     // that is gone. Same rule as `clearEditorState`.
     clearSymbols();
+    clearCallRoots();
     clearCodeActions();
     // No editor, no server answering for anything, so the palette must stop
     // offering three commands with nothing behind them.
