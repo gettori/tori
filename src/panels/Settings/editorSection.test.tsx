@@ -32,8 +32,12 @@ beforeEach(() => {
  *  `organizeImportsOnSave` joined them in wave 7 rather than going in the
  *  comfort list, for the reason the list is separate at all: it rewrites the
  *  file on the way to disk, which is a paragraph's worth of consequence, not a
- *  line's worth of pixels. */
-const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "organizeImportsOnSave", "vimMode"];
+ *  line's worth of pixels.
+ *
+ *  `codeLens` joined them for a related but distinct reason: it is the one
+ *  editor setting whose cost is paid whether or not anybody looks at what it
+ *  draws, so the row has to be able to say that. */
+const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "organizeImportsOnSave", "codeLens", "vimMode"];
 
 /** Every comfort key of `EditorDefaults` that is a switch, read off the defaults
  *  so a key added to the type shows up here rather than as a silent gap on

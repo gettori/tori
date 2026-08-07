@@ -9,6 +9,7 @@ import type { EditorDefaults } from "./settingsStore";
 const DEFAULTS: EditorDefaults = {
   formatOnSave: false,
   organizeImportsOnSave: false,
+  codeLens: false,
   vimMode: false,
   indentGuides: true,
   softWrap: false,

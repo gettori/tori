@@ -98,6 +98,7 @@ vi.mock("./lspClient", async () => {
     notifyLspFileChanged: () => {},
     onLspChange: () => () => {},
     setSemanticRefreshListener: () => () => {},
+    setCodeLensRefreshListener: () => () => {},
     stopAllLsp: () => Promise.resolve(),
   };
 });

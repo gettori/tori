@@ -29,3 +29,39 @@ jsx = "javascriptreact"
 kind = "bundled_node"
 entry = "resources/lsp/node_modules/typescript-language-server/lib/cli.mjs"
 args = ["--stdio"]
+
+# Code lens, off in the server until it is told otherwise (wave 7, #68).
+#
+# Without this table `textDocument/codeLens` answers an empty array: the server
+# advertises `codeLensProvider` unconditionally, but both providers check the
+# *workspace configuration* before producing anything (`cli.mjs:21364`), and a
+# preference nobody sent reads as off. Verified both ways against the bundled
+# 4.4.1: no table, 0 lenses; this table, 3 lenses on a file with three exported
+# symbols. So Sway's own `codeLens` setting would have drawn nothing for
+# TypeScript without it.
+#
+# Read out of the *workspace* configuration and not out of
+# `initialization_options`, which is what it looks like it should be: the
+# provider calls `getWorkspacePreferencesForFile` (`cli.mjs:21129`), which
+# indexes this table by `typescript`/`javascript`. `initialization_options` also
+# happens to reach no server at all today (wave 7 Phase 5), so the mechanism
+# that does work is the one used here.
+#
+# Enabling it here costs nothing while Sway's setting is off, because the
+# expense is in the request and Sway does not make one: `provideCodeLenses`
+# runs per request, and the reference counting is in `codeLens/resolve`.
+#
+# `showOnAllFunctions` is deliberately not set. On it, every inner helper gets a
+# lens, most of them reading "0 references"; the default keeps them to exported
+# and class members, which is what the counts are worth reading for.
+[settings.typescript.referencesCodeLens]
+enabled = true
+
+[settings.typescript.implementationsCodeLens]
+enabled = true
+
+[settings.javascript.referencesCodeLens]
+enabled = true
+
+[settings.javascript.implementationsCodeLens]
+enabled = true

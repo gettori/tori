@@ -129,6 +129,13 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs. Off by default: it removes imports nothing references yet, which is what a file looks like halfway through being written.",
   },
   {
+    id: "code-lens",
+    section: "editor",
+    label: "Code lens",
+    toggles: "codeLens",
+    hint: "Draws the language server's reference and implementation counts above the lines they describe. Off by default: unlike every other language feature it asks a question nobody asked it, so it costs a round trip per file per edit whether or not you read the answer.",
+  },
+  {
     id: "vim-mode",
     section: "editor",
     label: "Vim keybindings",

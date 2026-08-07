@@ -27,6 +27,7 @@ import {
   lspTargetFor,
   notifyLspFileChanged,
   onLspChange,
+  setCodeLensRefreshListener,
   setSemanticRefreshListener,
 } from "./lspClient";
 import { setBufferAccess } from "./liveBuffers";
@@ -57,6 +58,8 @@ import type { LspRange } from "./lspDiagnosticContext";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
 import { callFetcher, noteCallSupport, rootCallHierarchy } from "./lspCallHierarchy";
+import { refreshCodeLenses, type CodeLensDeps } from "./lspCodeLens";
+import { codeLensExtension, setCodeLenses } from "./codeLensWidget";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
@@ -224,6 +227,7 @@ type Buffer = {
   lsp: Compartment;
   completion: Compartment;
   eol: Compartment;
+  codeLens: Compartment;
   pendingExternal?: string;
   pendingKind?: ConflictKind;
 };
@@ -235,9 +239,9 @@ type Buffer = {
 type ConflictKind = "changed" | "deleted";
 type Conflict = { path: string; external: string; kind: ConflictKind };
 
-/** The three per-buffer compartments, together because they are always built,
- *  passed and stored as a set. */
-type BufferConf = { lsp: Compartment; completion: Compartment; eol: Compartment };
+/** The per-buffer compartments, together because they are always built, passed
+ *  and stored as a set. */
+type BufferConf = { lsp: Compartment; completion: Compartment; eol: Compartment; codeLens: Compartment };
 
 // What `toJSON`/`fromJSON` carry beyond the document and the selection. The
 // undo history is the whole point of keeping a closed buffer at all; without
@@ -1107,6 +1111,14 @@ export default function CodeEditor(props: {
     });
   }
 
+  /** Whether this buffer draws code lenses. One preference rather than a
+   *  per-file answer, so it takes no path: a server with no `codeLensProvider`
+   *  simply never paints any, which costs an empty field rather than a branch
+   *  here. */
+  function currentCodeLens(): Extension {
+    return codeLensExtension(editorDefaults().codeLens ?? false);
+  }
+
   /**
    * Everything one buffer's state is configured with.
    *
@@ -1128,6 +1140,7 @@ export default function CodeEditor(props: {
       conf.eol.of(EditorState.lineSeparator.of(disk.eol)),
       conf.lsp.of(lspPluginFor(path)),
       conf.completion.of(currentFallbackCompletion(path)),
+      conf.codeLens.of(currentCodeLens()),
       EditorView.updateListener.of((u) => {
         // Diagnostics arrive as a transaction effect from the LSP client, so
         // republish only when one actually lands rather than on every keypress.
@@ -1168,6 +1181,10 @@ export default function CodeEditor(props: {
           // eventually makes those colours right again. A new parameter is a
           // parameter only once the server has parsed it.
           refreshSemanticSoon();
+          // And the lenses, which the field maps through the change so they
+          // stay on screen, but which only the server can put back on the right
+          // line once what was typed has moved the functions below it.
+          refreshLensesSoon();
         }
       }),
     ];
@@ -1189,6 +1206,23 @@ export default function CodeEditor(props: {
     );
   }
 
+  /** Turn code lenses on or off in every buffer, background ones included.
+   *
+   *  Through the compartments rather than through `prefsConf` beside them,
+   *  which reaches only the buffer on screen: switching the setting off and
+   *  then swapping to a tab that was in the background would otherwise show
+   *  that tab still wearing the lenses it was built with. Reconfiguring away
+   *  the extension takes the field and its decorations with it, so nothing has
+   *  to be cleared. */
+  function syncCodeLens() {
+    reconfigureBuffers(buffers, shown, (buf) => buf.codeLens, currentCodeLens, (effects) =>
+      view?.dispatch({ effects }),
+    );
+    // Switching it on has nothing to draw until somebody asks: the field starts
+    // empty, and without this the lenses would appear only at the next edit.
+    refreshLenses();
+  }
+
   // The language client moved: came up, went away, or was replaced by a project
   // switch. Every open buffer re-asks `lspPluginFor` what it should hold, so a
   // file opened before the server was ready attaches in place, and one left over
@@ -1207,6 +1241,9 @@ export default function CodeEditor(props: {
     // Same reasoning for colour: a file that opened before its server was up
     // has lexical highlighting only, and this is the moment that changes.
     refreshSemantic();
+    // And for the lenses, which have the same "nothing at all until there is a
+    // server" state and no local trigger that would end it.
+    refreshLenses();
     // And the same for the whole-file commands: which of them the palette
     // should list is the server's answer, so it is unknown until there is one.
     publishSourceActions();
@@ -1453,6 +1490,43 @@ export default function CodeEditor(props: {
 
   const refreshSemanticSoon = debounce(refreshSemantic, 400);
 
+  // The same arrangement for the lenses, and the same reason for injecting it:
+  // which reply is still current, and whether the document moved under it, are
+  // decisions that belong in `lspCodeLens` where they can be tested without a
+  // view. All this supplies is the buffer and the dispatch.
+  const codeLensDeps: CodeLensDeps = {
+    current: (path) => (path === shown && view ? { id: view.state.doc } : null),
+    paint: (_path, lenses) => view?.dispatch({ effects: setCodeLenses.of(lenses) }),
+  };
+
+  /** Ask for the shown file's lenses, unless the setting is off.
+   *
+   *  The gate is here rather than in `lspCodeLens` because it is the only thing
+   *  standing between a default-off feature and a `textDocument/codeLens` for
+   *  every file every user opens. Nothing else about the request is conditional:
+   *  a server with no provider answers null and costs no round trip. */
+  function refreshLenses() {
+    const path = shown;
+    if (!path || !editorDefaults().codeLens) return;
+    refreshCodeLenses(codeLensDeps, path).catch((e) => console.error("code lens failed", path, e));
+  }
+
+  // 400 ms, the semantic refresh's interval rather than the code action's 500:
+  // this fires on typing only, not on caret movement, so a walk through a file
+  // costs nothing at all.
+  const refreshLensesSoon = debounce(refreshLenses, 400);
+
+  // A server saying its own counts are stale, which is the request
+  // `workspace.codeLens.refreshSupport` invited. Almost always about a
+  // *different* file than the one on screen: adding a call in `main.ts` changes
+  // the number drawn above a function in `types.ts` without touching it.
+  //
+  // Root-filtered for `setSemanticRefreshListener`'s reason: in a monorepo,
+  // `packages/a`'s server speaks only for the files it answers about.
+  const offCodeLensRefresh = setCodeLensRefreshListener((root) => {
+    if (shown && lspTargetFor(shown)?.root === root) refreshLensesSoon();
+  });
+
   // A server saying its own answers are stale. The trigger is usually a
   // *different* file: semantic colour is a property of the resolved program, so
   // editing a type in one file changes what a name in this one means without
@@ -1514,6 +1588,7 @@ export default function CodeEditor(props: {
         lsp: new Compartment(),
         completion: new Compartment(),
         eol: new Compartment(),
+        codeLens: new Compartment(),
       };
       const extensions = bufferExtensions(path, disk, lang, conf);
       // A tab reopened onto an unchanged file comes back with its undo history,
@@ -1604,6 +1679,7 @@ export default function CodeEditor(props: {
     applyGoto();
     void refreshSymbols();
     refreshSemantic();
+    refreshLenses();
     publishSourceActions();
   }
 
@@ -1971,6 +2047,10 @@ export default function CodeEditor(props: {
   createEffect(
     on(() => editorDefaults().wordCompletion, () => syncFallbackCompletion(), { defer: true }),
   );
+  // Its own effect for the same reason, and one more: switching this on is what
+  // asks the server for the first time, so it has to be told apart from a
+  // whitespace toggle rather than folded into the list above.
+  createEffect(on(() => editorDefaults().codeLens, () => syncCodeLens(), { defer: true }));
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not
   // a rebuild.
@@ -2046,6 +2126,7 @@ export default function CodeEditor(props: {
     offSymbolSearch();
     offCallFetcher();
     offSemanticRefresh();
+    offCodeLensRefresh();
     // Nothing is shown any more, which is also what stops both debounces: their
     // timers are not cancellable, so a doc change 400 ms before teardown fires
     // after the clear below and would publish one entry straight back into a

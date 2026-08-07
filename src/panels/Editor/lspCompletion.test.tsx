@@ -236,6 +236,7 @@ describe("the client's extension list", () => {
     const { diagnosticContextCapture } = await import("./lspDiagnosticContext");
     const { configurationClientCapabilities } = await import("./lspConfiguration");
     const { callHierarchyClientCapabilities } = await import("../../utils/callHierarchy");
+    const { codeLensClientCapabilities } = await import("./lspCodeLens");
 
     const capabilitiesFor = (extensions: unknown[]) => {
       sent = [];
@@ -256,6 +257,7 @@ describe("the client's extension list", () => {
       // delta rather than drifting into a record of everything since.
       configurationClientCapabilities,
       callHierarchyClientCapabilities,
+      codeLensClientCapabilities,
     ]);
     const after = capabilitiesFor(clientExtensions());
 
@@ -289,6 +291,14 @@ describe("the client's extension list", () => {
     // a client that never asked, and the Calls tab is gated on that provider -
     // so dropping this block hides the tab against a *correct* server.
     expect(td.callHierarchy).toBeTruthy();
+    // Wave 7 Phase 9. Both halves, and the second is a promise rather than a
+    // preference: `refreshSupport` tells the server it may push
+    // `workspace/codeLens/refresh` instead of leaving Sway to guess when a
+    // reference count went stale, and `lspClient`'s router is what makes that
+    // true. Declaring it and answering `-32601` would be worse than not
+    // declaring it, since a conformant server stops asking.
+    expect(td.codeLens).toBeTruthy();
+    expect((ws.codeLens as { refreshSupport?: unknown }).refreshSupport).toBe(true);
     expect(ws.applyEdit).toBe(true);
   });
 });

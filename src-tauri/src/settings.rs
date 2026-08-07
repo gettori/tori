@@ -286,6 +286,12 @@ pub struct EditorDefaults {
     /// through being written.
     #[serde(default)]
     pub organize_imports_on_save: bool,
+    /// Draw the language server's lenses (reference counts, implementations)
+    /// above the lines they describe. Off because it is the one language
+    /// feature nobody asks for: it costs a round trip per file per edit
+    /// whether or not anyone reads the answer.
+    #[serde(default)]
+    pub code_lens: bool,
     #[serde(default)]
     pub vim_mode: bool,
     #[serde(default = "default_true")]
@@ -331,6 +337,7 @@ impl Default for EditorDefaults {
         Self {
             format_on_save: false,
             organize_imports_on_save: false,
+            code_lens: false,
             vim_mode: false,
             indent_guides: true,
             soft_wrap: false,
@@ -667,6 +674,32 @@ mod tests {
         // Written under its camelCase name, which is what the frontend sends.
         let raw = std::fs::read_to_string(&p).unwrap();
         assert!(raw.contains("organizeImportsOnSave"), "serialized under the name the frontend uses");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn code_lens_survives_a_round_trip() {
+        // Its own test rather than trust in the one above: this is the fourth
+        // key added to `EditorDefaults` since that failure mode was found, and
+        // the whole point of the wave-7 four-homes rule is that each home is
+        // checked rather than assumed to have been remembered.
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert!(
+            !loaded.editor_defaults.code_lens,
+            "a file written before the field existed reads as off, which is also the shipped default"
+        );
+
+        let mut s = loaded;
+        s.editor_defaults.code_lens = true;
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert!(back.editor_defaults.code_lens, "and the value written comes back");
+        assert_eq!(back, s);
+
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("codeLens"), "serialized under the name the frontend uses");
         let _ = std::fs::remove_file(&p);
     }
 

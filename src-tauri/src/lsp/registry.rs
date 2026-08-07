@@ -797,15 +797,48 @@ program = "demo-server"
 
     #[test]
     fn a_config_with_no_settings_behaves_exactly_as_before() {
-        // The whole point of the table being optional. Neither existing bundled
-        // config gains anything by its addition.
-        for (text, source) in
-            [(BUILTIN_TYPESCRIPT, "bundled:typescript"), (BUILTIN_RUST, "bundled:rust")]
-        {
-            let server = load_server_str(text, source).unwrap();
-            assert!(server.settings.is_none(), "{source} should carry no settings");
-            assert!(!server.schema_associations, "{source} should not ask for associations");
+        // The whole point of the table being optional. rust-analyzer carries
+        // none and is unaffected by the feature's existence; the TypeScript
+        // config gained one in wave 7 (see below), which is why it is no longer
+        // one of the two named here.
+        let server = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
+        assert!(server.settings.is_none(), "rust should carry no settings");
+        assert!(!server.schema_associations, "rust should not ask for associations");
+    }
+
+    #[test]
+    fn the_typescript_config_turns_the_servers_own_code_lens_on() {
+        // Sway's `codeLens` setting decides whether it *asks*;
+        // `typescript-language-server` decides whether it has anything to
+        // answer, and its answer is an empty array until a workspace
+        // configuration says otherwise (`cli.mjs:21364`). Verified against the
+        // bundled 4.4.1: without this table, 0 lenses on a file with three
+        // exported symbols; with it, 3.
+        //
+        // Asserted here rather than left to the TOML, because the failure is
+        // silent in both directions: the setting toggles, the request goes out,
+        // the server answers `[]`, and nothing anywhere says why.
+        let server = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let settings = server.settings.expect("typescript should carry a settings table");
+        for language in ["typescript", "javascript"] {
+            assert_eq!(
+                settings[language]["referencesCodeLens"]["enabled"],
+                serde_json::json!(true),
+                "{language} reference lenses"
+            );
+            assert_eq!(
+                settings[language]["implementationsCodeLens"]["enabled"],
+                serde_json::json!(true),
+                "{language} implementation lenses"
+            );
+            // Deliberately absent: on, every inner helper gets a lens and most
+            // of them read "0 references".
+            assert!(
+                settings[language]["referencesCodeLens"]["showOnAllFunctions"].is_null(),
+                "{language} should keep lenses to exported and class members"
+            );
         }
+        assert!(!server.schema_associations, "typescript should not ask for associations");
     }
 
     #[test]
