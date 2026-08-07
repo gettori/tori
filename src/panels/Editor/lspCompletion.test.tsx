@@ -235,6 +235,7 @@ describe("the client's extension list", () => {
     const { codeActionClientCapabilities } = await import("./lspCodeActions");
     const { diagnosticContextCapture } = await import("./lspDiagnosticContext");
     const { configurationClientCapabilities } = await import("./lspConfiguration");
+    const { callHierarchyClientCapabilities } = await import("../../utils/callHierarchy");
 
     const capabilitiesFor = (extensions: unknown[]) => {
       sent = [];
@@ -254,6 +255,7 @@ describe("the client's extension list", () => {
       // declares", so that what this test measures stays the *completion*
       // delta rather than drifting into a record of everything since.
       configurationClientCapabilities,
+      callHierarchyClientCapabilities,
     ]);
     const after = capabilitiesFor(clientExtensions());
 
@@ -283,6 +285,10 @@ describe("the client's extension list", () => {
     expect(td.semanticTokens).toBeTruthy();
     expect(td.codeAction).toBeTruthy();
     expect(td.publishDiagnostics).toBeTruthy(); // serverDiagnostics(), still top-level
+    // Wave 7 Phase 8. A conformant server offers no `callHierarchyProvider` to
+    // a client that never asked, and the Calls tab is gated on that provider -
+    // so dropping this block hides the tab against a *correct* server.
+    expect(td.callHierarchy).toBeTruthy();
     expect(ws.applyEdit).toBe(true);
   });
 });

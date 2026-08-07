@@ -30,6 +30,7 @@ import {
   type LspServer,
 } from "../../utils/lspServers";
 import { SWAY_SETTINGS_FILES } from "../../utils/swaySettingsFiles";
+import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
@@ -383,6 +384,7 @@ export function clientExtensions() {
     serverDiagnostics(),
     symbolClientCapabilities,
     semanticTokensClientCapabilities,
+    callHierarchyClientCapabilities,
     workspaceEditClientCapabilities,
     codeActionClientCapabilities,
     completionClientCapabilities,
