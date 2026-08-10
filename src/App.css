@@ -487,6 +487,41 @@ html {
   color: var(--fg-subtle);
 }
 
+/* Breakpoints. Emitted as literal class strings by
+   src/panels/Editor/breakpointGutter.ts, so global for the bookmark column's
+   reason.
+
+   Red because that is what a breakpoint has been in every debugger anyone has
+   used, and the shape carries the state so the colour is not doing the work
+   alone: filled once the adapter bound it, hollow until then. The third state,
+   a breakpoint waiting on a save, drops to the subtle foreground instead: it is
+   not going to stop anything yet, and saying so in the same red as one that
+   will would make the column mean two things at once. */
+.cm-breakpoint-gutter {
+  width: calc(12px * var(--ui-scale));
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--sway-text-sm);
+  line-height: 1;
+  text-align: center;
+}
+
+.cm-breakpoint-gutter .cm-gutterElement.cm-breakpoint {
+  color: var(--scale-red);
+}
+
+.cm-breakpoint-gutter .cm-gutterElement.cm-breakpoint-pending {
+  color: var(--fg-subtle);
+}
+
+.cm-breakpoint-gutter .cm-gutterElement.cm-breakpoint-hint {
+  color: transparent;
+}
+
+.cm-breakpoint-gutter:hover .cm-gutterElement.cm-breakpoint-hint {
+  color: var(--fg-subtle);
+}
+
 /* The code-action lightbulb. Unlike the bookmark column beside it, this one
    holds no width of its own: the bulb appears and disappears as the caret
    moves, and a permanently reserved column would be a stripe of empty space in

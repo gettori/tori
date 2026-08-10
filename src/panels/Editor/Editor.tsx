@@ -185,6 +185,14 @@ import {
   type Bookmark,
   type BookmarkStore,
 } from "../../utils/bookmarks";
+import {
+  breakpointMarks,
+  breakpointsMoved,
+  mapBreakpointFiles,
+  noteBufferClosed,
+  noteBufferDirty,
+  toggleBreakpointAt,
+} from "../../utils/debugBreakpoints";
 import { rememberClosedTab, sweepClosed, takeClosedTab, type ClosedStore } from "./reopenStack";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
@@ -486,6 +494,17 @@ export default function Editor(props: {
     });
   }
 
+  /** Set or clear a breakpoint, from a click on its gutter. */
+  function toggleBreak(path: string, line: number) {
+    toggleBreakpointAt(ws(), path, line);
+  }
+
+  /** An edit moved the breakpoints in an open buffer. Same contract as
+   *  `marksMoved` above, including the lines past the buffer's end. */
+  function breaksMoved(path: string, lines: number[], docLines: number) {
+    breakpointsMoved(ws(), path, lines, docLines);
+  }
+
   /** Name a mark from the panel, or clear the name with an empty answer. The
    *  gutter has one gesture and it is already spent on the toggle; naming is a
    *  thing you do to a list, so it lives where the list is. */
@@ -510,6 +529,13 @@ export default function Editor(props: {
   createEffect(() => saveBookmarks(bookmarks()));
   const marksHere = () => bookmarksFor(bookmarks(), ws(), activeFileTab()?.path ?? "");
   const bookmarkList = () => bookmarkRows(bookmarks(), ws());
+
+  // The breakpoints in the file on screen. Unlike the bookmarks above, the store
+  // is not held here: `debugBreakpoints.ts` owns it, because a session
+  // configuring itself asks for the whole workspace's set from outside any
+  // component, and a signal that lived in this one would be unreachable from
+  // there.
+  const breaksHere = () => breakpointMarks(ws(), activeFileTab()?.path ?? "");
 
   // How much you work in each file, for the pickers' empty box. Read once at
   // start and written back on every change; the pickers read the same storage
@@ -1125,6 +1151,10 @@ export default function Editor(props: {
       delete next[tab.path];
       return next;
     });
+    // The buffer is gone, so its breakpoints stop waiting on a save that can no
+    // longer come; left pending they would be left out of every future run with
+    // nothing on screen saying so.
+    noteBufferClosed(ws(), tab.path);
     setPreviewOn((prev) => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
@@ -1316,6 +1346,7 @@ export default function Editor(props: {
       delete next[path];
       return next;
     });
+    noteBufferClosed(ws(), path);
     if (activeId() === path) {
       setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
     }
@@ -1327,6 +1358,10 @@ export default function Editor(props: {
     // was typed into it rather than by how often it was worked in.
     if (isDirty && !dirty()[path]) noteTouch(path, "edit");
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
+    // A breakpoint in an unsaved buffer names a line the adapter has never seen,
+    // so it waits. The clean edge is the moment it can be armed, and it arrives
+    // after the on-save pipeline has finished moving lines around.
+    noteBufferDirty(ws(), path, isDirty);
   }
 
   // A space is being deleted: force-close every open tab rooted under it, without
@@ -1340,6 +1375,10 @@ export default function Editor(props: {
     setJumpsByWs((s) => mapPathsIn(s, (p) => (isUnderPath(p, path) ? null : p)));
     setFrecency((s) => mapFrecencyPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
     setBookmarkStore((s) => mapBookmarkPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
+    // Ahead of the tab sweep for the bookmarks' reason and one of its own: a
+    // breakpoint on a trashed file has no gutter left to click, so nothing could
+    // ever remove it and it would go out in every future run's `setBreakpoints`.
+    mapBreakpointFiles((p) => (isUnderPath(p, path) ? null : p));
     setClosedByWs((s) => sweepClosed(s, (p) => (isUnderPath(p, path) ? null : p)));
     const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
     if (!next.removed.length) return;
@@ -1367,6 +1406,7 @@ export default function Editor(props: {
     setJumpsByWs((s) => mapPathsIn(s, (p) => repoint(p, from, to) ?? p));
     setFrecency((s) => mapFrecencyPaths(s, (p) => repoint(p, from, to) ?? p));
     setBookmarkStore((s) => mapBookmarkPaths(s, (p) => repoint(p, from, to) ?? p));
+    mapBreakpointFiles((p) => repoint(p, from, to) ?? p);
     setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
     const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
     if (!next.moved.length) return;
@@ -1870,6 +1910,9 @@ export default function Editor(props: {
               bookmarks={marksHere()}
               onToggleBookmark={toggleMark}
               onBookmarksMoved={marksMoved}
+              breakpoints={breaksHere()}
+              onToggleBreakpoint={toggleBreak}
+              onBreakpointsMoved={breaksMoved}
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}
