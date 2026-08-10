@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.skarif.sway",
   "build": {
-    "beforeDevCommand": "pnpm lsp:install && pnpm dev",
+    "beforeDevCommand": "pnpm lsp:install && pnpm dap:install && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm lsp:install && pnpm build",
+    "beforeBuildCommand": "pnpm lsp:install && pnpm dap:install && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -33,7 +33,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["resources/lsp/**/*", "resources/schemas/**/*"],
+    "resources": ["resources/lsp/**/*", "resources/schemas/**/*", "resources/dap/**/*"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

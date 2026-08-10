@@ -7,6 +7,10 @@ node_modules/
 dist/
 .vite/
 
+# Debug adapter, fetched by `pnpm dap:install` from the pinned manifest beside it
+/src-tauri/resources/dap/js-debug/
+/src-tauri/resources/dap/.installed
+
 # GRIMOIRE local working files
 grimoire/
 

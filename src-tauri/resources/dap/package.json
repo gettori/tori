@@ -1,0 +1,6 @@
+{
+  "name": "sway-dap",
+  "private": true,
+  "type": "commonjs",
+  "description": "Module-system boundary for the bundled debug adapter. js-debug ships a CommonJS bundle with no package.json of its own, so without this file node walks up to Sway's root package.json, finds \"type\": \"module\", loads dapDebugServer.js as ESM and dies on its first require(). Nothing installs from here; see manifest.json and scripts/install-dap.mjs."
+}

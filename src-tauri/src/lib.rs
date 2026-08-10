@@ -8,6 +8,7 @@ mod chat;
 mod checkpoint;
 mod config;
 mod conflict;
+mod dap;
 mod env;
 pub mod forge;
 mod format;
@@ -39,6 +40,7 @@ use chat::host::ChatState;
 use config::{ConfigWatch, ProjectIndex, RootWatch};
 use fs::FsWatch;
 use settings::SettingsWatch;
+use dap::DapState;
 use lsp::LspState;
 use presence::TrayState;
 use pty::PtyState;
@@ -179,6 +181,7 @@ pub fn run() {
         .manage(ProjectIndex::default())
         .manage(RootWatch::default())
         .manage(FsWatch::default())
+        .manage(DapState::default())
         .manage(LspState::default())
         .manage(SessionIndex::default())
         .manage(SessionWatch::default())
@@ -309,6 +312,12 @@ pub fn run() {
             lsp::lsp_schema_associations,
             lsp::lsp_schema_dir,
             lsp::lsp_health,
+            dap::dap_start,
+            dap::dap_connect,
+            dap::dap_send,
+            dap::dap_stop,
+            dap::dap_stop_all,
+            dap::dap_registry,
             agents::list_agents,
             health::agent_health,
             onboarding::onboarding_should_show,
