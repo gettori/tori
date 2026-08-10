@@ -12,6 +12,75 @@
   color: var(--fg-muted);
 }
 
+/* The controls sit above everything, in one row that never scrolls: they are
+   what you reach for while reading the console below them, and a toolbar that
+   moved with the content would be a toolbar you have to find first. */
+.controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-head);
+}
+
+/* Between the sessions and the console, since that is where it belongs in the
+   reading order: which session, then where it is, then what it said. */
+.stack {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.stackHead {
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+.frame {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  width: 100%;
+  align-items: baseline;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.frame:hover {
+  background: var(--tree-row-hover);
+}
+
+.selected {
+  background: var(--tree-row-active);
+}
+
+.frameName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* Pushed to the end rather than following the name: the file and line are what
+   you scan down the column for, so they line up with each other. */
+.frameWhere {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
 /* The session tree takes what it needs and stops growing: the console is the
    part that gets long, so it is the part that scrolls. */
 .sessions {

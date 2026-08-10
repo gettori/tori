@@ -59,6 +59,7 @@ import CommitLog from "./CommitLog";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
+import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
@@ -109,6 +110,7 @@ import {
   SET_RIGHT_MODE,
   DEBUG_START,
   DEBUG_STOP,
+  DEBUG_RESTART,
   DEBUG_PICK,
   type DebugPick,
   FILE_RENAMED,
@@ -185,6 +187,7 @@ import {
   type Bookmark,
   type BookmarkStore,
 } from "../../utils/bookmarks";
+import { frameLocation } from "../../utils/debugStack";
 import {
   breakpointMarks,
   breakpointsMoved,
@@ -847,6 +850,16 @@ export default function Editor(props: {
   function stopDebugging() {
     const run = debugRoots()[0];
     if (run) void stopDebugRun(run.handle.session);
+  }
+
+  /** Stop, then run the same target again. Awaited in order rather than
+   *  emitting the two events: a start issued while the previous run is still
+   *  being torn down finds it live and joins it, so the restart would be a
+   *  no-op that looks like one. */
+  async function restartDebugging() {
+    const run = debugRoots()[0];
+    if (run) await stopDebugRun(run.handle.session);
+    startDebugging();
   }
 
   // Where scratch buffers live, fetched once for the same reason the docs root
@@ -1607,6 +1620,7 @@ export default function Editor(props: {
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
       onEvent(DEBUG_START, startDebugging),
       onEvent(DEBUG_STOP, stopDebugging),
+      onEvent(DEBUG_RESTART, () => void restartDebugging()),
       onWith<DebugPick>(DEBUG_PICK, (d) => {
         if (d?.kind) void openDebugPicker(d.kind);
       }),
@@ -1913,6 +1927,7 @@ export default function Editor(props: {
               breakpoints={breaksHere()}
               onToggleBreakpoint={toggleBreak}
               onBreakpointsMoved={breaksMoved}
+              frameLine={frameLocation()}
               onCloseFile={forceCloseFile}
               reverted={reverted()}
               selected={props.selected}
@@ -1961,6 +1976,12 @@ export default function Editor(props: {
                   <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
                     <SearchResultsBuffer id={activeId()!} />
                   </Suspense>
+                </Show>
+                {/* Code with no file behind it, fetched from the adapter by
+                    reference. Read-only by construction: there is nothing to
+                    save it to. */}
+                <Show when={t().kind === "dapsource"}>
+                  <DebugSourceView id={activeId()!} name={syntheticTabName(activeId()!)} />
                 </Show>
                 <Show when={t().kind === "conflict"}>
                   {/* Resolving rewrites the file, so it reports on the same
