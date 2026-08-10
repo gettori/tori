@@ -87,8 +87,28 @@ struct Server {
     sessions: HashMap<String, Session>,
 }
 
+/// Private field: `Server` is module-private, and everything outside this
+/// module now goes through `shutdown` or a command, so exposing it would only
+/// leak a type callers cannot name.
 #[derive(Default)]
-pub struct DapState(pub Mutex<HashMap<DapServerId, Server>>);
+pub struct DapState(Mutex<HashMap<DapServerId, Server>>);
+
+impl DapState {
+    /// Stop every adapter and everything it launched.
+    ///
+    /// Called on app exit, and this one is not optional the way it would be for
+    /// a language server. An adapter is spawned into *its own process group* so
+    /// that stopping it takes its launched debuggee down too, and that same
+    /// detachment means quitting Sway does not: without this, closing the window
+    /// leaves the adapter, the program being debugged and js-debug's watchdog
+    /// all running, with nothing on screen left that could name them.
+    pub fn shutdown(&self) {
+        let Ok(mut guard) = self.0.lock() else { return };
+        for (_, mut server) in guard.drain() {
+            stop(&mut server);
+        }
+    }
+}
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -385,10 +405,7 @@ pub async fn dap_stop(state: State<'_, DapState>, server: DapServerId) -> Result
 /// a debuggee left running holds ports and files nobody can see.
 #[tauri::command]
 pub async fn dap_stop_all(state: State<'_, DapState>) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    for (_, mut s) in guard.drain() {
-        stop(&mut s);
-    }
+    state.shutdown();
     Ok(())
 }
 
@@ -595,6 +612,57 @@ mod tests {
         assert!(alive(target), "an attached target must survive the adapter being stopped");
         let _ = independent.kill();
         let _ = independent.wait();
+    }
+
+    /// App exit. Not a duplicate of `dap_stop_all`: that is a command the
+    /// frontend calls on a project switch, and a window closing never reaches
+    /// it, so the same sweep has to hang off the run loop's `Exit` too.
+    #[test]
+    fn shutting_down_stops_every_adapter_and_everything_they_launched() {
+        let state = DapState::default();
+        let mut debuggees = Vec::new();
+        let mut adapters = Vec::new();
+        {
+            let mut guard = state.0.lock().unwrap();
+            for i in 0..2 {
+                let (server, debuggee) = group_with_child();
+                adapters.push(server.child.id());
+                debuggees.push(debuggee);
+                guard.insert(DapServerId(format!("dap-shutdown-{i}")), server);
+            }
+        }
+
+        state.shutdown();
+
+        for _ in 0..50 {
+            if debuggees.iter().all(|pid| !alive(*pid)) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        for pid in &adapters {
+            assert!(!alive(*pid), "adapter {pid} survived shutdown");
+        }
+        for pid in &debuggees {
+            assert!(!alive(*pid), "debuggee {pid} outlived the app");
+        }
+        // Drained, not merely stopped: a second shutdown must not try to reap
+        // a child that has already been waited on.
+        assert!(state.0.lock().unwrap().is_empty());
+    }
+
+    /// The wiring, which no unit test can reach: `shutdown` existing and never
+    /// being called on exit is exactly the leak it was written to prevent.
+    #[test]
+    fn app_exit_shuts_the_dap_state_down() {
+        let lib = include_str!("lib.rs");
+        let after = lib.split("RunEvent::Exit").nth(1).expect("an exit handler in lib.rs");
+        let handler = &after[..after.len().min(500)];
+        assert!(
+            handler.contains("DapState") && handler.contains("shutdown"),
+            "app exit must call DapState::shutdown; adapters are in their own process group \
+             and do not die with the app. Handler was: {handler:?}"
+        );
     }
 
     /// `kill` only delivers the signal. Without the `wait`, every stopped

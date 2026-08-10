@@ -422,6 +422,11 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 app.state::<ChatState>().0.shutdown();
+                // And every debug adapter. A language server is a plain child
+                // and goes with the process; an adapter is deliberately put in
+                // its own process group so that killing it takes the debuggee
+                // down, which also means quitting does not reach it.
+                app.state::<DapState>().shutdown();
             }
         });
 }

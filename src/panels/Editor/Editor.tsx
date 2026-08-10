@@ -32,6 +32,7 @@ import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
+import { stopAllDap } from "../../utils/dapSessions";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
@@ -775,6 +776,14 @@ export default function Editor(props: {
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
       void loadWorkspaceSettings(r);
+      // Above the guard below, unlike the language servers. A debug run holds a
+      // *debuggee*, a process the previous project's code was running, with its
+      // own ports, open files and children. Deselecting the workspace is exactly
+      // the case where nothing left on screen names it, so sweeping only when a
+      // new project arrives would strand it with no way to stop it but quitting.
+      // Statically imported, unlike the LSP client: `dapSessions` is
+      // deliberately editor-free, so it costs no CodeMirror in the chunk.
+      void stopAllDap();
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // Sweep local history for what a save can never reach: versions past the
