@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import AgentsSection from "./AgentsSection";
 import GithubSection from "./GithubSection";
 import LspSection from "./LspSection";
+import DapSection from "./DapSection";
 import { matchingSections } from "./settingsSearch";
 import { SETTINGS, type SettingSection, type EditorToggleKey } from "../../utils/settingsCatalog";
 import {
@@ -299,6 +300,9 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
             </Show>
             <Show when={show("lsp")}>
               <LspSection />
+            </Show>
+            <Show when={show("dap")}>
+              <DapSection />
             </Show>
             <Show when={show("github")}>
               <GithubSection />

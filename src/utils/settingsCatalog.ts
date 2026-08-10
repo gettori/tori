@@ -30,6 +30,7 @@ import type { EditorDefaults, EditorToggleKey } from "../panels/Settings/setting
 export type SettingSection =
   | "agents"
   | "lsp"
+  | "dap"
   | "github"
   | "appearance"
   | "typography"
@@ -42,6 +43,7 @@ export type SettingSection =
 export const SECTION_TITLES: Record<SettingSection, string> = {
   agents: "Agents",
   lsp: "Language servers",
+  dap: "Debuggers",
   github: "GitHub",
   appearance: "Appearance",
   typography: "Typography",
@@ -94,6 +96,12 @@ export const SETTINGS: SettingEntry[] = [
     section: "lsp",
     label: "Language servers",
     hint: "Which language servers are installed, and which files each one claims.",
+  },
+  {
+    id: "debuggers",
+    section: "dap",
+    label: "Debuggers",
+    hint: "Which debug adapters are installed, and which files each one can run under a debugger.",
   },
   {
     id: "github",
