@@ -1,0 +1,31 @@
+{
+  "id": "js-debug",
+  "label": "JavaScript / TypeScript (vscode-js-debug)",
+  "version": "1.117.0",
+  "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+  "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+  "entry": "js-debug/src/dapDebugServer.js",
+  "expect": {
+    "readiness": "Debug server listening at",
+    "reverseRequests": [
+      "launchUnelevated",
+      "launchVSCode",
+      "remoteFileExists",
+      "runInTerminal",
+      "startDebugging"
+    ],
+    "internalRequestMethods": [
+      "_createCacheable",
+      "_make",
+      "_on",
+      "_write",
+      "addChild",
+      "createCacheable",
+      "enqueue",
+      "finish",
+      "parseBreakpoint",
+      "sendLaunch",
+      "setCurrent"
+    ]
+  }
+}
