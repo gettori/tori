@@ -32,8 +32,22 @@ import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
-import { stopAllDap } from "../../utils/dapSessions";
+import { debugRoots, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
 import { clearDebugConsole, debugRunning } from "../../utils/debugStore";
+import DebugTargetDialog from "../../components/Dialogs/DebugTargetDialog";
+import { launchTarget, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
+import {
+  attachPortFor,
+  lastTargetFor,
+  loadAttachPorts,
+  loadLastTargets,
+  saveAttachPorts,
+  saveLastTargets,
+  setAttachPort,
+  setLastTarget,
+  type DebugTarget,
+  type TargetKind,
+} from "../../utils/debugTargets";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
@@ -93,6 +107,10 @@ import {
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
+  DEBUG_START,
+  DEBUG_STOP,
+  DEBUG_PICK,
+  type DebugPick,
   FILE_RENAMED,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
@@ -725,6 +743,84 @@ export default function Editor(props: {
     const req = confirmReq();
     setConfirmReq(null);
     req?.resolve(v);
+  }
+
+  // --- Debugging -----------------------------------------------------------
+  //
+  // The pane and the protocol live elsewhere; what belongs here is the part
+  // that needs the *selection*: which workspace this is, which file is active,
+  // and what was last debugged here. F5 is a repeat of that last target, and
+  // the picker is what a first press opens instead of doing nothing.
+  const [debugPick, setDebugPick] = createSignal<{
+    kind: TargetKind;
+    scripts: string[];
+    port: number;
+  } | null>(null);
+  const [attachPorts, setAttachPorts] = createSignal(loadAttachPorts());
+  const [lastTargets, setLastTargets] = createSignal(loadLastTargets());
+
+  /** The active tab's path, when it is a real file. A scratch buffer or a
+   *  synthetic tab (a diff, a commit) has no path node could run. */
+  function debugFilePath(): string | null {
+    const id = activeId();
+    return id && !isSyntheticId(id) ? id : null;
+  }
+
+  function debugError(message: string) {
+    emitWith<ToastEvent>(TOAST, { message, kind: "error" });
+  }
+
+  /** Open the picker, having resolved the root so the scripts it offers are the
+   *  ones that root actually declares. In a monorepo those are the package's
+   *  own, which is the only list runnable from the `cwd` the config will use. */
+  async function openDebugPicker(kind: TargetKind) {
+    const ws = root();
+    if (!ws) return;
+    const anchor = debugFilePath() ?? ws;
+    const resolved = await resolveRoot(anchor, ws);
+    setDebugPick({ kind, scripts: await scriptsAt(resolved), port: attachPortFor(attachPorts(), ws) });
+  }
+
+  async function runDebugTarget(target: DebugTarget) {
+    const ws = root();
+    if (!ws) return;
+    // Remembered before the run rather than after it: a target that fails to
+    // start is still the one you meant, and having to re-pick it to retry is
+    // the annoying half of the failure.
+    setLastTargets((prev) => {
+      const next = setLastTarget(prev, ws, target);
+      saveLastTargets(next);
+      return next;
+    });
+    if (target.kind === "attach") {
+      setAttachPorts((prev) => {
+        const next = setAttachPort(prev, ws, target.port);
+        saveAttachPorts(next);
+        return next;
+      });
+    }
+    setRightMode("debug");
+    await launchTarget(target, { projectPath: ws, onError: debugError });
+  }
+
+  function startDebugging() {
+    const ws = root();
+    if (!ws) return;
+    const remembered = lastTargetFor(lastTargets(), ws);
+    // A remembered file target whose tab is gone is not a target any more, and
+    // silently launching it would be worse than asking again.
+    const stale =
+      remembered?.kind === "file" && !tabs().some((t) => t.path === remembered.path);
+    if (remembered && !stale) {
+      void runDebugTarget(remembered);
+      return;
+    }
+    void openDebugPicker(debugFilePath() ? "file" : "script");
+  }
+
+  function stopDebugging() {
+    const run = debugRoots()[0];
+    if (run) void stopDebugRun(run.handle.session);
   }
 
   // Where scratch buffers live, fetched once for the same reason the docs root
@@ -1469,6 +1565,11 @@ export default function Editor(props: {
       onEvent(EDITOR_SAVE_AS, () => void saveAsFromPrompt()),
       onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
+      onEvent(DEBUG_START, startDebugging),
+      onEvent(DEBUG_STOP, stopDebugging),
+      onWith<DebugPick>(DEBUG_PICK, (d) => {
+        if (d?.kind) void openDebugPicker(d.kind);
+      }),
       onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
       onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
@@ -1959,6 +2060,21 @@ export default function Editor(props: {
       </div>
       <Show when={tabMenu()}>
         <Menu x={tabMenu()!.x} y={tabMenu()!.y} items={tabMenu()!.items} onClose={() => setTabMenu(null)} />
+      </Show>
+      <Show when={debugPick()}>
+        {(pick) => (
+          <DebugTargetDialog
+            kind={pick().kind}
+            filePath={debugFilePath()}
+            scripts={pick().scripts}
+            port={pick().port}
+            onConfirm={(target) => {
+              setDebugPick(null);
+              void runDebugTarget(target);
+            }}
+            onCancel={() => setDebugPick(null)}
+          />
+        )}
       </Show>
       <Show when={promptReq()}>
         <PromptModal

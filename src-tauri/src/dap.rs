@@ -34,7 +34,7 @@
 //     `terminateDebuggee` set per target kind) is protocol, so it belongs to the
 //     frontend; this layer stays transport-only the way `lsp.rs` does.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -414,6 +414,124 @@ pub async fn dap_stop_all(state: State<'_, DapState>) -> Result<(), String> {
 #[tauri::command]
 pub fn dap_registry() -> Vec<DapAdapter> {
     registry::registry().to_vec()
+}
+
+/// The root a debug run for `file_path` resolves to.
+///
+/// Exposed as a command, which Phase 2 deliberately did not do. The reason it
+/// held then was that a second implementation in TypeScript would be a second
+/// answer; that is still true, and this is not one. The launch config's `cwd`
+/// has to *be* this value, and it is built before `dap_start` is called, so the
+/// alternative was re-deriving the walk in TypeScript, which is the thing the
+/// original note was against.
+#[tauri::command]
+pub async fn dap_root_for(
+    adapter_id: String,
+    file_path: String,
+    project_path: String,
+) -> Result<String, String> {
+    root_for_adapter(&adapter_id, &file_path, &project_path)
+}
+
+/// The synchronous half, so the walk is testable without a runtime. The command
+/// above stays `async` for the reason every filesystem-touching command here
+/// is: a synchronous one runs on the main thread.
+fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Result<String, String> {
+    let adapter = registry::find(adapter_id)
+        .ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    let root = registry::root_for(
+        adapter,
+        std::path::Path::new(file_path),
+        std::path::Path::new(project_path),
+    );
+    Ok(root.to_string_lossy().into_owned())
+}
+
+/// The environment a launched debuggee should run with.
+///
+/// A map rather than a bare PATH string so a second variable later is a new key
+/// rather than a new command. Today it is one entry, and it is the one that
+/// matters: a GUI-launched Sway inherits a minimal PATH, so a debuggee that
+/// shells out to `pnpm` fails to find it, which is the trap
+/// `gotchas#gui-launched-processes-inherit-a-minimal-path` records.
+///
+/// The adapter is already spawned with this PATH and js-debug does pass its own
+/// environment down, so this is belt *and* braces on purpose: the config saying
+/// what it needs is what keeps it true when the adapter's spawn changes.
+#[tauri::command]
+pub async fn dap_launch_env() -> BTreeMap<String, String> {
+    BTreeMap::from([("PATH".to_string(), augmented_path())])
+}
+
+// --- health ---
+
+/// Per-adapter install state, mirroring `lsp::LspHealth` so the Settings cards
+/// read the same way for a debug adapter as for a language server.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DapHealth {
+    pub id: String,
+    pub label: String,
+    /// The binary that has to exist on this machine. Always `node`: the adapter
+    /// itself is a bundled script, not a program.
+    pub program: String,
+    pub status: crate::health::BinaryStatus,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    /// The adapter release this build pins, from the installer's manifest.
+    pub adapter_version: String,
+    /// Extensions this adapter claims, for the card's chips.
+    pub extensions: Vec<String>,
+    /// What is wrong beyond a missing `program`. The one case is a bundle that
+    /// was never installed: `node` resolves fine, so probing the program alone
+    /// would report the card healthy while every `dap_start` fails.
+    pub detail: Option<String>,
+}
+
+/// Build one adapter's health card.
+///
+/// `entry_missing` is passed in rather than resolved here so this stays free of
+/// `AppHandle` and testable off a real Tauri app, exactly as `lsp::check` is.
+fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
+    let program = "node".to_string();
+    let resolved = crate::env::resolve_binary(&program);
+    let version = resolved.as_deref().and_then(crate::health::run_version);
+
+    let detail = entry_missing
+        .then(|| "the bundled debug adapter is not installed (run `pnpm dap:install`)".to_string());
+
+    // Runnable means *everything* is present. Reporting found on the strength
+    // of `node` alone would send someone chasing a problem they do not have.
+    let status = match (&resolved, &detail) {
+        (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
+        // No `verified_against` to compare with: the adapter is a bundle this
+        // build pins by sha256, so the only version question is `node`'s, and
+        // js-debug states no floor Sway could check one against.
+        (Some(_), None) => crate::health::BinaryStatus::VersionUnknown,
+    };
+
+    DapHealth {
+        id: adapter.id.clone(),
+        label: adapter.label.clone(),
+        program,
+        status,
+        path: resolved.map(|p| p.to_string_lossy().into_owned()),
+        version,
+        adapter_version: adapter.version.clone(),
+        extensions: adapter.languages.keys().cloned().collect(),
+        detail,
+    }
+}
+
+/// Health for every registered adapter. Not memoized, for `lsp_health`'s
+/// reason: the sweep is one subprocess, and somebody who runs `pnpm dap:install`
+/// while Sway is open should see the card change on the next Settings open.
+#[tauri::command]
+pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
+    registry::registry()
+        .iter()
+        .map(|adapter| check(adapter, bundled_entry(&app, &adapter.entry).is_none()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -842,5 +960,63 @@ mod tests {
             let cmd = build[key].as_str().unwrap_or_default();
             assert!(cmd.contains("dap:install"), "{key} must run dap:install, got {cmd:?}");
         }
+    }
+
+    /// The health card's whole job: `node` being present is not the same as the
+    /// debugger working, and a card that reads healthy while every start fails
+    /// sends someone chasing a problem they do not have.
+    #[test]
+    fn an_uninstalled_bundle_reads_not_found_even_though_node_is_here() {
+        let adapter = registry::find("js-debug").expect("js-debug is registered");
+
+        let missing = check(adapter, true);
+        assert!(matches!(missing.status, crate::health::BinaryStatus::NotFound));
+        let detail = missing.detail.expect("a missing bundle explains itself");
+        // Actionable, not merely negative: the message names the command that
+        // fixes it, the way `lsp_health`'s does.
+        assert!(detail.contains("dap:install"), "unhelpful detail: {detail}");
+
+        let installed = check(adapter, false);
+        assert!(installed.detail.is_none());
+        assert_eq!(installed.program, "node");
+        assert_eq!(installed.adapter_version, adapter.version);
+        assert!(installed.extensions.contains(&"ts".to_string()));
+    }
+
+    #[test]
+    fn the_launch_env_carries_the_login_shell_path() {
+        let env = BTreeMap::from([("PATH".to_string(), augmented_path())]);
+        let path = env.get("PATH").expect("PATH");
+        // The GUI process's own PATH is the minimal one; a debuggee that shells
+        // out to `pnpm` needs the dirs a login shell would have.
+        assert!(path.contains("/.volta/bin") || path.contains("/opt/homebrew/bin"), "{path}");
+    }
+
+    /// `cwd` for a launch config comes from here, and in a monorepo the wrong
+    /// answer costs module resolution and source-map location at once.
+    #[test]
+    fn the_root_command_answers_the_package_not_the_workspace() {
+        let tmp = std::env::temp_dir().join(format!(
+            "sway-dap-rootcmd-{}-{}",
+            std::process::id(),
+            next_id("t")
+        ));
+        let api = tmp.join("packages/api/src");
+        std::fs::create_dir_all(&api).unwrap();
+        std::fs::write(tmp.join("package.json"), "{}").unwrap();
+        std::fs::write(tmp.join("packages/api/package.json"), "{}").unwrap();
+        let file = api.join("x.ts");
+        std::fs::write(&file, "").unwrap();
+
+        let root = root_for_adapter(
+            "js-debug",
+            &file.to_string_lossy(),
+            &tmp.to_string_lossy(),
+        )
+        .unwrap();
+        assert_eq!(root, tmp.join("packages/api").to_string_lossy());
+
+        assert!(root_for_adapter("nope", "/a", "/a").is_err());
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

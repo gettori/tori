@@ -59,6 +59,15 @@ export type DebugStart = {
   filePath: string;
   projectPath: string;
   config: DebugConfig;
+  /** Called when the adapter refuses the launch or attach.
+   *
+   *  A callback rather than a rejection, because `handshake` cannot await the
+   *  launch response: js-debug does not answer it until `configurationDone` has
+   *  been sent, and that is sent from the `initialized` handler, so awaiting
+   *  would deadlock the handshake against itself. Without this the one failure
+   *  a user actually hits, attaching to a port nothing is listening on, would
+   *  reach a `console.warn` and nowhere else. */
+  onLaunchFailed?: (error: unknown) => void;
 };
 
 const sessions = new Map<string, DapSession>();
@@ -183,7 +192,7 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
     name: `run${runCounter++}`,
   });
 
-  await handshake(session, start.config);
+  await handshake(session, start.config, start.onLaunchFailed);
   return session;
 }
 
@@ -253,6 +262,24 @@ function wireSession(session: DapSession): void {
 
   conn.on("initialized", () => configureOnce(session));
 
+  // The entry pause, continued straight through.
+  //
+  // Launch configs carry `stopOnEntry: true`, and not because anyone wants to
+  // look at a program's first line. Phase 1 proved the TypeScript breakpoint
+  // failure is a *race*: a short-lived target runs to completion before
+  // js-debug has resolved its source map, so the breakpoint never binds, and
+  // four variants of `outFiles` / `resolveSourceMapLocations` changed nothing.
+  // Pausing at entry is what creates the window the map resolves in. It is
+  // Sway's own pause, so nothing must surface it: `debugStore` ignores this
+  // reason too, and the pane never shows a stop nobody asked for.
+  conn.on("stopped", (body) => {
+    const stop = (body ?? {}) as { reason?: string; threadId?: number };
+    if (stop.reason !== "entry") return;
+    void conn
+      .request("continue", { threadId: stop.threadId })
+      .catch((e: unknown) => console.warn("continue after entry stop failed", session.name, e));
+  });
+
   // The session is over. Its own children are gone with it; a root additionally
   // takes the adapter process down, since nothing else will.
   conn.on("terminated", () => void endSession(session.handle.session));
@@ -292,7 +319,11 @@ async function configure(session: DapSession): Promise<void> {
   }
 }
 
-async function handshake(session: DapSession, config: DebugConfig): Promise<void> {
+async function handshake(
+  session: DapSession,
+  config: DebugConfig,
+  onLaunchFailed?: (error: unknown) => void,
+): Promise<void> {
   try {
     session.capabilities = (await session.conn.request<Record<string, unknown>>(
       "initialize",
@@ -311,7 +342,14 @@ async function handshake(session: DapSession, config: DebugConfig): Promise<void
   // itself.
   const verb = config.request === "attach" ? "attach" : "launch";
   void session.conn.request(verb, config).catch((e: unknown) => {
+    // A session that is no longer in the tree was torn down, not refused: this
+    // rejection is `dispose` rejecting what was in flight when somebody pressed
+    // stop. Reporting it would answer a deliberate stop with "could not start
+    // the debugger", and on a large run there is one of these per session (a
+    // measured `pnpm test` had 214).
+    if (!sessions.has(session.handle.session)) return;
     console.warn(`${verb} failed`, session.name, e);
+    onLaunchFailed?.(e);
   });
 }
 
