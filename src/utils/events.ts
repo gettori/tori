@@ -365,6 +365,12 @@ export const DEBUG_START = "sway:debug-start";
 // Stop the debug run (Shift+F5). Payload-less for the same reason.
 export const DEBUG_STOP = "sway:debug-stop";
 
+// Stop the run and start the same target again. Its own event rather than a
+// stop followed by a start from the caller, because the two have to be ordered
+// against each other: a start issued while the previous run is still being torn
+// down joins that run instead of replacing it.
+export const DEBUG_RESTART = "sway:debug-restart";
+
 // Open the target picker at a specific kind, which is what the palette's three
 // rows do. A kind rather than a whole target: the picker still has to resolve
 // the root, read that root's scripts and offer the remembered port.

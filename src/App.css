@@ -522,6 +522,17 @@ html {
   color: var(--fg-subtle);
 }
 
+/* The line the program is paused on. Emitted as a literal class string by
+   src/panels/Editor/frameHighlight.ts, so global for the gutters' reason.
+
+   A full-width stripe rather than a marker: it answers "where am I", which is a
+   property of the line and not of a column beside it. The same token the
+   fetched-source view uses for the same line, so a frame in a file and a frame
+   in a bundle read as one idea. */
+.cm-debug-frame {
+  background: var(--brand-subtle);
+}
+
 /* The code-action lightbulb. Unlike the bookmark column beside it, this one
    holds no width of its own: the bulb appears and disappears as the caret
    moves, and a permanently reserved column would be a stripe of empty space in

@@ -37,6 +37,7 @@ import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
 import type { Bookmark } from "../../utils/bookmarks";
 import { breakpointGutter, setBreakpointMarkers } from "./breakpointGutter";
 import type { BreakpointMark } from "../../utils/debugBreakpoints";
+import { frameHighlight, setFrameLineMarker } from "./frameHighlight";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
@@ -300,6 +301,10 @@ export default function CodeEditor(props: {
   breakpoints?: readonly BreakpointMark[];
   onToggleBreakpoint?: (path: string, line: number) => void;
   onBreakpointsMoved?: (path: string, lines: number[], docLines: number) => void;
+  // Where the debugger is paused, or null when nothing is. A path as well as a
+  // line, because the highlight belongs on one buffer: the pane knows which
+  // frame is selected and this component only knows which buffer is on screen.
+  frameLine?: { path: string; line: number } | null;
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
@@ -1175,6 +1180,7 @@ export default function CodeEditor(props: {
         onToggle: (line) => props.onToggleBreakpoint?.(path, line),
         onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
       }),
+      frameHighlight(),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();
@@ -1215,6 +1221,15 @@ export default function CodeEditor(props: {
    *  while a breakpoint's state changes on its own when the adapter binds it. */
   function syncBreakpoints() {
     if (view && shown) setBreakpointMarkers(view, props.breakpoints ?? []);
+  }
+
+  /** Put the paused-line stripe on the buffer that holds it, and on no other.
+   *  Only the shown buffer is touched, so switching tabs while paused is what
+   *  reveals it in the other file rather than two files carrying it at once. */
+  function syncFrameLine() {
+    if (!view || !shown) return;
+    const at = props.frameLine;
+    setFrameLineMarker(view, at && at.path === shown ? at.line : null);
   }
 
   /** Re-resolve every buffer's fallback completion in place, background buffers
@@ -1690,6 +1705,7 @@ export default function CodeEditor(props: {
     // moved a mark straight back, so the store is never behind the buffer.
     syncBookmarks();
     syncBreakpoints();
+    syncFrameLine();
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
@@ -2052,6 +2068,7 @@ export default function CodeEditor(props: {
   // shows, and doing it twice on open would be a dispatch nobody asked for.
   createEffect(on(() => props.bookmarks, () => syncBookmarks(), { defer: true }));
   createEffect(on(() => props.breakpoints, () => syncBreakpoints(), { defer: true }));
+  createEffect(on(() => props.frameLine, () => syncFrameLine(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the

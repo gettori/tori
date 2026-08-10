@@ -97,6 +97,9 @@ export function syntheticTabName(id: string): string {
   // told apart by the word that differs rather than by the one they share.
   if (t.kind === "localhistory") return `Local: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
+  // `<session>:<sourceReference>:<name>` - only the name means anything to a
+  // reader, and the two ids before it exist so two runs cannot share a tab.
+  if (t.kind === "dapsource") return t.arg.split(":").slice(2).join(":") || "Debug source";
   // The query, because that is the only thing distinguishing one results buffer
   // from another, and it is what the reader typed.
   if (t.kind === "search") return `Search: ${t.arg}`;
