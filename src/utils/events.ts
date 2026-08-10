@@ -355,6 +355,22 @@ export type OpenTerminal = {
   init?: string;
 };
 
+// Start a debug run (F5). Fire-and-forget and payload-less on purpose: the
+// command registry owns the key but not the workspace, and which target this
+// means depends on the selected branch-unit and what was last debugged there.
+// Editor resolves that and opens the picker when there is no answer yet, so a
+// first press teaches rather than doing nothing.
+export const DEBUG_START = "sway:debug-start";
+
+// Stop the debug run (Shift+F5). Payload-less for the same reason.
+export const DEBUG_STOP = "sway:debug-stop";
+
+// Open the target picker at a specific kind, which is what the palette's three
+// rows do. A kind rather than a whole target: the picker still has to resolve
+// the root, read that root's scripts and offer the remembered port.
+export const DEBUG_PICK = "sway:debug-pick";
+export type DebugPick = { kind: "file" | "script" | "attach" };
+
 // Fire-and-forget: run this workspace's most recently run task again. The
 // command registry owns the binding but not the workspace, so App resolves the
 // selection and the recents store; nothing here says which task, because the

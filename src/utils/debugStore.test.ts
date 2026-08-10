@@ -287,6 +287,22 @@ describe("the session tree", () => {
     expect(store.debugTree()[0].state).toBe("running");
   });
 
+  it("never surfaces the entry pause as a stop", async () => {
+    const { sessions, store } = await freshModules();
+    const root = await sessions.startDebugSession(start);
+    await flush();
+    const id = root!.handle.session;
+
+    // Sway asked for this pause itself, so a source map has time to resolve,
+    // and continues straight through it. Showing it would flash a paused state
+    // nobody asked for at the start of every launch.
+    event(id, "stopped", { reason: "entry", threadId: 0 });
+    expect(store.debugTree()[0].state).toBe("running");
+
+    event(id, "stopped", { reason: "breakpoint", threadId: 0 });
+    expect(store.debugTree()[0].state).toBe("stopped");
+  });
+
   it("empties when the run ends, and says nothing is running", async () => {
     const { sessions, store } = await freshModules();
     const root = await sessions.startDebugSession(start);

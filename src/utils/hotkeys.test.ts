@@ -40,6 +40,8 @@ describe("the canonical binding table", () => {
     expect(BINDINGS.map((b) => b.id).sort()).toEqual(
       [
         "command-palette",
+        "debug-start",
+        "debug-stop",
         "editor-new-scratch",
         "filter-sidebar",
         "focus-terminal",
@@ -97,6 +99,11 @@ describe("the canonical binding table", () => {
       "lsp-code-action",
       "lsp-format",
       "peek-definition",
+      // F5 and Shift-F5, in table order. Bare function keys with no modifier,
+      // which is why they are `window` scope: a program running in the terminal
+      // is entitled to them.
+      "debug-start",
+      "debug-stop",
     ]);
   });
 

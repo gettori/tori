@@ -35,6 +35,10 @@ const bodies: Record<string, unknown> = {
 /** Commands the fake adapter answers `success: false` to. */
 const failCommands = new Set<string>();
 
+/** Commands the fake adapter never answers at all, so a request can still be in
+ *  flight when something else happens to the session. */
+const silentCommands = new Set<string>();
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
@@ -55,7 +59,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       const frame = JSON.parse(args!.message as string) as Record<string, unknown>;
       sends.set(handle.session, [...(sends.get(handle.session) ?? []), frame]);
       // The adapter answers every request. Asynchronously, as the real IPC does.
-      if (frame.type === "request") {
+      if (frame.type === "request" && !silentCommands.has(frame.command as string)) {
         const failed = failCommands.has(frame.command as string);
         void Promise.resolve().then(() =>
           deliver(handle.session, {
@@ -131,6 +135,7 @@ beforeEach(() => {
   holdStart = null;
   startFails = false;
   failCommands.clear();
+  silentCommands.clear();
   warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -276,6 +281,77 @@ describe("startDebugging", () => {
     await startDebugging(root!.handle.session, { __pendingTargetId: "t1" });
     const child = m.debugSession(root!.children[0])!;
     expect(framesOf(child.handle.session, "launch")).toHaveLength(1);
+  });
+});
+
+describe("the entry pause", () => {
+  it("is continued straight through, and only that one", async () => {
+    const m = await freshModule();
+    const root = await m.startDebugSession(start);
+    await flush();
+    const id = root!.handle.session;
+
+    // Launch configs ask for it so a source map has time to resolve before a
+    // short-lived target exits; nobody asked to look at the first line.
+    event(id, "stopped", { reason: "entry", threadId: 3 });
+    await flush();
+    const resumed = framesOf(id, "continue");
+    expect(resumed).toHaveLength(1);
+    // The thread from the event, never an assumed 1: Phase 1 measured 0 for a
+    // launch and 2 for a vitest worker.
+    expect((resumed[0].arguments as { threadId: number }).threadId).toBe(3);
+
+    // A real stop is the user's, and continuing it would make breakpoints
+    // useless in the most confusing possible way.
+    event(id, "stopped", { reason: "breakpoint", threadId: 3 });
+    await flush();
+    expect(framesOf(id, "continue")).toHaveLength(1);
+  });
+});
+
+describe("a failing launch", () => {
+  it("tells the caller rather than only the console", async () => {
+    const m = await freshModule();
+    failCommands.add("attach");
+    const failures: unknown[] = [];
+    await m.startDebugSession({
+      ...start,
+      config: { request: "attach", port: 9229 },
+      onLaunchFailed: (e) => failures.push(e),
+    });
+    await flush();
+
+    // `handshake` cannot await the launch response without deadlocking against
+    // its own `configurationDone`, so without this callback the one failure
+    // people actually hit, attaching to a port nothing is listening on, would
+    // reach a `console.warn` and nowhere else.
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0])).toContain("attach refused");
+  });
+});
+
+describe("stopping a run mid-launch", () => {
+  it("is not reported as a launch failure", async () => {
+    const m = await freshModule();
+    // Never answered, so the launch is genuinely still in flight when the stop
+    // lands. Without this the fake would have answered it already and the test
+    // would pass against the unfixed code.
+    silentCommands.add("launch");
+    const failures: unknown[] = [];
+    const root = await m.startDebugSession({
+      ...start,
+      config: { request: "launch", program: "/p/a.ts" },
+      onLaunchFailed: (e) => failures.push(e),
+    });
+    await flush();
+
+    await m.stopDebugRun(root!.handle.session);
+    await flush();
+
+    // `dispose` rejects what was in flight, and answering a deliberate stop
+    // with "could not start the debugger" is the wrong thing to say. A big run
+    // makes it loud as well as wrong: a measured `pnpm test` had 214 sessions.
+    expect(failures).toEqual([]);
   });
 });
 

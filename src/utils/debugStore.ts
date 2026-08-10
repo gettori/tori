@@ -184,7 +184,13 @@ function wire(session: DapSession): void {
     append(session, SHOWN_CATEGORIES.includes(category) ? category : "console", b.output ?? "");
   });
 
-  session.conn.on("stopped", () => setState(id, "stopped"));
+  session.conn.on("stopped", (body) => {
+    // Not the entry pause. `dapSessions` asks for that one so a source map has
+    // time to resolve and continues straight through it; surfacing it would
+    // flash a paused state nobody asked for at the start of every launch.
+    if ((body as { reason?: string } | null)?.reason === "entry") return;
+    setState(id, "stopped");
+  });
   session.conn.on("continued", () => setState(id, "running"));
   // `dapSessions` drops the session from the tree on this same event, so this
   // state is observed only for the moment before the snapshot removes the row.

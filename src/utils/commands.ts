@@ -21,6 +21,10 @@ import {
   FOCUS_SEARCH,
   FOCUS_TERMINAL,
   RUN_LAST_TASK,
+  DEBUG_START,
+  DEBUG_STOP,
+  DEBUG_PICK,
+  type DebugPick,
   FOCUS_PROJECT_SEARCH,
   TAB_JUMP,
   TAB_CYCLE,
@@ -663,6 +667,46 @@ export const COMMANDS: Command[] = [
       label: `Show ${m.label}`,
       group: "editor",
       run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode }),
+    }),
+  ),
+
+  // --- Debug ---------------------------------------------------------------
+  {
+    // `window` rather than `global`: F5 is a bare function key with no
+    // modifier, and a program running in the terminal is entitled to it. The
+    // editor is where a debug run is started from and where its pane lives.
+    id: "debug-start",
+    keys: ["F5"],
+    label: "Start debugging",
+    sub: "Runs the last target, or asks which one",
+    group: "editor",
+    scope: "window",
+    match: (e) => e.key === "F5" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey,
+    run: () => emit(DEBUG_START),
+  },
+  {
+    id: "debug-stop",
+    keys: ["\u21e7", "F5"],
+    label: "Stop debugging",
+    group: "editor",
+    scope: "window",
+    match: (e) => e.key === "F5" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey,
+    run: () => emit(DEBUG_STOP),
+  },
+  // The three target kinds, each opening the picker on its own tab. Listed
+  // separately rather than as one "Debug\u2026" row because they are the three
+  // different things somebody means, and the palette is where you say which.
+  ...([
+    { kind: "file", label: "Debug this file", requires: ["editorFile"] },
+    { kind: "script", label: "Debug a package script\u2026", requires: [] },
+    { kind: "attach", label: "Attach the debugger to a port\u2026", requires: [] },
+  ] as const).map(
+    (t): Command => ({
+      id: `debug:${t.kind}`,
+      label: t.label,
+      group: "editor",
+      requires: [...t.requires],
+      run: () => emitWith<DebugPick>(DEBUG_PICK, { kind: t.kind }),
     }),
   ),
 
