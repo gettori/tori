@@ -35,6 +35,8 @@ import { cmdClickDefinitionExtension } from "./lspCommands";
 import { caretListener, cursorJumpListener } from "./cursorJump";
 import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
 import type { Bookmark } from "../../utils/bookmarks";
+import { breakpointGutter, setBreakpointMarkers } from "./breakpointGutter";
+import type { BreakpointMark } from "../../utils/debugBreakpoints";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
@@ -291,6 +293,13 @@ export default function CodeEditor(props: {
   bookmarks?: readonly Bookmark[];
   onToggleBookmark?: (path: string, line: number) => void;
   onBookmarksMoved?: (path: string, marks: Bookmark[], docLines: number) => void;
+  // The active file's breakpoints, on the same arrangement as the bookmarks
+  // above and for the same reason. The state on each one is decided by the pane
+  // (it knows what the adapter has said and whether the buffer is saved); this
+  // component only draws it.
+  breakpoints?: readonly BreakpointMark[];
+  onToggleBreakpoint?: (path: string, line: number) => void;
+  onBreakpointsMoved?: (path: string, lines: number[], docLines: number) => void;
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
@@ -1162,6 +1171,10 @@ export default function CodeEditor(props: {
         onToggle: (line) => props.onToggleBookmark?.(path, line),
         onMoved: (marks, docLines) => props.onBookmarksMoved?.(path, marks, docLines),
       }),
+      breakpointGutter({
+        onToggle: (line) => props.onToggleBreakpoint?.(path, line),
+        onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
+      }),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();
@@ -1195,6 +1208,13 @@ export default function CodeEditor(props: {
    *  and it is re-seeded when it comes back. */
   function syncBookmarks() {
     if (view && shown) setBookmarkMarkers(view, props.bookmarks ?? []);
+  }
+
+  /** The same, for breakpoints. Separate from the one above because the pane
+   *  changes them for different reasons: a bookmark moves only when you move it,
+   *  while a breakpoint's state changes on its own when the adapter binds it. */
+  function syncBreakpoints() {
+    if (view && shown) setBreakpointMarkers(view, props.breakpoints ?? []);
   }
 
   /** Re-resolve every buffer's fallback completion in place, background buffers
@@ -1669,6 +1689,7 @@ export default function CodeEditor(props: {
     // it. Safe to re-seed on every swap because the field reports any edit that
     // moved a mark straight back, so the store is never behind the buffer.
     syncBookmarks();
+    syncBreakpoints();
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
     setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
@@ -2030,6 +2051,7 @@ export default function CodeEditor(props: {
   // panel removed one. `defer` because the swap already seeds the buffer it
   // shows, and doing it twice on open would be a dispatch nobody asked for.
   createEffect(on(() => props.bookmarks, () => syncBookmarks(), { defer: true }));
+  createEffect(on(() => props.breakpoints, () => syncBreakpoints(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the
