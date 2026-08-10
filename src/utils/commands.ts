@@ -175,6 +175,7 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "search", label: "Search" },
   { mode: "todos", label: "TODOs" },
   { mode: "tasks", label: "Tasks" },
+  { mode: "debug", label: "Debug" },
   { mode: "session", label: "Session" },
   { mode: "shared", label: "Shared" },
   { mode: "docs", label: "Docs" },

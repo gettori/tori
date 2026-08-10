@@ -108,7 +108,7 @@ export type PrOpened = { projectPath: string };
 
 export const SET_RIGHT_MODE = "sway:set-right-mode";
 export type SetRightMode = {
-  mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" | "todos" | "tasks";
+  mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" | "todos" | "tasks" | "debug";
 };
 
 // The command registry's editor entries (utils/commands.ts). Each acts on
