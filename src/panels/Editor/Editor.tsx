@@ -33,10 +33,12 @@ import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
 import { stopAllDap } from "../../utils/dapSessions";
+import { clearDebugConsole, debugRunning } from "../../utils/debugStore";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
 import TasksPanel from "./TasksPanel";
+import DebugPanel from "./DebugPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
@@ -66,6 +68,7 @@ import {
   TriangleAlert,
   ListChecks,
   Play,
+  Bug,
   ListTree,
   // A call graph, not a telephone: `PhoneCall` reads as telephony.
   Network,
@@ -221,7 +224,8 @@ type RightMode =
   | "session"
   | "search"
   | "todos"
-  | "tasks";
+  | "tasks"
+  | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
@@ -234,6 +238,7 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   search: { mode: "search", label: "Search", icon: Search },
   todos: { mode: "todos", label: "TODOs", icon: ListChecks },
   tasks: { mode: "tasks", label: "Tasks", icon: Play },
+  debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
   docs: { mode: "docs", label: "Docs", icon: BookOpen },
@@ -359,6 +364,7 @@ export default function Editor(props: {
     "search",
     "todos",
     "tasks",
+    "debug",
     "session",
     "shared",
     "docs",
@@ -389,6 +395,12 @@ export default function Editor(props: {
       // second.
       case "calls":
         return callsSupported(activeId());
+      // A tab only while something is being debugged. Unlike Problems, the pane
+      // behind it is still reachable with nothing running (the palette and the
+      // SET_RIGHT_MODE event both open it), and it explains itself when it is:
+      // the tab is the always-on cost this gate avoids, not the pane.
+      case "debug":
+        return debugRunning();
       // Bookmarks is deliberately *not* gated on having any, unlike Problems and
       // Outline above. A mark is made by clicking a gutter column that is empty
       // until you do, and this panel's empty state is the only place that says
@@ -763,6 +775,17 @@ export default function Editor(props: {
     if (rightMode() === "calls" && !callsSupported(activeId())) setRightMode("files");
   });
 
+  // Debug is the one mode whose fallback is a *transition*, not a state. The
+  // others hide a pane that has nothing to show; this pane explains itself when
+  // nothing is running, which is what makes it worth opening from the palette
+  // before a run exists. So it is left alone when opened empty, and only moved
+  // aside when a run that was live ends underneath the reader.
+  createEffect(
+    on(debugRunning, (running, wasRunning) => {
+      if (wasRunning && !running && rightMode() === "debug") setRightMode("files");
+    }),
+  );
+
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
   createEffect(
@@ -784,6 +807,9 @@ export default function Editor(props: {
       // Statically imported, unlike the LSP client: `dapSessions` is
       // deliberately editor-free, so it costs no CodeMirror in the chunk.
       void stopAllDap();
+      // And the transcript with them: what is on screen is another project's
+      // program output, and the pane has no way to say whose it was.
+      clearDebugConsole();
       if (!r) return;
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // Sweep local history for what a save can never reach: versions past the
@@ -1903,6 +1929,9 @@ export default function Editor(props: {
           </Match>
           <Match when={rightMode() === "tasks"}>
             <TasksPanel root={root()} />
+          </Match>
+          <Match when={rightMode() === "debug"}>
+            <DebugPanel />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel
