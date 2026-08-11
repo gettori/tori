@@ -6,6 +6,7 @@ target/
 node_modules/
 dist/
 .vite/
+storybook-static/
 
 # npm cannot graft onto this pnpm-managed tree, and the `packageManager` field
 # in package.json is what tells a corepack-enabled npm to refuse. This is the
