@@ -81,6 +81,146 @@
   font-size: var(--sway-text-sm);
 }
 
+/* Scopes and variables, between the stack and the console. Capped like the
+   stack is, because a scope expands without bound and the console below it must
+   not be pushed off the pane by one long array. */
+.variables {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.varRow {
+  display: flex;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  align-items: baseline;
+  padding-top: calc(1px * var(--ui-scale));
+  padding-bottom: calc(1px * var(--ui-scale));
+  padding-right: calc(8px * var(--ui-scale));
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.scopeRow {
+  padding-left: calc(8px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.scopeRow:hover {
+  background: var(--tree-row-hover);
+}
+
+.scopeName {
+  color: var(--fg-default);
+  font-size: var(--sway-text-sm);
+}
+
+/* Fixed width so every name in the column starts at the same place, whether or
+   not its row has children to open. */
+.twisty {
+  flex: none;
+  width: calc(10px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+.varToggle {
+  display: flex;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.varName {
+  flex: none;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.varType {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.varValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.varEditable {
+  cursor: text;
+}
+
+.varEditable:hover {
+  color: var(--fg-default);
+  text-decoration: underline dotted;
+}
+
+.varInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0 calc(2px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.varNote {
+  padding-right: calc(8px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
+}
+
+.varError {
+  padding-right: calc(8px * var(--ui-scale));
+  color: var(--diag-error);
+  font-size: var(--sway-text-sm);
+}
+
+.varMore {
+  display: block;
+  width: 100%;
+  padding-top: calc(1px * var(--ui-scale));
+  padding-bottom: calc(1px * var(--ui-scale));
+  padding-right: calc(8px * var(--ui-scale));
+  border: 0;
+  background: none;
+  color: var(--accent-fg);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--sway-text-sm);
+}
+
+.varMore:hover {
+  background: var(--tree-row-hover);
+}
+
 /* The session tree takes what it needs and stops growing: the console is the
    part that gets long, so it is the part that scrolls. */
 .sessions {

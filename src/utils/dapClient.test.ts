@@ -228,6 +228,14 @@ describe("the initialize payload", () => {
     }
   });
 
+  it("claims variable paging, which the tree now does", () => {
+    // Held back through Phase 3 on purpose: an unbacked claim about what the
+    // client can render is the same class of lie as one about what it serves.
+    // `debugVariables.ts` sends `start` and `count`, so it is declared.
+    expect(args.supportsVariablePaging).toBe(true);
+    expect(args.supportsVariableType).toBe(true);
+  });
+
   it("does not claim runInTerminal, which Sway refuses", () => {
     // Phase 1 measured this: with `integratedTerminal` or `externalTerminal`
     // js-debug sends `runInTerminal`, and a session that cannot serve it dies
