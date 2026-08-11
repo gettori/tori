@@ -111,7 +111,7 @@ const start = {
 async function pausedPane() {
   const root = await dap.startDebugSession(start);
   await flush();
-  render(() => <DebugPanel root={REPO} />);
+  render(() => <DebugPanel root={REPO} selected={null} />);
   event(root!.handle.session, "stopped", { reason: "breakpoint", threadId: 3 });
   await waitFor(() => expect(screen.queryByTitle("Continue")).toBeTruthy());
   return root!.handle.session;
@@ -152,7 +152,7 @@ afterEach(async () => {
 
 describe("the watch list", () => {
   it("is there before there is anything to answer it", async () => {
-    render(() => <DebugPanel root={REPO} />);
+    render(() => <DebugPanel root={REPO} selected={null} />);
 
     // The point of a watch is that you write it once and it answers on every
     // run afterwards, so the list has to be editable with nothing running.
@@ -182,7 +182,7 @@ describe("the watch list", () => {
   });
 
   it("survives a reload", async () => {
-    render(() => <DebugPanel root={REPO} />);
+    render(() => <DebugPanel root={REPO} selected={null} />);
     type("Watch expression", "count");
     await flush();
 
@@ -192,7 +192,7 @@ describe("the watch list", () => {
   });
 
   it("reorders and removes without a mouse gesture", async () => {
-    render(() => <DebugPanel root={REPO} />);
+    render(() => <DebugPanel root={REPO} selected={null} />);
     type("Watch expression", "count");
     type("Watch expression", "user.name");
     await waitFor(() => expect(screen.queryByText("user.name")).toBeTruthy());
