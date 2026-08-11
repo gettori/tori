@@ -43,6 +43,15 @@ const solidResolve = {
 // `cleanup` disposed nothing of theirs, and the DOM only appeared to clear
 // because the library removes its own container by hand. Portals, which hang off
 // `document.body` instead, then piled up across the whole file.
+//
+// `@kobalte/core` is deliberately *not* on this list. It looks like it belongs
+// - its `solid` export is untransformed `.jsx`, and the `default` export Node
+// would otherwise pick resolves `solid-js/web` itself - but vitest 4 no longer
+// externalizes dependencies by default, so Vite transforms it either way. The
+// entry was added, measured against `src/lib/dialog.test.tsx`, and removed
+// again: with it gone the dialog still mounts, still portals, and still gets
+// cleaned up between tests. If a future vitest brings the old default back,
+// that test is what will say so.
 const inlineSolid = {
   deps: { inline: [/lucide-solid/, /solid-js/, /@solidjs\/testing-library/] },
 };
