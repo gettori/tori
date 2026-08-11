@@ -2,7 +2,7 @@ import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Sh
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
-import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
+import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import IconButton from "../../components/IconButton/IconButton";
 import styles from "./CommitDetail.module.css";
@@ -55,7 +55,6 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
   const [openFile, setOpenFile] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal("");
   const [diffError, setDiffError] = createSignal("");
-  const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
 
   const hunks = createMemo(() => parseDiffHunks(diff()));
@@ -115,9 +114,7 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
   }
 
   function toggleColumns() {
-    const next = !sideBySide();
-    setSideBySide(next);
-    writeSideBySide(next);
+    writeSideBySide(!sideBySide());
   }
 
   function rowLabel(f: CommitFile): string {

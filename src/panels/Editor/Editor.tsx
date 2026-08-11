@@ -137,7 +137,7 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
-import { readBlamePref, writeBlamePref } from "../../utils/blamePref";
+import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
 import {
@@ -710,11 +710,10 @@ export default function Editor(props: {
   // The tab strip's right-click menu.
   const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
 
-  const [blameOn, setBlameOn] = createSignal(readBlamePref());
+  // `blameOn` is the module's signal, not a local one: the Settings row switches
+  // the same preference, and a copy seeded at mount would ignore it.
   function toggleBlame() {
-    const next = !blameOn();
-    setBlameOn(next);
-    writeBlamePref(next);
+    writeBlamePref(!blameOn());
   }
 
   function openTabMenu(e: MouseEvent, t: FileTab) {

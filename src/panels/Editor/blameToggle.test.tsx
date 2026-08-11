@@ -56,7 +56,20 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR } = await import("../../utils/events");
-const { BLAME_KEY } = await import("../../utils/blamePref");
+const { BLAME_KEY, reloadBlamePref } = await import("../../utils/blamePref");
+
+/** Stand in for a previous session having left the preference on.
+ *
+ * The preference is a module-level signal now, read from localStorage once at
+ * import, because the editor's toggle and the Settings row are two surfaces on
+ * one preference and a signal each meant they disagreed until a remount. Writing
+ * the key alone therefore no longer reaches the app - which is also why these
+ * tests kept passing on the signal the *previous* test left behind until this
+ * was added. */
+function previousSessionLeftBlame(on: boolean) {
+  localStorage.setItem(BLAME_KEY, on ? "1" : "0");
+  reloadBlamePref();
+}
 const { syntheticId } = await import("../../utils/syntheticTabs");
 
 const selection = selectionFor(REPO);
@@ -75,6 +88,7 @@ async function mountWithFile() {
 
 beforeEach(() => {
   localStorage.clear();
+  reloadBlamePref();
   seen.length = 0;
   listening.ready = false;
 });
@@ -99,7 +113,7 @@ describe("the blame toggle", () => {
   });
 
   it("comes back on for the next session once it has been asked for", async () => {
-    localStorage.setItem(BLAME_KEY, "1");
+    previousSessionLeftBlame(true);
     await mountWithFile();
 
     expect(last()).toBe(true);
@@ -107,7 +121,7 @@ describe("the blame toggle", () => {
   });
 
   it("switching it off reaches the editor too", async () => {
-    localStorage.setItem(BLAME_KEY, "1");
+    previousSessionLeftBlame(true);
     await mountWithFile();
 
     fireEvent.click(screen.getByTitle(ON_BUTTON));

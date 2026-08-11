@@ -6,7 +6,7 @@ import DiffRows, { diffRowClasses } from "../Editor/DiffRows";
 import { reasoningFor, type ChatItem } from "./chatStore";
 import { chatsInFolder } from "../../utils/chatSessions";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
-import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
+import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import styles from "./SessionDiffView.module.css";
 
 // The same session, read a different way.
@@ -69,7 +69,6 @@ export default function SessionDiffView(props: {
   sinceTs: number | null;
 }) {
   const [openHunks, setOpenHunks] = createSignal<Set<string>>(new Set());
-  const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [width, setWidth] = createSignal(Infinity);
   let host: HTMLDivElement | undefined;
 
@@ -157,9 +156,7 @@ export default function SessionDiffView(props: {
                 : "Same preference as the Changes panel"
             }
             onClick={() => {
-              const next = !sideBySide();
-              setSideBySide(next);
-              writeSideBySide(next);
+              writeSideBySide(!sideBySide());
             }}
           >
             {twoColumn() ? "Inline" : "Side by side"}

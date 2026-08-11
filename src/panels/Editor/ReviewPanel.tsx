@@ -35,7 +35,7 @@ import { amendRewritesPushed, composeCommitMessage, splitCommitMessage } from ".
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import DiffRows, { diffRowClasses } from "./DiffRows";
-import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
+import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
 import { folderActors } from "../../utils/folderActors";
@@ -146,7 +146,6 @@ export default function ReviewPanel(props: {
   const [prBase, setPrBase] = createSignal("");
   const [prDrafting, setPrDrafting] = createSignal(false);
   const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
-  const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   // Which file the expanded diff belongs to, and which of its two sections:
   // needed to refetch the right diff after a hunk apply or a disk change.
   const [openDiff, setOpenDiff] = createSignal<{ path: string; staged: boolean } | null>(null);
@@ -183,9 +182,7 @@ export default function ReviewPanel(props: {
   const twoColumn = () => sideBySide() && panelWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
 
   function toggleSideBySide() {
-    const next = !sideBySide();
-    setSideBySide(next);
-    writeSideBySide(next);
+    writeSideBySide(!sideBySide());
   }
 
   // Fetch (once) and reveal the file lines behind a collapsed gap. Clicking an
