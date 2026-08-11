@@ -1,0 +1,45 @@
+# The frontend gate: type-check and the vitest suite, on every push and PR.
+#
+# It exists because a guard nothing runs is only a suggestion. `src/lib/` holds
+# the whole of Sway's contact surface with its headless-primitives library, and
+# `src/lib/boundary.test.ts` is what keeps it that way - but a boundary test
+# that only runs when someone remembers to run it will be breached by the first
+# contributor who does not.
+#
+# `tsc --noEmit` is here for a related reason: `pnpm build` is `vite build`,
+# which transpiles without type-checking, so nothing else in the repo would
+# ever notice a type error.
+#
+# Deliberately frontend-only. The Rust and Tauri side is built by release.yml
+# on a macOS runner; putting it here too would trade minutes for a signal that
+# workflow already gives.
+name: Check
+
+# Every pull request, plus main after a merge. Not bare `on: push`, which would
+# run this a second time for each PR branch and would also fire on the `v*`
+# tags release.yml already builds.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      # Runs check-tokens.mjs first, then both vitest projects.
+      - name: Test
+        run: pnpm test
