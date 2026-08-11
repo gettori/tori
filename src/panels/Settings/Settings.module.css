@@ -13,9 +13,12 @@
     overflow: auto;
   }
 
+  /* Wider than the 560px it was as a single scrolling column: six panes each
+     hold rows whose label and control sit at opposite ends, and at the old width
+     the longer labels wrapped against their own controls. */
   .panel {
     width: 100%;
-    max-width: calc(560px * var(--ui-scale));
+    max-width: calc(800px * var(--ui-scale));
     background: var(--canvas-card);
     color: var(--fg-default);
     border: var(--sway-border-thin) solid var(--border-default);
@@ -24,17 +27,40 @@
     font-family: var(--sway-font-ui);
   }
 
+  /* Title, search and strip in one block above the panes: everything that acts
+     on all six tabs, separated from the one tab on screen by a single rule. */
   .header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sway-space-4);
+    padding: var(--sway-space-5) var(--sway-space-6) 0;
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+
+  .titleRow {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--sway-space-5) var(--sway-space-6);
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
 
   .title {
     font-size: var(--sway-text-xl);
     font-weight: 600;
+  }
+
+  /* The tab strip. Pills sit directly on the header's bottom rule, so the strip
+     carries no border of its own and no gap under it. Horizontal scroll rather
+     than wrap: six pills fit at every supported width, and a strip that became
+     two rows would move the panes down as the window narrowed. */
+  .strip {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .strip::-webkit-scrollbar {
+    display: none;
   }
 
   .body {
@@ -48,16 +74,11 @@
     margin-top: 0;
   }
 
-  /* The filter box. Full width and above every section, because it filters all
-     of them: shaped like a row it would read as one more setting rather than as
-     the way through them. The sibling rule stands in for `:first-child`, which
-     no section is any more. */
+  /* The search box. Full width and in the header, because it searches every tab:
+     shaped like a row inside a pane it would read as one more setting, and as
+     filtering that pane alone. */
   .search {
     width: 100%;
-    margin-bottom: var(--sway-space-5);
-  }
-  .search + .section {
-    margin-top: 0;
   }
 
   .sectionTitle {
