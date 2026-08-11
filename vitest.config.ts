@@ -75,6 +75,18 @@ export default defineConfig({
           name: "dom",
           environment: "jsdom",
           include: ["src/**/*.test.tsx"],
+          // `@testing-library/jest-dom` is a devDependency for one reason, and
+          // it is not that any test uses its matchers. vite-plugin-solid has an
+          // optional peer on it, and when that peer resolves the plugin appends
+          // `@testing-library/jest-dom/vitest` to setupFiles by itself. Adding
+          // Storybook pulled jest-dom into the tree, which satisfied the peer
+          // and switched that injection on. Undeclared, whether the package is
+          // linked at the project root is a hoisting accident: it was on macOS
+          // and was not on CI, where all 103 dom files then failed to collect
+          // with `Cannot find module .../@testing-library/jest-dom/vitest` and
+          // `setup 0ms`, so this file never ran either. Declaring it makes the
+          // link deterministic. Note the plugin's entry is *appended* to this
+          // array rather than replacing it, so both run.
           setupFiles: ["src/test/domSetup.ts"],
           server: inlineSolid,
         },
