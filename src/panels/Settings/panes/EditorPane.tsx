@@ -3,6 +3,7 @@ import {
   EDITOR_TOGGLES,
   Group,
   OWN_ROW_TOGGLES,
+  Row,
   TodoTagsRow,
   ToggleRow,
   idsIn,
@@ -10,6 +11,8 @@ import {
   type PaneProps,
 } from "../paneKit";
 import { overlayRoot } from "../settingsStore";
+import { blameOn, writeBlamePref } from "../../../utils/blamePref";
+import { sideBySideOn, writeSideBySide } from "../../../utils/sideBySide";
 import styles from "../Settings.module.css";
 
 /**
@@ -40,6 +43,23 @@ export default function EditorPane(props: PaneProps) {
             obvious from the label. */}
         <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
         <TodoTagsRow {...props} />
+        {/* The two reader preferences that live in localStorage rather than in
+            `EditorDefaults`, so they get plain rows: no workspace badge and no
+            "Set here", because there is no overlay layer under them to write. */}
+        <Row {...props} id="blame" label="Git blame">
+          <input
+            type="checkbox"
+            checked={blameOn()}
+            onChange={(e) => writeBlamePref(e.currentTarget.checked)}
+          />
+        </Row>
+        <Row {...props} id="side-by-side-diff" label="Side-by-side diffs">
+          <input
+            type="checkbox"
+            checked={sideBySideOn()}
+            onChange={(e) => writeSideBySide(e.currentTarget.checked)}
+          />
+        </Row>
         <Show
           when={overlayRoot()}
           fallback={
