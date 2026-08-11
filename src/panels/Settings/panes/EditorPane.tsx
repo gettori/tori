@@ -24,22 +24,22 @@ import styles from "../Settings.module.css";
 export default function EditorPane(props: PaneProps) {
   return (
     <>
-      <Group shown={props.shown} title="Behaviour" ids={idsIn("editor")}>
+      <Group {...props} title="Behaviour" ids={idsIn("editor")}>
         {/* The same row as the comfort list below, so these four answer to the
             workspace overlay as well: before they did, the palette's
             “Preferences: Vim keybindings” wrote the layer in force while this
             row wrote and showed the global one, and a workspace that overrode
             either made the pair disagree on screen. */}
-        <For each={OWN_ROW_TOGGLES}>{(t) => <ToggleRow shown={props.shown} entry={t} />}</For>
+        <For each={OWN_ROW_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
       </Group>
 
-      <Group shown={props.shown} title="Editing" ids={idsIn("editing")}>
+      <Group {...props} title="Editing" ids={idsIn("editing")}>
         {/* Data-driven rather than ten hand-written rows: every one of these is
             the same boolean row, and the list is what the wave keeps adding to.
             The hint is optional, carried only by the keys whose effect is not
             obvious from the label. */}
-        <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow shown={props.shown} entry={t} />}</For>
-        <TodoTagsRow shown={props.shown} />
+        <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
+        <TodoTagsRow {...props} />
         <Show
           when={overlayRoot()}
           fallback={

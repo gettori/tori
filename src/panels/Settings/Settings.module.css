@@ -63,6 +63,31 @@
     display: none;
   }
 
+  /* The per-tab match count. `min-width` holds two digits' worth of room from
+     the first keystroke, so a count going 9 → 10 does not shove the tabs beside
+     it sideways mid-search. */
+  .badge {
+    min-width: calc(18px * var(--ui-scale));
+    padding: 0 var(--sway-space-2);
+    border-radius: var(--sway-radius-sm);
+    background: var(--accent-subtle);
+    color: var(--accent-fg);
+    font-size: var(--sway-text-2xs);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  /* A tab a query found nothing in. Quieted, never removed: it is still
+     somewhere you may want to go, and dropping it from the strip would move the
+     other five out from under the pointer while you are aiming at one. */
+  .tabEmpty {
+    opacity: 0.45;
+  }
+  .tabEmpty .badge {
+    background: transparent;
+    color: var(--fg-muted);
+  }
+
   .body {
     padding: var(--sway-space-5) var(--sway-space-6) var(--sway-space-7);
   }
@@ -139,6 +164,48 @@
     font-size: var(--sway-text-xs);
     color: var(--fg-muted);
     margin-top: var(--sway-space-2);
+  }
+
+  /* The matched part of a label or hint. Weight and colour rather than a block
+     of background: a row is already on screen *because* it matched, so this
+     answers "on what?" and should not shout over the setting itself. */
+  .mark {
+    background: none;
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+
+  /* A card section's wrapper. It exists so the whole group can be marked, and it
+     inherits `.section`'s vertical rhythm because it took it away: the wrapped
+     `<section>` is `:first-child` of this div, so the rule above zeroes it. */
+  .cardSection {
+    margin-top: var(--sway-space-6);
+  }
+  .cardSection:first-child {
+    margin-top: 0;
+  }
+
+  /* A card section the query matched. Its controls are built at runtime, so
+     there is no label to mark inside it - the whole group is the unit the badge
+     counted, so the whole group is what gets indicated. */
+  .cardSectionHit {
+    border-left: calc(2px * var(--ui-scale)) solid var(--accent-fg);
+    padding-left: var(--sway-space-4);
+    margin-left: calc(-1 * var(--sway-space-4));
+  }
+
+  /* Announced, never drawn: the aggregate match count for a screen reader, which
+     sighted users read off the badges instead. */
+  .srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   /* Marks a row whose value comes from this workspace's overlay rather than
