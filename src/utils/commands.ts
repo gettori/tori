@@ -762,7 +762,7 @@ export const COMMANDS: Command[] = [
       group: "settings",
       run: s.toggles
         ? () => emitWith<PrefsToggle>(PREFS_TOGGLE, { key: s.toggles! })
-        : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label }),
+        : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label, entry: s.id }),
     }),
   ),
 ];

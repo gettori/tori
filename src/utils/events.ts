@@ -188,7 +188,11 @@ export type PrefsToggle = { key: EditorToggleKey };
 // font stack or a dollar ceiling has no other value to flip to, so the command
 // takes you to it rather than guessing at one.
 export const OPEN_SETTINGS = "sway:open-settings";
-export type OpenSettings = { query?: string };
+/** `query` seeds the search box; `entry` is the catalogue id of the one setting
+ *  the command pointed at, which the panel scrolls to, focuses and flashes. The
+ *  query alone would only get you to the right tab - two settings can match one
+ *  label, and the box is a filter rather than an address. */
+export type OpenSettings = { query?: string; entry?: string };
 
 // The language-server commands. They exist as events, and not only as CM6 key
 // bindings, so the palette and the Cmd+/ sheet list them: a binding the library

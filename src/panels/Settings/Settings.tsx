@@ -12,7 +12,7 @@ import {
 import { Dynamic, Portal } from "solid-js/web";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
-import { SETTING_TABS, type SettingTab } from "../../utils/settingsCatalog";
+import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { nextSegmentIndex } from "../../components/controls";
 import { debounce } from "../../utils/debounce";
 import Tab from "../../components/Tab/Tab";
@@ -24,7 +24,7 @@ import ChatPane from "./panes/ChatPane";
 import EditorPane from "./panes/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane";
 import LanguagesPane from "./panes/LanguagesPane";
-import type { PaneProps } from "./paneKit";
+import { rowDomId, type PaneProps } from "./paneKit";
 import styles from "./Settings.module.css";
 
 /** Re-exported because the Editor rows moved to `paneKit` when the panel became
@@ -73,11 +73,22 @@ const FOCUSABLE =
  *  is not left waiting on it. */
 const ANNOUNCE_MS = 500;
 
+/** How long a deep-linked row stays lit. Long enough to catch the eye after the
+ *  pane has scrolled, short enough not to sit there as a second selection. */
+const FLASH_MS = 1200;
+
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled modal: six tabs over the catalogue's sections, one header search
 // across all of them, Escape / backdrop click to close.
-export default function Settings(props: { onClose: () => void; welcome?: boolean; query?: string }) {
+export default function Settings(props: {
+  onClose: () => void;
+  welcome?: boolean;
+  query?: string;
+  /** The catalogue id a `Preferences:` command pointed at, revealed on open and
+   *  again whenever a later command names a different one. */
+  entry?: string;
+}) {
   let firstControl: HTMLInputElement | undefined;
   let panelEl!: HTMLDivElement;
   let stripEl!: HTMLDivElement;
@@ -132,6 +143,41 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
   }
 
   /**
+   * Go to one named setting: its tab, then the row itself.
+   *
+   * The query alone only ever got you to a tab, which is as far as Phase 2 took
+   * this. A palette row names *one* setting, so the panel owes it the row: the
+   * pane scrolls to it, its control takes focus (so the next keystroke edits the
+   * thing you asked for), and it flashes, because focus alone is easy to miss on
+   * a checkbox in a list of checkboxes.
+   *
+   * Deferred to a microtask because selecting the tab is what un-hides the pane,
+   * and an element inside a `hidden` subtree cannot take focus.
+   */
+  function revealEntry(id: string) {
+    const tab = tabOfEntry(id);
+    if (!tab) return;
+    setActive(tab);
+    queueMicrotask(() => {
+      const el = document.getElementById(rowDomId(id));
+      if (!el) return;
+      // Absent in jsdom, and not worth a stub: the scroll is decoration on top
+      // of the focus, which is what actually moves the user.
+      el.scrollIntoView?.({ block: "center" });
+      // **Only a row takes focus.** A card section has no control of its own -
+      // its contents are built at runtime - so the first thing inside it is
+      // whatever that section happened to render, which for GitHub is a sign-out
+      // button. Landing focus on it would arm the next Space or Enter. The
+      // scroll and the flash still say "here", which is all a section can offer.
+      if (el.classList.contains(styles.row)) {
+        el.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
+      }
+      el.classList.add(styles.rowFlash);
+      setTimeout(() => el.classList.remove(styles.rowFlash), FLASH_MS);
+    });
+  }
+
+  /**
    * The aggregate, announced rather than drawn.
    *
    * Sighted users read the per-tab badges; a screen reader would have to walk
@@ -157,8 +203,11 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
   );
 
   onMount(() => {
-    if (props.query) landOn(props.query);
-    requestAnimationFrame(() => firstControl?.focus());
+    if (props.entry) revealEntry(props.entry);
+    else if (props.query) landOn(props.query);
+    // The search box takes focus on an ordinary open. A deep link has already
+    // aimed focus at a row, so stealing it back would undo the whole point.
+    if (!props.entry) requestAnimationFrame(() => firstControl?.focus());
   });
 
   // A later command re-filters a panel that is already open. ⌘K reaches the
@@ -167,10 +216,11 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
   // Deferred, so it is only a *change* of prop that overwrites what is typed.
   createEffect(
     on(
-      () => props.query,
-      (q) => {
+      () => [props.query, props.entry] as const,
+      ([q, entry]) => {
         setQuery(q ?? "");
-        if (q) landOn(q);
+        if (entry) revealEntry(entry);
+        else if (q) landOn(q);
       },
       { defer: true },
     ),
