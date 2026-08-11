@@ -1,23 +1,23 @@
-// What the Settings panel's filter box found, at two granularities.
+// What the Settings panel's header search found: which rows, and how many land
+// in each tab.
 //
-// `matchingSections` is the older, section-level rule: a setting is understood
-// through the ones around it, so a match keeps its neighbours on screen.
-// `matchingEntries` is row-level, which the per-tab count badges need - a badge
-// counting *sections* is not a number the user can check against what they see.
-// Each function's own comment carries the reasoning; they coexist deliberately
-// while the panel moves from one to the other.
+// **Row granularity.** The filter was section-level until the tab strip landed,
+// on the reasoning that a setting is understood through the ones around it and a
+// lone checkbox under a heading is hard to act on. Per-tab count badges cannot
+// be built on that: a badge saying how many *sections* a tab has some match in
+// is not a number a user can check against what they see. The old rule's concern
+// survives in where the rows are drawn - filtered rows keep their group headings
+// around them - rather than in what the matcher returns.
 //
-// Both live here rather than in `utils/settingsCatalog.ts` because they import
+// Lives here rather than in `utils/settingsCatalog.ts` because it imports
 // `fuzzyScore`, and the catalogue is reachable from the terminal's chunk (see
 // its module comment).
 import { fuzzyScore } from "../../utils/fuzzy";
 import {
-  SECTION_TITLES,
   SETTINGS,
   SETTING_TABS,
   TAB_OF_SECTION,
   type SettingEntry,
-  type SettingSection,
   type SettingTab,
 } from "../../utils/settingsCatalog";
 
@@ -33,27 +33,6 @@ import {
  */
 function matchesHint(hint: string | undefined, query: string): boolean {
   return !!hint && hint.toLowerCase().includes(query.toLowerCase());
-}
-
-/**
- * The sections a query leaves visible, or `null` for an empty query.
- *
- * `null` rather than "all of them" so the caller can tell "nothing typed" from
- * "nothing matched": the first renders the whole panel, the second has to say
- * that the filter found nothing, and a full set cannot express both.
- */
-export function matchingSections(query: string): Set<SettingSection> | null {
-  const q = query.trim();
-  if (!q) return null;
-  const hit = new Set<SettingSection>();
-  for (const [id, title] of Object.entries(SECTION_TITLES)) {
-    if (fuzzyScore(q, title) !== null) hit.add(id as SettingSection);
-  }
-  for (const s of SETTINGS) {
-    if (hit.has(s.section)) continue;
-    if (fuzzyScore(q, s.label) !== null || matchesHint(s.hint, q)) hit.add(s.section);
-  }
-  return hit;
 }
 
 /** Whether one catalogue entry answers a query: its label loosely, its hint
@@ -78,23 +57,18 @@ export type RowMatches = {
 };
 
 /**
- * The rows a query matches, and how many land in each tab. `null` for an empty
- * query, for `matchingSections`' reason: "nothing typed" renders the whole panel
- * and "nothing matched" has to say so, and a zeroed record cannot express both.
+ * The rows a query matches, and how many land in each tab.
  *
- * **Row granularity, unlike `matchingSections` above, and deliberately so.** The
- * section-level rule exists because a lone checkbox under a heading with its
- * neighbours hidden is hard to act on. Per-tab counts cannot be built on it: a
- * badge saying how many *sections* a tab has some match in is not a number a
- * user can check against what they see. The rows stay in a filtered pane with
- * their section headings around them, which is how the reason behind the older
- * rule is kept while the granularity changes.
+ * `null` for an empty query rather than "everything": the caller has to tell
+ * "nothing typed" from "nothing matched", because the first renders the whole
+ * panel and the second has to say that the filter found nothing, and a zeroed
+ * record cannot express both.
  *
- * **Section and tab titles are not matched**, again unlike `matchingSections`.
- * A title has no row to count, so counting it would put a badge on a tab with
- * nothing highlighted under it. The sections whose controls only exist at
- * runtime keep their standing entry in the catalogue, so they are still found
- * by name - and counted once, as one entry, however many cards they draw.
+ * **Section and tab titles are not matched**, only row labels and hints. A title
+ * has no row to count, so counting it would put a badge on a tab with nothing
+ * highlighted under it. The sections whose controls only exist at runtime keep
+ * their standing entry in the catalogue, so they are still found by name - and
+ * counted once, as one entry, however many cards they draw.
  */
 export function matchingEntries(query: string): RowMatches | null {
   const q = query.trim();
