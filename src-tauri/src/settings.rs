@@ -255,6 +255,54 @@ impl Default for ChatDefaults {
     }
 }
 
+/// Spend ceilings, mirroring `Budgets` in `panels/Settings/settingsStore.ts`.
+///
+/// **`None` means unlimited, and that is the default.** A ceiling nobody asked
+/// for that stops an agent mid-task is worse than no ceiling, so all three are
+/// opt-in, and `None` is distinct from `Some(0.0)` - the latter is a user asking
+/// to be stopped immediately.
+///
+/// `warn_at_fraction` is the one field that is not an option, so it carries a
+/// named default rather than relying on the struct's: a file that sets one
+/// ceiling by hand and nothing else would otherwise deserialize the fraction as
+/// `0.0` and warn on the first cent. Same trap `EditorDefaults` documents.
+///
+/// **This section existed on the frontend before it existed here**, so the
+/// frontend sent a `budgets` key that serde had no home for and `set_settings`
+/// dropped on every save: the ceilings were writable in the panel and gone on
+/// the next read.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Budgets {
+    /// Ceiling for one chat session, in dollars.
+    #[serde(default)]
+    pub session_usd: Option<f64>,
+    /// Ceiling across every session in one project, in dollars.
+    #[serde(default)]
+    pub project_usd: Option<f64>,
+    /// Stop when a turn's context window passes this percentage.
+    #[serde(default)]
+    pub context_percent: Option<f64>,
+    /// Warn once at this fraction of whichever ceiling is in force.
+    #[serde(default = "default_warn_at_fraction")]
+    pub warn_at_fraction: f64,
+}
+
+fn default_warn_at_fraction() -> f64 {
+    0.8
+}
+
+impl Default for Budgets {
+    fn default() -> Self {
+        Self {
+            session_usd: None,
+            project_usd: None,
+            context_percent: None,
+            warn_at_fraction: default_warn_at_fraction(),
+        }
+    }
+}
+
 /// Editor behaviour that is a preference rather than a project fact.
 ///
 /// **`format_on_save` defaults off**, even though the project's own config is
@@ -394,6 +442,8 @@ pub struct Settings {
     pub github: Github,
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
+    #[serde(default)]
+    pub budgets: Budgets,
     #[serde(default)]
     pub editor_defaults: EditorDefaults,
     #[serde(default)]
@@ -624,6 +674,76 @@ mod tests {
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+    }
+
+    /// The budgets section shipped on the frontend with no home in this struct,
+    /// so serde dropped it on the way in and `set_settings` wrote it back out of
+    /// existence: the user typed a ceiling, saved, and found the field empty on
+    /// the next read. Same silent-total failure `organizeImportsOnSave` guards,
+    /// arrived at from the frontend's side.
+    #[test]
+    fn budgets_round_trip_and_default_to_unlimited() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        // A file with no budgets section: no ceiling at all, and the warning
+        // fraction from its named default rather than from a zeroed field.
+        assert_eq!(loaded.budgets.session_usd, None);
+        assert_eq!(loaded.budgets.project_usd, None);
+        assert_eq!(loaded.budgets.context_percent, None);
+        assert_eq!(loaded.budgets.warn_at_fraction, 0.8);
+
+        let mut s = loaded;
+        s.budgets = Budgets {
+            session_usd: Some(5.5),
+            project_usd: Some(20.0),
+            context_percent: Some(75.0),
+            warn_at_fraction: 0.9,
+        };
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back, s, "every ceiling survived the round trip");
+
+        // Written under the names the frontend sends, or the round trip only
+        // works between this struct and itself.
+        let raw = std::fs::read_to_string(&p).unwrap();
+        for key in ["sessionUsd", "projectUsd", "contextPercent", "warnAtFraction"] {
+            assert!(raw.contains(key), "{key} missing from {raw}");
+        }
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// A hand-edited file setting one ceiling must not zero the warning
+    /// fraction, and an existing settings file must keep every other section.
+    #[test]
+    fn a_partial_budgets_section_keeps_the_warning_fraction_and_its_siblings() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{ "appearance": { "theme": "catppuccin-mocha" },
+                 "budgets": { "sessionUsd": 3 } }"#,
+        )
+        .unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.budgets.session_usd, Some(3.0));
+        assert_eq!(back.budgets.warn_at_fraction, 0.8, "the fraction came from its default, not from 0");
+        assert_eq!(back.budgets.project_usd, None);
+        // And the section that has nothing to do with budgets is untouched: a
+        // section that fails to deserialize takes the whole file with it.
+        assert_eq!(back.appearance.theme, "catppuccin-mocha");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// `None` is "no ceiling"; `Some(0.0)` is a user asking to be stopped at
+    /// once. Serialising them the same way would make the second unreachable.
+    #[test]
+    fn an_explicit_zero_ceiling_is_not_the_same_as_no_ceiling() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.budgets.session_usd = Some(0.0);
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).budgets.session_usd, Some(0.0));
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
