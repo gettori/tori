@@ -122,6 +122,21 @@ export function frameLocation(): { path: string; line: number } | null {
   return at?.frame.path ? { path: at.frame.path, line: at.frame.line } : null;
 }
 
+/**
+ * Whether a file is on the selected pause's stack.
+ *
+ * What tells a buffer that the paused program has anything to say about it. A
+ * frame's names mean nothing in a file the program is not in, and answering
+ * anyway is worse than answering nothing: the value is real, it just belongs to
+ * a different `count` than the one being pointed at.
+ */
+export function fileOnStack(path: string): boolean {
+  const ref = selected();
+  if (!ref) return false;
+  const stop = stops().find((s) => s.id === ref.session);
+  return Boolean(stop?.frames.some((f) => f.path === path));
+}
+
 /** Show a frame, and open what it points at. */
 export function selectFrame(session: string, frameId: number): void {
   setSelected({ session, frameId });
