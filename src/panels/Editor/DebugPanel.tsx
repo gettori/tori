@@ -1,12 +1,16 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import {
+  ArrowDown,
   ArrowDownToLine,
   ArrowRightToLine,
+  ArrowUp,
   ArrowUpFromLine,
   Pause,
   Play,
+  Plus,
   RotateCcw,
   Square,
+  X,
 } from "lucide-solid";
 
 import Icon from "../../components/Icon/Icon";
@@ -18,6 +22,15 @@ import {
   type OutputCategory,
   type SessionState,
 } from "../../utils/debugStore";
+import { evaluateRepl, replHistory } from "../../utils/debugRepl";
+import {
+  addWatchExpression,
+  moveWatchExpression,
+  removeWatchExpression,
+  watchRows,
+  watchesLive,
+  type WatchRow,
+} from "../../utils/debugWatch";
 import {
   continueDebug,
   debugPaused,
@@ -58,6 +71,7 @@ const CATEGORY_LABEL: Record<OutputCategory, string> = {
   stderr: "stderr",
   console: "console",
   important: "important",
+  repl: "console entry",
 };
 
 /**
@@ -74,7 +88,7 @@ const CATEGORY_LABEL: Record<OutputCategory, string> = {
  * would lose the one thing the interleaving shows, which is what happened
  * before what.
  */
-export default function DebugPanel() {
+export default function DebugPanel(props: { root: string | null }) {
   return (
     <div class={styles.debugPanel}>
       <Show when={debugTree().length > 0}>
@@ -155,6 +169,13 @@ export default function DebugPanel() {
         </div>
       </Show>
 
+      {/* Always available, unlike everything above it: the point of a watch is
+          that you write it once and it answers on every run afterwards, so the
+          list has to be editable before there is anything to answer it. */}
+      <Show when={props.root}>
+        <Watches root={props.root!} />
+      </Show>
+
       {/* Hidden entirely when there is neither a run nor a transcript: the
           empty state above already says why the pane is empty, and stacking
           "No output yet" under it says the same thing twice. */}
@@ -176,8 +197,165 @@ export default function DebugPanel() {
             </For>
           </Show>
         </div>
+        <Repl />
       </Show>
     </div>
+  );
+}
+
+/**
+ * The watch list.
+ *
+ * Rows keep their place while they are being answered, so a step reads as
+ * values changing rather than as a list rebuilding itself. An expression that
+ * stops resolving shows the adapter's message in place of its value and keeps
+ * its row: a watch that vanishes when it errors is one nobody can fix, because
+ * there is nothing left to click.
+ */
+function Watches(props: { root: string }) {
+  const [draft, setDraft] = createSignal("");
+  const rows = createMemo(() => watchRows(props.root));
+
+  function add() {
+    const text = draft().trim();
+    if (!text) return;
+    addWatchExpression(props.root, text);
+    setDraft("");
+  }
+
+  return (
+    <div class={styles.watches}>
+      <div class={styles.watchHead}>Watch</div>
+      <form
+        class={styles.watchAdd}
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <input
+          class={styles.watchInput}
+          aria-label="Watch expression"
+          placeholder="Expression to watch"
+          value={draft()}
+          onInput={(e) => setDraft(e.currentTarget.value)}
+        />
+        <IconButton size="xs" icon={<Icon icon={Plus} />} title="Add watch" type="submit" />
+      </form>
+      <Show
+        when={rows().length > 0}
+        fallback={<div class={styles.varNote}>Nothing is being watched.</div>}
+      >
+        {/* `Index` rather than `For`: the rows are rebuilt on every answer, so
+            keying by identity would re-create all of them N times per stop and
+            take the focus out of anything being clicked. Keyed by position,
+            only the fields that changed are written. */}
+        <Index each={rows()}>
+          {(row, i) => (
+            <WatchRowView root={props.root} row={row()} index={i} last={rows().length - 1} />
+          )}
+        </Index>
+      </Show>
+    </div>
+  );
+}
+
+function WatchRowView(props: { root: string; row: WatchRow; index: number; last: number }) {
+  return (
+    <div class={styles.varRow} style={{ "padding-left": "calc(8px * var(--ui-scale))" }}>
+      <span class={styles.varName}>{props.row.expression}</span>
+      <Show
+        when={props.row.error}
+        fallback={
+          <span class={styles.varValue}>
+            {props.row.pending
+              ? "reading…"
+              : (props.row.value ?? (watchesLive() ? "" : "not running"))}
+          </span>
+        }
+      >
+        <span class={styles.watchError}>{props.row.error}</span>
+      </Show>
+      {/* Buttons rather than dragging: the list is short, the order rarely
+          changes, and a keyboard can reach these. */}
+      <IconButton
+        size="xs"
+        icon={<Icon icon={ArrowUp} />}
+        title={`Move ${props.row.expression} up`}
+        disabled={props.index === 0}
+        onClick={() => moveWatchExpression(props.root, props.index, props.index - 1)}
+      />
+      <IconButton
+        size="xs"
+        icon={<Icon icon={ArrowDown} />}
+        title={`Move ${props.row.expression} down`}
+        disabled={props.index === props.last}
+        onClick={() => moveWatchExpression(props.root, props.index, props.index + 1)}
+      />
+      <IconButton
+        size="xs"
+        icon={<Icon icon={X} />}
+        title={`Remove ${props.row.expression}`}
+        onClick={() => removeWatchExpression(props.root, props.index)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The console's input.
+ *
+ * Cleared on submit rather than on the answer, because the answer arrives on a
+ * line of its own and the entry is already echoed above it: leaving the text in
+ * place would make a slow adapter look like a submission that did not take.
+ */
+function Repl() {
+  const [entry, setEntry] = createSignal("");
+  // How far back through the history the arrows have walked. `null` is the
+  // line being typed, which is what walking forward past the end returns to.
+  const [back, setBack] = createSignal<number | null>(null);
+
+  function walk(by: number) {
+    const past = replHistory();
+    if (!past.length) return;
+    const at = back() ?? past.length;
+    const next = Math.min(past.length, Math.max(0, at + by));
+    setBack(next === past.length ? null : next);
+    setEntry(next === past.length ? "" : past[next]);
+  }
+
+  return (
+    <form
+      class={styles.replBar}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const text = entry();
+        setEntry("");
+        setBack(null);
+        void evaluateRepl(text);
+      }}
+    >
+      <span class={styles.replPrompt} aria-hidden="true">
+        &gt;
+      </span>
+      <input
+        class={styles.replInput}
+        aria-label="Evaluate in the debug console"
+        placeholder="Evaluate an expression"
+        value={entry()}
+        onInput={(e) => {
+          setEntry(e.currentTarget.value);
+          setBack(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+          // The caret would otherwise jump to one end of the field, which is
+          // the browser's answer to a key this field has its own answer to.
+          e.preventDefault();
+          walk(e.key === "ArrowUp" ? -1 : 1);
+        }}
+      />
+    </form>
   );
 }
 
