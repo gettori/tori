@@ -94,6 +94,14 @@ export const TAB_OF_SECTION: Record<SettingSection, SettingTab> = Object.fromEnt
   SETTING_TABS.flatMap((t) => t.sections.map((s) => [s, t.id])),
 ) as Record<SettingSection, SettingTab>;
 
+/** Which tab shows one catalogue entry, or `undefined` for an id the catalogue
+ *  does not carry. What a palette deep link needs before it can reveal a row:
+ *  the row exists in a pane, and the pane has to be the one on screen. */
+export function tabOfEntry(id: string): SettingTab | undefined {
+  const entry = SETTINGS.find((s) => s.id === id);
+  return entry && TAB_OF_SECTION[entry.section];
+}
+
 export const SECTION_TITLES: Record<SettingSection, string> = {
   agents: "Agents",
   lsp: "Language servers",
@@ -165,6 +173,18 @@ export const SETTINGS: SettingEntry[] = [
   },
 
   { id: "theme", section: "appearance", label: "Theme" },
+  {
+    // Bare, like the card-section entries: no `toggles` (it is not a boolean and
+    // has no workspace layer) and no `edits` (it is not an `EditorDefaults` key -
+    // zoom is localStorage-backed, so a burst of ⌘= never churns settings.json).
+    // Listed anyway, because the catalogue is what the search counts and what the
+    // palette generates a row from, and a setting missing here is invisible in
+    // both.
+    id: "zoom",
+    section: "appearance",
+    label: "Zoom",
+    hint: "Scales the whole interface, on top of the font sizes below. ⌘= and ⌘- move it a step, ⌘0 resets it.",
+  },
 
   { id: "ui-font-family", section: "typography", label: "UI font family" },
   { id: "ui-font-size", section: "typography", label: "UI font size" },
@@ -248,6 +268,23 @@ export const SETTINGS: SettingEntry[] = [
     label: "Compact single-child folders",
     toggles: "compactFolders",
     hint: "A folder whose only child is another folder renders as one row, src/utils/helpers, instead of a staircase. Gitignored folders are left alone.",
+  },
+  // Two reader preferences that live in localStorage rather than in
+  // `EditorDefaults`: each is something you switch on while reading one file and
+  // off again a minute later, so neither belongs in the settings file or its
+  // workspace overlay. Bare entries for `zoom`'s reason - the panel is not the
+  // only place they are reached from, but it is the only place they are *found*.
+  {
+    id: "blame",
+    section: "editing",
+    label: "Git blame",
+    hint: "Shows who last changed each line, in the editor's gutter. The editor's own blame button switches it too, and the two stay in step.",
+  },
+  {
+    id: "side-by-side-diff",
+    section: "editing",
+    label: "Side-by-side diffs",
+    hint: "Two columns instead of one for every diff Sway renders: commits, pull requests, review and chat. Narrow panes fall back to inline regardless.",
   },
   {
     // No `toggles`: a list of tags has no other value to flip to, so it is

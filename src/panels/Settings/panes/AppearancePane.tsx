@@ -12,7 +12,7 @@ import {
   withFallback,
   type PaneProps,
 } from "../paneKit";
-import { settings } from "../settingsStore";
+import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID } from "../../../theme";
 import { primaryFamily } from "../../../utils/fontLoad";
 import styles from "../Settings.module.css";
@@ -38,7 +38,9 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
-      <Group {...props} title="Theme" ids={idsIn("appearance")}>
+      {/* "Display" rather than "Theme": the group holds the theme and the zoom,
+          and naming it after one of its two rows read as a mislabel. */}
+      <Group {...props} title="Display" ids={idsIn("appearance")}>
         <Row {...props} id="theme" label="Theme">
           <div class={styles.control}>
             <select
@@ -60,6 +62,24 @@ export default function AppearancePane(props: PaneProps) {
               </Show>
             </select>
           </div>
+        </Row>
+        <Row {...props} id="zoom" label="Zoom">
+          {/* Percent in the field, a multiplier in the store. Both the row and
+              the hotkeys go through `setZoom`, which clamps and persists, so the
+              number here is always the one the app is actually at. */}
+          <input
+            type="number"
+            min={ZOOM_MIN * 100}
+            max={ZOOM_MAX * 100}
+            step="10"
+            class={`${styles.input} ${styles.num}`}
+            value={Math.round(zoom() * 100)}
+            onChange={(e) =>
+              setZoom(
+                clamp(e.currentTarget.value, ZOOM_MIN * 100, ZOOM_MAX * 100, Math.round(zoom() * 100)) / 100,
+              )
+            }
+          />
         </Row>
       </Group>
 

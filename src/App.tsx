@@ -159,6 +159,12 @@ function App() {
   // twice writes the same string, and a signal that swallowed it would leave the
   // filter wherever the user had since typed.
   const [settingsQuery, setSettingsQuery] = createSignal("", { equals: false });
+  // The catalogue id the command pointed at, which the panel scrolls to, focuses
+  // and flashes. `equals: false` for `settingsQuery`'s reason: running the same
+  // row twice must re-reveal the row, not be swallowed as "no change".
+  const [settingsEntry, setSettingsEntry] = createSignal<string | undefined>(undefined, {
+    equals: false,
+  });
   // The omnibox's opening prefix, and `null` for "not open". One signal where
   // there were two, because there is one overlay: an open flag per shortcut is
   // what let ⌘P and ⌘K be two boxes in the first place. A fresh object per open
@@ -320,8 +326,9 @@ function App() {
     // shut: the store is global, and a toggle that first had to open a modal
     // would be slower than the modal.
     offPrefsToggle = onEventWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) => toggleEditorDefault(key));
-    offOpenSettings = onEventWith<OpenSettings>(OPEN_SETTINGS, ({ query }) => {
+    offOpenSettings = onEventWith<OpenSettings>(OPEN_SETTINGS, ({ query, entry }) => {
       setSettingsQuery(query ?? "");
+      setSettingsEntry(entry);
       setSettingsOpen(true);
     });
     // Stop, from Cmd+. or from a named palette row. Handled here rather than in
@@ -524,7 +531,13 @@ function App() {
         <Settings
           welcome={welcome()}
           query={settingsQuery()}
-          onClose={() => (setSettingsOpen(false), setWelcome(false), setSettingsQuery(""))}
+          entry={settingsEntry()}
+          onClose={() => (
+            setSettingsOpen(false),
+            setWelcome(false),
+            setSettingsQuery(""),
+            setSettingsEntry(undefined)
+          )}
         />
       </Show>
 

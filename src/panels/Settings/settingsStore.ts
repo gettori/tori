@@ -261,8 +261,10 @@ export { settings };
 // Persisted to localStorage (not the settings JSON) so a rapid Cmd+= burst is
 // instant and never churns the on-disk file or triggers the settings watcher.
 const ZOOM_KEY = "sway.zoom";
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3;
+// Exported so the Settings row's bounds are these bounds. A row that allowed a
+// value `clampZoom` then refused would show a number the app is not at.
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.1;
 
 function clampZoom(z: number): number {
@@ -283,7 +285,9 @@ export { zoom };
  *  Reactive: reads both the store and the zoom signal. */
 export const terminalFontSize = () => terminalFontSizePx(settings.typography.terminalFontSize, zoom());
 
-function setZoom(z: number) {
+/** The one way in. Clamps to the 0.1 grid, persists, and re-folds the result
+ *  into the CSS tokens, so the Settings row and ⌘= cannot diverge. */
+export function setZoom(z: number) {
   const next = clampZoom(z);
   setZoomSignal(next);
   localStorage.setItem(ZOOM_KEY, String(next));

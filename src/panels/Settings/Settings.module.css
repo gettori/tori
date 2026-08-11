@@ -166,6 +166,15 @@
     margin-top: var(--sway-space-2);
   }
 
+  /* A row a palette deep link just landed on. Focus alone is easy to miss on one
+     checkbox in a list of checkboxes, so the row itself says "here", then stops:
+     a permanent marker would read as a second kind of selection. */
+  .rowFlash {
+    background: var(--accent-subtle);
+    border-radius: var(--sway-radius-sm);
+    box-shadow: 0 0 0 var(--sway-space-2) var(--accent-subtle);
+  }
+
   /* The matched part of a label or hint. Weight and colour rather than a block
      of background: a row is already on screen *because* it matched, so this
      answers "on what?" and should not shout over the setting itself. */

@@ -8,7 +8,7 @@
 // is the exception, because a palette row is the user pointing at one setting.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -276,5 +276,68 @@ describe("a command that opens the panel at one setting", () => {
     // pointed at, so nothing should move.
     render(() => <Settings onClose={() => {}} query="zzzqqq" />);
     expect(activeTab()).toBe("Agents");
+  });
+});
+
+describe("a command that deep links to one row", () => {
+  /** The row element a catalogue id renders as. */
+  const row = (id: string) => document.getElementById(`settings-row-${id}`);
+
+  it("lands focused on the row, not merely on its tab", async () => {
+    // Phase 2 got you to the tab; a palette row names one setting, so the panel
+    // owes it the row. Focus is what makes the next keystroke edit the thing you
+    // asked for.
+    render(() => <Settings onClose={() => {}} query="Sticky scroll" entry="sticky-scroll" />);
+
+    await waitFor(() => expect(document.activeElement).toBe(row("sticky-scroll")!.querySelector("input")));
+    expect(activeTab()).toBe("Editor");
+  });
+
+  it("flashes the row, then stops", async () => {
+    // Focus alone is easy to miss on one checkbox in a list of checkboxes.
+    render(() => <Settings onClose={() => {}} query="Minimap" entry="minimap" />);
+
+    await waitFor(() => expect(row("minimap")!.className).toContain("rowFlash"));
+    await waitFor(() => expect(row("minimap")!.className).not.toContain("rowFlash"), { timeout: 3000 });
+  });
+
+  it("re-targets a panel already open on another tab", async () => {
+    const [entry, setEntry] = createSignal<string | undefined>(undefined);
+    const [q, setQ] = createSignal("");
+    render(() => <Settings onClose={() => {}} query={q()} entry={entry()} />);
+    clickTab("Appearance");
+
+    setQ("Minimap");
+    setEntry("minimap");
+
+    await waitFor(() => expect(document.activeElement).toBe(row("minimap")!.querySelector("input")));
+    expect(activeTab()).toBe("Editor");
+  });
+
+  it("reaches a section whose controls only exist at runtime", async () => {
+    // A card section has no row, so the deep link lands on the section itself
+    // rather than doing nothing.
+    render(() => <Settings onClose={() => {}} query="Debuggers" entry="debuggers" />);
+
+    await waitFor(() => expect(row("debuggers")).toBeTruthy());
+    expect(activeTab()).toBe("Languages");
+  });
+
+  it("does not put focus inside a card section", async () => {
+    // Its contents are built at runtime, so the first control in it is whatever
+    // that section happened to render - for GitHub, a sign-out button. Landing
+    // focus there would arm the next Space or Enter. The scroll and the flash
+    // still say "here", which is all a section without a control can offer.
+    render(() => <Settings onClose={() => {}} query="GitHub" entry="github" />);
+
+    await waitFor(() => expect(row("github")!.className).toContain("cardSectionHit"));
+    expect(row("github")!.contains(document.activeElement)).toBe(false);
+  });
+
+  it("leaves the search box focused when no row was named", async () => {
+    // An ordinary open still starts in the search box; only a deep link aims
+    // focus elsewhere, and stealing it back would undo the point.
+    render(() => <Settings onClose={() => {}} />);
+    await waitFor(() => expect(document.activeElement).toBe(box()));
   });
 });

@@ -120,6 +120,11 @@ export const TODO_TAGS: SettingEntry = SETTINGS.find((s) => s.edits === "todoPat
  *  a search is running; `query` is `""` then, which marks nothing. */
 export type PaneProps = { shown: (id: string) => boolean; query: string };
 
+/** The DOM id of a setting's row, so a palette deep link can find it. Derived
+ *  from the catalogue id rather than stored, so there is nothing to keep in
+ *  step. */
+export const rowDomId = (id: string) => `settings-row-${id}`;
+
 /**
  * A label or hint with the matched part marked.
  *
@@ -182,17 +187,24 @@ export function Group(props: {
  * "3" and a pane showing two rows is not a state this can reach.
  */
 export function Row(props: PaneProps & { id: string; label: string; hint?: string; children: JSX.Element }) {
+  /** The catalogue's hint unless the pane passed one.
+   *
+   * The two are allowed to differ - several rows say more on screen than the
+   * catalogue needs for searching - but they should not have to be written twice
+   * to say the *same* thing, which is a pair that drifts. The prop overrides;
+   * silence means "the one already in the catalogue". */
+  const hint = () => props.hint ?? SETTINGS.find((s) => s.id === props.id)?.hint;
   return (
     <Show when={props.shown(props.id)}>
-      <div class={styles.row}>
+      <div id={rowDomId(props.id)} class={styles.row}>
         <label class={styles.label}>
           <MarkedLabel query={props.query} text={props.label} />
         </label>
         {props.children}
       </div>
-      <Show when={props.hint}>
+      <Show when={hint()}>
         <div class={styles.hint}>
-          <MarkedHint query={props.query} text={props.hint!} />
+          <MarkedHint query={props.query} text={hint()!} />
         </div>
       </Show>
     </Show>
@@ -214,7 +226,10 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
           the `<section>` makes it `:first-child` of its own div, so the
           `.section:first-child` rule zeroes its top margin and two stacked card
           sections would butt together - the wrapper takes over that rhythm. */}
-      <div classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}>
+      <div
+        id={rowDomId(props.id)}
+        classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}
+      >
         {props.children}
       </div>
     </Show>
@@ -234,7 +249,7 @@ export function TodoTagsRow(props: PaneProps) {
   const fromWorkspace = () => editorOrigin().todoPatterns === "workspace";
   return (
     <Show when={props.shown(TODO_TAGS.id)}>
-      <div class={styles.row}>
+      <div id={rowDomId(TODO_TAGS.id)} class={styles.row}>
         <label class={styles.label}>
           <MarkedLabel query={props.query} text={TODO_TAGS.label} />
         </label>
@@ -291,7 +306,7 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
   const fromWorkspace = () => editorOrigin()[key()] === "workspace";
   return (
     <Show when={props.shown(props.entry.id)}>
-      <div class={styles.row}>
+      <div id={rowDomId(props.entry.id)} class={styles.row}>
         <label class={styles.label}>
           <MarkedLabel query={props.query} text={props.entry.label} />
         </label>

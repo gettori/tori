@@ -14,7 +14,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 import Settings from "./Settings";
-import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
+import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
+import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
+import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
 import styles from "./Settings.module.css";
 
@@ -132,11 +134,12 @@ describe("the per-tab match counts", () => {
 
   it("counts the matches per tab for a fixture query", () => {
     render(() => <Settings onClose={() => {}} />);
-    // "font" is the three family rows plus the three size rows in Appearance and
-    // nothing anywhere else.
+    // "font" is the three family rows, the three size rows, and Zoom - whose
+    // hint says it scales "on top of the font sizes below" - all in Appearance,
+    // and nothing anywhere else.
     type("font");
     const counts = Object.fromEntries(SETTING_TABS.map((t, i) => [t.label, badges()[i]]));
-    expect(counts.Appearance).toBe("6");
+    expect(counts.Appearance).toBe("7");
     expect(counts.Editor).toBe("0");
     expect(counts.Chat).toBe("0");
   });
@@ -260,7 +263,7 @@ describe("what a screen reader is told about the search", () => {
     // A bare number floating beside a word says nothing when read aloud.
     render(() => <Settings onClose={() => {}} />);
     type("font");
-    expect(screen.getByRole("tab", { name: "Appearance, 6 matches" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Appearance, 7 matches" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Editor, 0 matches" })).toBeTruthy();
   });
 
@@ -284,7 +287,7 @@ describe("what a screen reader is told about the search", () => {
 
     vi.advanceTimersByTime(600);
 
-    expect(live().textContent).toBe("6 settings in 1 tab");
+    expect(live().textContent).toBe("7 settings in 1 tab");
   });
 
   it("announces only the last total after a burst of keystrokes", () => {
@@ -338,6 +341,105 @@ describe("the six panes", () => {
     render(() => <Settings onClose={() => {}} welcome />);
     expect(activeTab()).toBe("Agents");
     expect(screen.getByText(/Welcome to Sway/)).toBeTruthy();
+  });
+});
+
+describe("the rows backed by localStorage rather than by settings.json", () => {
+  const pane = () => document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
+  const boxFor = (label: string) =>
+    screen.getByText(label).closest("div")!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+  const numberFor = (label: string) =>
+    screen.getByText(label).closest("div")!.querySelector('input[type="number"]') as HTMLInputElement;
+
+  beforeEach(() => {
+    localStorage.clear();
+    reloadBlamePref();
+    reloadSideBySide();
+    setZoom(1);
+  });
+
+  it("shows zoom as a percentage of the live value", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+    expect(numberFor("Zoom").value).toBe("100");
+  });
+
+  it("keeps the row and the zoom hotkeys in step, both ways", () => {
+    // One signal, one setter. A row holding its own copy would show 100% while
+    // ⌘= had already scaled the window.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+
+    zoomIn();
+    expect(numberFor("Zoom").value).toBe("110");
+
+    fireEvent.change(numberFor("Zoom"), { target: { value: "150" } });
+    expect(zoom()).toBe(1.5);
+    // Persisted, so it survives a restart the way ⌘= already did.
+    expect(localStorage.getItem("sway.zoom")).toBe("1.5");
+  });
+
+  it("clamps a zoom the store would refuse rather than showing a value it is not at", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+
+    fireEvent.change(numberFor("Zoom"), { target: { value: "900" } });
+
+    expect(zoom()).toBe(3);
+    expect(numberFor("Zoom").value).toBe("300");
+  });
+
+  it("switches blame and side-by-side through the shared preference", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+
+    fireEvent.click(boxFor("Git blame"));
+    expect(blameOn()).toBe(true);
+    expect(localStorage.getItem("sway.editor.blame")).toBe("1");
+
+    fireEvent.click(boxFor("Side-by-side diffs"));
+    expect(sideBySideOn()).toBe(true);
+    expect(localStorage.getItem("sway.review.sideBySide")).toBe("1");
+  });
+
+  it("follows a change made anywhere else, live", () => {
+    // The reason both preferences became module-level signals: the editor's own
+    // blame button and every diff surface write the same value, and a row that
+    // had copied it at mount would sit there stale.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+    expect(boxFor("Git blame").checked).toBe(false);
+
+    writeBlamePref(true);
+    writeSideBySide(true);
+
+    expect(boxFor("Git blame").checked).toBe(true);
+    expect(boxFor("Side-by-side diffs").checked).toBe(true);
+  });
+
+  it("takes each new row's hint from the catalogue rather than restating it", () => {
+    // The hint is what the search matches on, so a pane that repeated the text
+    // would leave two copies to drift - a row explaining one thing while the
+    // query that found it matched another.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+    for (const id of ["blame", "side-by-side-diff"]) {
+      const hint = SETTINGS.find((s) => s.id === id)!.hint!;
+      expect(screen.getAllByText(hint).length, id).toBe(1);
+    }
+  });
+
+  it("gives neither row a workspace badge, having no overlay layer under it", () => {
+    // They are localStorage, not `editorDefaults`, so "Set here" would write
+    // somewhere nothing reads.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+    for (const label of ["Git blame", "Side-by-side diffs", "Zoom"]) {
+      const row = screen.getByText(label).closest("div")!;
+      expect(row.textContent, label).not.toContain("Set here");
+      expect(row.textContent, label).not.toContain("workspace");
+    }
+    expect(pane()).toBeTruthy();
   });
 });
 
