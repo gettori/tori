@@ -6,7 +6,7 @@
 // is invisible rather than broken. The second is that `aria-modal` is a claim -
 // focus has to actually stay inside, or the attribute is a lie a screen reader
 // believes.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
@@ -16,6 +16,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
+import styles from "./Settings.module.css";
 
 beforeEach(async () => {
   invoke.mockReset();
@@ -37,8 +38,12 @@ const CARD_ENTRIES: Record<string, string> = {
 
 const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement[];
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
+/** The selected tab's label alone: a tab's `textContent` also carries the count
+ *  badge once a query is running. */
 const activeTab = () =>
-  (document.querySelector('[role="tab"][aria-selected="true"]') as HTMLElement | null)?.textContent;
+  document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
+/** Every tab's label, in strip order. */
+const tabLabels = () => tabs().map((t) => t.querySelector("span")?.textContent);
 const strip = () => document.querySelector('[role="tablist"]') as HTMLElement;
 const panel = () => document.querySelector('[role="dialog"]') as HTMLElement;
 const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
@@ -46,7 +51,7 @@ const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
 describe("the settings tab strip", () => {
   it("renders one tab per catalogue tab, in strip order", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(tabs().map((t) => t.textContent)).toEqual(SETTING_TABS.map((t) => t.label));
+    expect(tabLabels()).toEqual(SETTING_TABS.map((t) => t.label));
   });
 
   it("gives every tab a glyph, so no tab names an icon the panel cannot resolve", () => {
@@ -109,6 +114,197 @@ describe("the settings tab strip", () => {
     const stops = tabs().filter((t) => t.getAttribute("tabindex") === "0");
     expect(stops).toHaveLength(1);
     expect(stops[0].getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("the per-tab match counts", () => {
+  const type = (q: string) =>
+    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  /** Each tab's badge, in strip order, or null where a tab has none. Selected by
+   *  the badge's own class, not by position: a tab always ends in its label
+   *  span, so `span:last-child` reads the label back when there is no badge. */
+  const badges = () => tabs().map((t) => t.querySelector(`.${styles.badge}`)?.textContent ?? null);
+
+  it("shows no badges until something is typed", () => {
+    render(() => <Settings onClose={() => {}} />);
+    expect(badges().every((b) => b === null || b === "")).toBe(true);
+  });
+
+  it("counts the matches per tab for a fixture query", () => {
+    render(() => <Settings onClose={() => {}} />);
+    // "font" is the three family rows plus the three size rows in Appearance and
+    // nothing anywhere else.
+    type("font");
+    const counts = Object.fromEntries(SETTING_TABS.map((t, i) => [t.label, badges()[i]]));
+    expect(counts.Appearance).toBe("6");
+    expect(counts.Editor).toBe("0");
+    expect(counts.Chat).toBe("0");
+  });
+
+  it("agrees with the number of rows the pane then shows", () => {
+    // The badge's one promise. A count the user cannot check against what they
+    // see is worse than no count.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Chat/ }));
+    type("Dollars");
+
+    const pane = document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
+    const shownRows = pane.querySelectorAll("label").length;
+    expect(badges()[1]).toBe(String(shownRows));
+  });
+
+  it("keeps every tab mounted and clickable when a query matches nothing in it", () => {
+    // Dimmed, not removed: dropping a tab would move the other five out from
+    // under the pointer, and a zero-match tab is still somewhere to go.
+    render(() => <Settings onClose={() => {}} />);
+    type("font");
+    expect(tabs()).toHaveLength(SETTING_TABS.length);
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
+    expect(activeTab()).toContain("Editor");
+  });
+
+  it("does not unmount a tab as the query narrows", () => {
+    render(() => <Settings onClose={() => {}} />);
+    const before = tabs();
+    type("f");
+    type("fo");
+    type("font");
+    // Same element identities, so nothing remounted and nothing reflowed from a
+    // tab appearing or disappearing mid-keystroke.
+    expect(tabs()).toEqual(before);
+  });
+});
+
+describe("marking what matched, in the pane", () => {
+  const type = (q: string) =>
+    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  const pane = () => document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
+
+  it("marks the matched part of a label", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
+    type("minim");
+
+    expect([...pane().querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Minim"]);
+  });
+
+  it("marks the matched part of a hint when the label did not match", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
+    type("Prettier");
+
+    // "Prettier" appears only in Format on save's explanation, never in a label.
+    const marked = [...pane().querySelectorAll("mark")].map((m) => m.textContent);
+    expect(marked).toEqual(["Prettier"]);
+  });
+
+  it("indicates every unit the badge counted, in the pane", () => {
+    // The promise that ties the two halves together: a badge saying N and a pane
+    // where fewer than N things are visibly indicated is a count you cannot
+    // check. Card sections count as one and are marked whole.
+    render(() => <Settings onClose={() => {}} />);
+    for (const [tabName, query] of [
+      [/^Appearance/, "font"],
+      [/^Chat/, "Dollars"],
+      [/^Editor/, "wrap"],
+      [/^Languages/, "debug adapters"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("tab", { name: tabName }));
+      type(query);
+      const rows = pane().querySelectorAll("label").length;
+      const cards = pane().querySelectorAll(`.${styles.cardSectionHit}`).length;
+      const marked = pane().querySelectorAll("mark").length;
+      expect(rows === 0 || marked, `${query}: rows on screen with nothing marked`).toBeTruthy();
+      expect(rows + cards, `${query}: nothing indicated`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the vertical rhythm the wrapper took away", () => {
+    // Wrapping a `<section>` makes it `:first-child` of its own div, so the
+    // `.section:first-child` rule zeroes its top margin. Two stacked card
+    // sections (Language servers over Debuggers) would butt together unless the
+    // wrapper carries that rhythm instead.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Languages/ }));
+
+    const wrappers = pane().querySelectorAll(`.${styles.cardSection}`);
+    expect(wrappers).toHaveLength(2);
+    for (const w of wrappers) expect(w.querySelector("section")).toBeTruthy();
+  });
+
+  it("marks a card section whole, having no row to mark inside it", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Languages/ }));
+    type("debug adapters");
+
+    expect(pane().querySelectorAll(`.${styles.cardSectionHit}`)).toHaveLength(1);
+  });
+
+  it("marks nothing at all when no query is running", () => {
+    render(() => <Settings onClose={() => {}} />);
+    expect(document.querySelectorAll("mark")).toHaveLength(0);
+    expect(document.querySelectorAll(`.${styles.cardSectionHit}`)).toHaveLength(0);
+  });
+});
+
+describe("what a screen reader is told about the search", () => {
+  const type = (q: string) =>
+    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  const live = () => document.querySelector('[aria-live="polite"]') as HTMLElement;
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("puts each tab's count in its accessible name", () => {
+    // A bare number floating beside a word says nothing when read aloud.
+    render(() => <Settings onClose={() => {}} />);
+    type("font");
+    expect(screen.getByRole("tab", { name: "Appearance, 6 matches" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Editor, 0 matches" })).toBeTruthy();
+  });
+
+  it("says “1 match”, not “1 matches”", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("minim");
+    expect(screen.getByRole("tab", { name: "Editor, 1 match" })).toBeTruthy();
+  });
+
+  it("leaves the tab names alone when no query is running", () => {
+    render(() => <Settings onClose={() => {}} />);
+    expect(screen.getByRole("tab", { name: "Editor" })).toBeTruthy();
+  });
+
+  it("announces the aggregate once the typing stops", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("font");
+    // Nothing yet: `polite` queues rather than replaces, so announcing per
+    // keystroke would read out a backlog of stale totals.
+    expect(live().textContent).toBe("");
+
+    vi.advanceTimersByTime(600);
+
+    expect(live().textContent).toBe("6 settings in 1 tab");
+  });
+
+  it("announces only the last total after a burst of keystrokes", () => {
+    render(() => <Settings onClose={() => {}} />);
+    for (const q of ["m", "mi", "min", "mini", "minim"]) {
+      type(q);
+      vi.advanceTimersByTime(100);
+    }
+    expect(live().textContent).toBe("");
+
+    vi.advanceTimersByTime(600);
+
+    expect(live().textContent).toBe("1 setting in 1 tab");
+  });
+
+  it("says so when nothing matched", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("zzzqqq");
+    vi.advanceTimersByTime(600);
+    expect(live().textContent).toBe("No settings match");
   });
 });
 
