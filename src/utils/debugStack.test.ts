@@ -398,6 +398,37 @@ describe("a frame with no file on disk", () => {
     expect(stack.frameLocation()).toBeNull();
   });
 
+  it("shortens the absolute path js-debug hands back as a source name", async () => {
+    frames = [
+      {
+        id: 6,
+        name: "total",
+        // Measured against js-debug 1.117: `source.name` for a frame with a
+        // file behind it is the whole path, not the basename the field's own
+        // name implies. Rendered raw that is an absolute path in the stack
+        // pane's narrow "where" column.
+        source: { path: FILE, name: FILE },
+        line: 6,
+      },
+      {
+        id: 7,
+        name: "wrapModuleLoad",
+        source: { name: "<node_internals>/internal/modules/cjs/loader", sourceReference: 99 },
+        line: 254,
+      },
+    ];
+    const { stack } = await paused();
+
+    expect(stack.debugStops()[0].frames[0].sourceName).toBe("index.ts");
+    // A name that is not a path is left alone: these are already short, and
+    // taking the prefix off `<node_internals>/…` leaves `loader`.
+    expect(stack.debugStops()[0].frames[1].sourceName).toBe(
+      "<node_internals>/internal/modules/cjs/loader",
+    );
+    // And the full path is still there for anything that needs to open it.
+    expect(stack.debugStops()[0].frames[0].path).toBe(FILE);
+  });
+
   it("names which tab the paused line belongs in", async () => {
     frames = BUNDLED;
     const { stack } = await paused();

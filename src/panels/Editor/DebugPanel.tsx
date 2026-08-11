@@ -13,8 +13,11 @@ import {
   X,
 } from "lucide-solid";
 
+import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
+import { askAgentAboutFrame } from "../../utils/debugAsk";
+import { sendTargetFor } from "../../utils/sendTarget";
 import {
   consoleLines,
   debugTree,
@@ -56,7 +59,8 @@ import {
   VARIABLE_PAGE,
   type VarRow,
 } from "../../utils/debugVariables";
-import { emit, DEBUG_RESTART, DEBUG_STOP } from "../../utils/events";
+import { emit, emitWith, DEBUG_RESTART, DEBUG_STOP, TOAST, type ToastEvent } from "../../utils/events";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./DebugPanel.module.css";
 
 const STATE_LABEL: Record<SessionState, string> = {
@@ -88,7 +92,7 @@ const CATEGORY_LABEL: Record<OutputCategory, string> = {
  * would lose the one thing the interleaving shows, which is what happened
  * before what.
  */
-export default function DebugPanel(props: { root: string | null }) {
+export default function DebugPanel(props: { root: string | null; selected: Selection | null }) {
   return (
     <div class={styles.debugPanel}>
       <Show when={debugTree().length > 0}>
@@ -126,7 +130,9 @@ export default function DebugPanel(props: { root: string | null }) {
                   fallback={<div class={styles.empty}>No frames for this pause.</div>}
                 >
                   <For each={stop.frames}>
-                    {(frame) => <FrameRow session={stop.id} frame={frame} />}
+                    {(frame) => (
+                      <FrameRow session={stop.id} frame={frame} selected={props.selected} />
+                    )}
                   </For>
                 </Show>
               </>
@@ -140,6 +146,13 @@ export default function DebugPanel(props: { root: string | null }) {
           scope there. */}
       <Show when={debugScopes().length > 0}>
         <div class={styles.variables}>
+          {/* The second entry point for the same question. It sits over the
+              scopes rather than on one of them because what it sends is the
+              frame: the stack, and whatever of these has been opened. */}
+          <div class={styles.varHead}>
+            <span>Variables</span>
+            <AskButton selected={props.selected} />
+          </div>
           <For each={debugScopes()}>
             {(scope) => (
               <>
@@ -428,24 +441,74 @@ function Controls() {
 }
 
 /** One frame. The whole row is the target, because the thing being clicked is
- *  "go where this is" rather than any one word in it. */
-function FrameRow(props: { session: string; frame: StackFrame }) {
-  const isSelected = () =>
+ *  "go where this is" rather than any one word in it. The ask button is a
+ *  sibling rather than a child: a button inside a button is not a thing, and
+ *  only the selected row carries one, because that is the frame the message
+ *  would describe. */
+function FrameRow(props: { session: string; frame: StackFrame; selected: Selection | null }) {
+  const isCurrent = () =>
     selectedFrame()?.session === props.session && selectedFrame()?.frameId === props.frame.id;
   return (
-    <button
-      type="button"
-      class={styles.frame}
-      classList={{ [styles.selected]: isSelected() }}
-      aria-current={isSelected() ? "true" : undefined}
-      onClick={() => selectFrame(props.session, props.frame.id)}
-      title={props.frame.path ?? props.frame.sourceName}
+    <div class={styles.frameRow} classList={{ [styles.selected]: isCurrent() }}>
+      <button
+        type="button"
+        class={styles.frame}
+        aria-current={isCurrent() ? "true" : undefined}
+        onClick={() => selectFrame(props.session, props.frame.id)}
+        title={props.frame.path ?? props.frame.sourceName}
+      >
+        <span class={styles.frameName}>{props.frame.name}</span>
+        <span class={styles.frameWhere}>
+          {props.frame.sourceName}:{props.frame.line}
+        </span>
+      </button>
+      <Show when={isCurrent()}>
+        <AskButton selected={props.selected} />
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * "Ask the agent", the one control both entry points render.
+ *
+ * One component rather than two call sites, so the stack pane and the variables
+ * tree cannot drift into asking two different questions. What it sends is
+ * composed in `debugAsk.ts` from the selected frame, so both buttons produce
+ * the same text by construction rather than by agreement.
+ *
+ * The same capability gate the Problems and TODO panels use: safe-send needs a
+ * resumable session to land the text in, and a button that fails when clicked is
+ * worse than one that says why first.
+ */
+function AskButton(props: { selected: Selection | null }) {
+  // Asked once per selection rather than once per read: the tooltip and the
+  // click both want the same answer, and it is the same answer.
+  const gate = createMemo(() => sendTargetFor(props.selected));
+  const refusal = () => {
+    const answer = gate();
+    return "reason" in answer ? answer.reason : null;
+  };
+
+  async function ask() {
+    const answer = gate();
+    if ("reason" in answer) {
+      emitWith<ToastEvent>(TOAST, { message: answer.reason, kind: "error" });
+      return;
+    }
+    await askAgentAboutFrame(answer.target);
+  }
+
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      class={styles.ask}
+      title={refusal() ?? "Ask the agent about this frame"}
+      onClick={() => void ask()}
     >
-      <span class={styles.frameName}>{props.frame.name}</span>
-      <span class={styles.frameWhere}>
-        {props.frame.sourceName}:{props.frame.line}
-      </span>
-    </button>
+      Ask
+    </Button>
   );
 }
 

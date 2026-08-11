@@ -3,7 +3,7 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/ev
 import { diagnostics, fixesFor, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
 import { composeDiagnosticWithFixes, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { diagnosticBlocks } from "../../utils/chatCompose";
-import { findAgent } from "../../utils/agents";
+import { sendBlockedReason, sendTargetFor } from "../../utils/sendTarget";
 import Button from "../../components/Button/Button";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./ProblemsPanel.module.css";
@@ -30,27 +30,17 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
   const files = () => orderFiles(Object.entries(diagnostics()));
   const total = () => Object.values(diagnostics()).reduce((n, list) => n + list.length, 0);
 
+  // Same capability gate as the Changes panel, and the same one the TODO and
+  // Debug panels ask: safe-send needs a resumable session to land the text in.
+  const gate = () => sendTargetFor(props.selected);
+
   function target(): SessionTarget | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return null;
-    return {
-      sessionId: sel.sessionId,
-      agent: sel.agent ?? "claude",
-      folderPath: sel.folderPath,
-      sessionCwd: sel.sessionCwd,
-      sessionPath: sel.sessionPath,
-      sessionTitle: sel.sessionTitle,
-      sessionFile: sel.sessionFile,
-    };
+    const answer = gate();
+    return "target" in answer ? answer.target : null;
   }
 
-  // Same capability gate as the Changes panel: safe-send needs a resumable
-  // session to land the text in.
   function disabledReason(): string | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return "Select a session first";
-    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
-    return null;
+    return sendBlockedReason(props.selected);
   }
 
   function jumpTo(path: string, p: Problem) {
