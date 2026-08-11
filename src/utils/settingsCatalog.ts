@@ -40,6 +40,60 @@ export type SettingSection =
   | "chat"
   | "harness";
 
+/**
+ * A tab in the panel's strip, in the order the strip renders them.
+ *
+ * A **grouping layer over `SettingSection`**, not a parallel taxonomy: sections
+ * stay the unit a setting belongs to and the unit the panel titles, and a tab is
+ * just an ordered set of them. That is what lets the strip be replaced by a
+ * vertical rail, or the grouping be rearranged, without a single `SettingEntry`
+ * moving.
+ */
+export type SettingTab =
+  | "agents"
+  | "chat"
+  | "editor"
+  | "languages"
+  | "appearance"
+  | "integrations";
+
+export type SettingTabDef = {
+  id: SettingTab;
+  /** What the tab is labelled in the strip. */
+  label: string;
+  /** A lucide icon id, kebab-case, **as a name rather than the component.**
+   *  This module is reachable from the terminal's chunk (see the module
+   *  comment), so importing six icon components here would drag lucide in with
+   *  them. The panel maps the name to the component at the point of render. */
+  icon: string;
+  /** The sections this tab shows, in render order. Every `SettingSection`
+   *  appears in exactly one tab, which `settingsCatalog.test.tsx` checks. */
+  sections: SettingSection[];
+};
+
+/**
+ * The six tabs, in strip order.
+ *
+ * The pairings are the ones that read as one subject rather than the ones that
+ * happen to be adjacent today: the harness binary is a property of the agent
+ * that runs it, checkpoints are what makes a chat's turns revertible, and the
+ * two Editor sections were already titled the same thing.
+ */
+export const SETTING_TABS: SettingTabDef[] = [
+  { id: "agents", label: "Agents", icon: "bot", sections: ["agents", "harness"] },
+  { id: "chat", label: "Chat", icon: "message-square", sections: ["chat", "checkpoints"] },
+  { id: "editor", label: "Editor", icon: "file-code", sections: ["editor", "editing"] },
+  { id: "languages", label: "Languages", icon: "braces", sections: ["lsp", "dap"] },
+  { id: "appearance", label: "Appearance", icon: "palette", sections: ["appearance", "typography"] },
+  { id: "integrations", label: "Integrations", icon: "plug", sections: ["github"] },
+];
+
+/** Which tab a section is shown under. Derived from `SETTING_TABS` rather than
+ *  written out beside it, so the two cannot disagree. */
+export const TAB_OF_SECTION: Record<SettingSection, SettingTab> = Object.fromEntries(
+  SETTING_TABS.flatMap((t) => t.sections.map((s) => [s, t.id])),
+) as Record<SettingSection, SettingTab>;
+
 export const SECTION_TITLES: Record<SettingSection, string> = {
   agents: "Agents",
   lsp: "Language servers",
