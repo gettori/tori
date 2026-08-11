@@ -7,6 +7,16 @@ node_modules/
 dist/
 .vite/
 
+# npm cannot graft onto this pnpm-managed tree, and the `packageManager` field
+# in package.json is what tells a corepack-enabled npm to refuse. This is the
+# backstop for everyone else: if a stray `npm install` does produce a lockfile,
+# it does not reach the repo.
+#
+# Anchored, and it has to be: unanchored it would also swallow
+# `src-tauri/resources/lsp/package-lock.json`, which is a real npm project that
+# `pnpm lsp:install` maintains on purpose and the repo tracks.
+/package-lock.json
+
 # Debug adapter, fetched by `pnpm dap:install` from the pinned manifest beside it
 /src-tauri/resources/dap/js-debug/
 /src-tauri/resources/dap/.installed
