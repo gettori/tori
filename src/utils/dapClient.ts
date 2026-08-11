@@ -159,6 +159,35 @@ type Frame = {
   message?: unknown;
 };
 
+/**
+ * What a failed response actually said.
+ *
+ * DAP puts the human-readable text in `body.error.format`, and `message` is
+ * only "a short machine-readable id". js-debug 1.117 sends **no `message` at
+ * all**: an unresolvable expression answers
+ * `body.error.format: "Uncaught ReferenceError: notAName is not defined"` and
+ * nothing else, so reading `message` first turned every failure in the app into
+ * the word "failed". Measured, not assumed.
+ *
+ * `{name}` placeholders are filled from `variables` the way the spec defines,
+ * because a leaked `{path}` in a message under someone's cursor is worse than
+ * no message.
+ */
+function failureText(frame: Frame): string {
+  const error = (frame.body as { error?: { format?: unknown; variables?: unknown } } | undefined)
+    ?.error;
+  const format = typeof error?.format === "string" ? error.format : null;
+  if (format) {
+    const vars = error?.variables;
+    if (!vars || typeof vars !== "object") return format;
+    const table = vars as Record<string, unknown>;
+    return format.replace(/\{(\w+)\}/g, (whole, name: string) =>
+      name in table ? String(table[name]) : whole,
+    );
+  }
+  return String(frame.message ?? "failed");
+}
+
 function refusalFor(command: ReverseRequest): { message: string; body: unknown } {
   return {
     message: REFUSALS[command],
@@ -235,7 +264,7 @@ export function createDapConnection(send: (message: string) => void): DapConnect
       if (!waiter) return;
       pending.delete(frame.request_seq as number);
       if (frame.success === true) waiter.resolve(frame.body as never);
-      else waiter.reject(new Error(`${String(frame.command)}: ${String(frame.message ?? "failed")}`));
+      else waiter.reject(new Error(`${String(frame.command)}: ${failureText(frame)}`));
       return;
     }
 

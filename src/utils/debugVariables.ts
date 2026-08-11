@@ -15,6 +15,7 @@ import { createEffect, createRoot, createSignal, on } from "solid-js";
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
 import { sanitizeOutput } from "./debugStore";
+import { refreshWatches } from "./debugWatch";
 
 /** One scope of the selected frame: Locals, Closure, Global. */
 export type VarScope = {
@@ -304,6 +305,11 @@ export async function setVariableValue(row: VarRow, value: string): Promise<stri
     const open = new Set(expanded());
     open.delete(row.key);
     setExpanded(open);
+    // A watch has no event to tell it a write happened, and `evaluate` is the
+    // one reading that is live after one (measured: the container still says 3
+    // while `evaluate count` says 42). So this is exactly when a watch is most
+    // out of date, and the only moment anything knows to say so.
+    refreshWatches();
     return null;
   } catch (e: unknown) {
     return e instanceof Error ? e.message : String(e);

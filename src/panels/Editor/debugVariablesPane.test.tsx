@@ -118,7 +118,7 @@ async function flush(times = 12): Promise<void> {
 async function pausedPane() {
   const root = await dap.startDebugSession(start);
   await flush();
-  render(() => <DebugPanel />);
+  render(() => <DebugPanel root={REPO} />);
   event(root!.handle.session, "stopped", { reason: "breakpoint", threadId: 3 });
   await waitFor(() => expect(screen.queryByText("Locals")).toBeTruthy());
 }
@@ -194,7 +194,7 @@ describe("the scopes section", () => {
   it("has nothing to show while the program runs", async () => {
     const root = await dap.startDebugSession(start);
     await flush();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     await flush();
 
     expect(screen.queryByText("Locals")).toBeNull();

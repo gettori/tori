@@ -70,6 +70,45 @@ describe("request correlation", () => {
     await expect(pending).rejects.toThrow("Cannot evaluate code without a selected frame");
   });
 
+  it("reads the error body first, which is where js-debug puts the text", async () => {
+    const { conn, sent } = harness();
+    const pending = conn.request("evaluate");
+    // Measured against js-debug 1.117, verbatim: no `message` at all, and the
+    // only readable text in `body.error.format`. Reading `message` first turned
+    // every failure in the app into the word "failed".
+    conn.receive(
+      response({
+        request_seq: sent[0].seq,
+        command: "evaluate",
+        success: false,
+        body: {
+          error: {
+            id: 9222,
+            format: "Uncaught ReferenceError: notAName is not defined",
+            showUser: false,
+          },
+        },
+      }),
+    );
+    await expect(pending).rejects.toThrow("Uncaught ReferenceError: notAName is not defined");
+  });
+
+  it("fills the placeholders the spec puts in that text", async () => {
+    const { conn, sent } = harness();
+    const pending = conn.request("source");
+    conn.receive(
+      response({
+        request_seq: sent[0].seq,
+        command: "source",
+        success: false,
+        body: { error: { format: "No source for {ref} in {name}", variables: { ref: "42" } } },
+      }),
+    );
+    // A leaked `{name}` in a message under someone's cursor is worse than no
+    // message, so an unfilled placeholder is left as written rather than blanked.
+    await expect(pending).rejects.toThrow("No source for 42 in {name}");
+  });
+
   it("ignores a response nothing is waiting for", () => {
     const { conn } = harness();
     expect(() => conn.receive(response({ request_seq: 4242, command: "ghost" }))).not.toThrow();

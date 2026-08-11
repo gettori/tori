@@ -221,7 +221,7 @@ export const stepOut = () => send("stepOut");
  * which is what "pause" means for a run that is several processes.
  */
 export function pauseDebug(): void {
-  for (const session of leaves()) {
+  for (const session of leafSessions()) {
     void session.conn
       .request<{ threads?: { id: number }[] }>("threads")
       .then((body) => {
@@ -232,7 +232,11 @@ export function pauseDebug(): void {
   }
 }
 
-function leaves(): DapSession[] {
+/** The sessions with no children of their own, which is where program code
+ *  actually runs: Phase 1 measured the root session never stopping. What
+ *  anything addressed at "the program" rather than at a frame has to pick
+ *  from. */
+export function leafSessions(): DapSession[] {
   const out: DapSession[] = [];
   const walk = (session: DapSession) => {
     const kids = session.children.map(debugSession).filter((s): s is DapSession => s !== null);

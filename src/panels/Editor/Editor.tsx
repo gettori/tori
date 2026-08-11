@@ -2096,7 +2096,7 @@ export default function Editor(props: {
             <TasksPanel root={root()} />
           </Match>
           <Match when={rightMode() === "debug"}>
-            <DebugPanel />
+            <DebugPanel root={root()} />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
             <SessionPanel

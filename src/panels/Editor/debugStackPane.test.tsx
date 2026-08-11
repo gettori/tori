@@ -172,7 +172,7 @@ afterEach(async () => {
 describe("the toolbar", () => {
   it("offers pause while running and step nothing", async () => {
     await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
 
     // Continue and pause are the two halves of one state, so exactly one of
@@ -190,7 +190,7 @@ describe("the toolbar", () => {
 
   it("opens up when the program stops", async () => {
     const id = await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
 
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
@@ -204,7 +204,7 @@ describe("the toolbar", () => {
 
   it("sends the step the button names", async () => {
     const id = await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
     await waitFor(() => expect(screen.queryByTitle("Continue")).toBeTruthy());
@@ -221,7 +221,7 @@ describe("the toolbar", () => {
 describe("the call stack", () => {
   it("lists the paused session's frames, with the top one selected", async () => {
     const id = await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
 
     await waitFor(() => expect(screen.queryByText("total")).toBeTruthy());
@@ -235,7 +235,7 @@ describe("the call stack", () => {
   it("says so when a pause has no frames", async () => {
     frames = [];
     const id = await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     event(id, "stopped", { reason: "pause", threadId: 3 });
 
     // Better than an empty box: the pause is real even when the stack is not.
@@ -302,7 +302,7 @@ describe("from the pane to the editor", () => {
   it("opens a clicked frame at its own line", async () => {
     await mountEditor();
     const id = await startRun();
-    render(() => <DebugPanel />);
+    render(() => <DebugPanel root={REPO} />);
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
     await waitFor(() => expect(screen.queryByText("main")).toBeTruthy());
 

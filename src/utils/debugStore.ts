@@ -33,13 +33,18 @@ export type DebugNode = {
 };
 
 /**
- * The categories a DAP `output` event can carry.
+ * The categories a console line can carry.
  *
+ * The first four are what a DAP `output` event can say about itself.
  * `telemetry` is deliberately absent: it is the adapter reporting on itself to
  * its vendor, not program output, and showing it would put noise nobody asked
  * for in the middle of a program's stdout.
+ *
+ * `repl` is Sway's own voice, for what was typed into the console and what came
+ * back. It is not in `SHOWN_CATEGORIES`, so an adapter claiming it on an
+ * `output` event is dropped rather than allowed to forge a prompt.
  */
-export type OutputCategory = "stdout" | "stderr" | "console" | "important";
+export type OutputCategory = "stdout" | "stderr" | "console" | "important" | "repl";
 
 const SHOWN_CATEGORIES: OutputCategory[] = ["stdout", "stderr", "console", "important"];
 
@@ -151,14 +156,30 @@ function setState(id: string, state: SessionState): void {
  * with the newline included, so the split is rare and cosmetic.
  */
 function append(session: DapSession, category: OutputCategory, text: string): void {
+  push(session.handle.session, session.name, category, text);
+}
+
+/**
+ * Append a line Sway wrote itself, which is the REPL and nothing else.
+ *
+ * It joins the same transcript rather than a list of its own, because the order
+ * is the point: what you asked, and what the program printed while answering,
+ * are only readable together. `origin` names who is speaking in the column the
+ * session name occupies for program output.
+ */
+export function noteConsoleLine(origin: string, category: OutputCategory, text: string): void {
+  push("sway", origin, category, text);
+}
+
+function push(session: string, sessionName: string, category: OutputCategory, text: string): void {
   const clean = sanitizeOutput(text);
   if (!clean) return;
   // One trailing newline is the chunk's terminator, not an empty line.
   const body = clean.endsWith("\n") ? clean.slice(0, -1) : clean;
   const rows = body.split("\n").map((line, i) => ({
     id: nextLineId + i,
-    session: session.handle.session,
-    sessionName: session.name,
+    session,
+    sessionName,
     category,
     text: line,
   }));

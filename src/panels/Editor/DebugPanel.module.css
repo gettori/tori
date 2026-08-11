@@ -221,6 +221,96 @@
   background: var(--tree-row-hover);
 }
 
+/* The watch list. Capped like its neighbours, and above the console because it
+   is the part you read on every step while the console is the part you scroll
+   back through afterwards. */
+.watches {
+  flex: none;
+  max-height: 30%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.watchHead {
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+.watchAdd {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  align-items: center;
+  padding: 0 calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+
+.watchInput {
+  flex: 1;
+  min-width: 0;
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* The value's slot, so an erroring row is the same shape as a resolving one and
+   the list does not jump as expressions come and go. */
+.watchError {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--diag-error);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* Pinned under the transcript rather than scrolling with it: it is what you
+   reach for while reading what is above it. Named apart from the `.repl`
+   category class below, which the transcript applies to a line by its own
+   name. */
+.replBar {
+  display: flex;
+  flex: none;
+  gap: calc(6px * var(--ui-scale));
+  align-items: center;
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+  background: var(--canvas-head);
+}
+
+.replPrompt {
+  flex: none;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.replInput {
+  flex: 1;
+  min-width: 0;
+  padding: calc(2px * var(--ui-scale)) 0;
+  border: 0;
+  background: none;
+  color: var(--fg-default);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.replInput:focus {
+  outline: none;
+}
+
+/* Sway's own voice in the transcript, distinct from the program's. Applied by
+   the line's category, the way the four program categories are. */
+.repl .text {
+  color: var(--accent-fg);
+}
+
 /* The session tree takes what it needs and stops growing: the console is the
    part that gets long, so it is the part that scrolls. */
 .sessions {
