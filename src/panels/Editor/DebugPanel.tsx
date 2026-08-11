@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import {
   ArrowDownToLine,
   ArrowRightToLine,
@@ -30,6 +30,19 @@ import {
   stepOver,
   type StackFrame,
 } from "../../utils/debugStack";
+import {
+  canSetVariable,
+  debugScopes,
+  isVariableExpanded,
+  isVariablesBusy,
+  loadMoreVariables,
+  setVariableValue,
+  toggleVariables,
+  variableMore,
+  variableRows,
+  VARIABLE_PAGE,
+  type VarRow,
+} from "../../utils/debugVariables";
 import { emit, DEBUG_RESTART, DEBUG_STOP } from "../../utils/events";
 import styles from "./DebugPanel.module.css";
 
@@ -101,6 +114,40 @@ export default function DebugPanel() {
                   <For each={stop.frames}>
                     {(frame) => <FrameRow session={stop.id} frame={frame} />}
                   </For>
+                </Show>
+              </>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      {/* Under the stack, because a scope belongs to the frame above it: the
+          reading order is which session, where it is, and only then what is in
+          scope there. */}
+      <Show when={debugScopes().length > 0}>
+        <div class={styles.variables}>
+          <For each={debugScopes()}>
+            {(scope) => (
+              <>
+                <button
+                  type="button"
+                  class={`${styles.varRow} ${styles.scopeRow}`}
+                  aria-expanded={isVariableExpanded(scope.key)}
+                  onClick={() =>
+                    toggleVariables(scope.key, scope.variablesReference, scope.indexedVariables)
+                  }
+                >
+                  <Twisty open={isVariableExpanded(scope.key)} />
+                  <span class={styles.scopeName}>{scope.name}</span>
+                  {/* The adapter's own warning, passed on rather than acted on:
+                      Global is expensive everywhere, and hiding it would hide
+                      the scope people open when nothing else explains the bug. */}
+                  <Show when={scope.expensive}>
+                    <span class={styles.varNote}>slow</span>
+                  </Show>
+                </button>
+                <Show when={isVariableExpanded(scope.key)}>
+                  <VarRows parent={scope.key} depth={1} />
                 </Show>
               </>
             )}
@@ -221,6 +268,148 @@ function FrameRow(props: { session: string; frame: StackFrame }) {
         {props.frame.sourceName}:{props.frame.line}
       </span>
     </button>
+  );
+}
+
+/** The open/closed marker. A glyph rather than an icon, so it sits on the text
+ *  baseline of a monospace row and lines up down the column. */
+function Twisty(props: { open: boolean }) {
+  return (
+    <span class={styles.twisty} aria-hidden="true">
+      {props.open ? "▾" : "▸"}
+    </span>
+  );
+}
+
+// An object graph nests further than a session tree does, so this is its own
+// number rather than the session tree's: past it the indent eats the name,
+// which is the thing the row is for.
+const MAX_VAR_DEPTH = 10;
+
+const varIndent = (depth: number) =>
+  `calc(${Math.min(depth, MAX_VAR_DEPTH)} * 12px * var(--ui-scale) + 8px * var(--ui-scale))`;
+
+/** One container's children, plus what is still missing from them. */
+function VarRows(props: { parent: string; depth: number }) {
+  const indent = () => varIndent(props.depth);
+  return (
+    <>
+      <For each={variableRows(props.parent)}>
+        {(row) => <VariableRow row={row} depth={props.depth} />}
+      </For>
+      {/* A container mid-fetch reads as slow rather than as empty, which are
+          the same thing to anyone looking at a scope that has not answered. */}
+      <Show when={isVariablesBusy(props.parent)}>
+        <div class={styles.varNote} style={{ "padding-left": indent() }}>
+          Reading…
+        </div>
+      </Show>
+      {/* Paging is visible on purpose: a truncated list that says nothing is
+          indistinguishable from a short one. */}
+      <Show when={variableMore(props.parent) > 0}>
+        <button
+          type="button"
+          class={styles.varMore}
+          style={{ "padding-left": indent() }}
+          onClick={() => void loadMoreVariables(props.parent)}
+        >
+          Show {Math.min(VARIABLE_PAGE, variableMore(props.parent))} more of{" "}
+          {variableMore(props.parent)}
+        </button>
+      </Show>
+    </>
+  );
+}
+
+/**
+ * One variable, and its children when it has any.
+ *
+ * The value doubles as the edit control, so a settable variable is one click
+ * from being set and an unsettable one is plain text. That is also the whole of
+ * the capability gate: adapters that do not serve `setVariable` render no
+ * control at all rather than one that fails when used.
+ */
+function VariableRow(props: { row: VarRow; depth: number }) {
+  const [editing, setEditing] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const key = () => props.row.key;
+  const indent = () => varIndent(props.depth);
+
+  async function commit(value: string) {
+    setEditing(false);
+    if (value === props.row.value) return;
+    const failure = await setVariableValue(props.row, value);
+    setError(failure);
+  }
+
+  return (
+    <>
+      <div class={styles.varRow} style={{ "padding-left": indent() }}>
+        <Show
+          when={props.row.variablesReference > 0}
+          fallback={<span class={styles.twisty} aria-hidden="true" />}
+        >
+          <button
+            type="button"
+            class={styles.varToggle}
+            aria-expanded={isVariableExpanded(key())}
+            aria-label={`Expand ${props.row.name}`}
+            onClick={() =>
+              toggleVariables(key(), props.row.variablesReference, props.row.indexedVariables)
+            }
+          >
+            <Twisty open={isVariableExpanded(key())} />
+          </button>
+        </Show>
+        <span class={styles.varName}>{props.row.name}</span>
+        <Show when={props.row.type}>
+          <span class={styles.varType}>{props.row.type}</span>
+        </Show>
+        <Show
+          when={editing()}
+          fallback={
+            <Show
+              when={canSetVariable()}
+              fallback={<span class={styles.varValue}>{props.row.value}</span>}
+            >
+              <button
+                type="button"
+                class={`${styles.varValue} ${styles.varEditable}`}
+                title={`Set ${props.row.name}`}
+                onClick={() => {
+                  setError(null);
+                  setEditing(true);
+                }}
+              >
+                {props.row.value}
+              </button>
+            </Show>
+          }
+        >
+          <input
+            class={styles.varInput}
+            aria-label={`Value of ${props.row.name}`}
+            value={props.row.value}
+            autofocus
+            onBlur={(e) => void commit(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void commit(e.currentTarget.value);
+              // Escape leaves the old value alone, which is the only way out of
+              // a half-typed expression that does not write it.
+              if (e.key === "Escape") setEditing(false);
+            }}
+          />
+        </Show>
+      </div>
+      <Show when={error()}>
+        <div class={styles.varError} style={{ "padding-left": indent() }}>
+          {error()}
+        </div>
+      </Show>
+      <Show when={isVariableExpanded(key())}>
+        <VarRows parent={key()} depth={props.depth + 1} />
+      </Show>
+    </>
   );
 }
 

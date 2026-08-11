@@ -38,6 +38,7 @@ import type { Bookmark } from "../../utils/bookmarks";
 import { breakpointGutter, setBreakpointMarkers } from "./breakpointGutter";
 import type { BreakpointMark } from "../../utils/debugBreakpoints";
 import { frameHighlight, setFrameLineMarker } from "./frameHighlight";
+import { debugHover } from "./debugHover";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
@@ -1181,6 +1182,10 @@ export default function CodeEditor(props: {
         onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
       }),
       frameHighlight(),
+      // Beside the frame highlight rather than in `commonExtensions`, because
+      // both are the paused program showing through the buffer and they should
+      // arrive and leave together.
+      debugHover(path),
       EditorView.updateListener.of((u) => {
         if (!u.docChanged) return;
         const text = u.state.sliceDoc();

@@ -92,11 +92,13 @@ export function initializeArguments(adapterId: string): Record<string, unknown> 
     columnsStartAt1: true,
     pathFormat: "path",
     // Rendering only: what the variables tree shows, not a request Sway owes.
-    // `supportsVariablePaging` is deliberately absent until the tree that would
-    // send `start` and `count` exists: an unbacked claim about what the client
-    // can do is the same class of lie the obligations map below exists to stop,
-    // whichever direction it points in.
+    // `supportsVariablePaging` was held back until the tree that sends `start`
+    // and `count` existed, because an unbacked claim about what the client can
+    // do is the same class of lie the obligations map below exists to stop,
+    // whichever direction it points in. `debugVariables.ts` sends them now, so
+    // it is declared.
     supportsVariableType: true,
+    supportsVariablePaging: true,
     // The two that oblige an answer. See CAPABILITY_OBLIGATIONS.
     supportsRunInTerminalRequest: false,
     supportsStartDebuggingRequest: true,
