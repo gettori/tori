@@ -52,7 +52,7 @@ import {
   type ReviewEvent,
   type ReviewThread,
 } from "../../../utils/forgeTypes";
-import { readSideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
+import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
 import DiffRows, { diffRowClasses } from "../DiffRows";
 import ReviewThreadView from "./ReviewThreadView";
 import ReviewBar from "./ReviewBar";
@@ -134,8 +134,6 @@ export default function PrDetail(props: {
   const [mergeBusy, setMergeBusy] = createSignal(false);
   const [mergeError, setMergeError] = createSignal<string | null>(null);
   const [merged, setMerged] = createSignal(false);
-
-  const [sideBySide, setSideBySide] = createSignal(readSideBySide());
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
 
@@ -354,9 +352,7 @@ export default function PrDetail(props: {
   }
 
   function toggleColumns() {
-    const next = !sideBySide();
-    setSideBySide(next);
-    writeSideBySide(next);
+    writeSideBySide(!sideBySide());
   }
 
   let paneRef: HTMLDivElement | undefined;
