@@ -1,9 +1,20 @@
-import { createEffect, createMemo, createSignal, on, onMount, For, Show, type Component } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  For,
+  Show,
+  type Component,
+} from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
 import { SETTING_TABS, type SettingTab } from "../../utils/settingsCatalog";
 import { nextSegmentIndex } from "../../components/controls";
+import { debounce } from "../../utils/debounce";
 import Tab from "../../components/Tab/Tab";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -57,6 +68,11 @@ const paneId = (id: SettingTab) => `settings-pane-${id}`;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** How long the search box has to go quiet before the aggregate is announced.
+ *  Long enough to cover typing, short enough that a reader who stops to listen
+ *  is not left waiting on it. */
+const ANNOUNCE_MS = 500;
+
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
 // portaled modal: six tabs over the catalogue's sections, one header search
@@ -79,6 +95,25 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     return !m || m.ids.has(id);
   };
   const nothingMatched = () => matches()?.total === 0;
+  /** A tab's badge number. `-1` when nothing is typed, which no badge renders:
+   *  the strip only counts while a query is running. */
+  const countIn = (id: SettingTab) => matches()?.counts[id] ?? -1;
+  /** Matches waiting on the other five tabs, when this one has none. `0` in
+   *  every other case, including "nothing matched anywhere" - that is a
+   *  different message, because it is a query to change rather than a tab to
+   *  click. */
+  const elsewhere = () => {
+    const m = matches();
+    return m && m.total > 0 && m.counts[active()] === 0 ? m.total : 0;
+  };
+
+  /** A tab's accessible name. The badge is a number floating beside a word,
+   *  which says nothing when read aloud, so the count joins the name instead of
+   *  being left to a screen reader to stumble into. */
+  const tabName = (t: (typeof SETTING_TABS)[number]) => {
+    const n = countIn(t.id);
+    return n < 0 ? undefined : `${t.label}, ${n} ${n === 1 ? "match" : "matches"}`;
+  };
 
   /**
    * Select the first tab holding a match for `q`.
@@ -95,6 +130,31 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     const tab = SETTING_TABS.find((t) => m.counts[t.id] > 0);
     if (tab) setActive(tab.id);
   }
+
+  /**
+   * The aggregate, announced rather than drawn.
+   *
+   * Sighted users read the per-tab badges; a screen reader would have to walk
+   * the strip to learn the same thing, so the total is spoken once instead.
+   * **Throttled**, because the natural thing to announce is the result of every
+   * keystroke, and `polite` queues rather than replaces: typing "minimap" would
+   * read out seven totals in a row, six of them already stale.
+   */
+  const [announced, setAnnounced] = createSignal("");
+  // Dropped on teardown rather than left to fire: closing the panel mid-search
+  // would otherwise leave a timer writing to a signal nothing is listening to.
+  let live = true;
+  onCleanup(() => (live = false));
+  const announce = debounce((text: string) => live && setAnnounced(text), ANNOUNCE_MS);
+  createEffect(
+    on(matches, (m) => {
+      if (!m) return announce("");
+      if (m.total === 0) return announce("No settings match");
+      const tabs = SETTING_TABS.filter((t) => m.counts[t.id] > 0).length;
+      const settings = `${m.total} ${m.total === 1 ? "setting" : "settings"}`;
+      announce(`${settings} in ${tabs} ${tabs === 1 ? "tab" : "tabs"}`);
+    }),
+  );
 
   onMount(() => {
     if (props.query) landOn(props.query);
@@ -156,6 +216,26 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
     }
   }
 
+  /**
+   * Enter, in the search box: go to the tab with the most matches.
+   *
+   * The one keystroke that *does* navigate, and it earns it by being a decision
+   * rather than a byproduct of typing. Ties resolve to the earliest tab in strip
+   * order - `>` keeps the first maximum, so the rule falls out of the scan
+   * instead of needing to be applied. Pinned by test, because "whichever tab
+   * happened to be scanned last" is what this silently becomes if the comparison
+   * is ever loosened to `>=`.
+   */
+  function onSearchKeyDown(e: KeyboardEvent) {
+    if (e.key !== "Enter") return;
+    const m = matches();
+    if (!m || m.total === 0) return;
+    e.preventDefault();
+    let best = SETTING_TABS[0];
+    for (const t of SETTING_TABS) if (m.counts[t.id] > m.counts[best.id]) best = t;
+    if (m.counts[best.id] > 0) setActive(best.id);
+  }
+
   /** Arrow/Home/End across the strip, shared with the segmented control so the
    *  two cannot disagree about what a wrap is. Automatic activation: the arrow
    *  both moves focus and selects, which is what a six-tab strip with no
@@ -198,6 +278,7 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
               placeholder="Search settings"
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
+              onKeyDown={onSearchKeyDown}
             />
             <div
               ref={stripEl}
@@ -212,10 +293,20 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                     active={active() === t.id}
                     id={tabId(t.id)}
                     aria-controls={paneId(t.id)}
+                    aria-label={tabName(t)}
                     // Roving tabindex: one stop for the whole strip, so Tab
                     // steps past it into the pane rather than through six.
                     tabindex={active() === t.id ? 0 : -1}
+                    // Dimmed rather than disabled or hidden. A tab with no match
+                    // is still somewhere you may want to go, and removing it
+                    // would move the other five out from under the pointer.
+                    class={countIn(t.id) === 0 ? styles.tabEmpty : undefined}
                     icon={<Icon icon={TAB_ICONS[t.icon]} />}
+                    trailing={
+                      <Show when={matches()}>
+                        <span class={styles.badge}>{countIn(t.id)}</span>
+                      </Show>
+                    }
                     onClick={() => setActive(t.id)}
                   >
                     {t.label}
@@ -223,6 +314,10 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 )}
               </For>
             </div>
+          </div>
+
+          <div class={styles.srOnly} role="status" aria-live="polite">
+            {announced()}
           </div>
 
           <div class={styles.body}>
@@ -235,8 +330,17 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                 begin a session.
               </div>
             </Show>
+            {/* Two different nothings, and conflating them is what makes a
+                stay-put search feel broken. "Nowhere" is a query to change;
+                "not here" is a tab to click, so it has to say how many are
+                waiting and leave you where you are to decide. */}
             <Show when={nothingMatched()}>
               <div class={styles.hint}>No setting matches “{query().trim()}”.</div>
+            </Show>
+            <Show when={elsewhere() > 0}>
+              <div class={styles.hint}>
+                No matches here, {elsewhere()} elsewhere. The counts on the tabs say where.
+              </div>
             </Show>
 
             {/* Every pane stays mounted and the inactive ones are `hidden`: a
@@ -250,7 +354,7 @@ export default function Settings(props: { onClose: () => void; welcome?: boolean
                   aria-labelledby={tabId(t.id)}
                   hidden={active() !== t.id}
                 >
-                  <Dynamic component={PANES[t.id]} shown={shown} />
+                  <Dynamic component={PANES[t.id]} shown={shown} query={query()} />
                 </div>
               )}
             </For>

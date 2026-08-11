@@ -38,8 +38,8 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
-      <Group shown={props.shown} title="Theme" ids={idsIn("appearance")}>
-        <Row shown={props.shown} id="theme" label="Theme">
+      <Group {...props} title="Theme" ids={idsIn("appearance")}>
+        <Row {...props} id="theme" label="Theme">
           <div class={styles.control}>
             <select
               class={styles.select}
@@ -63,8 +63,8 @@ export default function AppearancePane(props: PaneProps) {
         </Row>
       </Group>
 
-      <Group shown={props.shown} title="Typography" ids={idsIn("typography")}>
-        <Row shown={props.shown} id="ui-font-family" label="UI font family">
+      <Group {...props} title="Typography" ids={idsIn("typography")}>
+        <Row {...props} id="ui-font-family" label="UI font family">
           <input
             class={`${styles.input} ${styles.text}`}
             value={primaryFamily(settings.typography.uiFontFamily)}
@@ -73,7 +73,7 @@ export default function AppearancePane(props: PaneProps) {
             }
           />
         </Row>
-        <Row shown={props.shown} id="ui-font-size" label="UI font size">
+        <Row {...props} id="ui-font-size" label="UI font size">
           <input
             type="number"
             min="9"
@@ -85,7 +85,7 @@ export default function AppearancePane(props: PaneProps) {
             }
           />
         </Row>
-        <Row shown={props.shown} id="editor-font-family" label="Editor font family">
+        <Row {...props} id="editor-font-family" label="Editor font family">
           <input
             class={`${styles.input} ${styles.text}`}
             value={primaryFamily(settings.typography.editorFontFamily)}
@@ -96,7 +96,7 @@ export default function AppearancePane(props: PaneProps) {
             }
           />
         </Row>
-        <Row shown={props.shown} id="editor-font-size" label="Editor font size">
+        <Row {...props} id="editor-font-size" label="Editor font size">
           <input
             type="number"
             min="9"
@@ -111,7 +111,7 @@ export default function AppearancePane(props: PaneProps) {
           />
         </Row>
         <Row
-          shown={props.shown}
+          {...props}
           id="terminal-font-family"
           label="Terminal font family"
           /* Worth naming: it is the one family here that needs no install, and
@@ -128,7 +128,7 @@ export default function AppearancePane(props: PaneProps) {
             }
           />
         </Row>
-        <Row shown={props.shown} id="terminal-font-size" label="Terminal font size">
+        <Row {...props} id="terminal-font-size" label="Terminal font size">
           <input
             type="number"
             min="9"
@@ -142,7 +142,7 @@ export default function AppearancePane(props: PaneProps) {
             }
           />
         </Row>
-        <Row shown={props.shown} id="line-height" label="Line height">
+        <Row {...props} id="line-height" label="Line height">
           <input
             type="number"
             min="1"

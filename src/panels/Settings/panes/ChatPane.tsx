@@ -32,9 +32,9 @@ const SPENDING = ["session-budget", "project-budget", "context-budget"];
 export default function ChatPane(props: PaneProps) {
   return (
     <>
-      <Group shown={props.shown} title="Sessions" ids={SESSIONS}>
+      <Group {...props} title="Sessions" ids={SESSIONS}>
         <Row
-          shown={props.shown}
+          {...props}
           id="default-surface"
           label="Open sessions in"
           hint="Which surface a click on a session opens. The other one stays available from the split-button menu either way, and already-saved tabs reopen on the surface they were saved on."
@@ -55,7 +55,7 @@ export default function ChatPane(props: PaneProps) {
             whatever the CLI itself would choose, and the composer's pickers
             change course mid-conversation. */}
 
-        <Row shown={props.shown} id="streaming" label="Stream responses">
+        <Row {...props} id="streaming" label="Stream responses">
           <input
             type="checkbox"
             checked={settings.chatDefaults.streaming}
@@ -63,7 +63,7 @@ export default function ChatPane(props: PaneProps) {
           />
         </Row>
 
-        <Row shown={props.shown} id="transcript-density" label="Transcript density">
+        <Row {...props} id="transcript-density" label="Transcript density">
           <div class={styles.control}>
             <select
               class={styles.select}
@@ -77,7 +77,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row
-          shown={props.shown}
+          {...props}
           id="tool-output-lines"
           label="Tool output lines"
           hint="Lines shown before a tool's output folds. 0 shows all of it."
@@ -97,7 +97,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row
-          shown={props.shown}
+          {...props}
           id="show-hooks"
           label="Show every hook event"
           hint="Off, the transcript shows a hook only when it fails; a hook that ran as configured is not news. On reveals every execution, Sway's own per-tool-call approval hook included."
@@ -110,9 +110,9 @@ export default function ChatPane(props: PaneProps) {
         </Row>
       </Group>
 
-      <Group shown={props.shown} title="Safety" ids={SAFETY}>
+      <Group {...props} title="Safety" ids={SAFETY}>
         <Row
-          shown={props.shown}
+          {...props}
           id="approval-auto-deny"
           label="Auto-deny approvals after"
           hint="Seconds an unanswered tool approval waits before Sway denies it. Sway owns this timeout so it always fires before the harness's own."
@@ -137,7 +137,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row
-          shown={props.shown}
+          {...props}
           id="checkpoints"
           label="Snapshot on each prompt"
           hint="Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt."
@@ -150,9 +150,9 @@ export default function ChatPane(props: PaneProps) {
         </Row>
       </Group>
 
-      <Group shown={props.shown} title="Spending" ids={SPENDING}>
+      <Group {...props} title="Spending" ids={SPENDING}>
         <Row
-          shown={props.shown}
+          {...props}
           id="session-budget"
           label="Stop this chat after"
           hint="Dollars one chat may spend before it stops at its next tool call. Leave blank for no limit, which is the default."
@@ -169,7 +169,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row
-          shown={props.shown}
+          {...props}
           id="project-budget"
           label="Stop this project after"
           hint="Dollars across every chat in one project. Two chats open on one repo spend one budget."
@@ -186,7 +186,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row
-          shown={props.shown}
+          {...props}
           id="context-budget"
           label="Stop at context"
           hint="Percent of the model's context window. Unlike the money limits this one recovers on its own after a compaction."

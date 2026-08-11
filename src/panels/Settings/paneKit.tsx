@@ -5,7 +5,8 @@
 // became six panes, and six components cannot share one closure. Nothing here
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
-import { Show, type JSX } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
+import { hintRanges, labelRanges, segments, type Range } from "./searchHighlight";
 import {
   SETTINGS,
   type SettingEntry,
@@ -113,10 +114,36 @@ export const OWN_ROW_TOGGLES = togglesIn("editor");
  *  drift apart the way two strings can. */
 export const TODO_TAGS: SettingEntry = SETTINGS.find((s) => s.edits === "todoPatterns")!;
 
-/** What a pane needs from the shell: which rows the query left on screen.
- *  `shown` answers true for everything when nothing is typed, so a pane never
- *  has to know whether a search is running. */
-export type PaneProps = { shown: (id: string) => boolean };
+/** What a pane needs from the shell: which rows the query left on screen, and
+ *  the query itself so a row can mark *why* it is one of them. `shown` answers
+ *  true for everything when nothing is typed, so a pane never has to ask whether
+ *  a search is running; `query` is `""` then, which marks nothing. */
+export type PaneProps = { shown: (id: string) => boolean; query: string };
+
+/**
+ * A label or hint with the matched part marked.
+ *
+ * The ranges come from `searchHighlight`, which is pinned to the matcher that
+ * decided this row is on screen at all - so what is marked is the actual reason
+ * the badge counted it, not a second guess at one.
+ */
+export function Mark(props: { text: string; ranges: Range[] }) {
+  return (
+    <For each={segments(props.text, props.ranges)}>
+      {(seg) => (seg.marked ? <mark class={styles.mark}>{seg.text}</mark> : <>{seg.text}</>)}
+    </For>
+  );
+}
+
+/** A row's label, marked where the query matched it. */
+const MarkedLabel = (props: { query: string; text: string }) => (
+  <Mark text={props.text} ranges={labelRanges(props.query, props.text)} />
+);
+
+/** A row's hint, marked where the query matched it. */
+const MarkedHint = (props: { query: string; text: string }) => (
+  <Mark text={props.text} ranges={hintRanges(props.query, props.text)} />
+);
 
 /** The catalogue ids belonging to one section, which is what a `Group` covering
  *  a whole section passes as its `ids`. Derived rather than written out, so a
@@ -154,22 +181,42 @@ export function Group(props: {
  * is the catalogue's, which is the same id the search counts, so a badge saying
  * "3" and a pane showing two rows is not a state this can reach.
  */
-export function Row(props: {
-  shown: (id: string) => boolean;
-  id: string;
-  label: string;
-  hint?: JSX.Element;
-  children: JSX.Element;
-}) {
+export function Row(props: PaneProps & { id: string; label: string; hint?: string; children: JSX.Element }) {
   return (
     <Show when={props.shown(props.id)}>
       <div class={styles.row}>
-        <label class={styles.label}>{props.label}</label>
+        <label class={styles.label}>
+          <MarkedLabel query={props.query} text={props.label} />
+        </label>
         {props.children}
       </div>
       <Show when={props.hint}>
-        <div class={styles.hint}>{props.hint}</div>
+        <div class={styles.hint}>
+          <MarkedHint query={props.query} text={props.hint!} />
+        </div>
       </Show>
+    </Show>
+  );
+}
+
+/**
+ * A section whose controls only exist at runtime, shown or hidden whole.
+ *
+ * Agents, language servers, debuggers and GitHub build a card per thing found,
+ * so there is no row to mark. The whole group is marked instead - which is also
+ * exactly what its single catalogue entry means, and what the badge counted.
+ */
+export function CardSection(props: PaneProps & { id: string; children: JSX.Element }) {
+  const matched = () => props.query.trim() !== "" && props.shown(props.id);
+  return (
+    <Show when={props.shown(props.id)}>
+      {/* The wrapper carries `.cardSection`, not just the hit marker. Wrapping
+          the `<section>` makes it `:first-child` of its own div, so the
+          `.section:first-child` rule zeroes its top margin and two stacked card
+          sections would butt together - the wrapper takes over that rhythm. */}
+      <div classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}>
+        {props.children}
+      </div>
     </Show>
   );
 }
@@ -188,7 +235,9 @@ export function TodoTagsRow(props: PaneProps) {
   return (
     <Show when={props.shown(TODO_TAGS.id)}>
       <div class={styles.row}>
-        <label class={styles.label}>{TODO_TAGS.label}</label>
+        <label class={styles.label}>
+          <MarkedLabel query={props.query} text={TODO_TAGS.label} />
+        </label>
         <Show when={fromWorkspace()}>
           <span class={styles.originBadge} title={workspaceName()}>
             workspace
@@ -220,7 +269,9 @@ export function TodoTagsRow(props: PaneProps) {
         </Show>
       </div>
       <Show when={TODO_TAGS.hint}>
-        <div class={styles.hint}>{TODO_TAGS.hint}</div>
+        <div class={styles.hint}>
+          <MarkedHint query={props.query} text={TODO_TAGS.hint!} />
+        </div>
       </Show>
     </Show>
   );
@@ -241,7 +292,9 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
   return (
     <Show when={props.shown(props.entry.id)}>
       <div class={styles.row}>
-        <label class={styles.label}>{props.entry.label}</label>
+        <label class={styles.label}>
+          <MarkedLabel query={props.query} text={props.entry.label} />
+        </label>
         {/* Only where the overlay actually supplies the value. "user" and
             "default" are the ordinary case and would be a badge on almost every
             row, which says nothing. */}
@@ -272,7 +325,9 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
         </Show>
       </div>
       <Show when={props.entry.hint}>
-        <div class={styles.hint}>{props.entry.hint}</div>
+        <div class={styles.hint}>
+          <MarkedHint query={props.query} text={props.entry.hint!} />
+        </div>
       </Show>
     </Show>
   );

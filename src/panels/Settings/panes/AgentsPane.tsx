@@ -1,6 +1,5 @@
-import { Show } from "solid-js";
 import AgentsSection from "../AgentsSection";
-import { Group, Row, idsIn, setHarness, type PaneProps } from "../paneKit";
+import { CardSection, Group, Row, idsIn, setHarness, type PaneProps } from "../paneKit";
 import { settings } from "../settingsStore";
 import styles from "../Settings.module.css";
 
@@ -14,13 +13,13 @@ import styles from "../Settings.module.css";
 export default function AgentsPane(props: PaneProps) {
   return (
     <>
-      <Show when={props.shown("agents")}>
+      <CardSection {...props} id="agents">
         <AgentsSection />
-      </Show>
+      </CardSection>
 
-      <Group shown={props.shown} title="Harness" ids={idsIn("harness")}>
+      <Group {...props} title="Harness" ids={idsIn("harness")}>
         <Row
-          shown={props.shown}
+          {...props}
           id="harness-path"
           label="Binary path"
           hint="Overrides the discovered binary for new chat sessions. Leave it empty to use the one found above. The detected version and any drift from what Sway's adapter was built against are shown in Agents."

@@ -1,6 +1,5 @@
-import { Show } from "solid-js";
 import GithubSection from "../GithubSection";
-import type { PaneProps } from "../paneKit";
+import { CardSection, type PaneProps } from "../paneKit";
 
 /**
  * The forge account and its kill switch.
@@ -11,8 +10,8 @@ import type { PaneProps } from "../paneKit";
  */
 export default function IntegrationsPane(props: PaneProps) {
   return (
-    <Show when={props.shown("github")}>
+    <CardSection {...props} id="github">
       <GithubSection />
-    </Show>
+    </CardSection>
   );
 }
