@@ -24,8 +24,9 @@ export type StackFrame = {
   name: string;
   /** Absolute path, or null for a frame with no file on disk. */
   path: string | null;
-  /** What DAP calls the source's name: a basename, or something like
-   *  `<eval>/VM123` for code that was never a file. */
+  /** How the source reads in a list: a basename, or something like
+   *  `<eval>/VM123` for code that was never a file. Normalized on the way in,
+   *  because js-debug does not honour the "name" in `source.name`. */
   sourceName: string;
   /** Non-zero when the content has to be fetched with a `source` request
    *  because there is nothing on disk to open. */
@@ -252,6 +253,21 @@ function clearStop(id: string): void {
   if (selected()?.session === id) setSelected(null);
 }
 
+/**
+ * How a frame's source reads in a list.
+ *
+ * Measured against js-debug 1.117: `source.name` is the *absolute path* for a
+ * frame with a file behind it, not the basename the field's own name implies.
+ * Rendered raw that is a full path in a narrow column, and composed into a
+ * message it is nine repetitions of the same directory. A name that is not a
+ * path is left alone, because the ones that are not
+ * (`<node_internals>/internal/modules/cjs/loader`, `<eval>/VM123`) are already
+ * short and are unreadable with their prefix taken off.
+ */
+function shortSource(name: string): string {
+  return name.startsWith("/") ? name.split("/").pop() || name : name;
+}
+
 function frameOf(raw: unknown): StackFrame {
   const f = (raw ?? {}) as {
     id?: number;
@@ -272,7 +288,7 @@ function frameOf(raw: unknown): StackFrame {
     id: f.id ?? 0,
     name: f.name ?? "(anonymous)",
     path: reference > 0 ? null : f.source?.path || null,
-    sourceName: f.source?.name || f.source?.path?.split("/").pop() || "(unknown)",
+    sourceName: shortSource(f.source?.name || f.source?.path || "(unknown)"),
     sourceReference: reference,
     line: f.line ?? 1,
     column: f.column ?? 1,

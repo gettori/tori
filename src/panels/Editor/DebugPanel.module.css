@@ -40,10 +40,24 @@
   font-size: var(--sway-text-sm);
 }
 
+/* The row is the button plus whatever sits beside it, so the highlight covers
+   both rather than stopping short of the ask control. */
+.frameRow {
+  display: flex;
+  align-items: baseline;
+  gap: calc(4px * var(--ui-scale));
+  padding-right: calc(4px * var(--ui-scale));
+}
+
+.frameRow:hover {
+  background: var(--tree-row-hover);
+}
+
 .frame {
   display: flex;
   gap: calc(8px * var(--ui-scale));
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   align-items: baseline;
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: 0;
@@ -54,12 +68,14 @@
   font: inherit;
 }
 
-.frame:hover {
-  background: var(--tree-row-hover);
-}
-
 .selected {
   background: var(--tree-row-active);
+}
+
+/* Never shrunk by a long frame name: it is the only thing on the row that is
+   not text you can also read elsewhere. */
+.ask {
+  flex: none;
 }
 
 .frameName {
@@ -89,6 +105,18 @@
   max-height: 40%;
   overflow-y: auto;
   border-bottom: 1px solid var(--border-default);
+}
+
+/* Same weight as the Watch heading, with the ask control pushed to the end so
+   it lines up with the row controls below it. */
+.varHead {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
 }
 
 .varRow {

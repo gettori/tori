@@ -5,7 +5,7 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/ev
 import { debounce } from "../../utils/debounce";
 import { composeTodo, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { todoBlocks } from "../../utils/chatCompose";
-import { findAgent } from "../../utils/agents";
+import { sendBlockedReason, sendTargetFor } from "../../utils/sendTarget";
 import { grepArgs, DEFAULT_SEARCH_OPTIONS } from "../../utils/searchOptions";
 import {
   filterByTags,
@@ -132,28 +132,15 @@ export default function TodoPanel(props: { root: string | null; selected: Select
     if (root) emitWith(OPEN_IN_EDITOR, { path: `${root}/${item.path}`, line: item.line });
   }
 
+  // The same capability gate the Problems and Debug panels use: safe-send needs
+  // a resumable session to land the text in.
   function target(): SessionTarget | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return null;
-    return {
-      sessionId: sel.sessionId,
-      agent: sel.agent ?? "claude",
-      folderPath: sel.folderPath,
-      sessionCwd: sel.sessionCwd,
-      sessionPath: sel.sessionPath,
-      sessionTitle: sel.sessionTitle,
-      sessionFile: sel.sessionFile,
-    };
+    const answer = sendTargetFor(props.selected);
+    return "target" in answer ? answer.target : null;
   }
 
-  // The same capability gate the Problems panel uses: safe-send needs a
-  // resumable session to land the text in.
   function disabledReason(): string | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return "Select a session first";
-    if (findAgent(sel.agent ?? "claude").resume_args.length === 0)
-      return "This agent's sessions can't be resumed";
-    return null;
+    return sendBlockedReason(props.selected);
   }
 
   async function sendToAgent(item: TodoItem) {
