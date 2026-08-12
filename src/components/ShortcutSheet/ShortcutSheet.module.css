@@ -1,57 +1,28 @@
 /* Cmd+/ shortcut sheet. Chrome surface, so it follows the spacious side of the
-   two-tier density convention: generous padding, section rhythm, soft elevation. */
+   two-tier density convention: generous padding, section rhythm, soft elevation.
+
+   The panel itself is `Dialog`'s now (see ShortcutSheet.tsx), so the backdrop,
+   the card, the heading row and their `:focus` suppression all live there and
+   are gone from here. What is left is the sheet's own content. */
+
+/* Deliberately outside `@layer components`, and deliberately doubled.
+   `Dialog.module.css` is unlayered, and an unlayered declaration beats a layered
+   one at any specificity, so a rule written inside the layer below could not
+   reach `.wide` no matter how it was written. Unlayered, the two tie at one
+   class each and the winner would be decided by import order, so the class is
+   repeated to take the specificity outright.
+
+   `wide` is the right panel behavior for this sheet but not its width: it is a
+   clamp that grows to 52vw, where the sheet has always been a fixed 680px. */
+.sheetWidth.sheetWidth {
+  width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(64px * var(--ui-scale))));
+  max-height: min(80vh, calc(720px * var(--ui-scale)));
+}
+
 @layer components {
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--scrim-default);
-  }
-
-  .sheet {
-    width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(64px * var(--ui-scale))));
-    max-height: min(80vh, calc(720px * var(--ui-scale)));
-    display: flex;
-    flex-direction: column;
-    background: var(--canvas-card);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-xl);
-    box-shadow: var(--shadow-lg);
-  }
-  /* Focused programmatically on open (see ShortcutSheet.tsx), so suppress the
-     ring: it would outline the whole sheet rather than indicate a target. */
-  .sheet:focus {
-    outline: none;
-  }
-
-  .head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--sway-space-5);
-    padding: calc(16px * var(--ui-scale)) calc(20px * var(--ui-scale));
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
-  }
-  .title {
-    margin: 0;
-    font-size: var(--sway-text-2xl);
-    font-weight: 600;
-    color: var(--fg-default);
-  }
-  .hint {
-    font-size: var(--sway-text-md);
-    color: var(--fg-muted);
-  }
-
   /* Two columns on a roomy sheet, one when the window is narrow. The groups are
      independent, so they reflow without losing meaning. */
   .groups {
-    overflow-y: auto;
-    padding: calc(8px * var(--ui-scale)) calc(20px * var(--ui-scale))
-      calc(16px * var(--ui-scale));
     columns: 2;
     column-gap: calc(28px * var(--ui-scale));
   }
