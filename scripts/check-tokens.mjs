@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the token layer. Seven checks:
+// Guard the token layer. Eight checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
@@ -11,6 +11,7 @@
 //   5. Every token the theme workbench names as a literal resolves.
 //   6. Every hue the generated seti mapping emits has a scale.* role.
 //   7. Every role semantic tokens paint with has a --syntax-* role.
+//   8. The Omnibox palette declares the height bound nothing above it supplies.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
@@ -511,6 +512,63 @@ if (semanticProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 8: the Omnibox palette declares its own height bound ----
+//
+// The command palette is the one overlay that is not a `Dialog`. Every dialog
+// picker is bounded by `Dialog`'s own scrolling body; the Omnibox has no
+// `Dialog` under it, so if its stylesheet does not bound it, nothing does. With
+// MAX_RESULTS at 200 an unbounded panel overflows a fixed, centred backdrop in
+// *both* directions, and the rows above the fold cannot be reached - there is
+// no scroller to reach them with.
+//
+// This lives here rather than in vitest for the same reason checks 4 to 7 do:
+// the test stack cannot see a CSS rule at all. Vitest stubs CSS Modules, so
+// `styles.list` resolves to a class name whether or not any rule declares it,
+// and jsdom computes no layout - so a mounted test asserting "the list scrolls"
+// passes against a stylesheet that says nothing of the kind. That is exactly
+// how the bound was lost the first time: `.picker` carried it, `.picker` was
+// deleted when the dialogs' picker moved inside `Dialog`, and the suite stayed
+// green through all of it.
+
+// Named for the Omnibox rather than "the palette": in this file a palette is a
+// theme's colour palette (see PALETTE_DIR above), and one word cannot be both.
+const OMNIBOX_CSS = "src/components/Omnibox/Omnibox.module.css";
+const omniboxSource = sources.get(OMNIBOX_CSS);
+
+// Comments are already stripped from `sources`, so a rule is a selector list and
+// a body. At-rules are skipped: their "body" is nested rules, not declarations.
+const omniboxRules = [...(omniboxSource ?? "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .map((m) => ({ selectors: m[1].split(",").map((s) => s.trim()), body: m[2] }))
+  .filter((rule) => !rule.selectors.some((s) => s.startsWith("@")));
+
+// What the command palette must declare, and what breaks when it does not.
+const OMNIBOX_BOUND = [
+  [".panel", "max-height", "the panel grows past the viewport instead of bounding itself"],
+  [".list", "overflow-y", "the rows overflow the panel with no way to scroll to them"],
+];
+
+const omniboxProblems = [];
+if (!omniboxSource) {
+  omniboxProblems.push(`could not read ${OMNIBOX_CSS}; this check needs the command palette's stylesheet`);
+} else if (omniboxRules.length === 0) {
+  omniboxProblems.push(`${OMNIBOX_CSS} parsed to no rules; the shape this check scans for changed`);
+}
+for (const [selector, property, consequence] of OMNIBOX_BOUND) {
+  const rules = omniboxRules.filter((rule) => rule.selectors.includes(selector));
+  if (rules.length === 0) {
+    omniboxProblems.push(`${OMNIBOX_CSS} has no ${selector} rule, so ${consequence}`);
+  } else if (!rules.some((rule) => new RegExp(`(^|;)\\s*${property}\\s*:`).test(rule.body))) {
+    omniboxProblems.push(`${selector} does not declare ${property}, so ${consequence}`);
+  }
+}
+
+if (omniboxProblems.length > 0) {
+  console.error(`${omniboxProblems.length} problem(s) in the command palette's height bound:\n`);
+  for (const problem of omniboxProblems) console.error(`  ${problem}`);
+  console.error("\nNothing above the palette bounds it, and no test can see a CSS rule; it must bound itself.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -518,5 +576,6 @@ console.log(
     `${palettes.length} palettes each producing all ${ROLES.length} roles, ` +
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
     `every token the workbench names resolving, all ${emitted.size} seti hues backed by scale roles, ` +
-    `and all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles.`,
+    `all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles, ` +
+    `and the command palette bounding its own height.`,
 );
