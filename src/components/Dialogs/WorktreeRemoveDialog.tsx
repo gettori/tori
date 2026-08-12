@@ -1,13 +1,19 @@
-import { createSignal, onMount, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createSignal, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Dialog from "../Dialog/Dialog";
 
 // The removal confirmation for a single worktree. Shows what is being deleted (the
 // branch + folder path), warns when the tree has uncommitted or unpushed work about
 // to be lost, and offers a "delete the branch too" checkbox (default on). Replaces
 // the old confirm()-gated Remove worktree / Delete worktree + branch pair with one
-// explicit dialog. Enter confirms, Escape or a backdrop click cancels.
+// explicit dialog.
+//
+// The shell is `Dialog` (see `BranchRemoveDialog` for why Enter stays here and
+// Escape does not). This is also the dialog most likely to be underneath another
+// one: it stays mounted with `busy` set while the removal runs, and a remote
+// delete is a network op that can raise an askpass prompt on top of it, which
+// `stackedDialogs.test.tsx` covers.
 export default function WorktreeRemoveDialog(props: {
   label: string;
   path: string;
@@ -31,105 +37,95 @@ export default function WorktreeRemoveDialog(props: {
   const confirm = () => props.onConfirm({ deleteLocal: deleteLocal(), deleteRemote: deleteRemote() });
   let ok: HTMLButtonElement | undefined;
 
-  onMount(() => requestAnimationFrame(() => ok?.focus()));
-
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onCancel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (!props.busy) confirm();
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!props.busy) confirm();
   }
 
   return (
-    <Portal>
-      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
-        <div
-          class={`${styles.modal} ${styles.modalDanger}`}
-          onMouseDown={(e) => e.stopPropagation()}
-          onKeyDown={onKeyDown}
-        >
-          <div class={styles.modalTitle}>Remove worktree “{props.label}”?</div>
-
-          <div class={styles.wtDetail}>
-            <Show when={props.branch}>
-              <div class={styles.wtDetailRow}>
-                <span class={styles.wtDetailKey}>Branch</span>
-                <span class={styles.wtDetailVal}>{props.branch}</span>
-              </div>
-            </Show>
-            <div class={styles.wtDetailRow}>
-              <span class={styles.wtDetailKey}>Folder</span>
-              <span class={styles.wtDetailVal} title={props.path}>{props.path}</span>
-            </div>
-            <div class={styles.wtDetailRow}>
-              <span class={styles.wtDetailKey}>Status</span>
-              <span class={styles.wtDetailTags}>
-                <Show when={props.dirty === null || props.unpushed === null}>
-                  <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
-                </Show>
-                <Show when={props.dirty}>
-                  <span class={`${styles.delTag} ${styles.warn}`}>uncommitted changes</span>
-                </Show>
-                <Show when={props.unpushed}>
-                  <span class={`${styles.delTag} ${styles.warn}`}>unpushed commits</span>
-                </Show>
-                <Show when={props.dirty === false && props.unpushed === false}>
-                  <span class={`${styles.delTag} ${styles.muted}`}>clean</span>
-                </Show>
-              </span>
-            </div>
-            <Show when={props.runningCount > 0}>
-              <div class={styles.wtDetailRow}>
-                <span class={styles.wtDetailKey}>Running</span>
-                <span class={styles.wtDetailVal}>
-                  {props.runningCount} terminal tab{props.runningCount === 1 ? "" : "s"} (their
-                  processes will be stopped)
-                </span>
-              </div>
-            </Show>
+    <Dialog
+      open
+      size="sheet"
+      title={`Remove worktree “${props.label}”?`}
+      onClose={() => props.onCancel()}
+      onKeyDown={onKeyDown}
+      initialFocus={() => ok}
+      actions={
+        <>
+          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
+            {props.busy ? "Removing…" : "Remove worktree"}
+          </Button>
+        </>
+      }
+    >
+      <div class={styles.wtDetail}>
+        <Show when={props.branch}>
+          <div class={styles.wtDetailRow}>
+            <span class={styles.wtDetailKey}>Branch</span>
+            <span class={styles.wtDetailVal}>{props.branch}</span>
           </div>
-
-          <Show when={props.dirty || props.unpushed}>
-            <div class={styles.modalWarn}>
-              This deletes work that is not saved anywhere else. It cannot be undone.
-            </div>
-          </Show>
-
-          <Show when={props.branch}>
-            <label class={styles.wtCheck}>
-              <input
-                type="checkbox"
-                checked={deleteLocal()}
-                onChange={(e) => setDeleteLocal(e.currentTarget.checked)}
-              />
-              <span>Delete local branch (git branch -D)</span>
-            </label>
-          </Show>
-
-          <Show when={props.hasRemote}>
-            <label class={styles.wtCheck}>
-              <input
-                type="checkbox"
-                checked={deleteRemote()}
-                onChange={(e) => setDeleteRemote(e.currentTarget.checked)}
-              />
-              <span>Delete remote branch (git push --delete)</span>
-            </label>
-          </Show>
-
-          <div class={styles.modalActions}>
-            <Button onClick={() => props.onCancel()}>
-              Cancel
-            </Button>
-            <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
-              {props.busy ? "Removing…" : "Remove worktree"}
-            </Button>
-          </div>
+        </Show>
+        <div class={styles.wtDetailRow}>
+          <span class={styles.wtDetailKey}>Folder</span>
+          <span class={styles.wtDetailVal} title={props.path}>{props.path}</span>
         </div>
+        <div class={styles.wtDetailRow}>
+          <span class={styles.wtDetailKey}>Status</span>
+          <span class={styles.wtDetailTags}>
+            <Show when={props.dirty === null || props.unpushed === null}>
+              <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
+            </Show>
+            <Show when={props.dirty}>
+              <span class={`${styles.delTag} ${styles.warn}`}>uncommitted changes</span>
+            </Show>
+            <Show when={props.unpushed}>
+              <span class={`${styles.delTag} ${styles.warn}`}>unpushed commits</span>
+            </Show>
+            <Show when={props.dirty === false && props.unpushed === false}>
+              <span class={`${styles.delTag} ${styles.muted}`}>clean</span>
+            </Show>
+          </span>
+        </div>
+        <Show when={props.runningCount > 0}>
+          <div class={styles.wtDetailRow}>
+            <span class={styles.wtDetailKey}>Running</span>
+            <span class={styles.wtDetailVal}>
+              {props.runningCount} terminal tab{props.runningCount === 1 ? "" : "s"} (their
+              processes will be stopped)
+            </span>
+          </div>
+        </Show>
       </div>
-    </Portal>
+
+      <Show when={props.dirty || props.unpushed}>
+        <div class={styles.modalWarn}>
+          This deletes work that is not saved anywhere else. It cannot be undone.
+        </div>
+      </Show>
+
+      <Show when={props.branch}>
+        <label class={styles.wtCheck}>
+          <input
+            type="checkbox"
+            checked={deleteLocal()}
+            onChange={(e) => setDeleteLocal(e.currentTarget.checked)}
+          />
+          <span>Delete local branch (git branch -D)</span>
+        </label>
+      </Show>
+
+      <Show when={props.hasRemote}>
+        <label class={styles.wtCheck}>
+          <input
+            type="checkbox"
+            checked={deleteRemote()}
+            onChange={(e) => setDeleteRemote(e.currentTarget.checked)}
+          />
+          <span>Delete remote branch (git push --delete)</span>
+        </label>
+      </Show>
+    </Dialog>
   );
 }

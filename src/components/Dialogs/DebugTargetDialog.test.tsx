@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import DebugTargetDialog from "./DebugTargetDialog";
 
 // Characterization test for the debug-target picker, written against the
@@ -21,14 +20,18 @@ import DebugTargetDialog from "./DebugTargetDialog";
 // the migration that leaves focus on the panel itself, where no control answers
 // Enter, which is exactly the seam the wrapper's key prop exists for.
 //
-// **Accessibility baseline, measured before any migration edit.** In file and
-// attach modes axe is clean. In script mode it reports one violation,
-// `select-name`: the script `<select>` is introduced by a `div.modalLabel`
-// rather than a `<label>` and has no `aria-label`. The port input escapes the
-// same fate only because it carries a `placeholder`, which axe accepts as an
-// accessible name. Phase 2 of #100 labels the select and drops the override.
+// **Accessibility, now clean in every mode.** The phase-1 baseline was: file and
+// attach clean, script mode carrying one `select-name` violation, because the
+// `<select>` was introduced by a `div.modalLabel` rather than a `<label>`. Both
+// it and the port input are now named by `aria-labelledby` pointing at that same
+// visible line, so the name and the text on screen cannot drift apart. The port
+// input was not a violation (its `placeholder` stood in as the name) and was
+// named anyway: a placeholder disappears the moment anything is typed.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof DebugTargetDialog>[0];
 
@@ -189,50 +192,70 @@ describe("DebugTargetDialog", () => {
       expect(document.activeElement).toBe(port());
     });
 
-    it("focuses nothing in a mode that has no field", async () => {
-      open({ filePath: "/tmp/app.ts" });
-      await frame();
-
-      // Nothing to name: `first` is assigned by the select or the port input,
-      // and this mode renders neither. After the migration this is the dialog
-      // whose Enter has to be caught on the panel.
-      expect(document.activeElement).toBe(document.body);
-    });
-
     it("has no accessibility violations in attach mode", async () => {
       open({ kind: "attach", port: 9229 });
 
       await expectNoAxeViolations(document.body);
     });
 
-    it("has no accessibility violations in script mode, bar the unnamed select", async () => {
+    it("has no accessibility violations in script mode", async () => {
       open({ kind: "script", scripts: ["dev", "test"] });
 
-      // See the file header: `select-name` is the measured pre-existing
-      // violation, fixed in phase 2 of #100. Every other rule still runs.
-      await expectNoAxeViolations(document.body, {
-        rules: { "select-name": { enabled: false } },
-      });
+      await expectNoAxeViolations(document.body);
     });
   });
 
   describe("shape", () => {
-    // A `mousedown` on a real backdrop element; Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time: dismissal was a `mousedown` on a real
+    // backdrop element and is now Kobalte's outside `pointerdown`, from a
+    // listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    // Moved here from `contract` during the migration, because it was
+    // misfiled: where focus lands when a dialog names no target is a property
+    // of the shell, not something a caller relies on. Before the swap it landed
+    // on `<body>`, since nothing called `focus()` at all. Now the panel takes
+    // it, which is what makes Enter reachable in this mode at all - the panel
+    // is where the key is caught, and `<body>` was outside the dialog entirely.
+    it("puts focus on the panel in a mode that has no field", async () => {
+      open({ filePath: "/tmp/app.ts" });
+      await frame();
+
+      expect(document.activeElement).toBe(screen.getByRole("dialog"));
+    });
+
+    it("starts on Enter from the panel, where the focus actually is", async () => {
+      const { onConfirm } = open({ filePath: "/tmp/app.ts" });
+      await frame();
+
+      fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+
+      expect(onConfirm).toHaveBeenCalledWith({ kind: "file", path: "/tmp/app.ts" });
+    });
+
+    it("ignores Enter from the panel while the mode is blocked", async () => {
+      const { onConfirm } = open();
+      await frame();
+
+      fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+
+      expect(onConfirm).not.toHaveBeenCalled();
     });
   });
 });

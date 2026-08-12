@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 
 // Characterization test for the worktree removal confirmation, written against
@@ -32,6 +31,9 @@ import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 // test that asserts on focus has to yield one first.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof WorktreeRemoveDialog>[0];
 
@@ -202,22 +204,23 @@ describe("WorktreeRemoveDialog", () => {
   });
 
   describe("shape", () => {
-    // Dismissal is wired to a `mousedown` on a real backdrop element today.
-    // Kobalte dismisses on a `pointerdown` anywhere outside the panel, from a
-    // listener installed in a `setTimeout(0)`, so no single `fireEvent`
-    // satisfies both and this is rewritten at migration time.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time, as the header said it would be: dismissal was
+    // a `mousedown` on a real backdrop element and is now Kobalte's outside
+    // `pointerdown`, from a listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });

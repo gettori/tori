@@ -51,6 +51,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 const { default: AskpassDialog } = await import("./AskpassDialog");
 const { default: ConfirmDialog } = await import("./ConfirmDialog");
+const { default: WorktreeRemoveDialog } = await import("./WorktreeRemoveDialog");
 
 /** The panel that contains this text, whether or not it is the top layer. */
 const panelWith = (text: string) =>
@@ -139,6 +140,112 @@ describe("two dialogs open at once", () => {
     // jsdom cannot decide, since it has no way to tell whether the buttons
     // under an aria-hidden layer are really reachable. Every other rule still
     // runs, so a real regression in the stacked state is still caught here.
+    await expectNoAxeViolations(document.body, {
+      rules: { "aria-hidden-focus": { enabled: false } },
+    });
+  });
+});
+
+// The stack the #100 migration makes reachable, and the one most likely to
+// actually happen: `WorktreeRemoveDialog` stays mounted with `busy` set while
+// its removal runs (LeftSidebar sets it before awaiting), and "delete the remote
+// branch too" is a `git push --delete`, a network op that raises
+// `askpass://prompt` exactly when the covered dialog is mid-flight and holding a
+// pending backend call.
+//
+// That is what separates this from the `ConfirmDialog` stack above: the covered
+// layer here is not merely waiting for a person, it is waiting for a process,
+// and answering the wrong one would confirm a destructive removal twice.
+async function stackOverRemoval(busy = true) {
+  const onCancel = vi.fn();
+  const onConfirm = vi.fn();
+  render(() => (
+    <>
+      <WorktreeRemoveDialog
+        label="feature/omnibox"
+        path="/tmp/feature-omnibox"
+        branch="feature/omnibox"
+        dirty={false}
+        unpushed={false}
+        hasRemote={true}
+        runningCount={0}
+        busy={busy}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+      <AskpassDialog />
+    </>
+  ));
+  await waitFor(() => expect(bridge.handlers["askpass://prompt"]).toBeTruthy());
+  await frame();
+
+  bridge.handlers["askpass://prompt"]({
+    payload: { id: 1, op_id: "op-1", prompt: PROMPT, kind: "username" },
+  });
+  await frame();
+
+  return { onCancel, onConfirm };
+}
+
+describe("a credential prompt over a removal that is already running", () => {
+  it("raises the prompt without unmounting the removal", async () => {
+    await stackOverRemoval();
+
+    expect(screen.getByText(PROMPT)).toBeTruthy();
+    expect(screen.getByText("Remove worktree “feature/omnibox”?")).toBeTruthy();
+    expect(panelWith(PROMPT)).not.toBe(panelWith("Remove worktree “feature/omnibox”?"));
+  });
+
+  it("gives focus to the prompt, not to the removal it interrupted", async () => {
+    await stackOverRemoval();
+
+    expect(document.activeElement).toBe(askpassInput());
+  });
+
+  // Deliberately stacked over a removal that has NOT been confirmed yet, which
+  // a background fetch can do at any moment. Over a `busy` removal this
+  // assertion would be worthless: the dialog's own busy gate would refuse the
+  // confirm even if the key did leak through, so the test would pass against an
+  // implementation with no layering at all. Here the layering is the only thing
+  // standing between Enter and a destructive removal.
+  it("does not confirm the removal underneath when the prompt is answered", async () => {
+    const { onConfirm } = await stackOverRemoval(false);
+
+    fireEvent.keyDown(askpassInput(), { key: "Enter" });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    // And the handler underneath is genuinely live, so the non-call above is the
+    // layering doing its job rather than a dialog that answers Enter nowhere.
+    fireEvent.keyDown(panelWith("Remove worktree “feature/omnibox”?"), { key: "Enter" });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives focus back to the removal when the prompt is answered", async () => {
+    await stackOverRemoval();
+
+    fireEvent.click(within(panelWith(PROMPT)).getByRole("button", { name: "Cancel" }));
+    await macrotask();
+
+    expect(panelWith("Remove worktree “feature/omnibox”?").contains(document.activeElement)).toBe(true);
+  });
+
+  it("leaves the removal dismissable once it is uncovered", async () => {
+    const { onCancel } = await stackOverRemoval();
+
+    fireEvent.click(within(panelWith(PROMPT)).getByRole("button", { name: "Cancel" }));
+    await macrotask();
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no accessibility violations while stacked, bar the one jsdom cannot judge", async () => {
+    await stackOverRemoval();
+
+    // Same measured exception as the stack above, and for the same reason.
     await expectNoAxeViolations(document.body, {
       rules: { "aria-hidden-focus": { enabled: false } },
     });
