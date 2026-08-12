@@ -28,7 +28,6 @@ import { mentionPath } from "../../utils/pathScope";
 import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
-import dialogStyles from "../Dialogs/Dialogs.module.css";
 import styles from "./Omnibox.module.css";
 
 /** How many project files the list holds. Past this the scroll bar is a hint
@@ -527,20 +526,20 @@ export default function Omnibox(props: {
 
   return (
     <Portal>
-      <div class={dialogStyles.modalBackdrop} onMouseDown={() => props.onClose()}>
+      <div class={styles.backdrop} onMouseDown={() => props.onClose()}>
         <div
-          class={`${dialogStyles.modal} ${dialogStyles.picker}`}
+          class={styles.panel}
           role="dialog"
           aria-label="Command palette"
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* The title names the mode, so the box says what it is looking at
               without the user having to read their own prefix back. */}
-          <div class={dialogStyles.modalTitle}>{specOf(mode()).label}</div>
-          <div class={dialogStyles.pickerInputWrap}>
+          <div class={styles.title}>{specOf(mode()).label}</div>
+          <div class={styles.inputWrap}>
             <input
               ref={input}
-              class={`${dialogStyles.modalInput} ${dialogStyles.pickerInput}`}
+              class={styles.input}
               placeholder={`${specOf(mode()).placeholder}   (? for prefixes)`}
               aria-label="Search files, actions and symbols"
               value={query()}
@@ -557,12 +556,12 @@ export default function Omnibox(props: {
           <Show
             when={results().length}
             fallback={
-              <div class={dialogStyles.pickerList}>
-                <div class={dialogStyles.pickerEmpty}>{emptyText()}</div>
+              <div class={styles.list}>
+                <div class={styles.empty}>{emptyText()}</div>
               </div>
             }
           >
-            <div class={dialogStyles.pickerList} role="listbox" aria-label="Results">
+            <div class={styles.list} role="listbox" aria-label="Results">
               <For each={results()}>
                 {(item, i) => (
                   <>
@@ -580,9 +579,9 @@ export default function Omnibox(props: {
                     </Show>
                     <div
                       ref={(el) => (rows[i()] = el)}
-                      class={`${dialogStyles.pickerItem} ${styles.item}`}
+                      class={styles.item}
                       classList={{
-                        [dialogStyles.active]: i() === index(),
+                        [styles.active]: i() === index(),
                         [styles.disabled]: !!item.disabled,
                       }}
                       role="option"

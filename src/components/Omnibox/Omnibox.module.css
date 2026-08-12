@@ -1,10 +1,116 @@
-/* Extends Dialogs.module.css's .pickerItem with a label + secondary-text +
-   key-chip layout (PickerModal's item is a single string, unstructured). The
-   base row is a plain block, so the flex line is added here rather than there. */
+/* The command palette's own chrome. It used to borrow the dialog cluster's
+   hand-rolled backdrop, panel, title and picker rules, but every dialog now
+   composes `Dialog`, so those rules had no other consumer and the Omnibox was
+   the one thing keeping them alive. The palette stays native
+   (Kobalte covers the dialogs; this is a command bar, not a dialog), so the
+   chrome moved here rather than dying with them.
+
+   What did not come across, and why: the dialogs' picker is bounded and
+   scrolled by `Dialog`'s own body, and its filter field is stuck to the top of
+   that scroller. Here the panel is the scroller, the field is a flex sibling
+   that never moves, and there is no clear button to leave room for. */
+
+/* Above menus (1000) and below toasts (1200) and dialogs (1250): a toast still
+   reaches the user over an open palette, and a dialog the palette opened stacks
+   over it. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--scrim-default);
+}
+
+/* The height bound nothing above supplies: the backdrop is `position: fixed`
+   and centres its child, so an unbounded panel overflows it in both directions
+   and the rows above the fold become unreachable. Guarded by check 8 of
+   scripts/check-tokens.mjs, because no test in this stack can see a CSS rule. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, calc(520px * var(--ui-scale)));
+  width: min(calc(420px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+  padding: calc(20px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.title {
+  font-size: var(--sway-text-2xl);
+  font-weight: 600;
+  color: var(--fg-default);
+  margin-bottom: calc(12px * var(--ui-scale));
+  white-space: pre-wrap;
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+.input:focus {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* The scroller. `flex: 1 1 auto` inside the bounded column is what gives the
+   rows somewhere to scroll rather than somewhere to overflow. */
+.list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin-top: calc(10px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+}
+
+.empty {
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
+  color: var(--fg-muted);
+}
+
+/* One rule, where there used to be two: the dialogs' `.pickerItem` for the row
+   itself and this file's `.item` for the label + secondary-text + key-chip line
+   laid over it. Split across two stylesheets, which of `.item` and `.disabled`
+   won was an import-order accident; merged, the source order below is the
+   answer. */
 .item {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-lg);
+  color: var(--fg-default);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item:hover {
+  background: var(--neutral-hover);
+}
+/* Keyboard/selected row wins over hover (declared after, same specificity).
+   Load-bearing: `onMouseEnter` moves the index too, so the pointer and the
+   arrow keys are competing for this row constantly. */
+.item.active {
+  background: var(--brand-subtle);
 }
 
 .itemLabel {
@@ -49,7 +155,8 @@
 }
 
 /* A command whose requirements are unmet still lists - the row is where its
-   reason is shown - but reads as unavailable and does not run. */
+   reason is shown - but reads as unavailable and does not run. Declared after
+   `.item`, which is what makes this `cursor` win at equal specificity. */
 .disabled {
   cursor: default;
 }
