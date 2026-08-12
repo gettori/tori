@@ -1,8 +1,8 @@
-import { createSignal, For, Show, onMount } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createSignal, For, Show } from "solid-js";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import ProjectIcon from "../Icon/ProjectIcon";
 import { searchIcons } from "../Icon/iconRegistry";
@@ -19,8 +19,11 @@ export type ProjectIconChoice = { icon?: string; file?: string };
 // Change a project's sidebar icon: automatic, an uploaded image, or one of the
 // picker's glyphs (searchable, since the set outgrew a single screenful). The
 // three are one selection, so choosing any of them un-chooses the others - the
-// user picks what the row shows, not a stack of fallbacks. Enter confirms,
-// Escape or a backdrop click cancels.
+// user picks what the row shows, not a stack of fallbacks.
+//
+// The shell is `Dialog`. Enter stays here, through its `onKeyDown`, because the
+// Save button is `disabled` while a save is in flight and a disabled button is
+// never clicked. Escape does not: Kobalte reports it as `onClose`.
 export default function ProjectIconDialog(props: {
   projectName: string;
   /** The project's absolute path: the seed the automatic glyph is derived from. */
@@ -46,8 +49,6 @@ export default function ProjectIconDialog(props: {
   const [picking, setPicking] = createSignal(false);
   let first: HTMLInputElement | undefined;
 
-  onMount(() => requestAnimationFrame(() => first?.focus()));
-
   const isAuto = () => !sel().icon && !sel().file;
   const file = () => sel().file;
 
@@ -71,85 +72,82 @@ export default function ProjectIconDialog(props: {
   };
 
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onCancel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      confirm();
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    confirm();
   }
 
   return (
-    <Portal>
-      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
-        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class={styles.modalTitle}>Icon for “{props.projectName}”</div>
-
-          <div class={styles.iconModes}>
-            <button
-              type="button"
-              class={styles.iconMode}
-              classList={{ [styles.iconSelected]: isAuto() }}
-              aria-pressed={isAuto()}
-              onClick={() => setSel({})}
-            >
-              <ProjectIcon seed={props.seed} favicon={props.favicon ?? undefined} />
-              <span>{props.favicon ? "Project favicon" : "Automatic"}</span>
-            </button>
-            <button
-              type="button"
-              class={styles.iconMode}
-              classList={{ [styles.iconSelected]: file() != null }}
-              aria-pressed={file() != null}
-              disabled={picking()}
-              onClick={() => void upload()}
-            >
-              <Show when={file()} fallback={<Icon icon={Upload} />}>
-                {(f) => <img src={convertFileSrc(f())} alt="" draggable={false} />}
-              </Show>
-              <span>{file() ? "Change image…" : "Upload image…"}</span>
-            </button>
-          </div>
-          <div class={styles.modalNote}>SVG, PNG or ICO, up to 2 MB.</div>
-
-          <div class={styles.modalLabel}>Or pick an icon</div>
-          <input
-            ref={first}
-            class={styles.modalInput}
-            value={query()}
-            placeholder="Search icons"
-            aria-label="Search icons"
-            onInput={(e) => setQuery(e.currentTarget.value)}
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck={false}
-          />
-          <div class={styles.iconGrid} role="group" aria-label="Project icon">
-            <For each={searchIcons(query())}>
-              {(entry) => (
-                <button
-                  type="button"
-                  class={styles.iconTile}
-                  classList={{ [styles.iconSelected]: sel().icon === entry.name }}
-                  aria-pressed={sel().icon === entry.name}
-                  title={entry.name}
-                  onClick={() => setSel({ icon: entry.name })}
-                >
-                  <Icon icon={entry.icon} />
-                </button>
-              )}
-            </For>
-          </div>
-
-          <div class={styles.modalActions}>
-            <Button onClick={() => props.onCancel()}>Cancel</Button>
-            <Button variant="primary" disabled={props.busy} onClick={() => confirm()}>
-              {props.busy ? "Working…" : "Save"}
-            </Button>
-          </div>
-        </div>
+    <Dialog
+      open
+      title={`Icon for “${props.projectName}”`}
+      onClose={() => props.onCancel()}
+      onKeyDown={onKeyDown}
+      initialFocus={() => first}
+      actions={
+        <>
+          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button variant="primary" disabled={props.busy} onClick={() => confirm()}>
+            {props.busy ? "Working…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <div class={styles.iconModes}>
+        <button
+          type="button"
+          class={styles.iconMode}
+          classList={{ [styles.iconSelected]: isAuto() }}
+          aria-pressed={isAuto()}
+          onClick={() => setSel({})}
+        >
+          <ProjectIcon seed={props.seed} favicon={props.favicon ?? undefined} />
+          <span>{props.favicon ? "Project favicon" : "Automatic"}</span>
+        </button>
+        <button
+          type="button"
+          class={styles.iconMode}
+          classList={{ [styles.iconSelected]: file() != null }}
+          aria-pressed={file() != null}
+          disabled={picking()}
+          onClick={() => void upload()}
+        >
+          <Show when={file()} fallback={<Icon icon={Upload} />}>
+            {(f) => <img src={convertFileSrc(f())} alt="" draggable={false} />}
+          </Show>
+          <span>{file() ? "Change image…" : "Upload image…"}</span>
+        </button>
       </div>
-    </Portal>
+      <div class={styles.modalNote}>SVG, PNG or ICO, up to 2 MB.</div>
+
+      <div class={styles.modalLabel}>Or pick an icon</div>
+      <input
+        ref={first}
+        class={styles.modalInput}
+        value={query()}
+        placeholder="Search icons"
+        aria-label="Search icons"
+        onInput={(e) => setQuery(e.currentTarget.value)}
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck={false}
+      />
+      <div class={styles.iconGrid} role="group" aria-label="Project icon">
+        <For each={searchIcons(query())}>
+          {(entry) => (
+            <button
+              type="button"
+              class={styles.iconTile}
+              classList={{ [styles.iconSelected]: sel().icon === entry.name }}
+              aria-pressed={sel().icon === entry.name}
+              title={entry.name}
+              onClick={() => setSel({ icon: entry.name })}
+            >
+              <Icon icon={entry.icon} />
+            </button>
+          )}
+        </For>
+      </div>
+    </Dialog>
   );
 }

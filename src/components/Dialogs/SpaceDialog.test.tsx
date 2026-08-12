@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import SpaceDialog from "./SpaceDialog";
 
 // Characterization test for the space create/edit dialog, written against the
@@ -21,22 +20,25 @@ import SpaceDialog from "./SpaceDialog";
 // class. That is worth noting next to `PickerModal`, in the same set, whose
 // rows have no roles at all and whose highlight therefore *is* a class.
 //
-// **Accessibility baseline, measured before any migration edit, and the two
-// modes do not agree.** New mode is clean: the name field carries no `<label>`
-// and no `aria-label`, but it does carry `placeholder="space name"`, which axe
-// accepts as an accessible name. Edit mode swaps that field for a disabled,
-// readonly one with *no* placeholder, and axe reports `label` against it. So
-// the new-mode assertion gates on everything from the first commit, and the
-// edit-mode one disables that single rule with this reason; phase 3 of #100
-// names the field in both modes and drops the override.
+// **Accessibility, now clean in both modes.** The phase-1 baseline did not
+// agree with itself: new mode passed, because the editable name field carries
+// `placeholder="space name"` and axe accepts a placeholder as an accessible
+// name, while edit mode swapped that field for a disabled, readonly one with no
+// placeholder to borrow and axe reported `label` against it. Both fields are
+// now named by `aria-labelledby` pointing at the same visible "Name" line, so
+// the announcement matches what is on screen, the placeholder is back to being
+// a hint, and the rule override is gone.
 //
-// Worth stating plainly, because it is the trap this baseline was measured to
+// Worth stating plainly, because it is the trap that baseline was measured to
 // avoid: probing one mode of a two-mode dialog and calling the result "the
-// dialog's baseline" would have hidden this, and the assertion written from it
-// would have failed on the first migration edit, looking like the migration's
-// fault.
+// dialog's baseline" would have hidden the edit-mode violation, and the
+// assertion written from it would have failed on the first migration edit,
+// looking like the migration's fault.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof SpaceDialog>[0];
 
@@ -55,7 +57,10 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
       {...props}
     />
   ));
-  const name = () => screen.getByPlaceholderText("space name") as HTMLInputElement;
+  // Asked through the accessibility tree in both modes: phase 3 named the field
+  // from its visible "Name" line, and edit mode's copy has no placeholder to be
+  // found by (see the header).
+  const name = () => screen.getByLabelText("Name") as HTMLInputElement;
   const search = () => screen.getByLabelText("Search icons") as HTMLInputElement;
   const swatches = () =>
     Array.from(
@@ -145,12 +150,21 @@ describe("SpaceDialog", () => {
     });
 
     it("locks the name field in edit mode", () => {
-      open({ mode: "edit", name: "work" });
+      const { name } = open({ mode: "edit", name: "work" });
 
-      const field = document.querySelector<HTMLInputElement>(`input.${styles.modalInput}`)!;
-      expect(field.value).toBe("work");
-      expect(field.disabled).toBe(true);
+      expect(name().value).toBe("work");
+      expect(name().disabled).toBe(true);
       expect(screen.queryByPlaceholderText("space name")).toBeNull();
+    });
+
+    // The placeholder used to be the field's only accessible name, which meant
+    // the announcement vanished the moment anything was typed. It is a hint
+    // again now, and the visible "Name" line is what a screen reader reads.
+    it("names the field from the line above it, not from the placeholder", () => {
+      const { name } = open();
+
+      expect(name().placeholder).toBe("space name");
+      expect(name()).toBe(screen.getByPlaceholderText("space name"));
     });
 
     it("starts on the automatic colour, which follows the name", () => {
@@ -247,33 +261,31 @@ describe("SpaceDialog", () => {
       await expectNoAxeViolations(document.body);
     });
 
-    it("has no accessibility violations editing one, bar the unnamed locked field", async () => {
+    it("has no accessibility violations editing one", async () => {
       open({ mode: "edit", name: "work", icon: "Rocket", color: "Amber" });
 
-      // See the file header: the read-only name field has no placeholder to
-      // borrow a name from, so `label` fires here and not in new mode. Phase 3
-      // of #100 fixes it; every other rule still runs.
-      await expectNoAxeViolations(document.body, {
-        rules: { label: { enabled: false } },
-      });
+      await expectNoAxeViolations(document.body);
     });
   });
 
   describe("shape", () => {
-    // A `mousedown` on a real backdrop element; Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time: dismissal was a `mousedown` on a real
+    // backdrop element and is now Kobalte's outside `pointerdown`, from a
+    // listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });
