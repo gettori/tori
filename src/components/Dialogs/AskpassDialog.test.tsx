@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialogs.module.css";
 
 // Characterization test for the credential dialog behind the askpass bridge,
@@ -16,6 +17,9 @@ import styles from "./Dialogs.module.css";
 // typed secret survive into the next prompt, would leak or hang rather than
 // look wrong.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte's focus scope and its dismiss layer both install from a
+// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Prompt = { id: number; op_id: string; prompt: string; kind: string };
 
@@ -189,23 +193,47 @@ describe("AskpassDialog", () => {
   });
 
   describe("shape", () => {
-    it("cancels on a mousedown outside the panel", async () => {
+    it("cancels on a pointer down outside the panel", async () => {
       const emit = await mount();
 
       emit(prompt());
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      // Kobalte installs its outside-pointerdown listener from a
+      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
+      await macrotask();
+      fireEvent.pointerDown(document.body);
 
       expect(respondCalls()).toEqual([{ cmd: "askpass_respond", args: { id: 1, value: null } }]);
     });
 
-    it("stays open on a mousedown inside the panel", async () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const emit = await mount();
 
       emit(prompt());
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      await macrotask();
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(respondCalls()).toEqual([]);
       expect(input()).toBeTruthy();
+    });
+  });
+
+  // Scoped to `document.body`: the panel is portalled out of the render
+  // container, and modality is expressed by aria-hiding its siblings.
+  describe("accessibility", () => {
+    it("has no violations while asking for a username", async () => {
+      const emit = await mount();
+
+      emit(prompt());
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    it("has no violations while asking for a secret", async () => {
+      const emit = await mount();
+
+      emit(prompt({ kind: "password", prompt: "Password for 'https://github.com'" }));
+
+      await expectNoAxeViolations(document.body);
     });
   });
 });

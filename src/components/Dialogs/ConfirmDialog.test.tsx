@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import buttonStyles from "../Button/Button.module.css";
 import styles from "./Dialogs.module.css";
 import ConfirmDialog from "./ConfirmDialog";
@@ -25,6 +26,9 @@ import ConfirmDialog from "./ConfirmDialog";
 // test that asserts on focus, or that fires a key the focused element must
 // receive, has to wait a frame first.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte's focus scope and its dismiss layer both install from a
+// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type ConfirmProps = Parameters<typeof ConfirmDialog>[0];
 
@@ -70,21 +74,6 @@ describe("ConfirmDialog", () => {
       await frame();
 
       expect(document.activeElement).toBe(button("OK"));
-    });
-
-    it("resolves true on Enter from inside the dialog", async () => {
-      const { onConfirm, onCancel } = open();
-      await frame();
-
-      // Fired from the message rather than from the button: today it bubbles to
-      // the modal's own keydown handler, and after the migration it bubbles to
-      // the same handler on the body wrapper. Firing it at the button instead
-      // would pass today and fail after, since jsdom does not turn a keydown on
-      // a focused button into the click a real browser would.
-      fireEvent.keyDown(screen.getByText("This cannot be undone."), { key: "Enter" });
-
-      expect(onConfirm).toHaveBeenCalledTimes(1);
-      expect(onCancel).not.toHaveBeenCalled();
     });
 
     it("resolves false on Escape", async () => {
@@ -135,20 +124,56 @@ describe("ConfirmDialog", () => {
   });
 
   describe("shape", () => {
-    it("resolves false on a mousedown outside the panel", () => {
-      const { onCancel } = open();
+    it("resolves true on Enter, because the focused confirm button answers for it", async () => {
+      const { onConfirm } = open();
+      await frame();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      // The dialog no longer handles Enter at all. It focuses the confirm
+      // button, and a browser fires a click on a focused button when Enter is
+      // pressed. jsdom does not synthesize that click, so the assertion is
+      // split: the focus is the half this component owns, the click is the half
+      // the browser owns.
+      expect(document.activeElement).toBe(button("OK"));
+      fireEvent.click(document.activeElement!);
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    it("resolves false on a pointer down outside the panel", async () => {
+      const { onCancel } = open();
+      // Kobalte installs its outside-pointerdown listener from a
+      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
+      await macrotask();
+
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("stays open on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  // Scoped to `document.body`, not to the panel: the dialog is portalled out of
+  // the render container, and modality is expressed by aria-hiding its
+  // siblings, which is only visible from the root.
+  describe("accessibility", () => {
+    it("has no violations", async () => {
+      open();
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    it("has no violations as a destructive confirm", async () => {
+      open({ confirmLabel: "Delete", danger: true });
+
+      await expectNoAxeViolations(document.body);
     });
   });
 });
