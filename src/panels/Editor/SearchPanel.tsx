@@ -581,6 +581,13 @@ export default function SearchPanel(props: {
   });
   onCleanup(() => {
     unlistenFs?.();
+    // A pending debounce outlives the panel that queued it: close Search within
+    // the input debounce and the backend still runs that grep, for a component
+    // whose signals nothing reads any more.
+    debouncedSearch.cancel();
+    debouncedRefresh.cancel();
+    debouncedGlobs.cancel();
+    debouncedPreview.cancel();
   });
 
   const groups = () => groupByFile(result().matches);
