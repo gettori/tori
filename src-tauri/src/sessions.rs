@@ -1363,11 +1363,13 @@ pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
 /// `<id>.jsonl`.
 pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
     let adapter = agents::find(agent)?;
-    let agents::Discovery::File { dir, .. } = &adapter.discovery else {
-        // A SQLite-backed harness has no per-session file; its transcript is
-        // read through its own locator, not through a path on disk.
-        return None;
-    };
+    // Destructured rather than matched: `Discovery` has one variant today, so an
+    // `else` arm here would be unreachable code claiming to handle a case that
+    // cannot arise. When a SQLite-backed harness is added (no per-session file,
+    // read through its own locator instead of a path on disk), this line stops
+    // compiling and says so, which is the outcome an unreachable early `return
+    // None` would have hidden.
+    let agents::Discovery::File { dir, .. } = &adapter.discovery;
     let matches = |name: &str| {
         let stem = name.strip_suffix(".jsonl").unwrap_or(name);
         stem == session_id || stem.ends_with(&format!("_{session_id}"))

@@ -46,8 +46,20 @@ keyring-core = "1"
 trash = { version = "5.2.6", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26"
-objc = "0.2"
+# AppKit, for hiding the native traffic lights (see lib.rs `setup`). objc2 rather
+# than the deprecated cocoa/objc pair, which warned on every build and could not
+# be silenced (one warning came from inside `objc`'s own `sel_impl!` macro).
+# Tauri already compiles both crates, so this declares what is in the tree rather
+# than adding to it. Features are per-class: `standardWindowButton` needs NSButton
+# + NSControl + NSView, and `setHidden` is NSView's.
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSResponder",
+  "NSWindow",
+  "NSView",
+  "NSControl",
+  "NSButton",
+] }
 # `keychain` is the login keychain (the one a desktop app shares with every
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Sway does not have.
