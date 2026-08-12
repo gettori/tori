@@ -1,0 +1,209 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@solidjs/testing-library";
+import styles from "./Dialogs.module.css";
+import NewProjectDialog from "./NewProjectDialog";
+
+// Characterization test for the "new thing under a space" dialog, written
+// against the hand-rolled implementation and kept green across the migration
+// onto `components/Dialog` (#99). See `ConfirmDialog.test.tsx` for why the file
+// splits into a **contract** block that must survive the swap unchanged and a
+// **shape** block that is knowingly rewritten with it.
+//
+// The delicate part is the name field, which is auto-filled from the URL only
+// until somebody types in it. Clobbering a hand-typed folder name on the next
+// URL keystroke is the failure this pins, and it is invisible in review because
+// both behaviors look like "the name updates".
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+type NewProps = Parameters<typeof NewProjectDialog>[0];
+
+function open(props: Partial<Omit<NewProps, "onConfirm" | "onCancel">> = {}) {
+  const onConfirm = vi.fn();
+  const onCancel = vi.fn();
+  render(() => (
+    <NewProjectDialog
+      spaceName="work"
+      busy={false}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      {...props}
+    />
+  ));
+  const mode = (name: string) => screen.getByRole("radio", { name });
+  const name = () =>
+    (screen.queryByPlaceholderText("folder name") ??
+      screen.getByPlaceholderText("defaults from the URL")) as HTMLInputElement;
+  const url = () => screen.getByPlaceholderText("https://…") as HTMLInputElement;
+  return { onConfirm, onCancel, mode, name, url };
+}
+
+const create = () => screen.getByRole("button", { name: "Create" }) as HTMLButtonElement;
+
+describe("NewProjectDialog", () => {
+  describe("contract", () => {
+    it("names the space it is about to create in", () => {
+      open();
+
+      expect(screen.getByText("New in “work”")).toBeTruthy();
+    });
+
+    it("focuses the name field", async () => {
+      const { name } = open();
+      await frame();
+
+      expect(document.activeElement).toBe(name());
+    });
+
+    it("starts on a plain folder, with no URL to give", () => {
+      const { mode } = open();
+
+      expect(mode("Folder").getAttribute("aria-checked")).toBe("true");
+      expect(screen.queryByPlaceholderText("https://…")).toBeNull();
+      expect(screen.getByText("A plain, non-git folder.")).toBeTruthy();
+    });
+
+    it("asks for a URL once the mode needs one", () => {
+      const { mode, url } = open();
+
+      fireEvent.click(mode("Clone"));
+
+      expect(url()).toBeTruthy();
+      expect(screen.getByText("Clone a git repository into a new folder.")).toBeTruthy();
+    });
+
+    it("describes the bare + worktree layout", () => {
+      const { mode } = open();
+
+      fireEvent.click(mode("Bare + worktree"));
+
+      expect(
+        screen.getByText(
+          "A .bare repo with one initial worktree; add more branches as their own folders.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("creates a folder from a trimmed name", () => {
+      const { onConfirm, name } = open();
+
+      fireEvent.input(name(), { target: { value: "  notes  " } });
+      fireEvent.click(create());
+
+      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "" });
+    });
+
+    it("fills the folder name from the URL", () => {
+      const { onConfirm, mode, name, url } = open();
+
+      fireEvent.click(mode("Clone"));
+      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/sway.git" } });
+
+      expect(name().value).toBe("sway");
+
+      fireEvent.click(create());
+
+      expect(onConfirm).toHaveBeenCalledWith({
+        mode: "clone",
+        name: "sway",
+        url: "https://github.com/skarif2/sway.git",
+      });
+    });
+
+    it("stops filling the name once it has been typed in by hand", () => {
+      const { mode, name, url } = open();
+
+      fireEvent.click(mode("Clone"));
+      fireEvent.input(name(), { target: { value: "my-copy" } });
+      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/sway.git" } });
+
+      expect(name().value).toBe("my-copy");
+    });
+
+    it("will not create without a name", () => {
+      const { onConfirm } = open();
+
+      expect(create().disabled).toBe(true);
+
+      fireEvent.click(create());
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("will not clone without a URL", () => {
+      const { onConfirm, mode, name } = open();
+
+      fireEvent.click(mode("Clone"));
+      fireEvent.input(name(), { target: { value: "sway" } });
+
+      expect(create().disabled).toBe(true);
+
+      fireEvent.click(create());
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("confirms on Enter from inside the dialog", () => {
+      const { onConfirm, name } = open();
+
+      fireEvent.input(name(), { target: { value: "notes" } });
+      fireEvent.keyDown(name(), { key: "Enter" });
+
+      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "" });
+    });
+
+    it("ignores Enter while the work is already running", () => {
+      const { onConfirm, name } = open({ busy: true });
+
+      fireEvent.input(name(), { target: { value: "notes" } });
+      fireEvent.keyDown(name(), { key: "Enter" });
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("says it is working and blocks a second submit", () => {
+      const { onConfirm, name } = open({ busy: true });
+
+      fireEvent.input(name(), { target: { value: "notes" } });
+      const submit = screen.getByRole("button", { name: "Working…" }) as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+
+      fireEvent.click(submit);
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("cancels on Escape", () => {
+      const { onCancel, name } = open();
+
+      fireEvent.keyDown(name(), { key: "Escape" });
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels when Cancel is clicked", () => {
+      const { onCancel } = open();
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("shape", () => {
+    it("cancels on a mousedown outside the panel", () => {
+      const { onCancel } = open();
+
+      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays open on a mousedown inside the panel", () => {
+      const { onCancel } = open();
+
+      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+});
