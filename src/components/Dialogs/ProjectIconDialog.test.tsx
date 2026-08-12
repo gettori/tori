@@ -33,6 +33,9 @@ const { default: ProjectIconDialog } = await import("./ProjectIconDialog");
 // violations, zero incomplete.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof ProjectIconDialog>[0];
 
@@ -230,20 +233,23 @@ describe("ProjectIconDialog", () => {
   });
 
   describe("shape", () => {
-    // A `mousedown` on a real backdrop element; Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time: dismissal was a `mousedown` on a real
+    // backdrop element and is now Kobalte's outside `pointerdown`, from a
+    // listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });
