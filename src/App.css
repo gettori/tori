@@ -115,11 +115,17 @@ html {
 /* Full-width top bar living in the overlay title-bar strip. Transparent now, so
    it reads as part of the shell rather than a distinct bar: the breadcrumb and
    window controls float on the gradient above the raised work-card. */
+/* Fixed height, deliberately not scaled with --ui-scale like the rest of the
+   chrome. The system traffic lights sit in the window's own titlebar at a fixed
+   inset (`trafficLightPosition` in tauri.conf.json), and that inset is static
+   config: if this bar grew with the UI scale, the lights would drift off its
+   centre at every zoom step. So the titlebar is a fixed-size ornament, the way
+   the traffic lights themselves are. Its contents still scale. */
 .topbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  height: calc(44px * var(--ui-scale));
+  height: 44px;
   background: transparent;
 }
 

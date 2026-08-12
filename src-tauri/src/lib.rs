@@ -91,31 +91,17 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
-            // Hide the native macOS traffic-light buttons so we can draw our own
-            // (smaller, centered, gray-until-hover) in the web layer. Keeping the
-            // Overlay title-bar style preserves the window's rounded corners/shadow.
-            #[cfg(target_os = "macos")]
-            {
-                use objc2_app_kit::{NSWindow, NSWindowButton};
-
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Ok(ns_window) = window.ns_window() {
-                        // Tauri hands back an untyped pointer; it is the window's
-                        // NSWindow, alive for as long as the window is, and we
-                        // only borrow it for the calls below.
-                        let ns_window = unsafe { &*ns_window.cast::<NSWindow>() };
-                        for button in [
-                            NSWindowButton::CloseButton,
-                            NSWindowButton::MiniaturizeButton,
-                            NSWindowButton::ZoomButton,
-                        ] {
-                            if let Some(b) = ns_window.standardWindowButton(button) {
-                                b.setHidden(true);
-                            }
-                        }
-                    }
-                }
-            }
+            // The traffic lights are the system's own. They used to be hidden here
+            // so the web layer could draw three smaller dots, which cost every
+            // behaviour AppKit attaches to the real buttons: the Move & Resize /
+            // Fill & Arrange tiling menu on hover, the option-click variants
+            // (close all, minimize all, zoom), the hover glyphs, the dimming that
+            // says which window is focused, and the accessibility affordances.
+            // None of that is reachable from the web layer, so the buttons stay
+            // native and `trafficLightPosition` in tauri.conf.json places them.
+            // The topbar reserves their space (WindowControls) and is pinned to a
+            // fixed height, since that inset is a constant the UI scale must not
+            // move out from under.
 
             // Start the askpass credential bridge: a private Unix socket whose
             // prompts fan out to the frontend as `askpass://prompt`. If it fails

@@ -1,29 +1,20 @@
-/* Custom traffic lights: smaller, centered, gray until the group is hovered.
-   The cluster fills the rail so the pane toggles can sit at its right edge
-   (aligned with the sidebar's right border); the lights stay pinned left. The
-   cluster itself is draggable, with the buttons carved out as no-drag. */
+/* The titlebar's top-left cluster: reserved space for the system traffic lights,
+   then the pane toggles at its right edge (aligned with the sidebar's right
+   border). The cluster fills the rail so the toggles can be pushed right; it is
+   draggable, with the toggles carved out as no-drag. */
 .winControls {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  /* The traffic-light triple is a fixed-size macOS-style ornament: the dots and
-     their inter-dot gap stay constant regardless of the UI scale (only the rail
-     padding and the toggle slot beside them scale). */
-  gap: 8px;
-  padding: 0 calc(8px * var(--ui-scale)) 0 calc(16px * var(--ui-scale));
+  /* Left padding clears the native traffic lights rather than laying anything
+     out: they live in the window's own titlebar view, not in this DOM. It is
+     unscaled on purpose, because their inset is unscaled too - `x: 16` in
+     tauri.conf.json, three buttons at the system's fixed 20px pitch, so the
+     cluster ends near 70px. `.topbar`'s fixed height is the vertical half of the
+     same bargain: both numbers have to stay put while the UI scale moves. */
+  padding: 0 calc(8px * var(--ui-scale)) 0 78px;
   -webkit-app-region: drag;
-}
-
-.winDot {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  cursor: default;
-  -webkit-app-region: no-drag;
 }
 
 /* Pushes the pane toggles to the right edge of the cluster. */
@@ -33,14 +24,4 @@
   display: inline-flex;
   align-items: center;
   -webkit-app-region: no-drag;
-}
-
-.winControls .winDot.close {
-  background: var(--sway-traffic-close);
-}
-.winControls .winDot.min {
-  background: var(--sway-traffic-min);
-}
-.winControls .winDot.zoom {
-  background: var(--sway-traffic-zoom);
 }
