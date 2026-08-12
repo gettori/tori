@@ -22,7 +22,7 @@ import DebugTargetDialog from "./DebugTargetDialog";
 //
 // **Accessibility, now clean in every mode.** The phase-1 baseline was: file and
 // attach clean, script mode carrying one `select-name` violation, because the
-// `<select>` was introduced by a `div.modalLabel` rather than a `<label>`. Both
+// `<select>` was introduced by a `div.label` rather than a `<label>`. Both
 // it and the port input are now named by `aria-labelledby` pointing at that same
 // visible line, so the name and the text on screen cannot drift apart. The port
 // input was not a violation (its `placeholder` stood in as the name) and was

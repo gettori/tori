@@ -16,7 +16,7 @@ import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
 // it elsewhere to pin that nothing answers there.
 //
 // **Accessibility, now clean.** The phase-1 baseline carried exactly one
-// violation, `label` on the confirm input: introduced by a `div.modalLabel`
+// violation, `label` on the confirm input: introduced by a `div.label`
 // rather than a `<label>`, with no `aria-label` and no placeholder to fall back
 // on. It is now named by `aria-labelledby` pointing at that same visible
 // "Type <name> to confirm" line, so the announcement and the instruction on

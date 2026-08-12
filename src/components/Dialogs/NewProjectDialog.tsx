@@ -96,18 +96,18 @@ export default function NewProjectDialog(props: {
           value={mode()}
           onChange={setMode}
         />
-        <div class={styles.modalMsg}>{helper()}</div>
+        <div class={styles.msg}>{helper()}</div>
 
         {/* Each field is named by the line above it rather than by an
             `aria-label` repeating that line, so the visible text and the
             accessible name cannot drift apart. The ids are static because only
             one of these dialogs can be open at a time. */}
         <Show when={needsUrl()}>
-          <div id={URL_LABEL} class={styles.modalLabel}>
+          <div id={URL_LABEL} class={styles.label}>
             Repository URL
           </div>
           <input
-            class={styles.modalInput}
+            class={styles.input}
             aria-labelledby={URL_LABEL}
             value={url()}
             placeholder="https://…"
@@ -118,12 +118,12 @@ export default function NewProjectDialog(props: {
           />
         </Show>
 
-        <div id={NAME_LABEL} class={styles.modalLabel}>
+        <div id={NAME_LABEL} class={styles.label}>
           {needsUrl() ? "Folder name" : "Name"}
         </div>
         <input
           ref={first}
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={NAME_LABEL}
           value={name()}
           placeholder={needsUrl() ? "defaults from the URL" : "folder name"}

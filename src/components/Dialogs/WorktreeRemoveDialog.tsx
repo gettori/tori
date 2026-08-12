@@ -100,7 +100,7 @@ export default function WorktreeRemoveDialog(props: {
       </div>
 
       <Show when={props.dirty || props.unpushed}>
-        <div class={styles.modalWarn}>
+        <div class={styles.warning}>
           This deletes work that is not saved anywhere else. It cannot be undone.
         </div>
       </Show>

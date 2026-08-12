@@ -109,12 +109,12 @@ export default function CreatePrDialog(props: {
             `aria-label` repeating that line, so the visible text and the
             accessible name cannot drift apart. The ids are static because only
             one of these dialogs can be open at a time. */}
-        <div id={TITLE_LABEL} class={styles.modalLabel}>
+        <div id={TITLE_LABEL} class={styles.label}>
           Title
         </div>
         <input
           ref={first}
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={TITLE_LABEL}
           value={props.title}
           placeholder="What this branch does"
@@ -124,11 +124,11 @@ export default function CreatePrDialog(props: {
           spellcheck={false}
         />
 
-        <div id={BODY_LABEL} class={styles.modalLabel}>
+        <div id={BODY_LABEL} class={styles.label}>
           Description
         </div>
         <textarea
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={BODY_LABEL}
           rows={6}
           value={props.body}
@@ -136,11 +136,11 @@ export default function CreatePrDialog(props: {
           onInput={(e) => props.onBodyChange(e.currentTarget.value)}
         />
 
-        <div id={BASE_LABEL} class={styles.modalLabel}>
+        <div id={BASE_LABEL} class={styles.label}>
           Base branch
         </div>
         <input
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={BASE_LABEL}
           value={props.base}
           onInput={(e) => props.onBaseChange(e.currentTarget.value)}
@@ -149,7 +149,7 @@ export default function CreatePrDialog(props: {
           spellcheck={false}
         />
 
-        <div class={styles.modalMsg}>
+        <div class={styles.msg}>
           {props.head} into {props.base || "…"}
         </div>
 
@@ -163,7 +163,7 @@ export default function CreatePrDialog(props: {
         </label>
 
         <Show when={blocked()}>
-          {(reason) => <div class={styles.modalMsg}>{reason()}</div>}
+          {(reason) => <div class={styles.msg}>{reason()}</div>}
         </Show>
       </div>
     </Dialog>

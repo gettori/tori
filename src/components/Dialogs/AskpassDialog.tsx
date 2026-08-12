@@ -96,7 +96,7 @@ export default function AskpassDialog() {
           <>
             <input
               ref={input}
-              class={styles.modalInput}
+              class={styles.input}
               aria-label={c().prompt}
               type={c().kind === "password" ? "password" : "text"}
               value={value()}
@@ -104,7 +104,7 @@ export default function AskpassDialog() {
               onKeyDown={onKeyDown}
             />
             <Show when={c().kind === "password"}>
-              <div class={styles.modalHint}>
+              <div class={styles.hint}>
                 HTTPS wants a personal access token, not your account password.
               </div>
             </Show>

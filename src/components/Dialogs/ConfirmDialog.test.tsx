@@ -66,7 +66,7 @@ describe("ConfirmDialog", () => {
       ));
 
       expect(screen.getByText("Delete branch")).toBeTruthy();
-      expect(document.querySelector(`.${styles.modalMsg}`)).toBeNull();
+      expect(document.querySelector(`.${styles.msg}`)).toBeNull();
     });
 
     it("focuses the confirm button, so the default action is one keystroke away", async () => {
