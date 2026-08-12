@@ -7,7 +7,7 @@
 // features live: a class on the line for the guides, a widget for the swatches.
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView, gutter } from "@codemirror/view";
-import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle, forceParsing } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { editorPrefExtensions } from "./editorPrefs";
@@ -62,6 +62,13 @@ function mount(doc: string, extensions: Extension, selection?: number): HTMLElem
       selection: selection === undefined ? undefined : { anchor: selection },
     }),
   });
+  // Anything decorated from the syntax tree - the bracket guides, the rainbow
+  // brackets - is only there once the parse has reached it, and the first parse
+  // runs under a 25ms wall-clock budget it can miss on a loaded machine. Left
+  // to the background worker this is a coin flip: `expected 4 but got 0`, seen
+  // once in six full-suite runs here and never in a single-file one. Same cause
+  // as bracketPairs.test.tsx, same fix.
+  forceParsing(view, doc.length, 30_000);
   return host;
 }
 
