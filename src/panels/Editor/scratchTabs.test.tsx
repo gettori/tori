@@ -142,10 +142,13 @@ function argsFor(cmd: string) {
   return invokes.filter((i) => i.cmd === cmd).map((i) => i.args);
 }
 
-/** The modal `askText` raised, found by its title. */
+/** The modal `askText` raised, found by its title. The field is reached through
+ *  the accessibility tree rather than through the title's parent: since the
+ *  prompt moved onto `Dialog`, the title is the panel's heading and the input is
+ *  no longer its sibling. The role narrows it to the field, since the dialog
+ *  carries the same name as its heading. */
 function answerPrompt(title: string, value: string) {
-  const box = screen.getByText(title).parentElement!;
-  fireEvent.input(box.querySelector("input")!, { target: { value } });
+  fireEvent.input(screen.getByRole("textbox", { name: title }), { target: { value } });
   fireEvent.click(screen.getByText("OK"));
 }
 
