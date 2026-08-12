@@ -285,6 +285,12 @@ export { zoom };
  *  Reactive: reads both the store and the zoom signal. */
 export const terminalFontSize = () => terminalFontSizePx(settings.typography.terminalFontSize, zoom());
 
+/** The live `--ui-scale` value, for the few sizes that have to be computed in JS
+ *  rather than in a `calc(<base> * var(--ui-scale))` token: the pane floors that
+ *  bound divider drags. Reactive, so those floors track the UI size the way the
+ *  CSS ones do. */
+export const chromeScale = () => uiScale(settings.typography.uiFontSize, zoom());
+
 /** The one way in. Clamps to the 0.1 grid, persists, and re-folds the result
  *  into the CSS tokens, so the Settings row and ⌘= cannot diverge. */
 export function setZoom(z: number) {
