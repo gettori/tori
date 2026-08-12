@@ -17,6 +17,14 @@ export interface DialogProps {
   /** What to focus when the dialog opens. Defaults to the panel itself. */
   initialFocus?: () => HTMLElement | undefined;
   onClose: () => void;
+  /** Keys pressed anywhere inside the panel, including the actions row and the
+   *  panel itself. For the dialog whose Enter cannot be answered by whatever
+   *  has focus: a gated confirm button is `disabled` (so the browser fires no
+   *  click on it), and a dialog that names no `initialFocus`, or names one that
+   *  resolves to nothing, leaves focus on the panel where no control answers at
+   *  all. Escape is not this handler's business - Kobalte closes on it and
+   *  reports that through `onClose`, so handling it here would fire twice. */
+  onKeyDown?: (e: KeyboardEvent) => void;
   /** The button row, pinned below the scrolling body. */
   actions?: JSX.Element;
   /** Extra class on the panel, for a dialog whose body needs its own layout
@@ -30,7 +38,7 @@ export interface DialogProps {
  * Every dialog in the app composes this, so the Portal, the backdrop, Escape,
  * the focus trap and focus restore are written once instead of fourteen times.
  *
- * Two things Kobalte does not do for this app, and this wrapper does:
+ * Three things Kobalte does not do for this app, and this wrapper does:
  *
  * **`aria-modal` is ours.** `DialogContent` sets `role="dialog"` and wires
  * `aria-labelledby`/`aria-describedby`, but modality is expressed by
@@ -47,7 +55,16 @@ export interface DialogProps {
  *
  * Both auto-focus events are dispatched by Kobalte's focus scope, and the
  * unmount one fires from a `setTimeout(0)` after cleanup, so a test asserting
- * on restored focus has to await a macrotask.
+ * on restored focus has to await a macrotask. When the element captured at open
+ * time is gone by the time the dialog closes, which is every dialog opened from
+ * a context-menu row, the restore is a no-op and focus lands on `<body>`.
+ *
+ * **A key seam is ours.** `onKeyDown` reaches the whole panel, including the
+ * actions row, which is this component's markup rather than the caller's
+ * children. A dialog whose confirm is gated cannot lean on the browser clicking
+ * its focused button (a `disabled` button is not clicked), and one whose
+ * `initialFocus` resolves to nothing leaves focus on the panel, where no
+ * control answers at all. See `DebugTargetDialog` in file mode for both at once.
  */
 export default function Dialog(props: DialogProps) {
   let panel: HTMLElement | undefined;
@@ -97,6 +114,7 @@ export default function Dialog(props: DialogProps) {
           }}
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
+          onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
           <div class={styles.head}>
             <Primitive.Title
