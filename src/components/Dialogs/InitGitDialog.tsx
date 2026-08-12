@@ -54,12 +54,12 @@ export default function InitGitDialog(props: {
             `aria-label` repeating that line, so the visible text and the
             accessible name cannot drift apart. The ids are static because only
             one of these dialogs can be open at a time. */}
-        <div id={BRANCH_LABEL} class={styles.modalLabel}>
+        <div id={BRANCH_LABEL} class={styles.label}>
           Initial branch
         </div>
         <input
           ref={first}
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={BRANCH_LABEL}
           value={branch()}
           placeholder="blank = git default (main)"
@@ -69,11 +69,11 @@ export default function InitGitDialog(props: {
           spellcheck={false}
         />
 
-        <div id={URL_LABEL} class={styles.modalLabel}>
+        <div id={URL_LABEL} class={styles.label}>
           Remote URL (origin)
         </div>
         <input
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={URL_LABEL}
           value={url()}
           placeholder="https://… (optional)"
@@ -91,7 +91,7 @@ export default function InitGitDialog(props: {
           />
           <span>Bare + worktree layout (branches as sibling folders)</span>
         </label>
-        <div class={styles.modalMsg}>
+        <div class={styles.msg}>
           {bare()
             ? "Creates a .bare repo with one initial worktree; add more branches as their own folders."
             : "A normal git repository in this folder."}

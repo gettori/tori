@@ -59,7 +59,7 @@ async function mount() {
   return (p: Prompt) => bridge.handlers["askpass://prompt"]({ payload: p });
 }
 
-const input = () => document.querySelector<HTMLInputElement>(`.${styles.modalInput}`);
+const input = () => document.querySelector<HTMLInputElement>(`.${styles.input}`);
 const respondCalls = () => bridge.calls.filter((c) => c.cmd === "askpass_respond");
 
 beforeEach(() => {

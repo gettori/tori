@@ -1,50 +1,31 @@
 /* Shared styles for the dialog cluster (all `src/components/dialogs/*`). Every
    dialog imports this one module, so the hashed class names are identical across
    them (no cross-module `composes` needed). Token-based, so dark is byte-identical
-   to the pre-migration App.css and light follows the tokens. */
+   to the pre-migration App.css and light follows the tokens.
 
-/* ---- Base modal chrome (in-app window.prompt replacement + all dialogs) ---- */
-.modalBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--scrim-default);
-}
-.modal {
-  width: min(calc(420px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
-  padding: calc(20px * var(--ui-scale));
-  background: var(--canvas-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
-  box-shadow: var(--shadow-lg);
-}
-.modalTitle {
-  font-size: var(--sway-text-2xl);
-  font-weight: 600;
-  color: var(--fg-default);
-  margin-bottom: calc(12px * var(--ui-scale));
-  white-space: pre-wrap;
-}
-.modalNote {
+   The backdrop, panel and title that used to head this file are gone: `Dialog`
+   supplies all three now, and the command palette - the last thing still
+   borrowing them - carries its own copy. What is left is the *contents* of a
+   dialog, which `Dialog` has no opinion about. */
+
+/* ---- The pieces a dialog's body is built from ---- */
+.note {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin-bottom: calc(8px * var(--ui-scale));
   word-break: break-all;
 }
-.modalMsg {
+.msg {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
 }
-.modalNote strong {
+.note strong {
   color: var(--fg-default);
   font-weight: 500;
 }
-.modalInput {
+.input {
   width: 100%;
   padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--sway-text-xl);
@@ -57,31 +38,22 @@
     border-color var(--sway-duration-fast) ease,
     box-shadow var(--sway-duration-fast) ease;
 }
-.modalInput:focus {
+.input:focus {
   border-color: var(--brand-default);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
-.modalHint {
+.hint {
   font-size: var(--sway-text-md);
   color: var(--fg-muted);
   margin-top: calc(8px * var(--ui-scale));
   line-height: 1.4;
 }
-.modalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: calc(8px * var(--ui-scale));
-  margin-top: calc(14px * var(--ui-scale));
-}
-/* Modal action buttons now use the shared <Button> component; the old modal
-   button block was removed in the button unification. The .warn token lives on
-   below in .delTag.warn. */
-
 /* ---- Filterable single-select picker (PickerModal). Lives inside `Dialog`'s
-   own scrolling body, so the list no longer scrolls itself: the panel is
+   own scrolling body, so the list does not scroll itself: the panel is
    height-bounded and the body is the scroller. The filter field is sticky
-   instead, which is what the old `.picker` flex column bought - the input stays
-   put while a few hundred branch names move past it. ---- */
+   instead, so the input stays put while a few hundred branch names move past
+   it. (The command palette needs the opposite - its own panel is the scroller -
+   which is one reason its chrome now lives in Omnibox.module.css.) ---- */
 .pickerInputWrap {
   position: sticky;
   top: 0;
@@ -126,29 +98,25 @@
   color: var(--fg-muted);
 }
 
-/* ---- Delete-space confirmation extras (reuses the .modal chrome above). ---- */
-.modalDanger {
-  width: min(calc(480px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
-}
-.modalWarn {
+/* ---- Delete-space confirmation extras ---- */
+.warning {
   font-size: var(--sway-text-lg);
   color: var(--danger-fg);
   margin-bottom: calc(10px * var(--ui-scale));
 }
-.modalLabel {
+.label {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   margin: calc(12px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
 }
-.modalInput:disabled {
+.input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* ---- Icon pickers (SpaceDialog, ProjectIconDialog). Reuse the .modal chrome
-   above: a search field over a scrollable grid of the fixed icon set, plus the
-   picker's own leading tile ("None" for a space, the two mode buttons below for
-   a project). ---- */
+/* ---- Icon pickers (SpaceDialog, ProjectIconDialog). A search field over a
+   scrollable grid of the fixed icon set, plus the picker's own leading tile
+   ("None" for a space, the two mode buttons below for a project). ---- */
 .iconGrid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);

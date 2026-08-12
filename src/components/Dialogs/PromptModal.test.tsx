@@ -33,7 +33,7 @@ function open(props: Partial<Omit<PromptProps, "onSubmit" | "onCancel">> = {}) {
       {...props}
     />
   ));
-  const input = document.querySelector<HTMLInputElement>(`.${styles.modalInput}`)!;
+  const input = document.querySelector<HTMLInputElement>(`.${styles.input}`)!;
   return { onSubmit, onCancel, input };
 }
 

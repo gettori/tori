@@ -118,12 +118,12 @@ export default function ProjectIconDialog(props: {
           <span>{file() ? "Change image…" : "Upload image…"}</span>
         </button>
       </div>
-      <div class={styles.modalNote}>SVG, PNG or ICO, up to 2 MB.</div>
+      <div class={styles.note}>SVG, PNG or ICO, up to 2 MB.</div>
 
-      <div class={styles.modalLabel}>Or pick an icon</div>
+      <div class={styles.label}>Or pick an icon</div>
       <input
         ref={first}
-        class={styles.modalInput}
+        class={styles.input}
         value={query()}
         placeholder="Search icons"
         aria-label="Search icons"

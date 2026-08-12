@@ -33,7 +33,7 @@ function formatBytes(n: number): string {
 // flags, running agents, and total size, and only enables Delete once the exact
 // space name is typed.
 //
-// The shell is `Dialog`, at the `sheet` width the old `.modalDanger` rule spelled
+// The shell is `Dialog`, at the `sheet` width the old danger-dialog rule spelled
 // out. Enter stays on the **input**, deliberately not on the panel as its
 // siblings in this set do: the gate is a field, and answering the key from
 // anywhere in the dialog would widen it to the whole surface. Escape is
@@ -77,7 +77,7 @@ export default function ConfirmDeleteSpace(props: {
         </>
       }
     >
-      <div class={styles.modalWarn}>
+      <div class={styles.warning}>
         This permanently deletes the folder and everything below. It cannot be undone.
       </div>
 
@@ -116,12 +116,12 @@ export default function ConfirmDeleteSpace(props: {
         </Show>
       </div>
 
-      <div id={CONFIRM_LABEL} class={styles.modalLabel}>
+      <div id={CONFIRM_LABEL} class={styles.label}>
         Type <strong>{props.spaceName}</strong> to confirm
       </div>
       <input
         ref={input}
-        class={styles.modalInput}
+        class={styles.input}
         aria-labelledby={CONFIRM_LABEL}
         value={value()}
         onInput={(e) => setValue(e.currentTarget.value)}

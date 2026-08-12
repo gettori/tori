@@ -90,12 +90,12 @@ export default function SpaceDialog(props: {
         </>
       }
     >
-      <div id={NAME_LABEL} class={styles.modalLabel}>Name</div>
+      <div id={NAME_LABEL} class={styles.label}>Name</div>
       <Show
         when={isNew()}
         fallback={
           <input
-            class={styles.modalInput}
+            class={styles.input}
             aria-labelledby={NAME_LABEL}
             value={props.name}
             disabled
@@ -105,7 +105,7 @@ export default function SpaceDialog(props: {
       >
         <input
           ref={first}
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={NAME_LABEL}
           value={name()}
           placeholder="space name"
@@ -114,13 +114,13 @@ export default function SpaceDialog(props: {
           autocorrect="off"
           spellcheck={false}
         />
-        <Show when={nameError()}>{(err) => <div class={styles.modalHint}>{err()}</div>}</Show>
-        <div class={styles.modalNote}>
+        <Show when={nameError()}>{(err) => <div class={styles.hint}>{err()}</div>}</Show>
+        <div class={styles.note}>
           The name can’t be changed later, but you can always change the icon.
         </div>
       </Show>
 
-      <div class={styles.modalLabel}>Colour</div>
+      <div class={styles.label}>Colour</div>
       <div class={styles.swatchRow} role="group" aria-label="Space colour">
         {/* "Auto" is a state, not a swatch: it hands the hue back to the
             name, which is what an untouched space already uses. Its own
@@ -151,11 +151,11 @@ export default function SpaceDialog(props: {
           )}
         </For>
       </div>
-      <div class={styles.modalNote}>Tints the window behind this space.</div>
+      <div class={styles.note}>Tints the window behind this space.</div>
 
-      <div class={styles.modalLabel}>Icon</div>
+      <div class={styles.label}>Icon</div>
       <input
-        class={styles.modalInput}
+        class={styles.input}
         value={iconQuery()}
         placeholder="Search icons"
         aria-label="Search icons"

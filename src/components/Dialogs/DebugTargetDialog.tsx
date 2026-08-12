@@ -113,7 +113,7 @@ export default function DebugTargetDialog(props: {
       />
 
       <Show when={kind() === "file"}>
-        <div class={styles.modalMsg}>
+        <div class={styles.msg}>
           {props.filePath
             ? `Runs ${props.filePath} under node, stopping on your breakpoints.`
             : "No file is open."}
@@ -121,14 +121,14 @@ export default function DebugTargetDialog(props: {
       </Show>
 
       <Show when={kind() === "script"}>
-        <div id={SCRIPT_LABEL} class={styles.modalLabel}>Script</div>
+        <div id={SCRIPT_LABEL} class={styles.label}>Script</div>
         <Show
           when={props.scripts.length}
-          fallback={<div class={styles.modalMsg}>No scripts in this project's package.json.</div>}
+          fallback={<div class={styles.msg}>No scripts in this project's package.json.</div>}
         >
           <select
             ref={(el) => (first = el)}
-            class={styles.modalInput}
+            class={styles.input}
             aria-labelledby={SCRIPT_LABEL}
             value={script()}
             onChange={(e) => setScript(e.currentTarget.value)}
@@ -139,10 +139,10 @@ export default function DebugTargetDialog(props: {
       </Show>
 
       <Show when={kind() === "attach"}>
-        <div id={PORT_LABEL} class={styles.modalLabel}>Inspector port</div>
+        <div id={PORT_LABEL} class={styles.label}>Inspector port</div>
         <input
           ref={(el) => (first = el)}
-          class={styles.modalInput}
+          class={styles.input}
           aria-labelledby={PORT_LABEL}
           value={port()}
           inputmode="numeric"
@@ -152,13 +152,13 @@ export default function DebugTargetDialog(props: {
           autocorrect="off"
           spellcheck={false}
         />
-        <div class={styles.modalMsg}>
+        <div class={styles.msg}>
           The target must already be running with <code>--inspect</code>. Sway attaches to it and
           leaves it running when you stop.
         </div>
       </Show>
 
-      <Show when={blocker()}>{(why) => <div class={styles.modalHint}>{why()}</div>}</Show>
+      <Show when={blocker()}>{(why) => <div class={styles.hint}>{why()}</div>}</Show>
     </Dialog>
   );
 }

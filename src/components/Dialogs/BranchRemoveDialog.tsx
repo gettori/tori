@@ -10,7 +10,7 @@ import Dialog from "../Dialog/Dialog";
 // leaves the git branch alone, a plain detach.
 //
 // The shell is `Dialog`: the portal, the backdrop, Escape and the focus trap all
-// come from there, and `sheet` is the width the old `.modalDanger` rule spelled
+// come from there, and `sheet` is the width the old danger-dialog rule spelled
 // out. Enter stays here, through `Dialog`'s `onKeyDown`, because the confirm
 // button is `disabled` while the removal runs and a disabled button is never
 // clicked by the browser, so there is nothing else to answer the key. Escape
@@ -75,7 +75,7 @@ export default function BranchRemoveDialog(props: {
       </div>
 
       <Show when={props.unpushed}>
-        <div class={styles.modalWarn}>
+        <div class={styles.warning}>
           This branch has commits not on its remote. Deleting it loses them.
         </div>
       </Show>
@@ -101,7 +101,7 @@ export default function BranchRemoveDialog(props: {
       </Show>
 
       <Show when={!deleteLocal()}>
-        <div class={styles.modalMsg}>
+        <div class={styles.msg}>
           The branch stays in git; it is only removed from Sway’s list (detach).
         </div>
       </Show>

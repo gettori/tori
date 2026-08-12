@@ -56,7 +56,7 @@ function open(props: Partial<Omit<PrProps, Handlers>> = {}) {
     // The title and the base are the only two `input`s; the description is a
     // textarea that shares the class. Narrowed to the tag so adding a field
     // above the base does not silently retarget this at a different one.
-    base: document.querySelectorAll<HTMLInputElement>(`input.${styles.modalInput}`)[1],
+    base: document.querySelectorAll<HTMLInputElement>(`input.${styles.input}`)[1],
     draft: screen.getByRole("checkbox") as HTMLInputElement,
   };
 }

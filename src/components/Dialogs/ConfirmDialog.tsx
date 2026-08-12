@@ -64,7 +64,7 @@ export default function ConfirmDialog(props: {
           and the tab stop that comes with it, only when `children` is actually
           nullish, and a `<Show>` element is not. */}
       {props.message == null ? undefined : (
-        <div class={styles.modalMsg}>{props.message}</div>
+        <div class={styles.msg}>{props.message}</div>
       )}
     </Dialog>
   );
