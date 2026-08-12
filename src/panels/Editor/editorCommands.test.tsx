@@ -107,9 +107,12 @@ async function open(path: string) {
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
 }
 
-/** The modal raised by `askText`, found by its title. */
+/** The field of the `askText` prompt with this title. Reached through the
+ *  accessibility tree: since the prompt moved onto `Dialog`, the title is the
+ *  panel's heading and the input is no longer a sibling of it. The role narrows
+ *  it to the field, since the dialog carries the same name as its heading. */
 function prompt(title: string): HTMLElement {
-  return screen.getByText(title).parentElement!;
+  return screen.getByRole("textbox", { name: title });
 }
 
 function invokedWith(cmd: string) {
@@ -199,7 +202,7 @@ describe("commands the editor answers", () => {
 
     emitWith(GIT_COMMIT, null);
     await waitFor(() => expect(screen.getByText("Commit message")).toBeTruthy());
-    fireEvent.input(prompt("Commit message").querySelector("input")!, {
+    fireEvent.input(prompt("Commit message"), {
       target: { value: "Say what changed" },
     });
     fireEvent.click(screen.getByText("OK"));
@@ -230,7 +233,7 @@ describe("commands the editor answers", () => {
 
     emitWith(EDITOR_GOTO_LINE, null);
     await waitFor(() => expect(screen.getByText("Go to line")).toBeTruthy());
-    fireEvent.input(prompt("Go to line").querySelector("input")!, { target: { value: "not a line" } });
+    fireEvent.input(prompt("Go to line"), { target: { value: "not a line" } });
     fireEvent.click(screen.getByText("OK"));
 
     // Nothing to assert on the jump itself (CodeEditor is mocked out), so what

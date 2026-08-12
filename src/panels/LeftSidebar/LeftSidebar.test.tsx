@@ -154,8 +154,13 @@ describe("fan-out groups in the tree", () => {
     fireEvent.contextMenu(project);
     fireEvent.click(await screen.findByText("Fan out…"));
 
-    const input = (await screen.findByText(/what are these attempts for/)).parentElement!
-      .querySelector("input")!;
+    // Reached through the accessibility tree: since the prompt moved onto
+    // `Dialog`, its title is the panel's heading and the input is no longer a
+    // sibling of it. The role narrows it to the field, since the dialog carries
+    // the same name as its heading.
+    const input = await screen.findByRole("textbox", {
+      name: /what are these attempts for/,
+    });
     fireEvent.input(input, { target: { value: "Make the parser faster!" } });
     fireEvent.click(screen.getByText("OK"));
 
