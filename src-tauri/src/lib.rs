@@ -96,23 +96,21 @@ pub fn run() {
             // Overlay title-bar style preserves the window's rounded corners/shadow.
             #[cfg(target_os = "macos")]
             {
-                use cocoa::appkit::{NSWindow, NSWindowButton};
-                use cocoa::base::{id, nil};
-                use objc::{msg_send, sel, sel_impl};
+                use objc2_app_kit::{NSWindow, NSWindowButton};
 
                 if let Some(window) = app.get_webview_window("main") {
                     if let Ok(ns_window) = window.ns_window() {
-                        let ns_window = ns_window as id;
-                        unsafe {
-                            for button in [
-                                NSWindowButton::NSWindowCloseButton,
-                                NSWindowButton::NSWindowMiniaturizeButton,
-                                NSWindowButton::NSWindowZoomButton,
-                            ] {
-                                let b: id = ns_window.standardWindowButton_(button);
-                                if b != nil {
-                                    let _: () = msg_send![b, setHidden: true];
-                                }
+                        // Tauri hands back an untyped pointer; it is the window's
+                        // NSWindow, alive for as long as the window is, and we
+                        // only borrow it for the calls below.
+                        let ns_window = unsafe { &*ns_window.cast::<NSWindow>() };
+                        for button in [
+                            NSWindowButton::CloseButton,
+                            NSWindowButton::MiniaturizeButton,
+                            NSWindowButton::ZoomButton,
+                        ] {
+                            if let Some(b) = ns_window.standardWindowButton(button) {
+                                b.setHidden(true);
                             }
                         }
                     }

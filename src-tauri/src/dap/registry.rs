@@ -94,16 +94,6 @@ pub fn find(id: &str) -> Option<&'static DapAdapter> {
     registry().iter().find(|a| a.id == id)
 }
 
-/// The adapter claiming `path`'s extension, or `None`.
-///
-/// `None` is the normal answer for a language with no adapter, not a degraded
-/// one: the file opens and edits exactly as before, it simply cannot be
-/// debugged.
-pub fn adapter_for_path(path: &str) -> Option<&'static DapAdapter> {
-    let ext = Path::new(path).extension()?.to_str()?.to_lowercase();
-    registry().iter().find(|a| a.languages.contains_key(&ext))
-}
-
 /// The root a debug session for `file_path` should run at: the nearest ancestor
 /// (at or below `project_path`) holding one of the adapter's `root_markers`,
 /// else `project_path`.
@@ -176,22 +166,12 @@ mod tests {
         assert_eq!(js.readiness, "Debug server listening at");
     }
 
-    #[test]
-    fn an_adapter_claims_the_js_family_and_nothing_else() {
-        assert_eq!(adapter_for_path("/p/src/x.ts").map(|a| a.id.as_str()), Some("js-debug"));
-        assert_eq!(adapter_for_path("/p/src/x.tsx").map(|a| a.id.as_str()), Some("js-debug"));
-        assert_eq!(adapter_for_path("/p/src/x.mjs").map(|a| a.id.as_str()), Some("js-debug"));
-
-        // A language with no adapter is a normal answer, not an error.
-        assert!(adapter_for_path("/p/src/main.rs").is_none());
-        assert!(adapter_for_path("/p/src/main.py").is_none());
-        assert!(adapter_for_path("/p/README").is_none());
-    }
-
-    #[test]
-    fn extension_matching_ignores_case() {
-        assert!(adapter_for_path("/p/X.TS").is_some());
-    }
+    /// The extension -> adapter mapping these two tests covered went with
+    /// `adapter_for_path`, the unused path-to-adapter lookup: nothing asked the
+    /// registry which adapter claims a file, so there was no behaviour left for
+    /// them to describe. The `languages` map they read is still exercised through
+    /// the manifest test above. Restore both alongside the caller, if a
+    /// debug-this-file entry point ever needs the lookup back.
 
     /// The monorepo case this function exists for.
     #[test]

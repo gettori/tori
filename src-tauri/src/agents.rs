@@ -750,6 +750,13 @@ pub fn find(id: &str) -> Option<&'static AgentAdapter> {
 }
 
 /// Substitute `{id}`/`{file}` placeholders in an arg template.
+///
+/// Test-only for now: every live caller goes through `apply_chat_template`,
+/// which takes arbitrary placeholder pairs and so covers this shape too. Kept
+/// because the non-chat (terminal) resume path still describes its templates in
+/// these two placeholders (see `AgentAdapter::resume_args`); if that path never
+/// grows a caller, this and its test can go.
+#[cfg(test)]
 pub fn apply_template(template: &[String], id: &str, file: &str) -> Vec<String> {
     template.iter().map(|a| a.replace("{id}", id).replace("{file}", file)).collect()
 }

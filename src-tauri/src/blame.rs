@@ -45,6 +45,11 @@ pub struct Blame {
 /// git's own name for "this line is not committed": an all-zero sha. It arrives
 /// with an author of "Not Committed Yet" and the current time, neither of which
 /// says anything, so the frontend reads the sha and ignores the rest.
+///
+/// Test-only on this side of the bridge: nothing in Rust branches on it (the sha
+/// is passed through verbatim), so it exists here to let the parser's tests name
+/// what they are asserting.
+#[cfg(test)]
 pub const UNCOMMITTED: &str = "0000000000000000000000000000000000000000";
 
 fn capture(repo: &str, args: &[&str]) -> Result<String, String> {
