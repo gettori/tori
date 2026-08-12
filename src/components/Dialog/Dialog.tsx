@@ -81,6 +81,16 @@ export default function Dialog(props: DialogProps) {
 
     e.preventDefault();
     (props.initialFocus?.() ?? panel)?.focus({ preventScroll: true });
+
+    // The named element can refuse focus, and the common way is being
+    // `disabled`: a dialog that names its confirm button and opens in a busy
+    // state (a removal already running, see WorktreeRemoveDialog) names a
+    // button the browser will not focus. Without this, focus stays on whatever
+    // was outside the dialog, the trap has nothing to hold, and closing a
+    // dialog stacked on top of this one restores focus to nowhere.
+    if (panel && !panel.contains(document.activeElement)) {
+      panel.focus({ preventScroll: true });
+    }
   }
 
   function onCloseAutoFocus(e: Event) {
