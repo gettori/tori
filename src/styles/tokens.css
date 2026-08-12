@@ -29,13 +29,6 @@
     --sway-fg-dark: #d4d4d4;
     --sway-fg-light: #1e1e1e;
 
-    /* macOS traffic-light colors. Primitives, not semantic tokens: these mimic
-       the system window buttons, which look identical in light and dark, so
-       they must NOT follow the theme. */
-    --sway-traffic-close: #ff5f57;
-    --sway-traffic-min: #febc2e;
-    --sway-traffic-zoom: #28c840;
-
     /* ---- Cool navy surface ramp (dark theme) ----
        The dark chrome palette, a deep cool navy rather than a neutral charcoal.
        Sampled from the premium reference; the dark semantic tokens below select
