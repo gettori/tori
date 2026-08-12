@@ -142,6 +142,68 @@ describe("Dialog", () => {
     });
   });
 
+  describe("keys", () => {
+    // The seam the complex dialogs need (#100). Their Enter cannot always be
+    // answered by whatever has focus: a gated confirm button is `disabled`, so
+    // the browser fires no click on it, and a dialog whose `initialFocus`
+    // resolves to nothing leaves focus on the panel, where no control answers
+    // at all. Both places have to reach the caller, which is why this is a prop
+    // on the wrapper rather than a handler a caller could put on its own body:
+    // the actions row is `Dialog`'s markup, not the caller's children.
+    function openWithKeys(children?: JSX.Element) {
+      const onKeyDown = vi.fn();
+      openDialog(
+        {
+          onKeyDown,
+          initialFocus: () => undefined,
+          actions: <button>Delete</button>,
+        },
+        children,
+      );
+      return onKeyDown;
+    }
+
+    it("reports a key pressed on the panel itself", () => {
+      const onKeyDown = openWithKeys();
+      expect(document.activeElement).toBe(screen.getByRole("dialog"));
+
+      fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+
+      expect(onKeyDown).toHaveBeenCalledTimes(1);
+      expect(onKeyDown.mock.calls[0][0].key).toBe("Enter");
+    });
+
+    it("reports a key pressed in the actions row", () => {
+      const onKeyDown = openWithKeys();
+
+      fireEvent.keyDown(screen.getByRole("button", { name: "Delete" }), {
+        key: "Enter",
+      });
+
+      expect(onKeyDown).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a key pressed in the body", () => {
+      const onKeyDown = openWithKeys(<input aria-label="Space name" />);
+
+      fireEvent.keyDown(screen.getByLabelText("Space name"), { key: "Enter" });
+
+      expect(onKeyDown).toHaveBeenCalledTimes(1);
+    });
+
+    it("still closes on Escape without the caller handling it", () => {
+      const onKeyDown = vi.fn();
+      const { onClose } = openDialog({ onKeyDown });
+
+      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+
+      // The caller sees the key, but dismissal is not its job: a caller that
+      // also cancelled on Escape would answer the same dialog twice.
+      expect(onKeyDown).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("focus", () => {
     it("focuses the panel when no initial focus is named", () => {
       openDialog();
@@ -173,6 +235,27 @@ describe("Dialog", () => {
       // Kobalte's own modal restore focuses a `Trigger` this app never renders,
       // so without the wrapper's capture-and-restore this lands on <body>.
       expect(document.activeElement).toBe(opener);
+    });
+
+    // Every dialog #100 migrates is opened from a context-menu row, and that row
+    // is gone by the time the dialog closes: the menu unmounts when it commits.
+    // So the captured element is detached, `focus()` on it does nothing, and
+    // focus ends up on <body> - the same place it would have landed with no
+    // restore at all. Pinned rather than fixed: there is no better target to
+    // name from in here (the row no longer exists), and the alternative, holding
+    // a caller-supplied fallback, is a prop no caller has asked for yet. What
+    // this test buys is that the day it changes, it changes visibly.
+    it("leaves focus on the body when the element it captured is gone", async () => {
+      const opener = buttonOutsideTheDialog();
+      opener.focus();
+
+      const { setOpen } = openDialog();
+      opener.remove();
+
+      setOpen(false);
+      await macrotask();
+
+      expect(document.activeElement).toBe(document.body);
     });
 
     it("wraps focus back into the panel at the trap sentinels", () => {
