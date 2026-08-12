@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, onTestFinished } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import { bindingsByGroup, GROUP_LABELS } from "../../utils/hotkeys";
 import styles from "./ShortcutSheet.module.css";
 import ShortcutSheet from "./ShortcutSheet";
@@ -45,6 +46,16 @@ describe("ShortcutSheet", () => {
       open();
 
       expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+    });
+
+    it("keeps its own width rather than the `wide` panel's", () => {
+      open();
+
+      // The rule itself lives outside `@layer components`, since
+      // `Dialog.module.css` is unlayered and would otherwise win at any
+      // specificity. All this can check under jsdom is that the class reaches
+      // the panel at all; the width is confirmed in the running app.
+      expect(screen.getByRole("dialog").classList.contains(styles.sheetWidth)).toBe(true);
     });
 
     it("says how to get out of it", () => {
@@ -112,20 +123,34 @@ describe("ShortcutSheet", () => {
   });
 
   describe("shape", () => {
-    it("closes on a click outside the sheet", () => {
+    it("closes on a pointer down outside the sheet", async () => {
       const { onClose } = open();
+      // Kobalte installs its outside-pointerdown listener from a
+      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
+      await macrotask();
 
-      fireEvent.click(document.querySelector(`.${styles.backdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it("stays open on a click inside the sheet", () => {
+    it("stays open on a pointer down inside the sheet", async () => {
       const { onClose } = open();
+      await macrotask();
 
-      fireEvent.click(screen.getByRole("dialog"));
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  // Scoped to `document.body`: the panel is portalled out of the render
+  // container, and modality is expressed by aria-hiding its siblings.
+  describe("accessibility", () => {
+    it("has no violations", async () => {
+      open();
+
+      await expectNoAxeViolations(document.body);
     });
   });
 });
