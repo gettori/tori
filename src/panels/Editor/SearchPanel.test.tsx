@@ -132,7 +132,13 @@ const searches = () => bridge.calls.filter((c) => c.query !== "");
 async function type(value: string) {
   const input = screen.getByPlaceholderText("Search project") as HTMLInputElement;
   fireEvent.input(input, { target: { value } });
-  await waitFor(() => expect(searches().length).toBeGreaterThan(0));
+  // Wait for *this* query, not for "a search happened". Any stray call - a
+  // debounce that outlived an earlier test, a refresh - would otherwise satisfy
+  // the wait before this query had even been sent, and the test would go on to
+  // click Replace all against results that do not exist yet. That is what made
+  // "retires it when a toggle changes too" fail on CI roughly one run in twenty
+  // while passing everywhere else.
+  await waitFor(() => expect(searches().some((c) => c.query === value)).toBe(true));
 }
 
 beforeEach(() => {
@@ -582,6 +588,25 @@ describe("replace outcome", () => {
         screen.getByText("Replaced 2 occurrences in 1 file, 1 skipped (changed on disk)."),
       ).toBeTruthy(),
     );
+  });
+});
+
+describe("unmounting", () => {
+  it("drops a debounced search the panel queued before it closed", async () => {
+    bridge.respond = () => ONE_FILE();
+    const { unmount } = mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+
+    // Type, then close before the input debounce elapses.
+    fireEvent.input(screen.getByPlaceholderText("Search project"), {
+      target: { value: "gone" },
+    });
+    unmount();
+
+    // Well past INPUT_DEBOUNCE_MS: the query must never reach the backend, and
+    // a panel that leaks this fires it into whatever is running next.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(bridge.calls.map((c) => c.query)).not.toContain("gone");
   });
 });
 
