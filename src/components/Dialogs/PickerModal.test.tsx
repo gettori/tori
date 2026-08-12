@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import PickerModal from "./PickerModal";
 
 // Characterization test for the fuzzy single-select picker behind `askPick`,
@@ -9,28 +8,41 @@ import PickerModal from "./PickerModal";
 // migration onto `components/Dialog` (#100). Contract / shape split as in
 // `ConfirmDialog.test.tsx`.
 //
-// This is the one dialog in the set whose *body* also changes in #100: phase 3
-// turns its rows into a real `listbox`/`option` list driven by
-// `aria-activedescendant`. That splits the assertions here differently from the
-// other six, and the split is deliberate:
+// This is the one dialog in the set whose *body* also changed rather than
+// moved: the rows are now a real `listbox` of `option`s with the keyboard
+// selection announced through `aria-activedescendant`. That splits the
+// assertions here differently from the other six, and the split is deliberate:
 //
 //   * **contract** - which item a keystroke commits. `ArrowDown` then `Enter`
 //     selects the second match whether the highlight is expressed by a class or
-//     by `aria-activedescendant`, so these survive both changes.
-//   * **shape** - *how* the highlight is expressed, i.e. reading
-//     `styles.active` off a row. There is no role-based way to ask that
-//     question today (the rows are `div`s with no roles at all), which is the
-//     accessibility gap phase 3 closes, so the question has to be asked through
-//     the class until it can be asked through the accessibility tree.
+//     by `aria-activedescendant`, so these survived the change.
+//   * **shape** - *how* the highlight is expressed. Against the hand-rolled
+//     markup that could only be asked by reading `styles.active` off a `div`,
+//     because the rows carried no roles at all; that gap is what this migration
+//     closed, so these now ask the accessibility tree the same questions and
+//     name no CSS Module class.
 //
 // Enter is contract for the reason given in `WorktreeRemoveDialog.test.tsx`:
 // the handler is explicit either side of the swap, and every assertion fires
 // the key on the input, which is where it is handled now and after.
 //
-// The input is focused from a `requestAnimationFrame`, so focus assertions
-// yield a frame first.
+// The empty result set is worth its own attention rather than a footnote: a
+// `listbox` whose only child is the "No matches" line owns no options, and an
+// `aria-activedescendant` left pointing at a row that is no longer rendered
+// names nothing. Both are asserted below, the first through axe.
+//
+// **Accessibility, and a baseline that flattered itself.** Phase 1 recorded
+// zero violations here, which was true of the picker this file renders and not
+// of the one the app renders: `askPick` passes no placeholder, and a
+// placeholder was the only thing naming the filter field. Every assertion in
+// this file supplied one, because it needs a handle to type into, so the gate
+// could never see the gap. The field carries a real `aria-label` now, and one
+// axe assertion below deliberately renders the picker the way the callers do.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof PickerModal>[0];
 
@@ -48,9 +60,13 @@ function open(props: Partial<Omit<Props, "onSubmit" | "onCancel">> = {}) {
     />
   ));
   const input = () => screen.getByPlaceholderText("Filter branches") as HTMLInputElement;
-  const rows = () =>
-    Array.from(document.querySelectorAll<HTMLElement>(`.${styles.pickerItem}`));
-  const active = () => rows().find((r) => r.classList.contains(styles.active));
+  const rows = () => screen.queryAllByRole("option");
+  // The selection as a screen reader would resolve it: follow the input's
+  // `aria-activedescendant` to the row it names.
+  const active = () => {
+    const id = input().getAttribute("aria-activedescendant");
+    return id ? rows().find((r) => r.id === id) : undefined;
+  };
   return { onSubmit, onCancel, input, rows, active };
 }
 
@@ -216,22 +232,77 @@ describe("PickerModal", () => {
       expect(document.activeElement).toBe(input());
     });
 
-    // Measured against the current markup: zero violations, zero incomplete.
-    // Worth reading with the phase-3 work in mind, because it is exactly what
-    // this gate does *not* say: the rows are unroled `div`s, so there is no
-    // list here for axe to find fault with, and a keyboard-only user has no
-    // announced selection at all. Clean is not the same as complete.
     it("has no accessibility violations", async () => {
       open();
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    // The state the listbox has to be *withdrawn* for. `aria-required-children`
+    // is the rule that would fire if the "No matches" line were left sitting
+    // inside a `role="listbox"`, and it is the reason this assertion exists
+    // separately from the one above rather than being folded into it.
+    it("has no accessibility violations with nothing left to pick", async () => {
+      const { input } = open();
+
+      type(input(), "zzzz");
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    // The configuration the app actually renders, and the one every other
+    // assertion in this file misses: `askPick` takes a title, items and
+    // `creatable`, and passes no placeholder at all. The two above supply one
+    // because they need a handle to type into, and a placeholder is enough for
+    // axe to call the field named - so a picker that was green in this file
+    // could still reach a user with no accessible name on its only input, which
+    // is exactly what it did before the `aria-label` fallback.
+    it("has no accessibility violations as the callers actually render it", async () => {
+      render(() => (
+        <PickerModal
+          title="Attach a branch"
+          items={["main", "develop"]}
+          onSubmit={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      ));
 
       await expectNoAxeViolations(document.body);
     });
   });
 
   describe("shape", () => {
-    // How the highlight is expressed. Phase 3 replaces the class with
-    // `aria-activedescendant` on a real listbox, and rewrites these to ask the
-    // accessibility tree the same questions.
+    // How the highlight is expressed, asked through the accessibility tree now
+    // that there is one: the input names the active row, and the row says it is
+    // selected. Against the hand-rolled markup the same questions could only be
+    // asked by reading a CSS Module class off an unroled `div`.
+    it("announces the list as a listbox the filter drives", () => {
+      const { input, rows } = open();
+
+      const list = screen.getByRole("listbox");
+      expect(input().getAttribute("aria-controls")).toBe(list.id);
+      expect(rows()).toHaveLength(3);
+    });
+
+    it("marks exactly the active row as selected", () => {
+      const { input, rows, active } = open();
+
+      fireEvent.keyDown(input(), { key: "ArrowDown" });
+
+      expect(rows().filter((r) => r.getAttribute("aria-selected") === "true")).toEqual([
+        active(),
+      ]);
+    });
+
+    it("withdraws the listbox when there is nothing to own, and points nowhere", () => {
+      const { input } = open();
+
+      type(input(), "zzzz");
+
+      expect(screen.queryByRole("listbox")).toBeNull();
+      expect(input().getAttribute("aria-activedescendant")).toBeNull();
+    });
+
     it("highlights the first row to start with", () => {
       const { active } = open();
 
@@ -263,20 +334,23 @@ describe("PickerModal", () => {
       expect(active()?.textContent).toBe("feature/omnibox");
     });
 
-    // A `mousedown` on a real backdrop element; Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time: dismissal was a `mousedown` on a real
+    // backdrop element and is now Kobalte's outside `pointerdown`, from a
+    // listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });

@@ -77,18 +77,19 @@
    button block was removed in the button unification. The .warn token lives on
    below in .delTag.warn. */
 
-/* ---- Filterable single-select picker (PickerModal). Reuses .modalBackdrop /
-   .modal chrome, adds a scrollable result list and an in-input clear button. ---- */
-.picker {
-  display: flex;
-  flex-direction: column;
-  max-height: min(70vh, calc(520px * var(--ui-scale)));
-  padding: calc(16px * var(--ui-scale));
-}
+/* ---- Filterable single-select picker (PickerModal). Lives inside `Dialog`'s
+   own scrolling body, so the list no longer scrolls itself: the panel is
+   height-bounded and the body is the scroller. The filter field is sticky
+   instead, which is what the old `.picker` flex column bought - the input stays
+   put while a few hundred branch names move past it. ---- */
 .pickerInputWrap {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
+  /* Opaque, or the rows scroll visibly underneath it. */
+  background: var(--canvas-card);
 }
 .pickerInput {
   padding-right: calc(26px * var(--ui-scale)); /* room for the clear button */
@@ -99,10 +100,7 @@
   right: calc(6px * var(--ui-scale));
 }
 .pickerList {
-  flex: 1 1 auto;
-  min-height: 0;
   margin-top: calc(10px * var(--ui-scale));
-  overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
 }
