@@ -1,11 +1,14 @@
 // The bracket pass, and the ramp it paints with.
 //
-// Both are asserted without a view: finding the pairs and deciding their depth
-// is a question about an EditorState, and the ramp is a question about the
-// palettes. What a decoration looks like on screen is not something jsdom can
-// answer, so it is not asked here.
-import { describe, it, expect } from "vitest";
+// Finding the pairs and deciding their depth is a question about an
+// EditorState, and the ramp is a question about the palettes. What a decoration
+// looks like on screen is not something jsdom can answer, so it is not asked
+// here - but the state still has to be built behind a view, because a view is
+// the only thing that finishes the parse. See `stateFor`.
+import { describe, it, expect, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { forceParsing } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import swayDark from "../../theme/palettes/sway-dark.json";
 import swayLight from "../../theme/palettes/sway-light.json";
@@ -23,8 +26,36 @@ const CODE = `function outer() {
   }
 }`;
 
+const views: EditorView[] = [];
+afterEach(() => views.splice(0).forEach((v) => v.destroy()));
+
+/**
+ * A parsed state. The view is here for the parse, not for the DOM.
+ *
+ * `EditorState.create` runs the language field's first parse under a **25ms
+ * budget** into a 3000-character viewport, and on a state with no view nothing
+ * ever advances it after that: applying transactions does not, and
+ * `ensureSyntaxTree` returns a fuller tree to its caller while leaving the
+ * field's own tree exactly as short as it was, which is what `syntaxTree` -
+ * and therefore `visiblePairs` - reads.
+ *
+ * That budget is wall-clock, so on a loaded machine it expires early. Measured
+ * with `Date.now` stubbed to run fast: the tree for the 4000-line document
+ * below comes back **9 characters** long, `visiblePairs` finds nothing over a
+ * window at character 1069, and the assertion fails as `expected 0 to be
+ * greater than 0` - on CI, never here. That is skarif2/sway#121's red run and
+ * two red runs on main before it.
+ *
+ * A view is what fixes it: it owns the background parse worker, and
+ * `forceParsing` drives it to completion synchronously. The app was never
+ * affected, because the real editor has one and re-runs the pass as parsing
+ * advances (`bracketPairs.ts:239`).
+ */
 function stateFor(doc: string): EditorState {
-  return EditorState.create({ doc, extensions: [javascript()] });
+  const view = new EditorView({ doc, extensions: [javascript()], parent: document.body });
+  views.push(view);
+  forceParsing(view, doc.length, 30_000);
+  return view.state;
 }
 
 /** Every pair in the whole document, as the bracket kind plus its depth. */
