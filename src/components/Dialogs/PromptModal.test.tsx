@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialogs.module.css";
 import PromptModal from "./PromptModal";
 
@@ -14,6 +15,9 @@ import PromptModal from "./PromptModal";
 // default branch), and only a cancel is an absence. A migration that started
 // treating "" as a cancel would silently change what those callers do.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte's focus scope and its dismiss layer both install from a
+// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type PromptProps = Parameters<typeof PromptModal>[0];
 
@@ -116,20 +120,34 @@ describe("PromptModal", () => {
   });
 
   describe("shape", () => {
-    it("cancels on a mousedown outside the panel", () => {
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      // Kobalte installs its outside-pointerdown listener from a
+      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("stays open on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  // Scoped to `document.body`: the panel is portalled out of the render
+  // container, and modality is expressed by aria-hiding its siblings.
+  describe("accessibility", () => {
+    it("has no violations", async () => {
+      open({ note: "Currently feature-x" });
+
+      await expectNoAxeViolations(document.body);
     });
   });
 });

@@ -1,9 +1,9 @@
 import { createSignal, onMount, onCleanup, Show, createEffect } from "solid-js";
-import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Dialog from "../Dialog/Dialog";
 
 // The in-app credential dialog for the askpass bridge. A backgrounded git op
 // (fetch/pull/push) that needs a credential emits `askpass://prompt` per field;
@@ -16,6 +16,14 @@ import Button from "../Button/Button";
 // remaining field prompts auto-return empty (no second dialog) and git aborts.
 //
 // Mounted once, app-wide (not tied to a selection), so any git surface reuses it.
+//
+// The shell is `Dialog`, driven by `open` rather than by a `<Show>` around the
+// whole thing, so the panel stays mounted while the queue drains and the second
+// field prompt does not tear down and rebuild the modal. That is also why the
+// body keeps its own `<Show>`: `open` is a boolean, but the body still needs a
+// non-null prompt to read. Enter and the reset-and-refocus effect stay here
+// (`initialFocus` fires once, on open, and the second prompt arrives with the
+// dialog already open); Escape does not, since Kobalte reports it as `onClose`.
 
 type Prompt = { id: number; op_id: string; prompt: string; kind: string };
 
@@ -55,13 +63,9 @@ export default function AskpassDialog() {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      cancel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      submit();
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    submit();
   }
 
   let unlisten: UnlistenFn | undefined;
@@ -73,37 +77,40 @@ export default function AskpassDialog() {
   onCleanup(() => unlisten?.());
 
   return (
-    <Show when={current()}>
-      {(c) => (
-        <Portal>
-          <div class={styles.modalBackdrop} onMouseDown={() => cancel()}>
-            <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()}>
-              <div class={styles.modalTitle}>{c().prompt}</div>
-              <input
-                ref={input}
-                class={styles.modalInput}
-                type={c().kind === "password" ? "password" : "text"}
-                value={value()}
-                onInput={(e) => setValue(e.currentTarget.value)}
-                onKeyDown={onKeyDown}
-              />
-              <Show when={c().kind === "password"}>
-                <div class={styles.modalHint}>
-                  HTTPS wants a personal access token, not your account password.
-                </div>
-              </Show>
-              <div class={styles.modalActions}>
-                <Button onClick={() => cancel()}>
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={() => submit()}>
-                  OK
-                </Button>
+    <Dialog
+      open={!!current()}
+      title={current()?.prompt ?? ""}
+      onClose={() => cancel()}
+      initialFocus={() => input}
+      actions={
+        <>
+          <Button onClick={() => cancel()}>Cancel</Button>
+          <Button variant="primary" onClick={() => submit()}>
+            OK
+          </Button>
+        </>
+      }
+    >
+      <Show when={current()}>
+        {(c) => (
+          <>
+            <input
+              ref={input}
+              class={styles.modalInput}
+              aria-label={c().prompt}
+              type={c().kind === "password" ? "password" : "text"}
+              value={value()}
+              onInput={(e) => setValue(e.currentTarget.value)}
+              onKeyDown={onKeyDown}
+            />
+            <Show when={c().kind === "password"}>
+              <div class={styles.modalHint}>
+                HTTPS wants a personal access token, not your account password.
               </div>
-            </div>
-          </div>
-        </Portal>
-      )}
-    </Show>
+            </Show>
+          </>
+        )}
+      </Show>
+    </Dialog>
   );
 }
