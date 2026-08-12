@@ -28,7 +28,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
 import { isMarkdownPath } from "../../utils/liveBuffer";
-import { editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
+import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { symbolsSupported, clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
@@ -306,12 +306,19 @@ function tabTitle(t: FileTab): string {
 }
 
 const LS_RIGHT_W = "sway.editor.rightw.v1";
+// Floors in design px at `--ui-scale` 1, scaled with it like the app's outer
+// panes. The right panel has no maximum: it grows until the code side would drop
+// below its own floor, so a wide editor can be almost all file tree.
 const RIGHT_W_MIN = 160;
-const RIGHT_W_MAX = 600;
+const CODE_MIN = 320;
+// The divider between the two (Resizer.module.css .resizer).
+const RIGHT_GUTTER = 8;
 
 function loadRightW(): number {
   const n = Number(localStorage.getItem(LS_RIGHT_W));
-  return Number.isFinite(n) && n >= RIGHT_W_MIN ? Math.min(n, RIGHT_W_MAX) : 240;
+  // Taken as stored: the bound depends on the pane's measured width, which does
+  // not exist yet. The clamp effect below applies it once it does.
+  return Number.isFinite(n) && n > 0 ? n : 240;
 }
 
 // Same-origin CM6 editor pane: ⟨ tabs + code │ file tree ⟩. Owns the
@@ -377,6 +384,31 @@ export default function Editor(props: {
       // ignore
     }
   }
+  // Bounds for that drag, in the same scaled px the CSS uses. Measured from the
+  // pane rather than fixed, so the ceiling is "everything the code side can
+  // spare" on whatever width the editor currently has.
+  const px = (base: number) => base * chromeScale();
+  let paneEl: HTMLDivElement | undefined;
+  const [paneW, setPaneW] = createSignal(0);
+  onMount(() => {
+    if (!paneEl) return;
+    const ro = new ResizeObserver(([entry]) => setPaneW(entry.contentRect.width));
+    ro.observe(paneEl);
+    onCleanup(() => ro.disconnect());
+  });
+  // Unbounded until the pane has been measured, so a drag can never be pinned to
+  // the floor by a width nothing has reported yet.
+  const rightMax = () =>
+    paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(RIGHT_GUTTER) - px(CODE_MIN));
+  // Same reason the app clamps its outer panes: the drag clamp only bites while a
+  // pointer is down, so a stored width, a narrowed editor pane or a raised UI
+  // scale could otherwise leave the code side with nothing. Not persisted, so
+  // widening the pane again restores the width the user picked.
+  createEffect(() => {
+    if (paneW() <= 0) return;
+    const w = Math.min(Math.max(rightW(), px(RIGHT_W_MIN)), rightMax());
+    if (w !== rightW()) setRightW(w);
+  });
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
@@ -1742,7 +1774,7 @@ export default function Editor(props: {
   });
 
   return (
-    <div class={styles.editorPane}>
+    <div class={styles.editorPane} ref={paneEl}>
       <div class={styles.editorMain}>
         <OverflowTabBar
           class={styles.editorTabs}
@@ -2011,8 +2043,8 @@ export default function Editor(props: {
           side="after"
           variant="hairline"
           value={rightW()}
-          min={RIGHT_W_MIN}
-          max={RIGHT_W_MAX}
+          min={px(RIGHT_W_MIN)}
+          max={rightMax()}
           onInput={setRightW}
           onCommit={persistRightW}
         />

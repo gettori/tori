@@ -48,7 +48,14 @@ import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
 import Omnibox from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
-import { initSettings, toggleEditorDefault, zoomIn, zoomOut, resetZoom } from "./panels/Settings/settingsStore";
+import {
+  chromeScale,
+  initSettings,
+  toggleEditorDefault,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+} from "./panels/Settings/settingsStore";
 import "./styles/reset.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -68,6 +75,23 @@ type Layout = {
   showEditor: boolean;
   showFiletree: boolean;
 };
+
+// Pane floors, in design px at `--ui-scale` 1 and scaled with it like every
+// other chrome dimension (a user at 20px UI needs proportionally more room to
+// fit the same content). No pane has a maximum: a divider travels until the pane
+// that absorbs the slack would drop below its floor, so on a wide display every
+// pane can take almost the whole window.
+const SIDEBAR_MIN = 180;
+const EDITOR_MIN = 180;
+// Chat has no width of its own (`.pane.terminal` is the flex filler, App.css), so
+// this floor is enforced as the *ceiling* of the two dividers beside it. Without
+// it, `min-width: 0` on that pane lets a drag crush the transcript to nothing.
+const CHAT_MIN = 320;
+// Chrome that sits between the panes, so a ceiling leaves room for it: one
+// Resizer is 8px (Resizer.module.css .resizer) and .workspace pads 10px on the
+// side away from the sidebar (App.css .workspace / .workspace.no-sidebar).
+const GUTTER = 8;
+const WORKSPACE_PAD = 10;
 
 const DEFAULT_LAYOUT: Layout = {
   sidebar: 280,
@@ -89,6 +113,11 @@ function loadLayout(): Layout {
       // both-hidden state (hand-edited, or a bug in a past build) would leave the
       // work-card empty with no way back, so reset both to visible.
       const bothHidden = !showTerminal && !showEditor;
+      // Widths are taken as stored, without bounding them: the bounds depend on
+      // the window and on which panes are visible, none of which is measured
+      // yet. The clamp effect in App does it once the layout has a width, which
+      // is also what keeps a layout saved on a wide display usable on a narrow
+      // one.
       return {
         sidebar: v.sidebar ?? DEFAULT_LAYOUT.sidebar,
         editor: v.editor ?? DEFAULT_LAYOUT.editor,
@@ -140,6 +169,58 @@ function App() {
   const [showTerminal, setShowTerminal] = createSignal(initial.showTerminal);
   const [showEditor, setShowEditor] = createSignal(initial.showEditor);
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
+
+  // ---- Pane bounds -------------------------------------------------------
+  // A floor in JS, in the same scaled px its CSS counterparts use.
+  const px = (base: number) => base * chromeScale();
+  // The layout row's own width, the one measurement all the bounds derive from.
+  // `.body` spans the window, so innerWidth is a correct opening value and the
+  // observer only refines it (which keeps the clamp below honest on first paint,
+  // before anything has been measured).
+  let bodyEl: HTMLDivElement | undefined;
+  const [bodyW, setBodyW] = createSignal(window.innerWidth);
+  onMount(() => {
+    if (!bodyEl) return;
+    const ro = new ResizeObserver(([entry]) => setBodyW(entry.contentRect.width));
+    ro.observe(bodyEl);
+    onCleanup(() => ro.disconnect());
+  });
+  // Room the resizable panes actually share, once the gutters and padding on the
+  // current layout are accounted for.
+  const shared = () =>
+    bodyW() -
+    px(WORKSPACE_PAD) -
+    px(showSidebar() ? GUTTER : WORKSPACE_PAD) -
+    (showTerminal() && showEditor() ? px(GUTTER) : 0);
+  // The pane that absorbs the slack is chat, or the editor when chat is hidden
+  // (`.pane.editor.fill`).
+  const fillerMin = () => px(showTerminal() ? CHAT_MIN : EDITOR_MIN);
+  // Dragging one divider leaves the other pane where it is, so each ceiling is
+  // everything left over after the pane opposite it and the filler's floor. Both
+  // are read at pointerdown, when the layout is settled, so a drag runs against
+  // a fixed ceiling rather than a measurement chasing it frame by frame.
+  const sidebarMax = () =>
+    Math.max(
+      px(SIDEBAR_MIN),
+      shared() - (showTerminal() && showEditor() ? editor() : 0) - fillerMin(),
+    );
+  const editorMax = () =>
+    Math.max(px(EDITOR_MIN), shared() - (showSidebar() ? sidebar() : 0) - px(CHAT_MIN));
+
+  // The drag clamp only bites while a pointer is down, so a width restored from a
+  // wider display, a window since made narrower, or a UI scale since turned up
+  // would apply verbatim and could push a pane (and the divider that resizes it)
+  // out of reach. Re-clamp whenever any of those change. Deliberately not
+  // persisted: the stored width is what the user chose on the display they chose
+  // it on, so unplugging a monitor narrows the pane for now and plugging it back
+  // in restores the width.
+  createEffect(() => {
+    const s = Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
+    if (s !== sidebar()) setSidebar(s);
+    const e = Math.min(Math.max(editor(), px(EDITOR_MIN)), editorMax());
+    if (e !== editor()) setEditor(e);
+  });
+
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
   // Width the topbar rail collapses to when the sidebar is hidden, so the
   // breadcrumb never slides under the traffic lights. Measured from the real
@@ -462,7 +543,7 @@ function App() {
         />
       </header>
 
-      <div class="body">
+      <div class="body" ref={bodyEl}>
         <aside
           class="pane sidebar"
           classList={{ hidden: !showSidebar() }}
@@ -477,8 +558,8 @@ function App() {
           <Resizer
             side="before"
             value={sidebar()}
-            min={180}
-            max={1000}
+            min={px(SIDEBAR_MIN)}
+            max={sidebarMax()}
             onInput={setSidebar}
             onCommit={persistLayout}
           />
@@ -494,8 +575,8 @@ function App() {
                 side="after"
                 variant="hairline"
                 value={editor()}
-                min={180}
-                max={1000}
+                min={px(EDITOR_MIN)}
+                max={editorMax()}
                 onInput={setEditor}
                 onCommit={persistLayout}
               />
