@@ -1,0 +1,115 @@
+/* Chrome for the one modal surface (src/components/Dialog/Dialog.tsx). Ported
+   from the hand-rolled `.modalBackdrop` / `.modal` rules in
+   Dialogs.module.css, which #101 deletes once all 14 dialogs are migrated.
+
+   Above the toasts (1200) rather than beside the old dialogs (1100): a modal
+   aria-hides the toast region, so a toast painting *over* a dialog it is
+   hidden from is incoherent, and equal z-indexes would leave the order to
+   whichever portalled last. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  background: var(--scrim-default);
+}
+
+.panel {
+  position: fixed;
+  z-index: 1250;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  /* Kobalte locks the page behind the dialog (`preventScroll`), so a panel that
+     overflows the window would put its own actions row out of reach - the page
+     cannot be scrolled to it. Bounded height plus a scrolling body instead. */
+  max-height: min(85vh, calc(720px * var(--ui-scale)));
+  padding: calc(20px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+.panel:focus {
+  /* The panel takes focus when a dialog names no `initialFocus`. A ring around
+     the whole surface indicates nothing, so the focus is silent (the same call
+     ShortcutSheet's own `.sheet:focus` made). */
+  outline: none;
+}
+
+/* ---- Sizes. `confirm` and `sheet` are the legacy 420px and 480px; both hold
+   prose or a single form column, which reads worse the wider it gets, so they
+   scale with --ui-scale alone.
+
+   `wide` is the shortcut sheet's 680px, and the one size that holds grids and
+   tables - where an ultrawide window genuinely buys columns rather than longer
+   lines. So it grows with the viewport, floored at today's width and capped
+   before the content stops being scannable. It is deliberately the only panel
+   dimension that is not a pure function of --ui-scale. ---- */
+.confirm {
+  width: min(calc(420px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+}
+.sheet {
+  width: min(calc(480px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+}
+.wide {
+  width: clamp(
+    calc(680px * var(--ui-scale)),
+    52vw,
+    calc(1040px * var(--ui-scale))
+  );
+  max-width: calc(100vw - calc(48px * var(--ui-scale)));
+}
+
+/* ---- Head, body, actions. Head and actions are pinned; only the body
+   scrolls, so the title stays readable and the buttons stay reachable. ---- */
+.head {
+  flex: 0 0 auto;
+}
+.title {
+  font-size: var(--sway-text-2xl);
+  font-weight: 600;
+  color: var(--fg-default);
+  margin-bottom: calc(12px * var(--ui-scale));
+  white-space: pre-wrap;
+}
+/* Titled for a screen reader, absent from the layout. For a dialog whose
+   design has no title line (the shortcut sheet), where inventing one would be
+   a redesign rather than a migration.
+
+   The same recipe as `.srOnly` in Settings.module.css, deliberately copied
+   rather than shared: this cluster keeps each module self-contained (see the
+   header of Dialogs.module.css on why there is no cross-module `composes`
+   here). If a third copy appears, that is the point to reconsider. */
+.titleHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+.description {
+  font-size: var(--sway-text-lg);
+  color: var(--fg-muted);
+  margin-bottom: calc(12px * var(--ui-scale));
+  white-space: pre-wrap;
+}
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Focused only because it is the scroll region (see Dialog.tsx). A ring around
+   the whole body indicates no target, the same call `.panel:focus` makes. */
+.body:focus {
+  outline: none;
+}
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: calc(14px * var(--ui-scale));
+}
