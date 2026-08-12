@@ -221,6 +221,20 @@ describe("Dialog", () => {
       expect(document.activeElement).toBe(input);
     });
 
+    // Found by the #100 stacked test: a dialog that opens already busy names its
+    // confirm button, the button is `disabled`, and the browser will not focus
+    // it. Focus then never entered the panel at all, so the trap held nothing
+    // and a dialog stacked on top of it restored focus to nowhere on close.
+    it("falls back to the panel when the element it was told to focus refuses", () => {
+      let confirm: HTMLButtonElement | undefined;
+      openDialog(
+        { initialFocus: () => confirm, actions: <button ref={confirm} disabled>Removing…</button> },
+        "Removing the worktree.",
+      );
+
+      expect(document.activeElement).toBe(screen.getByRole("dialog"));
+    });
+
     it("restores focus to whatever it interrupted", async () => {
       const opener = buttonOutsideTheDialog();
       opener.focus();
