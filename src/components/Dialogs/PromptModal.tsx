@@ -57,11 +57,11 @@ export default function PromptModal(props: {
       }
     >
       <Show when={props.note}>
-        <div class={styles.modalNote}>{props.note}</div>
+        <div class={styles.note}>{props.note}</div>
       </Show>
       <input
         ref={input}
-        class={styles.modalInput}
+        class={styles.input}
         aria-label={props.title}
         value={value()}
         onInput={(e) => setValue(e.currentTarget.value)}

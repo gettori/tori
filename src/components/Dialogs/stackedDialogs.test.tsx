@@ -57,7 +57,7 @@ const { default: WorktreeRemoveDialog } = await import("./WorktreeRemoveDialog")
 const panelWith = (text: string) =>
   screen.getByText(text).closest("[role='dialog']") as HTMLElement;
 
-const askpassInput = () => document.querySelector<HTMLInputElement>(`.${styles.modalInput}`)!;
+const askpassInput = () => document.querySelector<HTMLInputElement>(`.${styles.input}`)!;
 
 beforeEach(() => {
   bridge.calls.length = 0;

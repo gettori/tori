@@ -1,8 +1,8 @@
 /* Chrome for the one modal surface (src/components/Dialog/Dialog.tsx). Ported
-   from the hand-rolled `.modalBackdrop` / `.modal` rules in
-   Dialogs.module.css, which #101 deletes once all 14 dialogs are migrated.
+   from the hand-rolled chrome that used to head Dialogs.module.css, which is
+   gone now that all 14 dialogs compose this.
 
-   Above the toasts (1200) rather than beside the old dialogs (1100): a modal
+   Above the toasts (1200) rather than beside the command palette (1100): a modal
    aria-hides the toast region, so a toast painting *over* a dialog it is
    hidden from is incoherent, and equal z-indexes would leave the order to
    whichever portalled last. */

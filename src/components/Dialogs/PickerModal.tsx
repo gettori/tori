@@ -138,7 +138,7 @@ export default function PickerModal(props: {
       <div class={styles.pickerInputWrap}>
         <input
           ref={input}
-          class={`${styles.modalInput} ${styles.pickerInput}`}
+          class={`${styles.input} ${styles.pickerInput}`}
           // No visible label line to borrow, unlike the other dialogs in this
           // set, and the panel title names the dialog rather than the field. A
           // placeholder is not a name (it goes away the moment anything is
