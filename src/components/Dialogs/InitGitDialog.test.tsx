@@ -1,0 +1,164 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@solidjs/testing-library";
+import styles from "./Dialogs.module.css";
+import InitGitDialog from "./InitGitDialog";
+
+// Characterization test for the "turn this folder into a repo" dialog, written
+// against the hand-rolled implementation and kept green across the migration
+// onto `components/Dialog` (#99). See `ConfirmDialog.test.tsx` for why the file
+// splits into a **contract** block that must survive the swap unchanged and a
+// **shape** block that is knowingly rewritten with it.
+//
+// The payload is the contract: this dialog replaced two separate menu items, so
+// `bare` decides between a plain `git init` and an in-place `.bare` + worktree
+// container, and the two are not interchangeable after the fact. Blank fields
+// are meaningful too, an empty branch means "let git pick" rather than "".
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+type InitProps = Parameters<typeof InitGitDialog>[0];
+
+function open(props: Partial<Omit<InitProps, "onConfirm" | "onCancel">> = {}) {
+  const onConfirm = vi.fn();
+  const onCancel = vi.fn();
+  render(() => (
+    <InitGitDialog
+      folderName="notes"
+      busy={false}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      {...props}
+    />
+  ));
+  return {
+    onConfirm,
+    onCancel,
+    branch: screen.getByPlaceholderText("blank = git default (main)") as HTMLInputElement,
+    url: screen.getByPlaceholderText("https://… (optional)") as HTMLInputElement,
+    bare: screen.getByRole("checkbox") as HTMLInputElement,
+  };
+}
+
+describe("InitGitDialog", () => {
+  describe("contract", () => {
+    it("names the folder it is about to change", () => {
+      open();
+
+      expect(screen.getByText("Initialize git in “notes”")).toBeTruthy();
+    });
+
+    it("focuses the branch field", async () => {
+      const { branch } = open();
+      await frame();
+
+      expect(document.activeElement).toBe(branch);
+    });
+
+    it("defaults to a plain repo with no branch or remote named", () => {
+      const { onConfirm } = open();
+
+      fireEvent.click(screen.getByRole("button", { name: "Initialize" }));
+
+      expect(onConfirm).toHaveBeenCalledWith({ branch: "", url: "", bare: false });
+    });
+
+    it("trims what was typed", () => {
+      const { onConfirm, branch, url } = open();
+
+      fireEvent.input(branch, { target: { value: "  trunk  " } });
+      fireEvent.input(url, { target: { value: " https://example.com/x.git " } });
+      fireEvent.click(screen.getByRole("button", { name: "Initialize" }));
+
+      expect(onConfirm).toHaveBeenCalledWith({
+        branch: "trunk",
+        url: "https://example.com/x.git",
+        bare: false,
+      });
+    });
+
+    it("carries the bare + worktree choice", () => {
+      const { onConfirm, bare } = open();
+
+      fireEvent.change(bare, { target: { checked: true } });
+      fireEvent.click(screen.getByRole("button", { name: "Initialize" }));
+
+      expect(onConfirm).toHaveBeenCalledWith({ branch: "", url: "", bare: true });
+    });
+
+    it("says which of the two layouts is about to be created", () => {
+      const { bare } = open();
+
+      expect(screen.getByText("A normal git repository in this folder.")).toBeTruthy();
+
+      fireEvent.change(bare, { target: { checked: true } });
+
+      expect(
+        screen.getByText(
+          "Creates a .bare repo with one initial worktree; add more branches as their own folders.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("confirms on Enter from inside the dialog", () => {
+      const { onConfirm, branch } = open();
+
+      fireEvent.input(branch, { target: { value: "trunk" } });
+      fireEvent.keyDown(branch, { key: "Enter" });
+
+      expect(onConfirm).toHaveBeenCalledWith({ branch: "trunk", url: "", bare: false });
+    });
+
+    it("ignores Enter while the init is already running", () => {
+      const { onConfirm, branch } = open({ busy: true });
+
+      fireEvent.keyDown(branch, { key: "Enter" });
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("says it is working and blocks a second submit", () => {
+      const { onConfirm } = open({ busy: true });
+
+      const submit = screen.getByRole("button", { name: "Initializing…" }) as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+
+      fireEvent.click(submit);
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("cancels on Escape", () => {
+      const { onCancel, onConfirm, branch } = open();
+
+      fireEvent.keyDown(branch, { key: "Escape" });
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("cancels when Cancel is clicked", () => {
+      const { onCancel } = open();
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("shape", () => {
+    it("cancels on a mousedown outside the panel", () => {
+      const { onCancel } = open();
+
+      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays open on a mousedown inside the panel", () => {
+      const { onCancel } = open();
+
+      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+});
