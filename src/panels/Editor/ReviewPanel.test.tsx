@@ -205,9 +205,11 @@ function captureToasts() {
 /** The create-PR dialog's own subtree.
  *
  *  Scoped because the commit composer behind the modal carries a button with the
- *  same "Ask agent to draft" label, so an unscoped query matches both. */
+ *  same "Ask agent to draft" label, so an unscoped query matches both. Scoped by
+ *  role rather than by the title's parent: since the dialog moved onto `Dialog`,
+ *  that parent is the heading row rather than the whole panel. */
 function prDialog() {
-  return within(screen.getByText("Open a pull request").parentElement!);
+  return within(screen.getByRole("dialog"));
 }
 
 /** One watcher burst, delivered to every registered `fs://changed` listener. */
