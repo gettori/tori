@@ -1,9 +1,16 @@
-import { createSignal, onMount, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createSignal, For, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Dialog from "../Dialog/Dialog";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import { DEFAULT_ATTACH_PORT, isPort, type DebugTarget, type TargetKind } from "../../utils/debugTargets";
+
+// The visible line above each field is also its accessible name, rather than an
+// `aria-label` repeating that line, so the two cannot drift apart (the
+// convention `NewProjectDialog` set in #99). Static ids: only one of these can
+// be open at a time.
+const SCRIPT_LABEL = "debug-target-script-label";
+const PORT_LABEL = "debug-target-port-label";
 
 // Which of the three things "debug" means, in one dialog with a mode picker
 // rather than three palette rows each firing its own prompt chain
@@ -12,7 +19,12 @@ import { DEFAULT_ATTACH_PORT, isPort, type DebugTarget, type TargetKind } from "
 // side by side, only the field the mode needs is shown, and Start is gated on
 // per-mode validity.
 //
-// Enter starts, Escape or a backdrop click cancels.
+// The shell is `Dialog`. Enter stays here, through its `onKeyDown`, and this is
+// the dialog that motivated that seam: in file mode there is no field to focus,
+// so focus sits on the panel itself, where no control would answer the key. The
+// Start button cannot answer it either while a mode is blocked, since it is
+// `disabled` and a disabled button is never clicked. Escape does not stay here:
+// Kobalte reports it as `onClose`.
 export default function DebugTargetDialog(props: {
   /** Which tab to open on. The palette's three rows each name one. */
   kind: TargetKind;
@@ -30,8 +42,6 @@ export default function DebugTargetDialog(props: {
   const [script, setScript] = createSignal(props.scripts[0] ?? "");
   const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
   let first: HTMLElement | undefined;
-
-  onMount(() => requestAnimationFrame(() => first?.focus()));
 
   const portNumber = () => Number(port().trim());
 
@@ -68,13 +78,9 @@ export default function DebugTargetDialog(props: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onCancel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      confirm();
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    confirm();
   }
 
   const segs: { value: TargetKind; label: string }[] = [
@@ -84,72 +90,75 @@ export default function DebugTargetDialog(props: {
   ];
 
   return (
-    <Portal>
-      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
-        <div class={styles.modal} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
-          <div class={styles.modalTitle}>Start debugging</div>
+    <Dialog
+      open
+      title="Start debugging"
+      onClose={() => props.onCancel()}
+      onKeyDown={onKeyDown}
+      initialFocus={() => first}
+      actions={
+        <>
+          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button variant="primary" disabled={!!blocker()} onClick={() => confirm()}>
+            Start
+          </Button>
+        </>
+      }
+    >
+      <SegmentedControl
+        aria-label="What to debug"
+        options={segs}
+        value={kind()}
+        onChange={setKind}
+      />
 
-          <SegmentedControl
-            aria-label="What to debug"
-            options={segs}
-            value={kind()}
-            onChange={setKind}
-          />
-
-          <Show when={kind() === "file"}>
-            <div class={styles.modalMsg}>
-              {props.filePath
-                ? `Runs ${props.filePath} under node, stopping on your breakpoints.`
-                : "No file is open."}
-            </div>
-          </Show>
-
-          <Show when={kind() === "script"}>
-            <div class={styles.modalLabel}>Script</div>
-            <Show
-              when={props.scripts.length}
-              fallback={<div class={styles.modalMsg}>No scripts in this project's package.json.</div>}
-            >
-              <select
-                ref={(el) => (first = el)}
-                class={styles.modalInput}
-                value={script()}
-                onChange={(e) => setScript(e.currentTarget.value)}
-              >
-                <For each={props.scripts}>{(name) => <option value={name}>{name}</option>}</For>
-              </select>
-            </Show>
-          </Show>
-
-          <Show when={kind() === "attach"}>
-            <div class={styles.modalLabel}>Inspector port</div>
-            <input
-              ref={(el) => (first = el)}
-              class={styles.modalInput}
-              value={port()}
-              inputmode="numeric"
-              placeholder={String(DEFAULT_ATTACH_PORT)}
-              onInput={(e) => setPort(e.currentTarget.value)}
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck={false}
-            />
-            <div class={styles.modalMsg}>
-              The target must already be running with <code>--inspect</code>. Sway attaches to it and
-              leaves it running when you stop.
-            </div>
-          </Show>
-
-          <Show when={blocker()}>{(why) => <div class={styles.modalHint}>{why()}</div>}</Show>
-
-          <div class={styles.modalActions}>
-            <Button onClick={() => props.onCancel()}>Cancel</Button>
-            <Button variant="primary" disabled={!!blocker()} onClick={() => confirm()}>
-              Start
-            </Button>
-          </div>
+      <Show when={kind() === "file"}>
+        <div class={styles.modalMsg}>
+          {props.filePath
+            ? `Runs ${props.filePath} under node, stopping on your breakpoints.`
+            : "No file is open."}
         </div>
-      </div>
-    </Portal>
+      </Show>
+
+      <Show when={kind() === "script"}>
+        <div id={SCRIPT_LABEL} class={styles.modalLabel}>Script</div>
+        <Show
+          when={props.scripts.length}
+          fallback={<div class={styles.modalMsg}>No scripts in this project's package.json.</div>}
+        >
+          <select
+            ref={(el) => (first = el)}
+            class={styles.modalInput}
+            aria-labelledby={SCRIPT_LABEL}
+            value={script()}
+            onChange={(e) => setScript(e.currentTarget.value)}
+          >
+            <For each={props.scripts}>{(name) => <option value={name}>{name}</option>}</For>
+          </select>
+        </Show>
+      </Show>
+
+      <Show when={kind() === "attach"}>
+        <div id={PORT_LABEL} class={styles.modalLabel}>Inspector port</div>
+        <input
+          ref={(el) => (first = el)}
+          class={styles.modalInput}
+          aria-labelledby={PORT_LABEL}
+          value={port()}
+          inputmode="numeric"
+          placeholder={String(DEFAULT_ATTACH_PORT)}
+          onInput={(e) => setPort(e.currentTarget.value)}
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck={false}
+        />
+        <div class={styles.modalMsg}>
+          The target must already be running with <code>--inspect</code>. Sway attaches to it and
+          leaves it running when you stop.
+        </div>
+      </Show>
+
+      <Show when={blocker()}>{(why) => <div class={styles.modalHint}>{why()}</div>}</Show>
+    </Dialog>
   );
 }

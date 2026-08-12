@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import BranchRemoveDialog from "./BranchRemoveDialog";
 
 // Characterization test for the plain-repo branch removal, written against the
@@ -17,6 +16,9 @@ import BranchRemoveDialog from "./BranchRemoveDialog";
 // because it lives in a `Show` that renders nothing until the box is cleared.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof BranchRemoveDialog>[0];
 
@@ -165,21 +167,23 @@ describe("BranchRemoveDialog", () => {
   });
 
   describe("shape", () => {
-    // A `mousedown` on a real backdrop element. Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead, so this block is
-    // knowingly rewritten at migration time.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time, as the header said it would be: dismissal was
+    // a `mousedown` on a real backdrop element and is now Kobalte's outside
+    // `pointerdown`, from a listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });

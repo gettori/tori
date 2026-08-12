@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
 
 // Characterization test for the space deletion, written against the hand-rolled
@@ -16,15 +15,17 @@ import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
 // assertions below fire Enter on the input deliberately, and one of them fires
 // it elsewhere to pin that nothing answers there.
 //
-// **Accessibility baseline, measured before any migration edit.** axe reports
-// exactly one violation against the current markup, `label` on the confirm
-// input: it is introduced by a `div.modalLabel` rather than a `<label>`, and it
-// carries no `aria-label` and no placeholder to fall back on. Every other rule
-// passes and nothing comes back `incomplete`. So the assertion below runs the
-// whole gate with that single rule disabled, which keeps real coverage now, and
-// phase 2 of #100 labels the input and deletes the override.
+// **Accessibility, now clean.** The phase-1 baseline carried exactly one
+// violation, `label` on the confirm input: introduced by a `div.modalLabel`
+// rather than a `<label>`, with no `aria-label` and no placeholder to fall back
+// on. It is now named by `aria-labelledby` pointing at that same visible
+// "Type <name> to confirm" line, so the announcement and the instruction on
+// screen are the same words, and the rule override is gone.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
+// press fired before this yield lands on nobody.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof ConfirmDeleteSpace>[0];
 
@@ -185,37 +186,35 @@ describe("ConfirmDeleteSpace", () => {
       expect(document.activeElement).toBe(input());
     });
 
-    it("has no accessibility violations, bar the unlabelled confirm input", async () => {
+    it("has no accessibility violations", async () => {
       open({
         runningCount: 2,
         sizeBytes: 4096,
         entries: [{ name: "api", kind: "repo", dirty: true, unpushed: true }],
       });
 
-      // See the file header: `label` is the measured pre-existing violation and
-      // phase 2 of #100 fixes it. Every other rule still runs, so a regression
-      // introduced by the migration is still caught here.
-      await expectNoAxeViolations(document.body, {
-        rules: { label: { enabled: false } },
-      });
+      await expectNoAxeViolations(document.body);
     });
   });
 
   describe("shape", () => {
-    // A `mousedown` on a real backdrop element; Kobalte dismisses on an outside
-    // `pointerdown` from a `setTimeout(0)` listener instead.
-    it("cancels on a mousedown on the backdrop", () => {
+    // Rewritten at migration time: dismissal was a `mousedown` on a real
+    // backdrop element and is now Kobalte's outside `pointerdown`, from a
+    // listener it installs in a `setTimeout(0)`.
+    it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modalBackdrop}`)!);
+      fireEvent.pointerDown(document.body);
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("does not cancel on a mousedown inside the panel", () => {
+    it("stays open on a pointer down inside the panel", async () => {
       const { onCancel } = open();
+      await macrotask();
 
-      fireEvent.mouseDown(document.querySelector(`.${styles.modal}`)!);
+      fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
     });

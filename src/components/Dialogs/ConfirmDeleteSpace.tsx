@@ -1,7 +1,12 @@
-import { createSignal, onMount, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createSignal, For, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Dialog from "../Dialog/Dialog";
+
+// The visible "Type <name> to confirm" line is also the field's accessible name
+// (the `aria-labelledby` convention `NewProjectDialog` set in #99), so the two
+// cannot drift apart. Static id: only one of these can be open at a time.
+const CONFIRM_LABEL = "confirm-delete-space-label";
 
 // One direct child of the space folder, as returned by `space_delete_preview`.
 export type DeleteEntry = {
@@ -26,7 +31,13 @@ function formatBytes(n: number): string {
 // A GitHub-style destructive confirmation for deleting a space. It shows the full
 // blast radius (every child entry, not just discovered projects), the at-risk
 // flags, running agents, and total size, and only enables Delete once the exact
-// space name is typed. Reuses the shared `.modal-*` chrome + `.danger` styling.
+// space name is typed.
+//
+// The shell is `Dialog`, at the `sheet` width the old `.modalDanger` rule spelled
+// out. Enter stays on the **input**, deliberately not on the panel as its
+// siblings in this set do: the gate is a field, and answering the key from
+// anywhere in the dialog would widen it to the whole surface. Escape is
+// Kobalte's, reported as `onClose`.
 export default function ConfirmDeleteSpace(props: {
   spaceName: string;
   entries: DeleteEntry[];
@@ -44,85 +55,81 @@ export default function ConfirmDeleteSpace(props: {
   const matches = () => value() === props.spaceName;
   let input: HTMLInputElement | undefined;
 
-  onMount(() => requestAnimationFrame(() => input?.focus()));
-
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onCancel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (matches()) props.onConfirm();
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (matches()) props.onConfirm();
   }
 
   return (
-    <Portal>
-      <div class={styles.modalBackdrop} onMouseDown={() => props.onCancel()}>
-        <div class={`${styles.modal} ${styles.modalDanger}`} onMouseDown={(e) => e.stopPropagation()}>
-          <div class={styles.modalTitle}>{props.title ?? `Delete space “${props.spaceName}”?`}</div>
-          <div class={styles.modalWarn}>
-            This permanently deletes the folder and everything below. It cannot be undone.
-          </div>
-
-          <div class={styles.delSummary}>
-            <span>{props.runningCount} agent{props.runningCount === 1 ? "" : "s"} running here</span>
-            <span>
-              {props.sizeBytes === null ? "calculating size…" : formatBytes(props.sizeBytes)}
-            </span>
-          </div>
-
-          <div class={styles.delEntries}>
-            <Show
-              when={props.entries.length}
-              fallback={<div class={styles.delEmpty}>No contents (empty space)</div>}
-            >
-              <For each={props.entries}>
-                {(e) => (
-                  <div class={styles.delEntry}>
-                    <span class={styles.delEntryName}>{e.name}</span>
-                    <span class={styles.delEntryTags}>
-                      <Show when={e.kind === "repo"} fallback={<span class={`${styles.delTag} ${styles.muted}`}>{e.kind}</span>}>
-                        <Show when={props.loading}>
-                          <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
-                        </Show>
-                        <Show when={!props.loading && e.dirty}>
-                          <span class={`${styles.delTag} ${styles.warn}`}>uncommitted</span>
-                        </Show>
-                        <Show when={!props.loading && e.unpushed}>
-                          <span class={`${styles.delTag} ${styles.warn}`}>unpushed</span>
-                        </Show>
-                      </Show>
-                    </span>
-                  </div>
-                )}
-              </For>
-            </Show>
-          </div>
-
-          <div class={styles.modalLabel}>
-            Type <strong>{props.spaceName}</strong> to confirm
-          </div>
-          <input
-            ref={input}
-            class={styles.modalInput}
-            value={value()}
-            onInput={(e) => setValue(e.currentTarget.value)}
-            onKeyDown={onKeyDown}
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck={false}
-          />
-          <div class={styles.modalActions}>
-            <Button onClick={() => props.onCancel()}>
-              Cancel
-            </Button>
-            <Button variant="danger" disabled={!matches()} onClick={() => props.onConfirm()}>
-              {props.confirmLabel ?? "Delete space"}
-            </Button>
-          </div>
-        </div>
+    <Dialog
+      open
+      size="sheet"
+      title={props.title ?? `Delete space “${props.spaceName}”?`}
+      onClose={() => props.onCancel()}
+      initialFocus={() => input}
+      actions={
+        <>
+          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button variant="danger" disabled={!matches()} onClick={() => props.onConfirm()}>
+            {props.confirmLabel ?? "Delete space"}
+          </Button>
+        </>
+      }
+    >
+      <div class={styles.modalWarn}>
+        This permanently deletes the folder and everything below. It cannot be undone.
       </div>
-    </Portal>
+
+      <div class={styles.delSummary}>
+        <span>{props.runningCount} agent{props.runningCount === 1 ? "" : "s"} running here</span>
+        <span>
+          {props.sizeBytes === null ? "calculating size…" : formatBytes(props.sizeBytes)}
+        </span>
+      </div>
+
+      <div class={styles.delEntries}>
+        <Show
+          when={props.entries.length}
+          fallback={<div class={styles.delEmpty}>No contents (empty space)</div>}
+        >
+          <For each={props.entries}>
+            {(e) => (
+              <div class={styles.delEntry}>
+                <span class={styles.delEntryName}>{e.name}</span>
+                <span class={styles.delEntryTags}>
+                  <Show when={e.kind === "repo"} fallback={<span class={`${styles.delTag} ${styles.muted}`}>{e.kind}</span>}>
+                    <Show when={props.loading}>
+                      <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
+                    </Show>
+                    <Show when={!props.loading && e.dirty}>
+                      <span class={`${styles.delTag} ${styles.warn}`}>uncommitted</span>
+                    </Show>
+                    <Show when={!props.loading && e.unpushed}>
+                      <span class={`${styles.delTag} ${styles.warn}`}>unpushed</span>
+                    </Show>
+                  </Show>
+                </span>
+              </div>
+            )}
+          </For>
+        </Show>
+      </div>
+
+      <div id={CONFIRM_LABEL} class={styles.modalLabel}>
+        Type <strong>{props.spaceName}</strong> to confirm
+      </div>
+      <input
+        ref={input}
+        class={styles.modalInput}
+        aria-labelledby={CONFIRM_LABEL}
+        value={value()}
+        onInput={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={onKeyDown}
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck={false}
+      />
+    </Dialog>
   );
 }
