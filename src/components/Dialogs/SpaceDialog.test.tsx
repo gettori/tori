@@ -183,8 +183,12 @@ describe("SpaceDialog", () => {
     it("preselects what the space already has", () => {
       const { swatches, tiles } = open({ mode: "edit", name: "work", icon: "Rocket", color: "Amber" });
 
-      expect(swatches().some((b) => b.getAttribute("aria-pressed") === "true" && b.title === "Amber")).toBe(true);
-      expect(tiles().some((b) => b.getAttribute("aria-pressed") === "true" && b.title === "Rocket")).toBe(true);
+      // By accessible name, not `title`: the swatches and tiles are tooltips
+      // now, and each names itself with the `aria-label` the colour or icon
+      // grid gives it (issue 102).
+      const named = (b: HTMLElement) => b.getAttribute("aria-label");
+      expect(swatches().some((b) => b.getAttribute("aria-pressed") === "true" && named(b) === "Amber")).toBe(true);
+      expect(tiles().some((b) => b.getAttribute("aria-pressed") === "true" && named(b) === "Rocket")).toBe(true);
     });
 
     it("filters the icon grid, keeping None reachable", () => {
@@ -289,5 +293,29 @@ describe("SpaceDialog", () => {
 
       expect(onCancel).not.toHaveBeenCalled();
     });
+  });
+});
+
+// The `mount` seam, on a real dialog rather than the synthetic one in
+// `Tooltip.test.tsx`. `Dialog.Content` calls Kobalte's `createHideOutside`,
+// which aria-hides everything outside the panel, so a tooltip portalled onto
+// the body would be styled correctly and invisible to a screen reader. The
+// panel publishes itself through `Dialog/surface.ts` and `Tooltip` mounts into
+// it, which is why the six swept controls in this set needed no `mount` prop.
+describe("a tooltip inside this dialog", () => {
+  it("portals into the panel, not into the aria-hidden document", async () => {
+    open();
+    const swatch = screen.getByRole("button", { name: "Automatic (from the name)" });
+
+    swatch.focus();
+    fireEvent.focus(swatch);
+    const tooltip = screen.getByRole("tooltip");
+    // `ariaHideOutside` writes the attribute from inside a `setTimeout` and
+    // then a `requestAnimationFrame`, so a synchronous assertion would read the
+    // tree before it lands and pass either way.
+    await new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => resolve(null))));
+
+    expect(screen.getByRole("dialog").contains(tooltip)).toBe(true);
+    expect(tooltip.closest("[aria-hidden='true']")).toBeNull();
   });
 });

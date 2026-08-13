@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialogs.module.css";
 import CreatePrDialog from "./CreatePrDialog";
@@ -153,12 +153,17 @@ describe("CreatePrDialog", () => {
       expect(onDraft).toHaveBeenCalledTimes(1);
     });
 
-    it("explains a draft button it had to disable", () => {
+    it("explains a draft button it had to disable", async () => {
       const { onDraft } = open({ draftDisabledReason: "No session can take a request" });
 
       const ask = screen.getByRole("button", { name: "Ask agent to draft" }) as HTMLButtonElement;
       expect(ask.disabled).toBe(true);
-      expect(ask.title).toBe("No session can take a request");
+      // A disabled button fires no pointer events of its own, so the reason is
+      // reached through the `tooltipWhenDisabled` hover surface around it.
+      fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
+      await waitFor(() =>
+        expect(screen.getByRole("tooltip").textContent).toBe("No session can take a request"),
+      );
 
       fireEvent.click(ask);
 

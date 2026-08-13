@@ -123,6 +123,7 @@ import {
   type AttemptGroup,
   type AttemptRecord,
 } from "./attempts";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -2378,7 +2379,9 @@ export default function LeftSidebar(props: {
   // space's project paths). It carries its own hue too, so the whole set of
   // spaces is legible at once rather than one switch at a time.
   const spaceTile = (g: Space) => (
-    <button
+    <Tooltip
+      as="button"
+      type="button"
       class={styles.space}
       style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
       classList={{
@@ -2387,7 +2390,8 @@ export default function LeftSidebar(props: {
         [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
         [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
       }}
-      title={g.external ? `${g.name} (pinned)` : g.name}
+      label={g.external ? `${g.name} (pinned)` : g.name}
+      aria-label={g.external ? `${g.name} (pinned)` : g.name}
       onClick={() => setActiveSpaceName(g.name)}
       onContextMenu={(e) => openMenu(e, spaceMenu(g))}
       draggable={true}
@@ -2406,7 +2410,7 @@ export default function LeftSidebar(props: {
         {(glyph) => <Icon icon={glyph()} />}
       </Show>
       {spaceBubble(g)}
-    </button>
+    </Tooltip>
   );
 
   // A space tile's own rollup badge: for the inactive spaces, their whole tree
@@ -2571,14 +2575,17 @@ export default function LeftSidebar(props: {
       <Show when={config()}>
         <div class={styles.spaceBar}>
           <div class={styles.gearWrap} ref={gearEl}>
-            <button
+            <Tooltip
+              as="button"
+              type="button"
               class={styles.gearBtn}
               classList={{ [styles.active]: gearOpen() }}
-              title="Sidebar actions"
+              label="Sidebar actions"
+              aria-label="Sidebar actions"
               onClick={() => setGearOpen(!gearOpen())}
             >
               <Icon icon={FolderCog} />
-            </button>
+            </Tooltip>
             <Show when={gearOpen()}>
               <div class={styles.gearMenu}>
                 <Show when={hasRoot()}>
@@ -2611,9 +2618,16 @@ export default function LeftSidebar(props: {
           </div>
 
           <Show when={hasRoot()}>
-            <button class={styles.spaceAdd} title="New space" onClick={addSpace}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.spaceAdd}
+              label="New space"
+              aria-label="New space"
+              onClick={addSpace}
+            >
               <Icon icon={Plus} />
-            </button>
+            </Tooltip>
           </Show>
         </div>
       </Show>

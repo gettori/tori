@@ -4,7 +4,7 @@ import styles from "./IconButton.module.css";
 import type { ControlSize } from "../controls";
 
 export interface IconButtonProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
+  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Nothing in Sway passes it. */
   type?: "submit" | "reset" | "button";
@@ -14,8 +14,8 @@ export interface IconButtonProps
   /** Pressed/selected look, for a toggle. Reflected as `aria-pressed`. */
   active?: boolean;
   /** Hover/focus tooltip, and the accessible name when no `aria-label` is
-   *  given. Prefer this to `title`: a native `title` never appears for a
-   *  keyboard user. */
+   *  given. This replaced `title`, which never appeared for a keyboard user;
+   *  the native attribute is no longer accepted here. */
   tooltip?: string;
   tooltipPlacement?: TooltipPlacement;
   /** Keep the tooltip reachable while the button is `disabled`. Off by default,
@@ -36,15 +36,12 @@ export default function IconButton(props: IconButtonProps) {
     "type",
     "aria-label",
     "aria-pressed",
-    "title",
     "tooltip",
     "tooltipPlacement",
     "tooltipWhenDisabled",
   ]);
 
-  const title = () =>
-    typeof local.title === "string" ? local.title : undefined;
-  const ariaLabel = () => local["aria-label"] ?? local.tooltip ?? title();
+  const ariaLabel = () => local["aria-label"] ?? local.tooltip;
   // `active` drives the brand-fill look and, by default, aria-pressed. A pane
   // toggle whose "on" state is the plain (not filled) look passes an explicit
   // aria-pressed instead, keeping the accent styling on a `class`.
@@ -66,7 +63,6 @@ export default function IconButton(props: IconButtonProps) {
       type={local.type ?? "button"}
       aria-label={ariaLabel()}
       aria-pressed={ariaPressed()}
-      title={title()}
       class={local.class}
       classList={{
         [styles.iconBtn]: true,

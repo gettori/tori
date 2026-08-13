@@ -537,7 +537,7 @@ function App() {
           class="topbar-gear"
           variant="ghost"
           aria-label="Settings"
-          title="Settings"
+          tooltip="Settings"
           onClick={() => setSettingsOpen(true)}
           icon={<Icon icon={SettingsIcon} />}
         />
