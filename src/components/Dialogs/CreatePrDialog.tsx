@@ -86,7 +86,8 @@ export default function CreatePrDialog(props: {
         <>
           <Button
             disabled={props.drafting || props.busy || !!props.draftDisabledReason}
-            title={props.draftDisabledReason ?? undefined}
+            tooltipWhenDisabled
+            tooltip={props.draftDisabledReason ?? undefined}
             onClick={() => props.onDraft()}
           >
             {props.drafting ? "Asking…" : "Ask agent to draft"}

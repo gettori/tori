@@ -26,7 +26,7 @@ export default function LayoutToggles(props: {
         class={props.showSidebar ? undefined : styles.off}
         icon={<Icon icon={PanelLeft} />}
         aria-pressed={props.showSidebar}
-        title="Show or hide the sidebar (⌘B)"
+        tooltip="Show or hide the sidebar (⌘B)"
         onClick={() => emit(TOGGLE_SIDEBAR)}
       />
       <IconButton
@@ -35,7 +35,8 @@ export default function LayoutToggles(props: {
         icon={<Icon icon={SquareTerminal} />}
         aria-pressed={props.showTerminal}
         disabled={termLast()}
-        title={termLast() ? "Can't hide the terminal while the editor is hidden" : "Show or hide the terminal (⌘⌥J)"}
+        tooltipWhenDisabled
+        tooltip={termLast() ? "Can't hide the terminal while the editor is hidden" : "Show or hide the terminal (⌘⌥J)"}
         onClick={() => emit(TOGGLE_TERMINAL)}
       />
       <IconButton
@@ -44,7 +45,8 @@ export default function LayoutToggles(props: {
         icon={<Icon icon={Code2} />}
         aria-pressed={props.showEditor}
         disabled={editorLast()}
-        title={editorLast() ? "Can't hide the editor while the terminal is hidden" : "Show or hide the editor (⌘⌥E)"}
+        tooltipWhenDisabled
+        tooltip={editorLast() ? "Can't hide the editor while the terminal is hidden" : "Show or hide the editor (⌘⌥E)"}
         onClick={() => emit(TOGGLE_EDITOR)}
       />
     </div>

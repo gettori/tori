@@ -177,7 +177,7 @@ describe("what the sidebar can see without being expanded", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
     await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
 
-    fireEvent.click(await screen.findByTitle("other"));
+    fireEvent.click(await screen.findByRole("button", { name: "other" }));
     await waitFor(() => expect(sessions()[SOLO]).toBeTruthy());
 
     expect(sessions()[MAIN]?.map((s) => s.id)).toEqual(["live-1", "detached-1", "chat-1"]);

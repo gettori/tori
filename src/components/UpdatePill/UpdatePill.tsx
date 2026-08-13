@@ -2,6 +2,7 @@ import { Show, createSignal, createResource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-solid";
 import Icon from "../Icon/Icon";
+import Tooltip from "../Tooltip/Tooltip";
 import styles from "./UpdatePill.module.css";
 
 // A dismissible "new version" notice in the topbar. Deliberately the smallest
@@ -29,21 +30,25 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   return (
     <Show when={visible()}>
       <div class={styles.pill}>
-        <button
+        <Tooltip
+          as="button"
+          type="button"
           class={styles.link}
-          title={`Sway ${update()!.version} is available - opens the releases page`}
+          label={`Sway ${update()!.version} is available - opens the releases page`}
           onClick={() => invoke("open_releases_page").catch(() => {})}
         >
           Update available
-        </button>
-        <button
+        </Tooltip>
+        <Tooltip
+          as="button"
+          type="button"
           class={styles.dismiss}
           aria-label="Dismiss update notice"
-          title="Dismiss"
+          label="Dismiss"
           onClick={() => setDismissed(true)}
         >
           <Icon icon={X} />
-        </button>
+        </Tooltip>
       </div>
     </Show>
   );

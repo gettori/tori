@@ -69,7 +69,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
             <Button
               size="sm"
               onClick={() => openGhostty(isSession())}
-              title={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
+              tooltip={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
               aria-label={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
               icon={<Icon icon={SquareTerminal} class={styles.tbAppIco} />}
               iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
@@ -77,7 +77,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
             <Button
               size="sm"
               onClick={openVSCode}
-              title="Open in VSCode"
+              tooltip="Open in VSCode"
               aria-label="Open in VSCode"
               icon={<Icon icon={Code2} class={styles.tbAppIco} />}
               iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
