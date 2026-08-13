@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import type { FileStatus } from "../../utils/gitActions";
 
 // The Changes panel's reaction to the filesystem watcher, driven through the
@@ -273,6 +274,29 @@ async function mountWithOpenDiff() {
   await waitFor(() => expect(calls.diff).toBe(1));
 }
 
+describe("a11y", () => {
+  it("has no accessibility violations", async () => {
+    const { container } = render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+
+    // Inline rather than portalled, so the panel's own container is the scope.
+    await expectNoAxeViolations(container);
+  });
+
+  it("keeps the row controls named, and stops emitting a native title", async () => {
+    await mountPanel();
+
+    // Named by their own visible text, which is why the sweep did not have to
+    // add an `aria-label` here: "Copy diff" is a *description* of the Copy
+    // button, and `Button` backfills a name from `tooltip` only when there is no
+    // text to be named by. Both halves are asserted, because the failure this
+    // phase risks is a control that still looks right and answers to nothing.
+    const copy = screen.getAllByRole("button", { name: "Copy" });
+    expect(copy.length).toBeGreaterThan(0);
+    expect(copy[0].getAttribute("title")).toBeNull();
+  });
+});
+
 describe("the shared git store", () => {
   it("moves a file to Staged when something outside the panel stages it", async () => {
     // What the command palette's "Stage this file" runs. The panel used to hold
@@ -361,7 +385,7 @@ describe("conflicts", () => {
     await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
     // One row, not one per section: the file is not also sitting under Changes
     // or Staged Changes wearing a Stage button.
-    const rows = screen.getAllByTitle("src/c.ts");
+    const rows = screen.getAllByRole("button", { name: /src\/c\.ts/ });
     expect(rows).toHaveLength(1);
     // The row is the control, so it is a button: opening the file is its main
     // action, and a div would make the whole section mouse-only. Nothing is
@@ -387,7 +411,7 @@ describe("conflicts", () => {
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
-    fireEvent.click(screen.getByTitle("src/c.ts"));
+    fireEvent.click(screen.getByRole("button", { name: /src\/c\.ts/ }));
     window.removeEventListener(OPEN_IN_EDITOR, listener);
 
     expect(opened).toEqual([syntheticId("conflict", "/proj", "src/c.ts")]);
@@ -403,7 +427,12 @@ describe("conflicts", () => {
 
     const ask = screen.getByText("Ask agent").closest("button") as HTMLButtonElement;
     expect(ask.disabled).toBe(true);
-    expect(ask.title).toBe("Select a session first");
+    // The refusal moved from `title` to the tooltip, which a disabled button
+    // cannot open by itself - hence `tooltipWhenDisabled` around it.
+    fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
+    );
   });
 
   it("asks about a second conflicted file while the first is still in flight", async () => {
@@ -439,7 +468,12 @@ describe("conflicts", () => {
     // `Button` puts its label in a span, so the control is the ancestor.
     const stashAll = () => screen.getByText("Stash all").closest("button")!;
     expect(stashAll().disabled).toBe(true);
-    expect(stashAll().getAttribute("title")).toMatch(/merge is unresolved/);
+    // Reached through the hover surface, since a disabled button fires no
+    // pointer events of its own.
+    fireEvent.pointerEnter(stashAll().closest("[data-tooltip-hover-surface]")!);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toMatch(/merge is unresolved/),
+    );
 
     statusRows = [UNSTAGED];
     await refreshStatus("/proj");
@@ -697,7 +731,7 @@ describe("stash", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle(/Also stash files git has never seen/).querySelector("input")!);
+    fireEvent.click(screen.getByLabelText(/include untracked/i));
     fireEvent.click(screen.getByText("Stash all"));
 
     await waitFor(() =>
@@ -795,7 +829,7 @@ describe("stash", () => {
 describe("amend", () => {
   /** Toggle amend on and wait for HEAD's message to land in the fields. */
   async function turnAmendOn() {
-    const box = screen.getByTitle("Rewrite the last commit instead of adding one");
+    const box = screen.getByLabelText(/Amend last commit/i).closest("label")!;
     fireEvent.click(box.querySelector("input")!);
     await waitFor(() => expect(screen.getByText("Amend")).toBeTruthy());
   }
@@ -823,7 +857,7 @@ describe("amend", () => {
     );
 
     fireEvent.click(
-      screen.getByTitle("Rewrite the last commit instead of adding one").querySelector("input")!,
+      screen.getByLabelText(/Amend last commit/i),
     );
     await waitFor(() =>
       expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("my own subject"),
@@ -911,7 +945,7 @@ describe("the commit log entry point", () => {
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
-    fireEvent.click(await screen.findByTitle("Show this branch's commit log"));
+    fireEvent.click(await screen.findByLabelText("Show this branch's commit log"));
     window.removeEventListener(OPEN_IN_EDITOR, listener);
 
     // The id carries the workspace, so the same button in another branch-unit

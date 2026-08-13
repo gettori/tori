@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The Search panel's controls, driven through the real component. Match
 // semantics belong to the backend's one canonical regex, so what is asserted
@@ -166,8 +167,17 @@ describe("capability probe", () => {
 
     const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
     await waitFor(() => expect(ignored().disabled).toBe(true));
+
     // A disabled control with no explanation is barely better than an inert one.
-    expect(ignored().title).toContain("no ignore rules");
+    // The explanation used to be a `title`, which a disabled button still shows
+    // on hover; a tooltip does not, because a disabled button fires no pointer
+    // events at all. That is what `tooltipWhenDisabled` puts back, and this is
+    // the assertion that it is actually switched on here: hover the surface
+    // around the control and the reason appears.
+    const surface = ignored().closest("[data-tooltip-hover-surface]");
+    expect(surface).toBeTruthy();
+    fireEvent.pointerEnter(surface!);
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("no ignore rules"));
 
     // The toggles the plain backend *can* honour stay live.
     expect((screen.getByLabelText("Match case") as HTMLButtonElement).disabled).toBe(false);
@@ -316,6 +326,47 @@ describe("a11y", () => {
     // Placeholders are not an accessible name; these inputs carry their own.
     expect(screen.getByLabelText("Include files matching these globs")).toBeTruthy();
     expect(screen.getByLabelText("Exclude files matching these globs")).toBeTruthy();
+  });
+
+  it("keeps every toolbar control named after the tooltip sweep", async () => {
+    mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+
+    // The sweep moved eleven controls off `title`, and on this panel every one
+    // of them already carried an `aria-label` - so the name must come from that
+    // and not from the tooltip. Named explicitly rather than left to axe, which
+    // reports a *missing* name and has nothing to say about a changed one.
+    // ("Replace all" lives behind the replace row, which has its own tests.)
+    for (const name of [
+      "Match case",
+      "Use regular expression",
+      "Edit results in a buffer",
+      "Saved searches",
+      "Toggle replace",
+      "Include and exclude globs",
+    ]) {
+      expect(screen.getByLabelText(name)).toBeTruthy();
+    }
+  });
+
+  it("describes the query box rather than titling it", async () => {
+    mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+
+    // This one hint did not become a tooltip: a tooltip on a text box sits over
+    // the results for as long as it has focus. A description is announced on
+    // focus instead, which is more than the `title` did for a keyboard user.
+    const box = screen.getByPlaceholderText("Search project");
+    expect(box.getAttribute("title")).toBeNull();
+    const hint = document.getElementById(box.getAttribute("aria-describedby")!);
+    expect(hint?.textContent).toContain("Up and Down walk what you have searched here");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+
+    await expectNoAxeViolations(container);
   });
 });
 

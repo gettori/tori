@@ -113,7 +113,7 @@ async function pausedPane() {
   await flush();
   render(() => <DebugPanel root={REPO} selected={null} />);
   event(root!.handle.session, "stopped", { reason: "breakpoint", threadId: 3 });
-  await waitFor(() => expect(screen.queryByTitle("Continue")).toBeTruthy());
+  await waitFor(() => expect(screen.queryByLabelText("Continue")).toBeTruthy());
   return root!.handle.session;
 }
 
@@ -197,12 +197,12 @@ describe("the watch list", () => {
     type("Watch expression", "user.name");
     await waitFor(() => expect(screen.queryByText("user.name")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle("Move user.name up"));
+    fireEvent.click(screen.getByLabelText("Move user.name up"));
     await waitFor(() => expect(loadWatches()[REPO]).toEqual(["user.name", "count"]));
     // The row that is already first has nothing above it to swap with.
-    expect((screen.getByTitle("Move user.name up") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Move user.name up") as HTMLButtonElement).disabled).toBe(true);
 
-    fireEvent.click(screen.getByTitle("Remove count"));
+    fireEvent.click(screen.getByLabelText("Remove count"));
     await waitFor(() => expect(screen.queryByText("count")).toBeNull());
     expect(loadWatches()[REPO]).toEqual(["user.name"]);
   });

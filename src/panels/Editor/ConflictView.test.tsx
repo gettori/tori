@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The conflict tab. The alignment itself is `conflict.test.ts`'s job; what is
 // here is the view's own: that it reads the three stages, names the sides by
@@ -74,18 +75,20 @@ function mount() {
   ));
 }
 
-/** The button for one decision, found by its title so the long side labels do
- *  not have to be repeated (and so a pane's own label cannot match instead). */
-const byTitle = (t: string | RegExp) =>
-  screen.getByTitle(t).closest("button") as HTMLButtonElement;
+/** The button for one decision, found by its accessible name so the long side
+ *  labels do not have to be repeated (and so a pane's own label cannot match
+ *  instead). These used to be found by `title`; the sweep onto `Tooltip` moved
+ *  that text onto `aria-label`, where it is a name rather than hover text. */
+const byName = (t: string | RegExp) =>
+  screen.getByLabelText(t).closest("button") as HTMLButtonElement;
 const markResolved = () =>
   screen.getByText(/mark resolved/i).closest("button") as HTMLButtonElement;
-const nextConflict = () => screen.getByTitle("Next conflict").closest("button") as HTMLButtonElement;
+const nextConflict = () => byName("Next conflict");
 
 /** Decide every conflict the same way, walking from the one the tab opened on. */
 function decideAll(choice: string | RegExp) {
   for (;;) {
-    fireEvent.click(byTitle(choice));
+    fireEvent.click(byName(choice));
     if (nextConflict().disabled) return;
     fireEvent.click(nextConflict());
   }
@@ -109,6 +112,17 @@ afterEach(() => {
 });
 
 describe("the conflict tab", () => {
+  it("has no accessibility violations", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    // The panel is inline rather than portalled, so its own container is the
+    // right scope. It runs here and not on DebugPanel because this file already
+    // had a mounted test to hang it on - see the phase notes for the gap.
+    await expectNoAxeViolations(mounted!.container);
+  });
+
+
   it("opens on the first conflict, counted and named by the operation", async () => {
     // On the first rather than on nothing: everything that acts on a conflict
     // acts on the one being looked at, so an unselected tab offers navigation
@@ -123,7 +137,7 @@ describe("the conflict tab", () => {
   it("walks the conflicts one at a time, and stops at each end", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
-    const prev = () => screen.getByTitle("Previous conflict").closest("button")!;
+    const prev = () => byName("Previous conflict");
 
     // At the first, so there is a next but no previous.
     expect(prev().disabled).toBe(true);
@@ -151,16 +165,16 @@ describe("the conflict tab", () => {
     // work as yours, which is both wrong and completely convincing.
     op = "merge";
     mount();
-    await waitFor(() => expect(screen.getByTitle("Take Yours (HEAD)")).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText("Take Yours (HEAD)")).toBeTruthy());
     mounted!.unmount();
 
     op = "rebase";
     mount();
     await waitFor(() => expect(screen.getByText("Rebase")).toBeTruthy());
 
-    expect(screen.getByTitle("Take Yours (being replayed)")).toBeTruthy();
+    expect(screen.getByLabelText("Take Yours (being replayed)")).toBeTruthy();
     expect(screen.queryByTitle("Take Yours (HEAD)")).toBeNull();
-    expect(screen.getByTitle("Take Upstream")).toBeTruthy();
+    expect(screen.getByLabelText("Take Upstream")).toBeTruthy();
   });
 
   it("re-reads when the file stops being conflicted under it", async () => {
@@ -188,15 +202,21 @@ describe("the conflict tab", () => {
     await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
 
     // Nothing decided, so there is nothing to write and the button says why.
+    // A disabled button fires no pointer events, so the explanation is reached
+    // through the hover surface `tooltipWhenDisabled` puts around it - which is
+    // the whole reason this control opted into that.
     expect(markResolved().disabled).toBe(true);
-    expect(markResolved().title).toMatch(/2 conflicts still undecided/);
+    fireEvent.pointerEnter(markResolved().closest("[data-tooltip-hover-surface]")!);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toMatch(/2 conflicts still undecided/),
+    );
 
-    fireEvent.click(byTitle("Take Yours (HEAD)"));
+    fireEvent.click(byName("Take Yours (HEAD)"));
     // One down, and the button still refuses: a half-resolved file staged as
     // the answer is worse than no file, because it looks finished.
     expect(markResolved().disabled).toBe(true);
     fireEvent.click(nextConflict());
-    fireEvent.click(byTitle("Take Incoming"));
+    fireEvent.click(byName("Take Incoming"));
 
     expect(markResolved().disabled).toBe(false);
     fireEvent.click(markResolved());
@@ -307,9 +327,9 @@ describe("the conflict tab", () => {
     stages = { base: BASE, ours: OURS, theirs: null, binary: false };
     mount();
     await waitFor(() => expect(screen.getByText(/deleted this file/)).toBeTruthy());
-    expect(screen.queryByTitle("Next conflict")).toBeNull();
+    expect(screen.queryByLabelText("Next conflict")).toBeNull();
 
-    fireEvent.click(byTitle("Accept the deletion"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete the file" }));
     fireEvent.click(screen.getByText("Delete and mark resolved").closest("button")!);
 
     // The one resolution with something to lose, so it says so and names the
@@ -329,7 +349,9 @@ describe("the conflict tab", () => {
     mount();
     await waitFor(() => expect(screen.getByText(/deleted this file/)).toBeTruthy());
 
-    fireEvent.click(byTitle(/^Keep the file/));
+    // By its visible text: "Keep both versions" is also on screen, and this is
+    // the one naming the side that survived the delete.
+    fireEvent.click(screen.getByRole("button", { name: "Keep Yours (HEAD)" }));
     fireEvent.click(screen.getByText("Mark resolved").closest("button")!);
 
     await waitFor(() => expect(written).toHaveLength(1));

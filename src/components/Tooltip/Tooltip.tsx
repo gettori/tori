@@ -68,7 +68,17 @@ export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
   whenDisabled?: boolean;
   /** The element the trigger renders as. A tag name, not a component: the
    *  trigger has to *be* the control (see the module comment), and Sway's own
-   *  controls compose this from the inside rather than passing themselves in. */
+   *  controls compose this from the inside rather than passing themselves in.
+   *
+   *  **Button-shaped tags only, in practice.** These props extend
+   *  `ButtonHTMLAttributes`, so an attribute belonging to some other element -
+   *  an `input`'s `placeholder`, a `label`'s `for` - is a type error here. The
+   *  two sets cannot simply be merged either: an interface extending both
+   *  `ButtonHTMLAttributes` and `InputHTMLAttributes` is rejected outright,
+   *  because they declare the same names at different types. A non-button
+   *  control that wants a description is usually better served by
+   *  `aria-describedby` and a visually-hidden hint - which is what the search
+   *  box does, and why it reads better there than a tooltip would. */
   as?: keyof JSX.HTMLElementTags;
   children?: JSX.Element;
 }

@@ -54,6 +54,7 @@ import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/Confirm
 import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import { History } from "lucide-solid";
 import { syntheticId } from "../../utils/syntheticTabs";
@@ -97,6 +98,12 @@ function statusClass(status: string): string {
 // at the granularity `git add -p` uses, and the untouched stretches it omits
 // are recovered separately (see `hunkGaps` / `expandGap`).
 const DIFF_CONTEXT = 3;
+
+// Descriptions for the two stash/commit checkboxes. A `<label>` cannot take
+// focus, so what used to be a `title` on it is a description on the control
+// inside instead - see the call sites.
+const UNTRACKED_HINT_ID = "review-untracked-hint";
+const AMEND_HINT_ID = "review-amend-hint";
 
 /** Changes panel: VS Code-style Staged / Changes sections over git_status's
  *  staged/unstaged split, with per-file stage/unstage, a manual commit box,
@@ -1010,23 +1017,27 @@ export default function ReviewPanel(props: {
   function conflictRow(f: FileStatus) {
     return (
       <div class={styles.conflictRowWrap}>
-        <button
+        <Tooltip
+          as="button"
           type="button"
           class={`${styles.reviewRow} ${styles.conflictRow}`}
           onClick={() =>
             props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", props.root, f.path) })
           }
-          title={f.path}
+          label={f.path}
         >
           <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>
           <span class={styles.reviewName}>{f.path}</span>
-        </button>
+        </Tooltip>
         <Button
           size="xs"
           variant="ghost"
           class={styles.askButton}
           disabled={!!disabledReason() || asking().has(f.path)}
-          title={disabledReason() ?? "Ask the selected session to resolve this conflict"}
+          // `disabledReason()` IS the reason it is greyed out, so it has to stay
+          // reachable while it is.
+          tooltipWhenDisabled
+          tooltip={disabledReason() ?? "Ask the selected session to resolve this conflict"}
           onClick={() => askToResolve(f.path)}
         >
           Ask agent
@@ -1045,7 +1056,7 @@ export default function ReviewPanel(props: {
             variant="ghost"
             class={styles.stageToggle}
             aria-label={opts.staged ? "Unstage" : "Stage"}
-            title={opts.staged ? "Unstage" : "Stage"}
+            tooltip={opts.staged ? "Unstage" : "Stage"}
             onClick={(e) => {
               e.stopPropagation();
               void (opts.staged ? unstage(f.path) : stage(f.path));
@@ -1072,7 +1083,7 @@ export default function ReviewPanel(props: {
             size="xs"
             variant="ghost"
             class={styles.rowAction}
-            title="Copy diff"
+            tooltip="Copy diff"
             onClick={(e) => {
               e.stopPropagation();
               void copyDiff(f.path);
@@ -1089,7 +1100,7 @@ export default function ReviewPanel(props: {
               variant="ghost"
               class={styles.rowAction}
               disabled={applying()}
-              title={
+              tooltip={
                 f.status.includes("?")
                   ? "Delete this file (it was never committed)"
                   : "Throw away the unstaged changes to this file"
@@ -1123,7 +1134,7 @@ export default function ReviewPanel(props: {
                       size="xs"
                       variant="ghost"
                       disabled={applying()}
-                      title={opts.staged ? "Unstage this hunk" : "Stage this hunk"}
+                      tooltip={opts.staged ? "Unstage this hunk" : "Stage this hunk"}
                       onClick={(e) => {
                         e.stopPropagation();
                         // The fingerprint is derived from the hunk exactly as
@@ -1142,7 +1153,7 @@ export default function ReviewPanel(props: {
                         <Button
                           size="xs"
                           disabled={applying()}
-                          title={
+                          tooltip={
                             opts.staged
                               ? "Unstage only the selected lines"
                               : "Stage only the selected lines"
@@ -1169,7 +1180,7 @@ export default function ReviewPanel(props: {
                         size="xs"
                         variant="ghost"
                         disabled={applying()}
-                        title="Throw away this hunk"
+                        tooltip="Throw away this hunk"
                         onClick={(e) => {
                           e.stopPropagation();
                           void discardHunk(f.path, hi(), hunkFingerprint(hunk.header, hunk.lines));
@@ -1224,7 +1235,7 @@ export default function ReviewPanel(props: {
           <IconButton
             size="xs"
             icon={<Icon icon={History} />}
-            title="Show this branch's commit log"
+            tooltip="Show this branch's commit log"
             onClick={() =>
               props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", props.root) })
             }
@@ -1234,7 +1245,10 @@ export default function ReviewPanel(props: {
             active={twoColumn()}
             icon={<span aria-hidden="true">⇹</span>}
             disabled={panelWidth() < SIDE_BY_SIDE_MIN_WIDTH}
-            title={
+            // Greyed out only because the panel is too narrow, which is exactly
+            // what the label says and nothing on screen otherwise does.
+            tooltipWhenDisabled
+            tooltip={
               panelWidth() < SIDE_BY_SIDE_MIN_WIDTH
                 ? "Side-by-side needs a wider panel"
                 : twoColumn()
@@ -1251,7 +1265,7 @@ export default function ReviewPanel(props: {
               <Button
                 size="xs"
                 disabled={pushing() || (ab().has_upstream && ab().ahead === 0)}
-                title={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+                tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
                 onClick={() => {
                   const root = props.root;
                   const branchName = branch();
@@ -1321,7 +1335,7 @@ export default function ReviewPanel(props: {
                 size="xs"
                 variant="ghost"
                 disabled={applying()}
-                title="Lay this stash back down and keep it in the list"
+                tooltip="Lay this stash back down and keep it in the list"
                 onClick={() => void applyStash(s, false)}
               >
                 Apply
@@ -1330,7 +1344,7 @@ export default function ReviewPanel(props: {
                 size="xs"
                 variant="ghost"
                 disabled={applying()}
-                title="Lay this stash back down and remove it from the list"
+                tooltip="Lay this stash back down and remove it from the list"
                 onClick={() => void applyStash(s, true)}
               >
                 Pop
@@ -1339,7 +1353,7 @@ export default function ReviewPanel(props: {
                 size="xs"
                 variant="ghost"
                 disabled={applying()}
-                title="Delete this stash without applying it"
+                tooltip="Delete this stash without applying it"
                 onClick={() => void dropStash(s)}
               >
                 Drop
@@ -1350,23 +1364,32 @@ export default function ReviewPanel(props: {
       </Show>
       <Show when={files().length}>
         <div class={styles.stashBar}>
-          <label
-            class={styles.amendRow}
-            title="Also stash files git has never seen, which usually means build output and local scratch"
-          >
+          {/* The explanation belongs to the checkbox, not to the label: a
+              `<label>` takes no focus of its own, so a tooltip on it would open
+              on hover and never on the keyboard - the same half-measure the
+              `title` was. As a description it is announced when the checkbox is
+              focused, which is when it is wanted. */}
+          <label class={styles.amendRow}>
             <input
               type="checkbox"
+              aria-describedby={UNTRACKED_HINT_ID}
               checked={includeUntracked()}
               onChange={(e) => setIncludeUntracked(e.currentTarget.checked)}
             />
             include untracked
+            <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
+              Also stash files git has never seen, which usually means build output and local
+              scratch
+            </span>
           </label>
           {/* Off while anything is unmerged: `git stash` refuses such a tree
               outright, so the button would only ever produce git's error. */}
           <Button
             size="xs"
             disabled={applying() || conflicts().length > 0}
-            title={
+            // The label names the unresolved merge that is blocking it.
+            tooltipWhenDisabled
+            tooltip={
               conflicts().length
                 ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
                 : "Put every change aside for later, named after the Summary below if you have written one"
@@ -1400,16 +1423,25 @@ export default function ReviewPanel(props: {
           value={commitBody()}
           onInput={(e) => setCommitBody(e.currentTarget.value)}
         />
-        <label class={styles.amendRow} title="Rewrite the last commit instead of adding one">
-          <input type="checkbox" checked={amend()} onChange={(e) => void toggleAmend(e.currentTarget.checked)} />
+        <label class={styles.amendRow}>
+          <input
+            type="checkbox"
+            aria-describedby={AMEND_HINT_ID}
+            checked={amend()}
+            onChange={(e) => void toggleAmend(e.currentTarget.checked)}
+          />
           Amend last commit
+          <span id={AMEND_HINT_ID} class={styles.srOnly}>
+            Rewrite the last commit instead of adding one
+          </span>
         </label>
         <div class={styles.commitActions}>
           <Button
             size="sm"
             class={styles.draftButton}
             disabled={!staged().length || !!disabledReason() || drafting()}
-            title={disabledReason() ?? "Ask the selected session to draft a commit message"}
+            tooltipWhenDisabled
+            tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
             onClick={askAgentToDraft}
           >
             Ask agent to draft
@@ -1419,7 +1451,10 @@ export default function ReviewPanel(props: {
             size="sm"
             class={styles.commitButton}
             disabled={!canCommit() || committing()}
-            title={amend() ? "Amend the last commit" : staged().length ? "Commit staged changes" : "Nothing staged"}
+            // "Nothing staged" is the whole explanation for a greyed-out Commit,
+            // and it is the branch that only ever shows while disabled.
+            tooltipWhenDisabled
+            tooltip={amend() ? "Amend the last commit" : staged().length ? "Commit staged changes" : "Nothing staged"}
             onClick={commit}
           >
             {amend() ? "Amend" : "Commit"}
