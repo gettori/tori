@@ -1,5 +1,6 @@
-import { Show, type JSX } from "solid-js";
+import { createSignal, Show, type JSX } from "solid-js";
 import { Dialog as Primitive } from "../../lib/dialog";
+import { DialogSurface } from "./surface";
 import styles from "./Dialog.module.css";
 
 /** How wide the panel is. `confirm` and `sheet` are fixed ladders on
@@ -69,6 +70,11 @@ export interface DialogProps {
 export default function Dialog(props: DialogProps) {
   let panel: HTMLElement | undefined;
   let restoreTo: HTMLElement | null = null;
+  // The same element as `panel`, published reactively for whatever inside the
+  // dialog has to portal into it rather than onto the body (see surface.ts).
+  // A plain `let` cannot serve: the panel does not exist when the children
+  // first run, so a consumer reading it once would read `undefined` forever.
+  const [surface, setSurface] = createSignal<HTMLElement>();
 
   function onOpenAutoFocus(e: Event) {
     // Kobalte dispatches this *before* focusing anything, so the active element
@@ -115,7 +121,10 @@ export default function Dialog(props: DialogProps) {
       <Primitive.Portal>
         <Primitive.Overlay class={styles.backdrop} />
         <Primitive.Content
-          ref={panel}
+          ref={(el: HTMLElement) => {
+            panel = el;
+            setSurface(el);
+          }}
           aria-modal="true"
           class={props.class}
           classList={{
@@ -126,34 +135,36 @@ export default function Dialog(props: DialogProps) {
           onCloseAutoFocus={onCloseAutoFocus}
           onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
-          <div class={styles.head}>
-            <Primitive.Title
-              class={props.titleHidden ? styles.titleHidden : styles.title}
-            >
-              {props.title}
-            </Primitive.Title>
-            <Show when={props.description}>
-              <Primitive.Description class={styles.description}>
-                {props.description}
-              </Primitive.Description>
-            </Show>
-          </div>
-          {/* Focusable because it scrolls. A dialog whose body holds no
-              control of its own (a long confirmation, a list of rows) would
-              otherwise be unscrollable by keyboard: the panel has focus but
-              the body is the scroller, and the page behind is locked. This is
-              what axe's `scrollable-region-focusable` asks for, and that rule
-              is disabled under jsdom (no scroll geometry), so no test here can
-              catch its absence. The cost is one tab stop per dialog; rendered
-              only when there is a body at all. */}
-          <Show when={props.children != null}>
-            <div class={styles.body} tabindex={0}>
-              {props.children}
+          <DialogSurface.Provider value={surface}>
+            <div class={styles.head}>
+              <Primitive.Title
+                class={props.titleHidden ? styles.titleHidden : styles.title}
+              >
+                {props.title}
+              </Primitive.Title>
+              <Show when={props.description}>
+                <Primitive.Description class={styles.description}>
+                  {props.description}
+                </Primitive.Description>
+              </Show>
             </div>
-          </Show>
-          <Show when={props.actions}>
-            <div class={styles.actions}>{props.actions}</div>
-          </Show>
+            {/* Focusable because it scrolls. A dialog whose body holds no
+                control of its own (a long confirmation, a list of rows) would
+                otherwise be unscrollable by keyboard: the panel has focus but
+                the body is the scroller, and the page behind is locked. This is
+                what axe's `scrollable-region-focusable` asks for, and that rule
+                is disabled under jsdom (no scroll geometry), so no test here can
+                catch its absence. The cost is one tab stop per dialog; rendered
+                only when there is a body at all. */}
+            <Show when={props.children != null}>
+              <div class={styles.body} tabindex={0}>
+                {props.children}
+              </div>
+            </Show>
+            <Show when={props.actions}>
+              <div class={styles.actions}>{props.actions}</div>
+            </Show>
+          </DialogSurface.Provider>
         </Primitive.Content>
       </Primitive.Portal>
     </Primitive.Root>
