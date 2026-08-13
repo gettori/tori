@@ -16,6 +16,7 @@ import {
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import { askAgentAboutFrame } from "../../utils/debugAsk";
 import { sendTargetFor } from "../../utils/sendTarget";
 import {
@@ -253,7 +254,7 @@ function Watches(props: { root: string }) {
           value={draft()}
           onInput={(e) => setDraft(e.currentTarget.value)}
         />
-        <IconButton size="xs" icon={<Icon icon={Plus} />} title="Add watch" type="submit" />
+        <IconButton size="xs" icon={<Icon icon={Plus} />} tooltip="Add watch" type="submit" />
       </form>
       <Show
         when={rows().length > 0}
@@ -294,21 +295,21 @@ function WatchRowView(props: { root: string; row: WatchRow; index: number; last:
       <IconButton
         size="xs"
         icon={<Icon icon={ArrowUp} />}
-        title={`Move ${props.row.expression} up`}
+        tooltip={`Move ${props.row.expression} up`}
         disabled={props.index === 0}
         onClick={() => moveWatchExpression(props.root, props.index, props.index - 1)}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={ArrowDown} />}
-        title={`Move ${props.row.expression} down`}
+        tooltip={`Move ${props.row.expression} down`}
         disabled={props.index === props.last}
         onClick={() => moveWatchExpression(props.root, props.index, props.index + 1)}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={X} />}
-        title={`Remove ${props.row.expression}`}
+        tooltip={`Remove ${props.row.expression}`}
         onClick={() => removeWatchExpression(props.root, props.index)}
       />
     </div>
@@ -391,7 +392,7 @@ function Controls() {
           <IconButton
             size="xs"
             icon={<Icon icon={Pause} />}
-            title="Pause"
+            tooltip="Pause"
             onClick={() => pauseDebug()}
           />
         }
@@ -399,41 +400,41 @@ function Controls() {
         <IconButton
           size="xs"
           icon={<Icon icon={Play} />}
-          title="Continue"
+          tooltip="Continue"
           onClick={() => continueDebug()}
         />
       </Show>
       <IconButton
         size="xs"
         icon={<Icon icon={ArrowRightToLine} />}
-        title="Step over"
+        tooltip="Step over"
         disabled={!paused()}
         onClick={() => stepOver()}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={ArrowDownToLine} />}
-        title="Step into"
+        tooltip="Step into"
         disabled={!paused()}
         onClick={() => stepIn()}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={ArrowUpFromLine} />}
-        title="Step out"
+        tooltip="Step out"
         disabled={!paused()}
         onClick={() => stepOut()}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={RotateCcw} />}
-        title="Restart"
+        tooltip="Restart"
         onClick={() => emit(DEBUG_RESTART)}
       />
       <IconButton
         size="xs"
         icon={<Icon icon={Square} />}
-        title="Stop"
+        tooltip="Stop"
         onClick={() => emit(DEBUG_STOP)}
       />
     </div>
@@ -450,18 +451,22 @@ function FrameRow(props: { session: string; frame: StackFrame; selected: Selecti
     selectedFrame()?.session === props.session && selectedFrame()?.frameId === props.frame.id;
   return (
     <div class={styles.frameRow} classList={{ [styles.selected]: isCurrent() }}>
-      <button
+      {/* No `aria-label`: the two spans below are the frame's name and where it
+          is, which is what the row should be called. A label here would replace
+          both with the bare path. */}
+      <Tooltip
+        as="button"
         type="button"
         class={styles.frame}
         aria-current={isCurrent() ? "true" : undefined}
         onClick={() => selectFrame(props.session, props.frame.id)}
-        title={props.frame.path ?? props.frame.sourceName}
+        label={props.frame.path ?? props.frame.sourceName}
       >
         <span class={styles.frameName}>{props.frame.name}</span>
         <span class={styles.frameWhere}>
           {props.frame.sourceName}:{props.frame.line}
         </span>
-      </button>
+      </Tooltip>
       <Show when={isCurrent()}>
         <AskButton selected={props.selected} />
       </Show>
@@ -504,7 +509,7 @@ function AskButton(props: { selected: Selection | null }) {
       size="xs"
       variant="ghost"
       class={styles.ask}
-      title={refusal() ?? "Ask the agent about this frame"}
+      tooltip={refusal() ?? "Ask the agent about this frame"}
       onClick={() => void ask()}
     >
       Ask
@@ -613,17 +618,22 @@ function VariableRow(props: { row: VarRow; depth: number }) {
               when={canSetVariable()}
               fallback={<span class={styles.varValue}>{props.row.value}</span>}
             >
-              <button
+              {/* `aria-label` here, unlike the frame row: the visible text is
+                  the variable's *value*, so the name a screen reader would
+                  otherwise read out is "42". The action is what to call it. */}
+              <Tooltip
+                as="button"
                 type="button"
                 class={`${styles.varValue} ${styles.varEditable}`}
-                title={`Set ${props.row.name}`}
+                aria-label={`Set ${props.row.name}`}
+                label={`Set ${props.row.name}`}
                 onClick={() => {
                   setError(null);
                   setEditing(true);
                 }}
               >
                 {props.row.value}
-              </button>
+              </Tooltip>
             </Show>
           }
         >

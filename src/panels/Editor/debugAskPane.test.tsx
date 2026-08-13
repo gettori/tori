@@ -179,8 +179,18 @@ describe("asking the agent about the paused frame", () => {
     // unselected frame carries none, because it is not the frame the message
     // would describe.
     expect(askButtons()).toHaveLength(2);
+    // Both say the same thing, which used to be a `title` and is now the
+    // tooltip: focus is what opens it, and focus is exactly what a `title`
+    // never answered to. Blurred between the two so only one is ever open.
     for (const button of askButtons()) {
-      expect(button.closest("button")?.getAttribute("title")).toBe("Ask the agent about this frame");
+      const control = button.closest("button")!;
+      expect(control.getAttribute("title")).toBeNull();
+      fireEvent.focus(control);
+      await waitFor(() =>
+        expect(screen.getByRole("tooltip").textContent).toBe("Ask the agent about this frame"),
+      );
+      fireEvent.blur(control);
+      await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
     }
 
     fireEvent.click(askButtons()[0]);
