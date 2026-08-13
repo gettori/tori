@@ -55,11 +55,17 @@ Sway drives the agent CLIs you have installed; it does not ship one. After
 first launch, **Settings > Agents** shows which ones it found, at what version,
 and what it can do with each.
 
-Adding another agent does not require a fork. Drop a `schema_version = 1` TOML
-into `~/.config/sway/agents/` describing how to launch it, where its
-transcripts live, and how to spot a live process. The schema is documented and
-stable at v1: see [ADAPTERS.md](ADAPTERS.md). Codex and Gemini are not
-supported yet, for the reasons noted there.
+Adding another agent does not require a fork. Drop a TOML file into
+`~/.config/sway/agents/` describing how to launch it, where its transcripts
+live, and how to spot a live process. The schema is documented and stable at
+v2, and v1 files still load: see [ADAPTERS.md](ADAPTERS.md).
+
+Only `claude` ships bundled, which is a packaging decision rather than a limit
+of the schema. An adapter that omits the optional `[chat]` table runs its agent
+as a **PTY tab**, and that is the universal fallback: any CLI you can launch in
+a terminal can be driven that way, with the session tree, checkpoints and the
+working/needs-you dot around it. What a TOML alone cannot add is a parser for a
+transcript shaped unlike claude's, which needs Rust.
 
 ## Install
 
