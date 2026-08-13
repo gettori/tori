@@ -2,6 +2,7 @@ import { For, Show } from "solid-js";
 import { Pencil, X } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import FileIcon from "../../seti/FileIcon";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import styles from "./BookmarksPanel.module.css";
@@ -51,9 +52,14 @@ export default function BookmarksPanel(props: {
         <For each={props.rows}>
           {(row) => (
             <div class={styles.row}>
-              <button
+              {/* No `aria-label`: the spans below are the file's name and where
+                  it is, which is what the row should be called. A label here
+                  would replace both with the bare path. */}
+              <Tooltip
+                as="button"
+                type="button"
                 class={styles.go}
-                title={`${row.path}:${row.line}`}
+                label={`${row.path}:${row.line}`}
                 onClick={() => emitWith(OPEN_IN_EDITOR, { path: row.path, line: row.line })}
               >
                 <FileIcon name={basename(row.path)} />
@@ -65,15 +71,15 @@ export default function BookmarksPanel(props: {
                     A row can spare one line of context, and a name someone
                     chose says more than a path they already know. */}
                 <span class={styles.detail}>{row.label ?? folderOf(row.path, props.root)}</span>
-              </button>
+              </Tooltip>
               <IconButton
                 icon={<Icon icon={Pencil} />}
-                title={row.label ? "Rename this bookmark" : "Name this bookmark"}
+                tooltip={row.label ? "Rename this bookmark" : "Name this bookmark"}
                 onClick={() => props.onLabel(row)}
               />
               <IconButton
                 icon={<Icon icon={X} />}
-                title="Remove this bookmark"
+                tooltip="Remove this bookmark"
                 onClick={() => props.onRemove(row)}
               />
             </div>

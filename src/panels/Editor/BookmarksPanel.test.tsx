@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import BookmarksPanel, { type BookmarkRow } from "./BookmarksPanel";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
@@ -64,9 +65,9 @@ describe("the bookmarks panel", () => {
         onRemove={(r) => removed.push(r)}
       />
     ));
-    fireEvent.click(screen.getByTitle("Name this bookmark"));
-    fireEvent.click(screen.getByTitle("Rename this bookmark"));
-    fireEvent.click(screen.getAllByTitle("Remove this bookmark")[1]);
+    fireEvent.click(screen.getByLabelText("Name this bookmark"));
+    fireEvent.click(screen.getByLabelText("Rename this bookmark"));
+    fireEvent.click(screen.getAllByLabelText("Remove this bookmark")[1]);
     expect(labelled).toEqual([ROWS[0], ROWS[1]]);
     expect(removed).toEqual([ROWS[1]]);
     // Neither is an open: the buttons sit outside the jump target.
@@ -78,5 +79,15 @@ describe("the bookmarks panel", () => {
     // sentence is the only place the gesture is explained.
     render(() => <BookmarksPanel rows={[]} root={ROOT} onLabel={noop} onRemove={noop} />);
     expect(screen.getByText(/Click the gutter beside a line to mark it/)).toBeTruthy();
+  });
+});
+
+describe("the bookmarks panel, to axe", () => {
+  it("has no accessibility violations", () => {
+    const { container } = render(() => (
+      <BookmarksPanel rows={ROWS} root={ROOT} onLabel={noop} onRemove={noop} />
+    ));
+
+    return expectNoAxeViolations(container);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // One commit, as an editor tab. The awkward shapes are the point: a merge whose
 // diff is empty under git's own default, and a rename that reads as an addition
@@ -209,5 +210,16 @@ describe("the commit detail tab", () => {
     await waitFor(() => expect(screen.getByText("the one asked for")).toBeTruthy());
     expect(screen.queryByText("the one left behind")).toBeNull();
     expect(screen.queryByText("stale.ts")).toBeNull();
+  });
+});
+
+describe("the commit detail tab, to axe", () => {
+  it("has no accessibility violations", async () => {
+    detail = { ...base, files: [{ path: "src/a.ts", old_path: null, status: "M" }] };
+    mount();
+    await waitFor(() => expect(screen.getByText("src/a.ts")).toBeTruthy());
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 });

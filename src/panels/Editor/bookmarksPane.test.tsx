@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { tab } from "../../test/tabs";
 
 // Bookmarks from the pane's side.
 //
@@ -98,7 +99,7 @@ function mark(path: string, line: number) {
   code!.onToggleBookmark!(path, line);
 }
 
-const showPanel = () => fireEvent.click(screen.getByTitle("Bookmarks"));
+const showPanel = () => fireEvent.click(tab("Bookmarks"));
 
 beforeEach(() => {
   code = null;
@@ -118,9 +119,9 @@ describe("bookmarks, from the pane", () => {
     mark(FILE, 12);
     await waitFor(() => expect(code?.bookmarks).toEqual([{ line: 12 }]));
     showPanel();
-    // By title, because the tab strip is showing the same file name a few
-    // pixels away and the row's tooltip is the only thing that names the line.
-    expect(screen.getByTitle(`${FILE}:12`)).toBeTruthy();
+    // By role, because the tab strip is showing the same file name a few
+    // pixels away and only the row says which line.
+    expect(screen.getByRole("button", { name: /a\.ts:12/ })).toBeTruthy();
   });
 
   it("offers the tab before anything is marked, since that is where the gesture is explained", async () => {
@@ -160,8 +161,8 @@ describe("bookmarks, from the pane", () => {
 
     emitWith(FILE_RENAMED, { from: FILE, to: moved });
     showPanel();
-    await waitFor(() => expect(screen.getByTitle(`${moved}:12`)).toBeTruthy());
-    expect(screen.queryByTitle(`${FILE}:12`)).toBeNull();
+    await waitFor(() => expect(screen.getByRole("button", { name: /renamed\.ts:12/ })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /a\.ts:12/ })).toBeNull();
   });
 
   it("leaves no orphan behind when the file is trashed", async () => {

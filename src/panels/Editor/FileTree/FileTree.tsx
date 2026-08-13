@@ -673,7 +673,7 @@ export default function FileTree(props: {
               New Folder
             </Button>
             <Show when={revealable()}>
-              <Button variant="ghost" size="xs" title="Reveal the open file" onClick={reveal}>
+              <Button variant="ghost" size="xs" tooltip="Reveal the open file" onClick={reveal}>
                 <Icon icon={Crosshair} />
                 Reveal
               </Button>
@@ -681,7 +681,7 @@ export default function FileTree(props: {
             <Button
               variant="ghost"
               size="xs"
-              title="Collapse all folders"
+              tooltip="Collapse all folders"
               aria-label="Collapse all folders"
               onClick={() => setCollapseNonce((n) => n + 1)}
             >

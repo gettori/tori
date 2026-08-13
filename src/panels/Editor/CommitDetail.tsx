@@ -5,6 +5,7 @@ import { buildRows } from "../../utils/diffView";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./CommitDetail.module.css";
 
 /** Mirrors `CommitFile` in src-tauri/src/git.rs. */
@@ -146,7 +147,8 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
                   active={twoColumn()}
                   disabled={paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
                   icon={<span aria-hidden="true">⇹</span>}
-                  title={
+                  tooltipWhenDisabled
+                  tooltip={
                     paneWidth() < SIDE_BY_SIDE_MIN_WIDTH
                       ? "Side-by-side needs a wider pane"
                       : twoColumn()
@@ -179,17 +181,18 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
               <For each={c().files}>
                 {(f) => (
                   <div>
-                    <button
+                    <Tooltip
+                      as="button"
                       type="button"
                       class={styles.fileRow}
-                      title={rowLabel(f)}
+                      label={rowLabel(f)}
                       onClick={() => void toggleFile(f)}
                     >
                       <span class={styles.status} data-status={f.status}>
                         {STATUS_WORD[f.status] ?? f.status}
                       </span>
                       <span class={styles.path}>{rowLabel(f)}</span>
-                    </button>
+                    </Tooltip>
                     <Show when={openFile() === f.path}>
                       <div class={styles.fileDiff}>
                         <Show when={diffError()}>
