@@ -114,6 +114,7 @@ const prompt = (toolUseId: string, requestId = "r1"): ChatEvent => ({
   input: { command: "ls" },
   requestId,
   autoDenyAtMs: null,
+  agentId: null,
 });
 const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"): ChatEvent => ({
   type: "turnCompleted",

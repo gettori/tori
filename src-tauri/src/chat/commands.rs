@@ -14,9 +14,9 @@ use tauri::State;
 
 use crate::agents::{self, ChatConfig, ChatTransport};
 
-use super::approval::{self, ApprovalPrompt, HookResponse};
+use super::approval::{self, ApprovalPrompt};
 use super::claude_transport::ClaudeTransport;
-use super::host::{ChatState, SessionBridge, Spawned};
+use super::host::{AnsweredBy, ChatState, SessionBridge, Spawned};
 use super::rules;
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
@@ -200,6 +200,12 @@ pub async fn chat_spawn(
                     input: p.input,
                     request_id: p.request_id,
                     auto_deny_at_ms: Some(p.auto_deny_at_ms),
+                    // The hook bridge sees neither: a `PreToolUse` payload names
+                    // no subagent, and the hook is Sway's own gate rather than
+                    // the harness offering its alternatives. Both are the
+                    // in-protocol path's to fill.
+                    agent_id: None,
+                    suggestions: Vec::new(),
                 },
             );
         }),
@@ -330,21 +336,34 @@ pub async fn chat_respond_permission(
     session_id: String,
     cwd: String,
     request_id: String,
+    tool_use_id: String,
     tool_name: String,
     tool_input: serde_json::Value,
     decision: PermissionDecision,
     scope: PermissionScope,
     reason: Option<String>,
 ) -> Result<Option<RuleOffer>, String> {
-    // **The answer goes out first.** A hook process is blocked on this call, and
-    // the rule below is only an optimisation for *later* ones. Persisting first
-    // meant an unwritable `~/.config` returned early and left the hook unanswered
-    // until the 110s auto-deny - so a call the user clicked Allow on ended up
-    // denied, by a disk error.
+    // **The answer goes out first.** Something is blocked on this call, and the
+    // rule below is only an optimisation for *later* ones. Persisting first
+    // meant an unwritable `~/.config` returned early and left the waiter
+    // unanswered until the 110s auto-deny - so a call the user clicked Allow on
+    // ended up denied, by a disk error.
     //
-    // It goes to the blocked hook over the approval socket, not to the child's
-    // stdin: `PreToolUse` is the gate, and it is what is waiting.
-    state.0.resolve_permission(&session_id, &request_id, hook_response_for(decision, reason))?;
+    // Which waiter it is, is the host's decision: a prompt can come from the
+    // harness asking in-protocol or from Sway's `PreToolUse` bridge, and only
+    // the transport can recognise its own request ids.
+    let answered_by =
+        state.0.answer_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason.as_deref())?;
+
+    // A harness-answered call has already been told how far the answer reaches:
+    // the scope rode back in the same response as `updatedPermissions`, in the
+    // harness's own rule grammar. Writing a Sway-owned rule as well would record
+    // one decision twice in two formats, and only the harness's copy is the one
+    // its next tool call consults. The repeat-approval offer is skipped for the
+    // same reason: it exists to sell a Sway rule the user no longer needs.
+    if matches!(answered_by, AnsweredBy::Harness) {
+        return Ok(None);
+    }
 
     // "Allow, and stop asking" writes a Sway-owned rule so the next matching
     // call takes the cheap path. Never written to `~/.claude/settings.json`: a
@@ -587,13 +606,6 @@ pub async fn chat_add_restriction(
 /// that file, use the fixture") rather than just a refusal. A typed reason
 /// therefore has to survive verbatim; the defaults exist only for the buttons
 /// that carry no message.
-fn hook_response_for(decision: PermissionDecision, reason: Option<String>) -> HookResponse {
-    match decision {
-        PermissionDecision::Allow => HookResponse::allow(reason.unwrap_or_else(|| "Allowed in Sway.".to_string())),
-        PermissionDecision::Deny => HookResponse::deny(reason.unwrap_or_else(|| "Denied in Sway.".to_string())),
-    }
-}
-
 /// Record an allow rule for this session.
 ///
 /// The scope decides how wide it is, and the widths are deliberately modest: a
@@ -1328,6 +1340,7 @@ mod tests {
     /// is told.
     #[test]
     fn every_answer_reaches_the_hook_as_the_decision_it_names() {
+        use super::super::host::hook_response_for;
         let allow = approval::hook_output(&hook_response_for(PermissionDecision::Allow, None));
         assert!(allow.contains("\"permissionDecision\":\"allow\""), "{allow}");
 
@@ -1340,8 +1353,9 @@ mod tests {
     /// would throw away the only part the user wrote.
     #[test]
     fn a_typed_denial_reason_survives_verbatim_into_the_tool_result() {
+        use super::super::host::hook_response_for;
         let typed = "Not that file - use dev/fixtures/chat/events.json.";
-        let out = approval::hook_output(&hook_response_for(PermissionDecision::Deny, Some(typed.to_string())));
+        let out = approval::hook_output(&hook_response_for(PermissionDecision::Deny, Some(typed)));
         assert!(out.contains(typed), "{out}");
         assert!(!out.contains("Denied in Sway."), "the default must not displace what the user wrote");
     }

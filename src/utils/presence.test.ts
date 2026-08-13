@@ -167,6 +167,7 @@ describe("chats alongside PTY agents", () => {
     input: {},
     requestId: `req-${toolUseId}`,
     autoDenyAtMs: null,
+    agentId: null,
   });
 
   /** The same shape LeftSidebar's `liveSessionDots` builds for a chat. */

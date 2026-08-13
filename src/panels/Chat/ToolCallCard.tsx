@@ -9,6 +9,7 @@ import { isUnderPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
 import { formatDuration, isEditTool, toolDigest, toolPaths, toolRenderer } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
+import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
@@ -65,6 +66,7 @@ export default function ToolCallCard(props: {
   sessionId: string;
   cwd: string;
   onAnswer: (card: ToolItem, answer: Answer) => void;
+  onSetMode: (mode: PermissionMode) => void;
   /** Undo one hunk. Resolves true when the file was actually rewritten, which is
    *  when the card's diff has to be re-read. */
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
@@ -256,7 +258,11 @@ export default function ToolCallCard(props: {
           approved is this call, and a modal would hide the transcript that
           explains why it was made. */}
       <Show when={props.card.approval}>
-        <PermissionPrompt card={props.card} onAnswer={(answer) => props.onAnswer(props.card, answer)} />
+        <PermissionPrompt
+          card={props.card}
+          onAnswer={(answer) => props.onAnswer(props.card, answer)}
+          onSetMode={props.onSetMode}
+        />
       </Show>
     </div>
   );

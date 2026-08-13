@@ -29,16 +29,40 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
   };
 }
 
-function mount(item: ToolItem) {
+function mount(item: ToolItem, onSetMode: (mode: string) => void = () => {}) {
   return render(() => (
     <ToolCallCard
       card={item}
       sessionId="s1"
       cwd="/repo"
       onAnswer={() => {}}
+      onSetMode={onSetMode}
       onRevertHunk={async () => false}
     />
   ));
+}
+
+/** A call blocked on the harness's own question, carrying the suggestions
+ *  claude 2.1.231 was measured to send with one. */
+function blocked(over: Partial<ToolItem> = {}): ToolItem {
+  return card({
+    state: "awaitingApproval",
+    approval: {
+      requestId: "req-1",
+      autoDenyAtMs: null,
+      agentId: null,
+      suggestions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "ls -la" }],
+          behavior: "allow",
+          destination: "localSettings",
+        },
+        { type: "setMode", mode: "acceptEdits", destination: "session" },
+      ],
+    },
+    ...over,
+  });
 }
 
 describe("ToolCallCard", () => {
@@ -66,6 +90,36 @@ describe("ToolCallCard", () => {
   it("renders a call with no name at all rather than blanking the row", () => {
     const { getByText } = mount(card({ name: null, input: {} }));
     expect(getByText("tool")).toBeTruthy();
+  });
+
+  // The harness offered "stop asking about edits" alongside the question. That
+  // is a one-click action issuing the real mode switch, not a third way to
+  // answer this one call.
+  it("turns a setMode suggestion into a one-click mode switch", () => {
+    const switched: string[] = [];
+    const { getByText } = mount(blocked(), (mode) => switched.push(mode));
+
+    fireEvent.click(getByText("Switch to accepting edits"));
+
+    expect(switched).toEqual(["acceptEdits"]);
+  });
+
+  // `addRules` and `addDirectories` are already what the scoped Allow buttons
+  // send back, so rendering them again would be two controls for one outcome.
+  it("does not render a second control for the rule the Allow buttons already send", () => {
+    const { queryByText, getByText } = mount(blocked());
+    expect(getByText("Allow for this session")).toBeTruthy();
+    expect(queryByText(/addRules|localSettings/)).toBeNull();
+  });
+
+  // A prompt from the `PreToolUse` bridge carries no suggestions at all, and
+  // must still render its ordinary answers.
+  it("renders a prompt that came with no suggestions", () => {
+    const { getByText, queryByText } = mount(
+      blocked({ approval: { requestId: "req-2", autoDenyAtMs: null, agentId: null, suggestions: [] } }),
+    );
+    expect(getByText("Allow once")).toBeTruthy();
+    expect(queryByText(/^Switch to/)).toBeNull();
   });
 
   it("shows a blocked call as blocked, not as a spinner", () => {

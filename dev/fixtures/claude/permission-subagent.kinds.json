@@ -3,6 +3,7 @@
   "required": [
     "assistant/text",
     "assistant/tool_use",
+    "control_request/can_use_tool",
     "result/success",
     "stream_event/content_block_delta/input_json_delta",
     "stream_event/content_block_delta/text_delta",
@@ -14,9 +15,19 @@
     "stream_event/message_stop",
     "system/init",
     "system/status",
+    "system/task_notification",
+    "system/task_progress",
+    "system/task_started",
+    "system/task_updated",
+    "user/text",
     "user/tool_result"
   ],
   "optional": [
-    "rate_limit_event"
+    "assistant/thinking",
+    "rate_limit_event",
+    "stream_event/content_block_delta/signature_delta",
+    "stream_event/content_block_delta/thinking_delta",
+    "stream_event/content_block_start/thinking",
+    "system/thinking_tokens"
   ]
 }

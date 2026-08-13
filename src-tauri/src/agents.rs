@@ -1108,7 +1108,7 @@ args = ["--effort", "low"]
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let chat = claude.chat.expect("claude ships a chat table");
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
-        assert_eq!(claude.verified_against.as_deref(), Some("claude 2.1.220"));
+        assert_eq!(claude.verified_against.as_deref(), Some("claude 2.1.231"));
 
         assert!(!chat.models.is_empty(), "no models declared");
         assert!(chat.models.iter().any(|m| m.id == "claude-opus-5"));

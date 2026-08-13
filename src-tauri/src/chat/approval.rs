@@ -1,13 +1,26 @@
 //! The `PreToolUse` approval bridge: a per-session Unix socket, and the hook
 //! helper that blocks on it.
 //!
-//! **Why the hook and not a permission prompt.** `PermissionRequest` never fires
-//! in headless `-p` - measured, not assumed: it fires when a *dialog* would be
-//! shown, and headless has none. `PreToolUse` does fire, it runs **first** in
-//! the permission chain (before deny rules, ask rules and permission mode), and
-//! a deny from it applies even under `bypassPermissions`. That makes it the only
-//! authoritative gate available, which is also why Phase 6 can promise approvals
-//! hold in every mode.
+//! **Why the hook, and what has changed since.** This bridge was built because
+//! nothing else could ask: measured on claude 2.1.220, a permission prompt fires
+//! when a *dialog* would be shown and headless `-p` has none. `PreToolUse` does
+//! fire, it runs **first** in the permission chain (before deny rules, ask rules
+//! and permission mode), and a deny from it applies even under
+//! `bypassPermissions`. That made it the only authoritative gate available.
+//!
+//! That premise no longer holds. Measured on claude 2.1.231,
+//! `--permission-prompt-tool stdio` makes the CLI ask in-protocol with a
+//! `can_use_tool` control request, which `claude_transport.rs` now answers, so
+//! the harness can gate its own tools headless after all.
+//!
+//! **The two cannot both be live for one call**, and this one wins: a
+//! `PreToolUse` `allow` short-circuits the rest of the chain, so while this hook
+//! answers every tool the harness is never reached and never asks (measured
+//! three ways in `dev/protocol-probe.mjs`; a hook that exits 0 emitting *no*
+//! decision lets the chain continue and the harness ask). Retiring this gate is
+//! what wakes the in-protocol path, and it is deliberately a later step: the
+//! plan stops using this bridge behind a setting first, and deletes it only
+//! after real use has exercised the replacement.
 //!
 //! `permissionDecision: "ask"` is useless here - it degrades to a denial with the
 //! reason surfaced - so this bridge only ever answers `allow` or `deny`.

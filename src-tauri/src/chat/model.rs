@@ -138,6 +138,52 @@ pub enum PermissionScope {
     Project,
 }
 
+/// One rule the harness proposed, in the harness's own grammar.
+///
+/// `rule_content` is optional because a rule can name a whole tool with no
+/// argument pattern (`toolName: "WebFetch"` and nothing else), which is a
+/// meaningfully different offer from one scoped to a single command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedRule {
+    pub tool_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_content: Option<String>,
+}
+
+/// An action the harness itself offered alongside a permission question.
+///
+/// **These are the CLI's words, not Sway's invention.** Measured on claude
+/// 2.1.231, a `can_use_tool` request carries up to three of them: the rule that
+/// would allow this call, the directory that would unblock it, and the mode that
+/// would stop it asking. Sway renders them and echoes the chosen one back
+/// verbatim rather than composing rule text itself, because the rule grammar
+/// belongs to the harness - a `Bash` rule is a command *pattern*, and Sway
+/// guessing at that is how an "always allow `touch a.txt`" silently becomes
+/// "always allow every `touch`".
+///
+/// An unrecognised suggestion type is dropped at the mapper rather than
+/// modelled, so a new one the CLI invents cannot fail the whole request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum PermissionSuggestion {
+    AddRules {
+        rules: Vec<SuggestedRule>,
+        /// "allow" or "deny", as the harness spells it.
+        behavior: String,
+        /// Where the harness would persist it, e.g. `session`, `localSettings`.
+        destination: String,
+    },
+    AddDirectories {
+        directories: Vec<String>,
+        destination: String,
+    },
+    SetMode {
+        mode: PermissionMode,
+        destination: String,
+    },
+}
+
 /// A slash command as the composer's completion menu needs it.
 ///
 /// Measured: `system/init` reports only bare command *names*, so the
@@ -549,23 +595,38 @@ pub enum ChatEvent {
 
     /// A tool call is blocked awaiting the user's answer.
     ///
-    /// This arrives over the approval socket from a forked hook helper, while
-    /// the `assistant` frame declaring the same call arrives on the child's
-    /// stdout - two channels with nothing ordering them. Consumers must
-    /// materialize a card from whichever reaches them first and key it on
-    /// `tool_use_id`.
+    /// Two sources produce this, and a consumer cannot tell them apart nor needs
+    /// to: the `PreToolUse` approval socket (a forked hook helper), and the
+    /// harness's own in-protocol `can_use_tool` control request. Either way the
+    /// `assistant` frame declaring the same call arrives on a different channel
+    /// with nothing ordering the two, so consumers must materialize a card from
+    /// whichever reaches them first and key it on `tool_use_id`.
     PermissionRequest {
         session_id: String,
         tool_use_id: String,
         tool_name: String,
         input: serde_json::Value,
-        /// Correlates the answer back to the blocked helper process.
+        /// Correlates the answer back to the blocked helper process, or to the
+        /// control request the harness is waiting on.
         request_id: String,
         /// When Sway will auto-deny. Sway owns this deadline and keeps it
         /// strictly below the hook's own timeout, so an unanswered prompt fails
         /// closed with a reason rather than being resolved by the CLI.
         #[serde(default)]
         auto_deny_at_ms: Option<u64>,
+        /// The subagent that made this call, when a subagent made it.
+        ///
+        /// Measured on claude 2.1.231: a `Task` subagent's `can_use_tool` request
+        /// carries `agent_id`, and the main agent's does not. Without it a
+        /// subagent's prompt would attach to the parent, which is the one place
+        /// a permission question can be shown against work the user did not ask
+        /// about directly.
+        #[serde(default)]
+        agent_id: Option<String>,
+        /// Actions the harness offered for this call. Empty when it offered
+        /// none, which is normal rather than a failure.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        suggestions: Vec<PermissionSuggestion>,
     },
 
     PlanUpdate {
@@ -813,6 +874,28 @@ mod tests {
                 input: serde_json::json!({ "command": "rm -rf /" }),
                 request_id: "op-9".into(),
                 auto_deny_at_ms: Some(1_785_179_400_000),
+                agent_id: Some("affdd797eddcfa753".into()),
+                // One of each shape the CLI was measured to send, so the
+                // TypeScript mirror is checked against all three rather than
+                // against whichever one happened to be sampled.
+                suggestions: vec![
+                    PermissionSuggestion::AddRules {
+                        rules: vec![SuggestedRule {
+                            tool_name: "Bash".into(),
+                            rule_content: Some("rm -rf /".into()),
+                        }],
+                        behavior: "allow".into(),
+                        destination: "localSettings".into(),
+                    },
+                    PermissionSuggestion::AddDirectories {
+                        directories: vec!["/tmp/w".into()],
+                        destination: "session".into(),
+                    },
+                    PermissionSuggestion::SetMode {
+                        mode: PermissionMode::new("acceptEdits"),
+                        destination: "session".into(),
+                    },
+                ],
             },
             ChatEvent::PlanUpdate {
                 session_id: "s1".into(),

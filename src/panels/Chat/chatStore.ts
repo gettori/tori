@@ -33,6 +33,7 @@ import type {
   HookPhase,
   McpServer,
   PermissionMode,
+  PermissionSuggestion,
   PlanItem,
   SlashCommand,
   Usage,
@@ -51,6 +52,11 @@ export type ToolCardState = "awaitingApproval" | "running" | "ok" | "error" | "d
 export type PendingApproval = {
   requestId: string;
   autoDenyAtMs: number | null;
+  /** Actions the harness itself offered for this call. Empty for a prompt the
+   *  `PreToolUse` bridge raised, which has none to offer. */
+  suggestions: PermissionSuggestion[];
+  /** The subagent that made the call, or null for the main agent. */
+  agentId: string | null;
 };
 
 export type ChatFileEdit = {
@@ -703,7 +709,12 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       // A prompt for a call that already finished is stale (the auto-deny
       // raced us); leave the settled card alone.
       if (card.state === "ok" || card.state === "error" || card.state === "denied") return;
-      card.approval = { requestId: ev.requestId, autoDenyAtMs: ev.autoDenyAtMs };
+      card.approval = {
+        requestId: ev.requestId,
+        autoDenyAtMs: ev.autoDenyAtMs,
+        suggestions: ev.suggestions ?? [],
+        agentId: ev.agentId,
+      };
       card.state = "awaitingApproval";
       if (card.name === null) card.name = ev.toolName;
       if (card.input === null) card.input = ev.input;
