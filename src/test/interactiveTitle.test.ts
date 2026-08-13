@@ -93,20 +93,9 @@ const PENDING_SWEEP = new Map<string, Pending>([
   ["components/Toolbar/Toolbar.tsx", { count: 2, phase: 5 }],
   ["components/UpdatePill/UpdatePill.tsx", { count: 2, phase: 5 }],
   ["dev/Styleguide.tsx", { count: 2, phase: 5 }],
-  ["panels/Chat/ChatView.tsx", { count: 4, phase: 4 }],
-  ["panels/Chat/Composer.tsx", { count: 4, phase: 4 }],
-  ["panels/Chat/MessageList.tsx", { count: 1, phase: 4 }],
-  ["panels/Chat/Picker.tsx", { count: 1, phase: 4 }],
-  ["panels/Chat/RuleList.tsx", { count: 2, phase: 4 }],
-  ["panels/Chat/SessionDiffView.tsx", { count: 6, phase: 4 }],
-  ["panels/Chat/StatusStrip.tsx", { count: 2, phase: 4 }],
-  ["panels/Chat/ToolCallCard.tsx", { count: 3, phase: 4 }],
   ["panels/LeftSidebar/LeftSidebar.tsx", { count: 15, phase: 5 }],
   ["panels/Settings/Settings.tsx", { count: 1, phase: 5 }],
   ["panels/Settings/paneKit.tsx", { count: 4, phase: 5 }],
-  ["panels/Terminal/HistoryPanel.tsx", { count: 4, phase: 4 }],
-  ["panels/Terminal/Terminal.tsx", { count: 6, phase: 4 }],
-  ["panels/Terminal/TerminalView.tsx", { count: 3, phase: 4 }],
 ]);
 
 const KEPT = new Map<string, Kept>([
@@ -135,8 +124,10 @@ const KEPT = new Map<string, Kept>([
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
-  ["panels/Chat/ModeSelector.tsx", { count: 1, reason: GROUP_HEADING }],
-  ["panels/Chat/ModelPicker.tsx", { count: 3, reason: GROUP_HEADING }],
+  ["panels/Chat/ModelPicker.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
+  ["panels/Chat/RuleList.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: TRUNCATION }],
@@ -193,6 +184,17 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Terminal/TabMark.tsx", { count: 1, reason: TRUNCATION }],
+  [
+    "panels/Terminal/HistoryPanel.tsx",
+    { count: 3, reason: `one ${TRUNCATION}, and two of ${ROW_ONCLICK}` },
+  ],
+  [
+    "panels/Terminal/Terminal.tsx",
+    {
+      count: 2,
+      reason: `one ${TRUNCATION}, plus the title *prop* of ChatView - the session name it shows, never hover text`,
+    },
+  ],
 ]);
 
 const TITLE = /\btitle=/g;
@@ -288,7 +290,7 @@ describe("the title= guard", () => {
     // and swept nothing; phase 2 took the four heavy Editor panels, so it left
     // this list when its last entry moved to KEPT, and phase 3 left it the same
     // way when the rest of the Editor followed.
-    expect([...byPhase.keys()].sort()).toEqual([4, 5]);
+    expect([...byPhase.keys()].sort()).toEqual([5]);
     expect(remaining).toBeGreaterThan(0);
 
     // Phase 5's last task turns this into `toBe(0)` and deletes PENDING_SWEEP.
@@ -316,6 +318,11 @@ describe("the title= guard", () => {
 const BACKFILLS_NAME = new Set(["Button", "IconButton"]);
 /** Components that accept `tooltip` but are named by their own visible text. */
 const NAMED_BY_TEXT = new Set(["Tab"]);
+/** Components that accept `tooltip` and take a *required* name prop of their
+ *  own, so the tooltip is a description on a control that is already named and
+ *  no backfill is wanted. `Picker`'s `ariaLabel` is required by its type, which
+ *  is why there is nothing further to assert here. */
+const NAMES_ITSELF = new Set(["Picker"]);
 
 /** The attribute region of every JSX opening tag: `[start, end, tagName]`.
  *
@@ -427,7 +434,8 @@ describe("every tooltip= site resolves a name", () => {
         (site) =>
           site.tag != null &&
           !BACKFILLS_NAME.has(site.tag) &&
-          !NAMED_BY_TEXT.has(site.tag),
+          !NAMED_BY_TEXT.has(site.tag) &&
+          !NAMES_ITSELF.has(site.tag),
       )
       .map((site) => `${site.path}: <${site.tag} tooltip=…>`);
 

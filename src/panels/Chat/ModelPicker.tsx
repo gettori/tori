@@ -65,7 +65,7 @@ export default function ModelPicker(props: {
         icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
         value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
         ariaLabel="Model"
-        title={current()?.description || "Model"}
+        tooltip={current()?.description || "Model"}
         disabled={props.disabled || props.models.length === 0}
         pending={props.modelPending}
         onClose={() => setShowAll(false)}
@@ -97,7 +97,7 @@ export default function ModelPicker(props: {
              is. Saying "Default" is honest; naming a level would not be. */
           value={props.effort ?? "Default"}
           ariaLabel="Thinking effort"
-          title="Thinking effort"
+          tooltip="Thinking effort"
           disabled={props.disabled}
           pending={props.effortPending}
         >

@@ -1363,7 +1363,7 @@ export default function ChatView(props: {
               <div class={styles.menuActions}>
                 <Button
                   size="sm"
-                  title={
+                  tooltip={
                     showDiff()
                       ? "Back to the turn-by-turn transcript"
                       : "See every file this session changed, as one diff per file"
@@ -1374,7 +1374,7 @@ export default function ChatView(props: {
                 </Button>
                 <Button
                   size="sm"
-                  title="Open a new chat and send what is in the composer to it"
+                  tooltip="Open a new chat and send what is in the composer to it"
                   onClick={onSendToNewSession}
                 >
                   Send to a new chat
@@ -1385,7 +1385,7 @@ export default function ChatView(props: {
                 <Show when={state.started && state.items.length > 0}>
                   <Button
                     size="sm"
-                    title="Branch this conversation into a new session, keeping everything up to here"
+                    tooltip="Branch this conversation into a new session, keeping everything up to here"
                     onClick={() => props.onForkFrom()}
                   >
                     Fork this chat

@@ -8,6 +8,7 @@ import { chatsInFolder } from "../../utils/chatSessions";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import styles from "./SessionDiffView.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 // The same session, read a different way.
 //
@@ -146,11 +147,13 @@ export default function SessionDiffView(props: {
     <div class={styles.diffView} ref={host}>
       <Show when={props.live && (files() ?? []).length}>
         <div class={styles.viewBar}>
-          <button
+          <Tooltip
+            as="button"
             type="button"
             class={styles.whyToggle}
             disabled={width() < SIDE_BY_SIDE_MIN_WIDTH}
-            title={
+            whenDisabled
+            label={
               width() < SIDE_BY_SIDE_MIN_WIDTH
                 ? "The panel is too narrow for two columns"
                 : "Same preference as the Changes panel"
@@ -160,7 +163,7 @@ export default function SessionDiffView(props: {
             }}
           >
             {twoColumn() ? "Inline" : "Side by side"}
-          </button>
+          </Tooltip>
         </div>
       </Show>
       <Show

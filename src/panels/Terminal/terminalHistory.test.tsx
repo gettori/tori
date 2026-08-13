@@ -108,7 +108,7 @@ function mount(selected: Record<string, unknown> | null = branchSelection) {
   ));
 }
 
-const historyBtn = () => screen.getByTitle("Session history");
+const historyBtn = () => screen.getByRole("button", { name: "Session history" });
 
 describe("the History button on the tab bar", () => {
   beforeEach(() => {
@@ -131,6 +131,25 @@ describe("the History button on the tab bar", () => {
 
     fireEvent.click(historyBtn());
     await waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull());
+  });
+
+  // The one thing a native `title` could never do, checked at the surface most
+  // likely to break it: xterm claims keydown before `window` sees it (the vault
+  // gotcha of that name), and this strip lives above a mounted terminal. Focus
+  // is not keydown, and the trigger *is* the button, so the tooltip opens
+  // regardless - but that is the assertion, not the assumption.
+  it("opens its tooltip on keyboard focus, with a terminal mounted below", async () => {
+    mount();
+    const btn = historyBtn();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    btn.focus();
+    fireEvent.focus(btn);
+
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Session history"));
+    // On the button itself, not on a wrapper: a description on anything else
+    // never reaches the control a screen reader is sitting on.
+    expect(btn.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
   });
 
   it("has nothing to show without a workspace on screen", () => {

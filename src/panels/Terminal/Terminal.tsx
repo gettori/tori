@@ -57,6 +57,7 @@ import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwners
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
 import { settings } from "../Settings/settingsStore";
 import styles from "./Terminal.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -1143,7 +1144,7 @@ export default function Terminal(props: {
           <Tab
             active={visibleId() === t.id}
             onClick={() => selectTab(t)}
-            title={blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
+            tooltip={blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
             closeLabel="Close"
             onClose={(e) => close(t.id, e)}
             // A session's state is true whether or not you are looking at it, so
@@ -1173,25 +1174,34 @@ export default function Terminal(props: {
             <div class={styles.termNewSplit} ref={splitEl}>
               {/* Main half: quick new shell (terminal icon). Caret half: launch an
                   agent session from a fixed three-option menu. */}
-              <button
+              {/* `whenDisabled`: with no branch picked the label is the reason
+                  the button is greyed out, not a description of what it does. */}
+              <Tooltip
+                as="button"
+                type="button"
                 class={`${styles.termNew} ${styles.termNewMain}`}
                 disabled={!props.selected}
-                title={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+                whenDisabled
+                label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+                aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
                 onClick={newShell}
               >
                 <Icon icon={SquareTerminal} />
-              </button>
-              <button
+              </Tooltip>
+              <Tooltip
+                as="button"
+                type="button"
                 ref={caretEl}
                 class={`${styles.termNew} ${styles.termNewCaret}`}
                 disabled={!props.selected}
-                title="Launch an agent session"
+                label="Launch an agent session"
+                aria-label="Launch an agent session"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen()}
                 onClick={toggleMenu}
               >
                 <Icon icon={ChevronDown} class={styles.termNewChevron} />
-              </button>
+              </Tooltip>
               <Show when={menuOpen()}>
                 <Menu
                   x={menuPos().left}
@@ -1239,11 +1249,14 @@ export default function Terminal(props: {
             {/* Session navigation, at the surface the sessions run in rather than
                 in a tree you have to find them in. Last in the trailing cluster,
                 so the launch control keeps the position muscle memory has. */}
-            <button
+            <Tooltip
+              as="button"
+              type="button"
               ref={historyEl}
               class={`${styles.termNew} ${styles.termHistory}`}
               disabled={!activeWorkspace()}
-              title="Session history"
+              label="Session history"
+              aria-label="Session history"
               aria-haspopup="dialog"
               aria-expanded={historyOpen()}
               onClick={toggleHistory}
@@ -1262,7 +1275,7 @@ export default function Terminal(props: {
                   <Show when={detachedLive() > 1}>{detachedLive()}</Show>
                 </span>
               </Show>
-            </button>
+            </Tooltip>
           </>
         }
       />

@@ -64,7 +64,7 @@ export default function ModeSelector(props: {
         icon={SlidersHorizontal}
         value={label()}
         ariaLabel="Permission mode"
-        title={title()}
+        tooltip={title()}
         disabled={props.disabled || props.modes.length === 0}
         pending={props.pending}
         attention={needsCaveat()}

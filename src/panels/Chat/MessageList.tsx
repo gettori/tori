@@ -7,6 +7,7 @@ import Button from "../../components/Button/Button";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 // Assistant text is model output, so it is untrusted as far as script execution
 // goes and the webview it lands in can call backend commands. Same treatment as
@@ -285,14 +286,15 @@ export default function MessageList(props: {
                   <div class={styles.userBubble}>
                     <Show when={rewindTsForPrompt(it().id)}>
                       {(ts) => (
-                        <button
+                        <Tooltip
+                          as="button"
                           type="button"
                           class={styles.userRewind}
-                          title="Put the files back to how they were before this prompt, and carry the conversation into a new chat"
+                          label="Put the files back to how they were before this prompt, and carry the conversation into a new chat"
                           onClick={() => props.onRewind?.(ts())}
                         >
                           Rewind to here
-                        </button>
+                        </Tooltip>
                       )}
                     </Show>
                     <Show when={it().steer}>

@@ -5,6 +5,7 @@ import Button from "../../components/Button/Button";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
 import styles from "./Chat.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 /**
  * The one-line session readout above the transcript: what the session is doing
@@ -108,7 +109,7 @@ export default function StatusStrip(props: {
         </Show>
       </span>
       <Show when={props.health === "disconnected"}>
-        <Button size="xs" onClick={() => props.onReconnect()} title="Resume this session in a new process">
+        <Button size="xs" onClick={() => props.onReconnect()} tooltip="Resume this session in a new process">
           Reconnect
         </Button>
       </Show>
@@ -127,16 +128,17 @@ export default function StatusStrip(props: {
         )}
       </Show>
       <div class={styles.stripSpacer} />
-      <button
+      <Tooltip
+        as="button"
         type="button"
         class={styles.stripMenuButton}
-        title="Session menu"
+        label="Session menu"
         aria-label="Session menu"
         aria-expanded={menuOpen()}
         onClick={() => setMenuOpen(!menuOpen())}
       >
         <Icon icon={Ellipsis} />
-      </button>
+      </Tooltip>
       <Show when={menuOpen()}>
         <div class={styles.stripMenu}>{props.menu}</div>
       </Show>
