@@ -5,6 +5,7 @@ import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import { searchIcons } from "../Icon/iconRegistry";
 import { SPACE_COLORS, spaceHueRgb, rgbTriple } from "../../utils/spaceTint";
+import Tooltip from "../Tooltip/Tooltip";
 
 export type SpaceDialogMode = "new" | "edit";
 
@@ -126,25 +127,29 @@ export default function SpaceDialog(props: {
             name, which is what an untouched space already uses. Its own
             preview shows what that derives to, so the choice is visible
             rather than a leap. */}
-        <button
+        <Tooltip
+          as="button"
           type="button"
           class={styles.swatch}
           classList={{ [styles.swatchSelected]: color() === null }}
           aria-pressed={color() === null}
-          title="Automatic (from the name)"
+          label="Automatic (from the name)"
+          aria-label="Automatic (from the name)"
           style={{ "--swatch-rgb": spaceHueRgb(isNew() ? name() : props.name, null) }}
           onClick={() => setColor(null)}
         >
           <span class={styles.swatchAuto}>A</span>
-        </button>
+        </Tooltip>
         <For each={SPACE_COLORS}>
           {(entry) => (
-            <button
+            <Tooltip
+              as="button"
               type="button"
               class={styles.swatch}
               classList={{ [styles.swatchSelected]: color() === entry.name }}
               aria-pressed={color() === entry.name}
-              title={entry.name}
+              label={entry.name}
+              aria-label={entry.name}
               style={{ "--swatch-rgb": rgbTriple(entry.hex) }}
               onClick={() => setColor(entry.name)}
             />
@@ -168,28 +173,31 @@ export default function SpaceDialog(props: {
         {/* "None" is a state, not a search result, so it stays put while the
             grid filters - otherwise clearing an icon would need the query
             cleared first. */}
-        <button
+        <Tooltip
+          as="button"
           type="button"
           class={styles.iconTile}
           classList={{ [styles.iconSelected]: icon() === null }}
           aria-pressed={icon() === null}
-          title="No icon"
+          label="No icon"
           onClick={() => setIcon(null)}
         >
           <span class={styles.iconNone}>None</span>
-        </button>
+        </Tooltip>
         <For each={searchIcons(iconQuery())}>
           {(entry) => (
-            <button
+            <Tooltip
+              as="button"
               type="button"
               class={styles.iconTile}
               classList={{ [styles.iconSelected]: icon() === entry.name }}
               aria-pressed={icon() === entry.name}
-              title={entry.name}
+              label={entry.name}
+              aria-label={entry.name}
               onClick={() => setIcon(entry.name)}
             >
               <Icon icon={entry.icon} />
-            </button>
+            </Tooltip>
           )}
         </For>
       </div>

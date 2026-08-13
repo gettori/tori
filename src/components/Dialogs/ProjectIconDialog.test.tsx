@@ -99,7 +99,7 @@ describe("ProjectIconDialog", () => {
     it("starts on the stored glyph", () => {
       const { tiles } = open({ icon: "Rocket" });
 
-      expect(tiles().some((b) => b.title === "Rocket" && b.getAttribute("aria-pressed") === "true")).toBe(true);
+      expect(tiles().some((b) => b.getAttribute("aria-label") === "Rocket" && b.getAttribute("aria-pressed") === "true")).toBe(true);
     });
 
     it("starts on the stored image, previewing it", () => {
@@ -122,7 +122,7 @@ describe("ProjectIconDialog", () => {
     it("saves a picked glyph by name", () => {
       const { onConfirm, tiles } = open();
 
-      fireEvent.click(tiles().find((b) => b.title === "Rocket")!);
+      fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
       fireEvent.click(save());
 
       expect(onConfirm).toHaveBeenCalledWith({ icon: "Rocket" });
@@ -131,7 +131,7 @@ describe("ProjectIconDialog", () => {
     it("un-chooses the glyph when an image is uploaded", async () => {
       const { onConfirm, tiles, modes } = open();
 
-      fireEvent.click(tiles().find((b) => b.title === "Rocket")!);
+      fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
       fireEvent.click(modes()[1]);
       await waitFor(() => expect(screen.getByText("Change image…")).toBeTruthy());
       fireEvent.click(save());
@@ -182,7 +182,7 @@ describe("ProjectIconDialog", () => {
       fireEvent.input(search(), { target: { value: "rocket" } });
 
       expect(tiles().length).toBeLessThan(all);
-      expect(tiles()[0].title).toBe("Rocket");
+      expect(tiles()[0].getAttribute("aria-label")).toBe("Rocket");
     });
 
     it("confirms on Enter", () => {

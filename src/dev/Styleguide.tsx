@@ -344,13 +344,13 @@ export default function Styleguide() {
                 <Button size={size} icon={<Icon icon={PanelRight} />}>
                   text + icon
                 </Button>
-                <IconButton size={size} icon={<Icon icon={Bot} />} aria-label="Bot" title="Bot" />
+                <IconButton size={size} icon={<Icon icon={Bot} />} aria-label="Bot" tooltip="Bot" />
                 <IconButton
                   size={size}
                   active={toggled()}
                   icon={<Icon icon={Bot} />}
                   aria-label="Follow"
-                  title="Toggle follow"
+                  tooltip="Toggle follow"
                   onClick={() => setToggled((v) => !v)}
                 />
                 <SegmentedControl

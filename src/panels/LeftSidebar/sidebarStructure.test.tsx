@@ -179,13 +179,13 @@ describe("the sidebar levels that outlive the session rows", () => {
     mount();
 
     // Both tiles exist whatever is active; only one space's tree is rendered.
-    expect(await screen.findByTitle("work")).toBeTruthy();
-    expect(screen.getByTitle("side")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "work" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "side" })).toBeTruthy();
     expect(screen.getByText("repo")).toBeTruthy();
     expect(screen.getByText("notes")).toBeTruthy();
     expect(screen.queryByText("scratch")).toBeNull();
 
-    fireEvent.click(screen.getByTitle("side"));
+    fireEvent.click(screen.getByRole("button", { name: "side" }));
 
     await waitFor(() => expect(screen.getByText("scratch")).toBeTruthy());
     expect(screen.queryByText("repo")).toBeNull();
@@ -291,7 +291,7 @@ describe("the sidebar levels that outlive the session rows", () => {
   it("keeps the space, project and branch-unit context menus", async () => {
     mount(["p:work/repo"]);
 
-    fireEvent.contextMenu(await screen.findByTitle("work"));
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "work" }));
     expect(await screen.findByText("New…")).toBeTruthy();
     expect(screen.getByText("Edit space…")).toBeTruthy();
     expect(screen.getByText("Delete space")).toBeTruthy();

@@ -3,7 +3,7 @@ import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Tab.module.css";
 
 export interface TabProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClose" | "type"> {
+  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClose" | "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Nothing in Sway passes it. */
   type?: "submit" | "reset" | "button";

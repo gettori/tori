@@ -7,6 +7,7 @@ import Icon from "../Icon/Icon";
 import ProjectIcon from "../Icon/ProjectIcon";
 import { searchIcons } from "../Icon/iconRegistry";
 import { Upload } from "lucide-solid";
+import Tooltip from "../Tooltip/Tooltip";
 
 /** What the dialog hands back. Exactly one branch is in force at a time, which
  *  mirrors the storage: `[[project_meta]]` holds a name or a file, never both.
@@ -135,16 +136,18 @@ export default function ProjectIconDialog(props: {
       <div class={styles.iconGrid} role="group" aria-label="Project icon">
         <For each={searchIcons(query())}>
           {(entry) => (
-            <button
+            <Tooltip
+              as="button"
               type="button"
               class={styles.iconTile}
               classList={{ [styles.iconSelected]: sel().icon === entry.name }}
               aria-pressed={sel().icon === entry.name}
-              title={entry.name}
+              label={entry.name}
+              aria-label={entry.name}
               onClick={() => setSel({ icon: entry.name })}
             >
               <Icon icon={entry.icon} />
-            </button>
+            </Tooltip>
           )}
         </For>
       </div>

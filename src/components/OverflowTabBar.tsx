@@ -10,6 +10,7 @@ import {
 } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import Menu, { MenuRow } from "./Menu/Menu";
+import Tooltip from "./Tooltip/Tooltip";
 
 // A tab bar that never scrolls: it renders only the tabs that fully fit, plus a
 // `+N` button whose dropdown lists the rest. Generic over the tab item type T;
@@ -124,15 +125,18 @@ export default function OverflowTabBar<T>(props: {
       <For each={visible()}>{(t) => props.renderTab(t)}</For>
 
       <Show when={overflow().length > 0}>
-        <button
+        <Tooltip
+          as="button"
+          type="button"
           class="tab-overflow-count"
           classList={{ active: menuOpen() }}
           ref={countBtn}
-          title={`${overflow().length} more`}
+          label={`${overflow().length} more`}
+          aria-label={`${overflow().length} more`}
           onClick={toggleMenu}
         >
           +{overflow().length}
-        </button>
+        </Tooltip>
       </Show>
 
       <div class="otab-trailing" ref={trailingEl}>

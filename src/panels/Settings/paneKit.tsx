@@ -29,6 +29,7 @@ import {
   type Typography,
 } from "./settingsStore";
 import styles from "./Settings.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 // Font inputs show only the primary family; the app's fallback stack is kept
 // out of the field and re-attached on save, so a user types "JetBrains Mono"
@@ -265,7 +266,9 @@ export function TodoTagsRow(props: PaneProps) {
           onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
         />
         <Show when={overlayRoot()}>
-          <button
+          <Tooltip
+            as="button"
+            type="button"
             class={styles.originAction}
             onClick={() =>
               void setWorkspaceOverride(
@@ -273,14 +276,14 @@ export function TodoTagsRow(props: PaneProps) {
                 fromWorkspace() ? undefined : editorDefaults().todoPatterns,
               )
             }
-            title={
+            label={
               fromWorkspace()
                 ? "Stop overriding this here and follow your global setting again"
                 : "Pin these tags for this workspace only, leaving your global setting alone"
             }
           >
             {fromWorkspace() ? "Clear" : "Set here"}
-          </button>
+          </Tooltip>
         </Show>
       </div>
       <Show when={TODO_TAGS.hint}>
@@ -324,19 +327,21 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
           onChange={(e) => setEditorDefault(key(), e.currentTarget.checked)}
         />
         <Show when={overlayRoot()}>
-          <button
+          <Tooltip
+            as="button"
+            type="button"
             class={styles.originAction}
             onClick={() =>
               void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])
             }
-            title={
+            label={
               fromWorkspace()
                 ? "Stop overriding this here and follow your global setting again"
                 : "Pin this setting for this workspace only, leaving your global setting alone"
             }
           >
             {fromWorkspace() ? "Clear" : "Set here"}
-          </button>
+          </Tooltip>
         </Show>
       </div>
       <Show when={props.entry.hint}>

@@ -314,7 +314,7 @@ export default function Settings(props: {
           <div class={styles.header}>
             <div class={styles.titleRow}>
               <div class={styles.title}>Settings</div>
-              <Button variant="ghost" size="xs" aria-label="Close" title="Close" onClick={() => props.onClose()}>
+              <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
                 ×
               </Button>
             </div>

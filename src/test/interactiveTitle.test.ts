@@ -25,15 +25,36 @@
 // is the same shape as `scripts/check-tokens.mjs`: exemptions are named, and
 // each one states why.
 //
-// ## Two lists, and what each one means
+// ## What is left, and the rule that keeps it
 //
-//   * `PENDING_SWEEP` - files that still hold interactive `title=` call sites.
-//     Each names the phase of issue 102 that converts it. This list is the work left,
-//     and it is meant to reach empty; the last phase asserts that it has.
-//   * `KEPT` - files whose `title=` are legitimate and stay. Component `title`
-//     *props* (a dialog's heading, a settings `Group`'s heading) are not hover
-//     text at all, and non-interactive `title` on a `span` or `div` is the
-//     truncation affordance this ticket deliberately leaves alone.
+// The sweep is finished: `Button`, `IconButton`, `Tab` and `Tooltip` reject the
+// native `title` at the type level now, so no interactive control in Sway can
+// take one without going around them. What survives is listed in `KEPT`, and it
+// is three kinds of thing:
+//
+//   * **64 on a raw `span`, `div` or `code`** - the full text behind a
+//     truncated label, on an element no keyboard can reach. A tooltip per row of
+//     a dense list is the waste this ticket declined to add, and a `title` on
+//     something unfocusable takes nothing away from a keyboard user because
+//     there was never a keyboard path to it. `RAW_ELEMENT_TITLES` pins that
+//     number and the test below breaks it down by tag.
+//   * **Component `title` *props*** - a `Dialog`'s heading, a Settings
+//     `Group`'s section header, `ChatView`'s session name. Not hover text at
+//     all; they render as visible text.
+//   * **Test fixtures** - a `[title="…"]` selector, or a component's `title`
+//     prop passed in a test.
+//
+// The sharp edge inside the first group is `ROW_ONCLICK`: ten `div`s that carry
+// an `onClick` and no keyboard path. They are counted here rather than swept,
+// because a keyboard-openable tooltip on something the keyboard cannot select
+// is a half-measure; making them real controls is its own ticket, and the count
+// below is what stops that list growing quietly.
+//
+// **This counts prose, too.** A `title=` inside a comment is counted like any
+// other, which is why `Tooltip.tsx`'s own doc comment describes the attribute
+// rather than writing it. That is deliberate: teaching the scan to skip
+// comments means deciding what a comment is inside JSX text, and a blind spot
+// bought that way is worth less than the occasional reworded sentence.
 //
 // ## Scope: `.tsx` only
 //
@@ -54,12 +75,6 @@ const SOURCES = Object.fromEntries(
   ).map(([path, source]) => [path.replace(/^\.\.\//, ""), source]),
 );
 
-/** A file still holding interactive `title=`, and the phase that converts it. */
-interface Pending {
-  count: number;
-  phase: 2 | 3 | 4 | 5;
-}
-
 /** A file whose `title=` are legitimate, and why. */
 interface Kept {
   count: number;
@@ -72,35 +87,15 @@ interface Kept {
 const HEADING =
   "the `title` *prop* of a dialog-shaped component - the heading it renders, never hover text";
 const GROUP_HEADING =
-  "the `title` prop of a Settings `Group`/`Picker` - a section heading";
+  "the `title` prop of a Settings `Group` - a section heading, rendered as visible text";
 const TRUNCATION =
   "non-interactive `title` on a span/div: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
 const FIXTURE =
   "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
 const ROW_ONCLICK =
   "a row-level `div` with an `onClick` and no keyboard path, so its `title` shows the full text of a line no Tab reaches. Making these real controls is its own ticket; sweeping them onto `Tooltip` here would only put keyboard-openable hover text on something the keyboard still cannot select";
-const CONTROL_PASSTHROUGH =
-  "the control's own native `title` pass-through, kept working while the app is swept onto `tooltip` and retired in phase 5 with the last call site";
-
-const PENDING_SWEEP = new Map<string, Pending>([
-  ["App.tsx", { count: 1, phase: 5 }],
-  ["components/Dialogs/CreatePrDialog.tsx", { count: 2, phase: 5 }],
-  ["components/Dialogs/ProjectIconDialog.tsx", { count: 2, phase: 5 }],
-  ["components/Dialogs/SpaceDialog.tsx", { count: 5, phase: 5 }],
-  ["components/LayoutToggles/LayoutToggles.tsx", { count: 3, phase: 5 }],
-  ["components/OverflowTabBar.tsx", { count: 1, phase: 5 }],
-  ["components/Toasts/Toasts.tsx", { count: 1, phase: 5 }],
-  ["components/Toolbar/Toolbar.tsx", { count: 2, phase: 5 }],
-  ["components/UpdatePill/UpdatePill.tsx", { count: 2, phase: 5 }],
-  ["dev/Styleguide.tsx", { count: 2, phase: 5 }],
-  ["panels/LeftSidebar/LeftSidebar.tsx", { count: 15, phase: 5 }],
-  ["panels/Settings/Settings.tsx", { count: 1, phase: 5 }],
-  ["panels/Settings/paneKit.tsx", { count: 4, phase: 5 }],
-]);
 
 const KEPT = new Map<string, Kept>([
-  ["components/Button/Button.tsx", { count: 1, reason: CONTROL_PASSTHROUGH }],
-  ["components/IconButton/IconButton.tsx", { count: 1, reason: CONTROL_PASSTHROUGH }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/BranchRemoveDialog.tsx", { count: 1, reason: HEADING }],
@@ -108,12 +103,15 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/ConfirmDialog.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ConfirmDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/CreatePrDialog.test.tsx", { count: 1, reason: FIXTURE }],
+  ["components/Dialogs/CreatePrDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/DebugTargetDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
+  ["components/Dialogs/ProjectIconDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.test.tsx", { count: 1, reason: FIXTURE }],
+  ["components/Dialogs/SpaceDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.tsx", { count: 1, reason: HEADING }],
   [
     "components/Dialogs/WorktreeRemoveDialog.tsx",
@@ -130,11 +128,11 @@ const KEPT = new Map<string, Kept>([
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/CallsPanel.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/CallsPanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/CommitDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CommitLog.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/PullRequests/PrDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/PullRequests/PullRequests.tsx", { count: 2, reason: TRUNCATION }],
   [
@@ -172,18 +170,29 @@ const KEPT = new Map<string, Kept>([
     { count: 5, reason: `two ${TRUNCATION}, one ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
   ["panels/Editor/SearchPanel.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/SessionPanel.tsx", { count: 3, reason: TRUNCATION }],
+  [
+    "panels/Editor/SessionPanel.tsx",
+    { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
+  ],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
   ["panels/Settings/AgentsSection.tsx", { count: 3, reason: TRUNCATION }],
+  ["panels/Settings/paneKit.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Settings/panes/AgentsPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/AppearancePane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Terminal/TabMark.tsx", { count: 1, reason: TRUNCATION }],
+  [
+    "panels/LeftSidebar/LeftSidebar.tsx",
+    {
+      count: 12,
+      reason: `seven ${TRUNCATION}, one ${ROW_ONCLICK}, and four of ${HEADING}`,
+    },
+  ],
   [
     "panels/Terminal/HistoryPanel.tsx",
     { count: 3, reason: `one ${TRUNCATION}, and two of ${ROW_ONCLICK}` },
@@ -196,6 +205,13 @@ const KEPT = new Map<string, Kept>([
     },
   ],
 ]);
+
+/** The `title=` this ticket set out to keep: the full text behind a truncated
+ *  label, on a `span`, `div` or `code` that no keyboard can reach. */
+const RAW_ELEMENT_TITLES = 64;
+/** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
+ *  (see the header); pinned here so the list cannot grow quietly. */
+const ROW_ONCLICK_ROWS = 10;
 
 const TITLE = /\btitle=/g;
 
@@ -225,7 +241,7 @@ describe("the title= guard", () => {
 
   it("names every file holding a title=", () => {
     const unlisted = [...scan().keys()].filter(
-      (path) => !PENDING_SWEEP.has(path) && !KEPT.has(path),
+      (path) => !KEPT.has(path),
     );
 
     // The whole point of failing open: an unknown file, or a known file that
@@ -237,7 +253,7 @@ describe("the title= guard", () => {
   it("holds each entry to its exact count", () => {
     const found = scan();
     const drifted: string[] = [];
-    for (const [path, entry] of [...PENDING_SWEEP, ...KEPT]) {
+    for (const [path, entry] of KEPT) {
       const actual = found.get(path) ?? 0;
       if (actual !== entry.count) {
         drifted.push(`${path}: listed ${entry.count}, found ${actual}`);
@@ -252,19 +268,9 @@ describe("the title= guard", () => {
 
   it("carries no entry for a file that no longer has one", () => {
     const found = scan();
-    const stale = [...PENDING_SWEEP.keys(), ...KEPT.keys()].filter(
-      (path) => !found.has(path),
-    );
+    const stale = [...KEPT.keys()].filter((path) => !found.has(path));
 
     expect(stale).toEqual([]);
-  });
-
-  it("lists no file twice", () => {
-    const both = [...PENDING_SWEEP.keys()].filter((path) => KEPT.has(path));
-
-    // A file in both lists would be exempt for two contradictory reasons, and
-    // the count check would pass on whichever was read last.
-    expect(both).toEqual([]);
   });
 
   it("states a reason for every kept file", () => {
@@ -274,28 +280,70 @@ describe("the title= guard", () => {
     expect(unexplained.map(([path]) => path)).toEqual([]);
   });
 
-  it("reports the work left, so the sweep's progress is a number", () => {
-    const remaining = [...PENDING_SWEEP.values()].reduce(
-      (total, entry) => total + entry.count,
-      0,
-    );
-    const byPhase = new Map<number, number>();
-    for (const entry of PENDING_SWEEP.values()) {
-      byPhase.set(entry.phase, (byPhase.get(entry.phase) ?? 0) + entry.count);
+  it("keeps exactly the 64 the ticket set out to keep", () => {
+    const byTag = new Map<string, number>();
+    for (const [, source] of Object.entries(SOURCES)) {
+      const regions = tagRegions(source);
+      const found = /\btitle=/g;
+      let match: RegExpExecArray | null;
+      while ((match = found.exec(source))) {
+        const region = regionAt(regions, match.index);
+        // A lowercase tag is a raw DOM element; a capitalised one is a
+        // component taking a `title` *prop*, and no region at all is a
+        // `[title="…"]` selector in a test.
+        if (!region || !/^[a-z]/.test(region[2])) continue;
+        byTag.set(region[2], (byTag.get(region[2]) ?? 0) + 1);
+      }
     }
 
-    // Not an assertion about the right number, which would just be this number
-    // written twice. It pins the shape: every phase that still has work is
-    // listed, and one that has finished is gone. Phase 1 built the replacement
-    // and swept nothing; phase 2 took the four heavy Editor panels, so it left
-    // this list when its last entry moved to KEPT, and phase 3 left it the same
-    // way when the rest of the Editor followed.
-    expect([...byPhase.keys()].sort()).toEqual([5]);
-    expect(remaining).toBeGreaterThan(0);
-
-    // Phase 5's last task turns this into `toBe(0)` and deletes PENDING_SWEEP.
-    expect(PENDING_SWEEP.size).toBeGreaterThan(0);
+    // The number issue 102 measured at the start and deliberately did not
+    // touch, now that everything else is gone. Written as the breakdown rather
+    // than the total, so a `span` that turned into a `button` fails here even
+    // if some other file lost one and the sum still came out right.
+    expect(Object.fromEntries([...byTag].sort())).toEqual({
+      code: 1,
+      div: 16,
+      span: 47,
+    });
+    expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
+
+  it("fails if an interactive title= comes back", () => {
+    // The type rejects `title` on `Button`, `IconButton`, `Tab` and `Tooltip`,
+    // so the only route back is a raw element. These are the tags that are
+    // focusable and clickable without anyone adding a thing.
+    const interactive = new Set(["a", "button", "input", "label", "select", "textarea"]);
+    const found: string[] = [];
+    for (const [path, source] of Object.entries(SOURCES)) {
+      const regions = tagRegions(source);
+      const re = /\btitle=/g;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(source))) {
+        const region = regionAt(regions, match.index);
+        if (region && interactive.has(region[2])) found.push(`${path}: <${region[2]} title=…>`);
+      }
+    }
+
+    expect(found).toEqual([]);
+  });
+
+  it("holds the clickable rows to a number so the list cannot grow quietly", () => {
+    const rows: string[] = [];
+    for (const [path, source] of Object.entries(SOURCES)) {
+      for (const region of tagRegions(source)) {
+        const attrs = source.slice(region[0], region[1]);
+        if (/^[a-z]/.test(region[2]) && /\btitle=/.test(attrs) && /\bonClick=/.test(attrs)) {
+          rows.push(`${path} <${region[2]}>`);
+        }
+      }
+    }
+
+    // A `div` with an `onClick` and no keyboard path. Out of scope here (see
+    // the header), but counted, because "we left these alone" stops being true
+    // the moment the number moves and nobody notices.
+    expect(rows.length).toBe(ROW_ONCLICK_ROWS);
+  });
+
 });
 
 // ---------------------------------------------------------------------------

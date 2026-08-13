@@ -31,7 +31,7 @@ const SKIP_DELAY = 300;
  *  triggers are buttons; the handful that are not (`label`, `input`) name their
  *  element - `<Tooltip<HTMLLabelElement> as="label" …>`. */
 export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
-  extends Omit<JSX.ButtonHTMLAttributes<T>, "type"> {
+  extends Omit<JSX.ButtonHTMLAttributes<T>, "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
    *  and nothing in Sway passes the fourth. */
@@ -105,13 +105,15 @@ export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
  * backfill the name from their `tooltip` prop and this component does not: it
  * cannot know whether its trigger has visible text.
  *
- * **`title` is still accepted, and should not be passed.** It is here only so
- * that `Button`, `IconButton` and `Tab` can keep forwarding the native
- * attribute while the app is swept over to `tooltip`; the two say the same
- * thing to a mouse and only one of them says anything to a keyboard. The rule
- * is enforced by `src/test/interactiveTitle.test.ts`, which names every
- * remaining site, rather than by this type - a type that rejected `title`
- * outright would have meant sweeping all 134 call sites in one commit.
+ * **`title` is a type error here, deliberately.** The two say the same thing to
+ * a mouse and only one of them says anything to a keyboard, so there is no
+ * reason to write the native attribute on a control that already has `label`.
+ * The `Omit` above is what enforces it, and it could only be added once the
+ * last call site was swept: rejecting `title` from the start would have meant
+ * moving all 134 of them in one commit. `src/test/interactiveTitle.test.ts`
+ * guards everything the type cannot see - a native title written straight onto
+ * a raw button that never goes through this component. (Spelling it out as an
+ * attribute here would trip that guard: it counts prose too, deliberately.)
  *
  * ## `whenDisabled`, and what no test here proves
  *

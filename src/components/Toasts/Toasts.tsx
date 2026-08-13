@@ -52,7 +52,7 @@ function ToastRow(props: { toast: Toast; ttl: number; onDismiss: (id: number) =>
           </Button>
         )}
       </Show>
-      <Button class={styles.toastClose} variant="ghost" size="xs" aria-label="Dismiss" title="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
+      <Button class={styles.toastClose} variant="ghost" size="xs" aria-label="Dismiss" tooltip="Dismiss" onClick={() => props.onDismiss(props.toast.id)}>
         ×
       </Button>
     </div>
