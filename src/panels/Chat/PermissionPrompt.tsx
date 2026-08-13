@@ -1,6 +1,6 @@
-import { Show, createSignal } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import Button from "../../components/Button/Button";
-import type { PermissionDecision, PermissionScope } from "../../utils/chatTypes";
+import type { PermissionDecision, PermissionMode, PermissionScope } from "../../utils/chatTypes";
 import type { ToolItem } from "./chatStore";
 import { toolDigest, toolRenderer } from "./toolRenderers";
 import styles from "./Chat.module.css";
@@ -26,6 +26,27 @@ function inputText(input: unknown): string {
   }
 }
 
+/** The mode as a person would say it.
+ *
+ *  A small local map with a raw-id fallback, deliberately: the adapter's own
+ *  labels live a long way from here, and a mode this build has no word for
+ *  should still render as a working button naming the id rather than not
+ *  render at all. */
+function modeLabel(mode: PermissionMode): string {
+  switch (mode) {
+    case "acceptEdits":
+      return "accepting edits";
+    case "bypassPermissions":
+      return "bypass";
+    case "plan":
+      return "plan mode";
+    case "default":
+      return "ask every time";
+    default:
+      return mode;
+  }
+}
+
 /**
  * The approval gate, attached to its tool card by `tool_use_id`.
  *
@@ -41,11 +62,27 @@ function inputText(input: unknown): string {
  * result, so "not that file, use the fixture" redirects the turn instead of
  * just stopping it.
  */
-export default function PermissionPrompt(props: { card: ToolItem; onAnswer: (answer: Answer) => void }) {
+export default function PermissionPrompt(props: {
+  card: ToolItem;
+  onAnswer: (answer: Answer) => void;
+  /** Switch the session's permission mode, for a `setMode` the harness offered.
+   *  Absent in contexts that cannot change the mode, which hides the action
+   *  rather than offering one that would do nothing. */
+  onSetMode?: (mode: PermissionMode) => void;
+}) {
   const [feedback, setFeedback] = createSignal<string | null>(null);
   const [showInput, setShowInput] = createSignal(false);
 
   const allow = (scope: PermissionScope) => props.onAnswer({ decision: "allow", scope, reason: null });
+
+  /** The mode switches the harness itself proposed, e.g. "stop asking about
+   *  edits". Only `setMode` is rendered here: `addRules` and `addDirectories`
+   *  are already what the scoped Allow buttons send back, so surfacing them
+   *  again would be two controls for one outcome. */
+  const modeOffers = () =>
+    props.onSetMode
+      ? props.card.approval?.suggestions.filter((s) => s.type === "setMode") ?? []
+      : [];
 
   function sendDenial() {
     const reason = (feedback() ?? "").trim();
@@ -135,6 +172,20 @@ export default function PermissionPrompt(props: { card: ToolItem; onAnswer: (ans
           <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
             Deny with feedback
           </Button>
+          {/* The harness's own offers, after Sway's. A mode switch answers a
+              different question from this one call ("stop asking about edits"),
+              so it reads as an aside rather than a fourth way to say yes. */}
+          <For each={modeOffers()}>
+            {(offer) => (
+              <Show when={offer.type === "setMode" ? offer.mode : null}>
+                {(mode) => (
+                  <Button size="sm" variant="ghost" onClick={() => props.onSetMode?.(mode())}>
+                    Switch to {modeLabel(mode())}
+                  </Button>
+                )}
+              </Show>
+            )}
+          </For>
         </div>
       </Show>
     </div>

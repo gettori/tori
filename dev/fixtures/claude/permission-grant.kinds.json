@@ -3,6 +3,7 @@
   "required": [
     "assistant/text",
     "assistant/tool_use",
+    "control_request/can_use_tool",
     "result/success",
     "stream_event/content_block_delta/input_json_delta",
     "stream_event/content_block_delta/text_delta",

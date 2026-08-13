@@ -82,9 +82,12 @@ describe("usageSummary", () => {
 
     const summary = usageSummary(s);
     expect(summary.turn).toEqual({ tokens: turnTokens(first.usage), cost: first.costUsd });
-    // 2 + 3 + 15912 + 8395, straight off the wire.
-    expect(summary.turn?.tokens).toBe(24312);
-    expect(summary.turn?.cost).toBe(0.055789599999999995);
+    // 2 + 3 + 6039 + 15976, straight off the wire. Literals rather than a second
+    // derivation, so line 84 cannot pass by summing the same way twice; they are
+    // re-read from the fixture whenever the corpus is re-captured (these are the
+    // claude 2.1.231 capture's).
+    expect(summary.turn?.tokens).toBe(22020);
+    expect(summary.turn?.cost).toBe(0.069058);
   });
 
   it("sums both captured turns into the session total", () => {

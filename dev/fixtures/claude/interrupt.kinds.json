@@ -1,5 +1,5 @@
 {
-  "verifiedAgainst": "2.1.220 (Claude Code)",
+  "verifiedAgainst": "2.1.231 (Claude Code)",
   "required": [
     "assistant/text",
     "control_response/success",
@@ -16,9 +16,6 @@
     "user/text"
   ],
   "optional": [
-    "rate_limit_event",
-    "stream_event/content_block_delta/thinking_delta",
-    "stream_event/content_block_start/thinking",
-    "system/thinking_tokens"
+    "rate_limit_event"
   ]
 }
