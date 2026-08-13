@@ -15,6 +15,7 @@ import {
 } from "../../utils/composerCompletion";
 import type { SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 /** How tall the composer grows before it scrolls instead. Nine lines is enough
  *  to hold a paragraph-length prompt in view while leaving most of the pane to
@@ -359,14 +360,18 @@ export default function Composer(props: {
           </span>
           <For each={props.queue}>
             {(q) => (
-              <button
+              // The visible text is the queued message, so the name has to say
+              // what the button *does* to it - and name each row apart.
+              <Tooltip
+                as="button"
                 type="button"
                 class={styles.queueItem}
-                title="Remove from the queue"
+                label="Remove from the queue"
+                aria-label={`Remove from the queue: ${q.text}`}
                 onClick={() => props.onDropQueued(q.id)}
               >
                 {q.text}
-              </button>
+              </Tooltip>
             )}
           </For>
           <Show when={props.held}>
@@ -436,10 +441,15 @@ export default function Composer(props: {
         <div class={styles.attachments}>
           <For each={props.attachments}>
             {(a) => (
-              <button
+              <Tooltip
+                as="button"
                 type="button"
                 class={styles.attachment}
-                title="Remove this attachment"
+                label="Remove this attachment"
+                // Named after the action, and after which attachment: an image
+                // chip's own content is a thumbnail, so without this the button
+                // answers to "attached image".
+                aria-label={`Remove ${chipLabel(a.block)}`}
                 onClick={() => props.onDropAttachment(a.id)}
               >
                 {/* An image says what it is by being shown; a label reading
@@ -453,7 +463,7 @@ export default function Composer(props: {
                     />
                   )}
                 </Show>
-              </button>
+              </Tooltip>
             )}
           </For>
         </div>
@@ -507,28 +517,30 @@ export default function Composer(props: {
               e.currentTarget.value = "";
             }}
           />
-          <button
+          <Tooltip
+            as="button"
             type="button"
             class={styles.attachButton}
-            title="Attach an image"
+            label="Attach an image"
             aria-label="Attach an image"
             disabled={props.disabled}
             onClick={() => picker?.click()}
           >
             <Icon icon={Plus} />
-          </button>
+          </Tooltip>
           {props.controls}
           <div class={styles.composerSpacer} />
-          <button
+          <Tooltip
+            as="button"
             type="button"
             class={styles.sendButton}
-            title={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
+            label={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
             aria-label={props.running ? "Stop" : "Send"}
             disabled={props.disabled || (!props.running && !hasContent())}
             onClick={() => (props.running ? props.onInterrupt() : submit())}
           >
             <Icon icon={props.running ? Square : ArrowUp} />
-          </button>
+          </Tooltip>
         </div>
       </div>
     </div>

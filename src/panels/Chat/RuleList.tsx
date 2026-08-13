@@ -4,6 +4,7 @@ import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import { ruleLabel, ruleOriginNote, type RuleKind, type ScopedRule } from "../../utils/chatRules";
 import styles from "./Chat.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 /** Why there is nothing here for a harness with no tool-approval hook.
  *
@@ -80,15 +81,16 @@ export default function RuleList(props: {
                     <span class={styles.ruleScope}>learned</span>
                   </Show>
                   <span class={styles.ruleScope}>{rule.scope === "project" ? "this project" : "this session"}</span>
-                  <button
+                  <Tooltip
+                    as="button"
                     type="button"
                     class={styles.ruleRemove}
-                    title={rule.kind === "allow" ? "Ask again next time" : "Drop this restriction"}
+                    label={rule.kind === "allow" ? "Ask again next time" : "Drop this restriction"}
                     aria-label={`Remove the rule for ${ruleLabel(rule)}`}
                     onClick={() => props.onRemove(rule)}
                   >
                     <Icon icon={X} />
-                  </button>
+                  </Tooltip>
                 </li>
               )}
             </For>

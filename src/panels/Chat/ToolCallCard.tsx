@@ -10,6 +10,7 @@ import PermissionPrompt, { type Answer } from "./PermissionPrompt";
 import { formatDuration, isEditTool, toolDigest, toolPaths, toolRenderer } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import styles from "./Chat.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
 
 /** `ToolDiff` from `chat/commands.rs`. */
 type ToolDiff = { path: string; diff: string | null; created: boolean };
@@ -149,9 +150,16 @@ export default function ToolCallCard(props: {
             <div class={styles.toolPaths}>
               <For each={toolPaths(props.card)}>
                 {(path) => (
-                  <button type="button" class={styles.toolPath} title={`Open ${path}`} onClick={() => openPath(path)}>
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={styles.toolPath}
+                    label={`Open ${path}`}
+                    aria-label={`Open ${path}`}
+                    onClick={() => openPath(path)}
+                  >
                     {path}
-                  </button>
+                  </Tooltip>
                 )}
               </For>
             </div>
@@ -200,23 +208,29 @@ export default function ToolCallCard(props: {
                           {(hunk, index) => (
                             <div class={styles.hunk}>
                               <div class={styles.hunkHeaderRow}>
-                                <button
+                                {/* The visible text is the hunk header, so the
+                                    name says what opening it does, and which
+                                    line it lands on. */}
+                                <Tooltip
+                                  as="button"
                                   type="button"
                                   class={`${styles.diffLine} ${styles.hunkHeader}`}
-                                  title="Open at this line"
+                                  label="Open at this line"
+                                  aria-label={`Open at line ${hunk.startLine}`}
                                   onClick={() => openPath(d.path, hunk.startLine)}
                                 >
                                   {hunk.header}
-                                </button>
-                                <button
+                                </Tooltip>
+                                <Tooltip
+                                  as="button"
                                   type="button"
                                   class={styles.hunkRevert}
-                                  title="Undo this hunk in the working tree"
+                                  label="Undo this hunk in the working tree"
                                   disabled={reverting() !== null}
                                   onClick={() => void revertHunk(d.path, index(), hunk.header, hunk.lines)}
                                 >
                                   {reverting() === `${d.path}:${index()}` ? "Reverting..." : "Revert"}
-                                </button>
+                                </Tooltip>
                               </div>
                               <For each={hunk.lines}>
                                 {(line) => <div class={`${styles.diffLine} ${diffLineClass(line)}`}>{line || " "}</div>}
