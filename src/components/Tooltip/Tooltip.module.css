@@ -1,0 +1,42 @@
+/* Chrome for the one tooltip surface (src/components/Tooltip/Tooltip.tsx).
+
+   Above the dialog (1250) rather than beside it: a tooltip on a control *inside*
+   a dialog has to paint over the panel, and the same value has to serve the
+   tooltips outside one. Below nothing, because nothing else floats higher - the
+   ladder is menus 1000, omnibox 1100, toasts 1200, dialog 1250, tooltip 1300.
+
+   Kobalte positions the tooltip on a `[data-popper-positioner]` wrapper that is
+   `position: absolute` with no z-index of its own, so it creates no stacking
+   context and this value is read against the root. The content itself is
+   `position: relative` from Kobalte's inline style, which is what gives this
+   z-index something to apply to. */
+.content {
+  z-index: 1300;
+  max-width: calc(280px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  color: var(--fg-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: var(--sway-text-md);
+  line-height: var(--sway-line-normal);
+  /* A tooltip label is a phrase, but the ones naming a path or a branch are not,
+     and a 280px cap with no wrapping would clip them. Wrap, and keep an author's
+     own newline. */
+  white-space: pre-wrap;
+  /* It follows the pointer around by construction; letting it take the pointer
+     back would make the control under it unhoverable at the overlap. */
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The opt-in hover surface for a `disabled` control (see Tooltip.tsx). Laid out
+   as the control would have been - `contents` is not usable here, since an
+   element with no box of its own receives no pointer events, which is the whole
+   reason this span exists. `inline-flex` matches what a button contributes to a
+   toolbar row, so opting in does not reflow the strip. */
+.hoverSurface {
+  display: inline-flex;
+}
