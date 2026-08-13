@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The panel through its real seams: the tags come from the settings store's
 // three-layer resolution, the search goes to `grep_project`, a click goes out
@@ -142,21 +143,21 @@ describe("the list", () => {
   it("groups by file and counts each tag, zero included", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("3 items in 2 files")).toBeTruthy());
-    expect(screen.getByTitle("Show only TODO").textContent).toContain("1");
+    expect(screen.getByRole("button", { name: /^TODO/ }).textContent).toContain("1");
     // Configured but not found: the chip still appears, so it does not blink in
     // and out of the row as files are edited.
-    expect(screen.getByTitle("Show only XXX").textContent).toContain("0");
+    expect(screen.getByRole("button", { name: /^XXX/ }).textContent).toContain("0");
   });
 
   it("narrows to the tags whose chips are on, and back again", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("// TODO wire it")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle("Show only FIXME"));
+    fireEvent.click(screen.getByRole("button", { name: /^FIXME/ }));
     await waitFor(() => expect(screen.queryByText("// TODO wire it")).toBeNull());
     expect(screen.getByText("// FIXME leaks")).toBeTruthy();
 
-    fireEvent.click(screen.getByTitle("Show only FIXME"));
+    fireEvent.click(screen.getByRole("button", { name: /^FIXME/ }));
     await waitFor(() => expect(screen.getByText("// TODO wire it")).toBeTruthy());
   });
 
@@ -165,7 +166,7 @@ describe("the list", () => {
     // the panel looks empty for no reason on screen.
     mount();
     await waitFor(() => expect(screen.getByText("// TODO wire it")).toBeTruthy());
-    fireEvent.click(screen.getByTitle("Show only FIXME"));
+    fireEvent.click(screen.getByRole("button", { name: /^FIXME/ }));
     await waitFor(() => expect(screen.queryByText("// TODO wire it")).toBeNull());
 
     bridge.respond = () => ok([hit("src/a.ts", 4, "// TODO wire it", [3, 7])]);
@@ -236,12 +237,28 @@ describe("handing one to the agent", () => {
     try {
       mount();
       await waitFor(() => expect(screen.getByText("// TODO wire it up")).toBeTruthy());
-      expect(screen.getByTitle("Select a session first")).toBeTruthy();
+      // The reason is the Send button's tooltip now, not its `title`, so it
+      // is asserted the way a keyboard user reaches it: focus opens it.
+      const send = screen.getByRole("button", { name: "Send" });
+      send.focus();
+      fireEvent.focus(send);
+      await waitFor(() =>
+        expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
+      );
       fireEvent.click(screen.getByText("Send"));
       await waitFor(() => expect(screen.queryByText("// TODO wire it up")).toBeTruthy());
     } finally {
       window.removeEventListener(SEND_TO_SESSION, onSend);
     }
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("the todo panel, to axe", () => {
+  it("has no accessibility violations", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+
+    await expectNoAxeViolations(container);
   });
 });

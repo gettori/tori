@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { tab } from "../../test/tabs";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
 // is what it is kept *out* of: CodeEditor's buffers (and so the language server),
@@ -155,7 +156,7 @@ describe("a sway:// tab in the editor pane", () => {
     await waitFor(() => expect(listening.ready).toBe(true));
     await open(syntheticId("log", odd));
 
-    expect(screen.queryByTitle(/Preview: render this/)).toBeNull();
+    expect(screen.queryByLabelText(/Preview: render this/)).toBeNull();
     await waitFor(() => expect(screen.getByText("No commits yet.")).toBeTruthy());
   });
 
@@ -176,7 +177,7 @@ describe("a sway:// tab in the editor pane", () => {
     const opened: string[] = [];
     const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
 
-    fireEvent.contextMenu(screen.getByTitle(FILE));
+    fireEvent.contextMenu(tab("a.ts"));
     fireEvent.click(await screen.findByText("File history"));
 
     expect(parseSyntheticId(opened[0])).toEqual({ kind: "history", arg: "src/a.ts", workspace: REPO });
@@ -201,7 +202,7 @@ describe("a sway:// tab in the editor pane", () => {
     await mountEditor();
     await open(LOG);
 
-    fireEvent.contextMenu(screen.getByTitle(REPO));
+    fireEvent.contextMenu(tab("Commit log"));
 
     expect(screen.queryByText("File history")).toBeNull();
   });

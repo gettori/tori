@@ -10,7 +10,11 @@ import { chatsInFolder } from "../../utils/chatSessions";
 import { isUnderPath } from "../../utils/pathScope";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import Button from "../../components/Button/Button";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./CheckpointTimeline.module.css";
+
+/** Ties the cumulative checkbox to the sentence explaining what it compares. */
+const CUMULATIVE_HINT_ID = "checkpoint-cumulative-hint";
 
 type CheckpointEntry = {
   prompt_ts: number;
@@ -438,12 +442,21 @@ export default function CheckpointTimeline(props: {
         <Show when={props.sessionId && entries().length}>
           <div class={styles.timelineHeader}>
             <span class={styles.timelineTitle}>Timeline</span>
-            <label
-              class={styles.cumulativeToggle}
-              title="Compare this checkpoint against the working tree as it is now"
-            >
-              <input type="checkbox" checked={cumulative()} onChange={(e) => setCumulative(e.currentTarget.checked)} />
+            {/* Not a tooltip, following the two checkbox labels swept in phase
+                2: a `<label>` takes no focus at all, so a tooltip on one would
+                open on hover and never on the keyboard - the same half-measure
+                the `title` was. As a description it is announced on focus. */}
+            <label class={styles.cumulativeToggle}>
+              <input
+                type="checkbox"
+                checked={cumulative()}
+                aria-describedby={CUMULATIVE_HINT_ID}
+                onChange={(e) => setCumulative(e.currentTarget.checked)}
+              />
               workspace since here
+              <span id={CUMULATIVE_HINT_ID} class={styles.srOnly}>
+                Compare this checkpoint against the working tree as it is now
+              </span>
             </label>
           </div>
           {/* Roving-focus strip: one tab stop, left/right moves the pick, so the
@@ -465,21 +478,22 @@ export default function CheckpointTimeline(props: {
           >
             <For each={entries()}>
               {(entry) => (
-                <button
+                <Tooltip
+                  as="button"
                   type="button"
                   role="option"
                   aria-selected={picked() === entry.prompt_ts}
                   class={`${styles.turnChip} ${picked() === entry.prompt_ts ? styles.turnChipActive : ""} ${
                     entry.kind === "backstop" ? styles.turnChipBackstop : ""
                   }`}
-                  title={`${shortTime(entry.prompt_ts)} · ${entry.file_count} file(s) · ${shortSize(entry.bytes)}${
+                  label={`${shortTime(entry.prompt_ts)} · ${entry.file_count} file(s) · ${shortSize(entry.bytes)}${
                     entry.kind === "backstop" ? " · saved before a revert" : ""
                   }`}
                   onClick={() => setPicked(entry.prompt_ts)}
                 >
                   <span class={styles.turnTime}>{shortTime(entry.prompt_ts)}</span>
                   <span class={styles.turnCount}>{entry.kind === "backstop" ? "backstop" : entry.file_count}</span>
-                </button>
+                </Tooltip>
               )}
             </For>
           </div>
@@ -493,7 +507,8 @@ export default function CheckpointTimeline(props: {
             <Button
               size="sm"
               disabled={!!revertDisabledReason()}
-              title={revertDisabledReason() ?? "Restore every file in this folder to this checkpoint"}
+              tooltipWhenDisabled
+              tooltip={revertDisabledReason() ?? "Restore every file in this folder to this checkpoint"}
               onClick={revertToPicked}
             >
               {reverting() ? "Reverting…" : "Revert tree to here"}
@@ -558,7 +573,7 @@ export default function CheckpointTimeline(props: {
                 <Button
                   size="xs"
                   disabled={reverting()}
-                  title="Put every file in this folder back to just before this change"
+                  tooltip="Put every file in this folder back to just before this change"
                   onClick={() => void restoreBackstop(b)}
                 >
                   Restore

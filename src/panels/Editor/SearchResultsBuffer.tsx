@@ -174,6 +174,10 @@ export default function SearchResultsBuffer(props: { id: string }) {
       drawSelection(),
       highlightActiveLine(),
       EditorView.lineWrapping,
+      // CodeMirror gives its content `role="textbox"`, so without this the pane
+      // is an ARIA input field with no accessible name. Same defect axe found in
+      // ConflictView, and the same fix.
+      EditorView.contentAttributes.of({ "aria-label": "Search results, editable" }),
       // Save is what applying *is* here, and Cmd+S is nobody else's: the
       // binding table deliberately leaves it to whichever editor has focus.
       keymap.of([
@@ -261,7 +265,8 @@ export default function SearchResultsBuffer(props: { id: string }) {
         <Button
           size="xs"
           disabled={!pending() || applying()}
-          title={
+          tooltipWhenDisabled
+          tooltip={
             pending()
               ? "Write every edited line back to the file it came from"
               : "Edit a result line first"

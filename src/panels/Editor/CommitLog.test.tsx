@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The commit log tab: what it shows, where the header numbers come from, and how
 // it walks a history longer than one page.
@@ -238,5 +239,18 @@ describe("the commit log tab", () => {
     pages = [[]];
     await mount(REPO, "src/gone.ts");
     await waitFor(() => expect(screen.getByText("No commits touch this file.")).toBeTruthy());
+  });
+});
+
+describe("the commit log, to axe", () => {
+  it("has no accessibility violations", async () => {
+    branches = [{ name: "wave-2", current: true }];
+    aheadBehind = { ahead: 2, behind: 1, has_upstream: true };
+    pages = [[commit(1, ["HEAD -> wave-2"]), commit(2)]];
+    await mount();
+    await waitFor(() => expect(screen.getByText("wave-2")).toBeTruthy());
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 });

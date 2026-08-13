@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../../test/axe";
 
 // The file tree's editable mode, driven through the real component.
 //
@@ -697,5 +698,15 @@ describe("dragging in the tree", () => {
       from: `${ROOT}/src/main.ts`,
       to: `${ROOT}/main.ts`,
     });
+  });
+});
+
+describe("the file tree, to axe", () => {
+  it("has no accessibility violations", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 });

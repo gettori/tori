@@ -20,6 +20,7 @@ import {
 } from "../../utils/todoScan";
 import { editorDefaults } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./TodoPanel.module.css";
 
@@ -183,16 +184,17 @@ export default function TodoPanel(props: { root: string | null; selected: Select
         <div class={styles.tagRow}>
           <For each={tags()}>
             {(tag) => (
-              <button
+              <Tooltip
+                as="button"
                 type="button"
                 class={`${styles.chip} ${selectedTags().has(tag) ? styles.chipOn : ""}`}
                 aria-pressed={selectedTags().has(tag)}
-                title={`Show only ${tag}`}
+                label={`Show only ${tag}`}
                 onClick={() => toggleTag(tag)}
               >
                 {tag}
                 <span class={styles.chipCount}>{counts()[tag] ?? 0}</span>
-              </button>
+              </Tooltip>
             )}
           </For>
         </div>
@@ -231,7 +233,7 @@ export default function TodoPanel(props: { root: string | null; selected: Select
                       size="xs"
                       variant="ghost"
                       class={styles.sendButton}
-                      title={disabledReason() ?? "Send to agent"}
+                      tooltip={disabledReason() ?? "Send to agent"}
                       onClick={(e) => {
                         e.stopPropagation();
                         void sendToAgent(item);

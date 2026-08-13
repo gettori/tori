@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../../test/axe";
 import { createSignal } from "solid-js";
 import type { PrFile, PullRequest, ReviewThread } from "../../../utils/forgeTypes";
 
@@ -1213,5 +1214,15 @@ describe("landing a pull request", () => {
     fireEvent.click(button("Merge"));
     await waitFor(() => expect(summary()).toBe("Merged."));
     expect(screen.queryByText("Delete branch…")).toBeNull();
+  });
+});
+
+describe("the pull request detail, to axe", () => {
+  it("has no accessibility violations", async () => {
+    render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
+    await waitFor(() => expect(screen.getByText("Review")).toBeTruthy());
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 });

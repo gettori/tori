@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { tab, tabs } from "../../test/tabs";
 
 // The Debug pane from the editor's side.
 //
@@ -184,12 +185,12 @@ describe("reaching the pane", () => {
     await mountEditor();
     // No tab while nothing runs: an always-present "Debug" is a control that
     // does nothing on almost every project, almost all of the time.
-    expect(screen.queryByTitle("Debug")).toBeNull();
+    expect(tabs("Debug")).toHaveLength(0);
 
     const run = await startRun();
 
-    const tab = await waitFor(() => screen.getByTitle("Debug"));
-    fireEvent.click(tab);
+    const debugTab = await waitFor(() => tab("Debug"));
+    fireEvent.click(debugTab);
     await waitFor(() => expect(screen.getByText(run.name)).toBeTruthy());
   });
 });
@@ -248,10 +249,10 @@ describe("when a run ends", () => {
     // The pane is not left showing an empty debugger somebody has to notice and
     // click away from; it hands the space back the way Problems and Outline do.
     await waitFor(() => expect(screen.queryByText(run.name)).toBeNull());
-    await waitFor(() => expect(screen.queryByTitle("Debug")).toBeNull());
+    await waitFor(() => expect(tabs("Debug")).toHaveLength(0));
     // Files, specifically: the pane is handed back to the mode every other
     // fallback lands on, not left on whatever happened to be next in the strip.
-    const filesTab = screen.getAllByTitle("Files").find((el) => el.getAttribute("role") === "tab");
+    const filesTab = tab("Files");
     expect(filesTab?.getAttribute("aria-selected")).toBe("true");
   });
 

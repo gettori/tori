@@ -5,6 +5,7 @@ import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events"
 import { syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import { RefreshCw } from "lucide-solid";
 import styles from "./CommitLog.module.css";
@@ -133,7 +134,7 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
         <IconButton
           size="xs"
           icon={<Icon icon={RefreshCw} />}
-          title="Reload the log"
+          tooltip="Reload the log"
           disabled={loading()}
           onClick={() => void load(false)}
         />
@@ -151,13 +152,13 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
       >
         <For each={entries()}>
           {(c) => (
-            <button type="button" class={styles.row} title={c.sha} onClick={() => openCommit(c.sha)}>
+            <Tooltip as="button" type="button" class={styles.row} label={c.sha} onClick={() => openCommit(c.sha)}>
               <span class={styles.sha}>{c.short}</span>
               <span class={styles.subject}>{c.subject}</span>
               <For each={c.refs}>{(r) => <span class={styles.ref}>{r}</span>}</For>
               <span class={styles.author}>{c.author}</span>
               <span class={styles.date}>{c.relative_date}</span>
-            </button>
+            </Tooltip>
           )}
         </For>
         <Show when={!end()}>

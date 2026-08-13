@@ -205,7 +205,12 @@ describe("the conflict banner", () => {
 
     const ask = screen.getByText("Ask agent to resolve").closest("button") as HTMLButtonElement;
     expect(ask.disabled).toBe(true);
-    expect(ask.title).toBe("Select a session first");
+    // A disabled button fires no pointer events of its own, so the reason is
+    // reached through the `tooltipWhenDisabled` hover surface around it.
+    fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
+    );
   });
 
   it("says nothing while the store describes another workspace", async () => {

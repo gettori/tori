@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The panel through its real seams: the tasks come from the project's own files
 // via `fs_read_dir`/`fs_read_file`, and a run leaves as `OPEN_TERMINAL` carrying
@@ -191,5 +192,15 @@ describe("running one", () => {
     mount(null);
     await waitFor(() => expect(screen.getByText("Open a project to see its tasks.")).toBeTruthy());
     expect(screen.queryByText("dev")).toBeNull();
+  });
+});
+
+describe("the tasks panel, to axe", () => {
+  it("has no accessibility violations", async () => {
+    fixtureWorkspace();
+    const { container } = mount();
+    await waitFor(() => expect(screen.getByText("dev")).toBeTruthy());
+
+    await expectNoAxeViolations(container);
   });
 });

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Play } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import { debounce } from "../../utils/debounce";
 import { loadTasks, type Task, type TaskSource } from "../../utils/tasks";
 import { runTask } from "../../utils/runTask";
@@ -90,15 +91,18 @@ export default function TasksPanel(props: { root: string | null }) {
     setRuns(runTask(runs(), root, task));
   }
 
+  // No `aria-label`: the name and the command below are what the row should be
+  // called. The tooltip repeats the command because the row truncates it, and a
+  // row you can Tab to should be able to show it.
   function row(task: Task) {
     return (
-      <button type="button" class={styles.taskRow} onClick={() => run(task)} title={task.command}>
+      <Tooltip as="button" type="button" class={styles.taskRow} onClick={() => run(task)} label={task.command}>
         <span class={styles.play}>
           <Icon icon={Play} />
         </span>
         <span class={styles.name}>{task.name}</span>
         <span class={styles.command}>{task.command}</span>
-      </button>
+      </Tooltip>
     );
   }
 

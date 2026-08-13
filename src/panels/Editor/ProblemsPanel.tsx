@@ -102,7 +102,7 @@ export default function ProblemsPanel(props: { selected: Selection | null }) {
                         size="xs"
                         variant="ghost"
                         class={styles.sendButton}
-                        title={disabledReason() ?? "Send to agent"}
+                        tooltip={disabledReason() ?? "Send to agent"}
                         onClick={(e) => {
                           e.stopPropagation();
                           void sendToAgent(path, p);

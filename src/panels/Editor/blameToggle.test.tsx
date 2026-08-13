@@ -104,12 +104,12 @@ describe("the blame toggle", () => {
     await mountWithFile();
     await waitFor(() => expect(last()).toBe(false));
 
-    fireEvent.click(screen.getByTitle(BUTTON));
+    fireEvent.click(screen.getByLabelText(BUTTON));
 
     await waitFor(() => expect(last()).toBe(true));
     expect(localStorage.getItem(BLAME_KEY)).toBe("1");
     // The button says which state it is in, not which state it would move to.
-    expect(screen.getByTitle(ON_BUTTON)).toBeTruthy();
+    expect(screen.getByLabelText(ON_BUTTON)).toBeTruthy();
   });
 
   it("comes back on for the next session once it has been asked for", async () => {
@@ -117,14 +117,14 @@ describe("the blame toggle", () => {
     await mountWithFile();
 
     expect(last()).toBe(true);
-    expect(screen.getByTitle(ON_BUTTON)).toBeTruthy();
+    expect(screen.getByLabelText(ON_BUTTON)).toBeTruthy();
   });
 
   it("switching it off reaches the editor too", async () => {
     previousSessionLeftBlame(true);
     await mountWithFile();
 
-    fireEvent.click(screen.getByTitle(ON_BUTTON));
+    fireEvent.click(screen.getByLabelText(ON_BUTTON));
 
     await waitFor(() => expect(last()).toBe(false));
     expect(localStorage.getItem(BLAME_KEY)).toBe("0");
@@ -138,7 +138,7 @@ describe("the blame toggle", () => {
     emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", REPO) });
 
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
-    expect(screen.queryByTitle(BUTTON)).toBeNull();
-    expect(screen.queryByTitle(ON_BUTTON)).toBeNull();
+    expect(screen.queryByLabelText(BUTTON)).toBeNull();
+    expect(screen.queryByLabelText(ON_BUTTON)).toBeNull();
   });
 });
