@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@solidjs/testing-library";
-import ModeSelector, { needsPermissiveCaveat } from "./ModeSelector";
+import ModeSelector from "./ModeSelector";
 import { capabilitiesFor, pickableModels } from "../../utils/chatModels";
 import type { ChatConfig, ChatMode } from "../../utils/agents";
 import type { ChatModelInfo } from "../../utils/chatTypes";
@@ -10,7 +10,7 @@ import type { ChatModelInfo } from "../../utils/chatTypes";
 // the literal "default" the pill used to fall back to, and none is
 // "bypassPermissions" - so a component still keyed on either string fails here.
 const GEMINI_MODES: ChatMode[] = [
-  { id: "yolo", label: "Yolo", hint: "Runs without asking.", args: [], permissive_caveat: true },
+  { id: "yolo", label: "Yolo", hint: "Runs without asking.", args: [], permissive: true },
   { id: "auto_edit", label: "Auto edit", hint: "Edits go through.", args: [], default: true },
 ];
 
@@ -103,19 +103,39 @@ describe("ModeSelector", () => {
   });
 });
 
-describe("the permissive-mode caveat", () => {
-  // Sway's PreToolUse hook runs ahead of every mode any harness has, so the
-  // warning is about Sway and not about Claude. Keyed on the adapter's
-  // declaration rather than the literal "bypassPermissions", it holds for a
-  // harness that calls its permissive mode something else entirely.
-  it("follows the adapter's declaration, not a mode named bypassPermissions", () => {
+describe("a permissive mode", () => {
+  // There was a caveat here - "Sway still asks", shown for any mode the adapter
+  // flagged - because Sway's hook ran ahead of the permission chain and a mode
+  // named after bypassing permissions did not bypass them. The hook stopped
+  // deciding, so the sentence stopped being true and was removed rather than
+  // reworded. What the control shows now is the mode's own hint, which is the
+  // harness's description of what it really does.
+  it("shows the harness's own description and adds nothing to it", () => {
     const chat = foreign(GEMINI_MODES);
-    expect(needsPermissiveCaveat(chat, "yolo")).toBe(true);
-    expect(needsPermissiveCaveat(chat, "auto_edit")).toBe(false);
-    // The string the old check keyed on is not even declared here.
-    expect(needsPermissiveCaveat(chat, "bypassPermissions")).toBe(false);
-    expect(needsPermissiveCaveat(chat, null)).toBe(false);
-    expect(needsPermissiveCaveat(null, "yolo")).toBe(false);
+    const { getByLabelText } = render(() => (
+      <ModeSelector mode="yolo" modes={chat.modes} pending={false} disabled={false} onSelect={vi.fn()} />
+    ));
+    const menu = openMenu(getByLabelText);
+    expect(menu.textContent).toContain("Runs without asking.");
+    expect(document.body.textContent).not.toContain("Sway still asks");
+  });
+
+  // The chip outlived the sentence, and had to: a mode that runs tools unasked
+  // now runs them with nothing behind it, so the one persistent sign that it is
+  // in force is the only sign there is.
+  it("marks the chip while a permissive mode is in force, and only then", () => {
+    const chat = foreign(GEMINI_MODES);
+    const marked = (mode: string) => {
+      const { getByLabelText, unmount } = render(() => (
+        <ModeSelector mode={mode} modes={chat.modes} pending={false} disabled={false} onSelect={vi.fn()} />
+      ));
+      const cls = getByLabelText("Permission mode").className;
+      unmount();
+      return cls;
+    };
+    // Keyed on the adapter's declaration, not on a mode named bypassPermissions:
+    // this harness calls its permissive mode `yolo`.
+    expect(marked("yolo")).not.toBe(marked("auto_edit"));
   });
 });
 

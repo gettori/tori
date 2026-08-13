@@ -94,8 +94,6 @@ export default function Composer(props: {
    *  the input. Slotted rather than owned: their state and wiring belong to
    *  `ChatView`, and this component only decides where they sit. */
   controls?: JSX.Element;
-  /** A one-line notice above the input (a pending switch, the bypass guard). */
-  notice?: JSX.Element;
 }) {
   // The draft lives in the caller's store; this reads and writes it so there is
   // one answer to "what is in the composer" rather than a local copy that has to
@@ -468,7 +466,6 @@ export default function Composer(props: {
           </For>
         </div>
       </Show>
-      {props.notice}
       <div class={styles.composerBox}>
         <textarea
           ref={input}

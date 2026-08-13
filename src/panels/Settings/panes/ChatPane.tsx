@@ -26,7 +26,7 @@ import styles from "../Settings.module.css";
  * one being dropped from all three lists.
  */
 const SESSIONS = ["default-surface", "streaming", "transcript-density", "tool-output-lines", "show-hooks"];
-const SAFETY = ["approval-auto-deny", "checkpoints"];
+const SAFETY = ["legacy-permission-gate", "approval-auto-deny", "checkpoints"];
 const SPENDING = ["session-budget", "project-budget", "context-budget"];
 
 export default function ChatPane(props: PaneProps) {
@@ -111,6 +111,19 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Safety" ids={SAFETY}>
+        <Row
+          {...props}
+          id="legacy-permission-gate"
+          label="Approve tool calls in Sway"
+          hint="Off, the agent asks for permission in its own protocol, so its permission modes mean what they say. On restores Sway's own approvals and rules, which decide ahead of the agent. Applies from the next session, not the ones already open."
+        >
+          <input
+            type="checkbox"
+            checked={settings.chatDefaults.legacyPermissionGate}
+            onChange={(e) => setChatDefaults({ legacyPermissionGate: e.currentTarget.checked })}
+          />
+        </Row>
+
         <Row
           {...props}
           id="approval-auto-deny"

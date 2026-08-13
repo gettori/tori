@@ -32,7 +32,8 @@ export default function Picker(props: {
   disabled?: boolean;
   /** The shown value is a pick that has not reached a turn boundary yet. */
   pending?: boolean;
-  /** The shown value is one the user should keep noticing (bypass mode). */
+  /** The shown value is one the user should keep noticing, for as long as it is
+   *  in force. Styling only: whatever it means is the caller's to say. */
   attention?: boolean;
   /** Menu contents. Rows commit and close on their own through `MenuRow`. */
   children: JSX.Element;

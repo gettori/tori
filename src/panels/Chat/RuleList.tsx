@@ -14,6 +14,13 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 export const RULES_NEED_HOOKS =
   "This agent has no tool-approval hook, so Sway cannot pre-approve or restrict its tool calls. Whatever the agent asks for itself still applies.";
 
+/** The other reason the list is absent, and now the usual one: the harness asks
+ *  for itself, so a Sway rule would be written into a file nothing reads. Named
+ *  separately from [[RULES_NEED_HOOKS]] because the remedy is different - this
+ *  one is a setting the user turned off, not a harness that cannot do it. */
+export const RULES_NEED_THE_GATE =
+  "This agent asks for its own permissions, so Sway keeps no rules for it. Turn on “Approve tool calls in Sway” in Settings to decide them here instead, from the next session.";
+
 /**
  * What this chat runs without asking, and the way to take it back.
  *
@@ -24,10 +31,14 @@ export const RULES_NEED_HOOKS =
  */
 export default function RuleList(props: {
   rules: readonly ScopedRule[];
-  /** The harness declares the `PreToolUse` bridge these rules ride. False
-   *  replaces the whole control with [[RULES_NEED_HOOKS]], since every action
-   *  here writes a file nothing would read. */
-  hooks: boolean;
+  /** Sway's own gate decides this session's tool calls, which is what makes a
+   *  rule mean anything. False replaces the whole control with `whyNot`, since
+   *  every action here would write a file nothing reads. */
+  gated: boolean;
+  /** Why not, when `gated` is false: the harness cannot be gated at all
+   *  ([[RULES_NEED_HOOKS]]), or it can and the user has left it to the harness
+   *  ([[RULES_NEED_THE_GATE]]). */
+  whyNot: string;
   onRemove: (rule: ScopedRule) => void;
   onRestrict: (tool: string, kind: RuleKind, glob: string) => void;
 }) {
@@ -54,7 +65,7 @@ export default function RuleList(props: {
           getters, so a body-level `if` would freeze this at whatever the tier
           said when the panel mounted. The adapter can resolve after that, and a
           stuck branch would tell a hook-capable session it has none. */}
-      <Show when={props.hooks} fallback={<div class={styles.rulesUnsupported}>{RULES_NEED_HOOKS}</div>}>
+      <Show when={props.gated} fallback={<div class={styles.rulesUnsupported}>{props.whyNot}</div>}>
         <button
           type="button"
           class={styles.rulesToggle}

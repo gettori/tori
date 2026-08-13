@@ -169,16 +169,15 @@ pub struct ChatMode {
     /// `default`. Nothing on the wire objects, so the gate has to be here.
     #[serde(default)]
     pub requires: Option<String>,
-    /// Whether picking this mode should carry Sway's "it still asks" caveat.
+    /// This mode runs tools without asking anybody.
     ///
-    /// Adapter-declared rather than keyed on the literal `"bypassPermissions"`,
-    /// because the caveat is a fact about **Sway**, not about Claude: the
-    /// `PreToolUse` hook runs first in the permission chain whatever the
-    /// harness, so a call matching no allow rule stops at Sway's gate even in
-    /// a mode whose whole name promises otherwise. A harness calling its
-    /// permissive mode `yolo` needs the same warning.
+    /// A fact about the **harness's** mode, not about Sway, which is what makes
+    /// it survivable where its predecessor was not: `permissive_caveat` declared
+    /// that Sway asked anyway, and was retired when that stopped being true.
+    /// Adapter-declared rather than keyed on `"bypassPermissions"`, because a
+    /// harness calling the same thing `yolo` is describing the same thing.
     #[serde(default)]
-    pub permissive_caveat: bool,
+    pub permissive: bool,
     /// The mode a session runs when nothing else is chosen, and what an
     /// unresolvable mode downgrades to.
     ///
@@ -1158,10 +1157,29 @@ args = ["--effort", "low"]
         let auto = chat.modes.iter().find(|m| m.id == "auto").expect("auto declared");
         assert_eq!(auto.requires.as_deref(), Some("supportsAutoMode"));
 
-        // Exactly one mode carries the caveat, and it is the permissive one.
-        let caveated: Vec<&str> =
-            chat.modes.iter().filter(|m| m.permissive_caveat).map(|m| m.id.as_str()).collect();
-        assert_eq!(caveated, vec!["bypassPermissions"]);
+        // No mode carries a caveat any more. There used to be one - Sway's hook
+        // ran ahead of the permission chain, so `bypassPermissions` still
+        // stopped at Sway's gate - and the whole point of retiring that gate is
+        // that the promise in the mode's name is now kept.
+        //
+        // Checked against the parsed tables rather than the file's text, which
+        // also mentions the retired key in the comment explaining its
+        // replacement - and against the tables rather than the struct, since
+        // `ChatMode` ignores keys it does not know, so a leftover declaration
+        // would be silently dropped instead of failing anything.
+        let raw: toml::Value = toml::from_str(BUILTIN_CLAUDE).expect("the bundled adapter parses as TOML");
+        for table in raw["chat"]["modes"].as_array().expect("modes is an array of tables") {
+            assert!(
+                table.get("permissive_caveat").is_none(),
+                "a mode declaring a caveat Sway no longer imposes would warn about nothing"
+            );
+        }
+
+        // What *is* declared is which mode runs tools unasked, which is a fact
+        // about the mode rather than about Sway - and one that matters more now
+        // that Sway is not behind it.
+        let permissive: Vec<&str> = chat.modes.iter().filter(|m| m.permissive).map(|m| m.id.as_str()).collect();
+        assert_eq!(permissive, vec!["bypassPermissions"]);
 
         // The five measured effort levels.
         let levels: Vec<&str> = chat.effort.iter().map(|e| e.id.as_str()).collect();

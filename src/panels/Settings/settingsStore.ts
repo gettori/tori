@@ -58,6 +58,11 @@ export type ChatDefaults = {
   toolOutputLines: number;
   approvalAutoDenySecs: number;
   showSwayHooks: boolean;
+  /** Restore Sway's own permission gate instead of letting the agent ask.
+   *  Reads at spawn, so it applies from the next session rather than the
+   *  running one: both the hook and the in-protocol question bind to the child
+   *  when it starts. */
+  legacyPermissionGate: boolean;
 };
 export type Harness = { path?: string | null };
 /** Editor behaviour that is a preference rather than a project fact.
@@ -209,6 +214,7 @@ export const DEFAULT_SETTINGS: Settings = {
     toolOutputLines: 20,
     approvalAutoDenySecs: 120,
     showSwayHooks: false,
+    legacyPermissionGate: false,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
   // The comfort defaults follow the tickets: the three that only cost a line of

@@ -157,10 +157,15 @@ describe("the bundled chat tables", () => {
     expect(chat.modes.find((m) => m.id === "auto")?.hint).toContain("classifier");
   });
 
-  it("gates auto on the capability the catalogue reports, and flags the permissive mode", () => {
+  it("gates auto on the capability the catalogue reports", () => {
     const chat = claude.chat as ChatConfig;
     expect(chat.modes.find((m) => m.id === "auto")?.requires).toBe("supportsAutoMode");
-    expect(chat.modes.filter((m) => m.permissive_caveat).map((m) => m.id)).toEqual(["bypassPermissions"]);
+    // `permissive_caveat` used to be asserted here, on `bypassPermissions`. The
+    // adapter no longer declares it, because Sway no longer runs ahead of the
+    // mode it warned about. `permissive` replaced it and is not the same claim:
+    // that one was about Sway's gate, this one is about what the mode does.
+    expect(JSON.stringify(chat.modes)).not.toContain("permissive_caveat");
+    expect(chat.modes.filter((m) => m.permissive).map((m) => m.id)).toEqual(["bypassPermissions"]);
   });
 });
 

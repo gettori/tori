@@ -376,6 +376,43 @@ describe("the composer queue", () => {
     expect(s.queueHeld).toBe(false);
   });
 
+  // The ceiling used to be a tool-call denial the harness's own hook enforced.
+  // It is a turn-boundary refusal now, which means the queue is the whole
+  // enforcement surface: a flush that went ahead would open exactly the turn the
+  // limit exists to prevent.
+  it("never flushes a queued message under a spend ceiling", () => {
+    const s = queued(2);
+    applyEvent(s, turnDone("t1", "completed"));
+    s.budgetStopped = true;
+    expect(pendingFlush(s)).toBeNull();
+    expect(takeForSend(s)).toBeNull();
+    // Held, not dropped: raising the limit sends what was typed rather than
+    // asking for it again.
+    expect(s.queue.map((q) => q.text)).toEqual(["m0", "m1"]);
+  });
+
+  // "Send now" is a button, and a ceiling a button can lift is not a ceiling.
+  // This is why the stop is read in `pendingFlush` rather than expressed as a
+  // queue hold, which `releaseQueue` exists to clear.
+  it("does not let send-now walk past a spend ceiling", () => {
+    const s = queued(1);
+    applyEvent(s, turnDone("t1", "cancelled"));
+    s.budgetStopped = true;
+    releaseQueue(s);
+    expect(pendingFlush(s)).toBeNull();
+  });
+
+  // And the way back: nothing is re-sent by hand, so a raised limit does not
+  // cost the user the message they already typed.
+  it("flushes what was queued once the ceiling is raised", () => {
+    const s = queued(1);
+    applyEvent(s, turnDone("t1", "completed"));
+    s.budgetStopped = true;
+    expect(pendingFlush(s)).toBeNull();
+    s.budgetStopped = false;
+    expect(pendingFlush(s)?.text).toBe("m0");
+  });
+
   it("never flushes into a dead session", () => {
     const s = queued(1);
     applyEvent(s, { type: "sessionEnded", sessionId: "s1", reason: "child exited" });
@@ -860,9 +897,10 @@ describe("hook rows", () => {
   const hookRows = (s: ChatState, show: boolean) => visibleItems(s.items, show).filter((i) => i.kind === "hook");
 
   it("adds no visible rows for a 60-tool-call turn, and reveals all 120 when toggled", () => {
-    // The plan's headline figure. Sway's approval hook runs on every tool call
-    // and contributes two frames each time, which is exactly the noise the
-    // default collapse exists to keep out of the user's transcript.
+    // The plan's headline figure, measured when Sway's hook ran on every tool
+    // call and contributed two frames each time. It is narrowed to the write
+    // tools now, so a turn like this one produces fewer - but the user's own
+    // hooks are not, and the collapse exists for the volume either way.
     const s = initialChat("s1");
     for (let i = 0; i < 60; i++) {
       applyEvent(s, hook(`sway-${i}`, "started", false));

@@ -19,8 +19,9 @@
 /// mode is checked against is the adapter's `[[chat.modes]]` declaration, and
 /// beneath that the real CLI; see `capabilitiesFor` in `utils/chatModels.ts`.
 ///
-/// Sway's own approval hook runs ahead of every mode any harness has, so a
-/// permissive one does not mean unsupervised.
+/// A mode means what the harness says it means. Sway's own hook used to run
+/// ahead of every one of them, so a permissive mode was not really permissive;
+/// the hook stopped deciding, so the harness's answer is now the answer.
 export type PermissionMode = string;
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";

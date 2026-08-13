@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import { SlidersHorizontal } from "lucide-solid";
 import Picker, { PickerOption } from "./Picker";
-import type { ChatConfig, ChatMode } from "../../utils/agents";
+import type { ChatMode } from "../../utils/agents";
 import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 
@@ -23,18 +23,20 @@ import styles from "./Chat.module.css";
  * nothing was checking.
  */
 
-/** Said wherever a mode declaring `permissive_caveat` is reachable, because
- *  such a mode's name is a promise Sway deliberately does not keep. Sway's
- *  `PreToolUse` hook runs *first* in the permission chain, ahead of deny rules,
- *  ask rules and the mode itself, so a call matching no allow rule still stops
- *  here. Which mode carries it is the adapter's to say: the caveat is a fact
- *  about Sway's gate, and it holds whatever a harness calls its permissive mode. */
-export const BYPASS_STILL_APPROVED = "Sway still asks: its approval hook runs ahead of Claude's permission modes.";
-
-/** Whether the mode in force is one the adapter flagged as needing the caveat. */
-export function needsPermissiveCaveat(chat: ChatConfig | null, mode: PermissionMode | null): boolean {
-  return !!chat?.modes.some((m) => m.id === mode && m.permissive_caveat);
-}
+/*
+ * There used to be a caveat here - `BYPASS_STILL_APPROVED`, rendered wherever a
+ * mode declared `permissive_caveat` - saying that Sway asked anyway because its
+ * `PreToolUse` hook ran ahead of the permission chain. Both the flag and the
+ * sentence are gone: the hook no longer decides, so `bypassPermissions` bypasses
+ * permissions and a mode's name is now the truth about what it does. A warning
+ * that no longer describes anything is worse than no warning, because it trains
+ * people to discount the ones that do.
+ *
+ * What survives is the *chip*, on `permissive`. The sentence was about Sway and
+ * went stale with Sway's gate; the highlight is about the mode, which really
+ * does run tools unasked - and does so with nothing behind it now, which is a
+ * better reason to keep noticing it than the one it had before.
+ */
 
 export default function ModeSelector(props: {
   /** Null before the session has reported one and with no adapter default to
@@ -54,9 +56,7 @@ export default function ModeSelector(props: {
   // - a stale pick, or a mode gated away by the current model. Showing the raw
   // id is worse than a label and better than a lie about which mode is running.
   const label = () => current()?.label ?? props.mode ?? "Mode";
-  const needsCaveat = () => !!current()?.permissive_caveat;
-  const title = () =>
-    [current()?.hint, props.mode !== null && needsCaveat() ? BYPASS_STILL_APPROVED : null].filter(Boolean).join(" ");
+  const title = () => current()?.hint ?? "";
 
   return (
     <>
@@ -67,7 +67,10 @@ export default function ModeSelector(props: {
         tooltip={title()}
         disabled={props.disabled || props.modes.length === 0}
         pending={props.pending}
-        attention={needsCaveat()}
+        // Not the retired caveat under another name: that said Sway asked
+        // anyway, and stopped being true. This marks a mode that runs tools
+        // unasked, which is what the mode does and now what actually happens.
+        attention={!!current()?.permissive}
       >
         <For each={props.modes}>
           {(m) => (

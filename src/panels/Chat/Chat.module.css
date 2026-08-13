@@ -1124,13 +1124,6 @@
   outline-offset: calc(-4px * var(--ui-scale));
 }
 
-.composerNotice {
-  padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  color: var(--attention-fg);
-  font-size: var(--sway-text-md);
-  line-height: 1.4;
-}
-
 .composerBox {
   /* The input's own padding. Named because the bar below aligns its contents to
      the same horizontal inset the caret sits at. */
@@ -1351,8 +1344,8 @@
   color: var(--brand-strong);
 }
 
-/* Bypass names itself after something Sway does not actually let it do; the
-   chip wears the warning the whole time the mode is in force. */
+/* A permissive mode runs tools without asking, and nothing behind it catches
+   them any more, so the chip wears the warning the whole time it is in force. */
 .pillAttention {
   border-color: var(--attention-emphasis);
   color: var(--attention-fg);

@@ -347,6 +347,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Show every hook event",
     hint: "Off, the transcript shows a hook only when it fails. On reveals every execution.",
   },
+  {
+    id: "legacy-permission-gate",
+    section: "chat",
+    label: "Approve tool calls in Sway",
+    hint: "Off, the agent asks for permission itself. On restores Sway's own approvals. Applies from the next session.",
+  },
 
   {
     id: "harness-path",

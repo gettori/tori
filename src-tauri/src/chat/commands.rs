@@ -102,6 +102,15 @@ pub struct SpawnResult {
     pub ownership: ClaimOutcome,
     /// `None` when ownership was refused, so nothing was started.
     pub spawned: Option<Spawned>,
+    /// Whether Sway's own gate is deciding this session's tool calls, which is
+    /// what makes a Sway rule mean anything.
+    ///
+    /// Reported per session rather than left to the frontend to read off the
+    /// setting, because the two disagree: the setting binds at spawn, so a
+    /// session started under the gate stays under it after the setting is turned
+    /// off. A rules panel following the setting would appear a session early and
+    /// vanish a session late.
+    pub sway_gated: bool,
 }
 
 /// Open a chat session: create it, resume it, or fork it.
@@ -160,7 +169,13 @@ pub async fn chat_spawn(
             // path and returns before it would need a transport.
             || unreachable!("a live session rewires rather than spawning"),
         )?;
-        return Ok(SpawnResult { ownership: ClaimOutcome::Granted { contested: false }, spawned: Some(spawned) });
+        return Ok(SpawnResult {
+            ownership: ClaimOutcome::Granted { contested: false },
+            spawned: Some(spawned),
+            // From the file this session was launched with, not from the setting:
+            // a rewire is exactly the case where the two can disagree.
+            sway_gated: approval::session_gated(&session_id),
+        });
     }
 
     let ownership = {
@@ -173,7 +188,8 @@ pub async fn chat_spawn(
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
-            return Ok(SpawnResult { ownership: outcome, spawned: None });
+            // Nothing was started, so nothing is gated.
+            return Ok(SpawnResult { ownership: outcome, spawned: None, sway_gated: false });
         }
         // Carried through rather than rebuilt: a granted-but-**contested** claim
         // means a `claude` we do not control is resuming this same id, and its
@@ -239,7 +255,14 @@ pub async fn chat_spawn(
         effort.as_deref(),
         &extra_dirs,
     );
-    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token())?);
+    // Read here rather than held anywhere: the role binds to this child, and a
+    // session already running keeps the one it was born with.
+    let role = if crate::settings::legacy_permission_gate() {
+        approval::HookRole::Gate
+    } else {
+        approval::HookRole::Capture
+    };
+    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), role)?);
 
     let spec = StartSpec {
         session_id: session_id.clone(),
@@ -298,7 +321,7 @@ pub async fn chat_spawn(
         }
     }
 
-    Ok(SpawnResult { ownership, spawned: Some(spawned) })
+    Ok(SpawnResult { ownership, spawned: Some(spawned), sway_gated: role == approval::HookRole::Gate })
 }
 
 #[tauri::command]
@@ -556,27 +579,11 @@ pub struct UsageTotals {
     pub project: usage::SessionUsage,
 }
 
-/// Arm or clear this session's spend stop.
-///
-/// Written into the rule file rather than held in memory, because that file is
-/// the one thing the hook helper reads on **every** tool call - including the
-/// ones a rule already allowed, which never open the approval socket. A ceiling
-/// enforced only at the socket would be a ceiling that a session with allow-listed
-/// reads could walk straight past.
-///
-/// Enforcement therefore lands at the next tool boundary, never mid-tool: the
-/// hook fires before the call runs, so a refusal here means the tool did not
-/// start, not that it was interrupted halfway.
-#[tauri::command]
-pub async fn chat_set_budget_stop(session_id: String, reason: Option<String>) -> Result<(), String> {
-    let path = rules::rules_path(&session_id);
-    let mut file = rules::load_ok(&path)
-        .unwrap_or_else(|| rules::RuleFile::new(std::process::id(), rules::now_ms(), Vec::new()));
-    file.stop = reason;
-    file.sway_pid = std::process::id();
-    file.stamp_ms = rules::now_ms();
-    rules::save(&path, &file)
-}
+// `chat_set_budget_stop` used to live here, arming a spend stop in the rule file
+// so the hook would refuse every subsequent tool call. Sway no longer decides
+// tool calls, so the ceiling moved to the one boundary it still owns: whether a
+// new turn starts at all. That belongs entirely to the panel, so there is
+// nothing left for a command to do.
 
 /// Add a restrictive rule: `ask` or `deny`, optionally scoped by a path glob.
 ///
@@ -1315,6 +1322,7 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::Granted { contested: true },
             spawned: Some(Spawned::Started),
+            sway_gated: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "granted");
@@ -1328,6 +1336,7 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-1".into() },
             spawned: None,
+            sway_gated: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "heldByOther");

@@ -47,10 +47,10 @@ export type ChatMode = {
   // it (`supportsAutoMode`). Declared rather than keyed on the mode's id: the
   // gate is not a property of the word "auto".
   requires?: string | null;
-  // Whether this mode carries Sway's "it still asks" caveat. Adapter-declared
-  // because the caveat is about Sway's own approval hook, which runs ahead of
-  // whatever a harness calls its permissive mode.
-  permissive_caveat?: boolean;
+  // This mode runs tools without asking anybody. A fact about the harness's
+  // mode, unlike the retired `permissive_caveat` which was a fact about Sway's
+  // gate, so it stays true now that the gate is gone.
+  permissive?: boolean;
   // The mode a session runs when nothing is chosen, and what an unresolvable
   // one downgrades to. Declared rather than assumed: "default" is Claude's
   // spelling, and a resolver carrying it picks nothing on a harness that names
