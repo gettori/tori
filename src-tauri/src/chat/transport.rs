@@ -107,8 +107,15 @@ pub trait AgentTransport: Send {
     /// Ask the harness to abandon the running turn.
     fn interrupt(&mut self) -> Result<(), String>;
 
-    /// Answer a blocked permission request. Phase 4 owns the socket this
-    /// reaches; the transport only needs to know an answer exists.
+    /// Answer a blocked permission request, if this transport is what is
+    /// blocked on it.
+    ///
+    /// **Returns whether the request was ours.** A prompt can reach the user
+    /// from two places - the harness asking in-protocol, and Sway's own
+    /// `PreToolUse` bridge blocking on a socket - and the answer must go back to
+    /// whichever one is waiting. `Ok(false)` means "not mine, try the other
+    /// route"; answering the wrong one would leave the real waiter hanging until
+    /// its deadline, turning a click on Allow into a denial.
     fn respond_permission(
         &mut self,
         tool_use_id: &str,
@@ -116,7 +123,7 @@ pub trait AgentTransport: Send {
         decision: PermissionDecision,
         scope: PermissionScope,
         reason: Option<&str>,
-    ) -> Result<(), String>;
+    ) -> Result<bool, String>;
 
     /// Applies from the **next** turn, never the running one.
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String>;
@@ -177,8 +184,8 @@ pub(crate) mod mock {
             _decision: PermissionDecision,
             _scope: PermissionScope,
             _reason: Option<&str>,
-        ) -> Result<(), String> {
-            Ok(())
+        ) -> Result<bool, String> {
+            Ok(false)
         }
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
             Ok(())

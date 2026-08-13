@@ -229,6 +229,11 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             input: serde_json::json!({}),
             request_id: "rpc-1".into(),
             auto_deny_at_ms: None,
+            // Both are optional for exactly this reason: they are things one
+            // harness happens to send, not things the neutral model requires.
+            // Codex names no subagent and offers no alternatives.
+            agent_id: None,
+            suggestions: vec![],
         },
         // A patch approval is an approval *and* the only advance notice that a
         // file is about to change, but it has not changed yet, so it is the
@@ -240,6 +245,8 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             input: serde_json::json!({}),
             request_id: "rpc-2".into(),
             auto_deny_at_ms: None,
+            agent_id: None,
+            suggestions: vec![],
         },
         CodexEvent::TokenCount => ChatEvent::Usage {
             session_id: sid(),

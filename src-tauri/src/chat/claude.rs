@@ -29,8 +29,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::model::{
-    ChatAccount, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, SlashCommand,
-    ToolStatus, TurnOutcome, Usage,
+    ChatAccount, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
+    PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus, TurnOutcome, Usage,
 };
 
 /// What kind of content an open block at a given index holds. Recorded at
@@ -180,6 +180,7 @@ impl ClaudeMapper {
                 self.absorb_control_response(frame);
                 self.report_ready()
             }
+            Some("control_request") => self.map_control_request(frame),
             _ => Vec::new(),
         };
         // Noted here rather than at each emission site, because a tool call is
@@ -193,6 +194,50 @@ impl ClaudeMapper {
             }
         }
         events
+    }
+
+    /// Map an inbound `control_request`, which today means one thing: the CLI
+    /// asking whether a tool call may proceed.
+    ///
+    /// This is the request `--permission-prompt-tool stdio` turns on, and it is
+    /// the harness's *own* permission chain asking - so it fires only for calls
+    /// the harness itself has not already settled. Measured on claude 2.1.231
+    /// (`dev/protocol-probe.mjs`, scenario `permission-coverage`): `Write`,
+    /// `WebFetch`, a non-safe-listed `Bash`, an MCP tool and a `Task` subagent's
+    /// own call all ask; `Read` does not, and neither does anything under
+    /// `acceptEdits` or `bypassPermissions`. Those silences are the harness
+    /// deciding, not a gap Sway has to cover.
+    ///
+    /// **Nothing is answered here.** The mapper's only job is to turn the frame
+    /// into an event; the answer travels back out through the transport, which
+    /// is the half that owns the deadline. An unrecognised subtype maps to no
+    /// event rather than to a guess, because a control request Sway does not
+    /// understand is one it must not pretend to have handled.
+    fn map_control_request(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        let request = &frame["request"];
+        if request["subtype"].as_str() != Some("can_use_tool") {
+            return Vec::new();
+        }
+        // Both ids are required. Without `request_id` the answer cannot be
+        // correlated and the child would block forever; without `tool_use_id`
+        // the prompt cannot find its tool card. A frame missing either is
+        // dropped rather than half-rendered.
+        let (Some(request_id), Some(tool_use_id)) =
+            (frame["request_id"].as_str(), request["tool_use_id"].as_str())
+        else {
+            return Vec::new();
+        };
+        vec![ChatEvent::PermissionRequest {
+            session_id: self.session_id.clone(),
+            tool_use_id: tool_use_id.to_string(),
+            tool_name: request["tool_name"].as_str().unwrap_or_default().to_string(),
+            input: request["input"].clone(),
+            request_id: request_id.to_string(),
+            // Filled by the transport, which is where the deadline is armed.
+            auto_deny_at_ms: None,
+            agent_id: request["agent_id"].as_str().map(str::to_string),
+            suggestions: suggestions(&request["permission_suggestions"]),
+        }]
     }
 
     /// An answered control request is the first proof the child is alive:
@@ -642,6 +687,53 @@ fn usage_from(raw: &Value) -> Usage {
         cache_write_tokens: raw["cache_creation_input_tokens"].as_u64().unwrap_or(0),
         thinking_tokens: raw["output_tokens_details"]["thinking_tokens"].as_u64().unwrap_or(0),
     }
+}
+
+/// The actions a `can_use_tool` request offered, as the CLI wrote them.
+///
+/// An entry whose `type` Sway does not know is **skipped**, not guessed at and
+/// not fatal: the list is the harness's, it grows on the harness's schedule, and
+/// one unknown offer must not cost the user the offers that came with it.
+fn suggestions(raw: &Value) -> Vec<PermissionSuggestion> {
+    raw.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| match s["type"].as_str()? {
+                    "addRules" => Some(PermissionSuggestion::AddRules {
+                        rules: s["rules"]
+                            .as_array()
+                            .map(|r| {
+                                r.iter()
+                                    .filter_map(|rule| {
+                                        Some(SuggestedRule {
+                                            tool_name: rule["toolName"].as_str()?.to_string(),
+                                            rule_content: rule["ruleContent"].as_str().map(str::to_string),
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        behavior: s["behavior"].as_str().unwrap_or_default().to_string(),
+                        destination: s["destination"].as_str().unwrap_or_default().to_string(),
+                    }),
+                    "addDirectories" => Some(PermissionSuggestion::AddDirectories {
+                        directories: s["directories"]
+                            .as_array()
+                            .map(|d| d.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default(),
+                        destination: s["destination"].as_str().unwrap_or_default().to_string(),
+                    }),
+                    // The mode is required: a `setMode` with nothing to switch
+                    // to would render a button that does nothing.
+                    "setMode" => Some(PermissionSuggestion::SetMode {
+                        mode: PermissionMode::new(s["mode"].as_str()?),
+                        destination: s["destination"].as_str().unwrap_or_default().to_string(),
+                    }),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn denials(raw: &Value) -> Vec<PermissionDenial> {
@@ -1171,6 +1263,133 @@ mod tests {
         }
     }
 
+    /// The `can_use_tool` frame as claude 2.1.231 actually sends it, captured by
+    /// `dev/protocol-probe.mjs`. `agent_id` is present only on a subagent's own
+    /// call, which is the whole basis of the routing below.
+    fn can_use_tool(agent_id: Option<&str>) -> serde_json::Value {
+        let mut request = serde_json::json!({
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "display_name": "Bash",
+            "input": { "command": "touch a.txt", "description": "Create a.txt" },
+            "description": "Create a.txt",
+            "tool_use_id": "toolu_1",
+            "permission_suggestions": [
+                {
+                    "type": "addRules",
+                    "rules": [{ "toolName": "Bash", "ruleContent": "touch a.txt" }],
+                    "behavior": "allow",
+                    "destination": "localSettings"
+                },
+                { "type": "addDirectories", "directories": ["/w"], "destination": "session" },
+                { "type": "setMode", "mode": "acceptEdits", "destination": "session" }
+            ]
+        });
+        if let Some(id) = agent_id {
+            request["agent_id"] = serde_json::json!(id);
+        }
+        serde_json::json!({ "type": "control_request", "request_id": "req-1", "request": request })
+    }
+
+    #[test]
+    fn a_can_use_tool_request_becomes_a_permission_request() {
+        let mut m = ClaudeMapper::new("s1");
+        match m.map(&can_use_tool(None)).first() {
+            Some(ChatEvent::PermissionRequest {
+                session_id, tool_use_id, tool_name, request_id, agent_id, input, ..
+            }) => {
+                assert_eq!(session_id, "s1");
+                assert_eq!(tool_use_id, "toolu_1");
+                assert_eq!(tool_name, "Bash");
+                assert_eq!(request_id, "req-1");
+                assert_eq!(input["command"], "touch a.txt");
+                assert_eq!(*agent_id, None, "the main agent names no subagent");
+            }
+            other => panic!("expected PermissionRequest, got {other:?}"),
+        }
+    }
+
+    /// The routing half: a subagent's question must be attributable to the
+    /// subagent that asked it, not silently shown as the parent's own call.
+    #[test]
+    fn a_subagent_request_carries_the_agent_that_made_it() {
+        let mut m = ClaudeMapper::new("s1");
+        match m.map(&can_use_tool(Some("affdd797eddcfa753"))).first() {
+            Some(ChatEvent::PermissionRequest { agent_id, session_id, .. }) => {
+                assert_eq!(agent_id.as_deref(), Some("affdd797eddcfa753"));
+                // Still the one session: a subagent is work inside this chat,
+                // not a second transcript.
+                assert_eq!(session_id, "s1");
+            }
+            other => panic!("expected PermissionRequest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_harnesss_own_suggestions_are_carried_through() {
+        let mut m = ClaudeMapper::new("s1");
+        let events = m.map(&can_use_tool(None));
+        let Some(ChatEvent::PermissionRequest { suggestions, .. }) = events.first() else {
+            panic!("expected PermissionRequest");
+        };
+        assert_eq!(suggestions.len(), 3);
+        assert!(matches!(
+            &suggestions[0],
+            PermissionSuggestion::AddRules { rules, behavior, destination }
+                if behavior == "allow"
+                    && destination == "localSettings"
+                    && rules[0].tool_name == "Bash"
+                    && rules[0].rule_content.as_deref() == Some("touch a.txt")
+        ));
+        assert!(matches!(&suggestions[2], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "acceptEdits"));
+    }
+
+    /// A suggestion type Sway does not know must cost only itself. Failing the
+    /// whole request would take the offers that *are* understood down with it.
+    #[test]
+    fn an_unknown_suggestion_is_dropped_without_losing_the_others() {
+        let mut frame = can_use_tool(None);
+        frame["request"]["permission_suggestions"] = serde_json::json!([
+            { "type": "somethingNewIn2027", "whatever": true },
+            { "type": "setMode", "mode": "plan", "destination": "session" }
+        ]);
+        let mut m = ClaudeMapper::new("s1");
+        let events = m.map(&frame);
+        let Some(ChatEvent::PermissionRequest { suggestions, .. }) = events.first() else {
+            panic!("expected PermissionRequest");
+        };
+        assert_eq!(suggestions.len(), 1, "the unknown offer is skipped, the known one survives");
+        assert!(matches!(&suggestions[0], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "plan"));
+    }
+
+    /// A control request Sway does not understand must not become a prompt: it
+    /// would be a question nobody can answer, blocking the child forever.
+    #[test]
+    fn an_unrecognised_control_request_maps_to_nothing() {
+        let mut m = ClaudeMapper::new("s1");
+        let frame = serde_json::json!({
+            "type": "control_request",
+            "request_id": "req-9",
+            "request": { "subtype": "some_future_request" }
+        });
+        assert!(m.map(&frame).is_empty());
+    }
+
+    /// Without either id the answer cannot be correlated or attached, so the
+    /// frame is dropped rather than half-rendered as an unanswerable prompt.
+    #[test]
+    fn a_request_missing_its_ids_is_dropped() {
+        let mut m = ClaudeMapper::new("s1");
+
+        let mut no_request_id = can_use_tool(None);
+        no_request_id["request_id"] = serde_json::Value::Null;
+        assert!(m.map(&no_request_id).is_empty());
+
+        let mut no_tool_use_id = can_use_tool(None);
+        no_tool_use_id["request"]["tool_use_id"] = serde_json::Value::Null;
+        assert!(m.map(&no_tool_use_id).is_empty());
+    }
+
     /// A session that opened without ever handshaking (a resumed child whose
     /// first frame is `system/init`) must not get a late `SessionReady` when
     /// some other control request is acknowledged mid-conversation.
@@ -1253,13 +1472,19 @@ mod tests {
         assert_eq!(models.len(), 5, "the catalogue was not absorbed");
         // `value` is what `--model` takes, `resolvedModel` is what the next
         // init reports back, and they are measurably not the same string.
+        //
+        // *Which* model `default` resolves to is account-side and moves without
+        // the wire format moving: it was `claude-sonnet-5` when captured against
+        // 2.1.220 and is `claude-opus-5[1m]` as of the 2.1.231 re-capture. So the
+        // shape is asserted and the identity is only read from the fixture,
+        // rather than pinning a name that drifts on Anthropic's schedule.
         let default = models.iter().find(|m| m.value == "default").expect("default present");
-        assert_eq!(default.resolved_model, "claude-sonnet-5");
+        assert_ne!(default.resolved_model, default.value, "a resolved id is not the value you pass");
         assert_eq!(default.display_name, "Default (recommended)");
-        // Three distinct values resolving to one id is exactly why agreement
+        // Two distinct values resolving to one id is exactly why agreement
         // cannot be checked by comparing the picked value against init's model.
         assert_eq!(
-            models.iter().filter(|m| m.resolved_model == "claude-sonnet-5").count(),
+            models.iter().filter(|m| m.resolved_model == default.resolved_model).count(),
             2
         );
         let sonnet = models.iter().find(|m| m.value == "sonnet").expect("sonnet present");

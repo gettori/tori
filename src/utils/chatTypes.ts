@@ -40,6 +40,20 @@ export type PermissionDecision = "allow" | "deny";
 
 export type PermissionScope = "once" | "session" | "project";
 
+/// One rule the harness proposed, in its own grammar. `ruleContent` is optional
+/// because a rule can name a whole tool with no argument pattern.
+export type SuggestedRule = { toolName: string; ruleContent?: string };
+
+/// An action the harness offered alongside a permission question.
+///
+/// Mirrors Rust's `PermissionSuggestion`. The mapper drops any type it does not
+/// know, so this union is closed on purpose: an unrecognised offer never
+/// reaches here to be rendered as a button nobody can honour.
+export type PermissionSuggestion =
+  | { type: "addRules"; rules: SuggestedRule[]; behavior: string; destination: string }
+  | { type: "addDirectories"; directories: string[]; destination: string }
+  | { type: "setMode"; mode: PermissionMode; destination: string };
+
 export type PlanItemStatus = "pending" | "inProgress" | "completed";
 
 /// Free-form harness-specific data. Deliberately unknown-valued: a renderer
@@ -280,6 +294,11 @@ export type ChatEvent =
       input: unknown;
       requestId: string;
       autoDenyAtMs: number | null;
+      /// The subagent that made the call, or null for the main agent. Only the
+      /// in-protocol path can know this; the hook bridge always reports null.
+      agentId: string | null;
+      /// Actions the harness itself offered. Absent when it offered none.
+      suggestions?: PermissionSuggestion[];
     }
   | { type: "planUpdate"; sessionId: string; turnId: string; items: PlanItem[] }
   | { type: "usage"; sessionId: string; turnId: string; usage: Usage; extra?: Extra }
@@ -428,7 +447,10 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "turnId", "toolUseId", "path", "kind", "beforeBlob"],
   },
   permissionRequest: {
-    required: ["sessionId", "toolUseId", "toolName", "input", "requestId", "autoDenyAtMs"],
+    required: ["sessionId", "toolUseId", "toolName", "input", "requestId", "autoDenyAtMs", "agentId"],
+    // Absent when the harness offered nothing, and absent on every request the
+    // `PreToolUse` bridge raises, which has no suggestions to offer.
+    optional: ["suggestions"],
   },
   planUpdate: { required: ["sessionId", "turnId", "items"] },
   usage: { required: ["sessionId", "turnId", "usage"], optional: ["extra"] },

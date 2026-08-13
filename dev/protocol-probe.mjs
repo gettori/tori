@@ -134,11 +134,27 @@ const REQUIRES = {
   // prove the interrupt landed and the child survived it.
   interrupt: ["result/error_during_execution", "result/success"],
   "hook-denied": ["system/hook_started", "system/hook_response", "user/tool_result"],
+  // The inbound question is the point of all four; without it they would pass
+  // by measuring a turn in which nothing was ever asked.
+  "permission-coverage": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
+  "permission-subagent": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
+  "permission-grant": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
+  // No `result`: the whole finding is that the turn never completes, because
+  // nobody answered and the CLI will not answer for us.
+  "permission-deadline": ["control_request/can_use_tool"],
   "image-turn": ["assistant/text", "result/success"],
   // A set cannot say "twice", so this only pins that both turns' shapes are
   // here at all; that there are two inits is asserted in the scenario body.
   "fast-mode": ["system/init", "assistant/text", "result/success"],
 };
+
+// Scenarios whose stream is cut mid-turn on purpose, so the two "still open at
+// the end" checks do not apply to them. Named per scenario rather than relaxed
+// globally: a dangling block is a real defect everywhere else, and this is the
+// one place it is the finding rather than the fault.
+const TRUNCATED_BY_DESIGN = new Set(["permission-deadline"]);
+
+const DANGLING = ["stream ended with a message still open", "stream ended with a content block still open"];
 
 // The frame kinds a run produced, deduplicated and sorted. Order is deliberately
 // discarded here; what the protocol really orders is asserted by checkGrammar.
@@ -228,10 +244,19 @@ export function checkGrammar(events) {
 // what made earlier one-shot probes exit after a single turn; the CLI itself is
 // happy to run many.
 class Probe {
-  constructor({ cwd, extraArgs = [], settings = null }) {
+  // `answerPermission` opts this child into the in-protocol permission path: it
+  // is called with each `can_use_tool` control_request and returns the response
+  // payload to send, or null to deliberately leave the question unanswered
+  // (which is how the deadline is measured). Callers must also pass
+  // `--permission-prompt-tool stdio`, since without it the CLI never asks.
+  constructor({ cwd, extraArgs = [], settings = null, answerPermission = null }) {
     this.events = [];
     this.buf = "";
     this.waiters = [];
+    this.answerPermission = answerPermission;
+    // Every `can_use_tool` seen, in order, so a scenario can assert *which*
+    // tools asked rather than only how many did.
+    this.permissionRequests = [];
     const argv = [
       "-p",
       "--input-format",
@@ -268,6 +293,16 @@ class Probe {
         ev = { type: "__unparseable", raw: line };
       }
       this.events.push(ev);
+      if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
+        this.permissionRequests.push(ev.request);
+        const response = this.answerPermission?.(ev.request, this.permissionRequests.length);
+        if (response) {
+          this.send({
+            type: "control_response",
+            response: { subtype: "success", request_id: ev.request_id, response },
+          });
+        }
+      }
       for (const w of this.waiters.slice()) {
         if (w.match(ev)) {
           this.waiters.splice(this.waiters.indexOf(w), 1);
@@ -474,6 +509,161 @@ const SCENARIOS = {
     return p;
   },
 
+  // --- the in-protocol permission path (`--permission-prompt-tool stdio`) ---
+  //
+  // The gate this whole direction rests on: Sway stops deciding permissions and
+  // renders the harness's own question instead. What matters is not that *every*
+  // tool asks, but that every tool Sway would otherwise have gated either asks
+  // or is one the harness deliberately settled itself.
+  //
+  // Measured 2026-08-14 on claude 2.1.231, one turn per class:
+  //
+  //   Write (default)          asks
+  //   Bash `touch f` (default) asks
+  //   WebFetch (default)       asks
+  //   MCP tool (default)       asks, as `mcp__<server>__<tool>`
+  //   Task subagent            asks, and the request carries `agent_id`
+  //   plan mode                asks, for ExitPlanMode, Bash and Write alike
+  //   Read (default)           does NOT ask - read-only tools are auto-allowed
+  //   Bash `echo x` (default)  does NOT ask - the CLI safe-lists it
+  //   acceptEdits / bypass     do NOT ask - the mode already answered
+  //
+  // The three silences are the harness deciding, not a hole: they are exactly
+  // the calls a user did not need to be asked about. Two of them were found by
+  // this probe lying to itself first, which is why the prompts below name a
+  // *gated* tool rather than a convenient one - an earlier run used `echo` and
+  // recorded "Bash never asks", and another killed the child while a
+  // backgrounded subagent was still working and recorded "subagents never ask".
+  "permission-coverage": async ({ scratch }) => {
+    writeFileSync(join(scratch, "seed.txt"), "seed\n");
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      // Bare allow, deliberately: measured, omitting `updatedInput` runs the
+      // call as the model wrote it.
+      answerPermission: () => ({ behavior: "allow" }),
+    });
+    p.sendTurn(
+      "Do these three things in order, using a tool for each: (1) use the Write tool to create probe-perm.txt " +
+        "containing 'ok', (2) use the Bash tool to run exactly `touch probe-touch.txt`, (3) use the Read tool " +
+        "to read seed.txt. Then stop.",
+    );
+    await p.waitForResult();
+    await p.close();
+
+    const asked = p.permissionRequests.map((r) => r.tool_name);
+    if (!asked.includes("Write")) throw new Error(`Write did not raise can_use_tool; asked: ${asked.join(", ") || "nothing"}`);
+    if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
+    return p;
+  },
+
+  // A subagent's own tool call must be attributable to the subagent, or its
+  // prompt shows as the parent's work. `agent_id` is the only thing that says
+  // so, and it appears on nothing else.
+  "permission-subagent": async ({ scratch }) => {
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      answerPermission: () => ({ behavior: "allow" }),
+    });
+    p.sendTurn(
+      "Use the Task tool with run_in_background set to false to launch one general-purpose subagent whose prompt " +
+        "is exactly: 'Use the Write tool to create sub-made.txt containing the word sub. Then report done.' " +
+        "Wait for the subagent to finish, then report what it did.",
+    );
+    await p.waitForResult();
+    // The parent's turn can end while a subagent is still working, so the child
+    // is given a moment before teardown. Without this the scenario measures the
+    // teardown rather than the protocol.
+    await new Promise((r) => setTimeout(r, 20_000));
+    await p.close();
+
+    const fromSubagent = p.permissionRequests.filter((r) => r.agent_id);
+    if (!fromSubagent.length) {
+      throw new Error(
+        `no can_use_tool carried an agent_id; saw ${p.permissionRequests.length} request(s) from ` +
+          `${p.permissionRequests.map((r) => r.tool_name).join(", ") || "nothing"}`,
+      );
+    }
+    return p;
+  },
+
+  // Task 6's question, answered on the wire: an allow can carry a durable grant,
+  // so "always allow this" is a real affordance rather than one Sway fakes.
+  // Two Writes, the first answered with a session-scoped `addRules` echoing the
+  // CLI's own suggestion; the second must not ask.
+  "permission-grant": async ({ scratch }) => {
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      answerPermission: (request, n) => {
+        if (n > 1) return { behavior: "allow" };
+        const offered = (request.permission_suggestions ?? []).find(
+          (s) => s.type === "addRules" && s.behavior === "allow",
+        );
+        return {
+          behavior: "allow",
+          updatedPermissions: [
+            {
+              type: "addRules",
+              // The harness's own rule text, echoed back. Composing one here
+              // would be Sway inventing the grammar it is trying to defer to.
+              rules: offered?.rules ?? [{ toolName: "Write" }],
+              behavior: "allow",
+              destination: "session",
+            },
+          ],
+        };
+      },
+    });
+    p.sendTurn(
+      "Use the Write tool to create grant-a.txt containing 'a'. Then use the Write tool again to create " +
+        "grant-b.txt containing 'b'. Then stop.",
+    );
+    await p.waitForResult();
+    await p.close();
+
+    const writes = p.permissionRequests.filter((r) => r.tool_name === "Write");
+    if (writes.length !== 1) {
+      throw new Error(
+        `expected the session grant to silence the second Write, but Write asked ${writes.length} time(s)`,
+      );
+    }
+    return p;
+  },
+
+  // Who owns the deadline. Measured: a `can_use_tool` left unanswered was still
+  // outstanding after 413s, with no result frame and no timeout of the CLI's
+  // own, so an unanswered prompt is a hang unless Sway ends it. That is why
+  // `claude_transport.rs` arms its own timer rather than racing one.
+  //
+  // Bounded well under that here: what has to stay true is that the CLI does not
+  // resolve the question before Sway's own DECIDE_TIMEOUT_SECS (110s) would. If
+  // the CLI ever gains a shorter timeout, this fails and says so.
+  "permission-deadline": async ({ scratch }) => {
+    const WAIT_MS = 115_000;
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      answerPermission: () => null, // never answer, on purpose
+    });
+    p.sendTurn("Use the Write tool to create never.txt containing 'ok'. Then stop.");
+    await p.waitFor((e) => e.type === "control_request" && e.request?.subtype === "can_use_tool", 90_000);
+    const asked = Date.now();
+    await new Promise((r) => setTimeout(r, WAIT_MS));
+    const waited = Date.now() - asked;
+    const resolved = p.events.some((e) => e.type === "result");
+    await p.close();
+
+    if (resolved) {
+      throw new Error(
+        `the CLI resolved an unanswered permission request within ${waited}ms, so it now has a deadline of its ` +
+          "own and Sway's 110s auto-deny is no longer the one that fires first",
+      );
+    }
+    return p;
+  },
+
   // A hook deny blocking a tool: the reason reaches the model as the tool
   // result and is recorded in `result.permission_denials`. Runs under
   // `bypassPermissions` on purpose, since hooks run first in the permission
@@ -586,7 +776,9 @@ async function main() {
 
     // The grammar holds on every run, captured or checked - a fixture recorded
     // from a malformed stream would bake the malformation in.
-    const grammar = checkGrammar(probe.events);
+    const grammar = checkGrammar(probe.events).filter(
+      (p) => !(TRUNCATED_BY_DESIGN.has(name) && DANGLING.includes(p)),
+    );
     const missing = (REQUIRES[name] ?? []).filter((k) => !kinds.includes(k));
 
     if (WRITE) {

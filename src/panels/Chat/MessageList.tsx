@@ -2,7 +2,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, o
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
-import type { ContentBlock } from "../../utils/chatTypes";
+import type { ContentBlock, PermissionMode } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import type { Answer } from "./PermissionPrompt";
@@ -89,6 +89,7 @@ export default function MessageList(props: {
    *  then, rather than blaming an old turn on the current model. */
   modelLabelFor: (turnId: string) => string | null;
   onAnswer: (card: ToolItem, answer: Answer) => void;
+  onSetMode: (mode: PermissionMode) => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
   /** The turn to open at, so returning from another view lands where the reader
    *  left rather than at the bottom. Null means the usual pin-to-bottom. */
@@ -350,6 +351,7 @@ export default function MessageList(props: {
                     sessionId={props.sessionId}
                     cwd={props.cwd}
                     onAnswer={props.onAnswer}
+                    onSetMode={props.onSetMode}
                     onRevertHunk={props.onRevertHunk}
                   />
                 </>

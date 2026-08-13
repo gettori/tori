@@ -732,6 +732,7 @@ export default function ChatView(props: {
       sessionId: props.sessionId,
       cwd: props.cwd,
       requestId: approval.requestId,
+      toolUseId: card.toolUseId,
       toolName: card.name ?? "",
       toolInput: card.input ?? {},
       decision: answer.decision,
@@ -1436,6 +1437,7 @@ export default function ChatView(props: {
           return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
         }}
         onAnswer={onAnswer}
+        onSetMode={onSelectMode}
         onRevertHunk={onRevertHunk}
         // Gated on the declaration, not on the checkpoint alone: a harness that
         // cannot fork has no way to carry the conversation across, and offering

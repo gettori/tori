@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, ApprovalServer};
-use super::model::{ChatCommand, ChatEvent, ContentBlock, Effort, PermissionMode};
+use super::model::{ChatCommand, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::Registry;
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
@@ -132,6 +132,33 @@ fn ends_session(event: &ChatEvent) -> bool {
     )
 }
 
+/// Which of the two gates took an answer.
+///
+/// The caller needs this because the two persist a durable "and stop asking"
+/// differently: the harness was handed the grant in the answer itself, as
+/// `updatedPermissions`, while the bridge has no such channel and relies on
+/// Sway's own rule store. Writing both for one click would leave two records of
+/// one decision, in two formats, only one of which the harness ever reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnsweredBy {
+    Harness,
+    Bridge,
+}
+
+/// The `PreToolUse` bridge's vocabulary for a decision.
+///
+/// Lives here rather than beside the Tauri command because the host is what
+/// routes an answer now, and nothing below `commands.rs` may depend on it.
+/// Both defaults name who decided: the reason reaches the model as the tool
+/// result, and a bare "Denied." tells it nothing about where to go next.
+pub(super) fn hook_response_for(decision: PermissionDecision, reason: Option<&str>) -> approval::HookResponse {
+    let said = reason.map(str::to_string);
+    match decision {
+        PermissionDecision::Allow => approval::HookResponse::allow(said.unwrap_or_else(|| "Allowed in Sway.".into())),
+        PermissionDecision::Deny => approval::HookResponse::deny(said.unwrap_or_else(|| "Denied in Sway.".into())),
+    }
+}
+
 impl ChatHost {
     /// Test-only: a host whose registry persists to `path` rather than the real
     /// `chat-claims.json`, so a test run cannot drop a live session's claim out
@@ -172,7 +199,37 @@ impl ChatHost {
         lock(&self.bridges).get(session_id).map(|b| b.snapshots.clone())
     }
 
-    /// Answer a blocked tool call.
+    /// Answer a blocked tool call, sending the answer to whichever of the two
+    /// gates is actually waiting on it.
+    ///
+    /// **The transport is asked first, and its answer decides.** A prompt reaches
+    /// the user either from the harness asking in-protocol or from Sway's
+    /// `PreToolUse` bridge blocking on a socket, and the two have separate
+    /// request-id spaces. Only the transport can say whether an id is one of its
+    /// outstanding `can_use_tool` questions, so it is asked, and the bridge is
+    /// the fallback for everything it disclaims. Guessing the other way round -
+    /// answering the socket first - would resolve nothing when the harness was
+    /// the one waiting, and the click would land as a deadline denial instead.
+    pub fn answer_permission(
+        &self,
+        session_id: &str,
+        tool_use_id: &str,
+        request_id: &str,
+        decision: PermissionDecision,
+        scope: PermissionScope,
+        reason: Option<&str>,
+    ) -> Result<AnsweredBy, String> {
+        let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
+        if let Some(transport) = transport {
+            if lock(&transport).respond_permission(tool_use_id, request_id, decision, scope, reason)? {
+                return Ok(AnsweredBy::Harness);
+            }
+        }
+        self.resolve_permission(session_id, request_id, hook_response_for(decision, reason))?;
+        Ok(AnsweredBy::Bridge)
+    }
+
+    /// Answer a blocked tool call over the `PreToolUse` bridge specifically.
     pub fn resolve_permission(&self, session_id: &str, request_id: &str, resp: approval::HookResponse) -> Result<(), String> {
         let server = lock(&self.bridges).get(session_id).map(|b| b.server.clone());
         let Some(server) = server else { return Err(format!("no approval bridge for session {session_id}")) };
@@ -284,7 +341,10 @@ impl ChatHost {
             ChatCommand::Steer { blocks, .. } => t.steer(blocks),
             ChatCommand::Interrupt { .. } => t.interrupt(),
             ChatCommand::RespondPermission { tool_use_id, request_id, decision, scope, reason, .. } => {
-                t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref())
+                // Whether the transport owned the request is routing information
+                // for `answer_permission`, which is the caller that acts on it;
+                // a bare dispatch has no second route to fall back to.
+                t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref()).map(|_| ())
             }
             ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
             ChatCommand::SetModel { model, effort, .. } => t.set_model(model, *effort),
@@ -418,8 +478,8 @@ mod tests {
             _d: PermissionDecision,
             _s: PermissionScope,
             _reason: Option<&str>,
-        ) -> Result<(), String> {
-            Ok(())
+        ) -> Result<bool, String> {
+            Ok(false)
         }
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
             Ok(())
@@ -608,8 +668,8 @@ mod tests {
                 _d: PermissionDecision,
                 _s: PermissionScope,
                 _reason: Option<&str>,
-            ) -> Result<(), String> {
-                Ok(())
+            ) -> Result<bool, String> {
+                Ok(false)
             }
             fn set_mode(&mut self, _m: PermissionMode) -> Result<(), String> {
                 Ok(())

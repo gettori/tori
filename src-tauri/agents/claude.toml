@@ -4,7 +4,7 @@ label = "Claude"
 # The CLI these conventions were empirically captured against. The chat
 # transport below is a measurement of this version's wire format, so a drift
 # warning against a newer binary is meaningful rather than cosmetic.
-verified_against = "claude 2.1.220"
+verified_against = "claude 2.1.231"
 
 [launch]
 program = "claude"
@@ -78,6 +78,19 @@ base_args = [
   # stamps its own output so it can be told apart; `hook_name` reports the
   # tool, not the matcher, so the name cannot identify it).
   "--include-hook-events",
+  # Permission questions come back in-protocol as a `can_use_tool`
+  # control_request that Sway answers with a `control_response`, instead of
+  # Sway deciding for itself in a `PreToolUse` hook. This is what makes the
+  # harness's own permission modes real: `default` asks, `acceptEdits` and
+  # `bypassPermissions` do not, and Sway renders whatever the CLI decided to
+  # ask rather than overriding it.
+  #
+  # Undocumented on purpose, it seems: the flag is absent from `claude --help`
+  # on 2.1.231, yet it parses (an unknown flag exits with "unknown option") and
+  # a `default`-mode `Write` produces the control_request. So this is a
+  # measurement of a working but unlisted flag, which is exactly the kind of
+  # thing `verified_against` above exists to re-check on a version bump.
+  "--permission-prompt-tool", "stdio",
 ]
 session_id_args = ["--session-id", "{id}"]
 resume_args = ["--resume", "{id}"]

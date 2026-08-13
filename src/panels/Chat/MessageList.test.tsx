@@ -43,6 +43,7 @@ function list(
       cwd="/tmp"
       modelLabelFor={() => null}
       onAnswer={() => {}}
+      onSetMode={() => {}}
       onRevertHunk={async () => true}
       {...over}
     />
@@ -117,6 +118,7 @@ describe("MessageList turn anchoring", () => {
         anchorTurnId={anchor()}
         modelLabelFor={() => null}
         onAnswer={() => {}}
+        onSetMode={() => {}}
         onRevertHunk={async () => true}
       />
     ));

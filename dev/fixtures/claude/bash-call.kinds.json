@@ -1,5 +1,5 @@
 {
-  "verifiedAgainst": "2.1.220 (Claude Code)",
+  "verifiedAgainst": "2.1.231 (Claude Code)",
   "required": [
     "assistant/text",
     "assistant/tool_use",

@@ -171,7 +171,33 @@
       "command": "rm -rf /"
     },
     "requestId": "op-9",
-    "autoDenyAtMs": 1785179400000
+    "autoDenyAtMs": 1785179400000,
+    "agentId": "affdd797eddcfa753",
+    "suggestions": [
+      {
+        "type": "addRules",
+        "rules": [
+          {
+            "toolName": "Bash",
+            "ruleContent": "rm -rf /"
+          }
+        ],
+        "behavior": "allow",
+        "destination": "localSettings"
+      },
+      {
+        "type": "addDirectories",
+        "directories": [
+          "/tmp/w"
+        ],
+        "destination": "session"
+      },
+      {
+        "type": "setMode",
+        "mode": "acceptEdits",
+        "destination": "session"
+      }
+    ]
   },
   {
     "type": "planUpdate",

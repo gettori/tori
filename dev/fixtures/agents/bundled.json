@@ -16,7 +16,7 @@
     "pty_quiet_ms": 2000,
     "needs_you": true,
     "hooks": true,
-    "verified_against": "claude 2.1.220",
+    "verified_against": "claude 2.1.231",
     "chat": {
       "transport": "claude_stream_json",
       "program": "claude",
@@ -28,7 +28,9 @@
         "stream-json",
         "--verbose",
         "--include-partial-messages",
-        "--include-hook-events"
+        "--include-hook-events",
+        "--permission-prompt-tool",
+        "stdio"
       ],
       "session_id_args": [
         "--session-id",
