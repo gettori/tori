@@ -106,6 +106,12 @@ function paneExtensions(
     lineNumbers(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
+    // CodeMirror gives its content `role="textbox"`, and an ARIA input field
+    // with no accessible name is a serious axe violation - two of them here, one
+    // per side, which is the worst case: the whole point of this view is which
+    // of the two you are reading. The visible side label already says, so it is
+    // the name as well. Found by the axe run added with the tooltip sweep.
+    EditorView.contentAttributes.of({ "aria-label": label }),
     paneTheme,
     // In a compartment because accepting a side repaints these lines and
     // nothing else: rebuilding the panes for it would throw away the scroll
@@ -467,7 +473,11 @@ export default function ConflictView(props: {
               size="xs"
               variant="ghost"
               disabled={!prevConflict(regions(), currentId())}
-              title="Previous conflict"
+              // The visible text is "↑", so the name has to be written out:
+              // this is not the tooltip being duplicated, it is the name the
+              // button never had.
+              aria-label="Previous conflict"
+              tooltip="Previous conflict"
               onClick={() => setCurrentId(prevConflict(regions(), currentId())?.id ?? null)}
             >
               ↑
@@ -476,7 +486,8 @@ export default function ConflictView(props: {
               size="xs"
               variant="ghost"
               disabled={!nextConflict(regions(), currentId())}
-              title="Next conflict"
+              aria-label="Next conflict"
+              tooltip="Next conflict"
               onClick={() => setCurrentId(nextConflict(regions(), currentId())?.id ?? null)}
             >
               ↓
@@ -487,7 +498,11 @@ export default function ConflictView(props: {
               size="xs"
               variant="primary"
               disabled={!canResolve()}
-              title={
+              // The one control here whose label answers "why can't I press
+              // this?", so it is the one that has to stay reachable while
+              // disabled - a disabled button fires no pointer events of its own.
+              tooltipWhenDisabled
+              tooltip={
                 canResolve()
                   ? "Write the resolution and stage it as merged"
                   : deleted().length
@@ -530,7 +545,7 @@ export default function ConflictView(props: {
               size="xs"
               variant={keepFile() === true ? "primary" : "default"}
               aria-pressed={keepFile() === true}
-              title="Keep the file, with the surviving side's contents"
+              tooltip="Keep the file, with the surviving side's contents"
               onClick={() => setKeepFile(true)}
             >
               Keep {names()[survivor()!]}
@@ -540,7 +555,7 @@ export default function ConflictView(props: {
             size="xs"
             variant={keepFile() === false ? "primary" : "default"}
             aria-pressed={keepFile() === false}
-            title="Accept the deletion"
+            tooltip="Accept the deletion"
             onClick={() => setKeepFile(false)}
           >
             Delete the file
@@ -561,7 +576,11 @@ export default function ConflictView(props: {
                   size="xs"
                   variant={choices()[r().id] === c ? "primary" : "default"}
                   aria-pressed={choices()[r().id] === c}
-                  title={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
+                  // Contains the visible text rather than replacing it ("Take
+                  // Upstream" over "Upstream"), which is what keeps the name
+                  // and the label agreeing.
+                  aria-label={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
+                  tooltip={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
                   onClick={() => setChoices({ ...choices(), [r().id]: c })}
                 >
                   {c === "both" ? "Both" : names()[c]}

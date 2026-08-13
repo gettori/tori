@@ -238,11 +238,11 @@ describe("setting a value", () => {
     fireEvent.click(screen.getByText("Locals"));
     await waitFor(() => expect(screen.queryByText("count")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle("Set count"));
+    fireEvent.click(screen.getByLabelText("Set count"));
     const input = screen.getByLabelText("Value of count") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "40 + 2" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.queryByTitle("Set count")?.textContent).toBe("42"));
+    await waitFor(() => expect(screen.queryByLabelText("Set count")?.textContent).toBe("42"));
 
     expect(sentCommands("setVariable")[0].args).toMatchObject({
       variablesReference: 100,
@@ -250,7 +250,7 @@ describe("setting a value", () => {
       value: "40 + 2",
     });
     // The adapter's answer, not the typed expression.
-    expect(screen.getByTitle("Set count").textContent).toBe("42");
+    expect(screen.getByLabelText("Set count").textContent).toBe("42");
   });
 
   it("offers no control at all when the adapter does not serve it", async () => {
@@ -261,7 +261,7 @@ describe("setting a value", () => {
 
     // Absent rather than disabled: a control that always fails is worse than no
     // control, because it reads as a feature that is broken.
-    expect(screen.queryByTitle("Set count")).toBeNull();
+    expect(screen.queryByLabelText("Set count")).toBeNull();
     expect(screen.getByText("3")).toBeTruthy();
   });
 
@@ -271,14 +271,14 @@ describe("setting a value", () => {
     fireEvent.click(screen.getByText("Locals"));
     await waitFor(() => expect(screen.queryByText("count")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle("Set count"));
+    fireEvent.click(screen.getByLabelText("Set count"));
     const input = screen.getByLabelText("Value of count") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "nope" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(screen.queryByText(/Cannot set this variable/)).toBeTruthy());
     // The old value stands, so nobody reads a number the program does not hold.
-    expect(screen.getByTitle("Set count").textContent).toBe("3");
+    expect(screen.getByLabelText("Set count").textContent).toBe("3");
   });
 
   it("leaves the value alone on Escape", async () => {
@@ -286,13 +286,13 @@ describe("setting a value", () => {
     fireEvent.click(screen.getByText("Locals"));
     await waitFor(() => expect(screen.queryByText("count")).toBeTruthy());
 
-    fireEvent.click(screen.getByTitle("Set count"));
+    fireEvent.click(screen.getByLabelText("Set count"));
     const input = screen.getByLabelText("Value of count") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "999" } });
     fireEvent.keyDown(input, { key: "Escape" });
     await flush();
 
     expect(sentCommands("setVariable")).toEqual([]);
-    expect(screen.getByTitle("Set count").textContent).toBe("3");
+    expect(screen.getByLabelText("Set count").textContent).toBe("3");
   });
 });

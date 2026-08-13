@@ -144,7 +144,7 @@ async function startRun() {
   return root!.handle.session;
 }
 
-const button = (label: string) => screen.getByTitle(label) as HTMLButtonElement;
+const button = (label: string) => screen.getByLabelText(label) as HTMLButtonElement;
 
 let warn: ReturnType<typeof vi.spyOn>;
 
@@ -173,11 +173,11 @@ describe("the toolbar", () => {
   it("offers pause while running and step nothing", async () => {
     await startRun();
     render(() => <DebugPanel root={REPO} selected={null} />);
-    await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByLabelText("Pause")).toBeTruthy());
 
     // Continue and pause are the two halves of one state, so exactly one of
     // them is ever on screen.
-    expect(screen.queryByTitle("Continue")).toBeNull();
+    expect(screen.queryByLabelText("Continue")).toBeNull();
     // Disabled rather than hidden: a toolbar whose buttons come and go is one
     // nobody can build muscle memory for.
     expect(button("Step over").disabled).toBe(true);
@@ -191,12 +191,12 @@ describe("the toolbar", () => {
   it("opens up when the program stops", async () => {
     const id = await startRun();
     render(() => <DebugPanel root={REPO} selected={null} />);
-    await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByLabelText("Pause")).toBeTruthy());
 
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
-    await waitFor(() => expect(screen.queryByTitle("Continue")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByLabelText("Continue")).toBeTruthy());
 
-    expect(screen.queryByTitle("Pause")).toBeNull();
+    expect(screen.queryByLabelText("Pause")).toBeNull();
     expect(button("Step over").disabled).toBe(false);
     expect(button("Step into").disabled).toBe(false);
     expect(button("Step out").disabled).toBe(false);
@@ -205,9 +205,9 @@ describe("the toolbar", () => {
   it("sends the step the button names", async () => {
     const id = await startRun();
     render(() => <DebugPanel root={REPO} selected={null} />);
-    await waitFor(() => expect(screen.queryByTitle("Pause")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByLabelText("Pause")).toBeTruthy());
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
-    await waitFor(() => expect(screen.queryByTitle("Continue")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByLabelText("Continue")).toBeTruthy());
     sent.length = 0;
 
     fireEvent.click(button("Step into"));

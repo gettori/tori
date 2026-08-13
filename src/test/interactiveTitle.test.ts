@@ -103,8 +103,6 @@ const PENDING_SWEEP = new Map<string, Pending>([
   ["panels/Editor/CheckpointTimeline.tsx", { count: 9, phase: 3 }],
   ["panels/Editor/CommitDetail.tsx", { count: 3, phase: 3 }],
   ["panels/Editor/CommitLog.tsx", { count: 4, phase: 3 }],
-  ["panels/Editor/ConflictView.tsx", { count: 8, phase: 2 }],
-  ["panels/Editor/DebugPanel.tsx", { count: 15, phase: 2 }],
   ["panels/Editor/Editor.tsx", { count: 13, phase: 3 }],
   ["panels/Editor/FileTree/FileTree.tsx", { count: 3, phase: 3 }],
   ["panels/Editor/HunkCommentInput.tsx", { count: 1, phase: 3 }],
@@ -112,8 +110,6 @@ const PENDING_SWEEP = new Map<string, Pending>([
   ["panels/Editor/ProblemsPanel.tsx", { count: 3, phase: 3 }],
   ["panels/Editor/PullRequests/PrDetail.tsx", { count: 3, phase: 3 }],
   ["panels/Editor/PullRequests/ReviewBar.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/ReviewPanel.tsx", { count: 24, phase: 2 }],
-  ["panels/Editor/SearchPanel.tsx", { count: 14, phase: 2 }],
   ["panels/Editor/SearchResultsBuffer.tsx", { count: 1, phase: 3 }],
   ["panels/Editor/TasksPanel.tsx", { count: 1, phase: 3 }],
   ["panels/Editor/TodoPanel.tsx", { count: 4, phase: 3 }],
@@ -158,6 +154,22 @@ const KEPT = new Map<string, Kept>([
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/PullRequests/PullRequests.tsx", { count: 2, reason: TRUNCATION }],
+  [
+    "panels/Editor/ConflictView.tsx",
+    { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` },
+  ],
+  [
+    "panels/Editor/DebugPanel.tsx",
+    {
+      count: 1,
+      reason: `${TRUNCATION}. Its 14 swept controls rest on this static check alone: the panel has no mounted test and authoring one means Tauri DAP fixtures, which phase 2 deliberately did not budget for. ReviewPanel, SearchPanel and ConflictView each got an axe run because each already had a test to hang it on`,
+    },
+  ],
+  [
+    "panels/Editor/ReviewPanel.tsx",
+    { count: 5, reason: `three ${TRUNCATION}, and two of ${HEADING}` },
+  ],
+  ["panels/Editor/SearchPanel.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/SessionPanel.tsx", { count: 3, reason: TRUNCATION }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
@@ -260,9 +272,11 @@ describe("the title= guard", () => {
     }
 
     // Not an assertion about the right number, which would just be this number
-    // written twice. It pins the shape - phases 2 to 5 each still have work,
-    // and phase 1 has none, because phase 1 is what built the replacement.
-    expect([...byPhase.keys()].sort()).toEqual([2, 3, 4, 5]);
+    // written twice. It pins the shape: every phase that still has work is
+    // listed, and one that has finished is gone. Phase 1 built the replacement
+    // and swept nothing; phase 2 took the four heavy Editor panels, so it left
+    // this list when its last entry moved to KEPT.
+    expect([...byPhase.keys()].sort()).toEqual([3, 4, 5]);
     expect(remaining).toBeGreaterThan(0);
 
     // Phase 5's last task turns this into `toBe(0)` and deletes PENDING_SWEEP.

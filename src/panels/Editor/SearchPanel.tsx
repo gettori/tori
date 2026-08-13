@@ -27,6 +27,7 @@ import {
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import {
@@ -102,6 +103,7 @@ const FS_CHANGE_DEBOUNCE_MS = 400;
 
 const GLOBS_ID = "search-globs";
 const SAVED_ID = "search-saved";
+const QUERY_HINT_ID = "search-query-hint";
 const TOGGLES: { key: ToggleKey; icon: LucideIcon; label: string }[] = [
   { key: "case", icon: CaseSensitive, label: "Match case" },
   { key: "wholeWord", icon: WholeWord, label: "Match whole word" },
@@ -597,16 +599,25 @@ export default function SearchPanel(props: {
   return (
     <div class={styles.searchPanel}>
       <div class={styles.inputBar}>
+        {/* The one swept site that does not become a `Tooltip`. This text
+            describes the field rather than naming a control, and a tooltip on a
+            text box opens on focus and then sits over the results for as long as
+            you are typing into it - worse than the `title` it replaces. A
+            description is what a screen reader announces on focus, which is
+            more than the `title` ever did for a keyboard user. */}
         <input
           ref={inputEl}
           class={styles.searchInput}
           type="text"
           placeholder="Search project"
-          title="Enter searches now and remembers the query; Up and Down walk what you have searched here"
+          aria-describedby={QUERY_HINT_ID}
           value={query()}
           onInput={(e) => onInput(e.currentTarget.value)}
           onKeyDown={onQueryKeyDown}
         />
+        <span id={QUERY_HINT_ID} class={styles.srOnly}>
+          Enter searches now and remembers the query; Up and Down walk what you have searched here
+        </span>
         <Show when={showReplace()}>
           <div class={styles.replaceRow}>
             <input
@@ -621,7 +632,10 @@ export default function SearchPanel(props: {
               size="xs"
               icon={<Icon icon={ReplaceAll} size={14} />}
               aria-label="Replace all"
-              title={
+              // The label is the answer to "why is this greyed out?", so it has
+              // to survive the control being disabled.
+              tooltipWhenDisabled
+              tooltip={
                 result().truncated
                   ? "Refine the search first: Replace All is disabled while results are capped"
                   : "Replace all"
@@ -645,7 +659,10 @@ export default function SearchPanel(props: {
                   active={options()[t.key]}
                   disabled={off()}
                   aria-label={t.label}
-                  title={off() ? `${t.label}. ${unsupportedReason(t.key, caps().backend)}` : t.label}
+                  // Disabled means the backend cannot do it, and the label says
+                  // which backend and why - unreachable exactly when it matters.
+                  tooltipWhenDisabled
+                  tooltip={off() ? `${t.label}. ${unsupportedReason(t.key, caps().backend)}` : t.label}
                   onClick={() => toggleOption(t.key)}
                 />
               );
@@ -661,7 +678,7 @@ export default function SearchPanel(props: {
             size="xs"
             icon={<Icon icon={FilePen} size={14} />}
             aria-label="Edit results in a buffer"
-            title="Edit results in a buffer and write them back"
+            tooltip="Edit results in a buffer and write them back"
             disabled={!result().matches.length}
             onClick={openResultsBuffer}
           />
@@ -670,7 +687,7 @@ export default function SearchPanel(props: {
             icon={<Icon icon={Star} size={14} />}
             active={showSaved()}
             aria-label="Saved searches"
-            title="Saved searches"
+            tooltip="Saved searches"
             aria-expanded={showSaved()}
             aria-controls={SAVED_ID}
             onClick={() => setShowSaved((v) => !v)}
@@ -680,7 +697,7 @@ export default function SearchPanel(props: {
             icon={<Icon icon={Replace} size={14} />}
             active={showReplace()}
             aria-label="Toggle replace"
-            title="Toggle replace"
+            tooltip="Toggle replace"
             aria-expanded={showReplace()}
             onClick={() => setShowReplace((v) => !v)}
           />
@@ -689,7 +706,7 @@ export default function SearchPanel(props: {
             icon={<Icon icon={Ellipsis} size={14} />}
             active={showGlobs()}
             aria-label="Include and exclude globs"
-            title="Include and exclude globs"
+            tooltip="Include and exclude globs"
             // It is both a toggle button (pressed) and a disclosure for the
             // glob row (expanded); `aria-expanded` is what names the region.
             aria-expanded={showGlobs()}
@@ -739,7 +756,7 @@ export default function SearchPanel(props: {
                 // A name with no query behind it would save a row that runs
                 // nothing, so the query is as required as the name is.
                 disabled={!saveName().trim() || !query()}
-                title={
+                tooltip={
                   nameTaken(saved(), ws(), saveName())
                     ? `Update the saved search named "${saveName().trim()}"`
                     : "Save this query and its toggles under that name"
@@ -765,14 +782,15 @@ export default function SearchPanel(props: {
                       <Show
                         when={renaming() === s.name}
                         fallback={
-                          <button
+                          <Tooltip
+                            as="button"
                             type="button"
                             class={styles.savedName}
-                            title={`${s.query} - opens as an editable results buffer`}
+                            label={`${s.query} - opens as an editable results buffer`}
                             onClick={() => void openSaved(s)}
                           >
                             {s.name}
-                          </button>
+                          </Tooltip>
                         }
                       >
                         <input
@@ -802,14 +820,14 @@ export default function SearchPanel(props: {
                         size="xs"
                         icon={<Icon icon={Pencil} size={12} />}
                         aria-label={`Rename ${s.name}`}
-                        title={`Rename ${s.name}`}
+                        tooltip={`Rename ${s.name}`}
                         onClick={() => setRenaming(s.name)}
                       />
                       <IconButton
                         size="xs"
                         icon={<Icon icon={Trash2} size={12} />}
                         aria-label={`Delete ${s.name}`}
-                        title={`Delete ${s.name}`}
+                        tooltip={`Delete ${s.name}`}
                         onClick={() => setSaved((st) => deleteSearch(st, ws(), s.name))}
                       />
                     </li>
@@ -848,7 +866,7 @@ export default function SearchPanel(props: {
                     class={styles.rowAction}
                     icon={<Icon icon={Replace} size={12} />}
                     aria-label={`Replace in ${group.path}`}
-                    title={`Replace in ${group.path}`}
+                    tooltip={`Replace in ${group.path}`}
                     disabled={dirtyPaths().includes(group.path) || applying()}
                     onClick={() => replaceFile(group.path)}
                   />
@@ -882,7 +900,7 @@ export default function SearchPanel(props: {
                                     class={styles.rowAction}
                                     icon={<Icon icon={Replace} size={12} />}
                                     aria-label={`Replace this occurrence on line ${m.line}`}
-                                    title="Replace this occurrence"
+                                    tooltip="Replace this occurrence"
                                     disabled={dirtyPaths().includes(m.path) || applying()}
                                     onClick={(e) => {
                                       e.stopPropagation();
