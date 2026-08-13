@@ -254,7 +254,7 @@ export default function HistoryPanel(props: {
                     variant="ghost"
                     size="xs"
                     style={{ "margin-left": "auto" }}
-                    title="Adopt these sessions into the normal listing"
+                    tooltip="Adopt these sessions into the normal listing"
                     onClick={(e) => {
                       e.stopPropagation();
                       void adopt();

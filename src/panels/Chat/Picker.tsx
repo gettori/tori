@@ -2,6 +2,7 @@ import { Show, createSignal, type Component, type JSX } from "solid-js";
 import { Check, ChevronDown, ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Menu, { MenuRow } from "../../components/Menu/Menu";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./Chat.module.css";
 
 /**
@@ -25,7 +26,9 @@ export default function Picker(props: {
   prefix?: string;
   value: string;
   ariaLabel: string;
-  title?: string;
+  /** Hover/focus text for the pill. Named `tooltip`, not `title`: a native
+   *  `title` never reaches the keyboard (issue 102). */
+  tooltip?: string;
   disabled?: boolean;
   /** The shown value is a pick that has not reached a turn boundary yet. */
   pending?: boolean;
@@ -55,7 +58,8 @@ export default function Picker(props: {
 
   return (
     <>
-      <button
+      <Tooltip
+        as="button"
         ref={trigger}
         type="button"
         class={styles.pill}
@@ -67,7 +71,7 @@ export default function Picker(props: {
         aria-label={props.ariaLabel}
         aria-haspopup="menu"
         aria-expanded={!!at()}
-        title={props.title}
+        label={props.tooltip}
         disabled={props.disabled}
         onClick={toggle}
       >
@@ -77,7 +81,7 @@ export default function Picker(props: {
         <span class={styles.pillCaret} aria-hidden="true">
           <Icon icon={ChevronDown} size={13} />
         </span>
-      </button>
+      </Tooltip>
       <Show when={at()}>
         {(pos) => (
           <Menu x={pos().x} y={pos().y} openAbove anchorEl={trigger} onClose={close}>

@@ -413,9 +413,9 @@ export default function TerminalView(props: {
               }
             }}
           />
-          <Button variant="ghost" size="xs" aria-label="Previous" title="Previous" onClick={() => find(false)}>↑</Button>
-          <Button variant="ghost" size="xs" aria-label="Next" title="Next" onClick={() => find(true)}>↓</Button>
-          <Button variant="ghost" size="xs" aria-label="Close" title="Close" onClick={closeSearch}>×</Button>
+          <Button variant="ghost" size="xs" aria-label="Previous" tooltip="Previous" onClick={() => find(false)}>↑</Button>
+          <Button variant="ghost" size="xs" aria-label="Next" tooltip="Next" onClick={() => find(true)}>↓</Button>
+          <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={closeSearch}>×</Button>
         </div>
       </Show>
       <div class={styles.termHost} ref={host} />
