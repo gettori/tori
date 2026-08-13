@@ -214,11 +214,19 @@ pub struct ChatDefaults {
     /// this timeout so it always fires before claude's own hook timeout can.
     #[serde(default = "default_approval_auto_deny_secs")]
     pub approval_auto_deny_secs: u32,
-    /// Show Sway's own injected approval-hook events in the transcript. Off by
-    /// default: the matcher is all-tools, so it fires twice per tool call and
-    /// would bury the user's own hooks in noise.
+    /// Show Sway's own injected hook events in the transcript. Off by default:
+    /// they are plumbing rather than the user's own hooks, and under the legacy
+    /// gate's all-tools matcher they would bury those in noise.
     #[serde(default)]
     pub show_sway_hooks: bool,
+    /// Restore Sway's own permission gate instead of letting the harness ask.
+    ///
+    /// Off by default, because the harness now asks in-protocol and Sway's gate
+    /// would short-circuit that question before it was put. On, the pre-2.1.231
+    /// behaviour is back: Sway's rules decide every tool call. Kept only while
+    /// the in-protocol path proves itself in real use.
+    #[serde(default)]
+    pub legacy_permission_gate: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -251,6 +259,7 @@ impl Default for ChatDefaults {
             tool_output_lines: default_tool_output_lines(),
             approval_auto_deny_secs: default_approval_auto_deny_secs(),
             show_sway_hooks: false,
+            legacy_permission_gate: false,
         }
     }
 }
@@ -566,6 +575,16 @@ pub fn harness_override() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
+/// Whether this install still wants Sway's own permission gate.
+///
+/// Read at spawn rather than cached, and it applies only from that point: the
+/// hook arrives through `--settings` and the in-protocol question through
+/// `--permission-prompt-tool`, both of which bind when the child starts. A
+/// session already running keeps whichever gate it was born with.
+pub fn legacy_permission_gate() -> bool {
+    load_from(&settings_path()).chat_defaults.legacy_permission_gate
+}
+
 #[tauri::command]
 pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, String> {
     save_to(&settings_path(), &settings)?;
@@ -668,6 +687,7 @@ mod tests {
                 tool_output_lines: 5,
                 approval_auto_deny_secs: 30,
                 show_sway_hooks: true,
+                legacy_permission_gate: true,
             },
             harness: Harness { path: Some("/opt/claude".into()) },
             ..Default::default()

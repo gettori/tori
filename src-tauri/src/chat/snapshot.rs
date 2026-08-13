@@ -58,13 +58,21 @@ pub struct Captured {
     pub before: BeforeState,
 }
 
+/// The tools whose calls are worth a before-state.
+///
+/// One list, because two things read it and they must not drift: this module
+/// decides what to capture, and `approval.rs` builds the hook's `matcher` from
+/// the same names. A tool present here but absent from the matcher would never
+/// reach the hook, so its diff would go missing silently.
+pub const WRITE_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+
 /// The files a tool call is about to write.
 ///
 /// Only the writing tools. A `Read` has no before-state worth capturing, and
 /// capturing one would put the hook's cost on the calls that are most frequent.
 pub fn write_targets(tool: &str, input: &Value) -> Vec<String> {
     match tool {
-        "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => input
+        t if WRITE_TOOLS.contains(&t) => input
             .get("file_path")
             .and_then(Value::as_str)
             .map(|p| vec![p.to_string()])
