@@ -59,6 +59,7 @@ import ReviewBar from "./ReviewBar";
 import MergeBar from "./MergeBar";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
+import Tooltip from "../../../components/Tooltip/Tooltip";
 import styles from "./PrDetail.module.css";
 
 /** The sentence for each reason a file shows no diff. Three situations arrive
@@ -819,7 +820,8 @@ export default function PrDetail(props: {
           active={twoColumn()}
           disabled={paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
           icon={<span aria-hidden="true">⇹</span>}
-          title={
+          tooltipWhenDisabled
+          tooltip={
             paneWidth() < SIDE_BY_SIDE_MIN_WIDTH
               ? "Side-by-side needs a wider pane"
               : twoColumn()
@@ -889,10 +891,11 @@ export default function PrDetail(props: {
       <For each={files()}>
         {(f) => (
           <div>
-            <button
+            <Tooltip
+              as="button"
               type="button"
               class={styles.fileRow}
-              title={fileLabel(f)}
+              label={fileLabel(f)}
               onClick={() => toggleFile(f.path)}
             >
               <span class={styles.status} data-file-status={f.status}>
@@ -912,7 +915,7 @@ export default function PrDetail(props: {
                 <span class={styles.added}>+{f.additions}</span>
                 <span class={styles.removed}>-{f.deletions}</span>
               </span>
-            </button>
+            </Tooltip>
             <Show when={openFile() === f.path}>{fileDiff(f)}</Show>
           </div>
         )}

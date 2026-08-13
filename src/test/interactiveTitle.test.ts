@@ -77,6 +77,8 @@ const TRUNCATION =
   "non-interactive `title` on a span/div: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
 const FIXTURE =
   "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
+const ROW_ONCLICK =
+  "a row-level `div` with an `onClick` and no keyboard path, so its `title` shows the full text of a line no Tab reaches. Making these real controls is its own ticket; sweeping them onto `Tooltip` here would only put keyboard-openable hover text on something the keyboard still cannot select";
 const CONTROL_PASSTHROUGH =
   "the control's own native `title` pass-through, kept working while the app is swept onto `tooltip` and retired in phase 5 with the last call site";
 
@@ -99,20 +101,6 @@ const PENDING_SWEEP = new Map<string, Pending>([
   ["panels/Chat/SessionDiffView.tsx", { count: 6, phase: 4 }],
   ["panels/Chat/StatusStrip.tsx", { count: 2, phase: 4 }],
   ["panels/Chat/ToolCallCard.tsx", { count: 3, phase: 4 }],
-  ["panels/Editor/BookmarksPanel.tsx", { count: 3, phase: 3 }],
-  ["panels/Editor/CheckpointTimeline.tsx", { count: 9, phase: 3 }],
-  ["panels/Editor/CommitDetail.tsx", { count: 3, phase: 3 }],
-  ["panels/Editor/CommitLog.tsx", { count: 4, phase: 3 }],
-  ["panels/Editor/Editor.tsx", { count: 13, phase: 3 }],
-  ["panels/Editor/FileTree/FileTree.tsx", { count: 3, phase: 3 }],
-  ["panels/Editor/HunkCommentInput.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/LocalHistory.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/ProblemsPanel.tsx", { count: 3, phase: 3 }],
-  ["panels/Editor/PullRequests/PrDetail.tsx", { count: 3, phase: 3 }],
-  ["panels/Editor/PullRequests/ReviewBar.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/SearchResultsBuffer.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/TasksPanel.tsx", { count: 1, phase: 3 }],
-  ["panels/Editor/TodoPanel.tsx", { count: 4, phase: 3 }],
   ["panels/LeftSidebar/LeftSidebar.tsx", { count: 15, phase: 5 }],
   ["panels/Settings/Settings.tsx", { count: 1, phase: 5 }],
   ["panels/Settings/paneKit.tsx", { count: 4, phase: 5 }],
@@ -152,8 +140,31 @@ const KEPT = new Map<string, Kept>([
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/CommitDetail.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/CommitLog.tsx", { count: 2, reason: TRUNCATION }],
+  ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/PullRequests/PrDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/PullRequests/PullRequests.tsx", { count: 2, reason: TRUNCATION }],
+  [
+    "panels/Editor/CheckpointTimeline.tsx",
+    { count: 5, reason: `three ${TRUNCATION}, one ${ROW_ONCLICK}, and one ${HEADING}` },
+  ],
+  [
+    "panels/Editor/Editor.tsx",
+    {
+      count: 4,
+      reason: `two ${TRUNCATION}, and two of ${HEADING}. Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
+    },
+  ],
+  [
+    "panels/Editor/ProblemsPanel.tsx",
+    { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` },
+  ],
+  [
+    "panels/Editor/TodoPanel.tsx",
+    { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` },
+  ],
   [
     "panels/Editor/ConflictView.tsx",
     { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` },
@@ -167,7 +178,7 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Editor/ReviewPanel.tsx",
-    { count: 5, reason: `three ${TRUNCATION}, and two of ${HEADING}` },
+    { count: 5, reason: `two ${TRUNCATION}, one ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
   ["panels/Editor/SearchPanel.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/SessionPanel.tsx", { count: 3, reason: TRUNCATION }],
@@ -275,8 +286,9 @@ describe("the title= guard", () => {
     // written twice. It pins the shape: every phase that still has work is
     // listed, and one that has finished is gone. Phase 1 built the replacement
     // and swept nothing; phase 2 took the four heavy Editor panels, so it left
-    // this list when its last entry moved to KEPT.
-    expect([...byPhase.keys()].sort()).toEqual([3, 4, 5]);
+    // this list when its last entry moved to KEPT, and phase 3 left it the same
+    // way when the rest of the Editor followed.
+    expect([...byPhase.keys()].sort()).toEqual([4, 5]);
     expect(remaining).toBeGreaterThan(0);
 
     // Phase 5's last task turns this into `toBe(0)` and deletes PENDING_SWEEP.
@@ -320,13 +332,30 @@ function tagRegions(source: string): [number, number, string][] {
     let i = match.index + match[0].length;
     let depth = 0;
     let quote: string | null = null;
+    let comment: "line" | "block" | null = null;
     for (; i < source.length; i++) {
       const c = source[i];
+      // Comments first, and this is not a nicety: a `//` note between two
+      // attributes is ordinary in this codebase, and one apostrophe in it
+      // ("a tab's text") reads as a string that never closes, so the tag's
+      // region runs to the end of the file and every check downstream reads
+      // the wrong attributes. Quietly, which is the failure mode this whole
+      // file is arranged against.
+      if (comment === "line") {
+        if (c === "\n") comment = null;
+        continue;
+      }
+      if (comment === "block") {
+        if (c === "/" && source[i - 1] === "*") comment = null;
+        continue;
+      }
       if (quote) {
         if (c === quote && source[i - 1] !== "\\") quote = null;
         continue;
       }
-      if (c === '"' || c === "'" || c === "`") quote = c;
+      if (c === "/" && source[i + 1] === "/") comment = "line";
+      else if (c === "/" && source[i + 1] === "*") comment = "block";
+      else if (c === '"' || c === "'" || c === "`") quote = c;
       else if (c === "{") depth++;
       else if (c === "}") depth--;
       else if (c === ">" && depth === 0) break;
@@ -336,21 +365,33 @@ function tagRegions(source: string): [number, number, string][] {
   return regions;
 }
 
-/** The innermost tag whose attributes contain `offset`. */
-function tagAt(regions: [number, number, string][], offset: number): string | null {
+/** The innermost tag whose attributes contain `offset`.
+ *
+ *  Innermost, not first: a tag's region runs to the `>` that closes it, and an
+ *  attribute holding JSX (`renderTab={(t) => <Tab …/>}`) keeps the outer tag's
+ *  region open across the whole of the inner one. Reading attributes off the
+ *  first match therefore reads the *parent's* attributes, which is how a
+ *  `<Tab aria-label=…>` nested in an `<OverflowTabBar>` came out looking like
+ *  the tab bar's own. */
+function regionAt(
+  regions: [number, number, string][],
+  offset: number,
+): [number, number, string] | null {
   let best: [number, number, string] | null = null;
   for (const region of regions) {
     if (offset >= region[0] && offset < region[1] && (!best || region[0] > best[0])) {
       best = region;
     }
   }
-  return best ? best[2] : null;
+  return best;
 }
 
 interface TooltipSite {
   path: string;
   tag: string | null;
   hasAriaLabel: boolean;
+  /** `<Tab … />` rather than `<Tab …>text</Tab>`: no children, so no visible text. */
+  selfClosing: boolean;
 }
 
 function tooltipSites(): TooltipSite[] {
@@ -360,15 +401,13 @@ function tooltipSites(): TooltipSite[] {
     const prop = /\btooltip=/g;
     let match: RegExpExecArray | null;
     while ((match = prop.exec(source))) {
-      const region = regions.find(
-        (r) => match!.index >= r[0] && match!.index < r[1],
-      );
-      const tag = tagAt(regions, match.index);
+      const region = regionAt(regions, match.index);
       const attrs = region ? source.slice(region[0], region[1]) : "";
       sites.push({
         path,
-        tag,
+        tag: region ? region[2] : null,
         hasAriaLabel: /\baria-label=/.test(attrs),
+        selfClosing: attrs.trimEnd().endsWith("/"),
       });
     }
   }
@@ -401,7 +440,11 @@ describe("every tooltip= site resolves a name", () => {
   it("names a Tab by its own text rather than by the tooltip", () => {
     const mislabelled = tooltipSites()
       .filter((site) => site.tag != null && NAMED_BY_TEXT.has(site.tag))
-      .filter((site) => site.hasAriaLabel)
+      // A self-closing tab has no children, so it has no visible text for a
+      // label to replace - the right panel's mode tabs are an icon and nothing
+      // else, and `aria-label` is the only name they can have. A tab *with*
+      // text is the case this guards.
+      .filter((site) => site.hasAriaLabel && !site.selfClosing)
       .map((site) => `${site.path}: <${site.tag} tooltip=… aria-label=…>`);
 
     // An `aria-label` on a tab *replaces* its visible text as the accessible

@@ -167,7 +167,7 @@ export default function LocalHistory(props: { workspace: string; file: string })
                       variant="ghost"
                       class={styles.restore}
                       disabled={restoring()}
-                      title="Write this version back to the file"
+                      tooltip="Write this version back to the file"
                       onClick={(e) => {
                         e.stopPropagation();
                         void restore(entry.ts);

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 import { EditorView } from "@codemirror/view";
 
 // The editable results buffer, through the real component and the real
@@ -322,5 +323,15 @@ describe("writing edits back", () => {
     expect(view().state.doc.line(ROW.a).text).toBe("2: const pin = 1");
     expect(screen.getByRole("status").textContent).toMatch(/already been written back/);
     expect(applyCalls.length).toBe(1);
+  });
+});
+
+describe("the results buffer, to axe", () => {
+  it("has no accessibility violations", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Apply")).toBeTruthy());
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 });

@@ -53,11 +53,19 @@ export default function HunkCommentInput(props: {
   }
 
   const disabled = () => !props.target || !!props.disabledReason;
-  const title = () => (disabled() ? props.disabledReason ?? "Select a session first" : "Comment on this hunk");
+  const hint = () => (disabled() ? props.disabledReason ?? "Select a session first" : "Comment on this hunk");
 
   return (
     <>
-      <Button size="xs" variant="ghost" disabled={disabled()} title={title()} onClick={toggle}>
+      {/* `tooltipWhenDisabled`: the hint is the reason it is greyed out. */}
+      <Button
+        size="xs"
+        variant="ghost"
+        disabled={disabled()}
+        tooltipWhenDisabled
+        tooltip={hint()}
+        onClick={toggle}
+      >
         Comment
       </Button>
       <Show when={open()}>

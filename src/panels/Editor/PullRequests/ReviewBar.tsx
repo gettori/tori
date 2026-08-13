@@ -85,7 +85,8 @@ export default function ReviewBar(props: {
               <Button
                 variant={v.event === "comment" ? "primary" : "ghost"}
                 disabled={props.submitting || why() !== null}
-                title={why() ?? undefined}
+                tooltipWhenDisabled
+                tooltip={why() ?? undefined}
                 onClick={() => props.onSubmit(v.event)}
               >
                 {v.label}

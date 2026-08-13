@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { tab, tabs } from "../../test/tabs";
 
 // Starting a run, from the editor's side.
 //
@@ -131,7 +132,8 @@ async function mountEditor() {
 /** Arrive at a file, the way the tree or a picker does. */
 async function openFile(path: string) {
   emitWith(OPEN_IN_EDITOR, { path });
-  await waitFor(() => expect(screen.getByTitle(path)).toBeTruthy());
+  const name = path.split("/").pop()!;
+  await waitFor(() => expect(tab(name)).toBeTruthy());
 }
 
 /** The config `dap_start` was reached with. There is no other route: the
@@ -281,7 +283,7 @@ describe("starting a run", () => {
     await dap.stopAllDap();
 
     fireEvent.click(screen.getByLabelText("Close"));
-    await waitFor(() => expect(screen.queryByTitle(`${REPO}/src/gone.ts`)).toBeNull());
+    await waitFor(() => expect(tabs("gone.ts")).toHaveLength(0));
 
     emit(DEBUG_START);
 

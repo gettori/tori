@@ -340,7 +340,7 @@ export default function Editor(props: {
       icon={<Icon icon={PanelRight} />}
       aria-pressed={shown}
       onClick={() => props.onToggleFiletree?.()}
-      title={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
+      tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
   // Tabs belong to a workspace (branch-unit folder), not to the editor: a file
@@ -1788,7 +1788,7 @@ export default function Editor(props: {
               active={tabId(t) === activeId()}
               onClick={() => setActiveId(tabId(t))}
               onContextMenu={(e) => openTabMenu(e, t)}
-              title={tabTitle(t)}
+              tooltip={tabTitle(t)}
               // A synthetic view has no path to hand anyone: dropping its id on a
               // terminal would paste `sway://…`, which names nothing on disk.
               draggable={!isSyntheticId(t.path)}
@@ -1858,13 +1858,13 @@ export default function Editor(props: {
                 icon={<Icon icon={ArrowLeft} />}
                 disabled={!canGoBack(jumps())}
                 onClick={() => goJump(-1)}
-                title="Go back to where you were (⌃−)"
+                tooltip="Go back to where you were (⌃−)"
               />
               <IconButton
                 icon={<Icon icon={ArrowRight} />}
                 disabled={!canGoForward(jumps())}
                 onClick={() => goJump(1)}
-                title="Go forward again (⌃⇧−)"
+                tooltip="Go forward again (⌃⇧−)"
               />
               <Show when={isPreviewableTab()}>
                 <IconButton
@@ -1873,7 +1873,7 @@ export default function Editor(props: {
                     <Icon icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner} />
                   }
                   onClick={togglePreview}
-                  title={
+                  tooltip={
                     showingPreview()
                       ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
                       : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
@@ -1885,7 +1885,7 @@ export default function Editor(props: {
                   active={blameOn()}
                   icon={<Icon icon={UserRound} />}
                   onClick={toggleBlame}
-                  title={
+                  tooltip={
                     blameOn()
                       ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
                       : "Git blame: show who last changed each line, shaded by age."
@@ -1896,7 +1896,7 @@ export default function Editor(props: {
                 active={follow()}
                 icon={<Icon icon={Bot} />}
                 onClick={() => setFollow(!follow())}
-                title={
+                tooltip={
                   follow()
                     ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
                     : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
@@ -1926,7 +1926,8 @@ export default function Editor(props: {
             <Button
               size="xs"
               disabled={!!sendDisabledReason() || askingConflict()}
-              title={sendDisabledReason() ?? "Ask the selected session to resolve this conflict"}
+              tooltipWhenDisabled
+              tooltip={sendDisabledReason() ?? "Ask the selected session to resolve this conflict"}
               onClick={askAgentToResolveOpen}
             >
               Ask agent to resolve
@@ -2067,7 +2068,11 @@ export default function Editor(props: {
               active={rightMode() === t.mode}
               icon={<Icon icon={t.icon} />}
               onClick={() => setRightMode(t.mode)}
-              title={t.label}
+              tooltip={t.label}
+              // The one `aria-label` on a tooltipped `Tab` in the app. A label
+              // normally *replaces* a tab's visible text as its name, which is
+              // why the guard forbids it - but this tab is icon-only, so the
+              // label is the only name it has.
               aria-label={t.label}
             />
           )}

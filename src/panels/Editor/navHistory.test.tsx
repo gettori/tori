@@ -103,8 +103,8 @@ async function arrive(payload: { path: string; line?: number }) {
   await waitFor(() => expect(code?.activePath).toBe(payload.path));
 }
 
-const backBtn = () => screen.getByTitle(/^Go back to where you were/) as HTMLButtonElement;
-const fwdBtn = () => screen.getByTitle(/^Go forward again/) as HTMLButtonElement;
+const backBtn = () => screen.getByLabelText(/^Go back to where you were/) as HTMLButtonElement;
+const fwdBtn = () => screen.getByLabelText(/^Go forward again/) as HTMLButtonElement;
 
 async function goBack(to: string) {
   fireEvent.click(backBtn());

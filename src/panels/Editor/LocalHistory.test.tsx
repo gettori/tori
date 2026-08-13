@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The view over the backend's real command names and argument shapes. What is
 // asserted here is the half a Rust test cannot see: which version a row asks
@@ -158,5 +159,15 @@ describe("restoring one", () => {
     }
     expect(toasts[0]).toContain("no longer stored");
     expect(screen.getAllByText("Restore")).toHaveLength(2);
+  });
+});
+
+describe("local history, to axe", () => {
+  it("has no accessibility violations", async () => {
+    bridge.entries = [entry(2000, "bbb"), entry(1000, "aaa")];
+    const { container } = mount();
+    await waitFor(() => expect(screen.getByText("last save")).toBeTruthy());
+
+    await expectNoAxeViolations(container);
   });
 });
