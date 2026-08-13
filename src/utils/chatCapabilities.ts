@@ -59,6 +59,17 @@ export type SteerCost = {
   measuredAgainst: string;
 };
 
+/**
+ * Who asks the user before a tool runs.
+ *
+ * `in-protocol` means the harness asks in its own protocol and Sway renders the
+ * question; `sway-hook` means Sway asked instead, from a hook that ran ahead of
+ * the harness's own permission chain. The distinction is not cosmetic: under
+ * `in-protocol` the harness's permission modes are the ones in force, so a mode
+ * named after bypassing permissions really does bypass them.
+ */
+export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
+
 export type ChatTier = {
   rewind: RewindTier;
   steer: SteerTier;
@@ -66,13 +77,23 @@ export type ChatTier = {
    *  something that does not happen. */
   steerCost: SteerCost | null;
   /**
-   * The `PreToolUse` bridge is available, which is what per-tool approval,
-   * Sway-owned rules, spend ceilings and before-state diffs all ride. One flag
-   * rather than four, because they share one mechanism: a harness without it
-   * has none of them, and listing them separately would invite a declaration
-   * claiming three of the four.
+   * These four used to be one flag, `hooks`, on the honest grounds that they
+   * rode one mechanism: the `PreToolUse` bridge. They no longer do. The hook
+   * stopped deciding and now only captures, the harness took over asking, and
+   * the ceiling moved to a boundary that needs no hook at all - so a single flag
+   * would now have to answer four questions with different answers.
    */
-  hooks: boolean;
+  approvals: ApprovalTier;
+  /** Sway's own rule store decides tool calls. Only under the legacy gate, which
+   *  is off by default and is the reason this is still a `true` for Claude: the
+   *  rules UI has to remain reachable for a session spawned with it on. */
+  swayRules: boolean;
+  /** A write tool's before-state is captured, so its card can show a diff. Rides
+   *  the capture hook, which is the only job that hook still has. */
+  beforeStateDiffs: boolean;
+  /** A spend ceiling can stop this chat. Needs nothing from the harness: it is
+   *  Sway declining to open the next turn. */
+  spendCeilings: boolean;
 };
 
 /**
@@ -91,14 +112,30 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // step, 3 valid trials of 3.
     steer: "consumed-before-next-tool",
     steerCost: { minMs: 1468, maxMs: 5365, trials: 3, measuredAgainst: "claude 2.1.220" },
-    hooks: true,
+    // Measured on claude 2.1.231: `--permission-prompt-tool stdio` raises a
+    // `can_use_tool` control request, which is the question Sway now renders.
+    approvals: "in-protocol",
+    // Reachable, not in force: the `legacyPermissionGate` setting spawns a
+    // session whose hook decides from these rules again.
+    swayRules: true,
+    beforeStateDiffs: true,
+    spendCeilings: true,
   },
 };
 
 /** A PTY-only adapter, and the honest answer before `list_agents` resolves. Not
  *  a degraded tier: a PTY-only adapter ships no chat transport at all, so every
  *  value is `none` rather than unknown. */
-export const NO_CHAT_TIER: ChatTier = { rewind: "none", steer: "none", steerCost: null, hooks: false };
+export const NO_CHAT_TIER: ChatTier = {
+  rewind: "none",
+  steer: "none",
+  steerCost: null,
+  approvals: "none",
+  swayRules: false,
+  beforeStateDiffs: false,
+  // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
+  spendCeilings: false,
+};
 
 /** What the harness behind this chat config supports. */
 export function chatTier(transport: ChatTransport | null | undefined): ChatTier {
@@ -107,7 +144,11 @@ export function chatTier(transport: ChatTransport | null | undefined): ChatTier 
 
 /** One published capability, split so a caller can look up its explanation by
  *  `key` without parsing `label` back apart. */
-export type PublishedCapability = { key: "rewind" | "steer" | "hooks"; value: string; label: string };
+export type PublishedCapability = {
+  key: "rewind" | "steer" | "approvals" | "rules" | "diffs" | "budgets";
+  value: string;
+  label: string;
+};
 
 /**
  * The tier as published: one entry per feature that actually shipped.
@@ -123,7 +164,13 @@ export function publishedCapabilities(tier: ChatTier): PublishedCapability[] {
     out.push({ key, value, label: `${key}: ${value}` });
   if (tier.rewind !== "none") add("rewind", tier.rewind);
   if (tier.steer !== "none") add("steer", tier.steer);
-  if (tier.hooks) add("hooks", "pretooluse");
+  // Each of these was once folded into one `hooks: pretooluse` entry, which
+  // published the mechanism rather than the outcome. A reader wants to know who
+  // asks them and what stops the spending, not which hook event carries it.
+  if (tier.approvals !== "none") add("approvals", tier.approvals);
+  if (tier.swayRules) add("rules", "sway-owned");
+  if (tier.beforeStateDiffs) add("diffs", "before-state");
+  if (tier.spendCeilings) add("budgets", "turn-boundary");
   return out;
 }
 

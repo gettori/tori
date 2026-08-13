@@ -1,6 +1,7 @@
 {
   "verifiedAgainst": "2.1.231 (Claude Code)",
   "required": [
+    "control_response/error",
     "control_response/success"
   ],
   "optional": []

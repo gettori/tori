@@ -160,10 +160,9 @@ effort_levels = []
 supports_thinking = false
 supports_images = true
 
-# The six permission modes `--permission-mode` accepts and honours. Sway's own
-# PreToolUse hook runs ahead of all of them, so `bypassPermissions` still
-# prompts for a tool matching no allow rule - hooks run first in claude's
-# permission chain, which is what `permissive_caveat` below says.
+# The six permission modes `--permission-mode` accepts and honours, and they now
+# mean what they say: Sway's hook no longer decides anything, so nothing runs
+# ahead of them and `bypassPermissions` bypasses permissions.
 #
 # `manual` is deliberately absent. The CLI accepts it, but its own help calls it
 # "an alias for 'default'" and the wire agrees: `--permission-mode manual`
@@ -217,11 +216,13 @@ id = "bypassPermissions"
 label = "Bypass"
 hint = "Bypass all permission checks."
 args = ["--permission-mode", "bypassPermissions"]
-# Said wherever this mode is reachable, because its name is a promise Sway
-# deliberately does not keep. Declared per-mode rather than keyed on the id in
-# the frontend: the caveat is about Sway's own approval hook, which runs ahead
-# of whatever the harness calls its permissive mode.
-permissive_caveat = true
+# Runs every tool without asking anyone. Not the retired `permissive_caveat`
+# wearing a new name: that declared a warning about *Sway*, which stopped being
+# true when Sway stopped gating. This declares what the mode itself does, which
+# was always true and matters more now that nothing catches it afterwards. Only
+# this mode: `acceptEdits` still asks about everything that is not an edit, and
+# `dontAsk` denies rather than runs.
+permissive = true
 
 # The five levels `--effort` accepts, confirmed present on this CLI.
 [[chat.effort]]

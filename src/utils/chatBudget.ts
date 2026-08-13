@@ -1,23 +1,27 @@
-// When a chat has spent enough to be stopped, and what it is told when it is.
+// When a chat has spent enough to be stopped, and what the user is told when it
+// is.
 //
 // Pure, so the one thing that matters here - that a ceiling stops a session
-// exactly once, at a boundary, with a reason the model will not try to argue
-// with - is testable without a running agent.
+// exactly once, at a boundary, with a message naming what to do about it - is
+// testable without a running agent.
 //
-// **The stop is a terminal denial and nothing else.** Phase 2's budget spike put
-// three trials through a `PreToolUse` denial that offered no way forward: all
-// three stopped on the first refusal (four tool calls each), with no retry, no
-// `Bash` workaround, no attempt at an alternative approach, and a closing report
-// of what was left undone. The plan had hedged between a tool-boundary stop and
-// a turn-boundary fallback depending on that result, and had budgeted for an
-// immediate interrupt alongside the denial. The denial alone was enough, so the
-// interrupt was never built - it would have been an untested path guarding
-// against a behaviour that was measured not to happen.
+// **The stop lands at the turn boundary, and only the user is told.** It used to
+// land at the next tool call, as a `PreToolUse` denial carrying a reason written
+// to be un-arguable, because Sway's hook saw every call and could refuse one.
+// Sway no longer decides tool calls at all: the harness asks in its own protocol
+// and the hook only captures before-states. What Sway still owns outright is
+// whether a *new turn* starts, so that is where the ceiling now sits.
 //
-// That measurement is an observation at n=3 against one CLI version, not a
-// contract. It is written down here rather than in a commit message so that if a
-// later version starts working around the refusal, the thing to re-check is
-// obvious.
+// The consequence is deliberate and worth stating: a turn already running is
+// allowed to finish. A ceiling can therefore be crossed by the turn that crosses
+// it, and the stop applies to the next one. The alternative - interrupting a
+// live turn - would end work mid-edit to save the fraction of a turn's cost that
+// remained, which is the wrong trade for a limit measured in dollars per
+// session.
+//
+// Nothing is told to the model any more. There is no denial to attach a reason
+// to, and a message injected into the transcript to announce the ceiling would
+// be a new turn: the exact thing being prevented.
 import type { Budgets } from "../panels/Settings/settingsStore";
 
 export type Spend = {
@@ -92,30 +96,27 @@ const WHAT: Record<BudgetBreach["kind"], string> = {
 };
 
 /**
- * What the *model* is told, as the denied tool call's result.
+ * What the user is told, and the only thing anyone is told.
  *
- * Written as a settled fact with no remedy offered, which is the whole point.
- * Spike 2 showed that a denial naming its own fix reliably produces a retry; a
- * budget stop is the one denial where a retry is exactly what must not happen,
- * so this names no fix and offers no alternative. It asks for a summary instead,
- * because the spike found the model closes with one anyway - so the turn ends
- * with something useful rather than with a bare refusal.
+ * It has to name the remedy, because the user is now the only way past this: the
+ * chat will refuse to start another turn until the limit moves, and a message
+ * that reported the stop without saying where to raise it would leave a dead
+ * chat with no visible way back.
  */
-export function stopReason(b: BudgetBreach): string {
-  return (
-    `Stopped: ${WHAT[b.kind]} of ${UNITS[b.kind](b.limit)} has been reached ` +
-    `(${UNITS[b.kind](b.spent)} used). No further tool calls will run in this session. ` +
-    `Do not retry and do not look for another way to do this. ` +
-    `Summarise what you finished and what is left, then stop.`
-  );
-}
-
-/** What the *user* is told, which unlike the model's version does say what to
- *  do about it. */
 export function stopNotice(b: BudgetBreach): string {
   return (
     `This chat hit ${WHAT[b.kind]} of ${UNITS[b.kind](b.limit)} (${UNITS[b.kind](b.spent)} used) ` +
-    `and stopped before its next tool call. Raise the limit in Settings to carry on.`
+    `and will not start another turn. Raise the limit in Settings to carry on.`
+  );
+}
+
+/** Shown when a message is typed or queued into a stopped chat, rather than
+ *  sending it. Distinct from `stopNotice`: that one announces the stop, this one
+ *  answers "why did nothing happen when I pressed send". */
+export function heldNotice(b: BudgetBreach): string {
+  return (
+    `This message is waiting: ${WHAT[b.kind]} of ${UNITS[b.kind](b.limit)} has been reached. ` +
+    `Raise the limit in Settings and send again.`
   );
 }
 

@@ -126,17 +126,17 @@ pub struct RuleFile {
     /// Unix milliseconds, refreshed by the supervisor. A stale stamp means Sway
     /// is wedged or gone even if something still holds the pid.
     pub stamp_ms: u64,
-    /// Set when this session has hit a spend ceiling: every tool call is refused
-    /// with this reason until it is cleared.
+    /// The retired spend stop, read so that a file written before the ceiling
+    /// moved to the turn boundary still parses, and never written again.
     ///
-    /// **It lives here because this is the one file the helper already reads on
-    /// every call.** A ceiling checked only over the approval socket would miss
-    /// exactly the calls that never open one - a `Read` allowed by a rule takes
-    /// the cheap path by design, so a session that had allow-listed its reads
-    /// would sail past its own budget. Putting the stop in the file the cheap
-    /// path already loads costs nothing per call and closes that hole.
-    #[serde(default)]
-    pub stop: Option<String>,
+    /// It cannot simply be deleted: this struct is `deny_unknown_fields`, which
+    /// is what makes a v1 file fail loudly rather than half-read, and that same
+    /// strictness would turn every session file left on disk by a previous build
+    /// into `Parsed::Unreadable` - which the helper treats as "written by a Sway
+    /// I do not know" and answers by denying every call. `skip_serializing` is
+    /// what actually retires the key: the next save writes it out of existence.
+    #[serde(rename = "stop", default, skip_serializing)]
+    pub legacy_stop: Option<String>,
     #[serde(default)]
     pub rules: Vec<Rule>,
 }
@@ -145,7 +145,7 @@ impl RuleFile {
     /// A file in this build's format. Used everywhere a `RuleFile` is built, so
     /// the version is never spelled out by hand at a call site.
     pub fn new(sway_pid: u32, stamp_ms: u64, rules: Vec<Rule>) -> Self {
-        Self { format_version: FORMAT_VERSION, sway_pid, stamp_ms, stop: None, rules }
+        Self { format_version: FORMAT_VERSION, sway_pid, stamp_ms, legacy_stop: None, rules }
     }
 }
 
@@ -367,19 +367,10 @@ pub fn evaluate(parsed: &Parsed, tool: &str, input: &Value, now_ms: u64, alive: 
                 .to_string(),
         );
     }
-    // A spend ceiling outranks every rule, including one that would have allowed
-    // this call without asking. Checked here rather than at the socket because
-    // an allow-listed read never opens one.
-    //
-    // **Terminal by design, with no path back inside the turn.** Phase 2's
-    // budget spike put three trials through a denial that offered no recovery:
-    // all three stopped on the first refusal, four tool calls each, no retry and
-    // no `Bash` workaround, and closed by reporting what was left undone. The
-    // reason therefore states the ceiling as a fact rather than as an obstacle -
-    // a reason that reads as surmountable is one the model will try to surmount.
-    if let Some(reason) = &file.stop {
-        return Verdict::Deny(reason.clone());
-    }
+    // No spend ceiling here any more. It used to outrank every rule from this
+    // file, because Sway's hook saw every tool call and could refuse one; the
+    // hook no longer decides, so the ceiling moved to the turn boundary, where
+    // Sway still has the last word (`utils/chatBudget.ts`).
     let mut strongest = None;
     for rule in file.rules.iter().filter(|r| r.matches(tool, input)) {
         match rule.kind {
@@ -481,15 +472,7 @@ pub fn compiled(project: &ProjectRuleFile, existing: Option<&RuleFile>, sway_pid
             rules.push(rule.clone());
         }
     }
-    let mut out = RuleFile::new(sway_pid, stamp_ms, rules);
-    // **A spend stop is session state, not something compiled from the project,
-    // so it is carried through rather than rebuilt.** Recompiling runs at every
-    // spawn, so dropping it here would mean a session that hit its ceiling came
-    // back running the moment its tab was reopened - the panel does re-arm on
-    // open, but nothing orders that against the spawn, so the stop cannot rely
-    // on winning that race.
-    out.stop = existing.and_then(|f| f.stop.clone());
-    out
+    RuleFile::new(sway_pid, stamp_ms, rules)
 }
 
 /// Read the durable project rules, or say why not.
@@ -1077,47 +1060,28 @@ mod tests {
     /// **The hole this design exists to close.** A `Read` covered by an allow
     /// rule never opens the approval socket - that is the cheap path, and it is
     /// deliberate. So a ceiling enforced at the socket would be one that a
-    /// session which had allow-listed its reads walked straight past. Putting
-    /// the stop in the file the cheap path already loads makes it unskippable.
+    /// **A rule file written when the ceiling lived here still parses.** The
+    /// `stop` key is gone from the struct, but it is on disk in every session
+    /// file a previous build left behind, and serde must ignore it rather than
+    /// fail the read - an unparseable rule file reads as "written by a Sway I do
+    /// not know" and refuses every call.
     #[test]
-    fn a_spend_stop_outranks_a_rule_that_would_have_allowed_the_call() {
-        let Parsed::Ok(mut f) = file(vec![rule("Read", None)]) else { unreachable!() };
-        let call = json!({"file_path": "/proj/a.rs"});
-        assert_eq!(evaluate(&Parsed::Ok(f.clone()), "Read", &call, 1_000_000, alive), Verdict::Allow);
-
-        f.stop = Some("Session budget reached.".into());
-        assert_eq!(
-            evaluate(&Parsed::Ok(f), "Read", &call, 1_000_000, alive),
-            Verdict::Deny("Session budget reached.".into()),
-        );
-    }
-
-    /// **Recompiling must not lift a ceiling.** The session file is rebuilt at
-    /// every spawn from the project's rules, so a stop dropped here would mean a
-    /// session that hit its budget came back running as soon as its tab was
-    /// reopened - which is the whole feature failing quietly.
-    #[test]
-    fn recompiling_a_session_keeps_a_stop_it_was_already_under() {
-        let Parsed::Ok(mut existing) = file(vec![rule("Read", None)]) else { unreachable!() };
-        existing.stop = Some("Session budget reached.".into());
-        let project = ProjectRuleFile { format_version: FORMAT_VERSION, rules: vec![rule("Grep", None)] };
-
-        let out = compiled(&project, Some(&existing), 7, 2_000);
-        assert_eq!(out.stop.as_deref(), Some("Session budget reached."));
-        assert_eq!(
-            evaluate(&Parsed::Ok(out), "Read", &json!({"file_path": "/a"}), 2_000, alive),
-            Verdict::Deny("Session budget reached.".into()),
-        );
-    }
-
-    /// Clearing the stop restores the rules rather than leaving the session
-    /// half-blocked: raising a ceiling has to actually raise it.
-    #[test]
-    fn clearing_the_stop_puts_the_rules_back_in_force() {
-        let Parsed::Ok(mut f) = file(vec![rule("Read", None)]) else { unreachable!() };
-        f.stop = Some("stopped".into());
-        f.stop = None;
-        assert_eq!(evaluate(&Parsed::Ok(f), "Read", &json!({"file_path": "/a"}), 1_000_000, alive), Verdict::Allow);
+    fn a_rule_file_carrying_the_retired_spend_stop_still_parses() {
+        let text = serde_json::json!({
+            "formatVersion": FORMAT_VERSION,
+            "supervisorPid": std::process::id(),
+            "stampMs": 1_000_000u64,
+            "stop": "Session budget reached.",
+            "rules": [],
+        })
+        .to_string();
+        let Parsed::Ok(f) = parse(&text) else { panic!("a file with the retired key must still parse") };
+        assert!(f.rules.is_empty());
+        // And it decides nothing: the ceiling is the turn boundary's business now.
+        assert_eq!(evaluate(&Parsed::Ok(f.clone()), "Read", &json!({"file_path": "/a"}), 1_000_000, alive), Verdict::Ask);
+        // The next write drops the key, so the file heals rather than carrying a
+        // dead stop forever.
+        assert!(!serialize(&f).contains("stop"), "the retired key must not be written back");
     }
 
     // --- approval counts ---------------------------------------------------

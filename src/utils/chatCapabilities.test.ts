@@ -88,20 +88,26 @@ describe("the chat tier", () => {
     const tier = chatTier("claude_stream_json");
     expect(tier.rewind).toBe("fork");
     expect(tier.steer).toBe("consumed-before-next-tool");
-    expect(tier.hooks).toBe(true);
+    // These four were one `hooks: true` while they rode one mechanism. They no
+    // longer do, and the split is the point: the harness asks, Sway's own rules
+    // are merely reachable, the hook does nothing but capture, and the ceiling
+    // needs no hook at all.
+    expect(tier.approvals).toBe("in-protocol");
+    expect(tier.swayRules).toBe(true);
+    expect(tier.beforeStateDiffs).toBe(true);
+    expect(tier.spendCeilings).toBe(true);
   });
 
   it("never publishes a bare feature name, only the qualified value", () => {
-    const filesOnly: ChatTier = { rewind: "files-only", steer: "none", steerCost: null, hooks: false };
+    const filesOnly: ChatTier = { ...NO_CHAT_TIER, rewind: "files-only" };
     expect(publishedCapabilities(filesOnly)).toEqual([
       { key: "rewind", value: "files-only", label: "rewind: files-only" },
     ]);
 
     const buffered: ChatTier = {
-      rewind: "none",
+      ...NO_CHAT_TIER,
       steer: "buffered-to-turn-end",
       steerCost: { minMs: 1, maxMs: 2, trials: 1, measuredAgainst: "x" },
-      hooks: false,
     };
     expect(publishedCapabilities(buffered)).toEqual([
       { key: "steer", value: "buffered-to-turn-end", label: "steer: buffered-to-turn-end" },
@@ -120,8 +126,20 @@ describe("the chat tier", () => {
     // A listing is a promise; an entry reading "rewind: none" invites reading
     // the key and skipping the value.
     expect(
-      publishedCapabilities({ rewind: "none", steer: "none", steerCost: null, hooks: true }).map((c) => c.label),
-    ).toEqual(["hooks: pretooluse"]);
+      publishedCapabilities({ ...NO_CHAT_TIER, approvals: "in-protocol" }).map((c) => c.label),
+    ).toEqual(["approvals: in-protocol"]);
+  });
+
+  // The one that would have been hidden by the old single flag: a harness whose
+  // permission question Sway renders, but which Sway cannot gate itself and
+  // whose writes it cannot diff. Under `hooks: boolean` that had to be answered
+  // yes or no for all four.
+  it("publishes the four former hook features independently", () => {
+    const partial: ChatTier = { ...NO_CHAT_TIER, approvals: "in-protocol", spendCeilings: true };
+    expect(publishedCapabilities(partial).map((c) => c.label)).toEqual([
+      "approvals: in-protocol",
+      "budgets: turn-boundary",
+    ]);
   });
 
   it("quotes the measured steer cost rather than a rounder one", () => {

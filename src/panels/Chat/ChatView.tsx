@@ -8,7 +8,7 @@ import Composer from "./Composer";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
-import ModeSelector, { BYPASS_STILL_APPROVED, needsPermissiveCaveat } from "./ModeSelector";
+import ModeSelector from "./ModeSelector";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
@@ -16,13 +16,13 @@ import { rateLimitMessage } from "../../utils/chatRateLimit";
 import {
   approaching,
   breach,
+  heldNotice,
   stopNotice,
-  stopReason,
   warnNotice,
   type BudgetBreach,
   type Spend,
 } from "../../utils/chatBudget";
-import RuleList from "./RuleList";
+import RuleList, { RULES_NEED_HOOKS, RULES_NEED_THE_GATE } from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
@@ -134,7 +134,7 @@ import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
  *  error: it names the tab that holds the session, or the orphaned child. */
-type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null };
+type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null; swayGated: boolean };
 
 /** One changed file as `checkpoint_turn_files` reports it. */
 type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boolean };
@@ -216,6 +216,23 @@ export default function ChatView(props: {
   // warning that repeats every turn is one people learn to scroll past) and not
   // once per session either (raising a limit has to be able to warn again).
   const [warned, setWarned] = createSignal<string | null>(null);
+  // Whether the user has already been told, this stop, that their message is
+  // parked rather than sent. Once per stop: pressing send five times into a
+  // stopped chat is five reasonable attempts and one piece of news, and five
+  // identical rows would push the queue itself off the screen. Reset when the
+  // ceiling is raised, so the next stop says it again.
+  const [heldSaid, setHeldSaid] = createSignal(false);
+  /**
+   * Whether Sway's own gate is deciding this session's tool calls, which is what
+   * makes a Sway rule mean anything.
+   *
+   * Reported by `chat_spawn` from the settings file this session was launched
+   * with, not derived from the setting: the setting binds at spawn, so reading
+   * it live would show the rules panel a session before it takes effect and hide
+   * it a session after. False until the spawn answers, which is the safe way
+   * round - the panel appears once it is known to be real.
+   */
+  const [swayGated, setSwayGated] = createSignal(false);
   // Human prompts the transcript holds, which is what says whether this chat
   // observed the whole session or only part of it.
   const [promptCount, setPromptCount] = createSignal(0);
@@ -501,6 +518,7 @@ export default function ChatView(props: {
       })
         .then((res) => {
           setOwnership(res.ownership);
+          setSwayGated(res.swayGated);
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
           }
@@ -588,6 +606,7 @@ export default function ChatView(props: {
   // the code exists in this build: the code is here for every session, and a
   // second harness would otherwise inherit Claude's measurements by silence.
   const tier = () => chatTier(findAgent(props.agentId).chat?.transport);
+
 
   async function sendBlocks(blocks: ContentBlock[]) {
     edit((s) => pushUserTurn(s, blocks));
@@ -689,6 +708,24 @@ export default function ChatView(props: {
     // Recorded on the way out whichever path it takes, since from the user's
     // side all three are "I sent that".
     pushHistory(props.sessionId, text);
+    // The ceiling, enforced where Sway actually decides: the turn boundary. The
+    // message is queued rather than refused, so raising the limit sends what was
+    // already typed instead of asking for it again - and it is *said*, because a
+    // send that silently did nothing is the worst of the three outcomes.
+    const held = stopped();
+    if (held) {
+      if (text) edit((s) => enqueue(s, text));
+      if (!heldSaid()) {
+        setHeldSaid(true);
+        edit((s) => applyEvent(s, {
+          type: "sessionError",
+          sessionId: props.sessionId,
+          message: heldNotice(held),
+          fatal: false,
+        }));
+      }
+      return;
+    }
     if (running()) {
       if (canSteer()) {
         void steer(text);
@@ -812,11 +849,12 @@ export default function ChatView(props: {
 
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
-    // The stop rides the same rule file the approval hook reads, so a harness
-    // without that hook cannot be stopped by it. Reporting a ceiling as armed
-    // there would be the one failure a spend ceiling must not have: the user
-    // believes the spending stopped and it did not.
-    if (!tier().hooks) return;
+    // The tier still gates this, but on a different thing than it used to: not
+    // "does this harness have a hook Sway can refuse a call from", which is no
+    // longer how the ceiling works, but "are this chat's turns Sway's to open".
+    // A PTY-only agent's are not. Reporting a ceiling as armed where it is not
+    // is the one failure a spend ceiling must not have.
+    if (!tier().spendCeilings) return;
     const budgets = settings.budgets;
     if (!budgets) return;
     const now = spend();
@@ -825,15 +863,12 @@ export default function ChatView(props: {
     if (hit && !stopped()) {
       setStopped(hit);
       // Into the store as well as the signal: `chatStatus` reads the store, and
-      // that is what puts this session on the sidebar's needs-you edge.
+      // that is what puts this session on the sidebar's needs-you edge. It is
+      // also what stops the flush driver, since `pendingFlush` reads it - see
+      // there for why the ceiling is not expressed as a queue hold.
       edit((st) => {
         st.budgetStopped = true;
       });
-      // The model's reason and the user's differ on purpose: the model is told
-      // a settled fact with no remedy, because a denial naming its own fix
-      // reliably produces a retry (spike 2) and a retry is exactly what a
-      // budget stop must not cause. The user is told what to do about it.
-      await invoke("chat_set_budget_stop", { sessionId: props.sessionId, reason: stopReason(hit) }).catch(() => {});
       edit((s) => applyEvent(s, {
         type: "sessionError",
         sessionId: props.sessionId,
@@ -843,13 +878,14 @@ export default function ChatView(props: {
       return;
     }
     if (!hit && stopped()) {
-      // The ceiling moved. Clearing the flag as well as the file, or the chat
-      // would stay stopped in the UI while its tools ran again.
+      // The ceiling moved. Clearing the flag is all it takes: the flush driver
+      // is watching `pendingFlush`, so whatever was typed while stopped goes out
+      // on the next tick rather than needing to be sent again.
       setStopped(null);
+      setHeldSaid(false);
       edit((st) => {
         st.budgetStopped = false;
       });
-      await invoke("chat_set_budget_stop", { sessionId: props.sessionId, reason: null }).catch(() => {});
       return;
     }
     // Re-armed whenever the ceiling itself moves, keyed on the limit rather than
@@ -1395,7 +1431,13 @@ export default function ChatView(props: {
               </div>
               <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
               <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
-              <RuleList rules={rules()} hooks={tier().hooks} onRemove={onRemoveRule} onRestrict={onRestrict} />
+              <RuleList
+                rules={rules()}
+                gated={swayGated()}
+                whyNot={tier().swayRules ? RULES_NEED_THE_GATE : RULES_NEED_HOOKS}
+                onRemove={onRemoveRule}
+                onRestrict={onRestrict}
+              />
               <SessionInfo
                 mcpServers={state.mcpServers}
                 skills={state.skills}
@@ -1501,13 +1543,6 @@ export default function ChatView(props: {
               onSelect={onSelectMode}
             />
           </>
-        }
-        // Bypass names itself after something Sway does not actually let it do,
-        // so the guard stays a visible line rather than a tooltip.
-        notice={
-          <Show when={needsPermissiveCaveat(chatConfig(), shownModeValue())}>
-            <div class={styles.composerNotice}>{BYPASS_STILL_APPROVED}</div>
-          </Show>
         }
       />
 

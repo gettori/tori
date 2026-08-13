@@ -127,7 +127,9 @@ const DISCRETIONARY = new Set([
 const REQUIRES = {
   "plain-turn": ["assistant/text", "result/success"],
   "two-turns": ["system/init", "assistant/text", "result/success"],
-  initialize: ["control_response/success"],
+  // Both halves: what the protocol serves, and what it refuses. Losing the
+  // error would mean the mid-session-switch finding stopped being measured.
+  initialize: ["control_response/success", "control_response/error"],
   "bash-call": ["assistant/tool_use", "user/tool_result", "result/success"],
   "edit-call": ["assistant/tool_use", "user/tool_result", "result/success"],
   // The cancelled turn's own result, plus a clean one after it: together they
@@ -139,6 +141,15 @@ const REQUIRES = {
   "permission-coverage": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
   "permission-subagent": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
   "permission-grant": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
+  // The hook must run *and* the harness must still ask, so both halves are
+  // required: a run with only one of them measured the wrong thing.
+  "hook-matcher": [
+    "system/hook_started",
+    "system/hook_response",
+    "control_request/can_use_tool",
+    "assistant/tool_use",
+    "result/success",
+  ],
   // No `result`: the whole finding is that the turn never completes, because
   // nobody answered and the CLI will not answer for us.
   "permission-deadline": ["control_request/can_use_tool"],
@@ -443,6 +454,39 @@ function denyHookSettings(scratch) {
   };
 }
 
+// The shipped capture hook's shape: a matcher naming the write tools, and a
+// helper that records what it was handed and decides nothing. `settings_json`
+// in `approval.rs` builds the same two things, so this measures what the app
+// really installs rather than a probe-shaped approximation of it.
+function captureHookSettings(scratch, log) {
+  const helper = join(scratch, "capture-hook.mjs");
+  writeFileSync(
+    helper,
+    [
+      "import { appendFileSync } from 'node:fs';",
+      "let s = '';",
+      "process.stdin.on('data', (d) => (s += d));",
+      "process.stdin.on('end', () => {",
+      "  let name = '?';",
+      "  try { name = JSON.parse(s).tool_name; } catch {}",
+      `  appendFileSync(${JSON.stringify(log)}, name + '\\n');`,
+      // Nothing on stdout, deliberately: any permissionDecision would end the
+      // chain here and the harness would never ask.
+      "});",
+    ].join("\n"),
+  );
+  return {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: "Edit|Write|MultiEdit|NotebookEdit",
+          hooks: [{ type: "command", command: `node ${helper}`, timeout: 30 }],
+        },
+      ],
+    },
+  };
+}
+
 const SCENARIOS = {
   // The floor: one turn, no tools. Everything else is this plus something.
   "plain-turn": async ({ scratch }) => {
@@ -468,10 +512,30 @@ const SCENARIOS = {
   },
 
   // The control protocol, and the slash-command catalogue the composer needs.
+  //
+  // Also records what the control protocol will *not* do: move the permission
+  // question between surfaces mid-session. `--permission-prompt-tool` and
+  // `--settings` both bind when the child starts, so Sway's escape-hatch setting
+  // can only apply from the next session - which is a limitation to state in the
+  // setting's help text rather than one to discover during an incident. Asserted
+  // against the CLI so that a version which *does* add a setter fails here
+  // instead of leaving the help text quietly wrong.
   initialize: async ({ scratch }) => {
     const p = new Probe({ cwd: scratch });
     p.send({ type: "control_request", request_id: "probe-init", request: { subtype: "initialize", hooks: {} } });
     await p.waitFor((e) => e.type === "control_response", 30_000);
+
+    for (const subtype of ["set_permission_prompt_tool", "setPermissionPromptTool"]) {
+      p.send({ type: "control_request", request_id: `probe-${subtype}`, request: { subtype, tool: "stdio" } });
+      const reply = await p.waitFor(
+        (e) => e.type === "control_response" && e.response?.request_id === `probe-${subtype}`,
+        30_000,
+      );
+      if (reply.response?.subtype !== "error") {
+        throw new Error(`${subtype} is supported after all: the prompt surface may now be switchable mid-session`);
+      }
+    }
+
     await p.close();
     return p;
   },
@@ -553,6 +617,46 @@ const SCENARIOS = {
 
     const asked = p.permissionRequests.map((r) => r.tool_name);
     if (!asked.includes("Write")) throw new Error(`Write did not raise can_use_tool; asked: ${asked.join(", ") || "nothing"}`);
+    if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
+    return p;
+  },
+
+  // The two claims Sway's capture hook is built on, measured together because
+  // they only matter together: the `matcher` alternation really selects (so the
+  // hook is handed Edit and Write and never Read), and a hook that emits no
+  // decision lets the permission chain continue (so the harness still asks).
+  //
+  // Get either wrong and the failure is silent in opposite directions: a
+  // matcher treated as a literal name captures no before-state at all, and a
+  // hook that answers suppresses the harness's question for exactly the write
+  // tools this design hands to it.
+  "hook-matcher": async ({ scratch }) => {
+    writeFileSync(join(scratch, "seed.txt"), "hello\n");
+    const log = join(scratch, "hook-fired.log");
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio", "--include-hook-events"],
+      settings: captureHookSettings(scratch, log),
+      answerPermission: () => ({ behavior: "allow" }),
+    });
+    p.sendTurn(
+      "Do exactly these three steps in order, with no other tools: (1) use the Read tool on seed.txt, " +
+        "(2) use the Edit tool to replace the word hello with hi in seed.txt, (3) use the Write tool to " +
+        "create out.txt containing 'ok'. Then stop.",
+    );
+    await p.waitForResult();
+    await p.close();
+
+    const fired = existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : [];
+    if (!fired.includes("Edit") || !fired.includes("Write")) {
+      throw new Error(`the matcher did not select the write tools it names; it fired on: ${fired.join(", ") || "nothing"}`);
+    }
+    if (fired.includes("Read")) throw new Error("the matcher selected Read, so the alternation is not a selector");
+
+    const asked = p.permissionRequests.map((r) => r.tool_name);
+    if (!asked.includes("Write")) {
+      throw new Error(`a silent hook suppressed the harness's question; asked: ${asked.join(", ") || "nothing"}`);
+    }
     if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
     return p;
   },

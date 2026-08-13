@@ -55,7 +55,11 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   rewind:
     "Puts the files back to a chosen turn and carries the conversation into a fork. The forked agent still remembers the turns you undid.",
   steer: "A message typed during a turn goes into that turn rather than waiting for the next one.",
-  hooks: "Per-tool approval, Sway-owned rules and spend ceilings, all riding the agent's PreToolUse hook.",
+  approvals:
+    "Where a tool call's permission question comes from. In-protocol means the agent asks and Sway shows it, so the agent's own permission modes are the ones in force.",
+  rules: "Sway can decide tool calls from its own rules instead, if you turn that on in Chat settings.",
+  diffs: "A tool card can show what a write changed, because Sway records the file just before it is written.",
+  budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
 };
 
 function AgentCard(props: { agent: AgentHealth }) {

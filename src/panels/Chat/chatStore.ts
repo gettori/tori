@@ -890,10 +890,17 @@ export function enqueue(s: ChatState, text: string): QueuedInput {
 }
 
 /** The next queued message that may be sent right now, or null. Null while a
- *  turn is running, and null while the queue is held after a cancelled turn -
- *  which is what stops "stop" from firing the very messages it prevented. */
+ *  turn is running, null while the queue is held after a cancelled turn - which
+ *  is what stops "stop" from firing the very messages it prevented - and null
+ *  under a spend ceiling.
+ *
+ *  The ceiling is checked **here** rather than by holding the queue, because a
+ *  hold is releasable: `releaseQueue` is wired to a "send now" button, and a
+ *  budget stop that a button could lift would not be a ceiling. Left in the
+ *  queue rather than refused, so raising the limit sends what was already
+ *  typed. */
 export function pendingFlush(s: ChatState): QueuedInput | null {
-  if (s.queueHeld || isRunning(s) || s.ended) return null;
+  if (s.budgetStopped || s.queueHeld || isRunning(s) || s.ended) return null;
   return s.queue[0] ?? null;
 }
 

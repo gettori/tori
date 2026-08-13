@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approaching, breach, stopNotice, stopReason, warnNotice } from "./chatBudget";
+import { approaching, breach, heldNotice, stopNotice, warnNotice } from "./chatBudget";
 import type { Budgets } from "../panels/Settings/settingsStore";
 
 const NONE: Budgets = { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 };
@@ -58,24 +58,29 @@ describe("approaching", () => {
   });
 });
 
-describe("what each audience is told", () => {
+describe("what the user is told", () => {
   const hit = { kind: "session" as const, spent: 5.5, limit: 5 };
 
-  // Spike 2: a denial that names its own fix reliably produces a retry. A budget
-  // stop is the one denial where a retry is exactly what must not happen, so the
-  // model's reason offers no remedy and forbids looking for one.
-  it("gives the model no way forward and asks it to close out", () => {
-    const reason = stopReason(hit);
-    expect(reason).toMatch(/do not retry/i);
-    expect(reason).toMatch(/another way/i);
-    expect(reason).toMatch(/summarise/i);
-    expect(reason).not.toMatch(/settings/i);
-  });
+  // There used to be a second audience: `stopReason`, written for the model as
+  // the denied tool call's result, phrased to forbid a retry. Both the denial
+  // and the audience are gone - Sway no longer refuses tool calls, so nothing
+  // carries a reason to the model, and its assertions were removed with it
+  // rather than left asserting the phrasing of a string nobody reads.
 
-  // The user's version is the opposite: it is the only one that can act.
+  // The user is the only one who can act on this, and the only one told.
   it("tells the user what to do about it", () => {
     expect(stopNotice(hit)).toMatch(/raise the limit/i);
+    expect(stopNotice(hit)).toMatch(/settings/i);
     expect(stopNotice(hit)).toMatch(/\$5\.00/);
+  });
+
+  // The stop announces itself once; this answers "why did nothing happen when I
+  // pressed send", which is a different moment and a different sentence.
+  it("says a message was held rather than sent, and where to unblock it", () => {
+    expect(heldNotice(hit)).toMatch(/waiting/i);
+    expect(heldNotice(hit)).toMatch(/raise the limit/i);
+    expect(heldNotice(hit)).toMatch(/settings/i);
+    expect(heldNotice(hit)).not.toEqual(stopNotice(hit));
   });
 
   it("reports context in percent and money in dollars", () => {
