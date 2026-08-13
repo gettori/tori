@@ -1,20 +1,32 @@
 import { splitProps, type JSX } from "solid-js";
+import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./IconButton.module.css";
 import type { ControlSize } from "../controls";
 
 export interface IconButtonProps
-  extends JSX.ButtonHTMLAttributes<HTMLButtonElement> {
+  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
+  /** Narrower than the native attribute, which Solid still types with the
+   *  long-dead `"menu"` value. Nothing in Sway passes it. */
+  type?: "submit" | "reset" | "button";
   /** The glyph (inline `<svg>` or seti component). */
   icon: JSX.Element;
   size?: ControlSize;
   /** Pressed/selected look, for a toggle. Reflected as `aria-pressed`. */
   active?: boolean;
+  /** Hover/focus tooltip, and the accessible name when no `aria-label` is
+   *  given. Prefer this to `title`: a native `title` never appears for a
+   *  keyboard user. */
+  tooltip?: string;
+  tooltipPlacement?: TooltipPlacement;
+  /** Keep the tooltip reachable while the button is `disabled`. Off by default,
+   *  and opted into per site with a reason - see `Tooltip`. */
+  tooltipWhenDisabled?: boolean;
 }
 
 /** A square icon-only control whose side is the size's fixed control height.
  *  Use for toggles (pass `active`) and bare icon actions. An accessible name is
- *  required: pass `aria-label` (a `title` backfills it and doubles as a tooltip),
- *  since there is no visible text. */
+ *  required: pass `aria-label` (a `tooltip` backfills it and is also what a
+ *  hover or a keyboard focus shows), since there is no visible text. */
 export default function IconButton(props: IconButtonProps) {
   const [local, rest] = splitProps(props, [
     "icon",
@@ -25,11 +37,14 @@ export default function IconButton(props: IconButtonProps) {
     "aria-label",
     "aria-pressed",
     "title",
+    "tooltip",
+    "tooltipPlacement",
+    "tooltipWhenDisabled",
   ]);
 
   const title = () =>
     typeof local.title === "string" ? local.title : undefined;
-  const ariaLabel = () => local["aria-label"] ?? title();
+  const ariaLabel = () => local["aria-label"] ?? local.tooltip ?? title();
   // `active` drives the brand-fill look and, by default, aria-pressed. A pane
   // toggle whose "on" state is the plain (not filled) look passes an explicit
   // aria-pressed instead, keeping the accent styling on a `class`.
@@ -37,13 +52,17 @@ export default function IconButton(props: IconButtonProps) {
 
   if (import.meta.env.DEV && ariaLabel() == null) {
     console.warn(
-      "[IconButton] is missing an accessible name; pass `aria-label` (or a `title`).",
+      "[IconButton] is missing an accessible name; pass `aria-label` (or a `tooltip`).",
     );
   }
 
   return (
-    <button
+    <Tooltip
       {...rest}
+      as="button"
+      label={local.tooltip}
+      placement={local.tooltipPlacement}
+      whenDisabled={local.tooltipWhenDisabled}
       type={local.type ?? "button"}
       aria-label={ariaLabel()}
       aria-pressed={ariaPressed()}
@@ -56,6 +75,6 @@ export default function IconButton(props: IconButtonProps) {
       }}
     >
       {local.icon}
-    </button>
+    </Tooltip>
   );
 }
