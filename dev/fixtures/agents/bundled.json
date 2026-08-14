@@ -234,8 +234,85 @@
             "max"
           ]
         }
-      ]
+      ],
+      "acp": {
+        "serve_client_fs": false
+      }
     },
     "source": "bundled:claude"
+  },
+  {
+    "id": "gemini",
+    "label": "Gemini",
+    "program": "gemini",
+    "base_args": [],
+    "yolo_args": [
+      "--yolo"
+    ],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": null,
+    "chat": {
+      "transport": "acp",
+      "program": "gemini",
+      "base_args": [
+        "--acp"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "models": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "source": "bundled:gemini"
+  },
+  {
+    "id": "opencode",
+    "label": "OpenCode",
+    "program": "opencode",
+    "base_args": [],
+    "yolo_args": [
+      "--auto"
+    ],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": "opencode 1.18.3",
+    "chat": {
+      "transport": "acp",
+      "program": "opencode",
+      "base_args": [
+        "acp"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "models": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "source": "bundled:opencode"
   }
 ]

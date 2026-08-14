@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import SessionInfo from "./SessionInfo";
 import type { McpServer } from "../../utils/chatTypes";
+import type { PublishedCapability } from "../../utils/chatCapabilities";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 const invoked = vi.mocked(invoke);
@@ -21,6 +22,7 @@ const props = (over: Partial<Parameters<typeof SessionInfo>[0]> = {}) => ({
   agents: [] as string[],
   plugins: [] as { name: string; version: string | null; source: string | null; path: string | null }[],
   account: null,
+  capabilities: [] as PublishedCapability[],
   ...over,
 });
 
@@ -206,5 +208,32 @@ describe("SessionInfo", () => {
     const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()] })} />);
     expect(container.textContent).not.toContain("11 tools");
     expect(container.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  // The tier is a per-session fact for a generic transport: two ACP agents
+  // behind one transport publish different lists, so the list belongs beside
+  // what the session loaded rather than only on the Agents cards in Settings.
+  it("publishes this chat's capabilities with their qualified values", () => {
+    const { container } = render(() => (
+      <SessionInfo
+        {...props({
+          capabilities: [
+            { key: "approvals", value: "in-protocol", label: "approvals: in-protocol" },
+            { key: "history", value: "session/load", label: "history: session/load" },
+          ],
+        })}
+      />
+    ));
+    open(container);
+    expect(container.textContent).toContain("approvals: in-protocol");
+    expect(container.textContent).toContain("history: session/load");
+    // The bare feature name would promise the unqualified capability.
+    expect(container.textContent).not.toContain("approvals,");
+  });
+
+  it("renders no capability section for a harness that publishes none", () => {
+    const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()] })} />);
+    open(container);
+    expect(container.textContent).not.toContain("Chat capabilities");
   });
 });

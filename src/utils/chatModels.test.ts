@@ -49,6 +49,7 @@ function adapter(): ChatConfig {
     ],
     modes: [],
     effort: [],
+    acp: { serve_client_fs: false },
   };
 }
 

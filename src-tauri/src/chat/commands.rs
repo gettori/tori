@@ -39,6 +39,7 @@ fn make_transport(
     transport: ChatTransport,
     session_id: &str,
     agent_id: &str,
+    acp: AcpOverrides,
 ) -> Box<dyn AgentTransport> {
     match transport {
         ChatTransport::ClaudeStreamJson => Box::new(ClaudeTransport::new(session_id)),
@@ -46,10 +47,9 @@ fn make_transport(
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP harness a TOML file rather than a Rust change. The
         // adapter id travels with it only so the session locators this transport
-        // writes can name the harness they came from.
-        ChatTransport::Acp => {
-            Box::new(AcpTransport::new(session_id, agent_id, AcpOverrides::default()))
-        }
+        // writes can name the harness they came from, and `acp` is that table's
+        // `[chat.acp]` quirks rather than this build's defaults.
+        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, agent_id, acp)),
     }
 }
 
@@ -298,6 +298,7 @@ pub async fn chat_spawn(
     };
 
     let transport = chat.transport;
+    let acp_overrides = chat.acp.clone();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
     let spawned = host.spawn(
@@ -307,7 +308,7 @@ pub async fn chat_spawn(
             let _ = on_event.send(event);
         }),
         spec,
-        move || make_transport(transport, &id_for_factory, &agent_for_factory),
+        move || make_transport(transport, &id_for_factory, &agent_for_factory, acp_overrides.clone()),
     );
     let spawned = match spawned {
         Ok(s) => s,
@@ -1582,11 +1583,46 @@ mod tests {
         cleanup(&session, &cwd);
     }
 
+    /// **The whole of what shipping an ACP harness costs**: a TOML naming the
+    /// transport, and the launch it composes.
+    ///
+    /// Pinned end to end from the bundled adapter rather than from a fixture,
+    /// because the claim [[adr_harness_breadth]] rests on is that this file is
+    /// all there was. Every arg template an ACP adapter leaves empty is asserted
+    /// empty here: a stray `--session-id` would be sent to an agent that mints
+    /// its own ids in-protocol and would fail at spawn, on a path no unit test
+    /// of the transport would reach.
+    #[test]
+    fn the_bundled_opencode_adapter_composes_its_whole_launch_and_gets_an_acp_transport() {
+        let adapter = agents::find("opencode").expect("opencode ships bundled");
+        let chat = adapter.chat.as_ref().expect("with a chat transport");
+        assert_eq!(chat.transport, ChatTransport::Acp);
+        // Defaulted from `[launch] program`, not restated in `[chat]`.
+        assert_eq!(chat.program, "opencode");
+
+        let args = build_args(chat, "sway-minted-id", false, None, None, None, None, &[]);
+        assert_eq!(args, vec!["acp"], "the launch is `opencode acp` and nothing else");
+
+        // A resume composes the same command: reopening is `session/load` inside
+        // the protocol, so there is no second command line for it.
+        let resumed = build_args(chat, "sway-minted-id", true, None, None, None, None, &[]);
+        assert_eq!(resumed, vec!["acp"]);
+
+        // And a model choice does not become a flag, because the switch is a
+        // request. A `model_args` template here would silently win over it.
+        let with_model =
+            build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
+        assert_eq!(with_model, vec!["acp"]);
+
+        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone());
+        assert!(t.child_pid().is_none(), "a transport is inert until started");
+    }
+
     #[test]
     fn the_claude_transport_is_what_the_factory_builds_for_the_bundled_adapter() {
         let chat = claude_chat();
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
-        let t = make_transport(chat.transport, "s1", "claude");
+        let t = make_transport(chat.transport, "s1", "claude", Default::default());
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 }

@@ -18,7 +18,7 @@ export type AgentId = string;
 
 // A closed set, mirroring the Rust enum: a transport is a backend module
 // implementing a wire protocol, so a TOML can only select one that exists.
-export type ChatTransport = "claude_stream_json";
+export type ChatTransport = "claude_stream_json" | "acp";
 
 export type ChatModel = {
   id: string;
@@ -82,6 +82,16 @@ export type ChatConfig = {
   models: ChatModel[];
   modes: ChatMode[];
   effort: ChatEffort[];
+  // `[chat.acp]`: how this agent departs from a spec-correct ACP client. Present
+  // and at its defaults for every transport, inert for the ones that are not ACP.
+  acp: AcpOverrides;
+};
+
+// The two per-agent ACP quirks an adapter may declare. Two named fields rather
+// than free-form JSON, so a third has to be argued for on the backend before a
+// TOML can spell it.
+export type AcpOverrides = {
+  serve_client_fs: boolean;
 };
 
 export type Agent = {
@@ -92,8 +102,11 @@ export type Agent = {
   yolo_args: string[];
   // `{id}`/`{file}` placeholder template; substitute via `applyTemplate`.
   resume_args: string[];
-  parser_kind: ParserKind;
-  running_pattern: string;
+  // Null together for a protocol-backed adapter, whose sessions are not files:
+  // there is no transcript format to parse and no command line naming a session
+  // to match. See src-tauri/src/agents.rs's `AgentAdapter::discovery`.
+  parser_kind: ParserKind | null;
+  running_pattern: string | null;
   pty_quiet_ms: number;
   // Null for a PTY-only agent, which is the normal case rather than a
   // degraded one: a PTY-only adapter ships without a chat transport.
@@ -128,6 +141,35 @@ export const FALLBACK_AGENTS: Agent[] = [
     // is only ever started from a resolved adapter, so a stale copy of the
     // model list would be a liability with no upside. `chatCapable` treats an
     // unresolved agent as not-yet-chat-capable rather than guessing.
+    chat: null,
+  },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    program: "opencode",
+    base_args: [],
+    yolo_args: ["--auto"],
+    // Empty: an ACP row's id is Sway's own, not one the agent minted, so a PTY
+    // resume would start a fresh session while claiming to continue one. The UI
+    // reads the empty template as "this agent's sessions can't be resumed".
+    resume_args: [],
+    // Null together, and this is the whole of what "protocol-backed" means at
+    // first paint: no transcript to parse, and no command line naming a session.
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
+    chat: null,
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    program: "gemini",
+    base_args: [],
+    yolo_args: ["--yolo"],
+    resume_args: [],
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
     chat: null,
   },
 ];

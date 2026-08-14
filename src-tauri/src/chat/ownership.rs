@@ -325,8 +325,19 @@ fn with_live_child(
 /// a real resume of this session, and pid membership in the result restricts it
 /// to *this* process. A bare liveness check would let a recycled pid be reported
 /// as an orphan and offered up to be killed.
+///
+/// **An adapter with no running pattern degrades to the bare liveness check**,
+/// deliberately, and it is the one place that trade is worth naming. A
+/// protocol-backed agent puts its session id on no command line, so the pattern
+/// half of the question is unanswerable for it; answering `false` would report
+/// Sway's own live child as gone and hand a running session to the reaper. The
+/// pid-recycling guard is what is given up, which is the same bargain Phase 5
+/// struck for ACP liveness: the recorded child pid being alive is all there is
+/// to go on.
 fn pid_runs_session(agent: &str, session_id: &str, pid: u32) -> bool {
-    let pattern = crate::agents::session_pattern(agent, session_id);
+    let Some(pattern) = crate::agents::session_pattern(agent, session_id) else {
+        return pid_alive(pid);
+    };
     let Ok(out) = Command::new("pgrep").args(["-f", &pattern]).output() else {
         return false;
     };
