@@ -27,8 +27,8 @@ chat surface.
 chat surface is the generic ACP client: the agent asks its own permission
 questions, reports its own model catalogue, and replays a reopened conversation
 itself. What it does not get is anything riding Claude's `PreToolUse` hook -
-exact before-state diffs, hunk revert, Sway-owned rules - or a spend ceiling,
-since ACP reports context occupancy and no cost. Settings > Agents publishes the
+exact before-state diffs and hunk revert - or a spend ceiling, since ACP reports
+context occupancy and no cost. Settings > Agents publishes the
 list per agent, and a chat session publishes its own under Session.
 
 **gemini** ships bundled and **untested**: nothing has measured it, which is why

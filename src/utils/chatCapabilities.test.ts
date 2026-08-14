@@ -89,12 +89,13 @@ describe("the chat tier", () => {
     const tier = chatTier("claude_stream_json");
     expect(tier.rewind).toBe("fork");
     expect(tier.steer).toBe("consumed-before-next-tool");
-    // These four were one `hooks: true` while they rode one mechanism. They no
-    // longer do, and the split is the point: the harness asks, Sway's own rules
-    // are merely reachable, the hook does nothing but capture, and the ceiling
-    // needs no hook at all.
+    // These three were one `hooks: true` while they rode one mechanism. They no
+    // longer do, and the split is the point: the harness asks, the hook does
+    // nothing but capture, and the ceiling needs no hook at all. A fourth,
+    // `swayRules`, went with the gate: there is no Sway-owned rule store left
+    // for any harness to publish.
     expect(tier.approvals).toBe("in-protocol");
-    expect(tier.swayRules).toBe(true);
+    expect(tier).not.toHaveProperty("swayRules");
     expect(tier.beforeStateDiffs).toBe(true);
     expect(tier.spendCeilings).toBe(true);
   });
@@ -178,7 +179,6 @@ describe("every tier explains what it lacks", () => {
         ["rewind", tier.rewind === "none"],
         ["steer", tier.steer === "none"],
         ["approvals", tier.approvals === "none"],
-        ["rules", !tier.swayRules],
         ["diffs", !tier.beforeStateDiffs],
         ["budgets", !tier.spendCeilings],
       ] as const;
@@ -261,7 +261,9 @@ describe("the ACP tier", () => {
     expect(by("budgets")).not.toContain("hook");
     // And what the user still has instead, where there is something.
     expect(by("rewind")).toContain("Changes panel");
-    expect(by("rules")).toContain("asks its own permission questions");
+    // There is no `rules` gap to explain any more: no harness has a Sway-owned
+    // rule store, so its absence is not a thing this transport lacks.
+    expect(by("rules")).toBe("");
   });
 
   it("cannot steer, and quotes no cost for one", () => {

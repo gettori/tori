@@ -470,8 +470,11 @@ function captureHookSettings(scratch, log) {
       "  let name = '?';",
       "  try { name = JSON.parse(s).tool_name; } catch {}",
       `  appendFileSync(${JSON.stringify(log)}, name + '\\n');`,
-      // Nothing on stdout, deliberately: any permissionDecision would end the
-      // chain here and the harness would never ask.
+      // The marker and nothing else, exactly as the shipped helper prints it.
+      // No `permissionDecision`, deliberately: any decision would end the chain
+      // here and the harness would never ask. What this scenario measures is
+      // that an output carrying *only* an unknown key does not.
+      "  process.stdout.write(JSON.stringify({ swayApproval: true }));",
       "});",
     ].join("\n"),
   );
@@ -655,9 +658,20 @@ const SCENARIOS = {
 
     const asked = p.permissionRequests.map((r) => r.tool_name);
     if (!asked.includes("Write")) {
-      throw new Error(`a silent hook suppressed the harness's question; asked: ${asked.join(", ") || "nothing"}`);
+      throw new Error(
+        `the hook's marker-only output ended the permission chain; asked: ${asked.join(", ") || "nothing"}`,
+      );
     }
     if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
+
+    // And the marker survived the round trip, which is what lets Sway tell its
+    // own hook row apart from a user's. `hook_name` cannot: it reports the tool.
+    const responses = p.events.filter((e) => e.type === "system" && e.subtype === "hook_response");
+    const echoed = responses.filter((e) => typeof e.output === "string" && e.output.includes("swayApproval"));
+    if (!echoed.length) {
+      const seen = responses.map((e) => JSON.stringify({ output: e.output, stdout: e.stdout, outcome: e.outcome }));
+      throw new Error(`no hook_response carried the marker back; saw: ${seen.join(" | ") || "no hook_response at all"}`);
+    }
     return p;
   },
 

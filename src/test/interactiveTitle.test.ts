@@ -124,7 +124,6 @@ const KEPT = new Map<string, Kept>([
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/Chat/ModelPicker.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
-  ["panels/Chat/RuleList.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
@@ -208,7 +207,7 @@ const KEPT = new Map<string, Kept>([
 
 /** The `title=` this ticket set out to keep: the full text behind a truncated
  *  label, on a `span`, `div` or `code` that no keyboard can reach. */
-const RAW_ELEMENT_TITLES = 64;
+const RAW_ELEMENT_TITLES = 63;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. */
 const ROW_ONCLICK_ROWS = 10;
@@ -303,7 +302,7 @@ describe("the title= guard", () => {
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       code: 1,
       div: 16,
-      span: 47,
+      span: 46,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

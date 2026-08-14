@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use super::approval::{self, ApprovalServer};
+use super::approval::{self, CaptureServer};
 use super::model::{ChatCommand, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
@@ -59,48 +59,19 @@ type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 /// two only meet at the session id. Keeping them separate is also what lets a
 /// second harness reuse the bridge unchanged if its own hook mechanism matches.
 pub struct SessionBridge {
-    pub server: Arc<ApprovalServer>,
+    pub server: Arc<CaptureServer>,
     pub snapshots: Arc<Mutex<SnapshotCache>>,
-    /// Keeps the liveness-stamp refresher running. Cleared on teardown, which is
-    /// what makes an orphaned child's next allow-listed tool call fail closed:
-    /// nobody is refreshing the stamp any more.
-    stamping: Arc<std::sync::atomic::AtomicBool>,
     session_id: String,
 }
 
 impl SessionBridge {
-    pub fn new(server: Arc<ApprovalServer>, snapshots: Arc<Mutex<SnapshotCache>>, session_id: &str) -> Self {
-        let stamping = Arc::new(std::sync::atomic::AtomicBool::new(true));
-        let flag = stamping.clone();
-        let id = session_id.to_string();
-        std::thread::spawn(move || {
-            loop {
-                // Checked immediately before the write, not only at the top of
-                // the loop. `teardown` clears the flag and *then* removes the
-                // rules file, so a refresher waking from its sleep in between
-                // would write the file back - leaving a rules file naming a live
-                // Sway pid, which would pre-approve a later session that reused
-                // the id. Exactly what teardown exists to prevent.
-                if !flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    return;
-                }
-                approval::refresh_stamp(&id);
-                std::thread::sleep(std::time::Duration::from_millis(super::rules::STAMP_REFRESH_MS));
-            }
-        });
-        Self { server, snapshots, stamping, session_id: session_id.to_string() }
+    pub fn new(server: Arc<CaptureServer>, snapshots: Arc<Mutex<SnapshotCache>>, session_id: &str) -> Self {
+        Self { server, snapshots, session_id: session_id.to_string() }
     }
 
-    /// Stop supervising. The stamp stops being refreshed, so any rule this
-    /// session's rules file holds goes stale within the TTL and stops being
-    /// honoured - the same fate a crashed Sway's rules meet.
+    /// Stop capturing for this session.
     pub fn teardown(&self) {
-        self.stamping.store(false, std::sync::atomic::Ordering::SeqCst);
         self.server.shutdown();
-        // The rules file goes with the session: a rule is scoped to the chat
-        // that created it, and leaving it behind would silently pre-approve a
-        // later session that happened to reuse the id.
-        let _ = std::fs::remove_file(super::rules::rules_path(&self.session_id));
         // The settings file holds this session's socket path and token, for a
         // socket that no longer exists. Nothing should be able to read it back.
         let _ = std::fs::remove_file(approval::settings_path(&self.session_id));
@@ -140,33 +111,6 @@ fn ends_session(event: &ChatEvent) -> bool {
     )
 }
 
-/// Which of the two gates took an answer.
-///
-/// The caller needs this because the two persist a durable "and stop asking"
-/// differently: the harness was handed the grant in the answer itself, as
-/// `updatedPermissions`, while the bridge has no such channel and relies on
-/// Sway's own rule store. Writing both for one click would leave two records of
-/// one decision, in two formats, only one of which the harness ever reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AnsweredBy {
-    Harness,
-    Bridge,
-}
-
-/// The `PreToolUse` bridge's vocabulary for a decision.
-///
-/// Lives here rather than beside the Tauri command because the host is what
-/// routes an answer now, and nothing below `commands.rs` may depend on it.
-/// Both defaults name who decided: the reason reaches the model as the tool
-/// result, and a bare "Denied." tells it nothing about where to go next.
-pub(super) fn hook_response_for(decision: PermissionDecision, reason: Option<&str>) -> approval::HookResponse {
-    let said = reason.map(str::to_string);
-    match decision {
-        PermissionDecision::Allow => approval::HookResponse::allow(said.unwrap_or_else(|| "Allowed in Sway.".into())),
-        PermissionDecision::Deny => approval::HookResponse::deny(said.unwrap_or_else(|| "Denied in Sway.".into())),
-    }
-}
-
 impl ChatHost {
     /// Test-only: a host whose registry persists to `path` rather than the real
     /// `chat-claims.json`, so a test run cannot drop a live session's claim out
@@ -176,7 +120,7 @@ impl ChatHost {
         Self { sessions: Sessions::default(), registry: Arc::new(Registry::at(path)), bridges: Arc::default() }
     }
 
-    /// Attach a session's approval bridge, once `chat_spawn` has bound its
+    /// Attach a session's capture bridge, once `chat_spawn` has bound its
     /// socket. Separate from `spawn` because the socket has to exist *before*
     /// the child is launched - its path goes into the `--settings` payload the
     /// child is started with.
@@ -188,10 +132,10 @@ impl ChatHost {
 
     /// A sender that can reach any live session's sink later.
     ///
-    /// The approval server is built before the session exists, so its emit
-    /// closure cannot capture a sink; it captures this instead and resolves the
-    /// sink at emit time. A call for a session that has since gone is dropped,
-    /// which is correct: its tool call is being denied anyway.
+    /// Closures built before a session exists cannot capture its sink; they
+    /// capture this instead and resolve the sink at emit time. An event for a
+    /// session that has since gone is dropped, which is correct: there is no
+    /// longer a transcript for it to belong to.
     pub fn emitter(&self) -> impl Fn(&str, ChatEvent) + Send + Sync + 'static {
         let sessions = self.sessions.clone();
         move |session_id, event| {
@@ -207,17 +151,14 @@ impl ChatHost {
         lock(&self.bridges).get(session_id).map(|b| b.snapshots.clone())
     }
 
-    /// Answer a blocked tool call, sending the answer to whichever of the two
-    /// gates is actually waiting on it.
+    /// Answer a tool call the harness is asking about.
     ///
-    /// **The transport is asked first, and its answer decides.** A prompt reaches
-    /// the user either from the harness asking in-protocol or from Sway's
-    /// `PreToolUse` bridge blocking on a socket, and the two have separate
-    /// request-id spaces. Only the transport can say whether an id is one of its
-    /// outstanding `can_use_tool` questions, so it is asked, and the bridge is
-    /// the fallback for everything it disclaims. Guessing the other way round -
-    /// answering the socket first - would resolve nothing when the harness was
-    /// the one waiting, and the click would land as a deadline denial instead.
+    /// **Only the transport can take this.** There used to be a second waiter -
+    /// Sway's own `PreToolUse` gate, blocking on a socket with its own request-id
+    /// space - and this routed between them. That gate is gone: the harness is
+    /// the only thing that asks, so an id the transport disclaims belongs to
+    /// nobody, and saying so is better than resolving it somewhere that would
+    /// swallow it.
     pub fn answer_permission(
         &self,
         session_id: &str,
@@ -226,27 +167,18 @@ impl ChatHost {
         decision: PermissionDecision,
         scope: PermissionScope,
         reason: Option<&str>,
-    ) -> Result<AnsweredBy, String> {
+    ) -> Result<(), String> {
         let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
-        if let Some(transport) = transport {
-            if lock(&transport).respond_permission(tool_use_id, request_id, decision, scope, reason)? {
-                return Ok(AnsweredBy::Harness);
-            }
-        }
-        self.resolve_permission(session_id, request_id, hook_response_for(decision, reason))?;
-        Ok(AnsweredBy::Bridge)
-    }
-
-    /// Answer a blocked tool call over the `PreToolUse` bridge specifically.
-    pub fn resolve_permission(&self, session_id: &str, request_id: &str, resp: approval::HookResponse) -> Result<(), String> {
-        let server = lock(&self.bridges).get(session_id).map(|b| b.server.clone());
-        let Some(server) = server else { return Err(format!("no approval bridge for session {session_id}")) };
-        approval::resolve(&server, request_id, resp);
+        let Some(transport) = transport else { return Err(format!("no live session {session_id}")) };
+        // A `false` here means nothing is waiting on that id: the question timed
+        // out, or its turn ended, and the click arrived after. Deliberately not
+        // an error - the race is routine, and an error toast for it would report
+        // a fault where there is only a stale button.
+        let _ = lock(&transport).respond_permission(tool_use_id, request_id, decision, scope, reason)?;
         Ok(())
     }
 
-    /// Tear a session's bridge down. Everything currently blocked is denied
-    /// rather than left to time out, since nobody is left who could answer it.
+    /// Tear a session's bridge down.
     fn drop_bridge(&self, session_id: &str) {
         if let Some(bridge) = lock(&self.bridges).remove(session_id) {
             bridge.teardown();
@@ -936,22 +868,22 @@ mod tests {
     /// Installing a second bridge for one session **tears the first one down**.
     ///
     /// Pinned because it is why `chat_spawn` returns early on a remount rather
-    /// than falling through. A running child's approval socket path went into
-    /// its `--settings` at launch and cannot be changed, so replacing the bridge
-    /// would deny whatever was blocked, delete the session's rules, and leave
-    /// the child calling a socket that had just been shut down. This test states
-    /// the hazard; the early return in `chat_spawn` is what avoids it.
+    /// than falling through. A running child's capture socket path went into its
+    /// `--settings` at launch and cannot be changed, so replacing the bridge
+    /// would leave the child calling a socket that had just been shut down, and
+    /// every later write would lose its diff. This test states the hazard; the
+    /// early return in `chat_spawn` is what avoids it.
     #[test]
     fn installing_a_second_bridge_tears_the_first_one_down() {
         let host = ChatHost::at(temp_store());
         let session = format!("rebridge-{}", std::process::id());
 
-        let first = crate::chat::approval::start(Box::new(|_| {}), Box::new(|_| {})).unwrap();
+        let first = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         let first_dir = first.sock_path().parent().unwrap().to_path_buf();
         host.install_bridge(&session, SessionBridge::new(first, Arc::new(Mutex::new(SnapshotCache::new(8))), &session));
         assert!(first_dir.exists());
 
-        let second = crate::chat::approval::start(Box::new(|_| {}), Box::new(|_| {})).unwrap();
+        let second = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         host.install_bridge(&session, SessionBridge::new(second, Arc::new(Mutex::new(SnapshotCache::new(8))), &session));
 
         // The first server really stopped serving: its directory is gone once the
@@ -965,35 +897,25 @@ mod tests {
         host.drop_bridge(&session);
     }
 
-    /// **Tearing a bridge down must not leave its rules behind.**
+    /// **Tearing a bridge down must not leave its settings file behind.**
     ///
-    /// `teardown` clears the refresher flag and then removes the rules file, so
-    /// a refresher waking from its sleep in between could write the file back -
-    /// leaving a rules file naming a *live* Sway pid, which would pre-approve a
-    /// later session that reused the id. The flag is therefore checked
-    /// immediately before the write, and this waits out a full refresh interval
-    /// to give the race a chance to happen.
+    /// That file names a socket path and carries the token that authenticates to
+    /// it. Once the server is down the socket is gone, and a readable file
+    /// describing how to talk to it is a credential for nothing that should
+    /// still be lying about.
     #[test]
-    fn a_torn_down_bridge_leaves_no_rules_file_behind_for_a_later_session() {
+    fn a_torn_down_bridge_leaves_no_settings_file_behind() {
         let session = format!("teardown-{}", std::process::id());
-        let rules_path = crate::chat::rules::rules_path(&session);
-        let server = crate::chat::approval::start(Box::new(|_| {}), Box::new(|_| {})).unwrap();
+        let server = crate::chat::approval::start(Box::new(|_| {})).unwrap();
+        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token()).unwrap();
+        let settings_path = std::path::PathBuf::from(&settings[1]);
+        assert!(settings_path.exists(), "the session was launched with a settings file");
+
         let bridge = SessionBridge::new(server, Arc::new(Mutex::new(SnapshotCache::new(8))), &session);
-
-        // The refresher has written it.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while !rules_path.exists() && std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        assert!(rules_path.exists(), "the supervisor should be stamping a rules file");
-
         bridge.teardown();
 
-        // Long enough for a mid-sleep refresher to wake and write it back.
-        std::thread::sleep(std::time::Duration::from_millis(crate::chat::rules::STAMP_REFRESH_MS + 500));
-        assert!(!rules_path.exists(), "a torn-down session's rules must not be resurrected");
         assert!(
-            !crate::chat::approval::settings_path(&session).exists(),
+            !settings_path.exists(),
             "the settings file holds a token for a socket that no longer exists"
         );
     }

@@ -11,8 +11,8 @@
 //! calls for a small map atomically replaced, never a file per fact. Keying by
 //! project rather than putting every session in one global map keeps each file
 //! bounded by the sessions of one project, so the rewrite stays small on a
-//! machine with years of history, and matches the path shape
-//! [`crate::chat::rules::counts_path`] already uses.
+//! machine with years of history, and uses the shared path shape
+//! [`crate::owned_state::project_state_path`] gives every per-project store.
 //!
 //! **Turns observed is recorded next to turns cost**, because the difference is
 //! the honesty rule: a chat opened on a session with prior turns has history it
@@ -24,7 +24,16 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::rules::{write_atomically, FORMAT_VERSION};
+use crate::owned_state::write_atomically;
+
+/// The version stamped into a usage file.
+///
+/// Held here rather than shared, and deliberately still `2`: this used to be the
+/// *rule* file's version constant, borrowed because both files were written by
+/// the same module. Every usage file already on disk carries that value, so
+/// giving this store its own constant must not change it - renumbering to 1
+/// would make every existing file look like it came from the future.
+const FORMAT_VERSION: u32 = 2;
 
 /// One session's running total.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -50,7 +59,7 @@ pub struct UsageFile {
 }
 
 pub fn usage_path(cwd: &str) -> PathBuf {
-    super::rules::project_state_path("usage", cwd)
+    crate::owned_state::project_state_path("usage", cwd)
 }
 
 pub fn load(path: &Path) -> UsageFile {

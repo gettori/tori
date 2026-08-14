@@ -22,7 +22,6 @@ import {
   type BudgetBreach,
   type Spend,
 } from "../../utils/chatBudget";
-import RuleList, { RULES_NEED_HOOKS, RULES_NEED_THE_GATE } from "./RuleList";
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
@@ -120,7 +119,6 @@ import {
   type QueuedInput,
   type ToolItem,
 } from "./chatStore";
-import { noteRulesChanged, rulesRevision, type RuleKind, type RuleOffer, type ScopedRule } from "../../utils/chatRules";
 import {
   refusalMessage,
   refusalOf,
@@ -134,7 +132,7 @@ import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
  *  error: it names the tab that holds the session, or the orphaned child. */
-type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null; swayGated: boolean };
+type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null };
 
 /** One changed file as `checkpoint_turn_files` reports it. */
 type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boolean };
@@ -183,7 +181,6 @@ export default function ChatView(props: {
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
-  const [rules, setRules] = createSignal<ScopedRule[]>([]);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   // The transcript and the diff are two readings of one session, so they are a
   // toggle rather than two places to be. The turn the reader was on is kept
@@ -201,10 +198,6 @@ export default function ChatView(props: {
   // tree state nothing recorded would fail at the revert with nothing on screen
   // having warned it might.
   const [turnStamps, setTurnStamps] = createSignal<Record<string, number>>({});
-  // Sway's standing offer to stop asking about a call approved by hand a few
-  // times. Null until the count reaches the threshold, and cleared by either
-  // answer, since the backend offers exactly once.
-  const [ruleOffer, setRuleOffer] = createSignal<RuleOffer | null>(null);
   // What this session and its project have spent, read back from disk on open so
   // a reopened tab resumes its budget rather than restarting it.
   const [spent, setSpent] = createSignal<UsageTotals | null>(null);
@@ -222,17 +215,6 @@ export default function ChatView(props: {
   // identical rows would push the queue itself off the screen. Reset when the
   // ceiling is raised, so the next stop says it again.
   const [heldSaid, setHeldSaid] = createSignal(false);
-  /**
-   * Whether Sway's own gate is deciding this session's tool calls, which is what
-   * makes a Sway rule mean anything.
-   *
-   * Reported by `chat_spawn` from the settings file this session was launched
-   * with, not derived from the setting: the setting binds at spawn, so reading
-   * it live would show the rules panel a session before it takes effect and hide
-   * it a session after. False until the spawn answers, which is the safe way
-   * round - the panel appears once it is known to be real.
-   */
-  const [swayGated, setSwayGated] = createSignal(false);
   // Human prompts the transcript holds, which is what says whether this chat
   // observed the whole session or only part of it.
   const [promptCount, setPromptCount] = createSignal(0);
@@ -522,7 +504,6 @@ export default function ChatView(props: {
       })
         .then((res) => {
           setOwnership(res.ownership);
-          setSwayGated(res.swayGated);
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
           }
@@ -773,21 +754,6 @@ export default function ChatView(props: {
     void sendBlocks(blocks);
   }
 
-  // Re-read rather than patched locally: the rule store is a file the hook
-  // helper reads on every tool call, and a list maintained here would be a
-  // second opinion about what is in force.
-  //
-  // Keyed on the shared revision, not on this panel's own edits: a project rule
-  // is shared by every chat open on the folder, so one granted next door changes
-  // what this chat will do without asking. One file read per rule change across
-  // all chats, which is nothing next to a tool call.
-  createEffect(() => {
-    rulesRevision();
-    void invoke<ScopedRule[]>("chat_list_rules", { sessionId: props.sessionId, cwd: props.cwd })
-      .then(setRules)
-      .catch(() => setRules([]));
-  });
-
   function onAnswer(card: ToolItem, answer: Answer) {
     const approval = card.approval;
     if (!approval) return;
@@ -795,40 +761,16 @@ export default function ChatView(props: {
     // the user answers, and the tool's real outcome still comes from
     // `toolCallCompleted`.
     edit((s) => resolveApproval(s, card.toolUseId));
-    void invoke<RuleOffer | null>("chat_respond_permission", {
+    // The scope travels with the answer and is recorded by the harness, in the
+    // harness's own grammar. Sway keeps no rule store of its own to update.
+    void invoke("chat_respond_permission", {
       sessionId: props.sessionId,
-      cwd: props.cwd,
       requestId: approval.requestId,
       toolUseId: card.toolUseId,
-      toolName: card.name ?? "",
-      toolInput: card.input ?? {},
       decision: answer.decision,
       scope: answer.scope,
       reason: answer.reason,
-    })
-      .then((offer) => {
-        if (answer.scope !== "once") noteRulesChanged();
-        // Answering the same prompt by hand a few times is Sway's cue to ask
-        // whether it should stop asking. The backend offers exactly once, at
-        // the threshold, so declining is remembered by the count moving past
-        // it rather than by storing a refusal.
-        if (offer) setRuleOffer(offer);
-      })
-      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
-  }
-
-  // Turn the offer into a project rule, marked as learned so the rule list can
-  // say where it came from.
-  function onAcceptRuleOffer(offer: RuleOffer) {
-    setRuleOffer(null);
-    void invoke("chat_accept_rule_offer", {
-      sessionId: props.sessionId,
-      cwd: props.cwd,
-      tool: offer.tool,
-      prefix: offer.prefix,
-    })
-      .then(noteRulesChanged)
-      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+    }).catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
   /** What this chat has spent, in the three currencies a ceiling can name. */
@@ -934,36 +876,6 @@ export default function ChatView(props: {
       message: warnNotice(near, budgets),
       fatal: false,
     }));
-  }
-
-  // Project-scoped, always: a restriction that expired with the tab would be a
-  // restriction you had to remember to re-apply, which is not a restriction.
-  function onRestrict(tool: string, kind: RuleKind, glob: string) {
-    void invoke("chat_add_restriction", {
-      sessionId: props.sessionId,
-      cwd: props.cwd,
-      tool,
-      kind,
-      glob: glob || null,
-      prefix: null,
-    })
-      .then(noteRulesChanged)
-      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
-  }
-
-  function onRemoveRule(rule: ScopedRule) {
-    void invoke("chat_remove_rule", {
-      sessionId: props.sessionId,
-      cwd: props.cwd,
-      tool: rule.tool,
-      prefix: rule.prefix,
-      // Named, so revoking an allow rule cannot take a `deny` that happens to
-      // share its tool and prefix with it.
-      glob: rule.glob ?? null,
-      kind: rule.kind ?? "allow",
-    })
-      .then(noteRulesChanged)
-      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
   function onSelectMode(mode: PermissionMode) {
@@ -1340,27 +1252,6 @@ export default function ChatView(props: {
         </div>
       </Show>
 
-      {/* Offered where the answering happened, and only after the user has
-          answered the same prompt by hand enough times for the offer to be
-          about a habit rather than a guess. Declining is just dismissing it:
-          the backend offers once, at the threshold, so it does not come back. */}
-      <Show when={ruleOffer()}>
-        {(offer) => (
-          <div class={styles.banner}>
-            <span class={styles.bannerText}>
-              You have allowed {offer().tool} on {offer().prefix} {offer().approvals} times. Stop asking for it in this
-              project?
-            </span>
-            <Button size="sm" variant="primary" onClick={() => onAcceptRuleOffer(offer())}>
-              Always allow here
-            </Button>
-            <Button size="sm" onClick={() => setRuleOffer(null)}>
-              Keep asking
-            </Button>
-          </div>
-        )}
-      </Show>
-
       {/* The one part of a rewind that could not be undone: the fork carries the
           original's whole context, so the agent remembers the turns that are no
           longer above it. Persistent rather than dismissable - the gap lasts as
@@ -1467,13 +1358,6 @@ export default function ChatView(props: {
               </div>
               <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
               <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
-              <RuleList
-                rules={rules()}
-                gated={swayGated()}
-                whyNot={tier().swayRules ? RULES_NEED_THE_GATE : RULES_NEED_HOOKS}
-                onRemove={onRemoveRule}
-                onRestrict={onRestrict}
-              />
               <SessionInfo
                 mcpServers={state.mcpServers}
                 skills={state.skills}
