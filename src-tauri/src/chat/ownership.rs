@@ -284,6 +284,40 @@ fn pid_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
+/// Which of `ids` `claims` says are still driven by a live agent child.
+///
+/// **The id-independent half of liveness.** [`pid_runs_session`] answers "is
+/// this process running that session" by finding the session id on a command
+/// line, which only works for a harness that puts it there. An ACP agent's
+/// command line is identical for every session it ever runs - the id is minted
+/// inside the protocol and never appears in argv - so matching on it would
+/// report every ACP session of an agent running whenever any one of them was.
+/// What is left is the claim: Sway recorded the child it started, and whether
+/// that pid is alive is a question the process table can still answer.
+///
+/// Deliberately does not also require the claiming Sway to be alive. A child
+/// that outlived its Sway is an orphan, and an orphan is still a running agent;
+/// the reap path is what offers to end it, and reporting it dead here would hide
+/// it from the very sweep that notices it.
+///
+/// Pure, so the rule is tested against a table rather than against whatever
+/// happens to be claimed on the machine.
+fn with_live_child(
+    claims: &HashMap<String, Claim>,
+    ids: &[String],
+    alive: impl Fn(u32) -> bool,
+) -> Vec<String> {
+    ids.iter()
+        .filter(|id| {
+            claims
+                .get(*id)
+                .and_then(|c| c.child_pid)
+                .is_some_and(&alive)
+        })
+        .cloned()
+        .collect()
+}
+
 /// Is `pid` a process whose command line still matches `agent`'s running pattern
 /// for `session_id`?
 ///
@@ -343,8 +377,7 @@ impl Registry {
         let held = guard.get(session_id).cloned();
         let probe = Probe {
             holder_alive: held.as_ref().map(|c| pid_alive(c.sway_pid)).unwrap_or(false),
-            externally_running: crate::sessions::session_running(session_id.to_string(), agent.to_string())
-                .unwrap_or(false),
+            externally_running: crate::sessions::running_by_pattern(agent, session_id),
             child_still_ours: held
                 .as_ref()
                 .and_then(|c| c.child_pid)
@@ -371,6 +404,20 @@ impl Registry {
             claim.child_pid = Some(child_pid);
             let _ = save_claims_to(&self.path, &guard);
         }
+    }
+
+    /// Which of `ids` this registry still holds a live agent child for.
+    ///
+    /// Answers one bounded question about the ids the caller names rather than
+    /// handing out the whole table, which is why it is a method here instead of
+    /// a reader over [`Self::snapshot`]. See [`with_live_child`] for why an ACP
+    /// session has no other honest liveness check.
+    pub fn sessions_with_live_child(&self, ids: &[String]) -> Vec<String> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        with_live_child(&guard, ids, pid_alive)
     }
 
     pub fn release(&self, session_id: &str, tab_id: &str) -> bool {
@@ -759,6 +806,35 @@ mod tests {
         assert!(pid_alive(std::process::id()));
     }
 
+    /// The id-independent liveness rule, tested against a table rather than
+    /// against whatever happens to be running: a session is live exactly when
+    /// the claim records a child and that child is still there.
+    #[test]
+    fn a_session_is_live_when_its_claimed_child_is() {
+        let mut claims = HashMap::new();
+        claims.insert("live".to_string(), {
+            let mut c = claim(Surface::Chat, "tab-a");
+            c.child_pid = Some(4242);
+            c
+        });
+        claims.insert("gone".to_string(), {
+            let mut c = claim(Surface::Chat, "tab-b");
+            c.child_pid = Some(9999);
+            c
+        });
+        // A PTY tab's child is a login shell, so its claim records no agent
+        // child at all - and no child is not a running session.
+        claims.insert("pty".to_string(), {
+            let mut c = claim(Surface::PtyAgent, "tab-c");
+            c.child_pid = None;
+            c
+        });
+
+        let ids = ["live", "gone", "pty", "never-claimed"].map(str::to_string).to_vec();
+        let live = with_live_child(&claims, &ids, |pid| pid == 4242);
+        assert_eq!(live, vec!["live".to_string()]);
+    }
+
     /// `kill -0 0` succeeds, because 0 means "my whole process group" rather
     /// than a process. A liveness check that trusted it would report a
     /// zero-valued pid as alive, and a terminate that trusted it would signal
@@ -799,7 +875,7 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let mut seen = false;
         while std::time::Instant::now() < deadline && !seen {
-            seen = crate::sessions::session_running(id.clone(), "claude".to_string()).unwrap_or(false);
+            seen = crate::sessions::running_by_pattern("claude", &id);
             if !seen {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }

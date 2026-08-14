@@ -344,7 +344,47 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     // Drop entries whose files disappeared.
     cache.retain(|k, _| seen.contains(k));
 
-    cache.values().filter_map(|e| e.meta.clone()).collect()
+    let mut all: Vec<SessionMeta> = cache.values().filter_map(|e| e.meta.clone()).collect();
+    all.extend(acp_sessions());
+    all
+}
+
+/// The ACP sessions Sway has locators for, as listing rows.
+///
+/// Merged in beside adapter discovery rather than expressed as a `Discovery`
+/// variant, and the distinction is real rather than a dodge: `Discovery` says
+/// where *an adapter* keeps its sessions, and an ACP agent keeps them somewhere
+/// only the protocol reaches. No directory-and-regex could describe it, and a
+/// parser kind would have nothing to parse. What Sway has instead is its own
+/// record of what the protocol told it, which is one store shared by every ACP
+/// adapter rather than a per-adapter one. See `chat::acp_sessions`.
+///
+/// Only four fields come from the wire, so only four are filled. **`branch` is
+/// empty on purpose**: a listed row carries none, and the folder Sway happens to
+/// be showing is a different session's branch as often as it is this one's.
+/// `created_at` repeats `last_active` because ACP records no creation time; the
+/// frontend uses it to attribute a just-spawned tab, and an invented earlier
+/// date would attribute the wrong one.
+fn acp_sessions() -> Vec<SessionMeta> {
+    crate::chat::acp_sessions::all().into_iter().map(acp_meta).collect()
+}
+
+/// One recorded ACP session as a listing row. Pure, so what a listed row does
+/// and does not carry is assertable without a live agent.
+fn acp_meta(s: crate::chat::acp_sessions::AcpSession) -> SessionMeta {
+    SessionMeta {
+        path: crate::chat::acp_sessions::locator_path(&s.id)
+            .to_string_lossy()
+            .into_owned(),
+        id: s.id,
+        cwd: s.cwd,
+        branch: String::new(),
+        title: s.title,
+        last_active: s.updated_at,
+        created_at: s.updated_at,
+        name: None,
+        agent: s.agent,
+    }
 }
 
 /// Does a session's recorded `cwd` belong to `folder` (the folder itself or a
@@ -617,6 +657,23 @@ fn session_pattern(agent: &str, id: &str) -> String {
     agents::session_pattern(agent, id)
 }
 
+/// Can a live session of `agent` be recognised from the process table?
+///
+/// True for a harness that puts the session id on its command line, which is
+/// what `session_pattern` matches against. **False for ACP**, whose agents are
+/// launched as a plain `opencode acp` and mint the session id inside the
+/// protocol: two sessions of one ACP agent are two identical command lines, so
+/// a pattern match would report all of them running whenever any one was.
+///
+/// Read off the adapter's declared transport rather than its id, so a
+/// user-added ACP harness answers correctly without being named here.
+fn found_by_pattern(agent: &str) -> bool {
+    !matches!(
+        agents::find(agent).and_then(|a| a.chat.as_ref()).map(|c| c.transport),
+        Some(agents::ChatTransport::Acp)
+    )
+}
+
 /// Is a live `agent` process currently resuming session `id`?
 ///
 /// One subprocess per call, so it is for the single-session callers only (a tab
@@ -624,12 +681,35 @@ fn session_pattern(agent: &str, id: &str) -> String {
 /// sessions must use `sessions_running`, whose cost does not scale with the
 /// number of ids.
 #[tauri::command]
-pub fn session_running(id: String, agent: String) -> Result<bool, String> {
-    let pattern = session_pattern(&agent, &id);
+pub fn session_running(
+    state: State<'_, crate::chat::host::ChatState>,
+    id: String,
+    agent: String,
+) -> Result<bool, String> {
+    if !found_by_pattern(&agent) {
+        return Ok(!state.0.registry.sessions_with_live_child(&[id]).is_empty());
+    }
+    Ok(running_by_pattern(&agent, &id))
+}
+
+/// The process-table half of [`session_running`], and the whole of the answer
+/// the ownership registry can use.
+///
+/// Split out because the registry asks this question from *inside* a claim, with
+/// no Tauri state to reach the registry through - and asking a registry about
+/// itself mid-claim would be circular anyway. For an agent whose sessions are
+/// not findable by pattern the answer is a flat `false`: "a process outside Sway
+/// is resuming this session" is a claim nothing about an ACP agent can support,
+/// and guessing it from a command line that names no session would contest every
+/// session of that agent at once.
+pub(crate) fn running_by_pattern(agent: &str, id: &str) -> bool {
+    if !found_by_pattern(agent) {
+        return false;
+    }
+    let pattern = session_pattern(agent, id);
     let out = Command::new("pgrep").args(["-f", &pattern]).output();
-    Ok(out
-        .map(|o| o.status.success() && !o.stdout.is_empty())
-        .unwrap_or(false))
+    out.map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false)
 }
 
 /// One session to probe: an id is only meaningful against the agent that owns it.
@@ -693,7 +773,18 @@ fn running_ids(agent: &str, ids: &[String], command_lines: &[String]) -> Vec<Str
 ///
 /// The ids are de-duplicated: callers count the returned list
 /// (`tabs.length + detached`), so a repeated id would read as two live sessions.
-fn resolve_running(sessions: Vec<SessionRef>, lines_for: impl Fn(&str) -> Vec<String>) -> Vec<String> {
+///
+/// An agent whose sessions are not findable by pattern is resolved through
+/// `live_children` instead, which asks the ownership registry about the whole
+/// batch at once rather than probing one session at a time. Injected for the
+/// same reason `lines_for` is: the split between the two routes is then a
+/// property a test can observe rather than infer.
+fn resolve_running(
+    sessions: Vec<SessionRef>,
+    by_pattern: impl Fn(&str) -> bool,
+    lines_for: impl Fn(&str) -> Vec<String>,
+    live_children: impl Fn(&[String]) -> Vec<String>,
+) -> Vec<String> {
     let mut by_agent: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashSet<(String, String)> = HashSet::new();
     for s in sessions {
@@ -703,6 +794,10 @@ fn resolve_running(sessions: Vec<SessionRef>, lines_for: impl Fn(&str) -> Vec<St
     }
     let mut running = Vec::new();
     for (agent, ids) in by_agent {
+        if !by_pattern(&agent) {
+            running.extend(live_children(&ids));
+            continue;
+        }
         let lines = lines_for(&agent);
         running.extend(running_ids(&agent, &ids, &lines));
     }
@@ -710,8 +805,16 @@ fn resolve_running(sessions: Vec<SessionRef>, lines_for: impl Fn(&str) -> Vec<St
 }
 
 #[tauri::command]
-pub fn sessions_running(sessions: Vec<SessionRef>) -> Result<Vec<String>, String> {
-    Ok(resolve_running(sessions, agent_command_lines))
+pub fn sessions_running(
+    state: State<'_, crate::chat::host::ChatState>,
+    sessions: Vec<SessionRef>,
+) -> Result<Vec<String>, String> {
+    Ok(resolve_running(
+        sessions,
+        found_by_pattern,
+        agent_command_lines,
+        |ids| state.0.registry.sessions_with_live_child(ids),
+    ))
 }
 
 #[derive(Serialize)]
@@ -1946,10 +2049,15 @@ mod tests {
             .map(|(id, agent)| SessionRef { id: id.to_string(), agent: agent.to_string() })
             .collect();
 
-        let mut running = resolve_running(sessions, |agent| {
-            asked.borrow_mut().push(agent.to_string());
-            vec![format!("claude --resume {a}"), format!("claude -p --session-id {b}")]
-        });
+        let mut running = resolve_running(
+            sessions,
+            |_| true,
+            |agent| {
+                asked.borrow_mut().push(agent.to_string());
+                vec![format!("claude --resume {a}"), format!("claude -p --session-id {b}")]
+            },
+            |_| unreachable!("a pattern-findable agent never asks the claims"),
+        );
         running.sort();
 
         // Four ids over one agent cost exactly one lookup, and `a` asked twice
@@ -1960,13 +2068,64 @@ mod tests {
         assert_eq!(running, expected);
     }
 
+    /// The failure this prevents: an ACP agent is launched as a plain
+    /// `opencode acp` and mints its session id inside the protocol, so every one
+    /// of its sessions has the same command line. Matching a pattern against
+    /// them would report all of them running whenever any one was; the claims,
+    /// which record a child pid per session, are the only thing that can tell
+    /// them apart.
+    #[test]
+    fn an_agent_not_findable_by_pattern_is_resolved_from_the_claims_instead() {
+        let live = "acp-live";
+        let dead = "acp-dead";
+        let sessions: Vec<SessionRef> = [live, dead]
+            .iter()
+            .map(|id| SessionRef { id: id.to_string(), agent: "opencode".to_string() })
+            .collect();
+
+        let running = resolve_running(
+            sessions,
+            |_| false,
+            |_| unreachable!("an agent with no usable pattern must never reach pgrep"),
+            |ids| ids.iter().filter(|id| *id == live).cloned().collect(),
+        );
+
+        assert_eq!(running, vec![live.to_string()]);
+    }
+
+    /// A listed ACP row carries four fields, and the two it does not carry are
+    /// the ones worth pinning: an empty branch renders as no branch, where a
+    /// borrowed one would file the session under a branch unit it was never in.
+    #[test]
+    fn an_acp_row_carries_no_branch_rather_than_a_borrowed_one() {
+        let meta = acp_meta(crate::chat::acp_sessions::AcpSession {
+            id: "ses_a".into(),
+            agent: "opencode".into(),
+            acp_session_id: "ses_a".into(),
+            cwd: "/repo".into(),
+            title: "fix the sidebar".into(),
+            updated_at: 1_786_708_800,
+        });
+
+        assert_eq!(meta.branch, "");
+        assert_eq!(meta.agent, "opencode");
+        assert_eq!(meta.title, "fix the sidebar");
+        assert_eq!(meta.last_active, 1_786_708_800);
+        // ACP records no creation time, so the one field that would have to be
+        // invented repeats what is known rather than guessing an earlier date.
+        assert_eq!(meta.created_at, meta.last_active);
+        // The locator is a real file at a real path, which is what keeps
+        // `SessionMeta.path` honest without becoming an `Option`.
+        assert!(meta.path.ends_with("ses_a.json"), "{}", meta.path);
+    }
+
     /// The signature is the other half of that guarantee: a caller cannot fall
     /// back to per-id probing without changing it.
     #[test]
     fn sessions_running_takes_a_list_so_spawns_do_not_scale_with_ids() {
         let source = include_str!("sessions.rs");
         assert!(
-            source.contains("pub fn sessions_running(sessions: Vec<SessionRef>)"),
+            source.contains("    sessions: Vec<SessionRef>,\n) -> Result<Vec<String>, String>"),
             "the batch probe must take a list of sessions, not one id"
         );
         // The single-id `pgrep` belongs to `session_running` alone. A third call

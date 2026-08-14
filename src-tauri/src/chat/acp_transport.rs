@@ -27,23 +27,25 @@
 //!     `can_use_tool` request id, and be answered later from the command thread.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    CancelNotification, InitializeRequest, NewSessionRequest, PromptRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionId, SessionModeId, SessionNotification,
-    SetSessionModeRequest,
+    AuthMethod, CancelNotification, InitializeRequest, InitializeResponse, ListSessionsRequest,
+    LoadSessionRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
+    SessionModeId, SessionNotification, SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, Responder};
+use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
 use futures::channel::mpsc;
 use futures::StreamExt;
 
 use super::acp::{self, AcpOverrides};
+use super::acp_sessions::{self, AcpSession, ListedSession};
 use super::model::{
     ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope,
 };
@@ -244,6 +246,10 @@ fn split_options(
 
 pub struct AcpTransport {
     shared: Arc<Shared>,
+    /// The adapter this session belongs to. Recorded in every locator this
+    /// transport writes, so a listed row can say which harness it came from
+    /// rather than leaving the sidebar to guess from the id's shape.
+    agent: String,
     /// The command channel into the connection thread. `None` before `start`,
     /// which is what makes a command sent too early an error rather than a panic.
     commands: Option<mpsc::UnboundedSender<Command>>,
@@ -260,8 +266,13 @@ pub struct AcpTransport {
 }
 
 impl AcpTransport {
-    pub fn new(session_id: impl Into<String>, overrides: AcpOverrides) -> Self {
+    pub fn new(
+        session_id: impl Into<String>,
+        agent: impl Into<String>,
+        overrides: AcpOverrides,
+    ) -> Self {
         Self {
+            agent: agent.into(),
             shared: Arc::new(Shared {
                 session_id: session_id.into(),
                 finished: AtomicBool::new(false),
@@ -328,6 +339,7 @@ impl AgentTransport for AcpTransport {
         let shared = self.shared.clone();
         let overrides = self.overrides.clone();
         let cwd = spec.cwd.clone();
+        let agent = self.agent.clone();
         thread::Builder::new()
             .name(format!("acp-{}", self.shared.session_id))
             .spawn(move || {
@@ -337,6 +349,7 @@ impl AgentTransport for AcpTransport {
                     shared.clone(),
                     sink.clone(),
                     cwd,
+                    agent,
                     overrides,
                 ));
                 // Whatever happened, nothing is left blocked on a question
@@ -447,6 +460,7 @@ async fn run_session(
     shared: Arc<Shared>,
     sink: Sink,
     cwd: String,
+    agent: String,
     overrides: AcpOverrides,
 ) -> Result<(), String> {
     let notification_shared = shared.clone();
@@ -480,7 +494,8 @@ async fn run_session(
         )
         .connect_with(transport, |conn: ConnectionTo<Agent>| async move {
             let result =
-                drive_session(&conn, &mut commands, &shared, &sink, &cwd, &overrides).await;
+                drive_session(&conn, &mut commands, &shared, &sink, &cwd, &agent, &overrides)
+                    .await;
             if let Err(message) = result {
                 if !shared.finished.load(Ordering::SeqCst) {
                     emit(
@@ -576,12 +591,14 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) {
 }
 
 /// Handshake, open a session, then serve commands until close.
+#[allow(clippy::too_many_arguments)]
 async fn drive_session(
     conn: &ConnectionTo<Agent>,
     commands: &mut mpsc::UnboundedReceiver<Command>,
     shared: &Arc<Shared>,
     sink: &Sink,
     cwd: &str,
+    agent: &str,
     overrides: &AcpOverrides,
 ) -> Result<(), String> {
     let init = with_deadline(
@@ -605,11 +622,7 @@ async fn drive_session(
         },
     );
 
-    let session = conn
-        .send_request(new_session_request(cwd, overrides))
-        .block_task()
-        .await
-        .map_err(describe_session_failure)?;
+    let session = open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
 
     emit(
         sink,
@@ -628,9 +641,31 @@ async fn drive_session(
             extra: Default::default(),
         },
     );
-    let _ = init;
+    // **After the chat is open, never before it.** Enumerating an agent's other
+    // sessions is worth one request on a connection that already exists, but it
+    // is not worth making the user wait: an agent with pages of history would
+    // otherwise hold a freshly clicked chat closed for several round trips over
+    // something nobody asked to see. Commands sent during the walk queue on the
+    // channel below and are served the moment it returns.
+    //
+    // Gated on the advertisement, so an agent that does not do listings is never
+    // sent a method it would answer with `method not found`.
+    if lists_sessions(&init) {
+        if let Err(message) = refresh_listing(conn, agent, cwd).await {
+            // Non-fatal by design: the session is already open and works whether
+            // or not Sway could enumerate its siblings.
+            emit(
+                sink,
+                ChatEvent::SessionError {
+                    session_id: shared.session_id.clone(),
+                    message: format!("this agent would not list its sessions: {message}"),
+                    fatal: false,
+                },
+            );
+        }
+    }
 
-    let session_id = session.session_id;
+    let session_id = session;
     while let Some(command) = commands.next().await {
         match command {
             Command::Prompt(blocks) => {
@@ -761,18 +796,200 @@ fn new_session_request(cwd: &str, overrides: &AcpOverrides) -> NewSessionRequest
     request
 }
 
+/// Does this agent advertise `session/list`?
+///
+/// Read off the handshake rather than assumed, and read as an advertisement
+/// rather than as a promise of rows: `opencode acp` 1.18.3 advertises the
+/// capability and returns nothing at all. An empty list is an empty history,
+/// never an error.
+fn lists_sessions(init: &InitializeResponse) -> bool {
+    init.agent_capabilities.session_capabilities.list.is_some()
+}
+
+/// How many pages of `session/list` Sway will walk before it stops asking.
+///
+/// A bound rather than a full drain: the cursor is the agent's, and an agent
+/// whose `nextCursor` never clears would otherwise loop forever. Ten pages is
+/// far past the 50 rows the measured agents return in one.
+///
+/// **What a full ten pages drops is the oldest history**, because a listing
+/// comes back newest-first, so the sessions a user is likely to reopen are the
+/// ones that survive the cap. Said here rather than reported to the user: a
+/// message on every chat open, for a store nobody has yet grown that large, is
+/// worse than the limit it describes.
+const MAX_SESSION_PAGES: usize = 10;
+
+/// Ask the agent what sessions it has here, and write a locator for each.
+///
+/// The `cwd` filter is sent because the protocol offers one, but nothing relies
+/// on the agent honouring it: each row records its own `cwd` and the sidebar
+/// filters on that, so an agent that returns everything costs a few extra
+/// locators rather than a folder full of another project's sessions.
+async fn refresh_listing(
+    conn: &ConnectionTo<Agent>,
+    agent: &str,
+    cwd: &str,
+) -> Result<usize, String> {
+    let known = acp_sessions::all();
+    let mut cursor: Option<String> = None;
+    let mut rows: Vec<ListedSession> = Vec::new();
+    for _ in 0..MAX_SESSION_PAGES {
+        let mut request = ListSessionsRequest::new();
+        request.cwd = Some(std::path::PathBuf::from(cwd));
+        request.cursor = cursor;
+        let page = conn
+            .send_request(request)
+            .block_task()
+            .await
+            .map_err(|e| e.to_string())?;
+        rows.extend(page.sessions.iter().map(listed_session));
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+
+    let adopted = acp_sessions::adopt(agent, &rows, &known, now_secs());
+    let mut written = 0;
+    for session in &adopted {
+        // One unwritable locator must not lose the rest of the page.
+        if acp_sessions::record(session).is_ok() {
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
+fn listed_session(info: &agent_client_protocol::schema::v1::SessionInfo) -> ListedSession {
+    ListedSession {
+        acp_session_id: info.session_id.0.to_string(),
+        cwd: info.cwd.to_string_lossy().into_owned(),
+        title: info.title.clone(),
+        updated_at: info.updated_at.clone(),
+    }
+}
+
+/// Attach to the session this tab is for: load the one Sway has a locator for,
+/// or open a new one.
+///
+/// **The locator is what makes a reopened chat a reopened chat.** ACP mints its
+/// own session id inside `session/new`, so Sway's id and the agent's are never
+/// the same string, and nothing in the launch command carries either one. The
+/// locator written after the first `session/new` is the only bridge back, and
+/// `session/load` replays the whole conversation as ordinary `session/update`
+/// notifications - which is why replay needs no new event, no transcript file
+/// and no change to `chat_history`.
+#[allow(clippy::too_many_arguments)]
+async fn open_session(
+    conn: &ConnectionTo<Agent>,
+    shared: &Arc<Shared>,
+    sink: &Sink,
+    cwd: &str,
+    agent: &str,
+    overrides: &AcpOverrides,
+    init: &InitializeResponse,
+) -> Result<SessionId, String> {
+    if let Some(record) = acp_sessions::read(&shared.session_id) {
+        if init.agent_capabilities.load_session {
+            let session_id = SessionId::new(record.acp_session_id.as_str());
+            let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+            match conn.send_request(request).block_task().await {
+                Ok(_) => return Ok(session_id),
+                // A session the agent has forgotten is not a failure to open a
+                // chat: say what was lost and start a fresh one, the same way a
+                // deleted transcript leaves a usable empty chat behind.
+                Err(e) => emit(
+                    sink,
+                    ChatEvent::SessionError {
+                        session_id: shared.session_id.clone(),
+                        message: format!(
+                            "this agent could not reopen the earlier conversation, so this chat starts empty: {e}"
+                        ),
+                        fatal: false,
+                    },
+                ),
+            }
+        } else {
+            emit(
+                sink,
+                ChatEvent::SessionError {
+                    session_id: shared.session_id.clone(),
+                    message:
+                        "this agent cannot reopen an earlier conversation, so this chat starts empty."
+                            .to_string(),
+                    fatal: false,
+                },
+            );
+        }
+    }
+
+    let opened = conn
+        .send_request(new_session_request(cwd, overrides))
+        .block_task()
+        .await
+        .map_err(|e| describe_session_failure(&e, &init.auth_methods))?;
+
+    // Recorded straight away rather than at first turn: a session opened and
+    // abandoned still exists inside the agent, and a locator written only on
+    // success-plus-a-message would lose it.
+    let _ = acp_sessions::record(&AcpSession {
+        id: shared.session_id.clone(),
+        agent: agent.to_string(),
+        acp_session_id: opened.session_id.0.to_string(),
+        cwd: cwd.to_string(),
+        title: "(untitled session)".to_string(),
+        updated_at: now_secs(),
+    });
+    Ok(opened.session_id)
+}
+
 /// Name a `session/new` failure in terms the user can act on.
 ///
 /// `auth_required` is the one error code on this path worth branching on: it
 /// means the agent works but nobody is signed in, which is a different thing
 /// from a spawn failure and has a different fix. Reporting it as a generic
 /// failure sends the user looking for a broken install.
-fn describe_session_failure(error: agent_client_protocol::Error) -> String {
-    let text = error.to_string();
-    if text.contains("auth_required") || text.contains("Authentication required") {
-        format!("This agent needs you to sign in first. {text}")
+///
+/// The methods come from the agent's own `initialize` result and are quoted
+/// rather than interpreted. Both measured agents describe theirs as a command
+/// to run in a terminal (`Run \`opencode auth login\` in the terminal`,
+/// `Run \`claude /login\` in the terminal`), so `authenticate` alone cannot sign
+/// anybody in and Sway does not pretend it can: what it can do is put the
+/// agent's own instruction in front of the user.
+fn describe_session_failure(
+    error: &agent_client_protocol::Error,
+    methods: &[AuthMethod],
+) -> String {
+    if error.code != ErrorCode::AuthRequired {
+        return format!("The agent would not open a session: {error}");
+    }
+    match describe_auth_methods(methods) {
+        Some(how) => format!("This agent needs you to sign in first. {how}"),
+        None => format!(
+            "This agent needs you to sign in first, and did not say how. {error}"
+        ),
+    }
+}
+
+/// The agent's sign-in instructions as one line of text, or `None` when it
+/// offered none.
+///
+/// Each method's own description is preferred over its name, because the
+/// description is where both measured agents put the command to run; the name
+/// alone ("Log in with Claude Code") tells a user nothing they can act on.
+fn describe_auth_methods(methods: &[AuthMethod]) -> Option<String> {
+    let described: Vec<String> = methods
+        .iter()
+        .map(|method| match method.description() {
+            Some(description) if !description.trim().is_empty() => description.trim().to_string(),
+            _ => method.name().to_string(),
+        })
+        .filter(|text| !text.is_empty())
+        .collect();
+    if described.is_empty() {
+        None
     } else {
-        format!("The agent would not open a session: {text}")
+        Some(described.join(" Or: "))
     }
 }
 
@@ -796,6 +1013,13 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
         .unwrap_or_default()
 }
 
@@ -886,7 +1110,7 @@ mod tests {
 
     #[test]
     fn commands_before_start_error_rather_than_panic() {
-        let mut transport = AcpTransport::new("s1", AcpOverrides::default());
+        let mut transport = AcpTransport::new("s1", "opencode", AcpOverrides::default());
         assert!(transport.send(&[]).is_err());
         assert!(transport.interrupt().is_err());
         assert!(transport.child_pid().is_none());
@@ -897,8 +1121,98 @@ mod tests {
     /// a steer that landed to everything upstream.
     #[test]
     fn a_steer_is_refused_rather_than_degraded_into_a_queued_turn() {
-        let mut transport = AcpTransport::new("s1", AcpOverrides::default());
+        let mut transport = AcpTransport::new("s1", "opencode", AcpOverrides::default());
         assert!(transport.steer(&[ContentBlock::Text { text: "hi".into() }]).is_err());
+    }
+
+    /// The gate the listing task asks for: an agent that never advertises
+    /// `session/list` is never sent it, because a method it does not implement
+    /// comes back as a protocol error the user would see as a broken chat.
+    #[test]
+    fn an_agent_that_does_not_advertise_listing_is_never_asked_for_one() {
+        use agent_client_protocol::schema::v1::{
+            AgentCapabilities, SessionCapabilities, SessionListCapabilities,
+        };
+
+        let silent = InitializeResponse::new(ProtocolVersion::V1);
+        assert!(!lists_sessions(&silent));
+
+        let mut capabilities = AgentCapabilities::default();
+        let mut sessions = SessionCapabilities::default();
+        sessions.list = Some(SessionListCapabilities::default());
+        capabilities.session_capabilities = sessions;
+        let mut advertised = InitializeResponse::new(ProtocolVersion::V1);
+        advertised.agent_capabilities = capabilities;
+        assert!(lists_sessions(&advertised));
+    }
+
+    fn agent_auth(id: &str, name: &str, description: Option<&str>) -> AuthMethod {
+        use agent_client_protocol::schema::v1::{AuthMethodAgent, AuthMethodId};
+        let mut method = AuthMethodAgent::new(AuthMethodId::new(id), name.to_string());
+        method.description = description.map(str::to_string);
+        AuthMethod::Agent(method)
+    }
+
+    /// The failure this names: an agent that works but has nobody signed in
+    /// looks exactly like a broken install unless the error says otherwise. The
+    /// two descriptions asserted here are the ones the measured agents actually
+    /// return, and they are instructions the user can carry out.
+    #[test]
+    fn a_sign_in_failure_quotes_the_agents_own_instruction() {
+        let error = agent_client_protocol::Error::auth_required();
+        let message = describe_session_failure(
+            &error,
+            &[agent_auth(
+                "opencode",
+                "Log in",
+                Some("Run `opencode auth login` in the terminal"),
+            )],
+        );
+        assert!(message.contains("sign in"), "{message}");
+        assert!(message.contains("opencode auth login"), "{message}");
+
+        let message = describe_session_failure(
+            &error,
+            &[agent_auth(
+                "claude",
+                "Log in with Claude Code",
+                Some("Run `claude /login` in the terminal"),
+            )],
+        );
+        assert!(message.contains("claude /login"), "{message}");
+    }
+
+    /// An agent that offers a method but no description leaves only its name to
+    /// show, which is still better than an error code.
+    #[test]
+    fn a_method_with_no_description_falls_back_to_its_name() {
+        let message = describe_session_failure(
+            &agent_client_protocol::Error::auth_required(),
+            &[agent_auth("oauth", "Sign in with Google", None)],
+        );
+        assert!(message.contains("Sign in with Google"), "{message}");
+    }
+
+    /// Sign-in is a claim about the agent's state, so it must not be made about
+    /// a failure that says nothing of the kind.
+    #[test]
+    fn a_failure_that_is_not_about_signing_in_does_not_mention_signing_in() {
+        let message = describe_session_failure(
+            &agent_client_protocol::Error::invalid_params(),
+            &[agent_auth("opencode", "Log in", Some("Run `opencode auth login`"))],
+        );
+        assert!(!message.contains("sign in"), "{message}");
+        assert!(message.contains("would not open a session"), "{message}");
+    }
+
+    /// `auth_required` with no methods listed still has to say what is wrong.
+    /// Saying nothing would leave the user with a bare protocol error.
+    #[test]
+    fn a_sign_in_failure_with_no_methods_still_says_so() {
+        let message =
+            describe_session_failure(&agent_client_protocol::Error::auth_required(), &[]);
+        assert!(message.contains("sign in"), "{message}");
+        assert!(message.contains("did not say how"), "{message}");
     }
 
     /// The first of the two per-agent overrides. An agent that refuses a
@@ -938,21 +1252,45 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[cfg(test)]
-    fn live_session(program: &str, args: &[&str]) -> (AcpTransport, Arc<Mutex<Vec<ChatEvent>>>) {
+    fn live_session(
+        session_id: &str,
+        program: &str,
+        args: &[&str],
+    ) -> (AcpTransport, Arc<Mutex<Vec<ChatEvent>>>) {
+        live_session_as(session_id, program, args).0
+    }
+
+    /// A live session under a session id of the caller's choosing, plus the cwd
+    /// it was opened in.
+    ///
+    /// The id matters now that a locator is written per session: two live tests
+    /// sharing one id would have the second read the first's locator and try to
+    /// `session/load` a conversation from a previous run. The locator store is
+    /// redirected to a temp directory for the same reason - a test must not
+    /// write into the running user's real history.
+    #[cfg(test)]
+    #[allow(clippy::type_complexity)]
+    fn live_session_as(
+        session_id: &str,
+        program: &str,
+        args: &[&str],
+    ) -> ((AcpTransport, Arc<Mutex<Vec<ChatEvent>>>), String) {
         use super::super::transport::new_sink;
 
-        let cwd = std::env::temp_dir().join(format!("sway-acp-live-{}", std::process::id()));
-        std::fs::create_dir_all(&cwd).unwrap();
+        let root = std::env::temp_dir().join(format!("sway-acp-live-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+        let cwd = root.to_string_lossy().into_owned();
         let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let collected = seen.clone();
         let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
 
-        let mut transport = AcpTransport::new("live-1", AcpOverrides::default());
+        let mut transport = AcpTransport::new(session_id, "opencode", AcpOverrides::default());
         transport
             .start(
                 StartSpec {
-                    session_id: "live-1".to_string(),
-                    cwd: cwd.to_string_lossy().into_owned(),
+                    session_id: session_id.to_string(),
+                    cwd: cwd.clone(),
                     program: program.to_string(),
                     args: args.iter().map(|s| s.to_string()).collect(),
                     env: HashMap::new(),
@@ -960,7 +1298,7 @@ mod tests {
                 sink,
             )
             .expect("the agent should start");
-        (transport, seen)
+        ((transport, seen), cwd)
     }
 
     #[cfg(test)]
@@ -985,7 +1323,7 @@ mod tests {
     #[test]
     #[ignore = "drives the real `opencode acp` binary"]
     fn a_live_agent_answers_the_handshake_and_opens_a_session() {
-        let (mut transport, seen) = live_session("opencode", &["acp"]);
+        let (mut transport, seen) = live_session("live-handshake", "opencode", &["acp"]);
         let events = wait_for(&seen, 60, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });
@@ -1012,7 +1350,7 @@ mod tests {
     #[test]
     #[ignore = "drives the real `opencode acp` binary: costs tokens"]
     fn a_live_turn_streams_text_and_completes() {
-        let (mut transport, seen) = live_session("opencode", &["acp"]);
+        let (mut transport, seen) = live_session("live-turn", "opencode", &["acp"]);
         wait_for(&seen, 60, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });
@@ -1054,7 +1392,7 @@ mod tests {
     #[test]
     #[ignore = "drives the real `opencode acp` binary: costs tokens"]
     fn a_live_tool_call_renders_as_a_tool_card() {
-        let (mut transport, seen) = live_session("opencode", &["acp"]);
+        let (mut transport, seen) = live_session("live-tool", "opencode", &["acp"]);
         wait_for(&seen, 60, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });
@@ -1087,6 +1425,80 @@ mod tests {
         );
     }
 
+    /// **The whole of the listing and reopening task, measured live.**
+    ///
+    /// One conversation is had, the tab is closed, and a second transport is
+    /// started under the *same Sway session id* - which is exactly what a chat
+    /// reopened after an app restart does. The agent replays the conversation as
+    /// ordinary `session/update` notifications, so the prior turn arrives back
+    /// through the same event model a live turn uses, with no transcript file,
+    /// no new `ChatEvent` variant, and no `ParserKind` or `Discovery` variant.
+    ///
+    /// The bridge between the two runs is the locator: ACP mints its session id
+    /// inside `session/new` and puts it in no command line, so without a record
+    /// on Sway's side the second run has no id to load and nothing to replay.
+    ///
+    /// Measured against `opencode acp` 1.18.3, which advertises both
+    /// `loadSession` and `sessionCapabilities.list`.
+    #[test]
+    #[ignore = "drives the real `opencode acp` binary: costs tokens"]
+    fn a_reopened_chat_replays_the_conversation_the_agent_still_holds() {
+        let id = "live-reopen";
+        let ((mut first, seen), cwd) = live_session_as(id, "opencode", &["acp"]);
+        wait_for(&seen, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        first
+            .send(&[ContentBlock::Text {
+                text: "Reply with exactly the word: marker".to_string(),
+            }])
+            .expect("the first turn should submit");
+        wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = first.close();
+
+        // What survives the close is one small file naming the agent's own id.
+        let locator = acp_sessions::read(id).expect("the first session must leave a locator");
+        assert_eq!(locator.agent, "opencode");
+        assert_eq!(locator.cwd, cwd);
+        assert!(!locator.acp_session_id.is_empty());
+
+        let ((mut second, replayed), _) = live_session_as(id, "opencode", &["acp"]);
+        let events = wait_for(&replayed, 90, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+                && e.iter().any(|e| matches!(e, ChatEvent::TextDelta { .. }))
+        });
+        let _ = second.close();
+
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
+            "reopening must not be a fatal failure: {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, ChatEvent::TextDelta { .. })),
+            "the earlier conversation must replay into the reopened chat: {events:?}"
+        );
+        // The listing ran on the same connection, so the agent's own row for
+        // this session is now recorded beside it - which is what puts a session
+        // started outside Sway into the history list.
+        let recorded = acp_sessions::all();
+        assert!(
+            recorded.iter().any(|s| s.acp_session_id == locator.acp_session_id),
+            "the reopened session must still be recorded exactly once: {recorded:?}"
+        );
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|s| s.acp_session_id == locator.acp_session_id)
+                .count(),
+            1,
+            "a listing must not add a second row for a session Sway already had"
+        );
+    }
+
     /// **The permission round trip, end to end over the real protocol.**
     ///
     /// The one property no mock establishes: that a real agent blocks on
@@ -1107,7 +1519,7 @@ mod tests {
         use super::super::model::PermissionSuggestion;
 
         let (mut transport, seen) =
-            live_session("npx", &["-y", "@agentclientprotocol/claude-agent-acp"]);
+            live_session("live-permission", "npx", &["-y", "@agentclientprotocol/claude-agent-acp"]);
         wait_for(&seen, 120, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });
