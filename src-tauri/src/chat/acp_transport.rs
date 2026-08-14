@@ -74,14 +74,52 @@ const DECIDE_TIMEOUT_SECS: u64 = super::approval::DECIDE_TIMEOUT_SECS;
 enum Command {
     Prompt(Vec<ContentBlock>),
     Cancel,
+    /// The spec's own `session/set_mode`, used only for an agent that published
+    /// no `mode`-category config option. Neither measured agent has answered it.
     SetMode(PermissionMode),
-    /// Switch one session config option, which is how a model switch travels.
-    /// Carries the agent's own config id rather than a Sway-side name for it.
-    SetModel {
+    /// Switch one session config option, which is how both a model switch and a
+    /// mode switch travel. Carries the agent's own config id rather than a
+    /// Sway-side name for it, and `what` only so a failure can say which control
+    /// the user touched.
+    SetConfigOption {
         config_id: String,
         value: String,
+        what: ConfigOption,
     },
     Close,
+}
+
+/// Which selector a `SetConfigOption` came from.
+///
+/// Two things need it and neither is cosmetic: the failure message names the
+/// control the user actually touched, and the "did it take" check has to read
+/// the *same* selector back out of the agent's answer. Reading the model
+/// selector after a mode switch would compare two unrelated values and report a
+/// mismatch on every mode change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfigOption {
+    Model,
+    Mode,
+    Effort,
+}
+
+impl ConfigOption {
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Mode => "mode",
+            Self::Effort => "reasoning effort",
+        }
+    }
+
+    /// What the agent now reports for this selector, from its own answer.
+    fn current(self, options: &[SessionConfigOption]) -> Option<String> {
+        match self {
+            Self::Model => acp::current_model(options),
+            Self::Mode => acp::current_mode(options),
+            Self::Effort => acp::current_effort(options),
+        }
+    }
 }
 
 /// Per-session state the connection thread and the command methods share.
@@ -118,23 +156,30 @@ struct Shared {
     /// Monotonic counter behind minted request ids and turn numbering.
     seq: AtomicU64,
     /// What this session can do about models, once it has said.
-    model_switch: Mutex<ModelSwitch>,
+    model_switch: Mutex<Switch>,
+    /// And about modes. Separate state because an agent may publish one selector
+    /// and not the other: `opencode acp` and `codex-acp` both publish both, but
+    /// nothing in the protocol ties them together.
+    mode_switch: Mutex<Switch>,
+    /// And about reasoning effort, which `codex-acp` publishes and `opencode
+    /// acp` does not - the clearest case for keeping these apart.
+    effort_switch: Mutex<Switch>,
 }
 
-/// Whether a model switch has somewhere to go.
+/// Whether a config switch has somewhere to go.
 ///
 /// Three states rather than an `Option`, because `None` would mean two different
 /// things and the difference is what the user reads. A chat that has not finished
-/// opening has not asked the agent yet; a chat that has, and got no model
+/// opening has not asked the agent yet; a chat that has, and got no such
 /// selector, has an answer. Reporting the first as the second blames the agent
 /// for Sway's timing.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ModelSwitch {
+enum Switch {
     /// `session/new` has not answered yet, so nothing is known.
     Unknown,
-    /// The session opened and offered no model selector.
+    /// The session opened and offered no selector of this category.
     Unsupported,
-    /// The agent's own config id for its model selector.
+    /// The agent's own config id for that selector.
     Available(String),
 }
 
@@ -306,7 +351,9 @@ impl AcpTransport {
                 settled: std::sync::Condvar::new(),
                 current_turn: Mutex::new(String::new()),
                 seq: AtomicU64::new(0),
-                model_switch: Mutex::new(ModelSwitch::Unknown),
+                model_switch: Mutex::new(Switch::Unknown),
+                mode_switch: Mutex::new(Switch::Unknown),
+                effort_switch: Mutex::new(Switch::Unknown),
             }),
             commands: None,
             pid: None,
@@ -414,7 +461,20 @@ impl AgentTransport for AcpTransport {
 
     fn send(&mut self, blocks: &[ContentBlock]) -> Result<(), String> {
         if let Some(mode) = self.pending_mode.take() {
-            self.send_command(Command::SetMode(mode))?;
+            // The config option when the agent published one, the spec verb
+            // otherwise. Both measured agents are the first case; the fallback
+            // exists so an agent that only implements `session/set_mode` is not
+            // left without a mode switch at all.
+            let switch = self.shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let command = match switch {
+                Switch::Available(config_id) => Command::SetConfigOption {
+                    config_id,
+                    value: mode.as_str().to_string(),
+                    what: ConfigOption::Mode,
+                },
+                Switch::Unsupported | Switch::Unknown => Command::SetMode(mode),
+            };
+            self.send_command(command)?;
         }
         self.send_command(Command::Prompt(blocks.to_vec()))
     }
@@ -449,6 +509,15 @@ impl AgentTransport for AcpTransport {
         self.shared.answer(request_id, decision, reason)
     }
 
+    /// A mode switch takes the same route a model switch does when the agent
+    /// published a `mode`-category config option, and falls back to the spec's
+    /// `session/set_mode` when it did not.
+    ///
+    /// Held as `pending_mode` and sent with the next prompt rather than
+    /// immediately, which is the trait's stated next-turn semantics and matters
+    /// more here than it looks: a mode decides whether the agent asks before it
+    /// writes, so applying one mid-turn would change the rules under a tool call
+    /// already in flight.
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String> {
         self.pending_mode = Some(mode);
         Ok(())
@@ -465,25 +534,48 @@ impl AgentTransport for AcpTransport {
     /// agent answers with its whole option set, and what it says is running is
     /// what `SessionStarted` already reported.
     ///
-    /// `effort` is dropped deliberately. ACP has no notion of one, so no ACP
-    /// model claims `supports_effort` and the control never renders; accepting
-    /// it here silently would make a level look chosen.
-    fn set_model(&mut self, model: &str, _effort: Option<Effort>) -> Result<(), String> {
+    /// **`effort` used to be dropped here, on the belief that ACP has no notion
+    /// of one.** It has: `SessionConfigOptionCategory::ThoughtLevel` is its own
+    /// category, and `codex-acp` 1.2.0 publishes six levels under it. So a level
+    /// travels as a second `set_config_option`, sent only when this agent
+    /// published that selector - dropping it silently is what would make a level
+    /// look chosen while the session reasons at the old one.
+    ///
+    /// Two requests rather than one because they are two options: an agent may
+    /// accept the model and refuse the level, and folding them would report one
+    /// outcome for two answers.
+    fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String> {
         let config_id = match &*self.shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) {
-            ModelSwitch::Available(config_id) => config_id.clone(),
-            ModelSwitch::Unsupported => {
+            Switch::Available(config_id) => config_id.clone(),
+            Switch::Unsupported => {
                 return Err("this agent offers no model to switch to".to_string())
             }
             // Not the agent's answer, Sway's timing: the options arrive with the
             // session, so a switch attempted before it opens has nothing to name
             // yet. Saying the agent offers no models would be a claim about the
             // agent made from Sway not having asked.
-            ModelSwitch::Unknown => {
+            Switch::Unknown => {
                 return Err("this chat is still opening, so its model list has not arrived yet"
                     .to_string())
             }
         };
-        self.send_command(Command::SetModel { config_id, value: model.to_string() })
+        self.send_command(Command::SetConfigOption {
+            config_id,
+            value: model.to_string(),
+            what: ConfigOption::Model,
+        })?;
+
+        // Only when the agent published a thought-level selector. An agent that
+        // did not is not sent a level it has nowhere to put, and the control
+        // never offered one either - `model_catalogue` claims no levels for it.
+        let Some(level) = effort else { return Ok(()) };
+        let switch = self.shared.effort_switch.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let Switch::Available(config_id) = switch else { return Ok(()) };
+        self.send_command(Command::SetConfigOption {
+            config_id,
+            value: level.as_str().to_string(),
+            what: ConfigOption::Effort,
+        })
     }
 
     fn close(&mut self) -> Result<(), String> {
@@ -513,6 +605,10 @@ async fn run_session(
 ) -> Result<(), String> {
     let notification_shared = shared.clone();
     let notification_sink = sink.clone();
+    // The session's own directory, so an agent that sends a file's prior text
+    // has an object store to put it in. Owned by the closure because the
+    // notification handler outlives this frame.
+    let notification_cwd = std::path::PathBuf::from(&cwd);
     let request_shared = shared.clone();
     let request_sink = sink.clone();
 
@@ -526,6 +622,7 @@ async fn run_session(
                     &notification_shared.session_id,
                     &turn,
                     &notification.update,
+                    Some(notification_cwd.as_path()),
                 ) {
                     emit(&notification_sink, event);
                 }
@@ -665,10 +762,11 @@ async fn drive_session(
         ChatEvent::SessionReady {
             session_id: shared.session_id.clone(),
             slash_commands: Vec::new(),
-            // The catalogue is not known yet: it arrives with the session, one
-            // request later, and rides `SessionStarted`. Empty here is the
+            // Neither catalogue is known yet: both arrive with the session, one
+            // request later, and ride `SessionStarted`. Empty here is the
             // honest answer rather than a placeholder.
             models: Vec::new(),
+            modes: Vec::new(),
             account: None,
             capabilities: Some(acp::capabilities(&init)),
         },
@@ -684,8 +782,25 @@ async fn drive_session(
     // re-derived from an option list nobody would have any more.
     *shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) =
         match acp::model_config_id(&opened.config_options) {
-            Some(config_id) => ModelSwitch::Available(config_id),
-            None => ModelSwitch::Unsupported,
+            Some(config_id) => Switch::Available(config_id),
+            None => Switch::Unsupported,
+        };
+    // The mode selector arrives on the same answer and is kept for the same
+    // reason. Measured on `codex-acp` 1.2.0: this is the *only* lever on whether
+    // Codex asks before it writes. It ignores the user's own `approval_policy`
+    // and `sandbox_mode` from `~/.codex/config.toml` (verified: `config/read`
+    // reports them set, and the wrapper writes anyway) and applies its own mode
+    // instead, defaulting to `agent`. So without this the agent's permission
+    // prompt is something Sway publishes and no user can reach.
+    *shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()) =
+        match acp::mode_config_id(&opened.config_options) {
+            Some(config_id) => Switch::Available(config_id),
+            None => Switch::Unsupported,
+        };
+    *shared.effort_switch.lock().unwrap_or_else(|e| e.into_inner()) =
+        match acp::effort_config_id(&opened.config_options) {
+            Some(config_id) => Switch::Available(config_id),
+            None => Switch::Unsupported,
         };
 
     emit(
@@ -694,11 +809,14 @@ async fn drive_session(
             session_id: shared.session_id.clone(),
             cwd: cwd.to_string(),
             model: acp::current_model(&opened.config_options).unwrap_or_default(),
-            permission_mode: PermissionMode::new(String::new()),
+            permission_mode: PermissionMode::new(
+                acp::current_mode(&opened.config_options).unwrap_or_default(),
+            ),
             tools: Vec::new(),
             slash_commands: Vec::new(),
             mcp_servers: Vec::new(),
             models: acp::model_catalogue(&opened.config_options),
+            modes: acp::mode_catalogue(&opened.config_options),
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
             account: None,
@@ -738,7 +856,7 @@ async fn drive_session(
             Command::Cancel => {
                 let _ = conn.send_notification(CancelNotification::new(session_id.clone()));
             }
-            Command::SetModel { config_id, value } => {
+            Command::SetConfigOption { config_id, value, what } => {
                 let request = SetSessionConfigOptionRequest::new(
                     session_id.clone(),
                     SessionConfigId::new(config_id.as_str()),
@@ -751,18 +869,22 @@ async fn drive_session(
                         sink,
                         ChatEvent::SessionError {
                             session_id: shared.session_id.clone(),
-                            message: format!("this agent would not switch model: {e}"),
+                            message: format!("this agent would not switch {}: {e}", what.noun()),
                             fatal: false,
                         },
                     ),
                     // **The answer is checked, not assumed.** The agent replies
                     // with its whole option set, so it says what is *now*
                     // selected - which need not be what was asked for. An agent
-                    // that accepts the request and keeps running the old model is
-                    // exactly the silent mismatch `set_model` refuses to risk,
+                    // that accepts the request and keeps running the old value is
+                    // exactly the silent mismatch these switches refuse to risk,
                     // and it would otherwise show as a picker that switched.
+                    //
+                    // It matters more for a mode than for a model: a mode that
+                    // did not take means the agent is deciding permissions by a
+                    // rule other than the one on screen.
                     Ok(response) => {
-                        let now = acp::current_model(&response.config_options);
+                        let now = what.current(&response.config_options);
                         if let Some(now) = now {
                             if now != value {
                                 emit(
@@ -770,7 +892,8 @@ async fn drive_session(
                                     ChatEvent::SessionError {
                                         session_id: shared.session_id.clone(),
                                         message: format!(
-                                            "this agent accepted the switch but reports it is running `{now}` rather than `{value}`."
+                                            "this agent accepted the switch but reports its {} is `{now}` rather than `{value}`.",
+                                            what.noun()
                                         ),
                                         fatal: false,
                                     },
@@ -1073,11 +1196,25 @@ async fn open_session(
 /// failure sends the user looking for a broken install.
 ///
 /// The methods come from the agent's own `initialize` result and are quoted
-/// rather than interpreted. Both measured agents describe theirs as a command
-/// to run in a terminal (`Run \`opencode auth login\` in the terminal`,
-/// `Run \`claude /login\` in the terminal`), so `authenticate` alone cannot sign
-/// anybody in and Sway does not pretend it can: what it can do is put the
-/// agent's own instruction in front of the user.
+/// rather than interpreted. Both agents measured in Phases 4 and 5 describe
+/// theirs as a command to run in a terminal (`Run \`opencode auth login\` in the
+/// terminal`, `Run \`claude /login\` in the terminal`), so `authenticate` alone
+/// cannot sign anybody in and Sway does not pretend it can: what it can do is
+/// put the agent's own instruction in front of the user.
+///
+/// **A third agent was thought to break this and does not.** Phase 8 opened
+/// carrying a finding that `@agentclientprotocol/codex-acp` 1.2.0 reports a
+/// missing account as "a generic `-32000`" that this branch would miss, and that
+/// Sway would therefore show an opaque failure. Measured properly: `-32000` **is**
+/// `ErrorCode::AuthRequired` in ACP's own numbering, so the code branch matches
+/// and the user already gets the agent's own instruction. The finding came from
+/// reading a raw JSON-RPC number off a probe and assuming a named constructor
+/// meant a different wire value.
+///
+/// Left as it was, deliberately: the fix it asked for was a check on the error
+/// *text*, which Phase 5 rejected for reasons that still hold and which would
+/// have been dead code here. `an_agent_reporting_minus_32000_is_a_sign_in_failure`
+/// pins the measured value so the same claim cannot be made a third time.
 fn describe_session_failure(
     error: &agent_client_protocol::Error,
     methods: &[AuthMethod],
@@ -1160,7 +1297,9 @@ mod tests {
             settled: std::sync::Condvar::new(),
             current_turn: Mutex::new(String::new()),
             seq: AtomicU64::new(0),
-            model_switch: Mutex::new(ModelSwitch::Unknown),
+            model_switch: Mutex::new(Switch::Unknown),
+            mode_switch: Mutex::new(Switch::Unknown),
+            effort_switch: Mutex::new(Switch::Unknown),
         })
     }
 
@@ -1252,14 +1391,14 @@ mod tests {
         let before = transport.set_model("anything", None).expect_err("nothing to switch yet");
         assert!(before.contains("still opening"), "{before}");
 
-        *transport.shared.model_switch.lock().unwrap() = ModelSwitch::Unsupported;
+        *transport.shared.model_switch.lock().unwrap() = Switch::Unsupported;
         let unsupported = transport.set_model("anything", None).expect_err("no selector");
         assert!(unsupported.contains("offers no model"), "{unsupported}");
         assert!(!unsupported.contains("still opening"), "{unsupported}");
 
         // And with a selector, the refusal is gone: what stops it now is only
         // that no session is running, which is a different error entirely.
-        *transport.shared.model_switch.lock().unwrap() = ModelSwitch::Available("model".into());
+        *transport.shared.model_switch.lock().unwrap() = Switch::Available("model".into());
         let with_selector = transport.set_model("anything", None).expect_err("not started");
         assert!(!with_selector.contains("offers no model"), "{with_selector}");
         assert!(!with_selector.contains("still opening"), "{with_selector}");
@@ -1352,6 +1491,32 @@ mod tests {
         );
         assert!(!message.contains("sign in"), "{message}");
         assert!(message.contains("would not open a session"), "{message}");
+    }
+
+    /// **The wire value, pinned, because a phase was planned around getting it
+    /// wrong.**
+    ///
+    /// Phase 8 opened believing `codex-acp`'s `-32000` was a generic error this
+    /// branch would miss, and budgeted a fix for it. `-32000` is what
+    /// `ErrorCode::AuthRequired` *is*, so the agent is spec-correct and the
+    /// existing branch already handles it - the reproduction below is the exact
+    /// frame that agent sends with no account, built from the number rather than
+    /// from the named constructor, so it fails if the mapping ever changes.
+    #[test]
+    fn an_agent_reporting_minus_32000_is_a_sign_in_failure() {
+        assert_eq!(ErrorCode::from(-32000), ErrorCode::AuthRequired);
+
+        let mut error = agent_client_protocol::Error::internal_error();
+        error.code = ErrorCode::from(-32000);
+        error.message = "Authentication required".to_string();
+
+        let message = describe_session_failure(
+            &error,
+            &[agent_auth("api-key", "API Key", Some("Use an API key to authenticate"))],
+        );
+        assert!(message.contains("sign in"), "{message}");
+        assert!(message.contains("Use an API key to authenticate"), "{message}");
+        assert!(!message.contains("would not open a session"), "{message}");
     }
 
     /// `auth_required` with no methods listed still has to say what is wrong.
@@ -1678,6 +1843,167 @@ mod tests {
             root.join("generic.txt").exists(),
             "the approved write actually happened, so the allow reached the agent"
         );
+    }
+
+    /// **Codex, end to end, from its own adapter TOML.**
+    ///
+    /// The second agent driven with no Rust of its own, and the one that
+    /// justified the phase's scope decision: `codex app-server` exists and Paseo
+    /// spends ~9,000 lines on it, while this route is `codex.toml` plus the mode
+    /// switch below. What it proves is everything the tier claims for Codex - a
+    /// live model catalogue, a real permission prompt answered in the agent's own
+    /// vocabulary, and an exact before-and-after diff, which ACP was assumed not
+    /// to have.
+    ///
+    /// **The mode switch is not incidental to the prompt, it is the whole
+    /// reason there is one.** Measured on `codex-acp` 1.2.0: the wrapper ignores
+    /// `approval_policy` and `sandbox_mode` from the user's own
+    /// `~/.codex/config.toml` (verified separately - `config/read` reports both
+    /// set and the agent writes anyway) and runs its own `agent` mode, which
+    /// approves edits inside *and outside* the workspace silently. So without
+    /// `session/set_config_option` on the `mode` selector, Codex's permission
+    /// prompt is a capability Sway publishes and no user can reach.
+    #[test]
+    #[ignore = "drives the real `npx @agentclientprotocol/codex-acp`: costs tokens"]
+    fn codex_is_driven_entirely_from_its_own_adapter_toml() {
+        use super::super::transport::new_sink;
+
+        let adapter = crate::agents::find("codex").expect("codex ships bundled");
+        let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
+        let args =
+            crate::chat::commands::build_args(chat, "live-codex", false, None, None, None, None, &[]);
+
+        let root = std::env::temp_dir()
+            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join("codex");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("hello.txt"), "one\ntwo\nthree\n").unwrap();
+        // A repo, because the before-state is stored as a git blob. Not
+        // incidental to the test: in a folder with no object store the diff
+        // degrades to unavailable, which is the same answer the capture hook
+        // gives for the same reason, and asserting the exact diff would then be
+        // asserting something Sway cannot do anywhere.
+        std::process::Command::new("git")
+            .current_dir(&root)
+            .args(["init", "-q"])
+            .output()
+            .unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+        let cwd = root.to_string_lossy().into_owned();
+
+        let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = seen.clone();
+        let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
+
+        let mut transport = AcpTransport::new("live-codex", &adapter.id, chat.acp.clone());
+        transport
+            .start(
+                StartSpec {
+                    session_id: "live-codex".to_string(),
+                    cwd: cwd.clone(),
+                    program: chat.program.clone(),
+                    args,
+                    env: HashMap::new(),
+                },
+                sink,
+            )
+            .expect("the adapter's launch should start the agent");
+
+        let opened = wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        let (models, modes, mode_now) = opened
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::SessionStarted { models, modes, permission_mode, .. } => {
+                    Some((models.clone(), modes.clone(), permission_mode.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no session started: {opened:?}"));
+
+        // The catalogues are the agent's, not the TOML's: `codex.toml` declares
+        // neither, so anything here came off the wire.
+        assert!(!models.is_empty(), "the model catalogue arrived over the protocol");
+        assert!(
+            modes.iter().any(|m| m.id == "read-only"),
+            "codex publishes its modes as a config option: {modes:?}"
+        );
+        assert!(!mode_now.as_str().is_empty(), "and says which one it is in");
+        // Reasoning effort too, which this transport claimed ACP had no notion
+        // of until this agent published a `thought_level` selector. Narrowed to
+        // what `Effort` can send, so `ultra` is measured on the wire and
+        // deliberately absent here.
+        let levels = &models[0].supported_effort_levels;
+        assert!(models[0].supports_effort, "codex publishes reasoning levels: {models:?}");
+        assert!(levels.contains(&"xhigh".to_string()), "{levels:?}");
+        assert!(!levels.contains(&"ultra".to_string()), "a level Sway cannot send: {levels:?}");
+
+        // Into the one mode that makes it ask. Applied with the next prompt, so
+        // this is staged rather than sent, which is the trait's contract.
+        transport
+            .set_mode(PermissionMode::new("read-only"))
+            .expect("staging a mode the agent offered");
+        transport
+            .send(&[ContentBlock::Text {
+                text: "Edit hello.txt so its third line reads THREE in capital letters. \
+                       Use your file editing tool, not a shell command. Then say done."
+                    .to_string(),
+            }])
+            .expect("a prompt goes out");
+
+        let asked = wait_for(&seen, 240, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
+        });
+        let request_id = asked
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::PermissionRequest { request_id, .. } => Some(request_id.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("read-only means it must ask before writing: {asked:?}"));
+
+        assert!(
+            transport
+                .respond_permission(
+                    "",
+                    &request_id,
+                    PermissionDecision::Allow,
+                    PermissionScope::Once,
+                    None,
+                )
+                .expect("answering is in-protocol"),
+            "the answer went to the transport rather than to the PreToolUse bridge"
+        );
+
+        let done = wait_for(&seen, 240, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = transport.close();
+
+        assert!(
+            done.iter().any(|e| matches!(e, ChatEvent::ToolCallStarted { .. })),
+            "a tool call: {done:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("hello.txt")).unwrap(),
+            "one\ntwo\nTHREE\n",
+            "the approved write landed, so the allow reached the agent"
+        );
+
+        // **The claim the ACP tier used to deny.** `codex-acp` sends the file's
+        // prior text with the tool call, so the before-state is exact - the same
+        // thing Claude's capture hook produces, arriving over the protocol
+        // instead of from a hook.
+        let edit = done
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::FileEdit { path, before_blob, .. } => Some((path.clone(), before_blob.clone())),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("the diff block became a FileEdit: {done:?}"));
+        assert!(edit.0.ends_with("hello.txt"), "naming the file it wrote: {}", edit.0);
+        assert!(edit.1.is_some(), "with the prior content addressable as a blob");
     }
 
     /// The capabilities Sway publishes for an ACP session come off the wire.

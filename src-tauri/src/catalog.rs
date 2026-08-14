@@ -121,8 +121,8 @@ pub struct CatalogRow {
     pub command: String,
     /// The id of the adapter that already covers this agent, when one does.
     ///
-    /// Matched on **either the adapter's id or its launch program**, because each
-    /// alone has a measured counterexample:
+    /// Matched on **either the adapter's id or its launch identity**, because
+    /// each alone has a measured counterexample:
     ///
     ///   * *Program alone misses Gemini.* The registry launches it as
     ///     `npx -y @google/gemini-cli@0.55.1 --acp`, pinning a package version;
@@ -136,7 +136,37 @@ pub struct CatalogRow {
     /// false match hides a suggestion the user did not need, while a missed one
     /// offers a second, unmeasured way to start an agent they already have
     /// properly.
+    ///
+    /// The identity is `launch_identity`, not the bare program, and Codex is why:
+    /// it is the first bundled adapter whose chat binary is `npx`, and comparing
+    /// programs would have made **every** `npx` row in the registry read as
+    /// covered by Codex. A package runner's program name identifies the runner,
+    /// never the agent.
     pub covered_by: Option<String>,
+}
+
+/// What a launch actually names, with the package runner seen through.
+///
+/// `npx -y @agentclientprotocol/codex-acp@1.2.0` is not a launch of `npx`, it is
+/// a launch of `@agentclientprotocol/codex-acp`, and the pinned version is not
+/// part of the identity: an adapter pinning 1.2.0 and a registry row pinning
+/// 1.3.0 are the same agent. For anything else the program *is* the identity.
+fn launch_identity(program: &str, args: &[String]) -> String {
+    const RUNNERS: [&str; 3] = ["npx", "bunx", "pnpx"];
+    if !RUNNERS.contains(&program) {
+        return program.to_string();
+    }
+    args.iter()
+        .find(|a| !a.starts_with('-'))
+        .map(|pkg| {
+            // Strip the version, keeping a leading `@scope/`: rfind, because
+            // `@scope/name@1.2.0` has two `@` and only the last one is a pin.
+            match pkg.rfind('@') {
+                Some(i) if i > 0 => pkg[..i].to_string(),
+                _ => pkg.clone(),
+            }
+        })
+        .unwrap_or_else(|| program.to_string())
 }
 
 /// Catalog rows, each told whether an adapter already covers it.
@@ -147,13 +177,17 @@ pub fn acp_catalog() -> Vec<CatalogRow> {
         .entries
         .into_iter()
         .map(|entry| {
+            let wanted = launch_identity(&entry.program, &entry.args);
             let covered_by = adapters
                 .iter()
                 .find(|a| {
-                    let chat_program = a.chat.as_ref().map(|c| c.program.as_str());
+                    let chat = a
+                        .chat
+                        .as_ref()
+                        .map(|c| launch_identity(&c.program, &c.base_args));
                     a.id == entry.id
-                        || a.program == entry.program
-                        || chat_program == Some(entry.program.as_str())
+                        || launch_identity(&a.program, &a.base_args) == wanted
+                        || chat.as_deref() == Some(wanted.as_str())
                 })
                 .map(|a| a.id.clone());
             let command = entry.command();
@@ -228,7 +262,7 @@ mod tests {
     ///
     /// The catalog contributes nothing to the adapter registry, so nothing in it
     /// can reach Settings > Agents as a card, get a capability tier, or be
-    /// launched. The two agents that *are* supported are supported because a TOML
+    /// launched. The agents that *are* supported are supported because a TOML
     /// ships for them, and the catalog says so rather than being the reason.
     #[test]
     fn a_catalog_entry_is_not_an_adapter() {
@@ -255,9 +289,60 @@ mod tests {
         assert!(covered.contains(&"opencode"), "opencode ships an adapter: {covered:?}");
         assert!(covered.contains(&"gemini"), "gemini ships an adapter: {covered:?}");
         assert!(
+            covered.contains(&"codex-acp"),
+            "codex.toml launches this exact package: {covered:?}"
+        );
+        assert!(
             !covered.contains(&"cursor"),
             "cursor ships none, so it stays an untested entry: {covered:?}"
         );
+    }
+
+    /// **The regression `launch_identity` exists to stop.**
+    ///
+    /// `codex.toml` is the first bundled adapter whose chat binary is `npx`, and
+    /// the match used to compare programs. That would have made every `npx` row
+    /// in the registry - the bulk of it - read as "already covered by Codex", so
+    /// the catalog would have quietly stopped offering agents Sway has never
+    /// measured. A package runner names the runner, never the agent.
+    #[test]
+    fn a_package_runner_does_not_cover_every_agent_launched_through_it() {
+        let rows = acp_catalog();
+        let npx: Vec<&CatalogRow> = rows.iter().filter(|r| r.entry.program == "npx").collect();
+        assert!(npx.len() > 5, "the registry is mostly npx launches: {}", npx.len());
+
+        let wrongly_covered: Vec<&str> = npx
+            .iter()
+            .filter(|r| r.covered_by.as_deref() == Some("codex") && r.entry.id != "codex-acp")
+            .map(|r| r.entry.id.as_str())
+            .collect();
+        assert!(
+            wrongly_covered.is_empty(),
+            "these are npx launches of other agents, not of Codex: {wrongly_covered:?}"
+        );
+    }
+
+    /// The identity sees through the runner and past the pin, and leaves an
+    /// ordinary binary alone.
+    #[test]
+    fn launch_identity_names_the_package_not_the_runner() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            launch_identity("npx", &args(&["-y", "@agentclientprotocol/codex-acp@1.2.0"])),
+            "@agentclientprotocol/codex-acp"
+        );
+        // A pinned adapter and a differently pinned registry row are one agent.
+        assert_eq!(
+            launch_identity("npx", &args(&["-y", "@agentclientprotocol/codex-acp@9.9.9"])),
+            launch_identity("npx", &args(&["-y", "@agentclientprotocol/codex-acp"])),
+        );
+        // An unscoped package keeps its whole name when it carries no pin.
+        assert_eq!(launch_identity("npx", &args(&["-y", "some-agent"])), "some-agent");
+        assert_eq!(launch_identity("npx", &args(&["-y", "some-agent@2.0.0"])), "some-agent");
+        // Not a runner: the program is the identity, args or not.
+        assert_eq!(launch_identity("opencode", &args(&["acp"])), "opencode");
+        // A runner with nothing to run degrades to itself rather than panicking.
+        assert_eq!(launch_identity("npx", &args(&["-y"])), "npx");
     }
 
     /// The provenance command sends no entries, so a caller cannot render an

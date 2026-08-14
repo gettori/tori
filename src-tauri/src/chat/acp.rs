@@ -13,17 +13,20 @@
 //! [[concept_transport_neutral_event_model]] true rather than aspirational. Every
 //! mapping below lands on a variant that already existed.
 
+use std::path::Path;
+
 use agent_client_protocol::schema::v1::{
     ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse, PermissionOption,
     RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigSelect, SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate,
-    StopReason, ToolCall, ToolCallStatus, ToolCallUpdate,
+    StopReason, ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate,
 };
 
 use super::model::{
-    ChatCapabilities, ChatEvent, ChatModelInfo, ContentBlock, PermissionSuggestion, PlanItem,
-    PlanItemStatus, ToolStatus, TurnOutcome, Usage,
+    ChatCapabilities, ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Effort, FileEditKind,
+    PermissionSuggestion, PlanItem, PlanItemStatus, ToolStatus, TurnOutcome, Usage,
 };
+use super::snapshot;
 
 /// How an agent departs from a spec-correct client's defaults.
 ///
@@ -112,14 +115,22 @@ fn select_entries(select: &SessionConfigSelect) -> Vec<&SessionConfigSelectOptio
 ///
 /// Every field Sway cannot learn from ACP is left at its empty value rather than
 /// guessed: `resolved_model` repeats the value because the agent reports no
-/// separate resolution, and no effort levels are claimed because ACP has no
-/// notion of one. Measured on `opencode acp` 1.18.3: 15 provider-qualified ids
-/// (`github-copilot/claude-sonnet-4.6`, `opencode/big-pickle`, ...), the same 15
-/// `opencode models` prints, so nothing is lost by reading them from the wire.
+/// separate resolution. Measured on `opencode acp` 1.18.3: 15 provider-qualified
+/// ids (`github-copilot/claude-sonnet-4.6`, `opencode/big-pickle`, ...), the
+/// same 15 `opencode models` prints, so nothing is lost by reading them from the
+/// wire.
+///
+/// **Effort levels are a session property here, not a per-model one.** Claude's
+/// catalogue names them per model, so `ChatModelInfo` carries them per model;
+/// ACP publishes one `thought_level` selector for the whole session, so every
+/// model gets the same list. Attaching them to each row rather than reshaping
+/// the type keeps the control's one source of truth: it renders what the model
+/// it is showing declares, whichever harness filled that in.
 pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::Model) else {
         return Vec::new();
     };
+    let levels = effort_levels(options);
     select_entries(select)
         .into_iter()
         .map(|entry| ChatModelInfo {
@@ -127,8 +138,8 @@ pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
             resolved_model: entry.value.0.to_string(),
             display_name: entry.name.clone(),
             description: entry.description.clone().unwrap_or_default(),
-            supports_effort: false,
-            supported_effort_levels: Vec::new(),
+            supports_effort: !levels.is_empty(),
+            supported_effort_levels: levels.clone(),
             supports_auto_mode: false,
         })
         .collect()
@@ -148,6 +159,94 @@ pub fn current_model(options: &[SessionConfigOption]) -> Option<String> {
 /// rather than sent to an id Sway made up.
 pub fn model_config_id(options: &[SessionConfigOption]) -> Option<String> {
     let (option, _) = select_of(options, SessionConfigOptionCategory::Model)?;
+    Some(option.id.0.to_string())
+}
+
+/// The modes an agent offered, in the shape the mode selector already reads.
+///
+/// **ACP has two mechanisms for this and agents use the second.** The spec's own
+/// `session/set_mode` takes a `SessionModeId` from the modes `session/new`
+/// advertises; separately, an agent may publish a `mode`-category config option.
+/// Measured on both agents that have one, `opencode acp` 1.18.3 and
+/// `@agentclientprotocol/codex-acp` 1.2.0, it is the config option they use, and
+/// `session/set_mode` was never answered by either. So the config option is
+/// tried first and the spec verb is the fallback, rather than the other way
+/// round: preferring the verb would send every measured agent a request it does
+/// not serve.
+///
+/// `args` is empty because an ACP mode is a request rather than a flag, and
+/// `permissive` and `default` are left **undeclared** rather than guessed.
+/// Codex's `agent-full-access` really is permissive and its `read-only` really
+/// is the safe one, but nothing on the wire says so: the agent publishes an id,
+/// a label and a description, and inferring danger from the words in an id is
+/// exactly the per-vendor knowledge a generic transport must not carry. What is
+/// lost is the permissive caution on such a row, which is a real gap and is
+/// recorded as one rather than papered over with a guess.
+pub fn mode_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModeInfo> {
+    let Some((_, select)) = select_of(options, SessionConfigOptionCategory::Mode) else {
+        return Vec::new();
+    };
+    select_entries(select)
+        .into_iter()
+        .map(|entry| ChatModeInfo {
+            id: entry.value.0.to_string(),
+            label: entry.name.clone(),
+            hint: entry.description.clone().unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// The mode this session is running right now, as the agent reports it.
+pub fn current_mode(options: &[SessionConfigOption]) -> Option<String> {
+    let (_, select) = select_of(options, SessionConfigOptionCategory::Mode)?;
+    Some(select.current_value.0.to_string())
+}
+
+/// The config id a mode switch has to name, on the same rule as
+/// [`model_config_id`]: kept because the options arrive once, `None` for an
+/// agent that published no mode selector.
+pub fn mode_config_id(options: &[SessionConfigOption]) -> Option<String> {
+    let (option, _) = select_of(options, SessionConfigOptionCategory::Mode)?;
+    Some(option.id.0.to_string())
+}
+
+/// The reasoning-effort levels an agent offered, **narrowed to the ones Sway can
+/// actually send**.
+///
+/// ACP does have a notion of one, contrary to what this module said until
+/// Phase 8: `SessionConfigOptionCategory::ThoughtLevel` is a category of its
+/// own, and `@agentclientprotocol/codex-acp` 1.2.0 publishes six levels under
+/// it - `low, medium, high, xhigh, max, ultra`.
+///
+/// Five of those are [`Effort`] variants and `ultra` is not, so `ultra` is
+/// **dropped rather than offered**. Publishing it would put a level in the
+/// control that `set_model` cannot carry, which is a picker that appears to
+/// switch and does not - the exact failure the model switch is built to refuse.
+/// Widening `Effort` for it would move one agent's vocabulary into a type two
+/// harnesses share; see the note on `Effort` for when that trade flips.
+pub fn effort_levels(options: &[SessionConfigOption]) -> Vec<String> {
+    let Some((_, select)) = select_of(options, SessionConfigOptionCategory::ThoughtLevel) else {
+        return Vec::new();
+    };
+    let sendable: Vec<&str> = Effort::ALL.iter().map(|e| e.as_str()).collect();
+    select_entries(select)
+        .into_iter()
+        .map(|entry| entry.value.0.to_string())
+        .filter(|value| sendable.contains(&value.as_str()))
+        .collect()
+}
+
+/// The level this session is running right now, as the agent reports it.
+pub fn current_effort(options: &[SessionConfigOption]) -> Option<String> {
+    let (_, select) = select_of(options, SessionConfigOptionCategory::ThoughtLevel)?;
+    Some(select.current_value.0.to_string())
+}
+
+/// The config id an effort switch has to name. `None` for an agent that
+/// published no thought-level selector, and a switch on one of those is refused
+/// rather than sent to an id Sway made up.
+pub fn effort_config_id(options: &[SessionConfigOption]) -> Option<String> {
+    let (option, _) = select_of(options, SessionConfigOptionCategory::ThoughtLevel)?;
     Some(option.id.0.to_string())
 }
 
@@ -217,7 +316,18 @@ fn chunk_text(chunk: &ContentChunk) -> String {
 /// never an error - `SessionUpdate` is `#[non_exhaustive]`, so a protocol
 /// revision must be able to add an update this build silently ignores instead of
 /// failing to compile against a newer agent.
-pub fn map_update(session_id: &str, turn_id: &str, update: &SessionUpdate) -> Vec<ChatEvent> {
+///
+/// `cwd` is the session's working directory, and it is here for one job: an
+/// agent that sends a file's prior text needs somewhere to put it, and the
+/// object store is reached through the repo. `None` for a caller with no
+/// directory to offer, which degrades a diff block to a `FileEdit` with no
+/// before-state rather than dropping the edit.
+pub fn map_update(
+    session_id: &str,
+    turn_id: &str,
+    update: &SessionUpdate,
+    cwd: Option<&Path>,
+) -> Vec<ChatEvent> {
     match update {
         SessionUpdate::AgentMessageChunk(chunk) => vec![ChatEvent::TextDelta {
             session_id: session_id.to_string(),
@@ -240,9 +350,31 @@ pub fn map_update(session_id: &str, turn_id: &str, update: &SessionUpdate) -> Ve
             blocks: vec![ContentBlock::Text { text: chunk_text(chunk) }],
         }],
 
-        SessionUpdate::ToolCall(call) => vec![tool_call_started(session_id, turn_id, call)],
+        SessionUpdate::ToolCall(call) => {
+            let mut events = vec![tool_call_started(session_id, turn_id, call)];
+            events.extend(file_edits(
+                session_id,
+                turn_id,
+                &call.tool_call_id.0,
+                &call.content,
+                cwd,
+            ));
+            events
+        }
 
-        SessionUpdate::ToolCallUpdate(update) => tool_call_update(session_id, turn_id, update),
+        SessionUpdate::ToolCallUpdate(update) => {
+            let mut events = tool_call_update(session_id, turn_id, update);
+            // A content-only patch yields no status event and still carries the
+            // diff, so the edits are collected from the update either way.
+            events.extend(file_edits(
+                session_id,
+                turn_id,
+                &update.tool_call_id.0,
+                update.fields.content.as_deref().unwrap_or(&[]),
+                cwd,
+            ));
+            events
+        }
 
         SessionUpdate::Plan(plan) => vec![ChatEvent::PlanUpdate {
             session_id: session_id.to_string(),
@@ -289,6 +421,67 @@ fn plan_item(entry: &agent_client_protocol::schema::v1::PlanEntry) -> Option<Pla
     Some(PlanItem { text: entry.content.clone(), status })
 }
 
+/// The file edits a tool call's content blocks describe.
+///
+/// **This is the claim the ACP tier used to deny.** Sway's decision that "ACP
+/// agents cannot produce exact before-state diffs" was written from Claude's
+/// shape, where a before-state exists only because a hook reads the file just
+/// ahead of the write. Measured 2026-08-14 on `@agentclientprotocol/codex-acp`
+/// 1.2.0, the protocol carries it directly: a `tool_call` content block of type
+/// `diff` holds `oldText`, `newText` and an absolute `path`, which is a *better*
+/// source than the hook - it is what the agent is about to write rather than
+/// what happened to be on disk when a helper got there.
+///
+/// The text is stored in the same object store the hook capture writes to, so a
+/// card built from either is the same card and nothing downstream learns which
+/// harness it came from. That is also why no `ChatEvent` variant was added:
+/// `FileEdit` already means "a file was written, here is its before-state by
+/// content hash", which is exactly this.
+///
+/// An agent that sends no diff block yields nothing here, which is the honest
+/// outcome rather than an empty edit - `opencode acp` 1.18.3 sends none.
+fn file_edits(
+    session_id: &str,
+    turn_id: &str,
+    tool_use_id: &str,
+    content: &[ToolCallContent],
+    cwd: Option<&Path>,
+) -> Vec<ChatEvent> {
+    content
+        .iter()
+        .filter_map(|block| match block {
+            ToolCallContent::Diff(diff) => Some(diff),
+            _ => None,
+        })
+        .map(|diff| {
+            // `oldText: null` is the agent saying the file did not exist, which
+            // is a creation rather than a capture that failed. Measured: that is
+            // what codex-acp sends for a new file, with `_meta.kind: "add"`.
+            let before = match (&diff.old_text, cwd) {
+                (None, _) => snapshot::BeforeState::Absent,
+                (Some(text), Some(repo)) => snapshot::store_text(repo, text),
+                // Nowhere to put it. The card degrades to "diff unavailable"
+                // exactly as it does for a non-repo folder on the hook path.
+                (Some(_), None) => snapshot::BeforeState::Unavailable,
+            };
+            ChatEvent::FileEdit {
+                session_id: session_id.to_string(),
+                turn_id: turn_id.to_string(),
+                tool_use_id: tool_use_id.to_string(),
+                path: diff.path.to_string_lossy().into_owned(),
+                kind: match before {
+                    snapshot::BeforeState::Absent => FileEditKind::Created,
+                    _ => FileEditKind::Modified,
+                },
+                before_blob: match before {
+                    snapshot::BeforeState::Blob { sha } => Some(sha),
+                    _ => None,
+                },
+            }
+        })
+        .collect()
+}
+
 fn tool_call_started(session_id: &str, turn_id: &str, call: &ToolCall) -> ChatEvent {
     ChatEvent::ToolCallStarted {
         session_id: session_id.to_string(),
@@ -325,10 +518,17 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                     .raw_output
                     .as_ref()
                     .map(|v| v.to_string()),
-                // ACP does not report which paths a call wrote, so this stays
-                // empty rather than being guessed at. It is the field
-                // per-turn attribution reads, and a wrong path there would
-                // attribute another session's edit to this one.
+                // Still empty, and Phase 8 measured *why* rather than assuming
+                // it. A diff block does name an absolute path, so this looked
+                // like it could be filled from one - but the sequence
+                // `codex-acp` 1.2.0 actually sends is `tool_call` carrying the
+                // diff and then a `tool_call_update` completing it with **no
+                // content at all**. Reading the completing update's content
+                // would therefore be code that runs and finds nothing.
+                //
+                // The paths still reach the consumers that want them: the same
+                // diff block becomes a `FileEdit`, and `filesWritten` in the
+                // store reads `fileEdit.path` beside `toolCallCompleted.files`.
                 files: Vec::new(),
                 duration_ms: None,
             }]
@@ -548,6 +748,100 @@ mod tests {
         ]
     }
 
+    /// The four selectors `@agentclientprotocol/codex-acp` 1.2.0 actually sends
+    /// on `session/new`, measured 2026-08-14.
+    fn codex_options() -> Vec<SessionConfigOption> {
+        vec![
+            select(
+                "model",
+                "Model",
+                Some(SessionConfigOptionCategory::Model),
+                "gpt-5.6-terra",
+                &[("gpt-5.6-terra", "GPT-5.6 Terra"), ("gpt-5.5", "GPT-5.5")],
+            ),
+            select(
+                "mode",
+                "Mode",
+                Some(SessionConfigOptionCategory::Mode),
+                "agent",
+                &[
+                    ("read-only", "Read Only"),
+                    ("agent", "Agent"),
+                    ("agent-full-access", "Agent (full access)"),
+                ],
+            ),
+            select(
+                "thought_level",
+                "Reasoning effort",
+                Some(SessionConfigOptionCategory::ThoughtLevel),
+                "medium",
+                &[
+                    ("low", "Low"),
+                    ("medium", "Medium"),
+                    ("high", "High"),
+                    ("xhigh", "Extra high"),
+                    ("max", "Max"),
+                    ("ultra", "Ultra"),
+                ],
+            ),
+        ]
+    }
+
+    /// **ACP does have a notion of a reasoning level**, contrary to what this
+    /// module claimed until an agent published one.
+    #[test]
+    fn a_thought_level_select_becomes_the_effort_levels() {
+        let models = model_catalogue(&codex_options());
+        assert!(models.iter().all(|m| m.supports_effort));
+        // Every model gets the same list: ACP publishes one selector for the
+        // session where Claude's catalogue names them per model.
+        for model in &models {
+            assert_eq!(model.supported_effort_levels, vec!["low", "medium", "high", "xhigh", "max"]);
+        }
+        assert_eq!(current_effort(&codex_options()).as_deref(), Some("medium"));
+        assert_eq!(effort_config_id(&codex_options()).as_deref(), Some("thought_level"));
+    }
+
+    /// **`ultra` is dropped, and dropping it is the point.** The agent offers
+    /// six levels and `Effort` can carry five, so offering the sixth would put a
+    /// row in the control that `set_model` has no way to send - a picker that
+    /// appears to switch and does not, which is the failure the model switch
+    /// exists to refuse.
+    #[test]
+    fn a_level_sway_cannot_send_is_not_offered() {
+        let levels = effort_levels(&codex_options());
+        assert!(!levels.contains(&"ultra".to_string()), "{levels:?}");
+        assert_eq!(levels.len(), 5);
+        // And what is offered is exactly what `Effort` can spell, so the two
+        // cannot drift.
+        let sendable: Vec<String> = Effort::ALL.iter().map(|e| e.as_str().to_string()).collect();
+        assert!(levels.iter().all(|l| sendable.contains(l)));
+    }
+
+    /// An agent with no thought-level selector claims none, which is what keeps
+    /// the control hidden rather than rendering inert.
+    #[test]
+    fn an_agent_with_no_thought_level_claims_no_effort() {
+        assert!(effort_levels(&opencode_options()).is_empty());
+        assert_eq!(current_effort(&opencode_options()), None);
+        assert_eq!(effort_config_id(&opencode_options()), None);
+    }
+
+    /// The mode selector reaches the UI as the agent spelled it, with the
+    /// permissive flag left undeclared: nothing on the wire says which of
+    /// Codex's three runs tools unattended.
+    #[test]
+    fn a_mode_select_becomes_the_live_mode_catalogue() {
+        let modes = mode_catalogue(&codex_options());
+        assert_eq!(
+            modes.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["read-only", "agent", "agent-full-access"],
+        );
+        assert_eq!(modes[0].label, "Read Only");
+        assert_eq!(current_mode(&codex_options()).as_deref(), Some("agent"));
+        assert_eq!(mode_config_id(&codex_options()).as_deref(), Some("mode"));
+    }
+
     /// The catalogue is the agent's, provider-qualified ids and all.
     #[test]
     fn a_model_select_becomes_the_live_catalogue() {
@@ -557,8 +851,9 @@ mod tests {
             vec!["github-copilot/claude-sonnet-4.6", "opencode/big-pickle"],
         );
         assert_eq!(models[0].display_name, "GitHub Copilot/Claude Sonnet 4.6");
-        // ACP has no notion of an effort level, so none is claimed and the
-        // control stays hidden rather than rendering inert.
+        // *This agent* publishes no thought-level selector, so no level is
+        // claimed and the control stays hidden rather than rendering inert.
+        // Not a fact about ACP: `codex-acp` does publish one, see below.
         assert!(models.iter().all(|m| !m.supports_effort && m.supported_effort_levels.is_empty()));
         // No separate resolution exists on the wire, so the value is its own.
         assert!(models.iter().all(|m| m.value == m.resolved_model));
@@ -667,7 +962,7 @@ mod tests {
 
     #[test]
     fn an_agent_message_chunk_becomes_a_text_delta() {
-        let events = map_update("s1", "t1", &SessionUpdate::AgentMessageChunk(text_chunk("hi")));
+        let events = map_update("s1", "t1", &SessionUpdate::AgentMessageChunk(text_chunk("hi")), None);
         assert!(matches!(
             events.as_slice(),
             [ChatEvent::TextDelta { text, .. }] if text == "hi"
@@ -676,7 +971,7 @@ mod tests {
 
     #[test]
     fn a_thought_chunk_is_thinking_rather_than_speech() {
-        let events = map_update("s1", "t1", &SessionUpdate::AgentThoughtChunk(text_chunk("hm")));
+        let events = map_update("s1", "t1", &SessionUpdate::AgentThoughtChunk(text_chunk("hm")), None);
         assert!(matches!(events.as_slice(), [ChatEvent::ThinkingDelta { .. }]));
     }
 
@@ -695,13 +990,13 @@ mod tests {
     #[test]
     fn a_tool_call_update_without_a_status_yields_nothing() {
         let update = tool_update("call-1", None);
-        assert!(map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update)).is_empty());
+        assert!(map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None).is_empty());
     }
 
     #[test]
     fn a_failed_tool_call_completes_as_an_error_rather_than_ok() {
         let update = tool_update("call-1", Some(ToolCallStatus::Failed));
-        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update));
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None);
         assert!(matches!(
             events.as_slice(),
             [ChatEvent::ToolCallCompleted { status: ToolStatus::Error, .. }]
@@ -711,11 +1006,185 @@ mod tests {
     #[test]
     fn a_completed_tool_call_reports_no_files_rather_than_guessing_at_them() {
         let update = tool_update("call-1", Some(ToolCallStatus::Completed));
-        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update));
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None);
         assert!(matches!(
             events.as_slice(),
             [ChatEvent::ToolCallCompleted { status: ToolStatus::Ok, files, .. }] if files.is_empty()
         ));
+    }
+
+    /// A tool-call update carrying a diff block, as `codex-acp` 1.2.0 sends one.
+    fn tool_update_with_diff(
+        id: &str,
+        status: Option<ToolCallStatus>,
+        path: &str,
+        old_text: Option<&str>,
+        new_text: &str,
+    ) -> ToolCallUpdate {
+        use agent_client_protocol::schema::v1::{Diff, ToolCallUpdateFields};
+        let mut diff = Diff::new(std::path::PathBuf::from(path), new_text.to_string());
+        diff.old_text = old_text.map(str::to_string);
+        let mut fields = ToolCallUpdateFields::default();
+        fields.status = status;
+        fields.content = Some(vec![ToolCallContent::Diff(diff)]);
+        ToolCallUpdate::new(ToolCallId::new(id), fields)
+    }
+
+    /// A repo to hash into, so a before-state has somewhere to land.
+    fn tmp_repo(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("sway-acp-diff-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::process::Command::new("git")
+            .current_dir(&dir)
+            .args(["init", "-q"])
+            .output()
+            .unwrap();
+        dir
+    }
+
+    /// **The measurement that falsified "ACP cannot produce exact diffs".**
+    ///
+    /// The agent sends the file's prior text with the call, so the before-state
+    /// is exact and addressable in the same object store the capture hook writes
+    /// to. No new `ChatEvent` variant: `FileEdit` already meant this.
+    #[test]
+    fn a_diff_block_becomes_a_file_edit_with_a_real_before_state() {
+        let repo = tmp_repo("modified");
+        let update = tool_update_with_diff(
+            "call-1",
+            Some(ToolCallStatus::Completed),
+            "/tmp/hello.txt",
+            Some("one\ntwo\nthree\n"),
+            "one\ntwo\nTHREE\n",
+        );
+        let events =
+            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+
+        let edit = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::FileEdit { path, kind, before_blob, .. } => {
+                    Some((path.clone(), *kind, before_blob.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no file edit: {events:?}"));
+        assert_eq!(edit.0, "/tmp/hello.txt");
+        assert_eq!(edit.1, FileEditKind::Modified);
+        let sha = edit.2.expect("the prior text was stored");
+        assert_eq!(
+            snapshot::read_back(&repo, &sha).as_deref(),
+            Some("one\ntwo\nthree\n"),
+            "and reads back byte for byte, which is what makes the diff exact"
+        );
+
+        // **The completing event still reports no write targets, on purpose.**
+        // Measured: `codex-acp` puts the diff on `tool_call` and completes with
+        // no content, so filling this from the completing update would be code
+        // that never finds anything. Per-turn attribution reads the `FileEdit`
+        // above instead, through `filesWritten` in the store.
+        let files = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::ToolCallCompleted { files, .. } => Some(files.clone()),
+                _ => None,
+            })
+            .expect("the call still completes");
+        assert!(files.is_empty(), "{files:?}");
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// `oldText: null` is the agent saying the file did not exist. A creation,
+    /// not a capture that failed, and the two render differently.
+    #[test]
+    fn a_diff_with_no_prior_text_is_a_creation_rather_than_a_failed_capture() {
+        let repo = tmp_repo("created");
+        let update = tool_update_with_diff(
+            "call-1",
+            Some(ToolCallStatus::Completed),
+            "/tmp/new.txt",
+            None,
+            "hello\n",
+        );
+        let events =
+            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        let edit = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::FileEdit { kind, before_blob, .. } => Some((*kind, before_blob.clone())),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no file edit: {events:?}"));
+        assert_eq!(edit.0, FileEditKind::Created);
+        assert_eq!(edit.1, None, "there is no prior content to address");
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// A content-only patch carries the diff and no status. The edit must still
+    /// come through: the status is what decides whether the *card* moves, and
+    /// dropping the edit with it would lose the before-state entirely.
+    #[test]
+    fn a_diff_arrives_even_when_the_patch_reports_no_status() {
+        let repo = tmp_repo("statusless");
+        let update = tool_update_with_diff(
+            "call-1",
+            None,
+            "/tmp/hello.txt",
+            Some("before\n"),
+            "after\n",
+        );
+        let events =
+            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        assert!(
+            events.iter().any(|e| matches!(e, ChatEvent::FileEdit { .. })),
+            "the edit survives a statusless patch: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, ChatEvent::ToolCallProgress { .. })),
+            "and still does not restart the card: {events:?}"
+        );
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// With nowhere to hash into, the edit is still reported and the diff is
+    /// not. The card degrades to "diff unavailable" exactly as it does for a
+    /// non-repo folder on the hook path, rather than the write going unrecorded.
+    #[test]
+    fn a_diff_with_no_object_store_still_reports_the_write() {
+        let update = tool_update_with_diff(
+            "call-1",
+            Some(ToolCallStatus::Completed),
+            "/tmp/hello.txt",
+            Some("before\n"),
+            "after\n",
+        );
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None);
+        let edit = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::FileEdit { path, before_blob, .. } => {
+                    Some((path.clone(), before_blob.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no file edit: {events:?}"));
+        assert_eq!(edit.0, "/tmp/hello.txt");
+        assert_eq!(edit.1, None);
+    }
+
+    /// An agent that sends no diff block contributes nothing, which is the
+    /// honest outcome rather than an empty edit. `opencode acp` 1.18.3 is this
+    /// case, so the ACP tier cannot claim diffs for every agent behind it.
+    #[test]
+    fn an_agent_that_sends_no_diff_produces_no_file_edit() {
+        let repo = tmp_repo("nodiff");
+        let update = tool_update("call-1", Some(ToolCallStatus::Completed));
+        let events =
+            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        assert!(!events.iter().any(|e| matches!(e, ChatEvent::FileEdit { .. })), "{events:?}");
+        std::fs::remove_dir_all(&repo).ok();
     }
 
     /// The protocol is `#[non_exhaustive]` and gains updates over time. An
@@ -726,7 +1195,7 @@ mod tests {
         use agent_client_protocol::schema::v1::{CurrentModeUpdate, SessionModeId};
         let update =
             SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new("plan")));
-        assert!(map_update("s1", "t1", &update).is_empty());
+        assert!(map_update("s1", "t1", &update, None).is_empty());
     }
 
     /// A refusal drops the user's prompt from the agent's history, so it cannot

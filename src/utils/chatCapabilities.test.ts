@@ -96,7 +96,7 @@ describe("the chat tier", () => {
     // for any harness to publish.
     expect(tier.approvals).toBe("in-protocol");
     expect(tier).not.toHaveProperty("swayRules");
-    expect(tier.beforeStateDiffs).toBe(true);
+    expect(tier.diffs).toBe("before-state");
     expect(tier.spendCeilings).toBe(true);
   });
 
@@ -179,7 +179,7 @@ describe("every tier explains what it lacks", () => {
         ["rewind", tier.rewind === "none"],
         ["steer", tier.steer === "none"],
         ["approvals", tier.approvals === "none"],
-        ["diffs", !tier.beforeStateDiffs],
+        ["diffs", tier.diffs === "none"],
         ["budgets", !tier.spendCeilings],
       ] as const;
       for (const [key, missing] of expected) {
@@ -218,17 +218,26 @@ describe("the ACP tier", () => {
       label: "approvals: in-protocol",
     });
 
-    // The three the plan names as unsupported, absent from the listing rather
-    // than published as `none`. An entry for something absent invites reading
-    // the key and skipping the value.
-    expect(tier.beforeStateDiffs).toBe(false);
+    // The two the plan names as unsupported and this build still lacks, absent
+    // from the listing rather than published as `none`. An entry for something
+    // absent invites reading the key and skipping the value.
     expect(tier.spendCeilings).toBe(false);
     expect(tier.rewind).toBe("none");
-    expect(keys).not.toContain("diffs");
     expect(keys).not.toContain("budgets");
     expect(keys).not.toContain("rewind");
     // And Sway's own rule store, which only the Claude hook reads.
     expect(keys).not.toContain("rules");
+
+    // **Diffs left that list in Phase 8.** The plan said ACP agents cannot
+    // produce an exact before-state because it rides the Claude-only hook;
+    // `codex-acp` sends one in the tool call. So it is published, and the value
+    // carries the qualification rather than promising it for every agent.
+    expect(tier.diffs).toBe("agent-supplied");
+    expect(publishedCapabilities(tier)).toContainEqual({
+      key: "diffs",
+      value: "agent-supplied",
+      label: "diffs: agent-supplied",
+    });
   });
 
   it("never reports a budget as armed, because ACP reports no cost to measure", () => {
@@ -247,13 +256,15 @@ describe("the ACP tier", () => {
     expect(chatTier("acp").rewind).not.toBe("fork");
   });
 
-  // The three the plan names, each with the reason a user can act on rather
-  // than the mechanism they cannot.
-  it("names exact diffs, revert and spend ceilings as unavailable, and says why", () => {
+  // Each with the reason a user can act on rather than the mechanism they
+  // cannot. The plan named three; diffs left the list in Phase 8 when an agent
+  // turned out to send them, so a gap for it here would explain an absence that
+  // is not one.
+  it("names revert and spend ceilings as unavailable, and says why", () => {
     const gaps = unavailableCapabilities(chatTier("acp"));
     const by = (key: string) => gaps.find((g) => g.key === key)?.why ?? "";
 
-    expect(by("diffs")).toContain("before-and-after");
+    expect(by("diffs")).toBe("");
     expect(by("rewind")).toContain("fork");
     // Not "it rides the hook", which stopped being true when the ceiling moved
     // to the turn boundary. The real reason is that ACP reports no cost.
