@@ -1,6 +1,7 @@
 import {
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   on,
   onCleanup,
@@ -10,6 +11,7 @@ import {
   type Component,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
+import { invoke } from "@tauri-apps/api/core";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
@@ -98,6 +100,22 @@ export default function Settings(props: {
    *  to be able to type past it the moment it lands. */
   const [query, setQuery] = createSignal(props.query ?? "");
   const [active, setActive] = createSignal<SettingTab>("agents");
+
+  /** Which first-run greeting applies. Fetched only in welcome mode, since it
+   *  is the only mode that renders one, and a failed fetch falls back to the
+   *  ordinary copy rather than blocking the panel. */
+  const [onboardingContent] = createResource(
+    () => (props.welcome ? true : undefined),
+    () => invoke<{ kind: string; supported?: string[] }>("onboarding_content").catch(() => undefined),
+  );
+  /** "Claude, Codex or OpenCode": an Oxford-comma-free list ending in "or",
+   *  because the user needs any one of them, not all of them. */
+  const supportedList = createMemo(() => {
+    const names = onboardingContent()?.supported ?? [];
+    if (names.length === 0) return "one of the agent CLIs Sway supports";
+    if (names.length === 1) return names[0];
+    return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  });
 
   const matches = createMemo(() => matchingEntries(query()));
   /** Everything when nothing is typed, only what matched when something is. */
@@ -373,12 +391,29 @@ export default function Settings(props: {
           <div class={styles.body}>
             {/* Agents leads the strip: it is the tab first-run opens onto, and
                 the one answering "will this work with my setup?". */}
+            {/* Two greetings, because the old single one assumed a CLI was
+                already installed. Telling somebody with none to "check which
+                ones it found below" points them at a list of misses and reads
+                as Sway being broken, when the real state is a step they have
+                not taken. The backend decides which applies (it reads the same
+                health sweep the cards below use); this only renders it. */}
             <Show when={props.welcome}>
-              <div class={styles.welcome}>
-                Welcome to Sway. It drives the agent CLIs you already have, so start by
-                checking which ones it found below, then open a folder in the sidebar to
-                begin a session.
-              </div>
+              <Show
+                when={onboardingContent()?.kind === "noHarness"}
+                fallback={
+                  <div class={styles.welcome}>
+                    Welcome to Sway. It drives the agent CLIs you already have, so start by
+                    checking which ones it found below, then open a folder in the sidebar to
+                    begin a session.
+                  </div>
+                }
+              >
+                <div class={styles.welcome}>
+                  Welcome to Sway. It drives an agent CLI you install yourself, and it could
+                  not find one yet. Install {supportedList()}, then reopen this tab and Sway
+                  will pick it up.
+                </div>
+              </Show>
             </Show>
             {/* Two different nothings, and conflating them is what makes a
                 stay-put search feel broken. "Nowhere" is a query to change;

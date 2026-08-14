@@ -99,6 +99,40 @@ fn should_show_with(state: &State, adapters: &[AgentAdapter]) -> bool {
     !state.onboarding_shown && !adapters.iter().any(has_any_session)
 }
 
+/// What first-run onboarding should actually say.
+///
+/// Separate from [`should_show_with`], and deliberately so: *whether* to greet
+/// somebody is a question about their sessions, and *what to say* is a question
+/// about their machine. Folding the binary check into the predicate would
+/// change who sees onboarding at all, which is a different feature and a
+/// regression for the user who has Sway working already.
+///
+/// The copy this drives used to be one fixed line telling the user to check
+/// "which ones it found below". On a machine with nothing installed that is
+/// advice to go look at four rows of "not found", which reads as Sway being
+/// broken rather than as a step the user has not taken yet.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum OnboardingContent {
+    /// No adapter's binary resolves. Carries the harness names so the greeting
+    /// can say what to install rather than only that something is missing.
+    NoHarness { supported: Vec<String> },
+    /// At least one harness resolves, so Sway has something to drive and the
+    /// first-run copy is about Sway rather than about installing anything.
+    FirstRun,
+}
+
+/// Pure core: `installed` answers whether an adapter's binary resolved, so this
+/// is tested without a PATH and without spawning anything.
+fn content_with(adapters: &[AgentAdapter], installed: impl Fn(&str) -> bool) -> OnboardingContent {
+    if adapters.iter().any(|a| installed(&a.id)) {
+        return OnboardingContent::FirstRun;
+    }
+    OnboardingContent::NoHarness {
+        supported: adapters.iter().map(|a| a.label.clone()).collect(),
+    }
+}
+
 // --- thin wrappers over the real path ---
 
 /// Read state.json. Shared so other one-time notices (the dropped theme import
@@ -117,6 +151,23 @@ pub(crate) fn save_state(state: &State) -> Result<(), String> {
 #[tauri::command]
 pub async fn onboarding_should_show() -> bool {
     should_show_with(&load_from(&state_path()), agents::registry())
+}
+
+/// What the first-run greeting should say on this machine.
+///
+/// Reads the health sweep rather than resolving binaries again, so opening
+/// onboarding costs nothing extra: `agent_health` has usually already run for
+/// the Agents cards, and if it has not, this fills the same cache the cards
+/// then read.
+#[tauri::command]
+pub async fn onboarding_content() -> OnboardingContent {
+    let health = crate::health::agent_health().await;
+    let found: std::collections::HashSet<&str> = health
+        .iter()
+        .filter(|h| h.status != crate::health::BinaryStatus::NotFound)
+        .map(|h| h.id.as_str())
+        .collect();
+    content_with(agents::registry(), |id| found.contains(id))
 }
 
 /// Record that onboarding has been shown. Called the moment it displays, not
@@ -176,6 +227,58 @@ mod tests {
 
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
         std::fs::remove_dir_all(&empty).ok();
+    }
+
+    #[test]
+    // --- what the greeting says, which is a separate question from whether it
+    //     shows at all ---
+
+    /// The case the old fixed copy got wrong: telling somebody to check which
+    /// CLIs Sway found, when it found none, points them at four rows of "not
+    /// found" and reads as Sway being broken.
+    #[test]
+    fn a_machine_with_no_harness_is_told_what_to_install() {
+        let dir = tmp_dir("content-none");
+        let adapters = [adapter_at(&dir)];
+        let content = content_with(&adapters, |_| false);
+        match content {
+            OnboardingContent::NoHarness { supported } => {
+                assert!(!supported.is_empty(), "the guidance has to name the harnesses");
+                assert_eq!(supported, adapters.iter().map(|a| a.label.clone()).collect::<Vec<_>>());
+            }
+            other => panic!("expected NoHarness, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn one_installed_harness_is_enough_for_the_ordinary_greeting() {
+        let dir = tmp_dir("content-some");
+        let adapters = [adapter_at(&dir)];
+        let installed_id = adapters[0].id.clone();
+        assert_eq!(
+            content_with(&adapters, |id| id == installed_id),
+            OnboardingContent::FirstRun
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The content branch must not become a second show/hide gate. A user with
+    /// no harness installed still sees onboarding; they just see different
+    /// words in it.
+    #[test]
+    fn the_content_branch_does_not_change_who_sees_onboarding() {
+        let dir = tmp_dir("content-gate");
+        let adapters = [adapter_at(&dir)];
+        assert!(
+            should_show_with(&State::default(), &adapters),
+            "a fresh user with no sessions sees onboarding whatever is installed"
+        );
+        assert!(matches!(
+            content_with(&adapters, |_| false),
+            OnboardingContent::NoHarness { .. }
+        ));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

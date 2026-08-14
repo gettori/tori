@@ -15,12 +15,16 @@
 //    at drift from an unparseable banner would flag healthy setups as broken.
 //
 // Checks spawn subprocesses, so the command is async (Tauri runs it off the
-// main thread) and the whole sweep is cached for the app's lifetime: the
-// answer only changes when the user installs something, and a stale card is a
-// far smaller cost than a UI that stalls on every Settings open.
+// main thread) and the whole sweep is cached: a UI that stalls on every
+// Settings open would be a far bigger cost than a slightly stale card.
+//
+// The cache is invalidatable rather than lifetime-memoized, which it used to
+// be. "Cached for the app's lifetime" was correct only while nothing inside
+// Sway could change the answer; once a harness can be installed or signed in
+// from the app, a `OnceLock` would show `NotFound` for a binary the user just
+// installed until they restarted. See `HealthCache`.
 
 use std::path::Path;
-use std::sync::OnceLock;
 
 use serde::Serialize;
 
@@ -153,17 +157,164 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
     }
 }
 
-static HEALTH: OnceLock<Vec<AgentHealth>> = OnceLock::new();
+/// A memoized sweep that can be told it is wrong.
+///
+/// This used to be a `OnceLock`, which was right while the answer could not
+/// change: nothing inside Sway installed a binary or signed anyone in, so
+/// "computed once per app run" and "correct" were the same statement. They stop
+/// being the same the moment an install or a login happens in-app, and a
+/// `OnceLock` has no way back: the user would see `NotFound` for a harness they
+/// just installed until they restarted the app.
+///
+/// The sweep function is a parameter rather than hardcoded so the cache's rules
+/// can be tested without touching the real PATH, per
+/// [[lesson_pure_core_for_global_stores]]. Tests own a local `HealthCache`
+/// instead of racing on the global one, which matters because Rust runs them in
+/// parallel threads of one process.
+struct HealthCache(std::sync::Mutex<Option<Vec<AgentHealth>>>);
 
-/// Health for every registered adapter, computed once per app run.
+impl HealthCache {
+    const fn new() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    /// The cached sweep, running `sweep` only if there is nothing cached.
+    ///
+    /// The lock is held across `sweep`, which is deliberate and is what the
+    /// `OnceLock` did too: the probes are bounded (see
+    /// [`crate::env::output_with_timeout`] and
+    /// `gotchas#A subprocess probe inside a memoized sweep must be bounded`), so
+    /// a queued caller waits for one sweep rather than starting a second one.
+    /// Dropping the lock first would let two callers probe every binary at once.
+    fn get_or_sweep(&self, sweep: impl FnOnce() -> Vec<AgentHealth>) -> Vec<AgentHealth> {
+        // A poisoned lock means a previous sweep panicked. Recovering the guard
+        // and re-sweeping is better than propagating: this is a cache, and the
+        // alternative is an Agents panel that stays broken until restart.
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cached) = slot.as_ref() {
+            return cached.clone();
+        }
+        let fresh = sweep();
+        *slot = Some(fresh.clone());
+        fresh
+    }
+
+    fn invalidate(&self) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
+
+static HEALTH: HealthCache = HealthCache::new();
+
+fn sweep() -> Vec<AgentHealth> {
+    agents::registry().iter().map(check).collect()
+}
+
+/// Health for every registered adapter, probed once and then cached until
+/// something invalidates it.
 #[tauri::command]
 pub async fn agent_health() -> Vec<AgentHealth> {
-    HEALTH.get_or_init(|| agents::registry().iter().map(check).collect()).clone()
+    HEALTH.get_or_sweep(sweep)
 }
+
+/// Re-probe every adapter now and return the new answer.
+///
+/// The caller is anything that could have changed the answer: an in-app
+/// install, a completed login, a user pressing refresh. It is a separate
+/// command rather than a parameter on `agent_health` so the ordinary read stays
+/// a read, and nothing can force a full sweep by passing the wrong argument on
+/// a hot path.
+#[tauri::command]
+pub async fn refresh_agent_health() -> Vec<AgentHealth> {
+    HEALTH.invalidate();
+    HEALTH.get_or_sweep(sweep)
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- the invalidatable cache ---
+    //
+    // Driven through a local `HealthCache` with a counting sweep, so these
+    // assert the caching rules rather than what happens to be installed on the
+    // machine running them, and do not race the global cache across threads.
+
+    fn health_named(id: &str, status: BinaryStatus) -> Vec<AgentHealth> {
+        vec![AgentHealth {
+            id: id.into(),
+            label: id.into(),
+            program: id.into(),
+            status,
+            path: None,
+            version: None,
+            verified_against: None,
+            sessions_dir: None,
+            sessions_dir_exists: false,
+            hooks: false,
+            needs_you: false,
+            override_path: None,
+        }]
+    }
+
+    /// The reason the cache exists at all: Settings must not re-probe every
+    /// binary each time it is opened.
+    #[test]
+    fn a_second_read_does_not_re_probe() {
+        let cache = HealthCache::new();
+        let sweeps = std::cell::Cell::new(0);
+        let sweep = || {
+            sweeps.set(sweeps.get() + 1);
+            health_named("claude", BinaryStatus::NotFound)
+        };
+
+        let first = cache.get_or_sweep(sweep);
+        let second = cache.get_or_sweep(sweep);
+
+        assert_eq!(sweeps.get(), 1, "opening Settings twice must probe once");
+        assert_eq!(first.len(), second.len());
+        assert_eq!(second[0].status, BinaryStatus::NotFound);
+    }
+
+    /// The reason it is no longer a `OnceLock`: an install inside the app has
+    /// to be visible without a restart.
+    #[test]
+    fn invalidating_lets_an_install_show_up_without_a_restart() {
+        let cache = HealthCache::new();
+        assert_eq!(
+            cache.get_or_sweep(|| health_named("claude", BinaryStatus::NotFound))[0].status,
+            BinaryStatus::NotFound
+        );
+
+        // Nothing changed yet, so the stale answer is still the answer.
+        assert_eq!(
+            cache.get_or_sweep(|| health_named("claude", BinaryStatus::VersionMatch))[0].status,
+            BinaryStatus::NotFound,
+            "without invalidation the cache must not silently re-probe"
+        );
+
+        cache.invalidate();
+        assert_eq!(
+            cache.get_or_sweep(|| health_named("claude", BinaryStatus::VersionMatch))[0].status,
+            BinaryStatus::VersionMatch,
+            "after invalidation the newly installed binary must be visible"
+        );
+    }
+
+    /// A panic inside a sweep must not wedge the Agents panel until restart.
+    #[test]
+    fn a_poisoned_cache_recovers_instead_of_staying_broken() {
+        let cache = std::sync::Arc::new(HealthCache::new());
+        let poisoner = std::sync::Arc::clone(&cache);
+        let _ = std::thread::spawn(move || {
+            poisoner.get_or_sweep(|| panic!("a probe blew up"));
+        })
+        .join();
+
+        let after = cache.get_or_sweep(|| health_named("claude", BinaryStatus::VersionMatch));
+        assert_eq!(after[0].status, BinaryStatus::VersionMatch);
+    }
 
     #[test]
     fn parses_a_single_line_version() {

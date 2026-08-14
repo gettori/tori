@@ -300,6 +300,12 @@
     box-shadow: inset 0 0 0 1px var(--fg-muted);
   }
 
+  .cardActions {
+    display: flex;
+    gap: var(--sway-space-2);
+    margin-top: var(--sway-space-3);
+  }
+
   .cardStatus {
     font-size: var(--sway-text-sm);
     color: var(--fg-default);

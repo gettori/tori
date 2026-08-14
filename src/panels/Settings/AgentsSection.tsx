@@ -1,5 +1,6 @@
-import { For, Show, Switch, Match, createResource, onMount } from "solid-js";
+import { For, Show, Switch, Match, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import Button from "../../components/Button/Button";
 import { ensureAgentsLoaded, findAgent } from "../../utils/agents";
 import {
   chatTier,
@@ -8,6 +9,12 @@ import {
   unavailableCapabilities,
   type PublishedCapability,
 } from "../../utils/chatCapabilities";
+import {
+  ensureAgentHealthLoaded,
+  refreshAgentHealth,
+  type AgentHealth,
+  type BinaryStatus,
+} from "../../utils/agentHealth";
 import styles from "./Settings.module.css";
 
 // One card per registered adapter, answering the question a new user actually
@@ -19,24 +26,9 @@ import styles from "./Settings.module.css";
 // installed, so an uninstalled one gets an install hint, and an unparseable
 // version gets neutral text - never red, never a warning icon.
 
-type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
-
-export type AgentHealth = {
-  id: string;
-  label: string;
-  program: string;
-  status: BinaryStatus;
-  path: string | null;
-  version: string | null;
-  verifiedAgainst: string | null;
-  // Null for an agent whose sessions only its protocol reaches, which is not a
-  // broken install: there is no directory to name.
-  sessionsDir: string | null;
-  sessionsDirExists: boolean;
-  hooks: boolean;
-  needsYou: boolean;
-  overridePath: string | null;
-};
+// Moved to utils/agentHealth so the chat picker reads the same answer these
+// cards render. Re-exported because the section's tests import it from here.
+export type { AgentHealth } from "../../utils/agentHealth";
 
 // The dot answers one question - is this agent installed and usable? - and
 // nothing else. `versionUnknown` is therefore green, not gray: an adapter
@@ -71,7 +63,11 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   sessions: "This agent can list its own sessions, including ones started outside Sway.",
 };
 
-function AgentCard(props: { agent: AgentHealth }) {
+function AgentCard(props: {
+  agent: AgentHealth;
+  onRecheck: () => Promise<unknown>;
+  rechecking: boolean;
+}) {
   const a = () => props.agent;
   // From the resolved adapter rather than from `agent_health`, which answers
   // about the binary on disk and knows nothing about the chat transport. An
@@ -92,8 +88,12 @@ function AgentCard(props: { agent: AgentHealth }) {
 
       <div class={styles.cardStatus}>
         <Switch>
+          {/* "Reopen Sway" was true while the sweep was memoized for the app's
+              lifetime. It is not any more: the health cache is invalidatable,
+              so the honest instruction is to install and press the button
+              below. */}
           <Match when={a().status === "notFound"}>
-            Not installed. Install <code>{a().program}</code> and reopen Sway to pick it up.
+            Not installed. Install <code>{a().program}</code>, then check again.
           </Match>
           <Match when={a().status === "versionMatch"}>Installed, version {a().version}.</Match>
           {/* Installed, but **this adapter** was never measured against it: the
@@ -121,6 +121,24 @@ function AgentCard(props: { agent: AgentHealth }) {
           </Match>
         </Switch>
       </div>
+
+      {/* One primary action per non-ready state, so none of them is a dead
+          entry the user can only read. Both actions are the same button
+          because both states are resolved the same way: change something
+          outside Sway, then have Sway look again. Drift keeps it because
+          updating the CLI is the fix, and drift is a notice rather than a
+          gate: the harness still starts either way.
+
+          Not-installed does not offer to *do* the install. Phase 5 owns
+          fetching from the registry, and a button that installed nothing
+          would be the dead entry this is meant to remove. */}
+      <Show when={a().status === "notFound" || a().status === "versionDrift"}>
+        <div class={styles.cardActions}>
+          <Button size="sm" onClick={() => void props.onRecheck()} disabled={props.rechecking}>
+            {props.rechecking ? "Checking…" : "Check again"}
+          </Button>
+        </div>
+      </Show>
 
       <div class={styles.cardMeta}>
         <Switch>
@@ -291,11 +309,30 @@ function CatalogList() {
 }
 
 export default function AgentsSection() {
-  const [health] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  const [rechecking, setRechecking] = createSignal(false);
+  /** Re-probe now. Goes through the shared store as well as this resource so
+   *  the chat picker and these cards cannot end up disagreeing about what is
+   *  installed. The second call is a cache hit. */
+  const recheck = async () => {
+    setRechecking(true);
+    try {
+      await refreshAgentHealth();
+      await refetch();
+    } finally {
+      setRechecking(false);
+    }
+  };
   // The tier is read off the resolved adapter, which the sidebar usually has
   // already asked for. Asking again is a no-op after the first call, and it is
   // what makes this section correct when Settings is the first thing opened.
-  onMount(() => ensureAgentsLoaded());
+  onMount(() => {
+    ensureAgentsLoaded();
+    // Populate the shared store too, not just this resource. Otherwise the
+    // claim above ("the picker reads the same answer") only becomes true after
+    // a re-check, and until then the picker is running on "unknown".
+    ensureAgentHealthLoaded();
+  });
 
   return (
     <section class={styles.section}>
@@ -308,7 +345,11 @@ export default function AgentsSection() {
           <div class={styles.hint}>Could not check agent CLIs: {String(health.error)}</div>
         </Match>
         <Match when={health()}>
-          <For each={health()}>{(agent) => <AgentCard agent={agent} />}</For>
+          <For each={health()}>
+            {(agent) => (
+              <AgentCard agent={agent} onRecheck={recheck} rechecking={rechecking()} />
+            )}
+          </For>
         </Match>
       </Switch>
       <CatalogList />
