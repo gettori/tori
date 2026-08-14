@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 id = "opencode"
 label = "OpenCode"
 
@@ -47,6 +47,35 @@ pty_quiet_ms = 2000
 # need it: over ACP the agent asks in-protocol and Sway renders the question.
 needs_you = false
 hooks = false
+
+# --- schema v3: accounts ---
+#
+# Measured 2026-08-14 against the build named in `verified_against`.
+#
+# **`opencode auth list` exits 0 whether or not anything is signed in.** It is
+# the reason `whoami_kind` exists at all: read the exit code, as the obvious
+# generic reader would, and OpenCode reports itself signed in while holding no
+# credentials. What actually differs is the last line of its own table, `1
+# credentials` against `0 credentials`, so that count is what Sway reads.
+#
+# A count, not an identity. OpenCode's credentials are per *provider* (the
+# measured install held one, GitHub Copilot), so "signed in" here means at least
+# one provider is configured, and there is no account name to learn.
+#
+# **No `logout_args`.** `opencode auth logout` takes a provider argument and
+# prompts when it is missing, so there is no single command that signs this
+# harness out. Left empty on purpose: an empty list is the state the removal
+# flow has to say out loud, and it is truer than a command that would sit
+# waiting for a keystroke nobody sent.
+#
+# **No `home_env`.** `XDG_DATA_HOME` does relocate `auth.json` (measured: the
+# probe reports 0 credentials under a fresh one), but that variable is not
+# OpenCode's to own, and nothing has measured two accounts holding simultaneous
+# logins. So no isolation is claimed and no "add account" action is offered.
+[accounts]
+login_args = ["auth", "login"]
+whoami_args = ["auth", "list"]
+whoami_kind = "opencode_credentials"
 
 [chat]
 transport = "acp"

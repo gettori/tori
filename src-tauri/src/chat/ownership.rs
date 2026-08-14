@@ -318,6 +318,37 @@ fn with_live_child(
         .collect()
 }
 
+/// Session ids of `agent` held by a Sway that is still running.
+///
+/// Deliberately the opposite test to [`with_live_child`], which asks about the
+/// *agent* child and ignores whether Sway is alive. Here the question is "would
+/// removing this strand something in flight", and only a live Sway has something
+/// in flight: a claim naming a dead `sway_pid` is a crash record, and refusing a
+/// removal because of one would leave a user unable to delete an account until
+/// they had cleaned up after a crash they never saw.
+///
+/// A PTY agent tab records no `child_pid` (its child is a login shell), so a
+/// child-based test would miss exactly the sessions a login flow produces. This
+/// is why the two helpers exist side by side rather than one covering both.
+///
+/// Pure, so the rule is tested against a table rather than against whatever
+/// happens to be claimed on the machine.
+fn held_by(
+    claims: &HashMap<String, Claim>,
+    agent: &str,
+    sway_alive: impl Fn(u32) -> bool,
+) -> Vec<String> {
+    let mut out: Vec<String> = claims
+        .iter()
+        .filter(|(_, c)| c.agent == agent && sway_alive(c.sway_pid))
+        .map(|(id, _)| id.clone())
+        .collect();
+    // A `HashMap` has no order, and a message naming sessions must not shuffle
+    // between two readings of the same state.
+    out.sort();
+    out
+}
+
 /// Is `pid` a process whose command line still matches `agent`'s running pattern
 /// for `session_id`?
 ///
@@ -429,6 +460,20 @@ impl Registry {
             Err(e) => e.into_inner(),
         };
         with_live_child(&guard, ids, pid_alive)
+    }
+
+    /// Session ids of `agent` that a **live** Sway is holding right now.
+    ///
+    /// One bounded question again, rather than handing out the table: the caller
+    /// is the accounts screen asking whether removing something would strand a
+    /// session in flight. A claim naming a dead `sway_pid` is a crash record,
+    /// not a holder, so it must not block anything.
+    pub fn held_by(&self, agent: &str) -> Vec<String> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        held_by(&guard, agent, pid_alive)
     }
 
     pub fn release(&self, session_id: &str, tab_id: &str) -> bool {
@@ -784,6 +829,48 @@ mod tests {
         assert!(leftovers.is_empty(), "unexpected leftovers: {leftovers:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- what a removal would strand ---
+
+    fn held(agent: &str, sway_pid: u32, child_pid: Option<u32>) -> Claim {
+        Claim {
+            surface: Surface::Chat,
+            tab_id: "tab".into(),
+            child_pid,
+            sway_pid,
+            agent: agent.into(),
+        }
+    }
+
+    #[test]
+    fn held_by_names_only_this_agents_live_sessions() {
+        let mut claims = HashMap::new();
+        claims.insert("claude-b".to_string(), held("claude", 1, Some(9)));
+        claims.insert("claude-a".to_string(), held("claude", 1, Some(9)));
+        claims.insert("codex-1".to_string(), held("codex", 1, Some(9)));
+        // Sorted, so a refusal message reads the same twice running.
+        assert_eq!(held_by(&claims, "claude", |_| true), ["claude-a", "claude-b"]);
+        assert_eq!(held_by(&claims, "codex", |_| true), ["codex-1"]);
+        assert!(held_by(&claims, "gemini", |_| true).is_empty());
+    }
+
+    /// A crash record must not block a removal forever. The user would have no
+    /// way to tell why, and nothing they could do about it.
+    #[test]
+    fn a_session_held_by_a_dead_sway_blocks_nothing() {
+        let mut claims = HashMap::new();
+        claims.insert("s1".to_string(), held("claude", 4_000_000, Some(9)));
+        assert!(held_by(&claims, "claude", pid_alive).is_empty());
+    }
+
+    /// A PTY agent tab records no `child_pid`, and a login flow produces exactly
+    /// those. Testing liveness by the child would miss them all.
+    #[test]
+    fn a_pty_agent_tab_counts_even_with_no_child_pid_recorded() {
+        let mut claims = HashMap::new();
+        claims.insert("s1".to_string(), held("claude", std::process::id(), None));
+        assert_eq!(held_by(&claims, "claude", pid_alive), ["s1"]);
     }
 
     /// A claim naming a dead Sway pid must be recognised as a crash record, not

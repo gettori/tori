@@ -357,6 +357,14 @@ export type OpenTerminal = {
    *  the live process rather than running the command a second time. Only
    *  shell-hosted kinds carry one. */
   init?: string;
+  /** Extra environment for the tab's process. A sign-in tab carries the
+   *  profile's home variable, which is the whole mechanism of signing in to a
+   *  second account: the harness writes its credentials wherever this points. */
+  env?: Record<string, string>;
+  /** Re-probe agent health when the process exits. Set by a sign-in tab, whose
+   *  whole purpose is to change the answer: without it a completed login would
+   *  keep reading as signed out until the user found the button in Settings. */
+  recheckAgentsOnExit?: boolean;
 };
 
 // Start a debug run (F5). Fire-and-forget and payload-less on purpose: the

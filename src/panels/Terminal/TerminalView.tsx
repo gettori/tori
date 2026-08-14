@@ -85,6 +85,10 @@ export default function TerminalView(props: {
   program: string;
   args: string[];
   init?: string;
+  /** Extra environment for this tab's process. Only a sign-in tab carries one:
+   *  the profile's home variable, which is what makes the harness write its
+   *  credentials into that account's home rather than the default one. */
+  env?: Record<string, string>;
   // The agent session this tab resumes. Absent for shell/command tabs and for a
   // fresh agent tab, whose session id does not exist until the agent writes a
   // transcript. When present the backend claims it, so one session id can never
@@ -307,6 +311,7 @@ export default function TerminalView(props: {
       kind: props.kind,
       init: props.init ?? null,
       quietMs,
+      env: props.env ? Object.entries(props.env) : null,
       sessionId: props.kind === "agent" ? (props.sessionId ?? null) : null,
       agentId: props.kind === "agent" ? props.program : null,
       onOutput: output,
