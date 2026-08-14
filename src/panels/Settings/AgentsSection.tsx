@@ -16,6 +16,8 @@ import {
   type BinaryStatus,
 } from "../../utils/agentHealth";
 import AgentAccounts from "./AgentAccounts";
+import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
+import { TOAST, emitWith, type ToastEvent } from "../../utils/events";
 import styles from "./Settings.module.css";
 
 // One card per registered adapter, answering the question a new user actually
@@ -257,6 +259,16 @@ function AgentCard(props: {
   );
 }
 
+/** One platform's download, mirroring `crate::catalog::Build`. */
+type Build = {
+  archive: string;
+  /** Null when the publisher supplies none, which is over half of them. */
+  sha256: string | null;
+  cmd: string;
+  args: string[];
+  env: Record<string, string>;
+};
+
 /** One agent the ACP Registry describes, which Sway can start but has not run. */
 type CatalogRow = {
   id: string;
@@ -265,22 +277,92 @@ type CatalogRow = {
   registryVersion: string | null;
   website: string | null;
   command: string;
-  needs: "npx" | "uvx" | "on-path";
+  needs: "npx" | "uvx" | "install" | "on-path";
   /** The adapter that already covers this agent, when one does. */
   coveredBy: string | null;
+  /** What installing this would fetch on this machine. */
+  build: Build | null;
+  /** The agent ships binaries, but none for this machine's architecture. */
+  noBuildHere: boolean;
+  /** The **registry's** own probe. Never a tier of Sway's; see `chatCapabilities`. */
+  publishedCapabilities: Record<string, unknown> | null;
 };
 
 type CatalogSource = {
   source: string;
   registryCommit: string;
   generatedOn: string | null;
+  matrixSource: { source: string; probedOn: string | null; agentsProbed: number } | null;
+  hostPlatform: string | null;
+};
+
+/** Mirrors `crate::install::Installed`. */
+type Installed = {
+  id: string;
+  registryVersion: string | null;
+  platform: string;
+  archive: string;
+  sha256: string | null;
+  program: string;
+  args: string[];
+  env: Record<string, string>;
+  quarantineCleared: boolean;
+  installedAt: number;
 };
 
 const NEEDS_NOTE: Record<CatalogRow["needs"], string> = {
   npx: "runs straight from npm, no install step",
   uvx: "runs straight from PyPI with uv, no install step",
+  install: "Sway can download this one",
   "on-path": "if you have installed it yourself",
 };
+
+function toast(message: string, kind: ToastEvent["kind"]) {
+  emitWith<ToastEvent>(TOAST, { message, kind });
+}
+
+/** Whole days since the snapshot's date, or null when there is no date. */
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
+/**
+ * The sentence a user agrees to before Sway downloads anything.
+ *
+ * Written here rather than in the backend because it has to name *this* row's
+ * publisher and *this* row's checksum, and because the two cases genuinely read
+ * differently: a checksum that exists bounds tampering in flight, and one that
+ * does not bounds nothing at all. Neither claims more than that, since both live
+ * in the same file as the URL they describe.
+ */
+function installConsent(
+  row: CatalogRow,
+  build: Build,
+  onDarwin: boolean,
+  clearQuarantine: boolean,
+): string {
+  const checksum = build.sha256
+    ? `The registry publishes a sha256, so Sway checks the download against it. That proves the bytes were not swapped in transit; it cannot prove who published them, because the checksum sits in the same file as the URL.`
+    : `The registry publishes no checksum for this download, so there is nothing to check it against.`;
+  // Only on macOS, because only macOS has the flag. Saying it elsewhere would be
+  // describing a step that does not happen.
+  const gatekeeper = !onDarwin
+    ? null
+    : clearQuarantine
+      ? `Sway will clear the macOS quarantine flag, which is the check that would otherwise stop an unnotarized binary from running.`
+      : `Sway will leave the macOS quarantine flag on, so macOS may refuse to run it until you clear it yourself.`;
+  return [
+    `Sway will download ${build.archive} and unpack it into its own directory. Nothing goes on your PATH.`,
+    checksum,
+    gatekeeper,
+    `Installing ${row.label} is trusting the ACP Registry. Sway has run none of these agents, and installing one does not change that.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 /**
  * Everything else that speaks this protocol.
@@ -293,13 +375,143 @@ const NEEDS_NOTE: Record<CatalogRow["needs"], string> = {
  * anywhere a chat can be started from, since starting one means writing the
  * adapter that makes it a measured harness.
  */
+function CatalogRowItem(props: {
+  row: CatalogRow;
+  installed: Installed | undefined;
+  hostPlatform: string | null;
+  onChanged: () => void;
+  confirm: (title: string, message: string, label: string) => Promise<boolean>;
+}) {
+  const row = () => props.row;
+  const [busy, setBusy] = createSignal(false);
+  // Off by default. The flag is macOS refusing to run something it did not see
+  // notarized, and turning that off is the user's call to make deliberately
+  // rather than a default they never noticed.
+  const [clearQuarantine, setClearQuarantine] = createSignal(false);
+  const onDarwin = () => props.hostPlatform?.startsWith("darwin") ?? false;
+
+  const install = async (build: Build) => {
+    const ok = await props.confirm(
+      `Install ${row().label} from the ACP Registry?`,
+      installConsent(row(), build, onDarwin(), clearQuarantine()),
+      "Download and install",
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await invoke<Installed>("install_agent", {
+        id: row().id,
+        allowQuarantineBypass: clearQuarantine(),
+      });
+      props.onChanged();
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await invoke("remove_installed_agent", { id: row().id });
+      props.onChanged();
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li>
+      {/* "untested" stays on the row whether or not it is installed. Downloading
+          a binary is not measuring one, and the label is the whole reason this
+          list is separate from the cards above. */}
+      <strong>{row().label}</strong> · untested · <code>{row().command}</code>{" "}
+      <span>({NEEDS_NOTE[row().needs]})</span>
+      <Show when={row().description}>
+        <div>{row().description}</div>
+      </Show>
+      {/* An architecture with no build says so, rather than disappearing or
+          offering a download for somebody else's machine. */}
+      <Show when={row().noBuildHere}>
+        <div>
+          No build for {props.hostPlatform ?? "this machine"}, so there is nothing to install here.
+        </div>
+      </Show>
+      <Show when={props.installed}>
+        {(it) => (
+          <div>
+            Installed at <code>{it().program}</code>.{" "}
+            {it().sha256
+              ? "Verified against the registry's sha256."
+              : "The registry published no checksum, so this download was never verified."}{" "}
+            Sway has still run nothing: add an adapter TOML naming that path to use it.
+          </div>
+        )}
+      </Show>
+      <Show when={!props.installed && row().build}>
+        {(build) => (
+          <div class={styles.cardActions}>
+            <Button size="sm" onClick={() => void install(build())} disabled={busy()}>
+              Install
+            </Button>
+            {/* Only where the flag exists. A control that provably does nothing
+                is worse than no control: it reads as a choice being made. */}
+            <Show when={onDarwin()}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={clearQuarantine()}
+                  onChange={(e) => setClearQuarantine(e.currentTarget.checked)}
+                />{" "}
+                Clear the macOS quarantine flag, so Gatekeeper does not check it
+              </label>
+            </Show>
+          </div>
+        )}
+      </Show>
+      <Show when={props.installed}>
+        <div class={styles.cardActions}>
+          <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy()}>
+            Remove
+          </Button>
+        </div>
+      </Show>
+    </li>
+  );
+}
+
 function CatalogList() {
-  const [rows] = createResource(() => invoke<CatalogRow[]>("acp_catalog"));
+  const [rows, { refetch: refetchRows }] = createResource(() =>
+    invoke<CatalogRow[]>("acp_catalog"),
+  );
   const [source] = createResource(() => invoke<CatalogSource>("acp_catalog_source"));
+  const [installed, { refetch: refetchInstalled }] = createResource(() =>
+    invoke<Installed[]>("installed_agents"),
+  );
   // The ones Sway already ships an adapter for are dropped rather than shown as
   // duplicates: a second, unmeasured way to start an agent the user already has
   // properly is a downgrade dressed as a choice.
   const untested = () => (rows() ?? []).filter((r) => !r.coveredBy);
+  const installedFor = (id: string) => (installed() ?? []).find((i) => i.id === id);
+
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  const askConfirm = (title: string, message: string, confirmLabel: string) =>
+    new Promise<boolean>((resolve) => setConfirmReq({ title, message, confirmLabel, resolve }));
+  const resolveConfirm = (v: boolean) => {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(v);
+  };
+
+  const changed = () => {
+    void refetchInstalled();
+    void refetchRows();
+  };
+
+  const age = () => daysSince(source()?.generatedOn ?? null);
 
   return (
     <Show when={untested().length}>
@@ -308,32 +520,63 @@ function CatalogList() {
         Sway can drive any of these over the same protocol as OpenCode, but has run none of them,
         so none is a supported harness. Add one by dropping a four-line TOML into{" "}
         <code>~/.config/sway/agents/</code> with its command below (see ADAPTERS.md), and it becomes
-        an agent you have tested.
+        an agent you have tested. Installing one downloads a binary and nothing more: it stays
+        untested, and it goes nowhere near your PATH.
       </div>
       <ul class={styles.hint}>
         <For each={untested()}>
           {(row) => (
-            <li>
-              <strong>{row.label}</strong> · untested · <code>{row.command}</code>{" "}
-              <span>({NEEDS_NOTE[row.needs]})</span>
-              <Show when={row.description}>
-                <div>{row.description}</div>
-              </Show>
-            </li>
+            <CatalogRowItem
+              row={row}
+              installed={installedFor(row.id)}
+              hostPlatform={source()?.hostPlatform ?? null}
+              onChanged={changed}
+              confirm={askConfirm}
+            />
           )}
         </For>
       </ul>
       {/* Provenance, so the list cannot rot silently: where it came from, which
-          upstream commit, and when. `node dev/acp-catalog.mjs --check` says
-          whether the registry has moved since. */}
+          upstream commit, when, and how old that makes it. The list is a pinned
+          snapshot rather than a fetch on open, so it renders offline, and the age
+          is what keeps "pinned" from reading as "current". */}
       <Show when={source()}>
         {(src) => (
           <div class={styles.hint}>
             From the ACP Registry ({src().source}) at commit{" "}
             <code>{src().registryCommit.slice(0, 8)}</code>
-            <Show when={src().generatedOn}>{(on) => <>, {on()}</>}</Show>. Refresh with{" "}
-            <code>node dev/acp-catalog.mjs</code>.
+            <Show when={src().generatedOn}>{(on) => <>, {on()}</>}</Show>
+            <Show when={age() != null}>
+              {" "}
+              ({age() === 0 ? "today" : age() === 1 ? "1 day old" : `${age()} days old`})
+            </Show>
+            . Refresh with <code>node dev/acp-catalog.mjs</code>.
+            {/* Whose measurement the capabilities are, said beside them. A tier
+                is Sway's own and lives on the cards above; this is somebody
+                else's probe on a date, and the two never merge. */}
+            <Show when={src().matrixSource}>
+              {(m) => (
+                <>
+                  {" "}
+                  Any capabilities shown come from the registry's own probe of{" "}
+                  {m().agentsProbed} agents
+                  <Show when={m().probedOn}>{(on) => <> on {on()}</>}</Show>, not from anything Sway
+                  measured.
+                </>
+              )}
+            </Show>
           </div>
+        )}
+      </Show>
+      <Show when={confirmReq()}>
+        {(req) => (
+          <ConfirmDialog
+            title={req().title}
+            message={req().message}
+            confirmLabel={req().confirmLabel}
+            onConfirm={() => resolveConfirm(true)}
+            onCancel={() => resolveConfirm(false)}
+          />
         )}
       </Show>
     </Show>

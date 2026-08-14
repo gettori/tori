@@ -17,6 +17,10 @@
 const CATALOG: Record<string, unknown> = {
   acp_catalog: [],
   acp_catalog_source: null,
+  // An array for the same reason: the installed list is joined against the rows,
+  // and a settings object would throw inside the resource rather than render
+  // nothing.
+  installed_agents: [],
 };
 
 type InvokeHandler = (cmd: string, args: Record<string, unknown>) => Promise<unknown>;

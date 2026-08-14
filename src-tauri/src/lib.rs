@@ -21,6 +21,7 @@ mod health;
 mod hooks;
 mod hot_exit;
 mod icons;
+mod install;
 mod launch;
 mod local_history;
 mod lsp;
@@ -315,6 +316,9 @@ pub fn run() {
             accounts::rename_agent_account,
             catalog::acp_catalog,
             catalog::acp_catalog_source,
+            install::installed_agents,
+            install::install_agent,
+            install::remove_installed_agent,
             onboarding::onboarding_should_show,
             onboarding::onboarding_content,
             onboarding::onboarding_mark_shown,

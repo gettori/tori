@@ -89,6 +89,57 @@ The catalogue is data in the binary rather than a runtime fetch. Sway adds no
 endpoint of its own, and a list that needed the network would be empty exactly
 when a user is offline and wondering what their options are.
 
+## Installing a catalog agent, and what you are trusting
+
+Some registry entries ship a binary per platform rather than an `npx` command.
+Sway can download and unpack one of those into
+`~/Library/Application Support/sway/installed-agents/<id>/`. **Read this
+first**, because the install is short and what it commits you to is not.
+
+**Installing an agent is trusting the registry.** The registry publishes, per
+agent and per platform, an archive URL and sometimes a `sha256`. Both sit in the
+same `agent.json`. So the checksum is a **transport control**: it proves the
+bytes that arrived are the bytes the registry named, and it proves nothing about
+who named them. Anyone able to change that file can change the URL and the
+checksum in one commit, and every check below still passes. There are no
+publisher signatures to check instead. That is the property of this registry, and
+the only honest response is to say so rather than let a green tick imply
+otherwise.
+
+**Over half of these downloads have no checksum at all.** Measured 2026-08-14: of
+the 17 agents shipping binaries, 9 publish a `sha256` for macOS and 8 publish
+none. Sway carries the difference all the way to the button, so "verified against
+the registry's hash" and "nothing was published to check this against" never read
+the same.
+
+What the other checks buy, each stated as the one thing it stops:
+
+| Check | What it stops | What it does not stop |
+| --- | --- | --- |
+| HTTPS-only redirects | A hop moving the download onto plain HTTP | Anything at the far end |
+| `sha256`, when there is one | The bytes being swapped in flight | A compromised registry |
+| Containment | An archive entry writing outside the agent's directory | Bad code inside a legitimate file |
+| Refusing symlinks | An archive planting a link that redirects a later write | The same |
+| Gatekeeper consent | The quarantine flag coming off without you saying so | macOS trusting the binary afterwards |
+
+**Clearing the quarantine flag is offered, never silent.** macOS marks anything
+downloaded, and refuses to run an unnotarized binary carrying that mark. Sway
+asks before clearing it and records that you were asked; a binary that is
+notarized is left alone, because stripping it would disable a check that was
+about to pass. Decline and the install still happens: the refusal is then macOS's,
+visible, and reversible.
+
+**Nothing installed is put on your PATH, and nothing installed becomes a
+supported harness.** An installed agent is a path on disk and a manifest saying
+where it came from. Sway shows you the absolute path, the args and any env the
+registry named, and running it means writing the adapter TOML above with that
+path as `program`. Downloading a binary and deciding to run it are two acts, and
+they stay two acts.
+
+**Removal deletes only what Sway installed.** The manifest inside the directory
+is the record of that, and a directory without one is refused, so a binary you
+installed yourself is not reachable from here.
+
 ## File location and loading
 
 - Bundled adapters: compiled into Sway, not user-editable.
