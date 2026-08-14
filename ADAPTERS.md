@@ -10,12 +10,14 @@ Three adapters ship bundled (`claude`, `opencode`, `gemini`). You add your own,
 or whole-replace a bundled one, by dropping a TOML file into
 `~/.config/sway/agents/`.
 
-> **Schema stability: v2 (stable), v1 still loads.** **v2 is purely additive**:
-> it adds the optional `[chat]` table describing how to drive an agent as a
-> structured chat session instead of a PTY. An existing `schema_version = 1`
-> file keeps working untouched and simply reports no chat transport, so there
-> is nothing to migrate. Breaking changes go through a deprecation period
-> rather than landing silently.
+> **Schema stability: v3 (stable), v1 and v2 still load.** Every version so
+> far is **purely additive**: v2 added the optional `[chat]` table describing
+> how to drive an agent as a structured chat session instead of a PTY, and v3
+> adds the optional `[accounts]` table describing how it signs in and whether
+> it can hold more than one account. An older file keeps working untouched and
+> simply reports nothing for the tables it predates, so there is nothing to
+> migrate. Breaking changes go through a deprecation period rather than landing
+> silently.
 
 ## Supported agents
 
@@ -105,7 +107,7 @@ when a user is offline and wondering what their options are.
 ## Schema
 
 ```toml
-schema_version = 2   # required; 1 or 2. v2 adds the optional [chat] table below
+schema_version = 3   # required; 1, 2 or 3. v2 adds [chat], v3 adds [accounts] - both optional, both below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
@@ -166,6 +168,14 @@ args = []                 # optional; the args that select this level
 # --- only read by transport = "acp" ---
 [chat.acp]
 serve_client_fs = false   # optional, default false; advertise Sway's filesystem and terminal to the agent
+
+# --- v3 only; omit the whole table for an agent Sway does not sign in ---
+[accounts]
+home_env = "..."            # optional; the env var pointing the agent at an isolated profile home
+login_args = []             # optional; args that start an interactive login, run in a real PTY
+logout_args = []            # optional; args that sign the profile out
+whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
+supports_isolation = false  # optional, default false; whether two accounts can coexist - see below
 ```
 
 ### The `[chat]` table
@@ -223,9 +233,11 @@ they agree.
 Three rules the loader enforces, because all three failures are otherwise
 silent:
 
-- **`[chat]` requires `schema_version = 2`.** A chat table in a v1 file is
-  refused by name rather than ignored, since a silently-dropped table looks
-  exactly like an adapter that has no chat surface.
+- **`[chat]` requires `schema_version >= 2`, `[accounts]` requires `>= 3`.** A
+  table in a file that predates it is refused by name rather than ignored,
+  since a silently-dropped table looks exactly like an adapter that has no chat
+  surface, or no accounts. Each gate is against that table's own minimum, never
+  against the newest version, so a later bump never invalidates a working file.
 - **`[discovery]`, `[parser]` and `[running]` are all present or all absent.**
   See [Sessions on disk, or over a protocol](#sessions-on-disk-or-over-a-protocol).
 - **Every `effort_levels` entry must name a `[[chat.effort]]` entry.** An
@@ -236,6 +248,42 @@ silent:
 > *above* the first `[[chat.models]]` header. A key written after a table
 > header belongs to that table, so moving one down silently reparents it into
 > a model entry instead of failing.
+
+### The `[accounts]` table
+
+Declares how Sway signs this agent in, and whether it can hold more than one
+account at once. Omit the whole table for an agent Sway does not sign in: that
+reports *unknown*, not *signed out*, and renders no account controls rather
+than an inert set.
+
+**The default profile is `home_env` left unset.** Sway never copies, reads or
+stores credentials. A default-profile session spawns with no home variable, so
+the agent resolves whatever login the user already had; an added profile
+spawns with the variable pointed at a Sway-created directory under
+`~/Library/Application Support/sway/profiles` (mode `0700`), never under
+`~/.config/sway`, which is commonly a dotfile repo. The default profile cannot
+be renamed or removed, because there is no stored record of it to change.
+
+**`supports_isolation` is a measurement, not an inference.** It defaults to
+`false`, and an adapter that merely *has* a home variable does not earn `true`:
+the variable may point at a config directory while the credentials behind it
+live in one shared store, in which case adding a second account silently signs
+the first one out. Claiming `supports_isolation = true` without a `home_env` is
+rejected outright, since there would be no mechanism behind the claim. An
+adapter that does not claim isolation offers no "add account" action at all.
+
+> **Canonicalize the home path.** Measured on `claude 2.1.232`: it derives its
+> macOS Keychain service name as `"Claude Code-credentials-" +
+> sha256($CLAUDE_CONFIG_DIR)[:8]`, hashing the **raw environment string**
+> rather than a resolved path (the default home takes the unsuffixed name). So
+> `/a/home` and `/a/home/` are two different logins for one directory, and a
+> relative or symlinked spelling is a third. Sway canonicalizes once, at the
+> boundary, before storing a profile home or spawning against it.
+
+`login_args` always runs in a real PTY. `claude auth login` is browser OAuth
+with no non-interactive variant and `setup-token` is interactive too, so a
+captured login would hang rather than fail. `whoami_args` is the opposite: it
+must be bounded and answer without a terminal.
 
 ### `capabilities.hooks`
 

@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 id = "claude"
 label = "Claude"
 # The CLI these conventions were empirically captured against. The chat
@@ -52,6 +52,34 @@ needs_you = true
 # an idle nudge), replacing the quiet-PTY x pending-tool_use guess with a
 # ground-truth signal for Sway-launched sessions only.
 hooks = true
+
+# --- schema v3: accounts ---
+#
+# Measured 2026-08-14 against the CLI named in `verified_against`, not read
+# from documentation.
+#
+# `supports_isolation = true` is earned, not assumed: two profiles held
+# simultaneous logins for the same account, because claude namespaces its
+# macOS Keychain service by config dir
+# ("Claude Code-credentials-" + sha256($CLAUDE_CONFIG_DIR)[:8], with the
+# default home taking the unsuffixed name). A second login therefore cannot
+# sign the first one out. That measurement is darwin-only; Linux has no login
+# Keychain and has not been measured.
+#
+# The hash is taken over the raw environment string rather than a resolved
+# path, so ".../home" and ".../home/" are two different logins for one
+# directory. Sway canonicalizes before setting `home_env` for exactly that
+# reason.
+#
+# `login_args` runs in a real PTY and never headlessly: `claude auth login` is
+# browser OAuth with no non-interactive variant, and `setup-token` is
+# interactive too, so a captured login would hang rather than fail.
+[accounts]
+home_env = "CLAUDE_CONFIG_DIR"
+login_args = ["auth", "login"]
+logout_args = ["auth", "logout"]
+whoami_args = ["auth", "status"]
+supports_isolation = true
 
 # --- schema v2: the structured chat transport ---
 #

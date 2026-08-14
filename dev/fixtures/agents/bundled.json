@@ -239,6 +239,22 @@
         "serve_client_fs": false
       }
     },
+    "accounts": {
+      "home_env": "CLAUDE_CONFIG_DIR",
+      "login_args": [
+        "auth",
+        "login"
+      ],
+      "logout_args": [
+        "auth",
+        "logout"
+      ],
+      "whoami_args": [
+        "auth",
+        "status"
+      ],
+      "supports_isolation": true
+    },
     "source": "bundled:claude"
   },
   {
@@ -277,6 +293,7 @@
         "serve_client_fs": false
       }
     },
+    "accounts": null,
     "source": "bundled:codex"
   },
   {
@@ -314,6 +331,7 @@
         "serve_client_fs": false
       }
     },
+    "accounts": null,
     "source": "bundled:gemini"
   },
   {
@@ -351,6 +369,7 @@
         "serve_client_fs": false
       }
     },
+    "accounts": null,
     "source": "bundled:opencode"
   }
 ]

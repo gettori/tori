@@ -2,10 +2,13 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1` or `= 2` TOML file into `~/.config/sway/agents/`. See
-// ADAPTERS.md for the schema. v2 is purely additive: it adds the optional
-// `[chat]` table describing how to drive the agent as a structured chat
-// session rather than a PTY, and a v1 file loads unchanged reporting no chat.
+// `schema_version = 1`, `= 2` or `= 3` TOML file into `~/.config/sway/agents/`.
+// See ADAPTERS.md for the schema. Every version so far is purely additive: v2
+// adds the optional `[chat]` table describing how to drive the agent as a
+// structured chat session rather than a PTY, and v3 adds the optional
+// `[accounts]` table describing how it signs in and whether it can hold more
+// than one account at once. An older file loads unchanged, reporting `None` for
+// the tables it predates.
 //
 // Parser kinds and chat transports stay code (an enum, not a config string): a config-driven
 // launch/discovery/running-pattern description is enough to make an agent
@@ -20,15 +23,32 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The newest schema this build writes and documents.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Every schema version this build still loads.
 ///
-/// v1 stays supported deliberately: a user adapter in `~/.config/sway/agents/`
-/// is somebody's working config, and v2 adds only the optional `[chat]` table,
-/// so there is nothing a v1 file needs to say differently. A v1 adapter loads
-/// exactly as before and reports `chat: None`.
-pub const SUPPORTED_SCHEMA_VERSIONS: [u32; 2] = [1, 2];
+/// Old versions stay supported deliberately: a user adapter in
+/// `~/.config/sway/agents/` is somebody's working config, and each version so
+/// far adds only an optional table, so there is nothing an older file needs to
+/// say differently. It loads exactly as before, reporting `None` for the tables
+/// it predates.
+/// The **length** is tied to [`SCHEMA_VERSION`] rather than the contents, which
+/// makes the next bump a compiler error instead of a judgement call: raise
+/// `SCHEMA_VERSION` to 4 and this array is declared `[u32; 4]` while still
+/// holding three entries, so the build stops until the new version is listed.
+/// Writing `[1, 2, SCHEMA_VERSION]` would look like it derives itself and would
+/// quietly become `[1, 2, 4]`, dropping v3 support with no error anywhere.
+pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3];
+
+/// The version each optional table was introduced in.
+///
+/// Per-table rather than compared against [`SCHEMA_VERSION`], which is the bug
+/// this pair exists to prevent: gating `[chat]` on "the newest version" was
+/// correct only while v2 *was* the newest, and would have started rejecting
+/// every working v2 adapter the moment v3 landed. A table's minimum is a fact
+/// about that table and never moves again.
+const CHAT_MIN_VERSION: u32 = 2;
+const ACCOUNTS_MIN_VERSION: u32 = 3;
 
 /// How Sway drives an agent as a structured chat session rather than a PTY.
 ///
@@ -341,6 +361,45 @@ impl ChatConfig {
     }
 }
 
+/// How Sway signs this adapter in, and whether it can hold more than one
+/// account at a time.
+///
+/// Every field is optional because the ladder degrades rather than failing: an
+/// adapter with no `login_args` still renders a documentation link, and one
+/// with no `whoami_args` reports its sign-in state as unknown rather than as
+/// signed out. What is *not* optional is the coherence rule the loader
+/// enforces: claiming `supports_isolation` without naming a `home_env` is
+/// rejected, because there would be no mechanism behind the claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AccountsConfig {
+    /// The environment variable that points this harness at an isolated profile
+    /// home, e.g. `CLAUDE_CONFIG_DIR`. The **default profile is this variable
+    /// left unset**, which is what makes it resolve the user's existing login
+    /// rather than a Sway-managed copy of it.
+    pub home_env: Option<String>,
+    /// Args that start an interactive login. Run in a real PTY tab, never
+    /// captured: measured in Phase 0, `claude auth login` is browser OAuth with
+    /// no non-interactive variant, so anything that tried to complete a login
+    /// headlessly would hang instead of failing.
+    pub login_args: Vec<String>,
+    /// Args that sign the profile out. Empty for a harness that offers no
+    /// logout, which is a state the removal flow has to say out loud rather
+    /// than paper over: tokens stay valid until they expire.
+    pub logout_args: Vec<String>,
+    /// Args for a bounded, non-interactive "who is signed in here" probe.
+    pub whoami_args: Vec<String>,
+    /// Whether this adapter can hold two accounts at once without them
+    /// clobbering each other.
+    ///
+    /// Defaults to `false`, and the default is the point: an adapter is not
+    /// isolable until somebody has measured that it is. Claude on darwin earned
+    /// its `true` in Phase 0 by holding two simultaneous logins in separate
+    /// Keychain items, keyed by config dir. An adapter that merely *has* a home
+    /// env may still share one credential store behind it, in which case adding
+    /// a second account would silently sign the first one out.
+    pub supports_isolation: bool,
+}
+
 /// A resolved, validated adapter. The frontend gets a mirrored subset of this
 /// via `list_agents` (the regex/path fields stay backend-only).
 #[derive(Debug, Clone, Serialize)]
@@ -391,6 +450,13 @@ pub struct AgentAdapter {
     /// fully functional that way, and every v1 adapter reports `None` without
     /// changing behaviour.
     pub chat: Option<ChatConfig>,
+    /// The `[accounts]` table, or `None` for an adapter that declares no
+    /// sign-in of its own.
+    ///
+    /// `None` is not "signed out": it is "Sway has nothing true to say about
+    /// this adapter's accounts", which is why it renders no account controls at
+    /// all rather than an inert set.
+    pub accounts: Option<AccountsConfig>,
     /// Where this adapter was loaded from: `"bundled:<id>"` for a built-in, or
     /// the absolute path of the user TOML that defined (or whole-replaced) it.
     /// The Agents cards show the path so a user who forgot about an override
@@ -424,6 +490,34 @@ struct AdapterToml {
     verified_against: Option<String>,
     #[serde(default)]
     chat: Option<ChatToml>,
+    #[serde(default)]
+    accounts: Option<AccountsToml>,
+}
+
+/// `[accounts]`, v3's addition.
+///
+/// `deny_unknown_fields` rather than serde's default silence, per
+/// `gotchas#serde ignores unknown fields, so a version field alone cannot gate
+/// a format`. A version number only gates a format when the parser also refuses
+/// keys it does not know: without this, a future `[accounts]` key would be
+/// dropped without a word by every build that predates it, and an adapter
+/// declaring a safety-relevant field (`supports_isolation` under some later
+/// spelling) would read as its permissive default. Here the cost of strictness
+/// is one loud error naming the key; the cost of silence is an account sharing
+/// a home nobody meant it to share.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccountsToml {
+    #[serde(default)]
+    home_env: Option<String>,
+    #[serde(default)]
+    login_args: Vec<String>,
+    #[serde(default)]
+    logout_args: Vec<String>,
+    #[serde(default)]
+    whoami_args: Vec<String>,
+    #[serde(default)]
+    supports_isolation: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -544,7 +638,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 10] = [
+const KNOWN_TOP_LEVEL: [&str; 11] = [
     "schema_version",
     "id",
     "label",
@@ -555,6 +649,7 @@ const KNOWN_TOP_LEVEL: [&str; 10] = [
     "capabilities",
     "verified_against",
     "chat",
+    "accounts",
 ];
 
 /// Are `[discovery]`, `[parser]` and `[running]` declared in a combination this
@@ -649,15 +744,26 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         ));
     }
 
-    // `[chat]` is what v2 adds, so honouring it in a file that declares v1
-    // would make the version number decorative. Named rather than ignored: a
-    // silently-dropped chat table looks exactly like an adapter that simply
-    // has no chat surface.
-    if raw.chat.is_some() && raw.schema_version < SCHEMA_VERSION {
-        return Err(format!(
-            "{source}: [chat] requires schema_version = {SCHEMA_VERSION} (this file declares {})",
-            raw.schema_version
-        ));
+    // Honouring a table in a file that declares a version predating it would
+    // make the version number decorative. Named rather than ignored: a
+    // silently-dropped table looks exactly like an adapter that simply has no
+    // chat surface, or no accounts.
+    //
+    // Each gate compares against that table's own minimum, never against
+    // `SCHEMA_VERSION`. The difference is invisible while only one optional
+    // table exists and breaks everything the moment a second one lands: `<
+    // SCHEMA_VERSION` would have started rejecting `[chat]` in every v2 adapter
+    // on the day v3 shipped, including the four bundled ones.
+    for (name, declared, min) in [
+        ("chat", raw.chat.is_some(), CHAT_MIN_VERSION),
+        ("accounts", raw.accounts.is_some(), ACCOUNTS_MIN_VERSION),
+    ] {
+        if declared && raw.schema_version < min {
+            return Err(format!(
+                "{source}: [{name}] requires schema_version >= {min} (this file declares {})",
+                raw.schema_version
+            ));
+        }
     }
 
     // The three file-era tables stand or fall together, and whether they may be
@@ -747,6 +853,31 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         })
         .transpose()?;
 
+    // Isolation is a claim about a mechanism, so it is rejected without one.
+    // The alternative is the failure this whole table exists to prevent: an
+    // "add account" action that offers a second profile, sets no environment
+    // for it, and lands both accounts in the one home the first was already
+    // using - which reads as success right up until the first login signs the
+    // second one out.
+    let accounts = raw
+        .accounts
+        .map(|a| {
+            if a.supports_isolation && a.home_env.is_none() {
+                return Err(format!(
+                    "{source}: accounts.supports_isolation = true requires accounts.home_env \
+                     (there is no way to isolate a profile without a variable to point at it)"
+                ));
+            }
+            Ok(AccountsConfig {
+                home_env: a.home_env,
+                login_args: a.login_args,
+                logout_args: a.logout_args,
+                whoami_args: a.whoami_args,
+                supports_isolation: a.supports_isolation,
+            })
+        })
+        .transpose()?;
+
     Ok(AgentAdapter {
         id: raw.id,
         label: raw.label,
@@ -762,6 +893,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         hooks: raw.capabilities.hooks,
         verified_against: raw.verified_against,
         chat,
+        accounts,
         source: source.to_string(),
     })
 }
@@ -1203,7 +1335,12 @@ pattern = 'claude-beta (--resume|-r) {id}'
 
     #[test]
     fn bad_schema_version_is_rejected() {
-        let text = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 3", 1);
+        // One past the newest, derived rather than written: hardcoding the
+        // number meant this test silently stopped testing rejection the moment
+        // that version became supported (it said 3, and v3 shipped).
+        let unsupported = SCHEMA_VERSION + 1;
+        let text = VALID_MINIMAL
+            .replacen("schema_version = 1", &format!("schema_version = {unsupported}"), 1);
         let err = load_adapter_str(&text, "test").unwrap_err();
         assert!(err.contains("schema_version"), "error should mention schema_version: {err}");
     }
@@ -1317,7 +1454,150 @@ args = ["--effort", "low"]
     #[test]
     fn a_chat_table_in_a_v1_file_is_refused_rather_than_ignored() {
         let err = load_adapter_str(&format!("{VALID_MINIMAL}{CHAT_TABLE}"), "test").unwrap_err();
-        assert!(err.contains("schema_version = 2"), "error should say what v2 is needed for: {err}");
+        assert!(err.contains("[chat]"), "error should name the table it refused: {err}");
+        assert!(
+            err.contains(&format!("schema_version >= {CHAT_MIN_VERSION}")),
+            "error should say what version [chat] needs: {err}"
+        );
+    }
+
+    // --- schema v3: the [accounts] table ---
+
+    const ACCOUNTS_TABLE: &str = r#"
+[accounts]
+home_env = "X_CONFIG_DIR"
+login_args = ["auth", "login"]
+logout_args = ["auth", "logout"]
+whoami_args = ["auth", "status"]
+supports_isolation = true
+"#;
+
+    fn v3_with(table: &str) -> String {
+        format!("{}{table}", VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 3", 1))
+    }
+
+    #[test]
+    fn a_v3_adapter_resolves_its_accounts_table() {
+        let a = load_adapter_str(&v3_with(ACCOUNTS_TABLE), "test").expect("v3 + accounts parses");
+        let acc = a.accounts.expect("accounts resolved");
+        assert_eq!(acc.home_env.as_deref(), Some("X_CONFIG_DIR"));
+        assert_eq!(acc.login_args, ["auth", "login"]);
+        assert_eq!(acc.logout_args, ["auth", "logout"]);
+        assert_eq!(acc.whoami_args, ["auth", "status"]);
+        assert!(acc.supports_isolation);
+    }
+
+    /// The compatibility promise of the v3 bump, and the regression that makes
+    /// it worth a test of its own: `[chat]` was gated on `< SCHEMA_VERSION`,
+    /// which was indistinguishable from `< CHAT_MIN_VERSION` right up until a
+    /// second optional table existed. Bumping to v3 under the old gate would
+    /// have rejected the chat table in every v2 adapter in the world.
+    #[test]
+    fn a_v2_adapter_keeps_its_chat_table_after_the_v3_bump() {
+        let a = load_adapter_str(&v2_with_chat(CHAT_TABLE), "test")
+            .expect("a v2 adapter with [chat] still parses under v3");
+        assert!(a.chat.is_some(), "v2's chat table must survive the v3 bump");
+        assert!(a.accounts.is_none(), "a v2 adapter must report accounts: None");
+    }
+
+    #[test]
+    fn a_v1_adapter_reports_no_accounts() {
+        let a = load_adapter_str(VALID_MINIMAL, "test").expect("a v1 adapter still parses");
+        assert!(a.accounts.is_none());
+    }
+
+    /// A version number that does not gate anything is decorative, the same
+    /// rule `[chat]` obeys.
+    #[test]
+    fn an_accounts_table_in_a_v2_file_is_refused_rather_than_ignored() {
+        let err = load_adapter_str(&v2_with_chat(ACCOUNTS_TABLE), "test").unwrap_err();
+        assert!(err.contains("[accounts]"), "error should name the table it refused: {err}");
+        assert!(
+            err.contains(&format!("schema_version >= {ACCOUNTS_MIN_VERSION}")),
+            "error should say what version [accounts] needs: {err}"
+        );
+    }
+
+    /// Per `gotchas#serde ignores unknown fields, so a version field alone
+    /// cannot gate a format`. Without `deny_unknown_fields` this file would
+    /// load, drop the key, and report `supports_isolation: false` while the
+    /// author believed they had declared it.
+    #[test]
+    fn an_unknown_accounts_key_is_rejected_rather_than_dropped() {
+        let table = ACCOUNTS_TABLE.replace("supports_isolation", "supports_isolatoin");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(
+            err.contains("supports_isolatoin"),
+            "error should name the key it did not recognize: {err}"
+        );
+    }
+
+    /// Isolation is a claim about a mechanism, so a claim with no mechanism is
+    /// refused. Otherwise "add account" would offer a second profile, set no
+    /// environment for it, and land both in the one home the first was using.
+    #[test]
+    fn claiming_isolation_without_a_home_env_is_rejected() {
+        let table = ACCOUNTS_TABLE
+            .lines()
+            .filter(|l| !l.starts_with("home_env"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(err.contains("home_env"), "error should name what is missing: {err}");
+    }
+
+    /// The honest default. An adapter that says nothing about isolation is not
+    /// isolable, because nobody has measured that it is.
+    #[test]
+    fn an_accounts_table_that_says_nothing_about_isolation_is_not_isolable() {
+        let a = load_adapter_str(&v3_with("\n[accounts]\nlogin_args = [\"login\"]\n"), "test")
+            .expect("a minimal accounts table parses");
+        let acc = a.accounts.expect("accounts resolved");
+        assert!(!acc.supports_isolation, "isolation must be earned, never defaulted to true");
+        assert_eq!(acc.home_env, None);
+    }
+
+    /// Every bundled adapter must load under the current build. Cheap, and it
+    /// is the check that would have caught the `< SCHEMA_VERSION` gate.
+    #[test]
+    fn every_bundled_adapter_loads() {
+        for (source, text) in BUNDLED {
+            if let Err(e) = load_adapter_str(text, source) {
+                panic!("bundled adapter {source} failed to load: {e}");
+            }
+        }
+    }
+
+    /// Phase 0 measured all five of these against `claude auth`. The bundled
+    /// adapter is where that measurement is spent, so it is pinned here rather
+    /// than left to drift.
+    #[test]
+    fn the_bundled_claude_adapter_declares_its_measured_accounts_table() {
+        let a = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude.toml parses");
+        let acc = a.accounts.expect("claude declares [accounts]");
+        assert_eq!(acc.home_env.as_deref(), Some("CLAUDE_CONFIG_DIR"));
+        assert!(acc.supports_isolation, "measured in Phase 0: two simultaneous logins");
+        assert!(!acc.whoami_args.is_empty(), "the sign-in probe must have args to run");
+        assert!(!acc.login_args.is_empty(), "the login ladder needs args for the PTY rung");
+    }
+
+    /// Isolation is claimed only where it was measured.
+    ///
+    /// Claude earned its `true` in Phase 0 on darwin. Nothing else has been
+    /// measured, so nothing else declares an `[accounts]` table at all, and an
+    /// adapter with no table renders no account controls rather than an "add
+    /// account" action that would put both profiles in one home. This test is
+    /// the tripwire for adding a table by copy-paste: a new adapter claiming
+    /// isolation has to come here and say who measured it.
+    #[test]
+    fn only_a_measured_adapter_claims_account_isolation() {
+        let claiming: Vec<String> = BUNDLED
+            .iter()
+            .filter_map(|(source, text)| load_adapter_str(text, source).ok())
+            .filter(|a| a.accounts.as_ref().is_some_and(|acc| acc.supports_isolation))
+            .map(|a| a.id)
+            .collect();
+        assert_eq!(claiming, ["claude"], "only measured adapters may claim isolation");
     }
 
     /// An effort level with no matching `[[chat.effort]]` entry would render a
