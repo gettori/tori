@@ -94,6 +94,22 @@ export type AcpOverrides = {
   serve_client_fs: boolean;
 };
 
+// Mirrors `AccountsConfig` in src-tauri/src/agents.rs, schema v3's [accounts].
+//
+// `home_env` is the variable that points the harness at an isolated profile
+// home; the *default* profile is that variable left unset, which is what makes
+// it resolve the login the user already had. `supports_isolation` is a measured
+// claim, never an inference from having a `home_env`: an adapter can have a
+// home variable and still share one credential store behind it, in which case
+// adding a second account would sign the first one out.
+export type AccountsConfig = {
+  home_env: string | null;
+  login_args: string[];
+  logout_args: string[];
+  whoami_args: string[];
+  supports_isolation: boolean;
+};
+
 export type Agent = {
   id: string;
   label: string;
@@ -111,6 +127,10 @@ export type Agent = {
   // Null for a PTY-only agent, which is the normal case rather than a
   // degraded one: a PTY-only adapter ships without a chat transport.
   chat?: ChatConfig | null;
+  // Null for an adapter that declares no sign-in of its own. That is not
+  // "signed out": it means Sway has nothing true to say about this adapter's
+  // accounts, so it renders no account controls at all rather than an inert set.
+  accounts?: AccountsConfig | null;
 };
 
 // Matches the bundled TOML (src-tauri/agents/*.toml) so
@@ -142,6 +162,11 @@ export const FALLBACK_AGENTS: Agent[] = [
     // model list would be a liability with no upside. `chatCapable` treats an
     // unresolved agent as not-yet-chat-capable rather than guessing.
     chat: null,
+    // Omitted for the same reason, and one more: an account list is per-user
+    // state that the fallback cannot know. Nothing on the first-paint path
+    // reads it, and guessing "no accounts" would render a sign-in prompt at a
+    // user who is already signed in.
+    accounts: null,
   },
   {
     id: "opencode",
@@ -159,6 +184,7 @@ export const FALLBACK_AGENTS: Agent[] = [
     running_pattern: null,
     pty_quiet_ms: 2000,
     chat: null,
+    accounts: null,
   },
   {
     id: "gemini",
@@ -171,6 +197,7 @@ export const FALLBACK_AGENTS: Agent[] = [
     running_pattern: null,
     pty_quiet_ms: 2000,
     chat: null,
+    accounts: null,
   },
   {
     id: "codex",
@@ -185,6 +212,7 @@ export const FALLBACK_AGENTS: Agent[] = [
     // Null like the rest, and here it also hides the one adapter whose chat
     // binary is `npx`. Nothing on the first-paint path should learn that.
     chat: null,
+    accounts: null,
   },
 ];
 
