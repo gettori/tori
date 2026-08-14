@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 id = "codex"
 label = "Codex"
 
@@ -36,6 +36,29 @@ pty_quiet_ms = 2000
 # in-protocol and Sway renders the question.
 needs_you = false
 hooks = false
+
+# --- schema v3: accounts ---
+#
+# Measured 2026-08-14 against the `codex-cli` named in `verified_against`.
+#
+# `codex login status` puts the entire answer in its exit code: 0 signed in, 1
+# not, with the prose ("Logged in using ChatGPT" / "Not logged in") on **stderr**
+# and stdout empty. So `whoami_kind = "exit_code"`, and Sway learns no account
+# name from it - Codex does not print one, and inventing a parse of that prose
+# would be a guess about a sentence nobody promised to keep.
+#
+# **No `home_env`, and `supports_isolation` is absent (so false).** `CODEX_HOME`
+# does relocate the credential store: pointed at an empty directory, the probe
+# reports not-logged-in while the real home stays signed in. What has *not* been
+# measured is the thing isolation actually claims - two accounts holding
+# simultaneous logins without one signing the other out - because that needs a
+# second Codex account. Until somebody runs it, Codex offers no "add account"
+# action, which is the honest rendering of "we do not know".
+[accounts]
+login_args = ["login"]
+logout_args = ["logout"]
+whoami_args = ["login", "status"]
+whoami_kind = "exit_code"
 
 [chat]
 transport = "acp"

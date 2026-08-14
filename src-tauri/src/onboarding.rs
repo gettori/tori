@@ -229,7 +229,6 @@ mod tests {
         std::fs::remove_dir_all(&empty).ok();
     }
 
-    #[test]
     // --- what the greeting says, which is a separate question from whether it
     //     shows at all ---
 

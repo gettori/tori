@@ -27,11 +27,10 @@
 //! load -> core -> save. Every test in this module runs with no filesystem
 //! except the two that are specifically about paths and permissions.
 //!
-//! Nothing outside the tests calls any of this yet: Phase 3 wires the account
-//! commands and the sign-in ladder on top of it. The allow is module-wide
-//! rather than eleven separate ones because the whole module is waiting on one
-//! caller, and it comes off in a single line when that caller lands.
-#![allow(dead_code)]
+//! The Tauri commands at the bottom are the whole surface the frontend sees.
+//! They are thin on purpose: every rule they enforce lives in the pure core
+//! above or in [`crate::auth`], so the parts worth testing are tested without a
+//! filesystem, a harness, or an app handle.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -361,6 +360,415 @@ pub fn save(file: &AccountsFile) -> Result<(), String> {
     crate::owned_state::write_atomically(&accounts_path(), &text)
 }
 
+// --- what the accounts screen asks for ---
+
+/// One profile, plus what its harness says about it right now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileStatus {
+    pub id: String,
+    pub label: String,
+    /// Published rather than left to the frontend to infer by comparing ids, so
+    /// "the default cannot be removed or renamed" is one rule with one source
+    /// instead of a backend refusal and a frontend guess that agree by luck.
+    pub is_default: bool,
+    pub home: Option<String>,
+    pub sign_in: crate::auth::SignIn,
+    /// How to sign **this** profile in.
+    ///
+    /// Per profile rather than per adapter, and that is not a detail: the route
+    /// carries the home variable, so one route shared across a card would sign
+    /// every profile into whichever account the shared copy happened to name.
+    /// A single `login` on [`AccountsView`] read exactly that way for one
+    /// revision of this file, and it would have sent every "Sign in" press to
+    /// the user's existing login while the row it was pressed on said "Work".
+    pub login: crate::auth::LoginRoute,
+    /// The account the harness named just now, which is not the same as the
+    /// `email` stored on the profile: this one is live, that one is the last
+    /// thing that was learned.
+    pub account: Option<String>,
+    pub api_key_source: Option<String>,
+    /// The label of an earlier profile signed in to the same account.
+    ///
+    /// A warning, never a refusal. Two profiles on one account is a thing a
+    /// person may genuinely want (a scratch home, a different set of project
+    /// settings), so this says what it sees and leaves the decision alone.
+    pub duplicate_of: Option<String>,
+}
+
+/// Everything one adapter's accounts card renders.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsView {
+    pub adapter_id: String,
+    /// `false` for an adapter with no `[accounts]` table, which renders no
+    /// account controls at all rather than an inert set of them.
+    pub declared: bool,
+    pub can_add: bool,
+    /// `false` for an adapter with no `logout_args`, which the removal flow has
+    /// to say out loud: tokens stay valid until they expire.
+    pub can_sign_out: bool,
+    pub profiles: Vec<ProfileStatus>,
+}
+
+/// Mark every profile signed in to an account an earlier one already holds.
+///
+/// Pure and order-sensitive: the *first* profile holding an account is the
+/// original and the rest point back at it, so the default profile (always first)
+/// is never the one flagged as a copy. Comparison is case-insensitive, because
+/// an address that differs only in case is the same account everywhere that
+/// matters.
+pub fn mark_duplicates(statuses: &mut [ProfileStatus]) {
+    let mut seen: BTreeMap<String, String> = BTreeMap::new();
+    for status in statuses.iter_mut() {
+        let Some(account) = status.account.as_ref() else { continue };
+        let key = account.trim().to_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        match seen.get(&key) {
+            Some(first) => status.duplicate_of = Some(first.clone()),
+            None => {
+                seen.insert(key, status.label.clone());
+            }
+        }
+    }
+}
+
+/// Why a removal must not go ahead, or `None`.
+///
+/// **Refuses rather than ends.** Of the two answers the phase allows, refusing
+/// is the one that cannot lose work: ending a session for the user means killing
+/// an agent mid-turn on their behalf, and they can do it themselves in one click
+/// from the tab this message points them at.
+///
+/// Coarser than it will eventually be, and knowingly so: it blocks on any live
+/// session of the *harness*, not of the profile, because Sway does not yet
+/// record which profile a running session belongs to. Phase 4 carries the
+/// profile through `SessionMeta`, and this narrows then. Blocking too much is
+/// the safe direction: the failure it prevents is a session writing into a home
+/// that was deleted underneath it.
+pub fn removal_refusal(live: &[String], what: &str) -> Option<String> {
+    if live.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{what} is still running {} session{}. Close {} first, then remove it.",
+        live.len(),
+        if live.len() == 1 { "" } else { "s" },
+        if live.len() == 1 { "it" } else { "them" },
+    ))
+}
+
+/// What removing a profile has to do before it forgets it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemovalStep {
+    /// Sign out first, and stop if that fails.
+    SignOutFirst,
+    /// This harness has no sign-out command, so the user has to be told that
+    /// removing the account revokes nothing before anything is deleted.
+    AskFirst,
+    /// Asked and answered. Forget it.
+    ForgetWithoutSigningOut,
+}
+
+/// The rule, as a value, so the order is a thing that can be asserted rather
+/// than eight lines of straight-line code in a command nothing calls in a test.
+///
+/// The order is the whole point. Deleting the profile before signing out would
+/// leave a credential Sway had abandoned rather than revoked, with nothing left
+/// in the UI to try again from.
+pub fn removal_plan(has_logout: bool, confirmed_without_logout: bool) -> RemovalStep {
+    if has_logout {
+        RemovalStep::SignOutFirst
+    } else if confirmed_without_logout {
+        RemovalStep::ForgetWithoutSigningOut
+    } else {
+        RemovalStep::AskFirst
+    }
+}
+
+/// What to tell somebody removing an account from a harness that cannot sign
+/// out.
+///
+/// **Not a link to a revocation page**, which is what this task originally asked
+/// for, and the reason is the one adapter that reaches this branch. OpenCode's
+/// credentials are per *provider* (the measured install held GitHub Copilot),
+/// so there is no single page that revokes "the OpenCode account": whose page
+/// it would be depends on which provider, and Sway does not know which. A URL
+/// field on `[accounts]` would therefore ship empty on every bundled adapter
+/// and be a guess on any other.
+///
+/// What it does instead is name the harness's own credential command, which is
+/// derived from what the adapter already declares rather than added as a field
+/// nobody could fill in. That is where the revocation actually happens.
+fn no_logout_warning(
+    adapter: &crate::agents::AgentAdapter,
+    accounts: &crate::agents::AccountsConfig,
+) -> String {
+    let manage = accounts
+        .login_args
+        .first()
+        .map(|first| format!(" Manage its credentials with `{} {first}`.", adapter.program))
+        .unwrap_or_default();
+    format!(
+        "{} offers no sign-out command, so removing this account forgets it here but leaves \
+         its tokens valid until they expire.{manage} Confirm to remove it anyway.",
+        adapter.label
+    )
+}
+
+// --- commands ---
+
+fn adapter(adapter_id: &str) -> Result<crate::agents::AgentAdapter, String> {
+    crate::agents::find(adapter_id)
+        .cloned()
+        .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))
+}
+
+/// Probe one profile, resolving its home the same way a session would.
+///
+/// `cached` is the default profile's answer, already computed by the health
+/// sweep. Reusing it is what makes "cached until an explicit refresh" true of
+/// the profile every adapter has: without it, opening Settings would probe the
+/// default account a second time for every card on screen.
+fn status_of(
+    adapter: &crate::agents::AgentAdapter,
+    accounts: &crate::agents::AccountsConfig,
+    path: Option<&std::path::Path>,
+    profile: &Profile,
+    cached: &crate::auth::Whoami,
+) -> ProfileStatus {
+    // `spawn_env` is the single definition of "which home does this profile
+    // run in", so neither the probe nor the login tab can drift from the
+    // session they are about. An incoherent profile is unknown rather than
+    // probed against the wrong account, which is the failure `spawn_env`
+    // refuses for.
+    let home = spawn_env(accounts, profile).ok().flatten();
+    let answer = match (profile.is_default(), path) {
+        (true, _) => cached.clone(),
+        (false, Some(path)) => crate::auth::whoami(path, accounts, home.as_ref()),
+        (false, None) => crate::auth::Whoami::default(),
+    };
+    ProfileStatus {
+        id: profile.id.clone(),
+        label: profile.label.clone(),
+        is_default: profile.is_default(),
+        home: profile.home.clone(),
+        sign_in: answer.state,
+        login: crate::auth::login_route(adapter, home),
+        account: answer.email,
+        api_key_source: answer.api_key_source,
+        duplicate_of: None,
+    }
+}
+
+/// Every account this adapter has, and what its harness says about each.
+///
+/// Not cached: this is the accounts screen asking on purpose, one probe per
+/// profile, and a user who just finished a login is the main person reading it.
+/// The cached answer for the *default* profile rides `agent_health` instead,
+/// which is what the picker and the Agents cards read.
+#[tauri::command]
+pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> {
+    let adapter = adapter(&adapter_id)?;
+    let path = crate::env::resolve_binary(&adapter.program);
+    let Some(accounts) = adapter.accounts.clone() else {
+        return Ok(AccountsView {
+            adapter_id,
+            declared: false,
+            can_add: false,
+            can_sign_out: false,
+            profiles: Vec::new(),
+        });
+    };
+
+    let cached = crate::health::cached_sign_in(&adapter_id).await;
+    let file = load();
+    let mut profiles: Vec<ProfileStatus> = profiles_for(&file, &adapter_id)
+        .iter()
+        .map(|p| status_of(&adapter, &accounts, path.as_deref(), p, &cached))
+        .collect();
+    mark_duplicates(&mut profiles);
+
+    Ok(AccountsView {
+        adapter_id,
+        declared: true,
+        can_add: can_add_account(&accounts),
+        can_sign_out: !accounts.logout_args.is_empty(),
+        profiles,
+    })
+}
+
+/// Create a profile and its home, ready to be signed in to.
+///
+/// The home exists before the profile is stored, because the stored path is the
+/// canonical one and canonicalizing needs something to resolve. Phase 0 measured
+/// why that matters: `claude` hashes the raw environment string, so a
+/// non-canonical spelling is a second identity for one directory.
+///
+/// It does **not** sign anybody in. The caller opens the login route next, and
+/// the profile sits there signed out until they finish, which is honest: a
+/// profile that existed only after a successful login would leave a home on disk
+/// with nothing pointing at it every time somebody closed the tab.
+#[tauri::command]
+pub async fn add_agent_account(
+    adapter_id: String,
+    label: String,
+) -> Result<crate::auth::LoginRoute, String> {
+    let adapter = adapter(&adapter_id)?;
+    let accounts = adapter
+        .accounts
+        .clone()
+        .ok_or_else(|| format!("`{adapter_id}` declares no accounts"))?;
+    if !can_add_account(&accounts) {
+        return Err(format!(
+            "`{adapter_id}` has no measured account isolation, so a second account would share \
+             the first one's home"
+        ));
+    }
+    let label = label.trim();
+    if label.is_empty() {
+        return Err("a profile label cannot be empty".into());
+    }
+
+    let mut file = load();
+    let id = mint_profile_id(&file, &adapter_id, label);
+    let home = create_profile_home(&adapter_id, &id)?;
+    let profile = Profile {
+        id: id.clone(),
+        label: label.to_string(),
+        email: None,
+        home: Some(home.clone()),
+    };
+    // The directory exists before the store does, because the stored path is
+    // the canonical one and canonicalizing needs something to resolve. So if
+    // storing it fails, take the directory back: an unreferenced profile home
+    // is invisible in the UI and never cleaned up by anything.
+    if let Err(e) = add_profile(&mut file, &adapter_id, profile.clone()).and_then(|()| save(&file)) {
+        std::fs::remove_dir_all(&home).ok();
+        return Err(e);
+    }
+
+    Ok(crate::auth::login_route(&adapter, spawn_env(&accounts, &profile)?))
+}
+
+/// A stable id for a new profile, derived from the label and made unique.
+///
+/// Derived rather than random so the profile home under Application Support is
+/// something a person can recognize, and uniqued against what is already stored
+/// so two profiles called "Work" do not collide.
+fn mint_profile_id(file: &AccountsFile, adapter_id: &str, label: &str) -> String {
+    let base = sanitize_segment(&label.to_lowercase());
+    let base = base.trim_matches('_');
+    let base = if base.is_empty() { "account" } else { base };
+    let taken: Vec<String> =
+        profiles_for(file, adapter_id).into_iter().map(|p| p.id).collect();
+    if !taken.iter().any(|id| id == base) {
+        return base.to_string();
+    }
+    // An infinite range, so there is always an answer. `unwrap_or_default` here
+    // would hand back an empty id, which becomes a profile home at the adapter
+    // directory itself.
+    (2..)
+        .map(|n| format!("{base}-{n}"))
+        .find(|id| !taken.contains(id))
+        .expect("an unbounded range always finds a free suffix")
+}
+
+/// What a removal attempt resolved to.
+///
+/// "Needs confirming" is a **value**, not an error string, for the same reason
+/// `chat::ownership::ClaimOutcome` is: the caller has to act differently on it,
+/// and the only way to tell it apart from a refusal would be to match on the
+/// message text. That distinction matters here because the other refusals are
+/// final - a session in flight, a logout the harness rejected - and a caller
+/// sniffing strings would offer "remove anyway?" for all of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum RemovalOutcome {
+    Removed,
+    /// This harness cannot sign out. The message says what that means; calling
+    /// again with `confirmed_without_logout` proceeds.
+    NeedsConfirming { message: String },
+}
+
+/// Sign a profile out and forget it, or say why not.
+///
+/// The order is load-bearing. Logout runs **first**, and a failure stops the
+/// removal: deleting the profile behind a live token would leave a credential
+/// Sway had abandoned rather than revoked, with nothing left in the UI to try
+/// again from.
+///
+/// `confirmed_without_logout` is the caller having told the user what an adapter
+/// with no logout command means and been told to proceed anyway. It is a
+/// separate argument rather than a silent fallback so that the removal cannot
+/// quietly become a delete for adapters that never had a logout.
+#[tauri::command]
+pub async fn remove_agent_account(
+    chat: tauri::State<'_, crate::chat::host::ChatState>,
+    adapter_id: String,
+    profile_id: String,
+    confirmed_without_logout: bool,
+) -> Result<RemovalOutcome, String> {
+    let adapter = adapter(&adapter_id)?;
+    let accounts = adapter
+        .accounts
+        .clone()
+        .ok_or_else(|| format!("`{adapter_id}` declares no accounts"))?;
+
+    if let Some(refusal) =
+        removal_refusal(&chat.0.registry.held_by(&adapter_id), &adapter.label)
+    {
+        return Err(refusal);
+    }
+
+    let mut file = load();
+    let profile = profile(&file, &adapter_id, &profile_id)
+        .ok_or_else(|| format!("no profile `{profile_id}` for `{adapter_id}`"))?;
+
+    match removal_plan(!accounts.logout_args.is_empty(), confirmed_without_logout) {
+        RemovalStep::SignOutFirst => {
+            let path = crate::env::resolve_binary(&adapter.program).ok_or_else(|| {
+                format!("`{}` is not installed, so it cannot sign out", adapter.program)
+            })?;
+            let home = spawn_env(&accounts, &profile)?;
+            crate::auth::logout(&path, &accounts, home.as_ref())
+                .map_err(|e| format!("{} would not sign out: {e}", adapter.label))?;
+        }
+        RemovalStep::AskFirst => {
+            return Ok(RemovalOutcome::NeedsConfirming {
+                message: no_logout_warning(&adapter, &accounts),
+            })
+        }
+        RemovalStep::ForgetWithoutSigningOut => {}
+    }
+
+    let removed = remove_profile(&mut file, &adapter_id, &profile_id)?;
+    save(&file)?;
+    // The home goes last, after the store no longer points at it. The other
+    // order leaves a stored profile aimed at a directory that is gone, which
+    // reads as a working account right up until a session starts in it.
+    if let Some(home) = removed.home {
+        std::fs::remove_dir_all(&home)
+            .map_err(|e| format!("signed out and forgot the account, but its home is still at {home}: {e}"))?;
+    }
+    Ok(RemovalOutcome::Removed)
+}
+
+/// Relabel a profile. The label is the only thing the user chose, so it is the
+/// only thing renaming touches.
+#[tauri::command]
+pub async fn rename_agent_account(
+    adapter_id: String,
+    profile_id: String,
+    label: String,
+) -> Result<(), String> {
+    let mut file = load();
+    rename_profile(&mut file, &adapter_id, &profile_id, &label)?;
+    save(&file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +913,7 @@ mod tests {
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],
+            whoami_kind: None,
             supports_isolation: isolation,
         }
     }
@@ -608,6 +1017,248 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- duplicate accounts, and what the warning is for ---
+
+    fn status(label: &str, account: Option<&str>) -> ProfileStatus {
+        ProfileStatus {
+            id: label.to_lowercase(),
+            label: label.to_string(),
+            is_default: false,
+            home: Some(format!("/tmp/{label}")),
+            sign_in: crate::auth::SignIn::SignedIn,
+            login: crate::auth::LoginRoute::AgentStates,
+            account: account.map(str::to_string),
+            api_key_source: None,
+            duplicate_of: None,
+        }
+    }
+
+    /// The twin the phase exists to notice: two profiles, one account, nothing
+    /// in the UI to tell them apart.
+    #[test]
+    fn a_second_profile_on_one_account_points_back_at_the_first() {
+        let mut rows =
+            [status("Default", Some("a@b.c")), status("Work", Some("a@b.c"))];
+        mark_duplicates(&mut rows);
+        assert_eq!(rows[0].duplicate_of, None, "the first holder is the original");
+        assert_eq!(rows[1].duplicate_of.as_deref(), Some("Default"));
+    }
+
+    #[test]
+    fn distinct_accounts_are_not_flagged() {
+        let mut rows = [status("Work", Some("a@b.c")), status("Personal", Some("d@e.f"))];
+        mark_duplicates(&mut rows);
+        assert!(rows.iter().all(|r| r.duplicate_of.is_none()));
+    }
+
+    /// An address differing only in case is the same account everywhere that
+    /// matters, so the warning has to survive the spelling.
+    #[test]
+    fn case_does_not_hide_a_duplicate() {
+        let mut rows = [status("Work", Some("A@B.c")), status("Other", Some("a@b.c "))];
+        mark_duplicates(&mut rows);
+        assert_eq!(rows[1].duplicate_of.as_deref(), Some("Work"));
+    }
+
+    /// Two profiles the harness names nothing for are not evidence of anything.
+    /// Codex and OpenCode report no account at all, so treating "both unknown"
+    /// as "the same" would flag every second profile they ever had.
+    #[test]
+    fn profiles_with_no_reported_account_are_never_called_duplicates() {
+        let mut rows = [status("Work", None), status("Personal", None), status("Third", Some(" "))];
+        mark_duplicates(&mut rows);
+        assert!(rows.iter().all(|r| r.duplicate_of.is_none()));
+    }
+
+    // --- the sign-in route is per profile ---
+
+    /// The regression this test exists for: the route was briefly one field on
+    /// the whole card, built with no home. Every "Sign in" press therefore
+    /// opened a tab with no `CLAUDE_CONFIG_DIR`, so pressing it on the row
+    /// labelled "Work" signed the user into the login they already had, said it
+    /// worked, and left two profiles that were one account.
+    #[test]
+    fn each_profile_carries_a_route_into_its_own_home() {
+        let claude = crate::agents::find("claude").expect("claude ships bundled");
+        let accounts = claude.accounts.clone().expect("claude declares accounts");
+        let cached = crate::auth::Whoami::default();
+        let work = added("work", "/canonical/work");
+
+        let row = status_of(claude, &accounts, None, &work, &cached);
+        match row.login {
+            crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(
+                home,
+                Some(("CLAUDE_CONFIG_DIR".into(), "/canonical/work".into())),
+                "the login has to land in this profile's home"
+            ),
+            other => panic!("claude signs in through a terminal, got {other:?}"),
+        }
+
+        // And the default profile signs in with the variable unset, exactly as
+        // it runs.
+        let row = status_of(claude, &accounts, None, &default_profile(), &cached);
+        match row.login {
+            crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(home, None),
+            other => panic!("got {other:?}"),
+        }
+    }
+
+    /// The default profile's answer comes from the cached sweep rather than a
+    /// second probe, which is what keeps opening Settings from asking every
+    /// harness the same question it was already asked.
+    #[test]
+    fn the_default_profile_reuses_the_answer_the_sweep_already_has() {
+        let claude = crate::agents::find("claude").expect("claude ships bundled");
+        let accounts = claude.accounts.clone().expect("claude declares accounts");
+        let cached = crate::auth::Whoami {
+            state: crate::auth::SignIn::SignedIn,
+            email: Some("a@b.c".into()),
+            api_key_source: Some("ANTHROPIC_API_KEY".into()),
+        };
+
+        // No binary path, so anything that probed would come back unknown.
+        let row = status_of(claude, &accounts, None, &default_profile(), &cached);
+        assert_eq!(row.sign_in, crate::auth::SignIn::SignedIn);
+        assert_eq!(row.account.as_deref(), Some("a@b.c"));
+        assert_eq!(row.api_key_source.as_deref(), Some("ANTHROPIC_API_KEY"));
+
+        // An added profile is a different account, so the cached answer must
+        // not be handed to it.
+        let row = status_of(claude, &accounts, None, &added("work", "/canonical/w"), &cached);
+        assert_eq!(row.sign_in, crate::auth::SignIn::Unknown);
+        assert_eq!(row.account, None);
+    }
+
+    // --- removal, and what stops it ---
+
+    #[test]
+    fn removal_is_refused_while_a_session_is_in_flight() {
+        let refusal = removal_refusal(&["s1".to_string()], "Claude").expect("refused");
+        assert!(refusal.contains("Claude"), "{refusal}");
+        assert!(refusal.contains("1 session"), "the count has to be in it: {refusal}");
+        assert!(!refusal.contains("1 sessions"), "and read as English: {refusal}");
+    }
+
+    #[test]
+    fn removal_goes_ahead_when_nothing_is_running() {
+        assert_eq!(removal_refusal(&[], "Claude"), None);
+    }
+
+    /// The order is the rule. Signing out after forgetting the profile would
+    /// leave a credential Sway had abandoned rather than revoked, with nothing
+    /// left in the UI to try again from.
+    #[test]
+    fn a_harness_with_a_logout_command_signs_out_before_forgetting_anything() {
+        assert_eq!(removal_plan(true, false), RemovalStep::SignOutFirst);
+        // Confirmation is for the *other* branch. An adapter that can sign out
+        // must not be talked past it.
+        assert_eq!(removal_plan(true, true), RemovalStep::SignOutFirst);
+    }
+
+    /// The state the removal flow has to say out loud rather than paper over.
+    /// OpenCode is the real case: its logout takes a provider argument, so
+    /// there is no single command that signs the harness out.
+    #[test]
+    fn a_harness_with_no_logout_asks_before_it_deletes() {
+        assert_eq!(removal_plan(false, false), RemovalStep::AskFirst);
+        assert_eq!(removal_plan(false, true), RemovalStep::ForgetWithoutSigningOut);
+    }
+
+    /// The sentence somebody has to agree to, checked against the real adapter
+    /// that reaches this branch. It has to say the tokens survive, and it has to
+    /// point at where they can actually be revoked.
+    #[test]
+    fn the_no_logout_warning_says_the_tokens_survive_and_where_to_revoke_them() {
+        let opencode = crate::agents::find("opencode").expect("opencode ships bundled");
+        let accounts = opencode.accounts.as_ref().expect("opencode declares accounts");
+        assert!(accounts.logout_args.is_empty(), "this test is about the no-logout branch");
+
+        let warning = no_logout_warning(opencode, accounts);
+        assert!(warning.contains("valid until they expire"), "{warning}");
+        assert!(warning.contains("opencode auth"), "name where to revoke them: {warning}");
+    }
+
+    /// Derived from what the adapter declares, so an adapter that declares no
+    /// login command still gets a complete sentence rather than a dangling one.
+    #[test]
+    fn the_warning_stays_a_sentence_when_there_is_no_command_to_name() {
+        let adapter = crate::agents::test_adapter("thing");
+        let accounts = crate::agents::AccountsConfig {
+            home_env: None,
+            login_args: vec![],
+            logout_args: vec![],
+            whoami_args: vec![],
+            whoami_kind: None,
+            supports_isolation: false,
+        };
+        let warning = no_logout_warning(&adapter, &accounts);
+        assert!(warning.contains("valid until they expire"), "{warning}");
+        assert!(warning.ends_with("Confirm to remove it anyway."), "{warning}");
+    }
+
+    /// The store holds names the user chose and addresses the harness reported.
+    /// Nothing else has ever been in it, and this is the assertion that says so
+    /// out loud, beside the one in `crate::auth` about the Keychain.
+    #[test]
+    fn accounts_json_holds_no_secret() {
+        let mut file = AccountsFile::default();
+        let mut p = added("work", "/tmp/w");
+        p.email = Some("a@b.c".into());
+        add_profile(&mut file, "claude", p).unwrap();
+        let text = serde_json::to_string(&file).unwrap();
+
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let keys: Vec<String> = value["adapters"]["claude"][0]
+            .as_object()
+            .expect("a profile is an object")
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(
+            keys,
+            ["id", "label", "email", "home"],
+            "a new field on a stored profile has to be justified here"
+        );
+        for smell in ["token", "secret", "password", "key", "credential"] {
+            assert!(!text.to_lowercase().contains(smell), "`{smell}` in {text}");
+        }
+    }
+
+    // --- minting an id for a new profile ---
+
+    #[test]
+    fn a_new_profile_id_is_derived_from_its_label() {
+        let file = AccountsFile::default();
+        assert_eq!(mint_profile_id(&file, "claude", "Work"), "work");
+        assert_eq!(mint_profile_id(&file, "claude", "My Work Account"), "my_work_account");
+    }
+
+    /// The id becomes a path segment under Application Support, so a label that
+    /// sanitizes to nothing must still produce something openable.
+    #[test]
+    fn a_label_with_nothing_usable_in_it_still_mints_an_id() {
+        let file = AccountsFile::default();
+        assert_eq!(mint_profile_id(&file, "claude", "///"), "account");
+    }
+
+    #[test]
+    fn a_second_profile_with_the_same_label_gets_its_own_id() {
+        let mut file = AccountsFile::default();
+        add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
+        assert_eq!(mint_profile_id(&file, "claude", "Work"), "work-2");
+    }
+
+    /// The synthetic default is in `profiles_for`, so a profile labelled
+    /// "Default" must not mint the one id that would shadow the user's real
+    /// login.
+    #[test]
+    fn a_new_profile_can_never_mint_the_default_id() {
+        let file = AccountsFile::default();
+        let id = mint_profile_id(&file, "claude", "Default");
+        assert_ne!(id, DEFAULT_PROFILE_ID);
+        assert!(add_profile(&mut AccountsFile::default(), "claude", added(&id, "/tmp/x")).is_ok());
     }
 
     /// Phase 0's trailing-slash trap, pinned. All three spellings of one

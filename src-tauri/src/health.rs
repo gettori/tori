@@ -18,6 +18,14 @@
 // main thread) and the whole sweep is cached: a UI that stalls on every
 // Settings open would be a far bigger cost than a slightly stale card.
 //
+// 3. Sign-in rides this same sweep rather than getting a cache of its own. The
+//    two questions are asked at the same moments, by the same screens, and
+//    invalidated by the same events (an install, a completed login), so a second
+//    cache would be a second thing to remember to invalidate and a second chance
+//    for the picker and the Agents cards to disagree. The cost is a second
+//    bounded subprocess per adapter that declares `whoami_args`, on a sweep that
+//    already runs once per app run. See `crate::auth`.
+//
 // The cache is invalidatable rather than lifetime-memoized, which it used to
 // be. "Cached for the app's lifetime" was correct only while nothing inside
 // Sway could change the answer; once a harness can be installed or signed in
@@ -29,6 +37,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::agents::{self, AgentAdapter};
+use crate::auth::SignIn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +62,27 @@ pub struct AgentHealth {
     /// The adapter's configured launch binary, e.g. `claude`.
     pub program: String,
     pub status: BinaryStatus,
+    /// Whether the harness says anybody is signed in, **for the default
+    /// profile**.
+    ///
+    /// Deliberately a separate axis from `status` rather than a fifth
+    /// `BinaryStatus`: installed and signed-in are two independent facts, and
+    /// collapsing them would make "installed, version 2.1.231" and "signed out"
+    /// mutually exclusive when they are routinely both true. The card renders
+    /// them as one sentence; the picker reads both.
+    ///
+    /// The default profile, because that is what a session started without
+    /// choosing an account runs as. Per-profile answers come from
+    /// `crate::accounts::account_status`, which is a different question asked by
+    /// a different screen.
+    pub sign_in: SignIn,
+    /// The account the harness named, when it names one. Only Claude does, of
+    /// the three measured.
+    pub account: Option<String>,
+    /// The environment variable the harness says it is taking an API key from.
+    /// `Some` means a subscription login is being overridden by an inherited
+    /// key, which is a warning and never a block.
+    pub api_key_source: Option<String>,
     /// Absolute path the binary resolved to, when found.
     pub path: Option<String>,
     /// Version parsed out of `--version`, when it was parseable.
@@ -140,12 +170,22 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         Some(_) => compare(version.as_deref(), adapter.verified_against.as_deref()),
     };
     let sessions_dir = adapter.discovery_path();
+    // Only for a binary that exists and an adapter that declares a probe.
+    // Everything else is `Unknown` by construction, which costs no subprocess
+    // and never reports a missing harness as signed out.
+    let account = match (resolved.as_deref(), adapter.accounts.as_ref()) {
+        (Some(path), Some(accounts)) => crate::auth::whoami(path, accounts, None),
+        _ => crate::auth::Whoami::default(),
+    };
 
     AgentHealth {
         id: adapter.id.clone(),
         label: adapter.label.clone(),
         program: adapter.program.clone(),
         status,
+        sign_in: account.state,
+        account: account.email,
+        api_key_source: account.api_key_source,
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
         version,
         verified_against: adapter.verified_against.clone(),
@@ -217,6 +257,26 @@ pub async fn agent_health() -> Vec<AgentHealth> {
     HEALTH.get_or_sweep(sweep)
 }
 
+/// What the cached sweep says about one adapter's **default** profile.
+///
+/// So the accounts screen can render the profile every adapter has without
+/// probing it a second time. Every card on screen would otherwise ask the same
+/// question the sweep already answered, which is a subprocess per card on every
+/// Settings open and would make "cached until an explicit refresh" false of the
+/// one profile nobody can delete.
+pub async fn cached_sign_in(adapter_id: &str) -> crate::auth::Whoami {
+    HEALTH
+        .get_or_sweep(sweep)
+        .into_iter()
+        .find(|h| h.id == adapter_id)
+        .map(|h| crate::auth::Whoami {
+            state: h.sign_in,
+            email: h.account,
+            api_key_source: h.api_key_source,
+        })
+        .unwrap_or_default()
+}
+
 /// Re-probe every adapter now and return the new answer.
 ///
 /// The caller is anything that could have changed the answer: an in-app
@@ -247,6 +307,9 @@ mod tests {
             label: id.into(),
             program: id.into(),
             status,
+            sign_in: SignIn::Unknown,
+            account: None,
+            api_key_source: None,
             path: None,
             version: None,
             verified_against: None,
@@ -395,6 +458,72 @@ mod tests {
         assert_eq!(health.status, BinaryStatus::NotFound);
         assert!(health.path.is_none());
         assert!(health.version.is_none());
+    }
+
+    // --- sign-in rides the sweep ---
+
+    fn with_accounts(program: &str, accounts: agents::AccountsConfig) -> AgentAdapter {
+        let mut adapter = agents::test_adapter(program);
+        adapter.accounts = Some(accounts);
+        adapter
+    }
+
+    fn probe(args: &[&str], kind: agents::WhoamiKind) -> agents::AccountsConfig {
+        agents::AccountsConfig {
+            home_env: None,
+            login_args: vec![],
+            logout_args: vec![],
+            whoami_args: args.iter().map(|a| a.to_string()).collect(),
+            whoami_kind: Some(kind),
+            supports_isolation: false,
+        }
+    }
+
+    /// The probe runs inside `check`, which is what makes it cached: everything
+    /// the cache tests above assert about re-reading applies to the sign-in
+    /// answer too, without a second cache to remember to invalidate.
+    ///
+    /// Driven through `sh` so it asserts the wiring rather than whatever agent
+    /// CLIs the machine running it happens to have.
+    #[test]
+    fn the_sweep_asks_the_harness_who_is_signed_in() {
+        let adapter = with_accounts("sh", probe(&["-c", "exit 0"], agents::WhoamiKind::ExitCode));
+        assert_eq!(check(&adapter).sign_in, SignIn::SignedIn);
+
+        let adapter = with_accounts("sh", probe(&["-c", "exit 1"], agents::WhoamiKind::ExitCode));
+        assert_eq!(check(&adapter).sign_in, SignIn::SignedOut);
+    }
+
+    /// Two independent axes. A signed-out harness is still installed, and its
+    /// card still says which version, because those are different facts and
+    /// collapsing them would make one of them unsayable.
+    #[test]
+    fn signed_out_is_not_the_same_answer_as_not_installed() {
+        let adapter = with_accounts("sh", probe(&["-c", "exit 1"], agents::WhoamiKind::ExitCode));
+        let health = check(&adapter);
+        assert_eq!(health.sign_in, SignIn::SignedOut);
+        assert!(health.path.is_some(), "signed out says nothing about the binary");
+        assert_ne!(health.status, BinaryStatus::NotFound);
+    }
+
+    /// No probe, no subprocess, and no verdict. An adapter with no way to say
+    /// who is signed in must not read as signed out, which would put a sign-in
+    /// prompt in front of a harness that has no sign-in.
+    #[test]
+    fn an_adapter_that_declares_no_probe_reports_unknown() {
+        assert_eq!(check(&agents::test_adapter("sh")).sign_in, SignIn::Unknown);
+    }
+
+    /// A binary that is not there is not asked. There would be nothing to ask.
+    #[test]
+    fn a_missing_binary_is_never_probed_for_a_sign_in() {
+        let adapter = with_accounts(
+            "sway-nonexistent-agent-binary",
+            probe(&["-c", "exit 0"], agents::WhoamiKind::ExitCode),
+        );
+        let health = check(&adapter);
+        assert_eq!(health.status, BinaryStatus::NotFound);
+        assert_eq!(health.sign_in, SignIn::Unknown, "not signed out: nothing was asked");
     }
 
     #[test]

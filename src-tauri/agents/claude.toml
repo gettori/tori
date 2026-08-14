@@ -74,11 +74,22 @@ hooks = true
 # `login_args` runs in a real PTY and never headlessly: `claude auth login` is
 # browser OAuth with no non-interactive variant, and `setup-token` is
 # interactive too, so a captured login would hang rather than fail.
+#
+# `whoami_args` is the one probe Sway runs captured, and it is safe to: measured
+# both ways, `claude auth status` writes JSON to stdout and exits 0 signed in, 1
+# signed out. It also names the account (`email`) and, when one is inherited,
+# the environment variable supplying an API key (`apiKeySource`), which is where
+# the billing-override warning comes from rather than from Sway sniffing its own
+# environment.
+#
+# `logout_args` is non-interactive too: measured against an isolated home with
+# nothing signed in, it printed "Successfully logged out" and exited 0.
 [accounts]
 home_env = "CLAUDE_CONFIG_DIR"
 login_args = ["auth", "login"]
 logout_args = ["auth", "logout"]
 whoami_args = ["auth", "status"]
+whoami_kind = "claude_json"
 supports_isolation = true
 
 # --- schema v2: the structured chat transport ---
