@@ -42,6 +42,26 @@
 //
 // Either way the count is printed, because a catalogue that quietly covers less
 // than its upstream reads as "these are all the agents there are".
+//
+// WHAT A `binary` ENTRY NOW CARRIES, and why the shape is per platform. The
+// registry describes a `binary` distribution as one entry per
+// `<os>-<arch>` key, each with an `archive` URL, the `cmd` inside it, optional
+// `args`, optional `env`, and an **optional** `sha256`. Measured 2026-08-14
+// across the 17 binary agents: every one publishes `darwin-aarch64`, `kimi`
+// publishes no `darwin-x86_64` at all, and only 9 of 17 publish a checksum. So
+// the platform map is carried whole rather than collapsed to this machine's
+// entry: the generator runs on one architecture and the binary it produces runs
+// on others, and "there is no build for your machine" is a fact the catalogue
+// has to be able to state rather than a row that silently disappears.
+//
+// THE PROTOCOL MATRIX IS AN OPTIONAL PRIOR. `.protocol-matrix/latest.json` is
+// the registry's own probe of what each agent answered, and it is read
+// best-effort into `published_capabilities`, kept under a name that says whose
+// measurement it is. It is never merged with Sway's own: an adapter's tier comes
+// from `src/utils/chatCapabilities.ts` and its `verified_against` from a CLI
+// Sway ran, and a row here has neither. The file sits in a dot-directory covered
+// by no published schema, so a missing or reshaped one drops the field and
+// prints the shortfall; the catalogue is built either way.
 import { writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -63,13 +83,12 @@ const gh = async (path) => {
  * `npx` is taken as-is: the package name is pinned by the registry, and `-y`
  * keeps a first run from stopping on a prompt.
  *
- * `binary` is taken as **the basename of the registry's `cmd`**, and this is the
- * one place the catalogue makes an assumption. The registry describes an archive
- * to download and a path inside it (`./dist-package/cursor-agent`); Sway does not
- * download or extract anything, so what it can offer is the same command for a
- * user who installed the agent themselves and has it on their PATH. That
- * assumption is recorded as `needs: "on-path"` so the UI can say so rather than
- * implying Sway will fetch it.
+ * `binary` carries the registry's whole platform map as `builds`, plus a display
+ * program taken from the basename of the `cmd`. Sway installs one of these into
+ * a directory of its own, so the launch a user ends up typing is an absolute
+ * path under that directory rather than a bare name, and `needs: "install"` says
+ * the fetch is Sway's to do. A `binary` entry that lists no platform at all
+ * falls back to `on-path`, which is the only honest thing left to offer.
  */
 function launchOf(distribution) {
   if (distribution?.npx?.package) {
@@ -88,16 +107,80 @@ function launchOf(distribution) {
   }
   const binary = distribution?.binary;
   if (binary) {
-    // Any platform's entry describes the same command; prefer this machine's
-    // family so a `.cmd` suffix from a Windows entry never leaks into the args.
+    const builds = {};
+    for (const [platform, e] of Object.entries(binary)) {
+      if (typeof e?.archive !== "string" || typeof e?.cmd !== "string") continue;
+      builds[platform] = {
+        archive: e.archive,
+        // Optional upstream, and absent for 8 of the 17 binary agents. Carried
+        // as null rather than omitted so "this download is unverified" is a
+        // value the UI reads, not an absence it has to infer.
+        sha256: typeof e.sha256 === "string" ? e.sha256 : null,
+        cmd: e.cmd,
+        args: e.args ?? [],
+        env: e.env ?? {},
+      };
+    }
+    // Display only. Any platform's entry names the same command; prefer this
+    // machine's family so a `.cmd` suffix from a Windows entry never leaks in.
     const entry =
       binary["darwin-aarch64"] ?? binary["darwin-x86_64"] ?? binary["linux-x86_64"] ?? Object.values(binary)[0];
     if (!entry?.cmd) return null;
     const program = entry.cmd.split(/[\\/]/).pop();
     if (!program) return null;
-    return { program, args: entry.args ?? [], needs: "on-path" };
+    const launch = { program, args: entry.args ?? [] };
+    return Object.keys(builds).length
+      ? { ...launch, needs: "install", builds }
+      : { ...launch, needs: "on-path" };
   }
   return null;
+}
+
+/**
+ * The registry's own capability probe, keyed by agent id.
+ *
+ * Best-effort and shape-checked: the file lives in a dot-directory covered by
+ * neither published schema, so anything that is not the expected object is
+ * dropped per agent rather than trusted or fatal. Returns `[byId, provenance]`,
+ * both empty when there is nothing readable.
+ */
+async function protocolMatrix() {
+  let raw;
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${REPO}/main/.protocol-matrix/latest.json`);
+    if (!r.ok) throw new Error(String(r.status));
+    raw = await r.json();
+  } catch (e) {
+    return [{}, null, `no readable protocol matrix (${e})`];
+  }
+  if (!Array.isArray(raw?.agents)) return [{}, null, "protocol matrix carries no agents array"];
+
+  const byId = {};
+  let skipped = 0;
+  for (const a of raw.agents) {
+    const caps = a?.capabilities;
+    if (typeof a?.id !== "string" || typeof caps !== "object" || caps === null) {
+      skipped++;
+      continue;
+    }
+    const flag = (k) => (typeof caps[k] === "boolean" ? caps[k] : null);
+    byId[a.id] = {
+      initialize: typeof a.initialize?.status === "string" ? a.initialize.status : null,
+      protocol_version: typeof a.protocolVersion === "number" ? a.protocolVersion : null,
+      load_session: flag("loadSession"),
+      session_list: flag("sessionList"),
+      session_fork: flag("sessionFork"),
+      session_resume: flag("sessionResume"),
+      session_stop: flag("sessionStop"),
+      set_model: flag("setModel"),
+    };
+  }
+  const provenance = {
+    source: `https://github.com/${REPO}/blob/main/.protocol-matrix/latest.json`,
+    probed_on: typeof raw.date === "string" ? raw.date : null,
+    agents_probed: Object.keys(byId).length,
+  };
+  return [byId, provenance, skipped ? `${skipped} matrix rows had no readable capabilities` : null];
 }
 
 async function build() {
@@ -115,8 +198,11 @@ async function build() {
     // are still labelled untested either way.
   }
 
+  const [matrix, matrixSource, matrixNote] = await protocolMatrix();
+
   const entries = [];
   const dropped = [];
+  if (matrixNote) dropped.push(matrixNote);
   for (const dir of dirs) {
     if (quarantine[dir.name]) {
       dropped.push(`${dir.name} (quarantined upstream: ${quarantine[dir.name]})`);
@@ -138,8 +224,9 @@ async function build() {
       dropped.push(`${agent.id ?? dir.name} (no npx, uvx or binary distribution)`);
       continue;
     }
+    const id = agent.id ?? dir.name;
     entries.push({
-      id: agent.id ?? dir.name,
+      id,
       label: agent.name ?? agent.id ?? dir.name,
       description: agent.description ?? "",
       // The version the *registry* pins, which is not a version Sway measured
@@ -147,6 +234,9 @@ async function build() {
       registry_version: agent.version ?? null,
       website: agent.website ?? agent.repository ?? null,
       ...launch,
+      // Whose measurement this is, said in the field name. Never folded into a
+      // tier of Sway's own.
+      published_capabilities: matrix[id] ?? null,
     });
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
@@ -158,6 +248,10 @@ async function build() {
     registry_commit: head.sha,
     generated_on: head.commit?.committer?.date?.slice(0, 10) ?? null,
     generated_by: "dev/acp-catalog.mjs",
+    // Null when the dot-directory was missing or reshaped, which is what tells
+    // the UI to say nothing about capabilities rather than say nothing about
+    // where its claims came from.
+    matrix_source: matrixSource,
     entries,
     // Committed, so the shortfall against the upstream is visible rather than
     // inferred from a count.
@@ -176,13 +270,25 @@ if (process.argv.includes("--check")) {
   console.log(
     same
       ? `up to date at registry commit ${committed.registry_commit.slice(0, 8)}`
-      : `STALE: committed ${JSON.parse(existing).registry_commit.slice(0, 8)}, upstream ${committed.registry_commit.slice(0, 8)} — re-run without --check`,
+      : `STALE: committed ${JSON.parse(existing).registry_commit.slice(0, 8)}, upstream ${committed.registry_commit.slice(0, 8)}, re-run without --check`,
   );
   process.exitCode = same ? 0 : 1;
 } else {
   writeFileSync(OUT, json);
   console.log(`wrote ${committed.entries.length} entries to ${OUT}`);
   console.log(`registry commit ${committed.registry_commit.slice(0, 8)} (${committed.generated_on})`);
+  const installable = committed.entries.filter((e) => e.builds).length;
+  const unsigned = committed.entries.filter(
+    (e) => e.builds && Object.values(e.builds).some((b) => !b.sha256),
+  ).length;
+  // Printed because it is the trust story in one line: how many agents Sway
+  // would download, and how many of those publish nothing to check them against.
+  console.log(`${installable} installable, ${unsigned} of them publishing no sha256 for some platform`);
+  console.log(
+    committed.matrix_source
+      ? `protocol matrix: ${committed.matrix_source.agents_probed} agents, probed ${committed.matrix_source.probed_on}`
+      : "protocol matrix: none read, entries carry no published capabilities",
+  );
   if (dropped.length) {
     // Reported rather than silent: a catalogue that quietly covers less than the
     // upstream reads as "these are all the agents there are".
