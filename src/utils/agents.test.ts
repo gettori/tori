@@ -102,6 +102,52 @@ describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
       expect(chatCapable(a)).toBe(false);
     }
   });
+
+  // Same reasoning as the chat table, plus one more: which accounts exist is
+  // per-user state the fallback cannot know, and guessing "none" would show a
+  // sign-in prompt to somebody already signed in.
+  it("deliberately carries no accounts table", () => {
+    for (const a of FALLBACK_AGENTS) {
+      expect(a.accounts, `${a.id} must not duplicate the accounts table`).toBeNull();
+    }
+  });
+});
+
+// Schema v3's [accounts]. This is the check that makes the mirror a mirror:
+// `component_agent_adapter_registry` records the shape drifting because both
+// sides were hand-written and only one got updated.
+describe("the accounts table crosses the Rust/TypeScript boundary intact", () => {
+  const resolved = bundled as unknown as Agent[];
+  const claude = resolved.find((a) => a.id === "claude")!;
+
+  // The keys Rust's `AccountsConfig` serializes, listed rather than derived: a
+  // TypeScript type is erased at runtime, so this literal *is* the mirror. A
+  // field added on the Rust side fails here until it is added to the type
+  // above, which is the whole point.
+  const ACCOUNTS_KEYS = ["home_env", "login_args", "logout_args", "whoami_args", "supports_isolation"];
+
+  it("serializes exactly the fields the TypeScript type declares", () => {
+    expect(claude.accounts, "claude declares [accounts]").toBeTruthy();
+    expect(Object.keys(claude.accounts!).sort()).toEqual([...ACCOUNTS_KEYS].sort());
+  });
+
+  it("carries claude's measured values", () => {
+    const acc = claude.accounts!;
+    expect(acc.home_env).toBe("CLAUDE_CONFIG_DIR");
+    // Measured in Phase 0: two profiles held simultaneous logins, because
+    // claude namespaces its Keychain service by config dir.
+    expect(acc.supports_isolation).toBe(true);
+    expect(acc.whoami_args.length).toBeGreaterThan(0);
+    expect(acc.login_args.length).toBeGreaterThan(0);
+  });
+
+  // An adapter that declares no table is not "signed out", it is unknown, so
+  // the frontend must be able to tell those apart.
+  it("reports null for an adapter that declares no accounts table", () => {
+    for (const a of resolved.filter((a) => a.id !== "claude")) {
+      expect(a.accounts ?? null, `${a.id} declares no [accounts] table`).toBeNull();
+    }
+  });
 });
 
 describe("the bundled chat tables", () => {
