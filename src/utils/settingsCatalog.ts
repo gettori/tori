@@ -324,10 +324,16 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Seconds an unanswered tool approval waits before Sway denies it.",
   },
   {
+    id: "max-concurrent-chats",
+    section: "chat",
+    label: "Warn above",
+    hint: "Live chats before Sway says the cost is adding up. It warns rather than refusing. 0 for no limit.",
+  },
+  {
     id: "session-budget",
     section: "chat",
     label: "Stop this chat after",
-    hint: "Dollars one chat may spend before it stops at its next tool call. Blank for no limit.",
+    hint: "Dollars one chat may spend before it stops starting turns. Blank for no limit.",
   },
   {
     id: "project-budget",

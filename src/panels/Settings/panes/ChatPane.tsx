@@ -27,7 +27,7 @@ import styles from "../Settings.module.css";
  */
 const SESSIONS = ["default-surface", "streaming", "transcript-density", "tool-output-lines", "show-hooks"];
 const SAFETY = ["legacy-permission-gate", "approval-auto-deny", "checkpoints"];
-const SPENDING = ["session-budget", "project-budget", "context-budget"];
+const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget"];
 
 export default function ChatPane(props: PaneProps) {
   return (
@@ -166,9 +166,29 @@ export default function ChatPane(props: PaneProps) {
       <Group {...props} title="Spending" ids={SPENDING}>
         <Row
           {...props}
+          id="max-concurrent-chats"
+          label="Warn above"
+          hint="Live chats at once before Sway says so. Each one is an agent process with its own token spend, and a chat left open in a background tab goes on costing whether or not it is being read. A warning, not a refusal: 0 turns it off."
+        >
+          <input
+            type="number"
+            min="0"
+            max="50"
+            class={`${styles.input} ${styles.num}`}
+            value={settings.chatDefaults.maxConcurrentChats}
+            onChange={(e) =>
+              setChatDefaults({
+                maxConcurrentChats: clamp(e.currentTarget.value, 0, 50, settings.chatDefaults.maxConcurrentChats),
+              })
+            }
+          />
+        </Row>
+
+        <Row
+          {...props}
           id="session-budget"
           label="Stop this chat after"
-          hint="Dollars one chat may spend before it stops at its next tool call. Leave blank for no limit, which is the default."
+          hint="Dollars one chat may spend before it stops starting turns. The turn that crosses the limit is allowed to finish. Leave blank for no limit, which is the default."
         >
           <input
             type="number"
