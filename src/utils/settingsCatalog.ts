@@ -318,12 +318,6 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Lines shown before a tool's output folds. 0 shows all of it.",
   },
   {
-    id: "approval-auto-deny",
-    section: "chat",
-    label: "Auto-deny approvals after",
-    hint: "Seconds an unanswered tool approval waits before Sway denies it.",
-  },
-  {
     id: "max-concurrent-chats",
     section: "chat",
     label: "Warn above",

@@ -56,7 +56,6 @@ export type ChatDefaults = {
   streaming: boolean;
   density: TranscriptDensity;
   toolOutputLines: number;
-  approvalAutoDenySecs: number;
   showSwayHooks: boolean;
   /** How many live chats before Sway says the cost is adding up. **Zero means
    *  no cap.** It warns rather than refusing: several chats at once is the
@@ -212,7 +211,6 @@ export const DEFAULT_SETTINGS: Settings = {
     streaming: true,
     density: "comfortable",
     toolOutputLines: 20,
-    approvalAutoDenySecs: 120,
     showSwayHooks: false,
     maxConcurrentChats: 4,
   },

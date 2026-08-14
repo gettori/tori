@@ -210,13 +210,12 @@ pub struct ChatDefaults {
     /// Lines of tool output shown before a "show all" fold. Zero means no fold.
     #[serde(default = "default_tool_output_lines")]
     pub tool_output_lines: u32,
-    /// How long an approval prompt waits before Sway auto-denies it. Sway owns
-    /// this timeout so it always fires before claude's own hook timeout can.
-    #[serde(default = "default_approval_auto_deny_secs")]
-    pub approval_auto_deny_secs: u32,
     /// Show Sway's own injected hook events in the transcript. Off by default:
-    /// they are plumbing rather than the user's own hooks, and under the legacy
-    /// gate's all-tools matcher they would bury those in noise.
+    /// they are plumbing rather than the user's own hooks, and a reader
+    /// scanning for their own hook should not have to skip Sway's to find it.
+    /// (The stronger version of this - that Sway's hook fired on *every* tool
+    /// and so buried the user's - stopped being true when the matcher narrowed
+    /// to the write tools.)
     #[serde(default)]
     pub show_sway_hooks: bool,
     /// How many live chats before Sway says the cost is adding up. **Zero means
@@ -246,9 +245,6 @@ fn yes() -> bool {
 fn default_tool_output_lines() -> u32 {
     20
 }
-fn default_approval_auto_deny_secs() -> u32 {
-    120
-}
 /// Four streaming children is about where a laptop's fans and the token bill
 /// both start to be noticeable, and it is comfortably above the two or three a
 /// worktree's worth of parallel work actually needs.
@@ -266,7 +262,6 @@ impl Default for ChatDefaults {
             streaming: true,
             density: TranscriptDensity::default(),
             tool_output_lines: default_tool_output_lines(),
-            approval_auto_deny_secs: default_approval_auto_deny_secs(),
             show_sway_hooks: false,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
@@ -684,7 +679,6 @@ mod tests {
                 streaming: false,
                 density: TranscriptDensity::Compact,
                 tool_output_lines: 5,
-                approval_auto_deny_secs: 30,
                 show_sway_hooks: true,
                 max_concurrent_chats: 9,
             },
@@ -924,7 +918,6 @@ mod tests {
         // from the explicit defaults or streaming silently ships off.
         assert!(back.chat_defaults.streaming);
         assert_eq!(back.chat_defaults.tool_output_lines, 20);
-        assert_eq!(back.chat_defaults.approval_auto_deny_secs, 120);
         // Sway's own hook noise stays folded until asked for.
         assert!(!back.chat_defaults.show_sway_hooks);
         assert_eq!(back.harness.path, None);

@@ -13,14 +13,17 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
+import { withAcpCatalog } from "../../test/settingsInvoke";
+
 import Settings, { EDITOR_TOGGLES } from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, type EditorDefaults } from "./settingsStore";
 
 beforeEach(() => {
   invoke.mockReset();
   // `set_settings` echoes what it was handed, the way the backend does.
-  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
-    cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+  invoke.mockImplementation(
+    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS),
   );
 });
 
@@ -105,13 +108,15 @@ describe("overriding a setting for one workspace", () => {
    * user layer that has drifted is exactly what these assertions are about.
    */
   async function useWorkspace(root: string | null, overlay: Record<string, unknown> = {}) {
-    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-      if (cmd === "set_settings") return args.settings;
-      if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
-      if (cmd === "get_workspace_settings") return { editor: overlay };
-      if (cmd === "set_workspace_settings") return args.settings;
-      return DEFAULT_SETTINGS;
-    });
+    invoke.mockImplementation(
+      withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
+        if (cmd === "set_settings") return args.settings;
+        if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
+        if (cmd === "get_workspace_settings") return { editor: overlay };
+        if (cmd === "set_workspace_settings") return args.settings;
+        return DEFAULT_SETTINGS;
+      }),
+    );
     await loadSettings();
     await loadWorkspaceSettings(root);
   }

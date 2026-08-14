@@ -26,7 +26,7 @@ import styles from "../Settings.module.css";
  * one being dropped from all three lists.
  */
 const SESSIONS = ["default-surface", "streaming", "transcript-density", "tool-output-lines", "show-hooks"];
-const SAFETY = ["approval-auto-deny", "checkpoints"];
+const SAFETY = ["checkpoints"];
 const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget"];
 
 export default function ChatPane(props: PaneProps) {
@@ -111,31 +111,6 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Safety" ids={SAFETY}>
-        <Row
-          {...props}
-          id="approval-auto-deny"
-          label="Auto-deny approvals after"
-          hint="Seconds an unanswered tool approval waits before Sway denies it. Sway owns this timeout so it always fires before the harness's own."
-        >
-          <input
-            type="number"
-            min="5"
-            max="3600"
-            class={`${styles.input} ${styles.num}`}
-            value={settings.chatDefaults.approvalAutoDenySecs}
-            onChange={(e) =>
-              setChatDefaults({
-                approvalAutoDenySecs: clamp(
-                  e.currentTarget.value,
-                  5,
-                  3600,
-                  settings.chatDefaults.approvalAutoDenySecs,
-                ),
-              })
-            }
-          />
-        </Row>
-
         <Row
           {...props}
           id="checkpoints"

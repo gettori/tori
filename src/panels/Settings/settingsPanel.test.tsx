@@ -13,6 +13,8 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
+import { withAcpCatalog } from "../../test/settingsInvoke";
+
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
@@ -22,8 +24,9 @@ import styles from "./Settings.module.css";
 
 beforeEach(async () => {
   invoke.mockReset();
-  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
-    cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+  invoke.mockImplementation(
+    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS),
   );
   await loadWorkspaceSettings(null);
 });
