@@ -3,6 +3,7 @@ mod agent_lines;
 mod agents;
 mod askpass;
 mod attempts;
+mod auth;
 mod backstop;
 mod blame;
 mod chat;
@@ -308,6 +309,10 @@ pub fn run() {
             agents::list_agents,
             health::agent_health,
             health::refresh_agent_health,
+            accounts::agent_accounts,
+            accounts::add_agent_account,
+            accounts::remove_agent_account,
+            accounts::rename_agent_account,
             catalog::acp_catalog,
             catalog::acp_catalog_source,
             onboarding::onboarding_should_show,

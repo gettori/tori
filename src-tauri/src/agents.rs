@@ -136,6 +136,46 @@ impl ParserKind {
     }
 }
 
+/// How to read the answer a harness gives when asked who is signed in.
+///
+/// Closed, like [`ParserKind`] and [`ChatTransport`], because there is no
+/// generic shape to fall back to. All three were measured on 2026-08-14 against
+/// the CLIs named in each adapter's `verified_against`, signed in and signed
+/// out, and no two of them answer the same way:
+///
+///   * `claude auth status` writes JSON to stdout and exits 0 or 1.
+///   * `codex login status` writes prose to *stderr* and says everything in its
+///     exit code.
+///   * `opencode auth list` exits **0 either way** and puts the answer in a
+///     box-drawn table's last line.
+///
+/// That third one is why an adapter cannot simply be assumed to use its exit
+/// code: doing so would report OpenCode signed in while it holds no credentials
+/// at all. Guessing wrong here produces a confident false positive, so the kind
+/// is declared per adapter and the loader refuses probe args without one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WhoamiKind {
+    /// A JSON object carrying `loggedIn`, and optionally `email` and
+    /// `apiKeySource`.
+    ClaudeJson,
+    /// The exit status is the whole answer: zero is signed in.
+    ExitCode,
+    /// A `N credentials` count in OpenCode's own table output.
+    OpencodeCredentials,
+}
+
+impl WhoamiKind {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "claude_json" => Some(Self::ClaudeJson),
+            "exit_code" => Some(Self::ExitCode),
+            "opencode_credentials" => Some(Self::OpencodeCredentials),
+            _ => None,
+        }
+    }
+}
+
 /// Where an adapter's sessions live and how to find them.
 ///
 /// One variant, and an enum rather than a struct on purpose: a backend that is
@@ -388,6 +428,11 @@ pub struct AccountsConfig {
     pub logout_args: Vec<String>,
     /// Args for a bounded, non-interactive "who is signed in here" probe.
     pub whoami_args: Vec<String>,
+    /// How to read what those args print. `None` exactly when `whoami_args` is
+    /// empty, which the loader enforces: probe args with no declared shape would
+    /// have to be read by guessing, and the measured shapes disagree about
+    /// everything including whether the exit code means anything.
+    pub whoami_kind: Option<WhoamiKind>,
     /// Whether this adapter can hold two accounts at once without them
     /// clobbering each other.
     ///
@@ -516,6 +561,8 @@ struct AccountsToml {
     logout_args: Vec<String>,
     #[serde(default)]
     whoami_args: Vec<String>,
+    #[serde(default)]
+    whoami_kind: Option<String>,
     #[serde(default)]
     supports_isolation: bool,
 }
@@ -868,11 +915,36 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                      (there is no way to isolate a profile without a variable to point at it)"
                 ));
             }
+            // Probe args and the shape of their answer are one fact, the same
+            // way `[discovery]`/`[parser]`/`[running]` are. Args with no kind
+            // would leave the reader guessing, and the measured shapes make
+            // every guess wrong somewhere: assume the exit code and OpenCode
+            // reports signed in while holding no credentials at all.
+            let whoami_kind = match (a.whoami_args.is_empty(), a.whoami_kind.as_deref()) {
+                (true, None) => None,
+                (false, Some(kind)) => Some(WhoamiKind::from_str(kind).ok_or_else(|| {
+                    format!("{source}: unknown accounts.whoami_kind `{kind}`")
+                })?),
+                (false, None) => {
+                    return Err(format!(
+                        "{source}: accounts.whoami_args needs accounts.whoami_kind \
+                         (no two harnesses report sign-in the same way, so there is \
+                         nothing to fall back to)"
+                    ))
+                }
+                (true, Some(kind)) => {
+                    return Err(format!(
+                        "{source}: accounts.whoami_kind = `{kind}` with no accounts.whoami_args \
+                         to produce anything to read"
+                    ))
+                }
+            };
             Ok(AccountsConfig {
                 home_env: a.home_env,
                 login_args: a.login_args,
                 logout_args: a.logout_args,
                 whoami_args: a.whoami_args,
+                whoami_kind,
                 supports_isolation: a.supports_isolation,
             })
         })
@@ -1469,6 +1541,7 @@ home_env = "X_CONFIG_DIR"
 login_args = ["auth", "login"]
 logout_args = ["auth", "logout"]
 whoami_args = ["auth", "status"]
+whoami_kind = "claude_json"
 supports_isolation = true
 "#;
 
@@ -1484,7 +1557,84 @@ supports_isolation = true
         assert_eq!(acc.login_args, ["auth", "login"]);
         assert_eq!(acc.logout_args, ["auth", "logout"]);
         assert_eq!(acc.whoami_args, ["auth", "status"]);
+        assert_eq!(acc.whoami_kind, Some(WhoamiKind::ClaudeJson));
         assert!(acc.supports_isolation);
+    }
+
+    /// Probe args and the shape of their answer are one fact. Args alone would
+    /// leave the reader guessing, and the three measured shapes make every guess
+    /// wrong somewhere: read OpenCode's exit code and it reports itself signed
+    /// in while holding no credentials at all.
+    #[test]
+    fn probe_args_without_a_declared_shape_are_rejected() {
+        let table = ACCOUNTS_TABLE
+            .lines()
+            .filter(|l| !l.starts_with("whoami_kind"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(err.contains("whoami_kind"), "error should name what is missing: {err}");
+    }
+
+    /// And the other way round, so a kind left behind after its args were
+    /// deleted is a loud error rather than a silent no-op.
+    #[test]
+    fn a_declared_shape_with_no_probe_args_is_rejected() {
+        let table = ACCOUNTS_TABLE.replace(r#"whoami_args = ["auth", "status"]"#, "whoami_args = []");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(err.contains("whoami_args"), "{err}");
+    }
+
+    #[test]
+    fn an_unknown_whoami_kind_is_rejected() {
+        let table = ACCOUNTS_TABLE.replace("claude_json", "vibes");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(err.contains("vibes"), "error should name the kind it did not recognize: {err}");
+    }
+
+    /// An adapter may declare accounts without declaring a probe: plenty of
+    /// harnesses have no way to say who is signed in, and that has to load
+    /// rather than being a schema error.
+    #[test]
+    fn an_accounts_table_with_no_probe_at_all_is_fine() {
+        let a = load_adapter_str(&v3_with("\n[accounts]\nlogin_args = [\"login\"]\n"), "test")
+            .expect("a login-only accounts table parses");
+        let acc = a.accounts.expect("accounts resolved");
+        assert_eq!(acc.whoami_kind, None);
+        assert!(acc.whoami_args.is_empty());
+    }
+
+    /// Each of the three bundled harnesses answers differently, and the file is
+    /// where that measurement is spent. Read as a set rather than one at a time:
+    /// the moment two of them shared a kind, one of them would be a guess.
+    #[test]
+    fn each_measured_harness_declares_the_shape_of_its_own_answer() {
+        let kinds: Vec<(String, Option<WhoamiKind>)> = BUNDLED
+            .iter()
+            .filter_map(|(source, text)| load_adapter_str(text, source).ok())
+            .filter_map(|a| a.accounts.as_ref().map(|acc| (a.id.clone(), acc.whoami_kind)))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("claude".to_string(), Some(WhoamiKind::ClaudeJson)),
+                ("opencode".to_string(), Some(WhoamiKind::OpencodeCredentials)),
+                ("codex".to_string(), Some(WhoamiKind::ExitCode)),
+            ],
+            "a new adapter has to come here and say which answer shape it measured"
+        );
+    }
+
+    /// OpenCode's `auth logout` needs a provider argument and prompts without
+    /// one, so there is no single command that signs the harness out. The empty
+    /// list is what makes the removal flow ask instead of running something that
+    /// would sit waiting for a keystroke.
+    #[test]
+    fn opencode_declares_no_logout_because_it_has_none_to_declare() {
+        let a = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
+        let acc = a.accounts.expect("opencode declares accounts");
+        assert!(acc.logout_args.is_empty());
+        assert!(!acc.login_args.is_empty(), "but it does have a login");
     }
 
     /// The compatibility promise of the v3 bump, and the regression that makes
@@ -1583,12 +1733,18 @@ supports_isolation = true
 
     /// Isolation is claimed only where it was measured.
     ///
-    /// Claude earned its `true` in Phase 0 on darwin. Nothing else has been
-    /// measured, so nothing else declares an `[accounts]` table at all, and an
-    /// adapter with no table renders no account controls rather than an "add
-    /// account" action that would put both profiles in one home. This test is
-    /// the tripwire for adding a table by copy-paste: a new adapter claiming
-    /// isolation has to come here and say who measured it.
+    /// Claude earned its `true` in Phase 0 on darwin, by holding two
+    /// simultaneous logins in separate Keychain items.
+    ///
+    /// Codex and OpenCode declare `[accounts]` too, and neither claims
+    /// isolation, which is the distinction worth keeping sharp: declaring a
+    /// table says "here is how this harness signs in", and `supports_isolation`
+    /// says "and two accounts can hold it at once". `CODEX_HOME` and
+    /// `XDG_DATA_HOME` were both measured relocating a credential store, which
+    /// is *not* the same claim: nobody has run two accounts side by side on
+    /// either. So they get a sign-in state and a login button, and no "add
+    /// account" action. This test is the tripwire for adding the flag by
+    /// copy-paste.
     #[test]
     fn only_a_measured_adapter_claims_account_isolation() {
         let claiming: Vec<String> = BUNDLED

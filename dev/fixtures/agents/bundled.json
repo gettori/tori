@@ -253,6 +253,7 @@
         "auth",
         "status"
       ],
+      "whoami_kind": "claude_json",
       "supports_isolation": true
     },
     "source": "bundled:claude"
@@ -293,7 +294,21 @@
         "serve_client_fs": false
       }
     },
-    "accounts": null,
+    "accounts": {
+      "home_env": null,
+      "login_args": [
+        "login"
+      ],
+      "logout_args": [
+        "logout"
+      ],
+      "whoami_args": [
+        "login",
+        "status"
+      ],
+      "whoami_kind": "exit_code",
+      "supports_isolation": false
+    },
     "source": "bundled:codex"
   },
   {
@@ -369,7 +384,20 @@
         "serve_client_fs": false
       }
     },
-    "accounts": null,
+    "accounts": {
+      "home_env": null,
+      "login_args": [
+        "auth",
+        "login"
+      ],
+      "logout_args": [],
+      "whoami_args": [
+        "auth",
+        "list"
+      ],
+      "whoami_kind": "opencode_credentials",
+      "supports_isolation": false
+    },
     "source": "bundled:opencode"
   }
 ]

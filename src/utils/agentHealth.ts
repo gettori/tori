@@ -11,11 +11,27 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
+// Installed and signed-in are two independent facts, so this is a second axis
+// rather than a fifth `BinaryStatus`. Collapsing them would make "installed,
+// version 2.1.231" and "signed out" mutually exclusive when they are routinely
+// both true.
+export type SignIn = "unknown" | "signedIn" | "signedOut";
+
 export type AgentHealth = {
   id: string;
   label: string;
   program: string;
   status: BinaryStatus;
+  // For the **default** profile: what a session started without choosing an
+  // account runs as. Per-profile answers come from `agent_accounts`.
+  signIn: SignIn;
+  // The account the harness named, when it names one. Only Claude does, of the
+  // three measured.
+  account: string | null;
+  // The environment variable the harness says it is taking an API key from.
+  // Non-null means a subscription login is being overridden by an inherited
+  // key, which is a notice and never a block.
+  apiKeySource: string | null;
   path: string | null;
   version: string | null;
   verifiedAgainst: string | null;
@@ -75,6 +91,12 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  *
  * Drift is ready on purpose: a version Sway has not measured against usually
  * works, so it is a notice, never a gate. See `keepsDriftAWarning` below.
+ *
+ * A harness the CLI itself says nobody is signed in to is **not** ready. That is
+ * the one place the rule above is stricter, and it earns it: `signedOut` is the
+ * harness's own answer rather than Sway's inference, and starting the session
+ * anyway produces a tab that asks for a login the chat surface cannot give. Only
+ * a definite `signedOut` counts; `unknown` stays ready like everything else.
  */
 export function agentReady(id: string): boolean {
   const all = agentHealth();
@@ -82,5 +104,6 @@ export function agentReady(id: string): boolean {
   const row = all.find((h) => h.id === id);
   // An adapter with no health row is one the sweep did not cover, which is
   // ignorance again rather than a verdict.
-  return row ? row.status !== "notFound" : true;
+  if (!row) return true;
+  return row.status !== "notFound" && row.signIn !== "signedOut";
 }

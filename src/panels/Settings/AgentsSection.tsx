@@ -15,6 +15,7 @@ import {
   type AgentHealth,
   type BinaryStatus,
 } from "../../utils/agentHealth";
+import AgentAccounts from "./AgentAccounts";
 import styles from "./Settings.module.css";
 
 // One card per registered adapter, answering the question a new user actually
@@ -120,7 +121,30 @@ function AgentCard(props: {
             {a().verifiedAgainst}, so some behaviour may differ.
           </Match>
         </Switch>
+        {/* The third state Phase 1 could not render, because nothing produced
+            it yet: installed and signed-out are two independent facts, and this
+            one is the harness's own answer rather than Sway's inference. Said
+            in its own sentence rather than folded into the line above, which is
+            about the binary. */}
+        <Show when={a().status !== "notFound" && a().signIn === "signedOut"}>
+          {" "}
+          Nobody is signed in, so it is not offered for a new session.
+        </Show>
+        <Show when={a().signIn === "signedIn" && a().account}>
+          {(account) => <> Signed in as {account()}.</>}
+        </Show>
       </div>
+      {/* The harness's own statement about which credential it will bill
+          against, not Sway reading its environment and guessing which variables
+          matter to which agent. Never a block: the session still runs. */}
+      <Show when={a().apiKeySource}>
+        {(source) => (
+          <div class={styles.hint}>
+            <code>{source()}</code> is set in this environment, so {a().label} bills against that
+            API key rather than the subscription it is signed in with.
+          </div>
+        )}
+      </Show>
 
       {/* One primary action per non-ready state, so none of them is a dead
           entry the user can only read. Both actions are the same button
@@ -220,6 +244,14 @@ function AgentCard(props: {
 
       <Show when={a().overridePath}>
         {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
+      </Show>
+
+      {/* Below everything else, and only for an installed harness: an account
+          list for a binary that is not there would be a set of controls with
+          nothing behind them. It renders itself away for an adapter that
+          declares no `[accounts]` table. */}
+      <Show when={a().status !== "notFound"}>
+        <AgentAccounts agentId={a().id} agentLabel={a().label} />
       </Show>
     </div>
   );

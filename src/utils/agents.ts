@@ -107,6 +107,11 @@ export type AccountsConfig = {
   login_args: string[];
   logout_args: string[];
   whoami_args: string[];
+  // How to read what `whoami_args` prints. Null exactly when there are no args
+  // to read. Three kinds because the three measured harnesses agree on nothing:
+  // Claude answers in JSON, Codex says everything in its exit code, and
+  // OpenCode exits 0 either way and puts the answer in a table.
+  whoami_kind: "claude_json" | "exit_code" | "opencode_credentials" | null;
   supports_isolation: boolean;
 };
 

@@ -42,6 +42,7 @@ import {
   type TerminalTabFocused,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
+import { refreshAgentHealth } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { agents, ensureAgentsLoaded, findAgent, agentIdForProgram, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
@@ -93,6 +94,9 @@ type OpenTerm = {
   // Exiting the agent, or a task finishing, drops back to the live shell rather
   // than closing the tab.
   init?: string;
+  // Sign-in tabs: the profile's home variable, so the harness writes that
+  // account's credentials rather than the default account's.
+  env?: Record<string, string>;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
   // Chat tabs always carry one, minted up front rather than adopted later.
@@ -589,6 +593,10 @@ export default function Terminal(props: {
 
   // Tabs (clone / bootstrap) that should re-discover projects when they exit.
   const rediscoverOnExit = new Set<string>();
+  // Sign-in tabs, whose whole purpose is to change the answer `agent_health`
+  // gave. Without this a completed login would keep reading as signed out until
+  // the user went and found the button in Settings.
+  const recheckAgentsOnExit = new Set<string>();
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
@@ -596,6 +604,7 @@ export default function Terminal(props: {
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
       if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
+      if (t.recheckAgentsOnExit) recheckAgentsOnExit.add(t.id);
       openOrActivate({
         id: t.id,
         title: t.title,
@@ -609,6 +618,7 @@ export default function Terminal(props: {
         program: t.program,
         args: t.args,
         ...(t.init ? { init: t.init } : {}),
+        ...(t.env ? { env: t.env } : {}),
       });
     });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
@@ -621,6 +631,11 @@ export default function Terminal(props: {
     // re-discovers projects. Agent-exit within a live shell fires no event.
     unlistenExit = await listen<string>("pty://exit", (e) => {
       const id = e.payload;
+      // Before the early return below, because a sign-in tab is a command tab
+      // today but the reason to re-probe is that the process ended, not how the
+      // tab happened to be hosted. Abandoning the tab lands here too, and that
+      // is correct: the probe re-reads the harness and finds it unchanged.
+      if (recheckAgentsOnExit.delete(id)) void refreshAgentHealth();
       const t = open().find((o) => o.id === id);
       if (t && t.kind !== "command") {
         closeId(id);
@@ -1361,6 +1376,7 @@ export default function Terminal(props: {
                   program={term().program}
                   args={term().args}
                   init={term().init}
+                  env={term().env}
                   sessionId={term().sessionId}
                   active={visibleId() === term().id}
                   onOwnershipRefused={(refusal) => noteRefusal(term(), refusal)}

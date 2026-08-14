@@ -152,6 +152,12 @@ pub fn pty_spawn(
     // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
     // omits it and gets `DEFAULT_QUIET_MS`.
     quiet_ms: Option<u64>,
+    // Extra environment for this tab's process, on top of whatever it inherits.
+    // Empty for every ordinary tab; a sign-in tab carries the profile's home
+    // variable, which is the whole mechanism of signing in to a second account:
+    // the harness writes its credentials wherever this points, so a login tab
+    // spawned without it would sign the user in to the account they already had.
+    env: Option<Vec<(String, String)>>,
     // The agent session this tab is resuming, and which adapter it belongs to.
     // Both `None` for a shell/command tab, and for a *fresh* agent tab: its
     // session id does not exist until the agent writes a transcript, so there is
@@ -215,7 +221,7 @@ pub fn pty_spawn(
         })
         .map_err(|e| e.to_string())?;
 
-    let cmd = if kind == "command" {
+    let mut cmd = if kind == "command" {
         // Direct spawn: the tab shows the program's own output and stays put on
         // failure. Needs the augmented PATH since no login shell runs to set it.
         let mut cmd = CommandBuilder::new(&program);
@@ -237,6 +243,14 @@ pub fn pty_spawn(
         cmd.env("TERM", "xterm-256color");
         cmd
     };
+
+    // Applied to both kinds, and last, so a caller that means to point a harness
+    // at a different home wins over anything set above. A shell-hosted tab
+    // inherits it through the login shell, which is what a login tab needs: the
+    // agent it runs is a grandchild of this process.
+    for (key, value) in env.into_iter().flatten() {
+        cmd.env(key, value);
+    }
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);

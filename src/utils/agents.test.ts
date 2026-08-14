@@ -124,7 +124,14 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   // TypeScript type is erased at runtime, so this literal *is* the mirror. A
   // field added on the Rust side fails here until it is added to the type
   // above, which is the whole point.
-  const ACCOUNTS_KEYS = ["home_env", "login_args", "logout_args", "whoami_args", "supports_isolation"];
+  const ACCOUNTS_KEYS = [
+    "home_env",
+    "login_args",
+    "logout_args",
+    "whoami_args",
+    "whoami_kind",
+    "supports_isolation",
+  ];
 
   it("serializes exactly the fields the TypeScript type declares", () => {
     expect(claude.accounts, "claude declares [accounts]").toBeTruthy();
@@ -142,11 +149,35 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   });
 
   // An adapter that declares no table is not "signed out", it is unknown, so
-  // the frontend must be able to tell those apart.
+  // the frontend must be able to tell those apart. Gemini is the one that ships
+  // without a table, because its CLI is not installed anywhere anybody measured.
   it("reports null for an adapter that declares no accounts table", () => {
-    for (const a of resolved.filter((a) => a.id !== "claude")) {
-      expect(a.accounts ?? null, `${a.id} declares no [accounts] table`).toBeNull();
-    }
+    expect(resolved.find((a) => a.id === "gemini")!.accounts ?? null).toBeNull();
+  });
+
+  // Declaring a table and claiming isolation are two different claims, and only
+  // the second is what "add account" is gated on. Codex and OpenCode both
+  // declare how they sign in; neither has been measured holding two logins at
+  // once, so neither claims isolation and neither offers a second account.
+  it("keeps declaring a sign-in separate from claiming two accounts can hold it", () => {
+    const declaring = resolved.filter((a) => a.accounts).map((a) => a.id);
+    expect(declaring.sort()).toEqual(["claude", "codex", "opencode"]);
+    const isolating = resolved.filter((a) => a.accounts?.supports_isolation).map((a) => a.id);
+    expect(isolating).toEqual(["claude"]);
+  });
+
+  // The reason `whoami_kind` exists at all: OpenCode exits 0 whether or not it
+  // holds any credentials, so an adapter that read the exit code would report it
+  // signed in while its `auth.json` was empty.
+  it("gives each measured harness its own answer shape", () => {
+    const kinds = Object.fromEntries(
+      resolved.filter((a) => a.accounts).map((a) => [a.id, a.accounts!.whoami_kind]),
+    );
+    expect(kinds).toEqual({
+      claude: "claude_json",
+      codex: "exit_code",
+      opencode: "opencode_credentials",
+    });
   });
 });
 
