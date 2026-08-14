@@ -70,6 +70,27 @@ export type SteerCost = {
  */
 export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
 
+/**
+ * Where a tool card's before-and-after comes from.
+ *
+ * `before-state` is Sway reading the file just ahead of the write, from the
+ * capture hook: it happens for every write on that harness, so the card can
+ * always show one. `agent-supplied` is the agent sending the prior text with the
+ * call, which is exact when it happens and happens only for agents that do it.
+ *
+ * The distinction had to exist because this used to be a boolean and the boolean
+ * was measurably wrong. `ACP: false` was written on the reasoning that an exact
+ * diff "rides the Claude-only hook"; measured 2026-08-14,
+ * `@agentclientprotocol/codex-acp` 1.2.0 sends a `tool_call` content block
+ * carrying `oldText`, `newText` and the path, which is the same before-state the
+ * hook produces and arguably a better one - it is what the agent is about to
+ * write rather than what happened to be on disk when a helper got there. But
+ * `opencode acp` 1.18.3 sends none, so `true` would be as wrong as `false` was.
+ * The value names which of the two Sway gets, which is the thing a user's
+ * expectation actually turns on.
+ */
+export type DiffTier = "none" | "agent-supplied" | "before-state";
+
 export type ChatTier = {
   rewind: RewindTier;
   steer: SteerTier;
@@ -87,9 +108,9 @@ export type ChatTier = {
    * Sway-owned rule store to publish, so there is no longer a question to ask.
    */
   approvals: ApprovalTier;
-  /** A write tool's before-state is captured, so its card can show a diff. Rides
-   *  the capture hook, which is the only job that hook still has. */
-  beforeStateDiffs: boolean;
+  /** Where a tool card's before-and-after comes from, or `none` when it has
+   *  nowhere to come from. See [`DiffTier`] for why this is not a boolean. */
+  diffs: DiffTier;
   /** A spend ceiling can stop this chat. Needs nothing from the harness: it is
    *  Sway declining to open the next turn. */
   spendCeilings: boolean;
@@ -133,7 +154,7 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // Measured on claude 2.1.231: `--permission-prompt-tool stdio` raises a
     // `can_use_tool` control request, which is the question Sway now renders.
     approvals: "in-protocol",
-    beforeStateDiffs: true,
+    diffs: "before-state",
     spendCeilings: true,
     // Nothing missing, so nothing to explain.
     gaps: {},
@@ -160,9 +181,14 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // options, and the answer goes back in its own vocabulary. This is the one
     // tier value ACP earns outright rather than lacking.
     approvals: "in-protocol",
-    // A before-state snapshot is taken by the `PreToolUse` hook, so an ACP tool call's
-    // card shows what the agent reported and no exact diff of its own.
-    beforeStateDiffs: false,
+    // **Corrected in Phase 8, and it was wrong for the reason it gave.** This
+    // read `false`, on the grounds that a before-state comes from the
+    // Claude-only capture hook. It does not have to: `codex-acp` 1.2.0 sends the
+    // file's prior text with the tool call, which Sway stores in the same object
+    // store the hook writes to, so the card is the same card. `opencode acp`
+    // sends none, which is why this is not `before-state` either - an ACP
+    // session gets an exact diff exactly when its agent supplies one.
+    diffs: "agent-supplied",
     // **Not because it rides the hook** - Phase 2 moved ceilings to the turn
     // boundary, where they need nothing from the harness. Because ACP reports no
     // *cost*: `session/update`'s usage carries context occupancy (`used` of
@@ -174,8 +200,6 @@ const TIERS: Record<ChatTransport, ChatTier> = {
         "Rewinding needs Sway to fork the conversation, and it has no way to ask an ACP agent to. Turn checkpoints still restore your files from the Changes panel.",
       steer:
         "A message typed during a turn waits for the next one: this protocol has no way to deliver it mid-turn, so Sway holds it rather than claiming it landed.",
-      diffs:
-        "An exact before-and-after diff needs Sway to read the file just before a write, which rides that same Claude-only hook. Tool cards show what the agent itself reported.",
       budgets:
         "A spend ceiling needs the harness to report what a turn cost, and this one reports how full the context is instead. Nothing would ever trip the limit, so it is not offered.",
     },
@@ -190,7 +214,7 @@ export const NO_CHAT_TIER: ChatTier = {
   steer: "none",
   steerCost: null,
   approvals: "none",
-  beforeStateDiffs: false,
+  diffs: "none",
   // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
   spendCeilings: false,
   // Deliberately empty. Explaining five absences one by one would be five ways
@@ -236,7 +260,11 @@ export function publishedCapabilities(
   // published the mechanism rather than the outcome. A reader wants to know who
   // asks them and what stops the spending, not which hook event carries it.
   if (tier.approvals !== "none") add("approvals", tier.approvals);
-  if (tier.beforeStateDiffs) add("diffs", "before-state");
+  // The value is the qualification: `agent-supplied` says on its face that the
+  // diff arrives when the agent sends one, which is the honest promise for a
+  // transport whose agents differ on it. Publishing a bare `diffs: yes` for that
+  // case is exactly what this file's "name what shipped" rule forbids.
+  if (tier.diffs !== "none") add("diffs", tier.diffs);
   if (tier.spendCeilings) add("budgets", "turn-boundary");
   // Derived from the running agent's own handshake rather than from the
   // transport, because one generic transport carries agents that differ: the
@@ -274,7 +302,7 @@ export function unavailableCapabilities(tier: ChatTier): MissingCapability[] {
   add("rewind", tier.rewind === "none");
   add("steer", tier.steer === "none");
   add("approvals", tier.approvals === "none");
-  add("diffs", !tier.beforeStateDiffs);
+  add("diffs", tier.diffs === "none");
   add("budgets", !tier.spendCeilings);
   return out;
 }

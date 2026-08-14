@@ -14,6 +14,7 @@ const started: ChatEvent = {
   slashCommands: [],
   mcpServers: [],
   models: [],
+  modes: [],
   fastModeState: null,
   fastModeDisabledReason: null,
   account: null,

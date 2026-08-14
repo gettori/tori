@@ -254,6 +254,11 @@ impl ClaudeMapper {
             session_id: self.session_id.clone(),
             slash_commands: self.command_catalogue.clone(),
             models: self.model_catalogue.clone(),
+            // Claude's modes are declared in `claude.toml` and checked against
+            // the real CLI by `modes_the_cli_accepts`, so there is nothing live
+            // to carry. Empty means "use the adapter's table", which is where
+            // they already are.
+            modes: Vec::new(),
             account: self.account.clone(),
             // Claude advertises no capability set of its own. What Sway knows
             // about this harness was measured and pinned in the chat tier, so
@@ -385,6 +390,8 @@ impl ClaudeMapper {
                     slash_commands,
                     mcp_servers: mcp_servers(&frame["mcp_servers"]),
                     models: self.model_catalogue.clone(),
+                    // Declared in the adapter, not reported by the CLI.
+                    modes: Vec::new(),
                     fast_mode_state,
                     fast_mode_disabled_reason,
                     account: self.account.clone(),

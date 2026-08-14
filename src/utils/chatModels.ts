@@ -22,7 +22,7 @@
 // A model no source knows a window for reports null rather than a guess.
 import { foreignWindow } from "./modelCaps";
 import type { ChatConfig, ChatMode, ChatModel } from "./agents";
-import type { ChatModelInfo, Usage } from "./chatTypes";
+import type { ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
 
 export type PickableModel = {
   /** What `--model` takes, and the authority for the picker's own selection:
@@ -340,7 +340,14 @@ export type Capabilities = {
  * capabilities minus everything model-scoped - the honest answer for a session
  * whose model has not been reported yet.
  */
-export function capabilitiesFor(model: PickableModel | null, chat: ChatConfig | null): Capabilities {
+export function capabilitiesFor(
+  model: PickableModel | null,
+  chat: ChatConfig | null,
+  /** Modes the running agent published, from `pickableModes`. Empty for a
+   *  harness whose modes are declared rather than advertised, which is what
+   *  leaves the adapter table in charge. */
+  live: readonly ChatMode[] = [],
+): Capabilities {
   return {
     effortLevels: model?.effortLevels ?? [],
     // A mode declaring `requires` is offered only to a model that declares that
@@ -353,9 +360,40 @@ export function capabilitiesFor(model: PickableModel | null, chat: ChatConfig | 
     // A mode requiring a capability is hidden while the model is unknown, since
     // "not known to support it" is the same answer as "does not support it" for
     // anything that would otherwise be silently ignored.
-    modes: (chat?.modes ?? []).filter((m) => !m.requires || capabilities(model).has(m.requires)),
+    //
+    // The filter still runs over a live list even though no live mode declares
+    // `requires` - an agent advertises an id, a label and a description and
+    // nothing else. Running it anyway keeps one rule for both sources rather
+    // than a branch that would quietly stop gating if agents ever did.
+    modes: (live.length > 0 ? live : (chat?.modes ?? [])).filter(
+      (m) => !m.requires || capabilities(model).has(m.requires),
+    ),
     fastMode: model?.fastMode ?? false,
   };
+}
+
+/**
+ * The modes a picker may offer, live catalogue first and the adapter table only
+ * when there is no live one.
+ *
+ * The same rule as [`pickableModels`] and not a merge, for the same reason: an
+ * agent that published its own modes has the authoritative list, and folding a
+ * TOML into it would offer a mode that agent does not have.
+ *
+ * `args` is empty because an ACP mode is a request rather than a flag, and
+ * `permissive` is left undefined rather than false. Undefined means "this
+ * harness did not say", which is the truth: Codex's `agent-full-access` really
+ * does run tools unattended and nothing on the wire says so, so the row renders
+ * without the caution instead of with a claim nobody measured.
+ */
+export function pickableModes(
+  live: readonly ChatModeInfo[],
+  chat: ChatConfig | null,
+): ChatMode[] {
+  if (live.length > 0) {
+    return live.map((m) => ({ id: m.id, label: m.label || m.id, hint: m.hint, args: [] }));
+  }
+  return chat?.modes ?? [];
 }
 
 /**
@@ -394,9 +432,15 @@ export function modeAfterModelSwitch(
   model: PickableModel | null,
   chat: ChatConfig | null,
   current: string | null,
+  /** The agent's own modes, when it published some. Without them an ACP
+   *  session's `allowed` is the adapter's empty table, and every mode the agent
+   *  is actually in reads as no longer offered. That happens to return null
+   *  today because the list is empty, which is the right answer reached by
+   *  accident and would stop being right the moment the list is non-empty. */
+  live: readonly ChatMode[] = [],
 ): string | null {
   if (current === null) return null;
-  const allowed = capabilitiesFor(model, chat).modes;
+  const allowed = capabilitiesFor(model, chat, live).modes;
   if (allowed.some((m) => m.id === current)) return null;
   // The default among what is still offered, rather than the adapter's default
   // outright: a gated default would put us straight back in this position.

@@ -109,6 +109,7 @@ describe("end to end through the store", () => {
     slashCommands: [],
     mcpServers: [],
     models: [],
+    modes: [],
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,

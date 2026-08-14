@@ -154,6 +154,7 @@ describe("chats alongside PTY agents", () => {
     slashCommands: [],
     mcpServers: [],
     models: [],
+    modes: [],
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,

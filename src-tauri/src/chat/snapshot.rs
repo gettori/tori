@@ -111,6 +111,49 @@ pub fn capture(repo: &Path, path: &str) -> BeforeState {
     }
 }
 
+/// Store a before-state that arrived as **text** rather than as a file.
+///
+/// The counterpart to [`capture`], for a harness that hands Sway the prior
+/// content instead of leaving Sway to read it off disk first. An ACP agent does
+/// exactly that: `codex-acp` 1.2.0 sends a `tool_call` diff block carrying
+/// `oldText` and `newText`, so the before-state is already in hand by the time
+/// the write is announced and there is nothing to race.
+///
+/// It lands in the same object store, addressed the same way, so a card built
+/// from a hook capture and one built from a protocol diff are the same card.
+/// `--stdin` rather than a temp file for the same reason `capture` uses
+/// `hash-object` at all: git owns the deduplication and the gc.
+///
+/// `None` is the file having no prior content at all - a creation, which the
+/// caller turns into `Absent` rather than into a failed capture.
+pub fn store_text(repo: &Path, text: &str) -> BeforeState {
+    let child = Command::new("git")
+        .current_dir(repo)
+        .args(["hash-object", "-w", "--no-filters", "--stdin"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    let Ok(mut child) = child else {
+        return BeforeState::Unavailable;
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    match child.wait_with_output() {
+        Ok(o) if o.status.success() => {
+            let sha = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if sha.is_empty() {
+                BeforeState::Unavailable
+            } else {
+                BeforeState::Blob { sha }
+            }
+        }
+        _ => BeforeState::Unavailable,
+    }
+}
+
 /// Read a captured blob back, for a card the user expanded.
 pub fn read_back(repo: &Path, sha: &str) -> Option<String> {
     let out = Command::new("git").current_dir(repo).args(["cat-file", "-p", sha]).output().ok()?;
@@ -483,6 +526,40 @@ mod tests {
         let ok = Command::new("git").current_dir(&dir).args(["init", "-q"]).status().unwrap();
         assert!(ok.success());
         dir
+    }
+
+    /// **A before-state that arrived as text, not as a file.** The ACP path
+    /// stores what the agent sent rather than reading the file first, and it has
+    /// to land in the same store, addressed the same way, or a card built from a
+    /// protocol diff would not be the same card as one built from a hook
+    /// capture.
+    #[test]
+    fn text_stored_from_the_wire_reads_back_byte_for_byte() {
+        let repo = temp_repo("store-text");
+        let before = store_text(&repo, "one\ntwo\nthree\n");
+        let BeforeState::Blob { sha } = before else {
+            panic!("a repo has somewhere to put it: {before:?}");
+        };
+        assert_eq!(read_back(&repo, &sha).as_deref(), Some("one\ntwo\nthree\n"));
+
+        // Same bytes, same address: git deduplicates it against the identical
+        // content the hook path would have captured off disk.
+        std::fs::write(repo.join("f.txt"), "one\ntwo\nthree\n").unwrap();
+        assert_eq!(capture(&repo, repo.join("f.txt").to_str().unwrap()), BeforeState::Blob { sha });
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// With no object store the write is still reported and the diff is not.
+    /// The same degradation `capture` makes for a non-repo folder, so a chat in
+    /// one behaves the same whichever harness is behind it.
+    #[test]
+    fn text_with_nowhere_to_go_degrades_rather_than_failing() {
+        let dir = std::env::temp_dir().join(format!("sway-snap-{}-norepo", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(store_text(&dir, "anything"), BeforeState::Unavailable);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Only the changed lines, so two diffs of the same change compare equal

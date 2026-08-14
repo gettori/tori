@@ -8,12 +8,13 @@ import {
   modeAfterModelSwitch,
   pickLanded,
   pickableModels,
+  pickableModes,
   reportedWindows,
   restoredPicks,
   selectedModel,
 } from "./chatModels";
 import type { ChatConfig, ChatMode } from "./agents";
-import type { ChatModelInfo } from "./chatTypes";
+import type { ChatModeInfo, ChatModelInfo } from "./chatTypes";
 
 // The shape of the real thing, trimmed to what these functions read. Written by
 // hand rather than cast from a partial: a cast checks nothing, which is the
@@ -252,6 +253,71 @@ describe("restoredPicks", () => {
     ];
     const models = pickableModels(live(), chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "bypassPermissions" }, chat).mode).toBeNull();
+  });
+});
+
+describe("pickableModes", () => {
+  // The three `@agentclientprotocol/codex-acp` 1.2.0 publishes, measured.
+  const liveModes = (): ChatModeInfo[] => [
+    { id: "read-only", label: "Read Only", hint: "Ask before writing" },
+    { id: "agent", label: "Agent", hint: "" },
+    { id: "agent-full-access", label: "Agent (full access)", hint: "" },
+  ];
+
+  it("takes the agent's own modes over the adapter table", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
+    expect(pickableModes(liveModes(), chat).map((m) => m.id)).toEqual([
+      "read-only",
+      "agent",
+      "agent-full-access",
+    ]);
+  });
+
+  // Not a merge, on the same rule as `pickableModels`: folding the TOML in
+  // would offer a mode this agent does not have.
+  it("falls back to the adapter table only when the agent published none", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
+    expect(pickableModes([], chat).map((m) => m.id)).toEqual(["plan"]);
+  });
+
+  // An ACP mode is a request, not a flag, and nothing on the wire says which of
+  // an agent's modes runs tools unattended. Both absences are deliberate: a
+  // guessed `permissive` would put a caution on the wrong row or leave it off
+  // the right one.
+  it("declares no args and does not guess which mode is permissive", () => {
+    const modes = pickableModes(liveModes(), null);
+    expect(modes.every((m) => m.args.length === 0)).toBe(true);
+    expect(modes.every((m) => m.permissive === undefined)).toBe(true);
+    expect(modes.every((m) => m.default === undefined)).toBe(true);
+  });
+
+  it("falls back to the mode's id when the agent gave it no label", () => {
+    const modes = pickableModes([{ id: "read-only", label: "", hint: "" }], null);
+    expect(modes[0].label).toBe("read-only");
+  });
+
+  // The whole reason this exists: an ACP adapter declares no `[[chat.modes]]`,
+  // so without the live list the selector has nothing to show and a Codex user
+  // cannot reach the one mode that makes the agent ask before it writes.
+  it("gives an ACP session a selector its adapter could not", () => {
+    const chat = adapter();
+    chat.modes = [];
+    expect(capabilitiesFor(null, chat).modes).toEqual([]);
+    expect(capabilitiesFor(null, chat, pickableModes(liveModes(), chat)).modes).toHaveLength(3);
+  });
+
+  // The current mode is one the agent published, so a model switch has no
+  // reason to move it. Without the live list `allowed` is the adapter's empty
+  // table and this only returned null by accident.
+  it("does not move a live mode on a model switch", () => {
+    const chat = adapter();
+    chat.modes = [];
+    const model = pickableModels(live(), chat)[0];
+    expect(modeAfterModelSwitch(model, chat, "read-only", pickableModes(liveModes(), chat))).toBe(
+      null,
+    );
   });
 });
 

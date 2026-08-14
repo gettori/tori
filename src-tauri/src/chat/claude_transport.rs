@@ -648,14 +648,10 @@ impl AgentTransport for ClaudeTransport {
     }
 }
 
+/// Both harnesses spell these the same, so the mapping lives on the enum and
+/// this is the name the call site reads by.
 fn effort_wire(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        Effort::Xhigh => "xhigh",
-        Effort::Max => "max",
-    }
+    effort.as_str()
 }
 
 #[cfg(test)]

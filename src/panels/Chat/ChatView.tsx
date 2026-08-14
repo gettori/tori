@@ -58,6 +58,7 @@ import {
   defaultMode,
   modeAfterModelSwitch,
   pickableModels,
+  pickableModes,
   selectedModel,
   type PickableModel,
 } from "../../utils/chatModels";
@@ -977,7 +978,11 @@ export default function ChatView(props: {
 
   // What this model, on this harness, can actually be asked for. One resolver
   // feeds all three pills, so they cannot disagree about what is on offer.
-  const offered = () => capabilitiesFor(shownModel(), chatConfig());
+  // One accessor for the modes on offer, beside `chatConfig` and for the same
+  // reason: the selector and the model-switch guard must not each decide
+  // separately whether the agent's list or the adapter's table is in charge.
+  const liveModes = () => pickableModes(state.modes, chatConfig());
+  const offered = () => capabilitiesFor(shownModel(), chatConfig(), liveModes());
 
   function onSelectModel(model: PickableModel) {
     edit((s) => selectModel(s, model));
@@ -995,7 +1000,7 @@ export default function ChatView(props: {
     // leaves the session still asking for `auto`, which the CLI accepts, exits
     // 0 on, and silently runs as `default` - the pill promising a mode the
     // session is not in, which is the failure this phase exists to remove.
-    const next = modeAfterModelSwitch(model, chatConfig(), shownModeValue());
+    const next = modeAfterModelSwitch(model, chatConfig(), shownModeValue(), liveModes());
     if (next !== null) onSelectMode(next);
   }
 

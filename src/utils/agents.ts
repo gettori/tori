@@ -172,6 +172,20 @@ export const FALLBACK_AGENTS: Agent[] = [
     pty_quiet_ms: 2000,
     chat: null,
   },
+  {
+    id: "codex",
+    label: "Codex",
+    program: "codex",
+    base_args: [],
+    yolo_args: ["--dangerously-bypass-approvals-and-sandbox"],
+    resume_args: [],
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
+    // Null like the rest, and here it also hides the one adapter whose chat
+    // binary is `npx`. Nothing on the first-paint path should learn that.
+    chat: null,
+  },
 ];
 
 const [agents, setAgents] = createSignal<Agent[]>(FALLBACK_AGENTS);
@@ -195,8 +209,13 @@ export function findAgent(id: string): Agent {
  *  A terminal tab records what it spawned, which is a program name; every
  *  backend probe wants the adapter *id*, and the two are only the same word by
  *  convention. The chat binary is checked too, since an adapter may drive chat
- *  through a different executable than its PTY tab. Falls back to the program
- *  itself, which is the id for every adapter that names them alike. */
+ *  through a different executable than its PTY tab: `codex` is that case, whose
+ *  chat runs `npx`. Which means a second adapter launched through the same
+ *  package runner would be indistinguishable here and the first would win.
+ *  Acceptable while `codex` is the only one, and the fix if that changes is to
+ *  compare the package rather than the runner, as `catalog::launch_identity`
+ *  already does. Falls back to the program itself, which is the id for every
+ *  adapter that names them alike. */
 export function agentIdForProgram(program: string): AgentId {
   const a = agents().find((x) => x.program === program || x.chat?.program === program);
   return a?.id ?? program;

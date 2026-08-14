@@ -100,6 +100,20 @@ export type ChatModelInfo = {
   supportsAutoMode: boolean;
 };
 
+/// One mode the live harness says it can run.
+///
+/// Thinner than the adapter's `ChatMode` on purpose, and the missing fields are
+/// the point. No `args`, because an ACP mode is a request rather than a flag.
+/// No `permissive` and no `default`: an agent publishes an id, a label and a
+/// description, so calling one of its modes dangerous would mean reading danger
+/// out of the words in an id. Sway does not, and such a row renders without the
+/// permissive caution instead of with a guessed one.
+export type ChatModeInfo = {
+  id: string;
+  label: string;
+  hint: string;
+};
+
 /// What a harness said it can do, read off its own handshake.
 ///
 /// **Advertised, not measured.** Sway's per-transport tier records what shipped
@@ -187,6 +201,12 @@ export type ChatEvent =
       /// handshake did not happen**, which the picker reads as "fall back to
       /// the adapter table" rather than as "no models".
       models: ChatModelInfo[];
+      /// The live mode catalogue, on the same rule: empty means "use the
+      /// adapter's `[[chat.modes]]`". A Claude-shaped adapter declares its modes
+      /// and sends none live; an ACP one declares none and sends the agent's own,
+      /// which for some agents is the only lever on whether it asks before
+      /// writing.
+      modes: ChatModeInfo[];
       /// From `system/init`. A disabled fast mode carries the harness's own
       /// reason, which the toggle renders instead of an inert control.
       fastModeState: string | null;
@@ -204,6 +224,7 @@ export type ChatEvent =
       sessionId: string;
       slashCommands: SlashCommand[];
       models: ChatModelInfo[];
+      modes: ChatModeInfo[];
       /// Carried here as well as on `sessionStarted` because this event can
       /// arrive a whole turn earlier, and the handshake is the only source.
       account: ChatAccount | null;
@@ -438,6 +459,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "slashCommands",
       "mcpServers",
       "models",
+      "modes",
       "fastModeState",
       "fastModeDisabledReason",
       "account",
@@ -445,7 +467,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     optional: ["extra"],
   },
   sessionReady: {
-    required: ["sessionId", "slashCommands", "models", "account", "capabilities"],
+    required: ["sessionId", "slashCommands", "models", "modes", "account", "capabilities"],
   },
   hookFired: {
     required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],

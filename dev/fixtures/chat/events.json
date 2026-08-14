@@ -41,6 +41,13 @@
         "supportsAutoMode": true
       }
     ],
+    "modes": [
+      {
+        "id": "read-only",
+        "label": "Read Only",
+        "hint": "Ask before writing"
+      }
+    ],
     "fastModeState": "off",
     "fastModeDisabledReason": "sdk_opt_in_required",
     "account": {
@@ -77,6 +84,13 @@
           "high"
         ],
         "supportsAutoMode": true
+      }
+    ],
+    "modes": [
+      {
+        "id": "read-only",
+        "label": "Read Only",
+        "hint": "Ask before writing"
       }
     ],
     "account": {

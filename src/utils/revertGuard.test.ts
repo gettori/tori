@@ -204,6 +204,7 @@ describe("a live chat blocks a real tree revert", () => {
       slashCommands: [],
       mcpServers: [],
       models: [],
+      modes: [],
       fastModeState: null,
       fastModeDisabledReason: null,
       account: null,

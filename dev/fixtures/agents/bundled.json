@@ -242,6 +242,44 @@
     "source": "bundled:claude"
   },
   {
+    "id": "codex",
+    "label": "Codex",
+    "program": "codex",
+    "base_args": [],
+    "yolo_args": [
+      "--dangerously-bypass-approvals-and-sandbox"
+    ],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": "codex-cli 0.147.0 with @agentclientprotocol/codex-acp 1.2.0",
+    "chat": {
+      "transport": "acp",
+      "program": "npx",
+      "base_args": [
+        "-y",
+        "@agentclientprotocol/codex-acp@1.2.0"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "models": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "source": "bundled:codex"
+  },
+  {
     "id": "gemini",
     "label": "Gemini",
     "program": "gemini",
