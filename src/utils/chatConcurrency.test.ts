@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import * as concurrency from "./chatConcurrency";
-import { chatTabLabel, shouldNotice, MULTI_CHAT_NOTICE } from "./chatConcurrency";
+import { capNotice, chatTabLabel, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "./chatConcurrency";
 import { chatsInFolder, dropLiveChat, setLiveChat } from "./chatSessions";
 
 const REPO = "/work/repo";
@@ -64,5 +64,49 @@ describe("the retired attribution marker", () => {
   it("says the tree is shared rather than that attribution is broken", () => {
     expect(MULTI_CHAT_NOTICE).toContain("share one working tree");
     expect(MULTI_CHAT_NOTICE).not.toContain("until per-turn attribution lands");
+  });
+});
+
+describe("the concurrency cap", () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `s${i}`);
+
+  it("says nothing while the count is inside the cap", () => {
+    const live = ids(4);
+    expect(live.filter((id) => pastCap(id, live, 4))).toEqual([]);
+  });
+
+  it("warns in the chat that put the count past the line, not in the ones already running", () => {
+    // The whole point of answering by position: opening a fifth chat must not
+    // put a banner in the four that were there first.
+    const live = ids(6);
+    expect(live.filter((id) => pastCap(id, live, 4))).toEqual(["s4", "s5"]);
+  });
+
+  it("takes zero as no cap rather than as a cap of zero", () => {
+    const live = ids(6);
+    for (const cap of [0, -1]) {
+      expect(live.filter((id) => pastCap(id, live, cap))).toEqual([]);
+    }
+  });
+
+  it("stops warning as soon as a chat closes", () => {
+    expect(pastCap("s4", ids(5), 4)).toBe(true);
+    // s0 closed: the same session is now the fourth, and inside the cap.
+    expect(pastCap("s4", ["s1", "s2", "s3", "s4"], 4)).toBe(false);
+  });
+
+  it("says nothing about a chat that is not live", () => {
+    expect(pastCap("gone", ids(6), 4)).toBe(false);
+  });
+
+  // It warns rather than refusing, so the text has to carry both ways out or it
+  // is a banner that only complains.
+  it("names both remedies and the cost being paid", () => {
+    const said = capNotice(6, 4);
+    expect(said).toContain("6");
+    expect(said).toContain("4");
+    expect(said).toMatch(/close one/i);
+    expect(said).toMatch(/settings/i);
+    expect(said).toMatch(/token spend/i);
   });
 });

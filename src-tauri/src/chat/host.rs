@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex};
 use super::approval::{self, ApprovalServer};
 use super::model::{ChatCommand, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::Registry;
+use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
 
@@ -33,12 +34,19 @@ pub enum Spawned {
 }
 
 struct Entry {
+    /// What the *transport* emits into. Fixed for the session's life: its
+    /// closure hands every event to the pacer and nothing else, so there is
+    /// nothing here for a remount to swap.
     sink: Sink,
+    /// What the *UI* is listening on, which is the slot a remount replaces. The
+    /// pacer holds the same handle and releases into it.
+    listener: Sink,
+    pacer: Arc<Pacer>,
     transport: Arc<Mutex<Box<dyn AgentTransport>>>,
     tab_id: String,
-    /// Bumped on every re-subscribe. Not used for routing (the sink swap does
-    /// that); it exists so a late callback from a previous subscription can be
-    /// recognised as stale rather than acted on.
+    /// Bumped on every re-subscribe. Not used for routing (the listener swap
+    /// does that); it exists so a late callback from a previous subscription
+    /// can be recognised as stale rather than acted on.
     generation: u64,
 }
 
@@ -262,13 +270,21 @@ impl ChatHost {
         {
             let mut guard = lock(&self.sessions);
             if let Some(entry) = guard.get_mut(session_id) {
-                *lock(&entry.sink) = Some(self.wrap(session_id, emit));
+                *lock(&entry.listener) = Some(self.wrap(session_id, emit));
                 entry.generation += 1;
                 return Ok(Spawned::Rewired);
             }
         }
 
-        let sink = new_sink(self.wrap(session_id, emit));
+        // A fresh session starts **visible**. The tab that spawned it is
+        // normally the one on screen, and a session wrongly paced is a
+        // transcript that looks stalled, where a session wrongly unpaced only
+        // costs what it cost before this existed. `chat_spawn` corrects it
+        // immediately for a tab that is not on screen.
+        let listener = new_sink(self.wrap(session_id, emit));
+        let pacer = Arc::new(Pacer::new(listener.clone(), true, HIDDEN_RELEASE_MS, monotonic_clock()));
+        let into_pacer = pacer.clone();
+        let sink = new_sink(Box::new(move |event| into_pacer.deliver(event)));
         let mut transport = make();
         if let Err(e) = transport.start(spec, sink.clone()) {
             // The claim was taken before the spawn so a refusal never starts a
@@ -285,6 +301,8 @@ impl ChatHost {
             session_id.to_string(),
             Entry {
                 sink,
+                listener,
+                pacer,
                 transport: Arc::new(Mutex::new(transport)),
                 tab_id: tab_id.to_string(),
                 generation: 0,
@@ -405,6 +423,22 @@ impl ChatHost {
 
     pub fn is_live(&self, session_id: &str) -> bool {
         lock(&self.sessions).contains_key(session_id)
+    }
+
+    /// This session's tab came on screen, or left it.
+    ///
+    /// Returns whether it reached a live session. `false` is not an error: a tab
+    /// unmounting races its own session's teardown, and a visibility change for
+    /// a session that has gone is exactly as meaningful as it sounds.
+    ///
+    /// The pacer is cloned out and the map guard dropped **before** the call,
+    /// because releasing a held fragment emits, and emitting can end a session,
+    /// which takes this same lock.
+    pub fn set_visible(&self, session_id: &str, visible: bool) -> bool {
+        let pacer = lock(&self.sessions).get(session_id).map(|e| e.pacer.clone());
+        let Some(pacer) = pacer else { return false };
+        pacer.set_visible(visible);
+        true
     }
 
     /// Test-only: the live set, sorted. The product reads `is_live` for one id;
@@ -581,6 +615,72 @@ mod tests {
         assert!(matches!(seen.events().first(), Some(ChatEvent::SessionError { fatal: true, .. })));
         assert!(!host.is_live("s-dies"), "a dead session must not stay in the map");
         assert!(!host.registry.snapshot().contains_key("s-dies"), "a dead session must release its claim");
+    }
+
+    /// The pacer is wired into the sink the transport writes to, not bolted on
+    /// somewhere a second harness could miss.
+    ///
+    /// Deterministic without a clock injection because the bound is enormous: a
+    /// synthetic burst of in-memory pushes finishes several orders of magnitude
+    /// inside one 250ms interval, so a hidden session cannot release more than a
+    /// handful however loaded the machine is - while the visible one is required
+    /// to be exact.
+    #[test]
+    fn a_hidden_session_is_paced_at_the_sink_and_a_visible_one_is_not() {
+        let host = ChatHost::at(temp_store());
+        let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
+        let out = holder.clone();
+        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet { sink_out: Some(out), closed: Arc::default() })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().expect("the transport should have received a sink");
+
+        let fragments: Vec<String> = (0..300).map(|i| format!("{i} ")).collect();
+        let burst = |sink: &Sink, id: &str| {
+            for text in &fragments {
+                crate::chat::transport::emit(
+                    &sink.clone(),
+                    ChatEvent::TextDelta { session_id: id.into(), turn_id: "t1".into(), text: text.clone() },
+                );
+            }
+        };
+
+        burst(&sink, "s1");
+        assert_eq!(seen.events().len(), 300, "a session on screen streams unchanged");
+
+        host.close("s1").unwrap();
+        let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
+        let out = holder.clone();
+        host.spawn("s2", "tab-b", seen.emit(), spec("s2"), move || {
+            Box::new(Puppet { sink_out: Some(out), closed: Arc::default() })
+        })
+        .unwrap();
+        assert!(host.set_visible("s2", false));
+        let sink = lock(&holder).clone().expect("the transport should have received a sink");
+        burst(&sink, "s2");
+        assert!(seen.events().len() < 10, "a hidden session must not pay per token");
+
+        // And the collapse is a delay rather than a loss, which is the half a
+        // count alone would not catch.
+        assert!(host.set_visible("s2", true));
+        let joined: String = seen
+            .events()
+            .iter()
+            .filter_map(|ev| match ev {
+                ChatEvent::TextDelta { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(joined, fragments.concat());
+    }
+
+    /// A visibility change for a session that has gone is ordinary, not an
+    /// error: closing a tab races the effect that reports it left the screen.
+    #[test]
+    fn a_visibility_change_for_a_dead_session_is_a_no_op() {
+        let host = ChatHost::at(temp_store());
+        assert!(!host.set_visible("never-existed", false));
     }
 
     /// A non-fatal error is information, not a death sentence: one unparseable

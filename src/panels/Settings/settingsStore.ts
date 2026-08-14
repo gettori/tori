@@ -63,6 +63,11 @@ export type ChatDefaults = {
    *  running one: both the hook and the in-protocol question bind to the child
    *  when it starts. */
   legacyPermissionGate: boolean;
+  /** How many live chats before Sway says the cost is adding up. **Zero means
+   *  no cap.** It warns rather than refusing: several chats at once is the
+   *  point of the surface, and how many is too many is a property of the
+   *  machine and the bill rather than of Sway. */
+  maxConcurrentChats: number;
 };
 export type Harness = { path?: string | null };
 /** Editor behaviour that is a preference rather than a project fact.
@@ -215,6 +220,7 @@ export const DEFAULT_SETTINGS: Settings = {
     approvalAutoDenySecs: 120,
     showSwayHooks: false,
     legacyPermissionGate: false,
+    maxConcurrentChats: 4,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
   // The comfort defaults follow the tickets: the three that only cost a line of

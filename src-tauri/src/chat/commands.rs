@@ -136,6 +136,11 @@ pub async fn chat_spawn(
     mode: Option<String>,
     effort: Option<String>,
     extra_dirs: Vec<String>,
+    // Is this tab the one on screen? Carried at spawn rather than left to the
+    // panel's own visibility effect, because a session restored into a
+    // background tab would otherwise stream at full price until the first time
+    // somebody looked at it and then looked away.
+    visible: bool,
     on_event: Channel<ChatEvent>,
 ) -> Result<SpawnResult, String> {
     let adapter = agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
@@ -169,6 +174,7 @@ pub async fn chat_spawn(
             // path and returns before it would need a transport.
             || unreachable!("a live session rewires rather than spawning"),
         )?;
+        host.set_visible(&session_id, visible);
         return Ok(SpawnResult {
             ownership: ClaimOutcome::Granted { contested: false },
             spawned: Some(spawned),
@@ -298,6 +304,7 @@ pub async fn chat_spawn(
             return Err(e);
         }
     };
+    host.set_visible(&session_id, visible);
     host.install_bridge(&session_id, SessionBridge::new(server, snapshots, &session_id));
 
     // Said only once the session is actually up, and only when the mode that
@@ -350,6 +357,18 @@ pub async fn chat_steer(
 #[tauri::command]
 pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
     state.0.interrupt(&session_id)
+}
+
+/// A chat tab came on screen, or left it.
+///
+/// `Ok(())` whether or not it landed: a tab switch races its own session's
+/// teardown, and failing the call would turn an ordinary close into an error
+/// toast. What it controls is pacing only, so being wrong costs a repaint rather
+/// than a message.
+#[tauri::command]
+pub async fn chat_set_visible(state: State<'_, ChatState>, session_id: String, visible: bool) -> Result<(), String> {
+    state.0.set_visible(&session_id, visible);
+    Ok(())
 }
 
 #[tauri::command]

@@ -10,7 +10,8 @@
 //! | [`claude`] | the model, plus Claude's wire format |
 //! | [`claude_transport`] | the seam, plus `claude`'s process |
 //! | [`ownership`] | session ids and the process table |
-//! | [`host`] | the seam, plus ownership |
+//! | [`pacing`] | the model, plus the seam's sink |
+//! | [`host`] | the seam, plus ownership and pacing |
 //! | [`commands`] | all of it, plus Tauri |
 //!
 //! Nothing below `commands` mentions Tauri, which is what lets the whole session
@@ -29,6 +30,7 @@ pub mod host;
 pub mod mcp;
 pub mod model;
 pub mod ownership;
+pub mod pacing;
 pub mod rules;
 /// The version-1 rule parser, kept only so tests can prove a Sway that predates
 /// a format change refuses to act on a file written after it. Test-only: it must

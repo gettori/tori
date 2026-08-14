@@ -61,6 +61,36 @@ export const MULTI_CHAT_NOTICE =
   "Another chat is already running in this worktree. They share one working tree, so the two can edit the same files at the same time. Each turn's changes and reverts are attributed per session, but a shared file is marked rather than silently assigned to one.";
 
 /**
+ * Is this chat one of the ones past the cap?
+ *
+ * Answered by *position*, not by the total: the chats that were already running
+ * when the cap was reached are not the ones to nag, and a banner appearing in
+ * every open tab at once reads as a fault rather than as a consequence. So the
+ * warning attaches to the chats opened past the line, which is where the choice
+ * to open another one was actually made.
+ *
+ * `liveIds` is in registration order, which is open order. **Zero, or anything
+ * below it, is no cap at all**, matching the setting's "zero means unlimited".
+ */
+export function pastCap(sessionId: string, liveIds: readonly string[], cap: number): boolean {
+  if (cap <= 0) return false;
+  const at = liveIds.indexOf(sessionId);
+  return at >= cap;
+}
+
+/**
+ * What the over-cap chat says.
+ *
+ * Names both ways out, because the cap is a warning rather than a refusal and a
+ * warning that does not say what to do about it is just noise. It carries no
+ * dismiss: the condition is live, and closing a chat or raising the cap takes it
+ * away, where a dismissal would hide the cost while it went on being paid.
+ */
+export function capNotice(live: number, cap: number): string {
+  return `${live} chats are running at once, past your limit of ${cap}. Each one is a live agent process with its own token spend. Close one, or raise the limit in Settings.`;
+}
+
+/**
  * A label that tells one chat from the others already open on the same branch.
  *
  * Several chats per branch is the point of the surface, and three tabs all
