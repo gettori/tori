@@ -1,8 +1,13 @@
 {
   "source": "https://github.com/agentclientprotocol/registry",
-  "registry_commit": "2dd65dacea186f587eac1bc3a6e0906b3a2eecac",
+  "registry_commit": "ec4f9f7c8a39f5ae569d5f39c8c7d15075819c0e",
   "generated_on": "2026-08-14",
   "generated_by": "dev/acp-catalog.mjs",
+  "matrix_source": {
+    "source": "https://github.com/agentclientprotocol/registry/blob/main/.protocol-matrix/latest.json",
+    "probed_on": "2026-08-14",
+    "agents_probed": 31
+  },
   "entries": [
     {
       "id": "amp-acp",
@@ -12,7 +17,54 @@
       "website": "https://github.com/tao12345666333/amp-acp",
       "program": "amp-acp",
       "args": [],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-darwin-aarch64.tar.gz",
+          "sha256": "240a1a464f2a400ae51e9613b7f52b2abb6e7a29759001e9185291325671ccf1",
+          "cmd": "./amp-acp",
+          "args": [],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-darwin-x86_64.tar.gz",
+          "sha256": "0dc6d1ab8054e09b10ef49eea3e61afe363473d785bc9682ecb997480ec2f61f",
+          "cmd": "./amp-acp",
+          "args": [],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-linux-aarch64.tar.gz",
+          "sha256": "b9e365221838b1a6e177c2fcd8f25a30086c3630e0330f1f6f74b25d2d4126c2",
+          "cmd": "./amp-acp",
+          "args": [],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-linux-x86_64.tar.gz",
+          "sha256": "afaa50a152eb86a8ff21e354ded63fe2d21b730859692e3a60b2c4c9ef23df31",
+          "cmd": "./amp-acp",
+          "args": [],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-windows-x86_64.zip",
+          "sha256": "3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b",
+          "cmd": "amp-acp.exe",
+          "args": [],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": false,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "auggie",
@@ -26,7 +78,17 @@
         "@augmentcode/auggie@0.35.0",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "autohand",
@@ -39,47 +101,87 @@
         "-y",
         "@autohandai/autohand-acp@0.2.1"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "claude-acp",
       "label": "Claude Agent",
       "description": "ACP wrapper for Anthropic's Claude",
-      "registry_version": "0.67.0",
+      "registry_version": "0.68.0",
       "website": "https://github.com/agentclientprotocol/claude-agent-acp",
       "program": "npx",
       "args": [
         "-y",
-        "@agentclientprotocol/claude-agent-acp@0.67.0"
+        "@agentclientprotocol/claude-agent-acp@0.68.0"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "cline",
       "label": "Cline",
       "description": "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
-      "registry_version": "3.0.54",
+      "registry_version": "3.0.55",
       "website": "https://cline.bot/cli",
       "program": "npx",
       "args": [
         "-y",
-        "cline@3.0.54",
+        "cline@3.0.55",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "codex-acp",
       "label": "Codex",
       "description": "ACP adapter for OpenAI's coding assistant",
-      "registry_version": "1.2.0",
+      "registry_version": "1.3.0",
       "website": "https://github.com/agentclientprotocol/codex-acp",
       "program": "npx",
       "args": [
         "-y",
-        "@agentclientprotocol/codex-acp@1.2.0"
+        "@agentclientprotocol/codex-acp@1.3.0"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "cortex-code",
@@ -92,7 +194,79 @@
         "acp",
         "serve"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-darwin-arm64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-darwin-arm64/cortex",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-darwin-amd64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-darwin-amd64/cortex",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-linux-amd64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-linux-amd64/cortex",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-linux-arm64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-linux-arm64/cortex",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-windows-amd64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-windows-amd64/cortex.exe",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-windows-arm64.tar.gz",
+          "sha256": null,
+          "cmd": "./coco-1.0.73+180523.e6179a031de9-windows-arm64/cortex.exe",
+          "args": [
+            "acp",
+            "serve"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "process_error",
+        "protocol_version": null,
+        "load_session": false,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "corust-agent",
@@ -102,7 +276,47 @@
       "website": "https://corust.ai/",
       "program": "corust-agent-acp",
       "args": [],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-darwin-arm64.tar.gz",
+          "sha256": null,
+          "cmd": "./corust-agent-acp",
+          "args": [],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-darwin-x64.tar.gz",
+          "sha256": null,
+          "cmd": "./corust-agent-acp",
+          "args": [],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-linux-x64.tar.gz",
+          "sha256": null,
+          "cmd": "./corust-agent-acp",
+          "args": [],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-windows-x64.zip",
+          "sha256": null,
+          "cmd": "./corust-agent-acp.exe",
+          "args": [],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": false,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "cursor",
@@ -114,7 +328,73 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/darwin/arm64/agent-cli-package.tar.gz",
+          "sha256": null,
+          "cmd": "./dist-package/cursor-agent",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/darwin/x64/agent-cli-package.tar.gz",
+          "sha256": null,
+          "cmd": "./dist-package/cursor-agent",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/linux/arm64/agent-cli-package.tar.gz",
+          "sha256": null,
+          "cmd": "./dist-package/cursor-agent",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/linux/x64/agent-cli-package.tar.gz",
+          "sha256": null,
+          "cmd": "./dist-package/cursor-agent",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/windows/arm64/agent-cli-package.zip",
+          "sha256": null,
+          "cmd": "./dist-package\\cursor-agent.cmd",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://downloads.cursor.com/lab/2026.08.11-e8db854/windows/x64/agent-cli-package.zip",
+          "sha256": null,
+          "cmd": "./dist-package\\cursor-agent.cmd",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "devin",
@@ -126,21 +406,97 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-aarch64-apple-darwin.tar.gz",
+          "sha256": null,
+          "cmd": "./bin/devin",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-x86_64-apple-darwin.tar.gz",
+          "sha256": null,
+          "cmd": "./bin/devin",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-aarch64-unknown-linux.tar.gz",
+          "sha256": null,
+          "cmd": "./bin/devin",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-x86_64-unknown-linux.tar.gz",
+          "sha256": null,
+          "cmd": "./bin/devin",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-aarch64-pc-windows.zip",
+          "sha256": null,
+          "cmd": "./bin\\devin.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://static.devin.ai/cli/3000.4.25/devin-3000.4.25-x86_64-pc-windows.zip",
+          "sha256": null,
+          "cmd": "./bin\\devin.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "dimcode",
       "label": "DimCode",
       "description": "A coding agent that puts leading models at your command.",
-      "registry_version": "0.3.12",
+      "registry_version": "0.3.13",
       "website": "https://dimcode.dev/docs/acp.html",
       "program": "npx",
       "args": [
         "-y",
-        "dimcode@0.3.12",
+        "dimcode@0.3.13",
         "acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "dirac",
@@ -154,7 +510,17 @@
         "dirac-cli@0.4.36",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "factory-droid",
@@ -170,7 +536,17 @@
         "--output-format",
         "acp-daemon"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "gemini",
@@ -184,7 +560,17 @@
         "@google/gemini-cli@0.55.1",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "github-copilot",
@@ -198,7 +584,17 @@
         "@github/copilot-language-server@1.532.0",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "github-copilot-cli",
@@ -212,7 +608,17 @@
         "@github/copilot@1.0.80",
         "--acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "glm-acp-agent",
@@ -225,7 +631,17 @@
         "-y",
         "glm-acp-agent@1.3.0"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": true
+      }
     },
     {
       "id": "goose",
@@ -237,7 +653,64 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/block/goose/releases/download/v1.46.0/goose-aarch64-apple-darwin.tar.bz2",
+          "sha256": "de263fb06839de31345dff08aeba999ba165b023cd3cec7ec3bef20f6f4f7e73",
+          "cmd": "./goose",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/block/goose/releases/download/v1.46.0/goose-x86_64-apple-darwin.tar.bz2",
+          "sha256": "b5b66f5d4966aac74998c63420c98b3e289ae498f0c120463ac0b8dbc2a40083",
+          "cmd": "./goose",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/block/goose/releases/download/v1.46.0/goose-aarch64-unknown-linux-gnu.tar.bz2",
+          "sha256": "b56da65ab1004832ce5524ed40ec6fbe38ba84dae654d0a8eb86be9d90086cf6",
+          "cmd": "./goose",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/block/goose/releases/download/v1.46.0/goose-x86_64-unknown-linux-gnu.tar.bz2",
+          "sha256": "a1cf4856a765d07d6b95689a53c7bca21fcc6e6d65c0dfd064fc704052b85a7b",
+          "cmd": "./goose",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/block/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip",
+          "sha256": "a903273d165c4b2ac3d30aa861f2e00753b07a5d24d24e37b65e36c86f937a76",
+          "cmd": "./goose-package\\goose.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "grok-build",
@@ -252,20 +725,92 @@
         "agent",
         "stdio"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "harn",
       "label": "Harn",
       "description": "Harn runs .harn agent pipelines as a native ACP coding agent over stdio.",
-      "registry_version": "0.10.92",
+      "registry_version": "0.10.94",
       "website": "https://harnlang.com",
       "program": "harn",
       "args": [
         "serve",
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/burin-labs/harn/releases/download/v0.10.94/harn-aarch64-apple-darwin.tar.gz",
+          "sha256": "6873edfe7c8776907090c90ba76d866117dd5e5ecff80891a8a426d7e2f080aa",
+          "cmd": "./harn",
+          "args": [
+            "serve",
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/burin-labs/harn/releases/download/v0.10.94/harn-x86_64-apple-darwin.tar.gz",
+          "sha256": "ecf6aebc1e040a326b51d63654782d001ac32a6588556f2e18496328cca847b1",
+          "cmd": "./harn",
+          "args": [
+            "serve",
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/burin-labs/harn/releases/download/v0.10.94/harn-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "342f055b9553857bd000251023cbcdc3414b49796c2c08d5cd19c8d38a86a07b",
+          "cmd": "./harn",
+          "args": [
+            "serve",
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/burin-labs/harn/releases/download/v0.10.94/harn-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "b67b3dda7c085809fdffbbe6612895718dd08f69e541481037d439ea34b4a8ef",
+          "cmd": "./harn",
+          "args": [
+            "serve",
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/burin-labs/harn/releases/download/v0.10.94/harn-x86_64-pc-windows-msvc.zip",
+          "sha256": "8d42421f10b755befef55f237aae8098d6dcbb58d4ce7d86b7aa4dac922c79c9",
+          "cmd": "harn.exe",
+          "args": [
+            "serve",
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "junie",
@@ -277,7 +822,73 @@
       "args": [
         "--acp=true"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-macos-aarch64.zip",
+          "sha256": null,
+          "cmd": "./Applications/junie.app/Contents/MacOS/junie",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-macos-amd64.zip",
+          "sha256": null,
+          "cmd": "./Applications/junie.app/Contents/MacOS/junie",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-linux-aarch64.zip",
+          "sha256": null,
+          "cmd": "./junie-app/bin/junie",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-linux-amd64.zip",
+          "sha256": null,
+          "cmd": "./junie-app/bin/junie",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-windows-amd64.zip",
+          "sha256": null,
+          "cmd": "./junie/junie.exe",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://github.com/JetBrains/junie-acp-release/releases/download/2783.5/junie-release-2783.5-windows-aarch64.zip",
+          "sha256": null,
+          "cmd": "./junie/junie.exe",
+          "args": [
+            "--acp=true"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "kilo",
@@ -291,7 +902,17 @@
         "@kilocode/cli@7.4.22",
         "acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "kimi",
@@ -303,7 +924,64 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.49.0/kimi-1.49.0-aarch64-apple-darwin.tar.gz",
+          "sha256": "15018b20b203aee09658fdc64840c4846fc17c108d8dba1a19a95581d3ce2921",
+          "cmd": "./kimi",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.49.0/kimi-1.49.0-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "5ac54cabce16ede27b9d2069b9b88edee25528646e7bb5befa9980a1ca71febb",
+          "cmd": "./kimi",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.49.0/kimi-1.49.0-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "6ce0b83f583c45a64cc9f51ffe7e1a8e03ee79acda69945fcf8c23341b9d892f",
+          "cmd": "./kimi",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.49.0/kimi-1.49.0-aarch64-pc-windows-msvc.zip",
+          "sha256": "3ac8f05c7bd18d902a324c6c03a71084cfbe785b9669bbd556c071ee1d8f2f26",
+          "cmd": "./kimi.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.49.0/kimi-1.49.0-x86_64-pc-windows-msvc.zip",
+          "sha256": "2acbbc7ca8c8ac4b03dab1d970f53a292bd226168151b423499feab9fc203ddd",
+          "cmd": "./kimi.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "mistral-vibe",
@@ -313,7 +991,54 @@
       "website": "https://mistral.ai/products/vibe",
       "program": "vibe-acp",
       "args": [],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.24.1/vibe-acp-darwin-aarch64-2.24.1.tar.gz",
+          "sha256": "4faa3ed31454ee739fac2d5ff052c56056b175611a7b7ace0a4191f2bf83ba93",
+          "cmd": "./vibe-acp",
+          "args": [],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.24.1/vibe-acp-darwin-x86_64-2.24.1.tar.gz",
+          "sha256": "97d512a02e97fb828824cfb7b72734574f086d0442851c5fdfb432d7dabfa88a",
+          "cmd": "./vibe-acp",
+          "args": [],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.24.1/vibe-acp-linux-aarch64-2.24.1.tar.gz",
+          "sha256": "e43913b43f0666df2a42060cd3bd410805b0ca1218843b0c242edf874a78c31a",
+          "cmd": "./vibe-acp",
+          "args": [],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.24.1/vibe-acp-linux-x86_64-2.24.1.tar.gz",
+          "sha256": "8e87f581e7c292fbeab7377178e947ddc4e83753c409f1db0760631f11d7083c",
+          "cmd": "./vibe-acp",
+          "args": [],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.24.1/vibe-acp-windows-x86_64-2.24.1.zip",
+          "sha256": "a66329ff18845f8e810359910e8da15bb2071648159c13a10838e5ae7a7d9b81",
+          "cmd": "./vibe-acp.exe",
+          "args": [],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "nova",
@@ -327,7 +1052,17 @@
         "@compass-ai/nova@1.1.34",
         "acp"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "opencode",
@@ -339,7 +1074,73 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-darwin-arm64.zip",
+          "sha256": "7d668bf26496fec8686d4e51ebb1ac2bd2e393f0c1620aa696c4c242a9e5806a",
+          "cmd": "./opencode",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-darwin-x64.zip",
+          "sha256": "9581bd7683a7528456179fb11e3377d9ef568e10a935611a2c6722e349454d83",
+          "cmd": "./opencode",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-linux-arm64.tar.gz",
+          "sha256": "dcb1b5ec5687b43f87749560021f9203f3809e0ce5ae44ff9be8ae17083fe4ba",
+          "cmd": "./opencode",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-linux-x64.tar.gz",
+          "sha256": "0cddc222418b8553669905a8980c0cda7088f00da24d83d6ac76b01c9fdb2aaf",
+          "cmd": "./opencode",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-windows-arm64.zip",
+          "sha256": "0d34d837ea3b5e10349d8550318083040a8b4c061d3faaa4eabd339984aa49b0",
+          "cmd": "./opencode",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-windows-x64.zip",
+          "sha256": "c6d265376fdb93164013671b0cf402410184f73c34fc15d82d40a16a745b15f4",
+          "cmd": "./opencode.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": true,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "pi-acp",
@@ -352,34 +1153,120 @@
         "-y",
         "pi-acp@0.0.33"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "poolside",
       "label": "Poolside",
       "description": "Poolside's coding agent",
-      "registry_version": "1.0.15",
+      "registry_version": "1.0.16",
       "website": "https://poolside.ai",
       "program": "pool-darwin-arm64",
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-darwin-arm64.tar.gz",
+          "sha256": "0932af3eb2b57a863acacb664ec8b2b1d3a76c2570a788b086001608cc585f74",
+          "cmd": "./pool-darwin-arm64",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-darwin-amd64.tar.gz",
+          "sha256": "6d75fae2d7de6c35b6b467b5f682935e3ecde8ff611cb620c56b7bd607e0afde",
+          "cmd": "./pool-darwin-amd64",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-linux-arm64.tar.gz",
+          "sha256": "466343b66b03ee4e66476fcc69be1eb5bf8e9155a4ab73e0e72a232d1f8d2a12",
+          "cmd": "./pool-linux-arm64",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-linux-amd64.tar.gz",
+          "sha256": "e86aa8c9feef003540673ab494e91bfadc273218d531c43d662cafb69e464146",
+          "cmd": "./pool-linux-amd64",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-aarch64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-windows-arm64.tar.gz",
+          "sha256": "8dc7d014ced3e9d3ced240bbc7dabaf696bf59f118bd271d9f4e8561e415d75b",
+          "cmd": "./pool-windows-arm64.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://downloads.poolside.ai/pool/v1.0.16/pool-windows-amd64.tar.gz",
+          "sha256": "3e324f1a4b5855ba5363232c06461ec9d6d2ae1a341c827221e79779f8f2bc6f",
+          "cmd": "./pool-windows-amd64.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "qwen-code",
       "label": "Qwen Code",
       "description": "Alibaba's Qwen coding assistant",
-      "registry_version": "0.21.11",
+      "registry_version": "0.21.12",
       "website": "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
       "program": "npx",
       "args": [
         "-y",
-        "@qwen-code/qwen-code@0.21.11",
+        "@qwen-code/qwen-code@0.21.12",
         "--acp",
         "--experimental-skills"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": true,
+        "session_fork": false,
+        "session_resume": true,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "sigit",
@@ -392,7 +1279,17 @@
         "-y",
         "@smbcloud/sigit@1.5.2"
       ],
-      "needs": "npx"
+      "needs": "npx",
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": false,
+        "session_fork": true,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     },
     {
       "id": "stakpak",
@@ -404,7 +1301,64 @@
       "args": [
         "acp"
       ],
-      "needs": "on-path"
+      "needs": "install",
+      "builds": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-darwin-aarch64.tar.gz",
+          "sha256": null,
+          "cmd": "./stakpak",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-darwin-x86_64.tar.gz",
+          "sha256": null,
+          "cmd": "./stakpak",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-linux-aarch64.tar.gz",
+          "sha256": null,
+          "cmd": "./stakpak",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-linux-x86_64.tar.gz",
+          "sha256": null,
+          "cmd": "./stakpak",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-windows-x86_64.zip",
+          "sha256": null,
+          "cmd": "./stakpak.exe",
+          "args": [
+            "acp"
+          ],
+          "env": {}
+        }
+      },
+      "published_capabilities": {
+        "initialize": "success",
+        "protocol_version": 1,
+        "load_session": true,
+        "session_list": false,
+        "session_fork": false,
+        "session_resume": false,
+        "session_stop": false,
+        "set_model": false
+      }
     }
   ],
   "quarantined": {

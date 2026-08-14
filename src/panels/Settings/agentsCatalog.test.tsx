@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invoked = vi.mocked(invoke);
+
+const build = (over: Record<string, unknown> = {}) => ({
+  archive: "https://downloads.cursor.com/lab/darwin/arm64/agent-cli-package.tar.gz",
+  sha256: null,
+  cmd: "./dist-package/cursor-agent",
+  args: ["acp"],
+  env: {},
+  ...over,
+});
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: "cursor",
@@ -15,6 +24,32 @@ const row = (over: Record<string, unknown> = {}) => ({
   command: "cursor-agent acp",
   needs: "on-path",
   coveredBy: null,
+  build: null,
+  noBuildHere: false,
+  publishedCapabilities: null,
+  ...over,
+});
+
+const installed = (over: Record<string, unknown> = {}) => ({
+  id: "cursor",
+  registryVersion: "2026.08.11",
+  platform: "darwin-aarch64",
+  archive: "https://downloads.cursor.com/lab/darwin/arm64/agent-cli-package.tar.gz",
+  sha256: null,
+  program: "/Users/x/Library/Application Support/sway/agents/cursor/dist-package/cursor-agent",
+  args: ["acp"],
+  env: {},
+  quarantineCleared: false,
+  installedAt: 1_700_000_000,
+  ...over,
+});
+
+const source = (over: Record<string, unknown> = {}) => ({
+  source: "https://github.com/agentclientprotocol/registry",
+  registryCommit: "2dd65dacffffffffffffffffffffffffffffffff",
+  generatedOn: "2026-08-14",
+  matrixSource: null,
+  hostPlatform: "darwin-aarch64",
   ...over,
 });
 
@@ -47,13 +82,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
     invoked.mockImplementation(async (cmd: string) => {
       if (cmd === "agent_health") return [health()];
       if (cmd === "acp_catalog") return [row()];
-      if (cmd === "acp_catalog_source") {
-        return {
-          source: "https://github.com/agentclientprotocol/registry",
-          registryCommit: "2dd65dacffffffffffffffffffffffffffffffff",
-          generatedOn: "2026-08-14",
-        };
-      }
+      if (cmd === "acp_catalog_source") return source();
       return [];
     });
   });
@@ -87,9 +116,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
       if (cmd === "acp_catalog") {
         return [row({ id: "opencode", label: "OpenCode", command: "opencode acp", coveredBy: "opencode" })];
       }
-      if (cmd === "acp_catalog_source") {
-        return { source: "s", registryCommit: "abcdef1234", generatedOn: "2026-08-14" };
-      }
+      if (cmd === "acp_catalog_source") return source({ registryCommit: "abcdef1234" });
       return [];
     });
 
@@ -117,6 +144,240 @@ describe("the ACP launch catalog in Settings > Agents", () => {
     // And the registry's own pinned version is not presented as a version Sway
     // checked: the row says untested, and nothing on it reads as a match.
     expect(container.textContent).not.toContain("Installed, version 2026.08.11");
+  });
+});
+
+/**
+ * Installing one of these rows, which is the only place in Sway that downloads a
+ * binary. Every assertion here is about the user knowing what they agreed to
+ * before it happens, and about the row still being an untested entry after.
+ */
+describe("installing an agent from the catalog", () => {
+  const mount = (over: { rows?: unknown[]; installed?: unknown[] } = {}) => {
+    invoked.mockReset();
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health()];
+      if (cmd === "acp_catalog") return over.rows ?? [row({ needs: "install", build: build() })];
+      if (cmd === "acp_catalog_source") return source();
+      if (cmd === "installed_agents") return over.installed ?? [];
+      return [];
+    });
+    return render(() => <AgentsSection />);
+  };
+
+  const cmds = () => invoked.mock.calls.map(([c]) => c);
+
+  beforeEach(() => invoked.mockReset());
+
+  /**
+   * **The confirm is a real gate, and it states the trust model.** The checksum
+   * and the URL come from the same file, so a green tick would be claiming more
+   * than the check buys. Nothing is downloaded until the user says so.
+   */
+  it("says what installing commits the user to, and downloads nothing until they agree", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Cursor"));
+
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() =>
+      expect(screen.getByText("Install Cursor from the ACP Registry?")).toBeTruthy(),
+    );
+    expect(cmds()).not.toContain("install_agent");
+
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Nothing goes on your PATH");
+    expect(body).toContain("trusting the ACP Registry");
+    expect(body).toContain("installing one does not change that");
+
+    fireEvent.click(screen.getByText("Cancel"));
+    await waitFor(() => expect(screen.queryByText("Download and install")).toBeNull());
+    expect(cmds()).not.toContain("install_agent");
+  });
+
+  /** A publisher with no checksum and one with a checksum do not read the same,
+   *  because they are not the same guarantee. */
+  it("tells a checksummed download apart from one with nothing to check", async () => {
+    const { container, unmount } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Cursor"));
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() => expect(screen.getByText("Download and install")).toBeTruthy());
+    expect(document.body.textContent).toContain("publishes no checksum for this download");
+    fireEvent.click(screen.getByText("Cancel"));
+    unmount();
+
+    mount({ rows: [row({ needs: "install", build: build({ sha256: "ab".repeat(32) }) })] });
+    await waitFor(() => expect(screen.getByText("Install")).toBeTruthy());
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() => expect(screen.getByText("Download and install")).toBeTruthy());
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Sway checks the download against it");
+    // And it still refuses to claim more than a transport control.
+    expect(body).toContain("cannot prove who published them");
+  });
+
+  /**
+   * **The Gatekeeper bypass is off unless it is asked for, and the sentence the
+   * user agrees to says which way it is going.** Clearing that flag is macOS's
+   * check being switched off, so it cannot ride along inside "Install".
+   */
+  it("leaves the quarantine flag alone unless the user ticks the box", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Cursor"));
+
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() => expect(screen.getByText("Download and install")).toBeTruthy());
+    expect(document.body.textContent).toContain("will leave the macOS quarantine flag on");
+    fireEvent.click(screen.getByText("Download and install"));
+    await waitFor(() => expect(cmds()).toContain("install_agent"));
+    expect(
+      invoked.mock.calls.find(([c]) => c === "install_agent")?.[1],
+    ).toMatchObject({ id: "cursor", allowQuarantineBypass: false });
+
+    invoked.mockClear();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() => expect(screen.getByText("Download and install")).toBeTruthy());
+    // Told what it disables, at the moment of agreeing to it.
+    expect(document.body.textContent).toContain(
+      "the check that would otherwise stop an unnotarized binary from running",
+    );
+    fireEvent.click(screen.getByText("Download and install"));
+    await waitFor(() => expect(cmds()).toContain("install_agent"));
+    expect(
+      invoked.mock.calls.find(([c]) => c === "install_agent")?.[1],
+    ).toMatchObject({ allowQuarantineBypass: true });
+  });
+
+  /** Off macOS there is no quarantine flag, so there is no control and no
+   *  sentence about one. A checkbox that provably does nothing reads as a choice
+   *  being made. */
+  it("offers no Gatekeeper control where there is no Gatekeeper", async () => {
+    invoked.mockReset();
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health()];
+      if (cmd === "acp_catalog") return [row({ needs: "install", build: build() })];
+      if (cmd === "acp_catalog_source") return source({ hostPlatform: "linux-x86_64" });
+      return [];
+    });
+    const { container } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("Cursor"));
+
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(screen.getByText("Install"));
+    await waitFor(() => expect(screen.getByText("Download and install")).toBeTruthy());
+    expect(document.body.textContent).not.toContain("quarantine");
+    // The rest of the disclosure is unchanged: the trust model is not a macOS
+    // fact.
+    expect(document.body.textContent).toContain("trusting the ACP Registry");
+  });
+
+  /**
+   * **An installed agent is still an untested entry.** It gained a path on disk
+   * and nothing else: no tier, no card, no version Sway checked. Conflating the
+   * two is the whole failure this list is separated to avoid.
+   */
+  it("keeps an installed agent labelled untested, and says where it went", async () => {
+    const { container } = mount({
+      rows: [row({ needs: "install", build: build() })],
+      installed: [installed()],
+    });
+    await waitFor(() => expect(container.textContent).toContain("Installed at"));
+
+    expect(container.textContent).toContain("untested");
+    expect(container.textContent).toContain("sway/agents/cursor/dist-package/cursor-agent");
+    expect(container.textContent).toContain("Sway has still run nothing");
+    expect(container.textContent).toContain("this download was never verified");
+    // Still a list item rather than a card, so it cannot pick up the affordances
+    // a measured harness earned.
+    const titles = [...container.querySelectorAll("[class*='cardTitle']")].map((n) => n.textContent);
+    expect(titles).toEqual(["Claude"]);
+    // And the install button is gone: there is nothing left to install.
+    expect(screen.queryByText("Install")).toBeNull();
+  });
+
+  it("offers removal of an installed agent and re-reads the list afterwards", async () => {
+    const { container } = mount({
+      rows: [row({ needs: "install", build: build() })],
+      installed: [installed()],
+    });
+    await waitFor(() => expect(container.textContent).toContain("Installed at"));
+
+    invoked.mockClear();
+    fireEvent.click(screen.getByText("Remove"));
+    await waitFor(() => expect(cmds()).toContain("remove_installed_agent"));
+    expect(invoked.mock.calls.find(([c]) => c === "remove_installed_agent")?.[1]).toMatchObject({
+      id: "cursor",
+    });
+    // Re-read, so the row goes back to offering an install rather than showing a
+    // path that is no longer there.
+    await waitFor(() => expect(cmds()).toContain("installed_agents"));
+  });
+
+  /**
+   * **An architecture with no build is said, not hidden.** A row that silently
+   * dropped would read as "this agent does not exist"; one that offered any
+   * build would hand an Intel Mac an arm64 binary.
+   */
+  it("says an agent has no build for this machine rather than offering one", async () => {
+    const { container } = mount({
+      rows: [row({ id: "kimi", label: "Kimi", needs: "install", build: null, noBuildHere: true })],
+    });
+    await waitFor(() => expect(container.textContent).toContain("Kimi"));
+
+    expect(container.textContent).toContain("No build for darwin-aarch64");
+    expect(screen.queryByText("Install")).toBeNull();
+  });
+
+  /**
+   * **The list is a pinned snapshot, so it says how old it is.** It renders with
+   * no network at all, which is the point; without an age, "pinned" reads as
+   * "current" and a year-old list looks like today's.
+   */
+  it("renders offline from the snapshot and states its age", async () => {
+    const twelveDaysAgo = new Date(Date.now() - 12 * 86_400_000).toISOString().slice(0, 10);
+    invoked.mockReset();
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health()];
+      if (cmd === "acp_catalog") return [row()];
+      if (cmd === "acp_catalog_source") return source({ generatedOn: twelveDaysAgo });
+      return [];
+    });
+    const { container } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("12 days old"));
+
+    // Everything on screen came from the committed file: the only commands are
+    // reads of local state, and none of them fetches anything.
+    expect([...new Set(cmds())].sort()).toEqual([
+      "acp_catalog",
+      "acp_catalog_source",
+      "agent_accounts",
+      "agent_health",
+      "installed_agents",
+    ]);
+    expect(container.textContent).toContain("2dd65dac");
+  });
+
+  /** Capabilities on a row are the registry's probe, named as such. A tier is
+   *  Sway's own and lives on the cards above. */
+  it("names the registry as the prober behind any published capabilities", async () => {
+    invoked.mockReset();
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health()];
+      if (cmd === "acp_catalog") return [row()];
+      if (cmd === "acp_catalog_source")
+        return source({
+          matrixSource: {
+            source: "https://github.com/agentclientprotocol/registry/blob/main/.protocol-matrix/latest.json",
+            probedOn: "2026-08-14",
+            agentsProbed: 31,
+          },
+        });
+      return [];
+    });
+    const { container } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("the registry's own probe"));
+    expect(container.textContent).toContain("31 agents");
+    expect(container.textContent).toContain("not from anything Sway measured");
   });
 });
 
