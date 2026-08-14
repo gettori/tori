@@ -1,0 +1,94 @@
+schema_version = 2
+id = "codex"
+label = "Codex"
+
+# Measured against this pair with `node dev/acp-probe.mjs --agent codex-acp`,
+# `node dev/codex-probe.mjs` and a live turn, 2026-08-14. Two versions because
+# two binaries are involved: the PTY tab runs the `codex` a user installed, and
+# the chat surface runs the ACP wrapper below, which drives that same `codex`
+# underneath. `verified_against` is compared against `codex --version`, and
+# health.rs reads the first semver-looking token, so the `codex-cli` version has
+# to come first.
+verified_against = "codex-cli 0.147.0 with @agentclientprotocol/codex-acp 1.2.0"
+
+[launch]
+program = "codex"
+# The TUI, for a PTY tab. Unrelated to the chat surface below, which launches
+# the ACP wrapper instead.
+base_args = []
+# Codex's own "skip all confirmation prompts and execute without sandboxing".
+# Its help calls it EXTREMELY DANGEROUS, the same standing as claude's
+# `--dangerously-skip-permissions` and opencode's `--auto`.
+yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
+# Empty, which the UI reads as "this agent's sessions can't be resumed" (see
+# ADAPTERS.md) rather than mis-resuming. Codex does have its own resume, but the
+# id Sway holds for an ACP row is Sway's own: see opencode.toml for the full
+# reasoning, which applies here unchanged.
+resume_args = []
+
+# No [discovery], [parser] or [running]: a protocol-backed adapter reaches its
+# sessions through ACP, never through files. See opencode.toml.
+
+[capabilities]
+pty_quiet_ms = 2000
+# Not claimed. The quiet-PTY join is Claude-shaped and unmeasured against
+# Codex's TUI, and a chat tab does not need it: over ACP the agent asks
+# in-protocol and Sway renders the question.
+needs_you = false
+hooks = false
+
+[chat]
+transport = "acp"
+# **Codex is the one bundled adapter whose chat binary is not its launch
+# binary.** `codex app-server` exists and is what Paseo drives, but `codex` has
+# no `acp` subcommand, so the first-party wrapper is how Codex reaches an ACP
+# client. Measured 2026-08-14 against both on one live turn: the wrapper carries
+# the permission prompt, the exact before-and-after diff, the same four models
+# and the same token-only usage that the native app-server does, for one TOML
+# file instead of a second typed transport over `codex app-server generate-ts`.
+# That surface is also moving: it went from 598 files / 6,230 lines on 0.144.5 to
+# 642 / 6,923 on 0.147.0, three patch versions apart and inside one afternoon.
+# What the wrapper gives up is `thread/archive`, `thread/rollback`,
+# `thread/fork` and `turn/steer`, none of which Sway drives over ACP anyway.
+program = "npx"
+# Pinned to the version measured, matching how the ACP catalog pins its own
+# rows. `npx -y @agentclientprotocol/codex-acp` unpinned would silently move the
+# agent underneath a `verified_against` that names 1.2.0.
+base_args = ["-y", "@agentclientprotocol/codex-acp@1.2.0"]
+
+# All empty because ACP has no command line for any of it, not because Codex
+# lacks the feature. Measured on the handshake instead:
+#
+#   * ids are minted by the agent inside `session/new`,
+#   * resume is `session/load`; `sessionCapabilities` advertises
+#     `resume, list, close, delete, additionalDirectories`,
+#   * a model switch is `session/set_config_option`,
+#   * modes arrive as config options: `mode` (read-only, agent,
+#     agent-full-access) and `collaboration_mode` (default, plan),
+#   * reasoning effort is a `thought_level` select with six levels
+#     (low, medium, high, xhigh, max, ultra).
+session_id_args = []
+resume_args = []
+fork_args = []
+model_args = []
+effort_args = []
+mode_args = []
+add_dir_args = []
+
+# No [[chat.models]].
+#
+# Measured 2026-08-14: the handshake advertises four (`gpt-5.6-terra`,
+# `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4-mini`), and `model/list` over the native
+# app-server signed in returns the same four. There is no shortfall to publish,
+# and the list is per account: signed *out*, the same call returned seven, which
+# is a reminder that a catalogue measured without an account is not this user's.
+# A bundled table would be a guess about somebody else's entitlement, and the
+# picker takes the live list whenever there is one.
+
+# No [[chat.modes]] or [[chat.effort]] either: all three selectors above arrive
+# on the handshake, which is what the ACP transport reads them from.
+
+[chat.acp]
+# Left at the safe default: measured doing its own file I/O, and Sway's MCP
+# configuration is not forwarded over ACP at all.
+serve_client_fs = false

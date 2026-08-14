@@ -52,10 +52,15 @@ fn extra_is_empty(e: &Extra) -> bool {
 /// `crate::agents`, which spawns the binary once per declared mode. See also
 /// the `gotchas.md` entry on enum-to-string neutrality.
 ///
-/// Note that Sway's own `PreToolUse` approval gate runs *ahead* of every mode
-/// any harness has, so a permissive one does not mean unsupervised: hooks run
-/// first in claude's permission chain, which is what makes the gate
-/// authoritative.
+/// **A permissive mode now means what it says.** This used to note that Sway's
+/// own `PreToolUse` gate ran ahead of every harness mode, so a permissive one
+/// was still supervised. Phase 7 deleted that gate: the harness decides, and a
+/// mode named after bypassing permissions really does bypass them.
+///
+/// For an ACP session the mode is not a flag at all. Measured on `opencode acp`
+/// and `@agentclientprotocol/codex-acp`, it is a `mode`-category config option
+/// switched with `session/set_config_option`, so the ids here are whatever that
+/// agent published on its handshake rather than anything an adapter declared.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PermissionMode(String);
@@ -71,6 +76,15 @@ impl PermissionMode {
 }
 
 /// The five measured effort levels accepted by `--effort`.
+///
+/// Still a closed enum, unlike [`PermissionMode`], and the difference is worth
+/// stating because a second harness now has levels too. Measured on
+/// `@agentclientprotocol/codex-acp` 1.2.0, its `thought_level` selector offers
+/// six: these five and `ultra`. Adding `Ultra` here would put one harness's
+/// vocabulary into the shared type for the benefit of one agent - the trap
+/// `PermissionMode` records - so instead the ACP transport publishes only the
+/// levels this enum can carry and names `ultra` as what it drops. The day a
+/// third harness disagrees again is the day this becomes a string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Effort {
@@ -79,6 +93,24 @@ pub enum Effort {
     High,
     Xhigh,
     Max,
+}
+
+impl Effort {
+    /// Every level, so a transport can publish the set it is able to send
+    /// rather than restating it and drifting.
+    pub const ALL: [Effort; 5] =
+        [Effort::Low, Effort::Medium, Effort::High, Effort::Xhigh, Effort::Max];
+
+    /// The level as both harnesses spell it on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Effort::Low => "low",
+            Effort::Medium => "medium",
+            Effort::High => "high",
+            Effort::Xhigh => "xhigh",
+            Effort::Max => "max",
+        }
+    }
 }
 
 /// How a turn ended.
@@ -200,6 +232,25 @@ pub struct SlashCommand {
     pub argument_hint: Option<String>,
     #[serde(default)]
     pub aliases: Vec<String>,
+}
+
+/// One mode the live harness says it can run, as the mode selector needs it.
+///
+/// The counterpart to [`ChatModelInfo`], and deliberately thinner than the
+/// adapter's own `ChatMode`. That one carries `args` (an ACP mode is a request,
+/// not a flag), `requires` (a per-model gate Claude's catalogue publishes and no
+/// agent advertises), `permissive` and `default`. The last two are the load
+/// bearing omission: an agent publishes an id, a label and a description, so a
+/// mode's danger and a mode's defaultness are things Sway would have to infer
+/// from the words in an id. It does not, and the surface renders such a row
+/// without the permissive caution rather than with a guessed one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatModeInfo {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub hint: String,
 }
 
 /// One model the live harness says it can run, as the picker needs it.
@@ -427,6 +478,12 @@ pub enum ChatEvent {
         /// as "fall back to the adapter table" rather than as "no models".
         #[serde(default)]
         models: Vec<ChatModelInfo>,
+        /// The live mode catalogue, on the same rule as `models`: empty means
+        /// "fall back to the adapter's `[[chat.modes]]`", which is how a
+        /// Claude-shaped adapter keeps its declared modes and an ACP one - whose
+        /// table is empty on purpose - gets the agent's own.
+        #[serde(default)]
+        modes: Vec<ChatModeInfo>,
         /// `system/init`'s fast-mode state and, when it is unavailable, the
         /// harness's own reason. Typed rather than left in `extra` because the
         /// toggle renders the reason instead of an inert control.
@@ -461,6 +518,11 @@ pub enum ChatEvent {
         /// which the picker reads as "fall back to the adapter table".
         #[serde(default)]
         models: Vec<ChatModelInfo>,
+        /// And the mode catalogue, carried here for the same reason: an ACP
+        /// session's modes arrive with `session/new`, a whole turn before any
+        /// `SessionStarted` would carry them.
+        #[serde(default)]
+        modes: Vec<ChatModeInfo>,
         /// The account the same response named. Carried here as well as on
         /// `SessionStarted` because this event can arrive a whole turn earlier
         /// and is the point of it: the handshake is the only source, so waiting
@@ -813,6 +875,11 @@ mod tests {
                     supported_effort_levels: vec!["low".into(), "high".into()],
                     supports_auto_mode: true,
                 }],
+                modes: vec![ChatModeInfo {
+                    id: "read-only".into(),
+                    label: "Read Only".into(),
+                    hint: "Ask before writing".into(),
+                }],
                 fast_mode_state: Some("off".into()),
                 fast_mode_disabled_reason: Some("sdk_opt_in_required".into()),
                 account: Some(ChatAccount {
@@ -838,6 +905,11 @@ mod tests {
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
                     supports_auto_mode: true,
+                }],
+                modes: vec![ChatModeInfo {
+                    id: "read-only".into(),
+                    label: "Read Only".into(),
+                    hint: "Ask before writing".into(),
                 }],
                 account: Some(ChatAccount {
                     subscription_type: "Claude Pro".into(),

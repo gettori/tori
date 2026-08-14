@@ -60,7 +60,11 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   steer: "A message typed during a turn goes into that turn rather than waiting for the next one.",
   approvals:
     "Where a tool call's permission question comes from. In-protocol means the agent asks and Sway shows it, so the agent's own permission modes are the ones in force.",
-  diffs: "A tool card can show what a write changed, because Sway records the file just before it is written.",
+  // Two sources now, which is why the note names both rather than the one Sway
+  // happens to use for Claude: `before-state` is Sway reading the file ahead of
+  // the write, `agent-supplied` is the agent sending it, and a reader on an ACP
+  // harness needs to know theirs depends on which agent they picked.
+  diffs: "A tool card can show what a write changed, either because Sway recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
   budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
   history:
     "This agent can reopen a conversation it still holds, so a chat closed and reopened replays its earlier turns.",

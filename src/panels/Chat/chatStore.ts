@@ -31,6 +31,7 @@ import type {
   ChatAccount,
   ChatCapabilities,
   ChatEvent,
+  ChatModeInfo,
   ChatModelInfo,
   ContentBlock,
   FileEditKind,
@@ -247,6 +248,10 @@ export type ChatState = {
   /** The live model catalogue from the handshake. Empty means "fall back to the
    *  adapter table", not "no models". */
   models: ChatModelInfo[];
+  /** The live mode catalogue, on the same rule. For an ACP agent this is the
+   *  only source: its adapter declares no `[[chat.modes]]` because a mode there
+   *  is a request rather than a flag. */
+  modes: ChatModeInfo[];
   /** `system/init`'s fast-mode state, and the harness's reason when it is
    *  unavailable. */
   fastModeState: string | null;
@@ -348,6 +353,7 @@ export function initialChat(sessionId: string): ChatState {
     effort: null,
     pendingEffort: null,
     models: [],
+    modes: [],
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,
@@ -577,6 +583,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.agents = stringList(ev.extra, "agents");
       s.plugins = chatPlugins(ev.extra);
       s.models = ev.models;
+      s.modes = ev.modes;
       s.fastModeState = ev.fastModeState;
       s.fastModeDisabledReason = ev.fastModeDisabledReason;
       // Guarded like the catalogues below and for the same reason: this event
@@ -594,6 +601,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       s.ready = true;
       if (ev.slashCommands.length) s.slashCommands = ev.slashCommands;
       if (ev.models.length) s.models = ev.models;
+      if (ev.modes.length) s.modes = ev.modes;
       if (ev.account) s.account = ev.account;
       if (ev.capabilities) s.capabilities = ev.capabilities;
       return;

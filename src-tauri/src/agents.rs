@@ -791,6 +791,7 @@ pub fn apply_chat_template(template: &[String], vars: &[(&str, &str)]) -> Vec<St
 const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
 const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
 const BUILTIN_GEMINI: &str = include_str!("../agents/gemini.toml");
+const BUILTIN_CODEX: &str = include_str!("../agents/codex.toml");
 
 /// Every adapter compiled into the binary, source label and text.
 ///
@@ -798,10 +799,11 @@ const BUILTIN_GEMINI: &str = include_str!("../agents/gemini.toml");
 /// that emits the frontend's fallback fixture. Kept apart, a new bundled adapter
 /// would reach the app while the fixture the TypeScript fallback is checked
 /// against still described the old set - and that check would keep passing.
-const BUNDLED: [(&str, &str); 3] = [
+const BUNDLED: [(&str, &str); 4] = [
     ("bundled:claude", BUILTIN_CLAUDE),
     ("bundled:opencode", BUILTIN_OPENCODE),
     ("bundled:gemini", BUILTIN_GEMINI),
+    ("bundled:codex", BUILTIN_CODEX),
 ];
 
 fn user_agents_dir() -> PathBuf {
@@ -815,7 +817,7 @@ fn user_agents_dir() -> PathBuf {
 /// the id it would have overridden keeps its previous (built-in or
 /// earlier-loaded) entry, so one broken file can't make an agent disappear.
 ///
-/// Three built-ins ship today: one Claude-shaped file adapter and two ACP ones.
+/// Four built-ins ship today: one Claude-shaped file adapter and three ACP ones.
 /// The loop stays a loop: what makes this a registry is that nothing downstream
 /// knows how many adapters there are.
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
@@ -1042,11 +1044,11 @@ mod tests {
         assert!(claude.hooks);
     }
 
-    /// The registry mechanism is the point, not the count. Three built-ins ship
+    /// The registry mechanism is the point, not the count. Four built-ins ship
     /// and nothing downstream may assume that number.
     ///
     /// What is worth pinning is the *shape spread*: one file-backed adapter and
-    /// two protocol-backed ones, so both halves of the loader's session-plumbing
+    /// three protocol-backed ones, so both halves of the loader's session-plumbing
     /// rule are exercised by something that actually ships rather than only by a
     /// fixture.
     #[test]
@@ -1054,7 +1056,7 @@ mod tests {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "gemini", "opencode"]);
+        assert_eq!(ids, vec!["claude", "codex", "gemini", "opencode"]);
 
         let by_id = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter").clone();
         let claude = by_id("claude");
@@ -1062,7 +1064,7 @@ mod tests {
         assert!(claude.parser_kind.is_some());
         assert!(claude.running_pattern.is_some());
 
-        for id in ["opencode", "gemini"] {
+        for id in ["opencode", "gemini", "codex"] {
             let a = by_id(id);
             assert_eq!(
                 a.chat.as_ref().map(|c| c.transport),
@@ -1084,6 +1086,33 @@ mod tests {
         let find = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter");
         assert_eq!(find("opencode").verified_against.as_deref(), Some("opencode 1.18.3"));
         assert_eq!(find("gemini").verified_against, None);
+        // Codex names two versions because two binaries are involved, and the
+        // one health.rs compares against `codex --version` has to come first.
+        let codex = find("codex").verified_against.clone().expect("codex is measured");
+        assert!(codex.starts_with("codex-cli 0.147.0"), "{codex}");
+        assert!(codex.contains("codex-acp 1.2.0"), "{codex}");
+    }
+
+    /// **Codex is the one adapter whose chat binary is not its launch binary.**
+    ///
+    /// The PTY tab runs the `codex` a user installed; the chat surface runs the
+    /// first-party ACP wrapper, because `codex` has no `acp` subcommand. Pinned
+    /// on purpose: an unpinned `npx` would move the agent underneath a
+    /// `verified_against` that names a version. Anything comparing adapters by
+    /// program has to see past the runner, which is what
+    /// `catalog::launch_identity` is for.
+    #[test]
+    fn codex_drives_chat_through_a_different_binary_than_its_pty_tab() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let codex = reg.iter().find(|a| a.id == "codex").expect("codex is bundled");
+        assert_eq!(codex.program, "codex");
+        let chat = codex.chat.as_ref().expect("codex ships a chat table");
+        assert_eq!(chat.program, "npx");
+        assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.2.0"]);
+        // Everything else comes off the handshake, so there is nothing to declare.
+        assert!(chat.models.is_empty(), "the model list is the user's own, read live");
+        assert!(chat.modes.is_empty());
+        assert!(chat.effort.is_empty());
     }
 
     #[test]
@@ -1154,7 +1183,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
         let reg = build_registry_from(&dir);
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "gemini", "opencode", "x"]);
+        assert_eq!(ids, vec!["claude", "codex", "gemini", "opencode", "x"]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
