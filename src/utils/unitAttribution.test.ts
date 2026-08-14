@@ -37,9 +37,11 @@ describe("belongsToUnit", () => {
     expect(belongsToUnit(orphan, feat, units)).toBe(false);
   });
 
-  // A session can record no branch at all: an older scan, or one started
-  // outside a repo. Its files are whatever the checkout currently is, so it
-  // parks there. Every shape of "no branch" has to reach the same answer.
+  // A session can record no branch at all: an older scan, one started outside a
+  // repo, or an ACP session, whose listed row carries only sessionId/cwd/title/
+  // updatedAt and so has no branch to record. Its files are whatever the
+  // checkout currently is, so it parks there rather than borrowing a sibling's
+  // branch. Every shape of "no branch" has to reach the same answer.
   it("parks a branchless session on the checkout", () => {
     const main = plain("main", true);
     const feat = plain("feat");

@@ -10,7 +10,8 @@
 //! | [`claude`] | the model, plus Claude's wire format |
 //! | [`claude_transport`] | the seam, plus `claude`'s process |
 //! | [`acp`] | the model, plus the ACP schema |
-//! | [`acp_transport`] | the seam, plus `acp`'s process |
+//! | [`acp_sessions`] | session ids and one JSON file per ACP session |
+//! | [`acp_transport`] | the seam, plus `acp`'s process and its locators |
 //! | [`ownership`] | session ids and the process table |
 //! | [`pacing`] | the model, plus the seam's sink |
 //! | [`host`] | the seam, plus ownership and pacing |
@@ -24,6 +25,7 @@
 //! session rather than from tests only.
 
 pub mod acp;
+pub mod acp_sessions;
 pub mod acp_transport;
 pub mod approval;
 pub mod claude;

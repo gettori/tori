@@ -35,13 +35,21 @@ use super::transport::{AgentTransport, StartSpec};
 /// one. `ChatTransport::as_str` is exhaustive for the same reason on the
 /// serialization side; between them a new harness has exactly two compiler-named
 /// obligations and no silent ones.
-fn make_transport(transport: ChatTransport, session_id: &str) -> Box<dyn AgentTransport> {
+fn make_transport(
+    transport: ChatTransport,
+    session_id: &str,
+    agent_id: &str,
+) -> Box<dyn AgentTransport> {
     match transport {
         ChatTransport::ClaudeStreamJson => Box::new(ClaudeTransport::new(session_id)),
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
-        // makes a new ACP harness a TOML file rather than a Rust change.
-        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, AcpOverrides::default())),
+        // makes a new ACP harness a TOML file rather than a Rust change. The
+        // adapter id travels with it only so the session locators this transport
+        // writes can name the harness they came from.
+        ChatTransport::Acp => {
+            Box::new(AcpTransport::new(session_id, agent_id, AcpOverrides::default()))
+        }
     }
 }
 
@@ -291,6 +299,7 @@ pub async fn chat_spawn(
 
     let transport = chat.transport;
     let id_for_factory = session_id.clone();
+    let agent_for_factory = agent_id.clone();
     let spawned = host.spawn(
         &session_id,
         &tab_id,
@@ -298,7 +307,7 @@ pub async fn chat_spawn(
             let _ = on_event.send(event);
         }),
         spec,
-        move || make_transport(transport, &id_for_factory),
+        move || make_transport(transport, &id_for_factory, &agent_for_factory),
     );
     let spawned = match spawned {
         Ok(s) => s,
@@ -1577,7 +1586,7 @@ mod tests {
     fn the_claude_transport_is_what_the_factory_builds_for_the_bundled_adapter() {
         let chat = claude_chat();
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
-        let t = make_transport(chat.transport, "s1");
+        let t = make_transport(chat.transport, "s1", "claude");
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 }
