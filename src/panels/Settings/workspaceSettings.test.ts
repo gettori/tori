@@ -196,7 +196,6 @@ describe("every frontend setting has a field in the struct that persists it", ()
     streaming: true,
     density: "comfortable",
     toolOutputLines: 20,
-    approvalAutoDenySecs: 120,
     showSwayHooks: false,
     maxConcurrentChats: 4,
   };
