@@ -84,8 +84,17 @@ hooks = true
 #
 # `logout_args` is non-interactive too: measured against an isolated home with
 # nothing signed in, it printed "Successfully logged out" and exited 0.
+#
+# `home_default` is where CLAUDE_CONFIG_DIR points when it is unset, and it is
+# what makes a second account's history findable: measured in Phase 0, a session
+# run under an isolated home wrote its transcript to
+# "<isolated home>/projects/<slugified-cwd>/<uuid>.jsonl" and the shared
+# ~/.claude/projects gained nothing. So a profile's root is the `dir` below with
+# this prefix swapped for that profile's home, and the layout under it is the
+# same one.
 [accounts]
 home_env = "CLAUDE_CONFIG_DIR"
+home_default = "~/.claude"
 login_args = ["auth", "login"]
 logout_args = ["auth", "logout"]
 whoami_args = ["auth", "status"]

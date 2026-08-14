@@ -19,7 +19,7 @@
 //! locator naming one the agent has since forgotten simply fails to load, which
 //! is the same outcome as a deleted transcript.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
 
@@ -111,6 +111,33 @@ pub fn sway_id_for(acp_session_id: &str) -> String {
 pub fn record(session: &AcpSession) -> Result<(), String> {
     let text = serde_json::to_string_pretty(session).map_err(|e| e.to_string())?;
     crate::owned_state::write_atomically(&locator_path(&session.id), &text)
+}
+
+/// Drop Sway's record of one session, given the locator path a listing row
+/// carried.
+///
+/// **This deletes nothing of the agent's.** A session with no transcript keeps
+/// its conversation wherever the agent keeps it, and ACP has no verb for
+/// removing one, so the whole of what "delete" can mean here is that Sway stops
+/// listing it.
+///
+/// Refuses a path outside the store rather than removing it. `delete_session`
+/// is handed a `path` that round-trips through the frontend, and the one thing
+/// this branch must not become is an arbitrary-file delete reached by naming a
+/// protocol-backed agent.
+pub fn forget(path: &Path) -> Result<(), String> {
+    if path.parent() != Some(dir().as_path()) {
+        return Err(format!(
+            "{} is not one of Sway's session records, so there is nothing here to forget",
+            path.display()
+        ));
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        // Already gone is the outcome asked for.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Read one session's locator, or `None` when Sway has no record of it.

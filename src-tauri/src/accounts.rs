@@ -910,6 +910,7 @@ mod tests {
     fn accounts_config(home_env: Option<&str>, isolation: bool) -> crate::agents::AccountsConfig {
         crate::agents::AccountsConfig {
             home_env: home_env.map(|s| s.to_string()),
+            home_default: None,
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],
@@ -1187,6 +1188,7 @@ mod tests {
         let adapter = crate::agents::test_adapter("thing");
         let accounts = crate::agents::AccountsConfig {
             home_env: None,
+            home_default: None,
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],

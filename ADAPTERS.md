@@ -172,9 +172,11 @@ serve_client_fs = false   # optional, default false; advertise Sway's filesystem
 # --- v3 only; omit the whole table for an agent Sway does not sign in ---
 [accounts]
 home_env = "..."            # optional; the env var pointing the agent at an isolated profile home
+home_default = "~/..."      # optional; where home_env points when unset - required with isolation + [discovery]
 login_args = []             # optional; args that start an interactive login, run in a real PTY
 logout_args = []            # optional; args that sign the profile out
 whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
+whoami_kind = "..."         # required with whoami_args; claude_json | exit_code | opencode_credentials
 supports_isolation = false  # optional, default false; whether two accounts can coexist - see below
 ```
 
@@ -283,7 +285,23 @@ adapter that does not claim isolation offers no "add account" action at all.
 `login_args` always runs in a real PTY. `claude auth login` is browser OAuth
 with no non-interactive variant and `setup-token` is interactive too, so a
 captured login would hang rather than fail. `whoami_args` is the opposite: it
-must be bounded and answer without a terminal.
+must be bounded and answer without a terminal, and it comes with a
+`whoami_kind` naming the shape of its answer. No two harnesses report sign-in
+the same way (claude prints JSON, codex says it in its exit code, opencode
+exits 0 either way and states a credential count), so there is nothing to fall
+back on and args without a kind are rejected.
+
+**`home_default` is what makes a second account's history findable.** An agent
+pointed at an isolated home writes its transcripts under that home, in the same
+layout it uses by default, so Sway finds a profile's sessions by taking
+`[discovery] dir` and swapping this prefix for the profile's own home. Two
+declared paths rather than one declared suffix: the suffix is then derived, and
+a `dir` that does not sit under `home_default` yields no root at all rather than
+a guessed one. Declaring `supports_isolation = true` alongside a `[discovery]`
+table without it is rejected, because the second account would sign in
+successfully and then show an empty history forever. An agent whose sessions
+only its protocol reaches declares no `[discovery]` table and so is never asked
+for one.
 
 ### `capabilities.hooks`
 

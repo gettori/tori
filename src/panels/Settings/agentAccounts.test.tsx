@@ -5,7 +5,7 @@
 // no credential to assert on. Phase 0 measured that `claude` keeps its tokens in
 // the login Keychain, so a profile home holds nothing secret.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { OPEN_TERMINAL, type OpenTerminal } from "../../utils/events";
@@ -254,6 +254,27 @@ describe("signing in", () => {
     expect(tabs[1].env).toEqual({ CLAUDE_CONFIG_DIR: "/canonical/work" });
     // Two logins, so two tabs rather than one that gets reused.
     expect(tabs[0].id).not.toBe(tabs[1].id);
+  });
+
+  // An account is a transcript root. Nothing watches a root that did not exist
+  // when the watcher started, so the new account's sessions would appear only
+  // when something else happened to ask for a listing.
+  it("watches the new account's transcripts as soon as it exists", async () => {
+    const { container, getByText } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+
+    fireEvent.click(getByText("Add account"));
+    // The modal portals out of the component's own container.
+    const input = await waitFor(() => screen.getByRole("textbox"));
+    fireEvent.input(input, { target: { value: "Work" } });
+    fireEvent.click(screen.getByText("Create and sign in"));
+
+    await waitFor(() =>
+      expect(invoked.mock.calls.some((c) => c[0] === "add_agent_account")).toBe(true),
+    );
+    await waitFor(() =>
+      expect(invoked.mock.calls.some((c) => c[0] === "sessions_watch_start")).toBe(true),
+    );
   });
 
   it("offers no sign-in button for a profile already signed in", async () => {
