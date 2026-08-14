@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../../test/axe";
 
 // The file tree's editable mode, driven through the real component.
@@ -698,6 +698,88 @@ describe("dragging in the tree", () => {
       from: `${ROOT}/src/main.ts`,
       to: `${ROOT}/main.ts`,
     });
+  });
+});
+
+// Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). These
+// assertions describe what a right-click menu *does*, so they must survive a
+// change of implementation; the phase-2 wrapper is what pins where it opens,
+// because no position assertion can span both (the current Popover reports the
+// cursor in jsdom only because a zero-size rect skips its clamp, while Kobalte
+// places asynchronously through floating-ui onto a different node).
+//
+// Selector coupling, i.e. what a migration has to rewrite here:
+//   - `role="menu"` on the surface: STABLE, Kobalte's Content sets it too.
+//   - `within(menu).getByText(...)`: STABLE, the labels are the contract.
+//   - Escape and outside-click as *document* events: STABLE in effect, but they
+//     move from Popover's own document listeners to Kobalte's dismissable
+//     layer, so only the closing is guaranteed, never the mechanism.
+//   - Rows are plain divs today with no `role="menuitem"`. Deliberately not
+//     asserted, so that the migration may add it without editing this block.
+describe("the row context menu", () => {
+  it("offers a file only the actions a file has", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+
+    const m = await screen.findByRole("menu");
+    expect(within(m).getByText("Rename")).toBeTruthy();
+    expect(within(m).getByText("Delete")).toBeTruthy();
+    // Creating happens *inside* a container, so a file offers neither. The
+    // toolbar has its own "New File", which is why this is scoped to the menu.
+    expect(within(m).queryByText("New File")).toBeNull();
+    expect(within(m).queryByText("New Folder")).toBeNull();
+  });
+
+  it("offers a folder the create actions as well", async () => {
+    mountProject();
+    await screen.findByText("src");
+
+    fireEvent.contextMenu(screen.getByText("src"));
+
+    const m = await screen.findByRole("menu");
+    expect(within(m).getByText("New File")).toBeTruthy();
+    expect(within(m).getByText("New Folder")).toBeTruthy();
+    expect(within(m).getByText("Rename")).toBeTruthy();
+    expect(within(m).getByText("Delete")).toBeTruthy();
+  });
+
+  it("closes on Escape without acting", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    await screen.findByRole("menu");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(sent("fs_rename")).toHaveLength(0);
+    expect(sent("fs_delete")).toHaveLength(0);
+  });
+
+  it("closes on an outside click without acting", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    await screen.findByRole("menu");
+
+    fireEvent.mouseDown(document.body);
+
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(sent("fs_rename")).toHaveLength(0);
+    expect(sent("fs_delete")).toHaveLength(0);
+  });
+
+  it("closes once a row is picked, so the action runs against a shut menu", async () => {
+    mountProject({ askText: answering("guide.md") });
+    await screen.findByText("README.md");
+    fireEvent.contextMenu(screen.getByText("README.md"));
+
+    fireEvent.click(within(await screen.findByRole("menu")).getByText("Rename"));
+
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
   });
 });
 
