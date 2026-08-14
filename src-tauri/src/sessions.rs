@@ -2771,6 +2771,50 @@ mod tests {
         );
     }
 
+    /// **Opening a folder must not start a single agent.** Every ACP row in the
+    /// sidebar comes out of a locator Sway wrote during a session the user
+    /// opened by hand, so listing is a directory read. The alternative anyone
+    /// would reach for, asking each installed harness what it has, would spawn
+    /// every ACP agent on the machine to render a list, on every folder open.
+    ///
+    /// Structural, because the failure is a call that should not be there rather
+    /// than a wrong answer: `acp_sessions()` returning good rows proves nothing
+    /// about what it started to get them. The call site is assembled so this
+    /// line is not itself a match, the same way the `pgrep` count above is.
+    #[test]
+    fn opening_a_folder_reads_locators_rather_than_starting_an_agent() {
+        let source = include_str!("chat/acp_sessions.rs");
+        let spawn = format!("Command::new{}", "(");
+        assert_eq!(
+            source.matches(&spawn).count(),
+            0,
+            "the locator store must never spawn a process: it is a directory read"
+        );
+
+        // And the reading half really is a read: a locator written to a redirected
+        // store comes back with no agent alive anywhere.
+        let dir = std::env::temp_dir().join(format!("sway-locator-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::chat::acp_sessions::use_dir_for_tests(dir.clone());
+        crate::chat::acp_sessions::record(&crate::chat::acp_sessions::AcpSession {
+            id: "ses_read".into(),
+            agent: "codex".into(),
+            acp_session_id: "codex-123".into(),
+            cwd: "/repo".into(),
+            title: "from a listing".into(),
+            updated_at: 1_786_708_800,
+        })
+        .expect("the locator should write");
+
+        let rows = acp_sessions();
+        let _ = std::fs::remove_dir_all(&dir);
+        let row = rows.iter().find(|r| r.id == "ses_read").unwrap_or_else(|| {
+            let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+            panic!("the recorded session should list, got {ids:?}")
+        });
+        assert_eq!(row.agent, "codex", "a listed row names the harness that produced it");
+    }
+
     #[test]
     /// One adapter ships, so one directory is watched. The count is the claim:
     /// a stale root left behind would make the watcher create and watch a
