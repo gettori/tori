@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { rightClick } from "../../test/menus";
 
 // What the sidebar is *for* once its session level is gone: spaces, projects,
 // branch-units, the rollup badges that report what is live underneath, and the
@@ -306,6 +307,75 @@ describe("the sidebar levels that outlive the session rows", () => {
     fireEvent.contextMenu(await row("feat"));
     expect(await screen.findByText("New session")).toBeTruthy();
     expect(screen.getByText("Remove worktree")).toBeTruthy();
+  });
+
+  // Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). What the
+  // three menus *contain* is asserted above; this is how they open and close, so
+  // it has to survive a change of implementation. Where a menu opens is not
+  // pinned anywhere: no position assertion spans both implementations, so the
+  // phase-2 wrapper owns that.
+  //
+  // Selector coupling, i.e. what a migration has to rewrite here:
+  //   - `role="menu"` on the surface: STABLE, Kobalte's Content sets it too.
+  //   - `defaultPrevented` on the dispatched event: STABLE, and load-bearing.
+  //     It is the whole difference between a row that owns its right-click and
+  //     one that lets the browser's own menu through.
+  //   - Escape and outside-click as *document* events: STABLE in effect only.
+  //     They move from Popover's document listeners to Kobalte's dismissable
+  //     layer, so assert the closing, never the mechanism.
+  describe("how the context menus open and close", () => {
+    it("claims the right-click on every row that has a menu", async () => {
+      mount(["p:work/repo"]);
+
+      // All three levels suppress the browser's own menu, because all three
+      // answer with one of their own.
+      expect(rightClick(await screen.findByRole("button", { name: "work" }))).toBe(true);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(rightClick(await row("repo"))).toBe(true);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(rightClick(await row("feat"))).toBe(true);
+    });
+
+    it("closes on Escape", async () => {
+      mount(["p:work/repo"]);
+      fireEvent.contextMenu(await row("repo"));
+      await screen.findByRole("menu");
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    });
+
+    it("closes on an outside click", async () => {
+      mount(["p:work/repo"]);
+      fireEvent.contextMenu(await row("repo"));
+      await screen.findByRole("menu");
+
+      fireEvent.mouseDown(document.body);
+
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    });
+
+    it("closes when a row is picked", async () => {
+      mount(["p:work/repo"]);
+      fireEvent.contextMenu(await row("feat"));
+
+      fireEvent.click(await screen.findByText("Commit log"));
+
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    });
+
+    it("replaces the open menu rather than stacking a second one", async () => {
+      mount(["p:work/repo"]);
+      fireEvent.contextMenu(await row("repo"));
+      await screen.findByRole("menu");
+
+      fireEvent.contextMenu(await row("feat"));
+
+      // One surface at a time, whichever row was asked last.
+      await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(1));
+      expect(await screen.findByText("New session")).toBeTruthy();
+    });
   });
 
   it("opens a branch-unit's commit log, selecting that unit on the way", async () => {
