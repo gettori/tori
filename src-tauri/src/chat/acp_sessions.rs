@@ -197,9 +197,13 @@ pub struct ListedSession {
 ///     opened, so adopting the canonical form would drop the row out of the very
 ///     folder it belongs to. Found by the live reopen test, where the two forms
 ///     differed by exactly that prefix.
-///   * **A missing `updatedAt` falls back to `now`, not to zero.** An agent that
-///     omits the field would otherwise pin every one of its sessions to 1970 and
-///     bury them under everything else in the history list.
+///   * **A missing `updatedAt` falls back to the recorded time, then to `now`,
+///     never to zero.** Zero would pin an agent that omits the field to 1970 and
+///     bury its sessions under everything else. But `now` is only right the first
+///     time: a listing runs on every connection, so re-dating a known row to the
+///     clock floats every one of that agent's sessions to the top of the history
+///     list whenever the user opens any chat at all. `now` is therefore for a row
+///     nobody has seen before, which is the only case with nothing better to use.
 pub fn adopt(
     agent: &str,
     listed: &[ListedSession],
@@ -226,6 +230,7 @@ pub fn adopt(
                     .updated_at
                     .as_deref()
                     .and_then(epoch_from_iso8601)
+                    .or_else(|| existing.map(|k| k.updated_at))
                     .unwrap_or(now),
             }
         })
@@ -441,6 +446,33 @@ mod tests {
             99,
         );
         assert_eq!(rows[0].updated_at, 1_786_708_800);
+    }
+
+    /// The other half of that rule, and the one with teeth: a listing runs on
+    /// every connection, so dating a *known* row to the clock would float every
+    /// session of an agent that omits `updatedAt` to the top of the history list
+    /// each time the user opened any chat at all.
+    #[test]
+    fn a_known_row_with_no_timestamp_keeps_the_time_it_was_recorded_with() {
+        let rows = adopt(
+            "opencode",
+            &[listed("ses_a", None, None)],
+            &[known("u", "ses_a")],
+            99,
+        );
+        assert_eq!(rows[0].updated_at, 1, "the recorded time, not the clock");
+    }
+
+    /// What makes skipping an unchanged locator safe: a second listing of the
+    /// same unchanged row adopts to exactly the value already on disk, so the
+    /// caller's equality check is comparing like with like rather than
+    /// re-deriving a field and rewriting the file every time.
+    #[test]
+    fn a_second_listing_of_an_unchanged_row_adopts_to_what_is_already_recorded() {
+        let row = listed("ses_a", Some("fix the sidebar"), Some("2026-08-14T12:00:00Z"));
+        let first = adopt("opencode", std::slice::from_ref(&row), &[], 99);
+        let second = adopt("opencode", &[row], &first, 1_000);
+        assert_eq!(first, second);
     }
 
     /// Measured: `opencode acp` 1.18.3 advertises `session/list` and returns

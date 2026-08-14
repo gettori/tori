@@ -1045,23 +1045,38 @@ fn lists_sessions(init: &InitializeResponse) -> bool {
 /// worse than the limit it describes.
 const MAX_SESSION_PAGES: usize = 10;
 
-/// Ask the agent what sessions it has here, and write a locator for each.
+/// Ask the agent what sessions it has here, and write a locator for each row
+/// that is new or has changed. Returns how many it wrote, which on a second
+/// connection with nothing new is zero.
 ///
 /// The `cwd` filter is sent because the protocol offers one, but nothing relies
 /// on the agent honouring it: each row records its own `cwd` and the sidebar
 /// filters on that, so an agent that returns everything costs a few extra
 /// locators rather than a folder full of another project's sessions.
+///
+/// **The filter is sent canonicalized, and the rows come back re-spelled.**
+/// Measured on `codex-acp` 1.2.0: the filter is matched as a string, and a
+/// directory macOS hands out as `/var/...` is recorded by the agent as
+/// `/private/var/...`, so the same directory under its other name listed nothing
+/// at all. The return leg is the same fact from the other side: a row Sway has
+/// never seen would otherwise be filed under the agent's spelling, and the
+/// sidebar's prefix match against the folder the user opened would then hide the
+/// very rows this listing exists to find. `adopt` already keeps Sway's spelling
+/// for a row it knows; this extends that to a row it is meeting for the first
+/// time, which is the whole of the import case.
 async fn refresh_listing(
     conn: &ConnectionTo<Agent>,
     agent: &str,
     cwd: &str,
 ) -> Result<usize, String> {
     let known = acp_sessions::all();
+    let ours = canonical(cwd);
+    let filter = ours.clone().unwrap_or_else(|| cwd.to_string());
     let mut cursor: Option<String> = None;
     let mut rows: Vec<ListedSession> = Vec::new();
     for _ in 0..MAX_SESSION_PAGES {
         let mut request = ListSessionsRequest::new();
-        request.cwd = Some(std::path::PathBuf::from(cwd));
+        request.cwd = Some(std::path::PathBuf::from(&filter));
         request.cursor = cursor;
         let page = conn
             .send_request(request)
@@ -1075,15 +1090,40 @@ async fn refresh_listing(
         }
     }
 
+    // Resolved once, not once per row: a listing is up to ten pages and every
+    // row would otherwise pay for canonicalizing the same directory again.
+    if let Some(ours) = &ours {
+        for row in &mut rows {
+            if row.cwd != cwd && canonical(&row.cwd).as_ref() == Some(ours) {
+                row.cwd = cwd.to_string();
+            }
+        }
+    }
+
     let adopted = acp_sessions::adopt(agent, &rows, &known, now_secs());
     let mut written = 0;
     for session in &adopted {
+        // A listing runs on every connection and most of it is the same rows as
+        // last time, so writing the ones that did not change is pure churn: N
+        // files rewritten every time the user opens any chat of this agent.
+        if known.contains(session) {
+            continue;
+        }
         // One unwritable locator must not lose the rest of the page.
         if acp_sessions::record(session).is_ok() {
             written += 1;
         }
     }
     Ok(written)
+}
+
+/// A path with its symlinks resolved, or `None` when it does not resolve.
+///
+/// Kept out of [`acp_sessions::adopt`] on purpose: that function is pure so what
+/// a listed row becomes is testable without a filesystem, and this is the one
+/// part of the question only the filesystem can answer.
+fn canonical(path: &str) -> Option<String> {
+    std::fs::canonicalize(path).ok().map(|p| p.to_string_lossy().into_owned())
 }
 
 fn listed_session(info: &agent_client_protocol::schema::v1::SessionInfo) -> ListedSession {
@@ -2004,6 +2044,184 @@ mod tests {
             .unwrap_or_else(|| panic!("the diff block became a FileEdit: {done:?}"));
         assert!(edit.0.ends_with("hello.txt"), "naming the file it wrote: {}", edit.0);
         assert!(edit.1.is_some(), "with the prior content addressable as a blob");
+    }
+
+    /// The symlink case, without a live agent.
+    ///
+    /// This is the same fact `[[gotchas#ensure_inside returns the caller's
+    /// unresolved path]]` records from the install side and Phase 0 measured on
+    /// `CLAUDE_CONFIG_DIR`: on macOS one directory has two spellings, and a
+    /// harness that compares paths as strings sees two directories.
+    #[test]
+    fn two_spellings_of_one_directory_resolve_to_one_path() {
+        let base = std::env::temp_dir().join(format!("sway-samedir-{}", std::process::id()));
+        let real = base.join("real");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&real).unwrap();
+        let real_s = real.to_string_lossy().into_owned();
+
+        #[cfg(unix)]
+        {
+            let link = base.join("link");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let link_s = link.to_string_lossy().into_owned();
+            assert_eq!(
+                canonical(&link_s),
+                canonical(&real_s),
+                "a symlink and its target are one directory"
+            );
+            assert_ne!(link_s, real_s, "under two spellings, which is the whole problem");
+        }
+
+        // A directory that does not resolve answers `None` rather than echoing
+        // the path back. That is what keeps a deleted cwd from comparing equal to
+        // another deleted cwd and re-filing one session under another's folder.
+        let gone = base.join("gone").to_string_lossy().into_owned();
+        assert_eq!(canonical(&gone), None);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **Codex history, over the one method Codex actually answers.**
+    ///
+    /// The plan this phase belongs to expected Codex history to arrive over
+    /// `thread/list`, on a native `codex app-server` transport. That transport
+    /// was dropped with the user after measurement, so Codex reaches Sway as an
+    /// ACP client and `session/list` is the whole of the route. What was left
+    /// unmeasured is whether the wrapper answers it with anything: the registry's
+    /// probe records `sessionList: true`, and a published capability is the
+    /// registry's word, not Sway's, and not a promise of rows either way
+    /// (`opencode acp` 1.18.3 advertises the same and returns nothing).
+    ///
+    /// So this drives two connections. The first opens a session and says one
+    /// word to make it real; the second is a *different* Sway session in the
+    /// same directory, and it must come away holding a locator for the first,
+    /// which it can only have learned from the listing.
+    #[test]
+    #[ignore = "drives the real `npx @agentclientprotocol/codex-acp` twice: costs tokens"]
+    fn codex_lists_the_sessions_it_already_had_over_session_list() {
+        use super::super::transport::new_sink;
+
+        let adapter = crate::agents::find("codex").expect("codex ships bundled");
+        let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
+
+        let root = std::env::temp_dir()
+            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join("codex-listing");
+        std::fs::create_dir_all(&root).unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+        // Deliberately the spelling macOS hands out (`/var/...`), not the
+        // resolved one. Codex records the resolved form and matches the filter as
+        // a string, so this listing came back empty until `refresh_listing`
+        // started canonicalizing it. Keeping the raw spelling here is what makes
+        // this a regression test rather than a demonstration.
+        let cwd = root.to_string_lossy().into_owned();
+
+        let open = |id: &str| {
+            let args =
+                crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
+            let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+            let collected = seen.clone();
+            let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
+            let mut transport = AcpTransport::new(id, &adapter.id, chat.acp.clone());
+            transport
+                .start(
+                    StartSpec {
+                        session_id: id.to_string(),
+                        cwd: cwd.clone(),
+                        program: chat.program.clone(),
+                        args,
+                        env: HashMap::new(),
+                    },
+                    sink,
+                )
+                .expect("the adapter's launch should start the agent");
+            (transport, seen)
+        };
+
+        let (mut first, seen) = open("live-codex-list-a");
+        wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        first
+            .send(&[ContentBlock::Text {
+                text: "Reply with exactly the word: marker".to_string(),
+            }])
+            .expect("the first turn should submit");
+        wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = first.close();
+
+        let earlier = acp_sessions::read("live-codex-list-a")
+            .expect("the first session must leave a locator");
+        assert_eq!(earlier.agent, "codex", "a locator names the harness that wrote it");
+
+        // **The store is wiped before the second connection, and that is the
+        // whole design of this test.** `session/new` records a locator of its
+        // own, so leaving it in place would let the assertion below pass on the
+        // first session's leftovers whether or not the agent listed anything.
+        // With the store empty, the earlier session can only come back over the
+        // wire.
+        std::fs::remove_dir_all(root.join("locators")).expect("the store should clear");
+        assert!(acp_sessions::all().is_empty(), "the store starts empty");
+
+        let (mut second, later) = open("live-codex-list-b");
+        let events = wait_for(&later, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+                && acp_sessions::all()
+                    .iter()
+                    .any(|s| s.acp_session_id == earlier.acp_session_id)
+        });
+        let _ = second.close();
+
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                ChatEvent::SessionError { message, .. } if message.contains("would not list")
+            )),
+            "codex-acp must answer session/list rather than refusing it: {events:?}"
+        );
+        let recorded = acp_sessions::all();
+        assert!(
+            recorded.iter().any(|s| s.acp_session_id == earlier.acp_session_id),
+            "the earlier session must arrive over the listing: {recorded:?}"
+        );
+        assert!(
+            recorded.iter().all(|s| s.agent == "codex"),
+            "every row a codex listing produced belongs to codex: {recorded:?}"
+        );
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|s| s.acp_session_id == earlier.acp_session_id)
+                .count(),
+            1,
+            "the listing must not add a second row for a session Sway already had"
+        );
+        // And it is filed under the folder the user opened, not the one the agent
+        // resolved it to. Without this the row imports and the sidebar hides it,
+        // which is the failure that looks exactly like the listing not working.
+        assert_eq!(
+            recorded
+                .iter()
+                .find(|s| s.acp_session_id == earlier.acp_session_id)
+                .map(|s| s.cwd.as_str()),
+            Some(cwd.as_str()),
+            "an imported row keeps Sway's spelling of the directory"
+        );
+
+        // Sway's own name for it is gone with the store, so a row it learns from
+        // a listing is filed under an id derived from the agent's. That is the
+        // shape a session started outside Sway arrives in.
+        assert_eq!(
+            recorded
+                .iter()
+                .find(|s| s.acp_session_id == earlier.acp_session_id)
+                .map(|s| s.id.clone()),
+            Some(acp_sessions::sway_id_for(&earlier.acp_session_id)),
+            "a row with no prior locator is filed under an id derived from the agent's"
+        );
     }
 
     /// The capabilities Sway publishes for an ACP session come off the wire.
