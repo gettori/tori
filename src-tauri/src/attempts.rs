@@ -28,7 +28,7 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::chat::rules::{project_state_path, write_atomically};
+use crate::owned_state::{project_state_path, write_atomically};
 
 /// The one directory attempts live in, relative to the project root.
 ///

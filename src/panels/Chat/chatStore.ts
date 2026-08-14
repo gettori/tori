@@ -14,12 +14,15 @@
 //
 // Two ordering facts drive the whole design:
 //
-//   - Events arrive on two unsynchronised channels. The approval prompt comes
-//     over the Unix socket from a forked hook helper; the `assistant` frame
-//     declaring the same tool call comes over the child's stdout on another
-//     thread. Nothing orders them, so a tool card is materialized on first
-//     reference to a `toolUseId` from whichever lands first, and the later one
-//     fills in what it knows without resetting what is already there.
+//   - Nothing here depends on the order a tool call is announced in. This was
+//     written when the approval prompt arrived over a Unix socket from a forked
+//     hook helper while the `assistant` frame declaring the same call arrived on
+//     the child's stdout, with nothing ordering the two. That socket is gone -
+//     the harness asks in-protocol now - but the property is kept rather than
+//     leaned on: a tool card is materialized on first reference to a
+//     `toolUseId` from whichever frame lands first, and the later one fills in
+//     what it knows without resetting what is already there. Two transports
+//     feed this store and neither is asked to promise an order.
 //   - Deltas interleave with tool calls. Text after a tool call is a new
 //     bubble, not an append to the one before it, so the open bubble is closed
 //     whenever anything else is appended.
@@ -53,8 +56,8 @@ export type ToolCardState = "awaitingApproval" | "running" | "ok" | "error" | "d
 export type PendingApproval = {
   requestId: string;
   autoDenyAtMs: number | null;
-  /** Actions the harness itself offered for this call. Empty for a prompt the
-   *  `PreToolUse` bridge raised, which has none to offer. */
+  /** Actions the harness itself offered for this call. Empty for a harness that
+   *  offers none rather than meaning it offered nothing. */
   suggestions: PermissionSuggestion[];
   /** The subagent that made the call, or null for the main agent. */
   agentId: string | null;
@@ -104,9 +107,11 @@ export type ToolItem = {
 /** One hook frame, as a transcript row.
  *
  *  One row per frame rather than one per hook execution: the `started` and
- *  `finished` frames both appear. Sway's own approval hook is folded away by
- *  default (`swayOwned`), which is what keeps a 60-tool-call turn from adding
- *  120 rows of Sway's own plumbing. */
+ *  `finished` frames both appear. A hook that ran as configured is folded away
+ *  by default, which is what keeps a 60-tool-call turn from adding 120 rows of
+ *  plumbing; `swayOwned` names whose hook a surviving row belongs to, since
+ *  `name` cannot - it reports the *tool*, so Sway's hook on a `Write` and a
+ *  user's hook on the same `Write` are both `PreToolUse:Write`. */
 export type HookItem = {
   kind: "hook";
   id: string;
@@ -123,20 +128,6 @@ export type HookItem = {
 
 export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem;
 
-/**
- * The transcript rows to render, given whether hook plumbing is shown.
- *
- * A hook that succeeded is an answer to a question nobody asked: it ran, as
- * configured, the way it does on every session. So by default a hook earns a
- * row only by **failing** (a non-zero exit), which is the one time it is the
- * most important thing on screen and nothing else explains what happened.
- * Sway's own approval hook stays folded even then - its verdict already
- * renders on the tool card it gated, and it fires twice per tool call, so a
- * 60-call turn would otherwise add 120 rows of Sway's own plumbing.
- *
- * The setting reveals everything, and nothing is ever dropped from the state,
- * so the toggle works on a session already in progress.
- */
 /**
  * Human prompts this store holds, replayed history included.
  *
@@ -164,9 +155,28 @@ export function toolCallsSeen(s: ChatState): number {
   return s.items.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
 }
 
+/**
+ * The transcript rows to render, given whether hook plumbing is shown.
+ *
+ * A hook that succeeded is an answer to a question nobody asked: it ran, as
+ * configured, the way it does on every session. So a hook earns a row only by
+ * **failing** (a non-zero exit), which is the one time it is the most important
+ * thing on screen and nothing else explains what happened.
+ *
+ * **A failure is shown whoever's hook it was.** This used to fold Sway's own
+ * rows away even then, which read as correct only because the marker was never
+ * actually landing: Sway's hook decided tool calls, and its verdict already
+ * rendered on the tool card it gated. Sway's only hook now captures a
+ * before-state and decides nothing, so its failing is news nothing else
+ * carries - the diffs are silently gone. `swayOwned` decides the row's *label*
+ * rather than whether it appears.
+ *
+ * The setting reveals everything, and nothing is ever dropped from the state,
+ * so the toggle works on a session already in progress.
+ */
 export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean): ChatItem[] {
   if (showAllHooks) return items.slice();
-  return items.filter((it) => it.kind !== "hook" || (!it.swayOwned && hookFailed(it)));
+  return items.filter((it) => it.kind !== "hook" || hookFailed(it));
 }
 
 /** The one outcome worth a transcript row: the harness reported a non-zero

@@ -56,11 +56,12 @@ function modeLabel(mode: PermissionMode): string {
  * headline over the evidence rather than a replacement for it.
  *
  * Five answers, which are three decisions crossed with how far they reach:
- * allow this call, allow it for this session, allow it for this project (a
- * Sway-owned rule, never `~/.claude/settings.json`), deny, or deny with a
- * typed reason. The reason is not cosmetic - it reaches the model as the tool
- * result, so "not that file, use the fixture" redirects the turn instead of
- * just stopping it.
+ * allow this call, allow it for this session, allow it for this project, deny,
+ * or deny with a typed reason. The reach travels back to the harness in its own
+ * answer and is recorded in the harness's own grammar; Sway keeps no rule store
+ * of its own and writes nothing to `~/.claude/settings.json`. The reason is not
+ * cosmetic - it reaches the model as the tool result, so "not that file, use the
+ * fixture" redirects the turn instead of just stopping it.
  */
 export default function PermissionPrompt(props: {
   card: ToolItem;

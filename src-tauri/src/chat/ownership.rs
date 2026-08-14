@@ -256,7 +256,7 @@ fn load_claims_from(path: &std::path::Path) -> HashMap<String, Claim> {
 /// primitive the sibling stores already use. Claims were the one store still
 /// outside it.
 fn save_claims_to(path: &std::path::Path, claims: &HashMap<String, Claim>) -> Result<(), String> {
-    crate::chat::rules::write_atomically(path, &serialize_claims(claims))
+    crate::owned_state::write_atomically(path, &serialize_claims(claims))
 }
 
 /// Pids `kill` interprets as something other than one process: 0 is "every

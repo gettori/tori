@@ -110,7 +110,7 @@ pub fn sway_id_for(acp_session_id: &str) -> String {
 /// Write one session's locator, replacing any previous.
 pub fn record(session: &AcpSession) -> Result<(), String> {
     let text = serde_json::to_string_pretty(session).map_err(|e| e.to_string())?;
-    super::rules::write_atomically(&locator_path(&session.id), &text)
+    crate::owned_state::write_atomically(&locator_path(&session.id), &text)
 }
 
 /// Read one session's locator, or `None` when Sway has no record of it.

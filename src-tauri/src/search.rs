@@ -712,7 +712,7 @@ pub fn replace_in_files(
         for (s, e, new) in edits.iter().rev() {
             text.replace_range(*s..*e, new);
         }
-        if let Err(e) = crate::chat::rules::write_atomically(&abs, &text) {
+        if let Err(e) = crate::owned_state::write_atomically(&abs, &text) {
             skip(&e);
             continue;
         }
@@ -836,7 +836,7 @@ pub fn apply_line_edits(root: String, files: Vec<FileEdits>) -> Result<ApplyResu
         for (s, e, new) in edits.iter().rev() {
             text.replace_range(*s..*e, new);
         }
-        if let Err(e) = crate::chat::rules::write_atomically(&abs, &text) {
+        if let Err(e) = crate::owned_state::write_atomically(&abs, &text) {
             skip(&e);
             continue;
         }
