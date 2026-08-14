@@ -42,12 +42,17 @@ pub enum ChatTransport {
     /// `claude -p --input-format stream-json --output-format stream-json`,
     /// driven as one long-lived child with stdin held open.
     ClaudeStreamJson,
+    /// The Agent Client Protocol over a child's stdio, driven by the
+    /// `agent-client-protocol` crate. Unlike `ClaudeStreamJson` this is not one
+    /// vendor's wire format: every agent speaking ACP first-party reaches Sway
+    /// through this one transport plus its own TOML.
+    Acp,
 }
 
 impl ChatTransport {
     /// Every transport, so `from_str` can be derived from `as_str` instead of
     /// repeating the wire strings in a second, independently-drifting list.
-    pub const ALL: [ChatTransport; 1] = [Self::ClaudeStreamJson];
+    pub const ALL: [ChatTransport; 2] = [Self::ClaudeStreamJson, Self::Acp];
 
     /// Parse a `chat.transport` value. Derived from `as_str`, so a wire string
     /// cannot mean one thing when read and another when written.
@@ -57,21 +62,23 @@ impl ChatTransport {
 
     /// The wire spelling of this transport.
     ///
-    /// This is deliberately the **single exhaustive match** over the enum in
-    /// the tree, so adding a transport fails to compile in exactly one place.
-    /// Confirmed by adding a throwaway member: exactly one E0004, at this
-    /// `match`. It stays the only one until Phase 3's transport factory takes
-    /// the role over; anything dispatching per-transport should go through the
-    /// factory rather than adding a second match to keep in sync.
+    /// One of the **two exhaustive matches** over the enum in the tree; the
+    /// other is `make_transport` in `chat/commands.rs`. This one is the
+    /// serialization side and that one is the dispatch side, so between them a
+    /// new transport has exactly two compiler-named obligations: a wire string
+    /// nobody can spell two ways, and an implementation that must exist before
+    /// a TOML can select it. Measured when `Acp` was added: exactly those two
+    /// E0004s and no others.
     ///
     /// The compiler covers this arm, but it cannot see `ALL`: a new member left
     /// out of that list would parse as unknown and the transport would be
     /// silently unreachable from TOML. `every_transport_round_trips_through_its_wire_string`
     /// is what catches that, so adding a transport means the variant, an `ALL`
-    /// entry, and this arm.
+    /// entry, this arm, and the factory's.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::ClaudeStreamJson => "claude_stream_json",
+            Self::Acp => "acp",
         }
     }
 }
