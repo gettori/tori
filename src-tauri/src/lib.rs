@@ -184,6 +184,7 @@ pub fn run() {
             chat::commands::chat_send,
             chat::commands::chat_steer,
             chat::commands::chat_interrupt,
+            chat::commands::chat_set_visible,
             chat::commands::chat_respond_permission,
             chat::commands::chat_set_mode,
             chat::commands::chat_set_model,

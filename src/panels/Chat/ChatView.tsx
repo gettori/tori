@@ -48,7 +48,7 @@ import {
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import { parseChatEvent, type ChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
-import { dropLiveChat, chatsInFolder, setLiveChat } from "../../utils/chatSessions";
+import { dropLiveChat, chatsInFolder, liveChats, setLiveChat } from "../../utils/chatSessions";
 import { checkpointChatTurn } from "../../utils/checkpoints";
 import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
@@ -66,7 +66,7 @@ import { findAgent } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, steerCostLabel } from "../../utils/chatCapabilities";
 import { settings } from "../Settings/settingsStore";
-import { markNoticed, noticed, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
+import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
   onWith,
@@ -514,6 +514,10 @@ export default function ChatView(props: {
         mode: null,
         effort: null,
         extraDirs: [],
+        // Carried at spawn as well as reported by the effect below, because a
+        // session restored into a background tab would otherwise stream at full
+        // price until the first time somebody looked at it and looked away.
+        visible: props.active,
         onEvent: channel,
       })
         .then((res) => {
@@ -597,9 +601,35 @@ export default function ChatView(props: {
     });
   });
 
+  // Tell the host which tab is on screen, so a session behind this one has its
+  // per-token deltas coalesced instead of paying to repaint a transcript nobody
+  // can see. Deferred: the spawn above already carried the opening value, and
+  // re-sending it would race the invoke that establishes the session.
+  createEffect(
+    on(
+      () => props.active,
+      (active) => {
+        void invoke("chat_set_visible", { sessionId: props.sessionId, visible: active }).catch(() => {});
+      },
+      { defer: true },
+    ),
+  );
+
   // The second chat on a worktree: say once, per worktree, that the two share
   // one working tree and that checkpoint attribution suffers for it.
   const multiChatNotice = () => shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
+
+  // Too many at once, said in the chat that put the count past the line rather
+  // than in all of them. Unlike the notice above this is not dismissible: the
+  // cost is still being paid while the banner is up, and it goes away on its own
+  // the moment a chat closes or the limit is raised.
+  const overCap = () =>
+    pastCap(
+      props.sessionId,
+      liveChats().map((c) => c.sessionId),
+      settings.chatDefaults.maxConcurrentChats,
+    );
+  const capSaid = () => capNotice(liveChats().length, settings.chatDefaults.maxConcurrentChats);
 
   // What the harness behind this session actually supports, from the adapter's
   // declared transport. Every gate below asks this rather than asking whether
@@ -1295,6 +1325,12 @@ export default function ChatView(props: {
 
   return (
     <div class={`${styles.chat} ${props.active ? styles.active : ""}`}>
+      <Show when={overCap()}>
+        <div class={styles.banner}>
+          <span class={styles.bannerText}>{capSaid()}</span>
+        </div>
+      </Show>
+
       <Show when={multiChatNotice()}>
         <div class={styles.banner}>
           <span class={styles.bannerText}>{MULTI_CHAT_NOTICE}</span>

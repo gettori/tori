@@ -227,6 +227,17 @@ pub struct ChatDefaults {
     /// the in-protocol path proves itself in real use.
     #[serde(default)]
     pub legacy_permission_gate: bool,
+    /// How many live chats before Sway says the cost is adding up. **Zero means
+    /// no cap.**
+    ///
+    /// A ceiling that warns rather than refuses, for the same reason the
+    /// permission gate went: several chats at once is the point of the surface,
+    /// and Sway is not the right authority on how many is too many for this
+    /// machine or this bill. What it can honestly do is notice, because each
+    /// live chat is a streaming child process the user did not necessarily mean
+    /// to still have running.
+    #[serde(default = "default_max_concurrent_chats")]
+    pub max_concurrent_chats: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -246,6 +257,12 @@ fn default_tool_output_lines() -> u32 {
 fn default_approval_auto_deny_secs() -> u32 {
     120
 }
+/// Four streaming children is about where a laptop's fans and the token bill
+/// both start to be noticeable, and it is comfortably above the two or three a
+/// worktree's worth of parallel work actually needs.
+fn default_max_concurrent_chats() -> u32 {
+    4
+}
 
 impl Default for ChatDefaults {
     fn default() -> Self {
@@ -260,6 +277,7 @@ impl Default for ChatDefaults {
             approval_auto_deny_secs: default_approval_auto_deny_secs(),
             show_sway_hooks: false,
             legacy_permission_gate: false,
+            max_concurrent_chats: default_max_concurrent_chats(),
         }
     }
 }
@@ -688,12 +706,25 @@ mod tests {
                 approval_auto_deny_secs: 30,
                 show_sway_hooks: true,
                 legacy_permission_gate: true,
+                max_concurrent_chats: 9,
             },
             harness: Harness { path: Some("/opt/claude".into()) },
             ..Default::default()
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+
+        // Under the name the frontend sends, or the round trip only works
+        // between this struct and itself - the half of the trap that a
+        // `Settings`-to-`Settings` comparison cannot see.
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("\"maxConcurrentChats\": 9"), "written under the key the panel writes");
+
+        // And a file predating the cap reads as the default rather than as
+        // zero, which is the value that means "never warn".
+        std::fs::write(&p, r#"{"chatDefaults":{"streaming":false}}"#).unwrap();
+        assert_eq!(load_from(&p).chat_defaults.max_concurrent_chats, default_max_concurrent_chats());
+        let _ = std::fs::remove_file(&p);
     }
 
     /// The budgets section shipped on the frontend with no home in this struct,

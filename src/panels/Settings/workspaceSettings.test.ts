@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import configSource from "../../../src-tauri/src/config.rs?raw";
 import settingsSource from "../../../src-tauri/src/settings.rs?raw";
 import { editorOrigins, overlayFile, parseOverlay, resolveEditorDefaults, withOverride } from "./workspaceSettings";
-import type { EditorDefaults } from "./settingsStore";
+import type { ChatDefaults, EditorDefaults } from "./settingsStore";
 
 /** The default layer, spelled out so a test says which value it is asserting
  *  about rather than inheriting whatever the shipped defaults are today. */
@@ -173,15 +173,43 @@ it("leaves sway.toml out of editor behaviour, so there is only one place to set 
 });
 
 // The mirror of the guard above, and the one that was missing. `set_settings`
-// takes a *typed* `EditorDefaults`, so a key the frontend has and the struct
-// does not is dropped by serde on the way in and written back out gone: the
-// preference cannot be saved, and it snaps back to its default on the next
-// round trip. `compactFolders` shipped that way and nothing said so.
-it("gives every editor default a field in the struct that persists it", () => {
-  const missing = Object.keys(DEFAULTS).filter(
-    (key) => !new RegExp(`\\b${key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}\\b`).test(settingsSource),
-  );
-  expect(missing).toEqual([]);
+// takes a *typed* struct, so a key the frontend has and the struct does not is
+// dropped by serde on the way in and written back out gone: the preference
+// cannot be saved, and it snaps back to its default on the next round trip.
+// `compactFolders` shipped that way and nothing said so.
+//
+// `chatDefaults` joined the sweep when the concurrency cap was added: the guard
+// covered `editorDefaults` alone, so the section that had grown the most keys
+// since was the one nothing was checking.
+describe("every frontend setting has a field in the struct that persists it", () => {
+  // Spelled out and *typed*, not read off the live defaults: the annotation is
+  // half the guard. A key added to the type without being added here fails to
+  // compile, which is what stops the sweep quietly shrinking to the keys that
+  // happened to exist when it was written. (The store cannot be imported for
+  // its value here either - it reads `localStorage` at module load and this
+  // file runs without a DOM.)
+  const CHAT: ChatDefaults = {
+    defaultSurface: "chat",
+    model: null,
+    effort: null,
+    mode: null,
+    streaming: true,
+    density: "comfortable",
+    toolOutputLines: 20,
+    approvalAutoDenySecs: 120,
+    showSwayHooks: false,
+    legacyPermissionGate: false,
+    maxConcurrentChats: 4,
+  };
+  const sections: Record<string, object> = { editorDefaults: DEFAULTS, chatDefaults: CHAT };
+  for (const [section, shape] of Object.entries(sections)) {
+    it(section, () => {
+      const missing = Object.keys(shape).filter(
+        (key) => !new RegExp(`\\b${key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}\\b`).test(settingsSource),
+      );
+      expect(missing).toEqual([]);
+    });
+  }
 });
 
 describe("changing a workspace answer", () => {
