@@ -471,6 +471,7 @@ mod tests {
     fn probe(args: &[&str], kind: agents::WhoamiKind) -> agents::AccountsConfig {
         agents::AccountsConfig {
             home_env: None,
+            home_default: None,
             login_args: vec![],
             logout_args: vec![],
             whoami_args: args.iter().map(|a| a.to_string()).collect(),

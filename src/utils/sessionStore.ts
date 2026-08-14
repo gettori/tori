@@ -21,7 +21,10 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
-// Mirrors src-tauri/src/sessions.rs's `SessionMeta`.
+// Mirrors src-tauri/src/sessions.rs's `SessionMeta`. Compared field by field by
+// `the_typescript_mirror_lists_every_serialized_field` on the Rust side, which
+// reads this very block: a TypeScript type is erased at runtime, so the Rust
+// test is the only thing that can fail when the two drift.
 export type SessionMeta = {
   id: string;
   path: string;
@@ -32,6 +35,14 @@ export type SessionMeta = {
   created_at: number;
   name: string | null;
   agent?: string;
+  // Which account produced the session, derived from the transcript root that
+  // held it. null for a row Sway cannot attribute (an ACP session, whose
+  // locator records no account) rather than one it guesses at.
+  profile?: string | null;
+  // The user's label for that account, and only when there is a second account
+  // to tell it apart from. null everywhere on a machine that never added one,
+  // which is what makes those rows render exactly as they did before.
+  profile_label?: string | null;
 };
 
 /** One folder's listing, exactly as `list_sessions` returned it. */

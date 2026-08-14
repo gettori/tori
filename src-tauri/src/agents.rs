@@ -417,6 +417,20 @@ pub struct AccountsConfig {
     /// left unset**, which is what makes it resolve the user's existing login
     /// rather than a Sway-managed copy of it.
     pub home_env: Option<String>,
+    /// Where `home_env` points when it is left unset: the harness's own default
+    /// home, `~/.claude` for claude.
+    ///
+    /// Discovery uses it as a hinge. Phase 0 measured that an isolated home
+    /// reproduces the default layout exactly (`projects/<slugified-cwd>/…`), so
+    /// a profile's transcript root is `[discovery] dir` with this prefix swapped
+    /// for the profile home. Two declared paths rather than a declared suffix,
+    /// because the suffix is then derived and a `dir` that does not sit under
+    /// this home yields no root at all rather than a guessed one.
+    ///
+    /// Backend-only, like `discovery` itself: it names a directory to scan, and
+    /// the frontend scans nothing.
+    #[serde(skip)]
+    pub home_default: Option<PathBuf>,
     /// Args that start an interactive login. Run in a real PTY tab, never
     /// captured: measured in Phase 0, `claude auth login` is browser OAuth with
     /// no non-interactive variant, so anything that tried to complete a login
@@ -555,6 +569,8 @@ struct AdapterToml {
 struct AccountsToml {
     #[serde(default)]
     home_env: Option<String>,
+    #[serde(default)]
+    home_default: Option<String>,
     #[serde(default)]
     login_args: Vec<String>,
     #[serde(default)]
@@ -915,6 +931,19 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                      (there is no way to isolate a profile without a variable to point at it)"
                 ));
             }
+            // A second account whose sessions nobody can find is half an
+            // account. `home_default` is what turns the declared discovery dir
+            // into that profile's own root; without it every profile but the
+            // default would sign in fine and then show an empty history.
+            // Required only alongside `[discovery]`, because an adapter whose
+            // sessions live behind its protocol has no root to relocate.
+            if a.supports_isolation && discovery.is_some() && a.home_default.is_none() {
+                return Err(format!(
+                    "{source}: accounts.supports_isolation = true with a [discovery] table \
+                     requires accounts.home_default (the profile's sessions are found by \
+                     swapping that prefix on discovery.dir, and there is nothing to swap)"
+                ));
+            }
             // Probe args and the shape of their answer are one fact, the same
             // way `[discovery]`/`[parser]`/`[running]` are. Args with no kind
             // would leave the reader guessing, and the measured shapes make
@@ -941,6 +970,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             };
             Ok(AccountsConfig {
                 home_env: a.home_env,
+                home_default: a.home_default.as_deref().map(expand_tilde),
                 login_args: a.login_args,
                 logout_args: a.logout_args,
                 whoami_args: a.whoami_args,
@@ -1538,6 +1568,7 @@ args = ["--effort", "low"]
     const ACCOUNTS_TABLE: &str = r#"
 [accounts]
 home_env = "X_CONFIG_DIR"
+home_default = "~/.x"
 login_args = ["auth", "login"]
 logout_args = ["auth", "logout"]
 whoami_args = ["auth", "status"]
@@ -1559,6 +1590,43 @@ supports_isolation = true
         assert_eq!(acc.whoami_args, ["auth", "status"]);
         assert_eq!(acc.whoami_kind, Some(WhoamiKind::ClaudeJson));
         assert!(acc.supports_isolation);
+        assert_eq!(acc.home_default, Some(expand_tilde("~/.x")));
+    }
+
+    /// Isolation without a default home is an account whose sessions nobody can
+    /// find: the profile signs in, and its history renders empty forever,
+    /// because discovery has no prefix to swap on the declared `dir`.
+    #[test]
+    fn isolation_over_a_discovery_dir_needs_the_home_it_relocates_from() {
+        let table = ACCOUNTS_TABLE
+            .lines()
+            .filter(|l| !l.starts_with("home_default"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
+        assert!(err.contains("home_default"), "error should name what is missing: {err}");
+    }
+
+    /// The rule is about relocating a directory, so an adapter that has no
+    /// directory is not asked for one. An ACP harness keeps its sessions where
+    /// only its protocol reaches, and there is nothing there to move.
+    #[test]
+    fn a_harness_with_no_discovery_dir_may_claim_isolation_without_one() {
+        // The three file-era tables are absent together, which is the shape the
+        // loader already requires of a protocol-backed adapter.
+        let table = ACCOUNTS_TABLE
+            .lines()
+            .filter(|l| !l.starts_with("home_default"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let text = format!(
+            "schema_version = 3\nid = \"x\"\nlabel = \"X\"\n\n[launch]\nprogram = \"x\"\n\
+             resume_args = []\n\n[chat]\ntransport = \"acp\"\nbase_args = [\"acp\"]\n{table}"
+        );
+        let a = load_adapter_str(&text, "test").expect("protocol-backed adapter parses");
+        let acc = a.accounts.expect("accounts resolved");
+        assert!(acc.supports_isolation);
+        assert_eq!(acc.home_default, None);
     }
 
     /// Probe args and the shape of their answer are one fact. Args alone would
@@ -1724,11 +1792,18 @@ supports_isolation = true
     #[test]
     fn the_bundled_claude_adapter_declares_its_measured_accounts_table() {
         let a = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude.toml parses");
-        let acc = a.accounts.expect("claude declares [accounts]");
+        let acc = a.accounts.clone().expect("claude declares [accounts]");
         assert_eq!(acc.home_env.as_deref(), Some("CLAUDE_CONFIG_DIR"));
         assert!(acc.supports_isolation, "measured in Phase 0: two simultaneous logins");
         assert!(!acc.whoami_args.is_empty(), "the sign-in probe must have args to run");
         assert!(!acc.login_args.is_empty(), "the login ladder needs args for the PTY rung");
+        // The other half of the Phase 0 measurement: a session under an isolated
+        // home wrote its transcript beneath that home, in the same layout. The
+        // declared discovery dir has to sit under this one for the swap to mean
+        // anything, which is the whole of how a second account is found.
+        let home = acc.home_default.expect("claude declares the home it relocates from");
+        let dir = a.discovery_path().expect("claude discovers sessions from a directory");
+        assert!(dir.starts_with(&home), "{} is not under {}", dir.display(), home.display());
     }
 
     /// Isolation is claimed only where it was measured.

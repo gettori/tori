@@ -50,13 +50,16 @@ const session = {
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
+  /** Which harness produced the folder's one session. `gemini` is the bundled
+   *  adapter with no parser kind, so its sessions have no transcript. */
+  agent: "claude",
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_sessions") return Promise.resolve([session]);
+    if (cmd === "list_sessions") return Promise.resolve([{ ...session, agent: bridge.agent }]);
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
@@ -106,6 +109,7 @@ describe("a session action raised from outside the tree", () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     bridge.calls.length = 0;
+    bridge.agent = "claude";
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("sway.active-space.v1", "work");
@@ -160,6 +164,29 @@ describe("a session action raised from outside the tree", () => {
     expect(cmds().indexOf("chat_close")).toBeLessThan(cmds().indexOf("delete_session"));
     expect(closed).toEqual(["s1"]);
     window.removeEventListener(SESSION_DELETED, onDeleted);
+  });
+
+  // A session with no transcript is a different act wearing the same button.
+  // Its conversation lives wherever its agent keeps it, no protocol verb
+  // removes one, and all that happens is that Sway stops listing it - so
+  // promising that the history is gone would be promising something Sway
+  // cannot do, to somebody who would believe it.
+  it("says it is forgetting, not deleting, a session with no transcript", async () => {
+    bridge.agent = "gemini";
+    await mounted();
+
+    act("delete");
+    await waitFor(() => expect(screen.getByText("Forget this session?")).toBeTruthy());
+    expect(screen.queryByText("Delete this session’s transcript?")).toBeNull();
+    expect(document.body.textContent).toContain("cannot delete its copy");
+
+    fireEvent.click(screen.getByText("Forget"));
+    await waitFor(() => expect(cmds()).toContain("delete_session"));
+    // The backend decides which of the two it is doing from the agent, so the
+    // agent has to be sent: without it, `delete_session` would take the path
+    // for a transcript and remove Sway's record by the wrong route.
+    const call = bridge.calls.find((c) => c.cmd === "delete_session")!;
+    expect(call.args.agent).toBe("gemini");
   });
 
   it("cancels a delete without touching the transcript", async () => {

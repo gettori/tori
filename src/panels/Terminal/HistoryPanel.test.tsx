@@ -55,6 +55,7 @@ const { noteLiveTabs, probeBatch, resetSessionActivityForTests } = await import(
   "../../utils/sessionActivity"
 );
 const { SESSION_ACTION } = await import("../../utils/events");
+const { ago } = await import("../../utils/relativeTime");
 
 // The panel portals itself to <body>, which the shared `cleanup` does not
 // reach, so each mount is disposed by hand rather than left for the next test
@@ -264,6 +265,58 @@ describe("what a History row can do", () => {
     notePtyActivity("tab-1", "active");
     await waitFor(() => expect(glyph().className).not.toBe(idle));
     expect(glyph().childElementCount).toBe(1); // still one glyph: no shape change
+  });
+});
+
+// Two accounts of one harness put two sessions in one folder, and the only
+// thing telling them apart is which account produced them. The backend sends a
+// label only when there is a second account to be confused with, so the
+// question here is whether the row shows what it was sent and nothing else.
+describe("which account a row belongs to", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    actions.length = 0;
+    bridge.calls.length = 0;
+    bridge.historical = false;
+    bridge.running = [];
+    bridge.listings = { [REPO]: [], [OTHER]: [] };
+  });
+  afterEach(unmountPanel);
+
+  it("names the account beside a row that came from one", async () => {
+    bridge.listings[REPO] = [
+      session("mine", now(), { profile: "default", profile_label: "Default" }),
+      session("work", now(), { profile: "work", profile_label: "Work" }),
+    ];
+    await open();
+    await waitFor(() => expect(rowLabels()).toHaveLength(2));
+    expect(listEl().textContent).toContain("Work");
+    expect(listEl().textContent).toContain("Default");
+  });
+
+  // The "renders exactly as today" case, which is every machine that never
+  // added a second account: nothing extra appears on the row at all.
+  it("adds nothing to a row on a machine with one account", async () => {
+    bridge.listings[REPO] = [session("mine", now(), { profile: "default", profile_label: null })];
+    await open();
+    await waitFor(() => expect(rowLabels()).toEqual(["mine"]));
+    // Just the title and the relative time, which is what the row held before.
+    const row = screen.getAllByRole("option")[0];
+    expect(row.textContent).toBe(`mine${ago(now())}`);
+  });
+
+  // An ACP row's locator records no account, so nothing is derived and nothing
+  // is guessed. It must not borrow the account that happens to be first.
+  it("says nothing about a session it cannot attribute", async () => {
+    bridge.listings[REPO] = [
+      session("acp", now(), { agent: "gemini", profile: null, profile_label: null }),
+      session("mine", now() - HOUR, { profile: "default", profile_label: "Default" }),
+    ];
+    await open();
+    await waitFor(() => expect(rowLabels()).toHaveLength(2));
+    const acp = screen.getAllByRole("option").find((r) => r.getAttribute("title") === "acp")!;
+    expect(acp.textContent).not.toContain("Default");
   });
 });
 

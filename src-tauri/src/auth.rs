@@ -326,6 +326,7 @@ mod tests {
     fn config(kind: Option<WhoamiKind>) -> AccountsConfig {
         AccountsConfig {
             home_env: Some("X_HOME".into()),
+            home_default: None,
             login_args: vec![],
             logout_args: vec!["logout".into()],
             whoami_args: vec!["status".into()],
