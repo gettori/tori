@@ -186,6 +186,12 @@ export default function HistoryPanel(props: {
         certainty={sessionCertainty(s.id)}
       />
       <span class={styles.rowLabel}>{label(s)}</span>
+      {/* The backend sends a label only when there is a second account to tell
+          this one apart from, so a machine that never added one renders exactly
+          the list it rendered before. */}
+      <Show when={s.profile_label}>
+        {(profile) => <span class={styles.rowProfile}>{profile()}</span>}
+      </Show>
       <span class={styles.rowWhen}>{ago(s.last_active)}</span>
     </div>
   );

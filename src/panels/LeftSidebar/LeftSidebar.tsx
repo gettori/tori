@@ -54,6 +54,7 @@ import {
   type Rollup,
 } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
+import { findAgent } from "../../utils/agents";
 import {
   sessions,
   fetchSessions,
@@ -1739,10 +1740,18 @@ export default function LeftSidebar(props: {
   }
 
   async function deleteSession(s: SessionMeta) {
+    // A session with no transcript is a different act wearing the same button:
+    // its conversation lives wherever its agent keeps it, no protocol verb
+    // removes one, and all that happens here is that Sway stops listing it.
+    // Saying "its history is removed" there would promise something Sway cannot
+    // do, and the promise would be believed.
+    const hasTranscript = findAgent(s.agent ?? "claude").parser_kind != null;
     const ok = await askConfirm({
-      title: "Delete this session’s transcript?",
-      message: "Its history is removed and cannot be undone.",
-      confirmLabel: "Delete",
+      title: hasTranscript ? "Delete this session’s transcript?" : "Forget this session?",
+      message: hasTranscript
+        ? "Its history is removed and cannot be undone."
+        : "Sway stops listing it. The agent keeps the conversation, and Sway cannot delete its copy.",
+      confirmLabel: hasTranscript ? "Delete" : "Forget",
       danger: true,
     });
     if (!ok) return;
@@ -1756,7 +1765,7 @@ export default function LeftSidebar(props: {
       // Any tab driving it closes too, rather than sitting on a transcript that
       // no longer exists.
       emitWith<SessionDeleted>(SESSION_DELETED, { sessionId: s.id });
-      await invoke("delete_session", { path: s.path });
+      await invoke("delete_session", { path: s.path, agent: s.agent ?? "claude" });
       await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
       await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
       await refreshSessions();

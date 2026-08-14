@@ -215,7 +215,15 @@ export default function AgentAccounts(props: { agentId: string; agentLabel: stri
   // Refresh before refetch, in that order: this list reads the default
   // profile's answer out of the cached sweep, so refetching first would read
   // the answer that was true before whatever just happened.
-  const changed = () => void refreshAgentHealth().then(() => refetch());
+  const changed = () => {
+    // An account is a transcript root, so adding or removing one changes the
+    // set of directories worth watching. Without this the new account's
+    // sessions appear only when something else asks for a listing, and the old
+    // account's root is watched after its home is gone. The command replaces
+    // the watcher rather than adding a second one.
+    void invoke("sessions_watch_start").catch(() => {});
+    void refreshAgentHealth().then(() => refetch());
+  };
 
   const add = async () => {
     const label = (await askName())?.trim();

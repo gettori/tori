@@ -291,6 +291,8 @@ mod tests {
                 created_at: 0,
                 name: None,
                 agent: "claude".to_string(),
+                profile: None,
+                profile_label: None,
             },
             SessionMeta {
                 id: fresh.clone(),
@@ -302,6 +304,8 @@ mod tests {
                 created_at: 0,
                 name: None,
                 agent: "claude".to_string(),
+                profile: None,
+                profile_label: None,
             },
         ];
         prune_stale(|| sessions.clone());

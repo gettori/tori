@@ -163,6 +163,17 @@
   text-overflow: ellipsis;
 }
 
+/* Which account produced the row, and only on a machine with more than one, so
+   this is absent from every list that looked like this before. Same weight as
+   the time beside it: it answers a second question, not the first, and it
+   holds its width for the same reason. */
+.rowProfile {
+  flex: 0 0 auto;
+  margin-left: calc(8px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
 /* Holds its width so the label is what truncates: with 20 sessions titled `/gg`
    the time is the only thing telling two rows apart. One step below the title
    it belongs to, because it answers a second question, not the first. */

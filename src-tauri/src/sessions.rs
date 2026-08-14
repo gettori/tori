@@ -1,5 +1,26 @@
 // Session discovery for every registered agent adapter, merged by folder.
 //
+// **Sway keeps three session stores, and only the third is derived.** Naming
+// them is the point of `adr_three_session_stores`, because folding any two
+// together loses something:
+//
+//   1. **The harness's own transcripts are the truth.** Sway reads them and
+//      never writes them. Delete Sway entirely and they are still there.
+//   2. **The rename overlay is Sway-authored** (`set_session_name`,
+//      `load_overlay`/`save_overlay`, below). It holds what the user typed,
+//      which nothing on disk records and no rescan can reproduce, so it is
+//      never rebuilt and never rebuildable.
+//   3. **The index is derived and discardable** (`SessionIndex`, an in-memory
+//      mtime cache). Every field in it, the profile tag included, comes out of
+//      a transcript or the root that held it. Throw it away, rescan, and it
+//      comes back identical, which is what keeps `concept_filesystem_source_of_truth`
+//      true while a cache exists at all.
+//
+// The invariant that keeps them apart: **the index holds no user-authored
+// field.** `SessionMeta.name` and `.profile_label` are stamped onto a *listing*
+// by `list_sessions`, out of the overlay and out of `accounts.json`, and are
+// never what the cache stored.
+//
 // Claude sessions live at ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl.
 // The encoded dir name is lossy, so we read `cwd` and `gitBranch` from inside
 // each file rather than decoding the folder name. That path is
@@ -43,6 +64,26 @@ pub struct SessionMeta {
     pub name: Option<String>,
     /// Which agent produced the session: the adapter id it was discovered under.
     pub agent: String,
+    /// Which account produced it: the profile id whose transcript root held the
+    /// file. **Derived, never recorded**: Phase 0 measured that a session run
+    /// under an isolated home writes its transcript beneath that home, so the
+    /// root that produced a row is the whole of the attribution and a discarded
+    /// index rebuilds every tag.
+    ///
+    /// `None` for a session Sway cannot attribute rather than one it guesses at:
+    /// an ACP row comes out of Sway's locator store, which records no profile. A
+    /// session started in a terminal under a config dir Sway has no profile for
+    /// is not misattributed either, it is simply never discovered, because Sway
+    /// only scans the roots it has profiles for.
+    pub profile: Option<String>,
+    /// The user's own label for that profile, stamped onto a *listing* by
+    /// `list_sessions` and never held in the index: a label is user-authored,
+    /// and the index holds no user-authored field.
+    ///
+    /// `None` while the harness has only the one account, so a machine that
+    /// never added a second sees exactly what it saw before: naming an account
+    /// that nothing is being distinguished from is noise.
+    pub profile_label: Option<String>,
 }
 
 struct CacheEntry {
@@ -195,6 +236,67 @@ pub(crate) fn clean_title(raw: &str) -> String {
     }
 }
 
+/// One directory to scan, and the account whose sessions are in it.
+///
+/// The pair, not the directory alone, is what discovery walks now. A harness
+/// with two accounts has two roots, and the row a root produces carries that
+/// root's profile, which is the whole of profile attribution.
+struct Root<'a> {
+    adapter: &'a agents::AgentAdapter,
+    profile: String,
+    dir: PathBuf,
+}
+
+/// A profile's own transcript root: the adapter's declared discovery dir with
+/// the harness's default home swapped for this profile's home.
+///
+/// `None` when the declared dir does not sit under the declared default home,
+/// which is a misdeclared adapter rather than a case to guess at: appending the
+/// dir's last segment to the profile home, or scanning the shared dir under a
+/// profile's name, would both invent an attribution nobody measured. The loader
+/// already refuses `supports_isolation` with a `[discovery]` table and no
+/// `home_default`, so the reachable way here is a hand-edited TOML.
+fn profile_root(dir: &Path, home_default: &Path, home: &str) -> Option<PathBuf> {
+    let suffix = dir.strip_prefix(home_default).ok()?;
+    Some(Path::new(home).join(suffix))
+}
+
+/// Every `(profile, root)` pair for one adapter, default profile first.
+///
+/// Pure: the profiles are passed in, so the whole rule is testable without an
+/// `accounts.json` or a home directory.
+fn roots_for<'a>(
+    adapter: &'a agents::AgentAdapter,
+    profiles: &[crate::accounts::Profile],
+) -> Vec<Root<'a>> {
+    let Some(agents::Discovery::File { dir, .. }) = &adapter.discovery else { return Vec::new() };
+    profiles
+        .iter()
+        .filter_map(|p| {
+            let root = match &p.home {
+                // The default profile is the home variable left unset, so its
+                // root is the one the adapter declares.
+                None => dir.clone(),
+                Some(home) => {
+                    let default_home = adapter.accounts.as_ref()?.home_default.as_ref()?;
+                    profile_root(dir, default_home, home)?
+                }
+            };
+            Some(Root { adapter, profile: p.id.clone(), dir: root })
+        })
+        .collect()
+}
+
+/// Every `(profile, root)` pair across every registered adapter.
+fn discovery_roots(file: &crate::accounts::AccountsFile) -> Vec<Root<'static>> {
+    agents::registry()
+        .iter()
+        // `None` discovery is a protocol-backed adapter: nothing of its is on
+        // disk to walk, and its sessions arrive from the locator store instead.
+        .flat_map(|a| roots_for(a, &crate::accounts::profiles_for(file, &a.id)))
+        .collect()
+}
+
 fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_id: &str) -> Option<SessionMeta> {
     let id = path.file_stem()?.to_string_lossy().into_owned();
     let file = std::fs::File::open(path).ok()?;
@@ -270,6 +372,10 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
         created_at: epoch_secs(created),
         name: None,
         agent: agent_id.to_string(),
+        // Filled by the caller, which is the only thing that knows which root
+        // this file came out of. Nothing in a transcript names its account.
+        profile: None,
+        profile_label: None,
     })
 }
 
@@ -279,12 +385,18 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
 /// its own agent id.
 fn parse_by_adapter(
     adapter: &agents::AgentAdapter,
+    profile: &str,
     path: &PathBuf,
     mtime: SystemTime,
     created: SystemTime,
 ) -> Option<SessionMeta> {
     match adapter.parser_kind {
-        Some(agents::ParserKind::ClaudeJsonl) => parse_session(path, mtime, created, &adapter.id),
+        Some(agents::ParserKind::ClaudeJsonl) => {
+            parse_session(path, mtime, created, &adapter.id).map(|mut s| {
+                s.profile = Some(profile.to_string());
+                s
+            })
+        }
         // Unreachable through `ensure_index`, which never walks a directory for
         // an adapter with no discovery, and answered anyway rather than
         // unwrapped: a file reached some other way is still not this adapter's
@@ -293,57 +405,57 @@ fn parse_by_adapter(
     }
 }
 
-/// Walk every registered adapter's discovery dir, refreshing the (shared,
-/// path-keyed) cache for changed/new files. One cache serves every adapter:
-/// their discovery dirs never overlap, so paths stay unique.
-fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
+/// Walk every `(profile, root)` pair, refreshing the (shared, path-keyed) cache
+/// for changed/new files. One cache serves every root: no two roots overlap
+/// (each profile home is a distinct directory), so paths stay unique, and a
+/// path is enough to say which account a row belongs to.
+///
+/// Takes its roots rather than finding them, so the whole walk is testable over
+/// temporary directories without a registry or an `accounts.json`.
+fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
     let mut cache = match index.0.lock() {
         Ok(c) => c,
         Err(_) => return vec![],
     };
 
-    let mut seen: Vec<PathBuf> = Vec::new();
+    // A set rather than a list: the retain below asks it once per cached entry,
+    // and the number of entries is now the number of transcripts across every
+    // account rather than under one root.
+    let mut seen: HashSet<PathBuf> = HashSet::new();
 
-    for adapter in agents::registry() {
-        // `None` is a protocol-backed adapter: nothing of its is on disk to
-        // walk, and its sessions arrive from the locator store below instead.
-        let Some(discovery) = &adapter.discovery else { continue };
-        match discovery {
-            agents::Discovery::File { dir, filename_regex } => {
-                if let Ok(dirs) = std::fs::read_dir(dir) {
-                    for dir in dirs.flatten() {
-                        let p = dir.path();
-                        if !p.is_dir() {
-                            continue;
-                        }
-                        if let Ok(files) = std::fs::read_dir(&p) {
-                            for f in files.flatten() {
-                                let fp = f.path();
-                                let matches_pattern = fp
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .map(|n| filename_regex.is_match(n))
-                                    .unwrap_or(false);
-                                if !matches_pattern {
-                                    continue;
-                                }
-                                let metadata = f.metadata().ok();
-                                let mtime = metadata
-                                    .as_ref()
-                                    .and_then(|m| m.modified().ok())
-                                    .unwrap_or(SystemTime::UNIX_EPOCH);
-                                let created =
-                                    metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
-                                seen.push(fp.clone());
+    for root in roots {
+        let Some(agents::Discovery::File { filename_regex, .. }) = &root.adapter.discovery else {
+            continue;
+        };
+        let Ok(dirs) = std::fs::read_dir(&root.dir) else { continue };
+        for dir in dirs.flatten() {
+            let p = dir.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let Ok(files) = std::fs::read_dir(&p) else { continue };
+            for f in files.flatten() {
+                let fp = f.path();
+                let matches_pattern = fp
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| filename_regex.is_match(n))
+                    .unwrap_or(false);
+                if !matches_pattern {
+                    continue;
+                }
+                let metadata = f.metadata().ok();
+                let mtime = metadata
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
+                seen.insert(fp.clone());
 
-                                let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
-                                if !fresh {
-                                    let meta = parse_by_adapter(adapter, &fp, mtime, created);
-                                    cache.insert(fp.clone(), CacheEntry { mtime, meta });
-                                }
-                            }
-                        }
-                    }
+                let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
+                if !fresh {
+                    let meta = parse_by_adapter(root.adapter, &root.profile, &fp, mtime, created);
+                    cache.insert(fp.clone(), CacheEntry { mtime, meta });
                 }
             }
         }
@@ -352,7 +464,16 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     // Drop entries whose files disappeared.
     cache.retain(|k, _| seen.contains(k));
 
-    let mut all: Vec<SessionMeta> = cache.values().filter_map(|e| e.meta.clone()).collect();
+    cache.values().filter_map(|e| e.meta.clone()).collect()
+}
+
+/// Takes the accounts file rather than reading it, so a caller that also needs
+/// it for the listing's labels reads it once.
+fn ensure_index(
+    index: &SessionIndex,
+    accounts: &crate::accounts::AccountsFile,
+) -> Vec<SessionMeta> {
+    let mut all = index_roots(index, &discovery_roots(accounts));
     all.extend(acp_sessions());
     all
 }
@@ -392,6 +513,11 @@ fn acp_meta(s: crate::chat::acp_sessions::AcpSession) -> SessionMeta {
         created_at: s.updated_at,
         name: None,
         agent: s.agent,
+        // A locator records no account, and there is no root that produced it to
+        // derive one from. Unattributed rather than defaulted to the account the
+        // user happens to have.
+        profile: None,
+        profile_label: None,
     }
 }
 
@@ -417,7 +543,7 @@ fn filter_sort(all: Vec<SessionMeta>, folder: &str) -> Vec<SessionMeta> {
 /// `crate::hooks::prune_stale`'s only caller - not a `#[tauri::command]`,
 /// the frontend has no use for an unscoped list.
 pub(crate) fn all_sessions(index: &SessionIndex) -> Vec<SessionMeta> {
-    ensure_index(index)
+    ensure_index(index, &crate::accounts::load())
 }
 
 /// The ids of every session anchored at `folder` or under it.
@@ -428,7 +554,7 @@ pub(crate) fn all_sessions(index: &SessionIndex) -> Vec<SessionMeta> {
 /// session is found by its recorded `cwd`, and nothing matches a path that is
 /// already gone.
 pub(crate) fn ids_under(index: &SessionIndex, folder: &str) -> Vec<String> {
-    ensure_index(index)
+    ensure_index(index, &crate::accounts::load())
         .into_iter()
         .filter(|s| cwd_matches(&s.cwd, folder))
         .map(|s| s.id)
@@ -442,17 +568,53 @@ pub fn list_sessions(
     index: State<SessionIndex>,
     folder: String,
 ) -> Result<Vec<SessionMeta>, String> {
-    let overlay = load_overlay();
-    let sessions = filter_sort(ensure_index(&index), &folder)
-        .into_iter()
+    let accounts = crate::accounts::load();
+    let rows = filter_sort(ensure_index(&index, &accounts), &folder);
+    Ok(stamp_listing(rows, &load_overlay(), &accounts))
+}
+
+/// Add the two user-authored fields to a listing.
+///
+/// Both are applied here rather than in the index, which is the invariant that
+/// keeps the three stores apart (see this file's header): a rename and an
+/// account's label are things the user typed, and no rescan could reproduce
+/// either. Pure, so "discard the index and every row, rename and profile tag
+/// comes back" is assertable without touching the running user's stores.
+fn stamp_listing(
+    rows: Vec<SessionMeta>,
+    overlay: &HashMap<String, Overlay>,
+    accounts: &crate::accounts::AccountsFile,
+) -> Vec<SessionMeta> {
+    rows.into_iter()
         .map(|mut s| {
             if let Some(o) = overlay.get(&s.id) {
                 s.name = o.name.clone();
             }
+            s.profile_label = profile_label(accounts, &s.agent, s.profile.as_deref());
             s
         })
-        .collect();
-    Ok(sessions)
+        .collect()
+}
+
+/// The user's label for the account a row came from, or `None` when naming it
+/// would distinguish nothing.
+///
+/// Both user-authored halves of a listing are applied here rather than in the
+/// index: a rename and an account label are things the user typed, and the
+/// index holds no user-authored field (see this file's header).
+fn profile_label(
+    file: &crate::accounts::AccountsFile,
+    agent: &str,
+    profile: Option<&str>,
+) -> Option<String> {
+    let profile = profile?;
+    let profiles = crate::accounts::profiles_for(file, agent);
+    // One account is every machine that never added a second, and it is the
+    // "renders exactly as today" case: there is nothing to tell apart.
+    if profiles.len() < 2 {
+        return None;
+    }
+    profiles.into_iter().find(|p| p.id == profile).map(|p| p.label)
 }
 
 // --- adopted-paths state (recreated-folder / "Historical" sessions) ---
@@ -579,7 +741,7 @@ pub fn folder_historical(
     folder: String,
 ) -> Result<bool, String> {
     let state = load_adopted();
-    let times: Vec<u64> = filter_sort(ensure_index(&index), &folder)
+    let times: Vec<u64> = filter_sort(ensure_index(&index, &crate::accounts::load()), &folder)
         .iter()
         .map(|s| s.last_active)
         .collect();
@@ -647,11 +809,23 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     Ok(())
 }
 
-/// Delete a session's transcript. Destructive (removes Claude history); the
-/// frontend confirms first.
+/// Delete a session's transcript. Destructive (removes the harness's own
+/// history); the frontend confirms first.
+///
+/// A session with **no transcript at all** is a different act wearing the same
+/// button. Its conversation lives wherever its agent keeps it, and no protocol
+/// verb removes one, so all that can happen is that Sway drops its own record
+/// and stops listing it. That branch goes through `acp_sessions::forget`, which
+/// also refuses a path outside Sway's store, rather than reaching
+/// `remove_file` with an arbitrary path and a protocol-backed agent's name.
 #[tauri::command]
-pub fn delete_session(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
+pub fn delete_session(path: String, agent: String) -> Result<(), String> {
+    match agents::parser_kind_for(&agent) {
+        Some(agents::ParserKind::ClaudeJsonl) => {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())
+        }
+        None => crate::chat::acp_sessions::forget(Path::new(&path)),
+    }
 }
 
 /// Extended-regex pattern for `pgrep -f` (BSD pgrep treats the pattern as ERE
@@ -834,7 +1008,7 @@ pub fn sessions_running(
     ))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 pub struct SessionDetail {
     /// Messages the human actually typed (see `is_human_prompt`).
     pub prompt_count: u32,
@@ -964,10 +1138,30 @@ pub fn session_detail(
     path: String,
     agent: String,
 ) -> Result<SessionDetail, String> {
-    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    detail_of(&touched, &path, &agent)
+}
+
+/// The counts for one session. Split from the command so the store-less branch
+/// is testable without a Tauri `State`.
+fn detail_of(
+    touched: &TouchedIndex,
+    path: &str,
+    agent: &str,
+) -> Result<SessionDetail, String> {
+    // See `extract_touched_files` on why the kind is matched exhaustively. A
+    // session with no transcript has no counts, and zeroes are the honest
+    // answer: the panel renders empty rather than reporting a conversation that
+    // ran as one that never happened. Guarded before the open, because the path
+    // of such a session is Sway's locator, which parses as no lines at all and
+    // would produce the same zeroes by accident.
+    match agents::parser_kind_for(agent) {
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Ok(SessionDetail::default()),
+    }
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let raw = scan_counts(BufReader::new(file));
 
-    let touched_count = touched_files_cached(&touched, &path, &agent)
+    let touched_count = touched_files_cached(touched, path, agent)
         .iter()
         .filter(|f| f.op != TouchOp::Read)
         .count() as u32;
@@ -1299,18 +1493,36 @@ pub fn session_editing_now(
     Ok(latest_written(&files).cloned())
 }
 
-/// Directories the session watcher covers - every registered adapter's
-/// discovery dir, so a newly added agent's transcripts also fire
-/// `sessions://changed` with no watcher-side wiring of its own.
+/// Directories the session watcher covers - every `(profile, root)` pair, so a
+/// newly added agent's transcripts, and a second account's, both fire
+/// `sessions://changed` with no watcher-side wiring of their own.
+///
+/// An adapter with no discovery contributes no directory: its sessions change
+/// when its protocol says so, which no filesystem watcher sees.
 fn watch_dirs() -> Vec<PathBuf> {
-    agents::registry()
-        .iter()
-        // An adapter with no discovery contributes no directory: its sessions
-        // change when its protocol says so, which no filesystem watcher sees.
-        .filter_map(|a| a.discovery.as_ref().map(|agents::Discovery::File { dir, .. }| dir.clone()))
-        .collect()
+    let accounts = crate::accounts::load();
+    discovery_roots(&accounts).into_iter().map(|r| r.dir).collect()
 }
 
+/// When the last filesystem event landed, shared by whichever watcher is
+/// current and the one thread that emits.
+///
+/// Static rather than an `Arc` minted per call, which is what makes
+/// `sessions_watch_start` safe to run again: adding an account creates a new
+/// root, and the only way to watch it is a new watcher over the new set. A
+/// per-call `Arc` would have meant a second emitter thread for every restart,
+/// each looping forever.
+static WATCH_PENDING: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Whether the emitter thread is already running.
+static EMITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Start (or restart) the session watcher over the current set of roots.
+///
+/// Safe to call again, and it has to be: the set of roots is not fixed for the
+/// life of the app. Adding an account adds a transcript root, and a root nobody
+/// watches means that account's sessions do not appear until something else
+/// asks for a listing.
 #[tauri::command]
 pub fn sessions_watch_start(
     app: AppHandle,
@@ -1330,15 +1542,11 @@ pub fn sessions_watch_start(
     // write, so the session never surfaced until some later, unrelated change.
     // Trailing debounce fires on the complete file; a max-wait heartbeat keeps a
     // long, continuously-streaming session updating rather than starving.
-    let pending: std::sync::Arc<Mutex<Option<Instant>>> =
-        std::sync::Arc::new(Mutex::new(None));
-
-    let cb_pending = pending.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if res.is_err() {
             return;
         }
-        if let Ok(mut p) = cb_pending.lock() {
+        if let Ok(mut p) = WATCH_PENDING.lock() {
             *p = Some(Instant::now());
         }
     })
@@ -1350,15 +1558,22 @@ pub fn sessions_watch_start(
             .map_err(|e| e.to_string())?;
     }
 
+    // Replaces whatever was watching before, and dropping it is what stops it.
+    // Done before the early return below so a restart really does swap the set.
+    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
+
+    if EMITTING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+
     let app_handle = app.clone();
-    let emit_pending = pending.clone();
     std::thread::spawn(move || {
         const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
         const MAX_WAIT: std::time::Duration = std::time::Duration::from_millis(1000);
         let mut last_emit = Instant::now();
         loop {
             std::thread::sleep(std::time::Duration::from_millis(150));
-            let should_emit = match emit_pending.lock() {
+            let should_emit = match WATCH_PENDING.lock() {
                 Ok(mut p) => match *p {
                     // Burst settled: emit the final, complete state.
                     Some(t) if t.elapsed() >= SETTLE => {
@@ -1379,7 +1594,6 @@ pub fn sessions_watch_start(
         }
     });
 
-    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
 }
 
@@ -1802,7 +2016,401 @@ mod tests {
             created_at: last_active,
             name: None,
             agent: agent.into(),
+            profile: None,
+            profile_label: None,
         }
+    }
+
+    // --- three stores, and the (profile, root) pairs the derived one walks ---
+
+    /// A whole machine's worth of layout under one temp dir:
+    ///
+    ///     <tmp>/default/projects     the adapter's declared discovery dir
+    ///     <tmp>/work                 a profile home Sway created
+    ///
+    /// so a profile's root is `<tmp>/work/projects`, which is the swap Phase 0
+    /// measured rather than a shape invented for the test.
+    fn tmp_machine(tag: &str) -> PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sway_profile_{tag}_{n}"));
+        std::fs::create_dir_all(dir.join("default/projects")).unwrap();
+        dir
+    }
+
+    /// One transcript where a harness would write it: a per-cwd directory under
+    /// the root, holding `<id>.jsonl`.
+    fn write_transcript(root: &Path, cwd: &str, id: &str) -> PathBuf {
+        let dir = root.join(cwd.replace('/', "-"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(format!("{id}.jsonl"));
+        let line = format!(
+            r#"{{"type":"user","cwd":"{cwd}","message":{{"content":[{{"type":"text","text":"hello"}}]}}}}"#
+        );
+        std::fs::write(&p, format!("{line}\n")).unwrap();
+        p
+    }
+
+    fn adapter_at(machine: &Path, home_default: Option<&Path>) -> agents::AgentAdapter {
+        let mut a = agents::test_adapter("x");
+        a.discovery = Some(agents::Discovery::File {
+            dir: machine.join("default/projects"),
+            filename_regex: regex::Regex::new(r"^(?P<id>.+)\.jsonl$").unwrap(),
+        });
+        a.accounts = home_default.map(|home| crate::agents::AccountsConfig {
+            home_env: Some("X_CONFIG_DIR".into()),
+            home_default: Some(home.to_path_buf()),
+            login_args: vec![],
+            logout_args: vec![],
+            whoami_args: vec![],
+            whoami_kind: None,
+            supports_isolation: true,
+        });
+        a
+    }
+
+    fn added(id: &str, label: &str, home: &Path) -> crate::accounts::Profile {
+        crate::accounts::Profile {
+            id: id.into(),
+            label: label.into(),
+            email: None,
+            home: Some(home.to_string_lossy().into_owned()),
+        }
+    }
+
+    /// The default profile is the home variable left unset, so its root is the
+    /// one the adapter declares, and a second profile's is the same layout under
+    /// its own home.
+    #[test]
+    fn each_profile_contributes_its_own_root() {
+        let m = tmp_machine("roots");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+
+        let roots = roots_for(&a, &profiles);
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0].dir, m.join("default/projects"));
+        assert_eq!(roots[0].profile, "default");
+        assert_eq!(roots[1].dir, m.join("work/projects"), "the layout under a profile home is the same one");
+        assert_eq!(roots[1].profile, "work");
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// A harness Sway does not sign in still has the one root it always had, so
+    /// widening discovery to a set did not make an accounts table load-bearing
+    /// for finding anything.
+    #[test]
+    fn an_adapter_with_no_accounts_table_keeps_its_single_root() {
+        let m = tmp_machine("noaccounts");
+        let a = adapter_at(&m, None);
+
+        let roots = roots_for(&a, &[crate::accounts::default_profile()]);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].dir, m.join("default/projects"));
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// A profile whose adapter names no default home has no root rather than a
+    /// guessed one. Appending the dir's last segment to the profile home, or
+    /// scanning the shared dir under that profile's name, would both claim an
+    /// attribution nobody measured.
+    #[test]
+    fn a_profile_whose_adapter_names_no_default_home_is_not_scanned() {
+        let m = tmp_machine("nodefault");
+        let a = adapter_at(&m, None);
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+
+        let roots = roots_for(&a, &profiles);
+        assert_eq!(roots.len(), 1, "only the default profile, which needs no swap");
+        assert_eq!(roots[0].profile, "default");
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// Same refusal from the other side: a declared dir that does not sit under
+    /// the declared default home has no prefix to swap.
+    #[test]
+    fn a_discovery_dir_outside_the_default_home_yields_no_profile_root() {
+        assert_eq!(
+            profile_root(Path::new("/elsewhere/projects"), Path::new("/home/.x"), "/homes/work"),
+            None
+        );
+        assert_eq!(
+            profile_root(Path::new("/home/.x/projects"), Path::new("/home/.x"), "/homes/work"),
+            Some(PathBuf::from("/homes/work/projects"))
+        );
+    }
+
+    /// Two accounts, two roots, and every row says which one produced it.
+    #[test]
+    fn sessions_from_two_profiles_are_listed_with_their_own_tags() {
+        let m = tmp_machine("twoprofiles");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        write_transcript(&m.join("default/projects"), "/repo", "aaa");
+        write_transcript(&m.join("work/projects"), "/repo", "bbb");
+
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let index = SessionIndex::default();
+        let mut rows = index_roots(&index, &roots_for(&a, &profiles));
+        rows.sort_by(|x, y| x.id.cmp(&y.id));
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].profile.as_deref(), Some("default"));
+        assert_eq!(rows[1].profile.as_deref(), Some("work"));
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// Two profiles that somehow hold the same session id stay two rows. The
+    /// cache is keyed by path and a path belongs to exactly one root, so the
+    /// second one cannot overwrite the first and take its attribution with it.
+    #[test]
+    fn one_session_id_under_two_profiles_stays_two_rows() {
+        let m = tmp_machine("collision");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        write_transcript(&m.join("default/projects"), "/repo", "same");
+        write_transcript(&m.join("work/projects"), "/repo", "same");
+
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let index = SessionIndex::default();
+        let rows = index_roots(&index, &roots_for(&a, &profiles));
+
+        assert_eq!(rows.len(), 2, "one row would silently hide an account's session");
+        assert_ne!(rows[0].path, rows[1].path);
+        let mut tags: Vec<_> = rows.iter().filter_map(|r| r.profile.clone()).collect();
+        tags.sort();
+        assert_eq!(tags, ["default", "work"]);
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// The index is derived, so throwing it away costs nothing: rescanning
+    /// reproduces every row and every profile tag. This is what scopes
+    /// `concept_filesystem_source_of_truth` to the third store.
+    #[test]
+    fn discarding_the_index_reproduces_every_row_and_every_tag() {
+        let m = tmp_machine("discard");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        write_transcript(&m.join("default/projects"), "/repo", "aaa");
+        write_transcript(&m.join("work/projects"), "/repo", "bbb");
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let roots = roots_for(&a, &profiles);
+
+        // A rename the user typed, which lives in the overlay and which no
+        // rescan could reproduce, plus a second account to tag rows with.
+        let mut overlay = HashMap::new();
+        overlay.insert("aaa".to_string(), Overlay { name: Some("the good one".into()) });
+        let mut accounts = crate::accounts::AccountsFile::default();
+        crate::accounts::add_profile(&mut accounts, "x", added("work", "Work", &m.join("work")))
+            .unwrap();
+
+        let listing = |index: &SessionIndex| {
+            let mut v: Vec<_> = stamp_listing(index_roots(index, &roots), &overlay, &accounts)
+                .into_iter()
+                .map(|s| (s.id, s.path, s.profile, s.profile_label, s.name, s.title, s.cwd))
+                .collect();
+            v.sort();
+            v
+        };
+
+        let warm = SessionIndex::default();
+        let first = listing(&warm);
+        let _ = index_roots(&warm, &roots); // a second pass hits the mtime cache
+        // A brand-new index is exactly the "somebody deleted it" case.
+        let rebuilt = listing(&SessionIndex::default());
+
+        assert_eq!(first, rebuilt);
+        assert_eq!(first.len(), 2);
+        assert!(
+            first.iter().any(|r| r.4.as_deref() == Some("the good one")),
+            "the rename came back, because it was never in the index to lose"
+        );
+        assert!(first.iter().any(|r| r.3.as_deref() == Some("Work")));
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// First run rebuilds rather than migrating. The sources stay the truth, so
+    /// history that predates Sway appears on the first scan and nothing is
+    /// written into the harness's own directories to make it appear.
+    #[test]
+    fn existing_history_appears_with_no_migration_step() {
+        let m = tmp_machine("firstrun");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        let root = m.join("default/projects");
+        write_transcript(&root, "/repo", "old-one");
+        write_transcript(&root, "/other", "old-two");
+        let before = std::fs::read_dir(&root).unwrap().count();
+
+        let rows = index_roots(&SessionIndex::default(), &roots_for(&a, &[crate::accounts::default_profile()]));
+
+        assert_eq!(rows.len(), 2, "pre-existing transcripts are listed by the first scan");
+        assert_eq!(
+            std::fs::read_dir(&root).unwrap().count(),
+            before,
+            "scanning wrote nothing into the harness's own directory"
+        );
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// The invariant that keeps the three stores apart. Both user-authored
+    /// fields are stamped onto a listing by `list_sessions`; nothing before it
+    /// may assign one, or a rebuild would erase what the user typed.
+    #[test]
+    fn the_index_holds_no_user_authored_field() {
+        let m = tmp_machine("authored");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        write_transcript(&m.join("default/projects"), "/repo", "aaa");
+
+        let rows = index_roots(&SessionIndex::default(), &roots_for(&a, &[crate::accounts::default_profile()]));
+        assert!(rows.iter().all(|s| s.name.is_none() && s.profile_label.is_none()));
+
+        let source = include_str!("sessions.rs");
+        let (before_listing, _) = source.split_once("pub fn list_sessions(").unwrap();
+        for field in ["s.name = ", "s.profile_label = "] {
+            assert!(
+                !before_listing.contains(field),
+                "a user-authored field is assigned before `list_sessions`: {field}"
+            );
+        }
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    // --- a session with no backing file, at each of the six path readers ---
+    //
+    // `concept_locator_scheme_for_db_backed_sessions` names six functions that
+    // take `SessionMeta.path` and read or stat it directly. Sway has such a
+    // session again, in a different disguise: an ACP row's path is Sway's own
+    // locator, which is a real file and not a transcript. Each of the six is
+    // answered here rather than left to produce a plausible zero by accident.
+    //
+    // `gemini` is the bundled adapter with no parser kind, which is what makes
+    // a session store-less. Its own registry entry is the fixture.
+
+    #[test]
+    fn a_store_less_session_reports_no_counts_rather_than_failing() {
+        let locator = tmp_file("ses_a.json", "{\n  \"id\": \"ses_a\"\n}\n");
+        let path = locator.to_string_lossy().into_owned();
+        let touched = TouchedIndex::default();
+
+        let d = detail_of(&touched, &path, "gemini").expect("a store-less session still answers");
+        assert_eq!(d.prompt_count, 0);
+        assert_eq!(d.turn_count, 0);
+        assert_eq!(d.touched_count, 0);
+        assert_eq!(d.model, None);
+
+        // The other three readers of the same path say the same thing.
+        assert!(extract_touched_files(&path, "gemini").is_empty());
+        assert!(parse_transcript_turns(&path, "gemini").is_empty());
+        let tail = session_prompt_tail(path.clone(), "gemini".into()).expect("prompt tail answers");
+        assert_eq!((tail.count, tail.last_ts), (0, 0));
+
+        std::fs::remove_file(&locator).ok();
+    }
+
+    /// The trap the concept page records: a path that cannot be stat-ed freezes
+    /// the touched cache at the epoch, so it matches forever and never
+    /// re-reads. A locator is a real file, so the stat succeeds - pinned here,
+    /// because "it happens to be a real file" is exactly the kind of property
+    /// that a later change quietly removes.
+    #[test]
+    fn the_touched_cache_does_not_freeze_at_the_epoch() {
+        let locator = tmp_file("ses_b.json", "{\n  \"id\": \"ses_b\"\n}\n");
+        let path = locator.to_string_lossy().into_owned();
+        let index = TouchedIndex::default();
+
+        assert!(touched_files_cached(&index, &path, "gemini").is_empty());
+        let cache = index.0.lock().unwrap();
+        let entry = cache.get(&locator).expect("the answer was cached");
+        assert_ne!(
+            entry.mtime,
+            SystemTime::UNIX_EPOCH,
+            "a cache stamped at the epoch matches every later read and never refreshes"
+        );
+        drop(cache);
+
+        std::fs::remove_file(&locator).ok();
+    }
+
+    /// Deleting a store-less session cannot mean deleting its history: the
+    /// agent has that, and no protocol verb removes it. All Sway can drop is
+    /// its own record, and it refuses a path that is not one, so naming a
+    /// protocol-backed agent is not a way to delete an arbitrary file.
+    #[test]
+    fn deleting_a_store_less_session_refuses_a_path_outside_swayss_own_store() {
+        let stranger = tmp_file("not-a-locator.json", "{}\n");
+        let path = stranger.to_string_lossy().into_owned();
+
+        let err = delete_session(path.clone(), "gemini".into()).unwrap_err();
+        assert!(err.contains("not one of Sway's session records"), "{err}");
+        assert!(stranger.exists(), "the file it refused is still there");
+
+        // The transcript branch is unchanged, and is what actually deletes.
+        delete_session(path, "claude".into()).expect("a transcript is removed");
+        assert!(!stranger.exists());
+    }
+
+    /// The two shapes are hand-synced, so something has to compare them. A
+    /// TypeScript type is erased at runtime and can only be checked by reading
+    /// it, which is what this does: every field the backend serializes must be
+    /// declared in the frontend's mirror, or a listing carries something no
+    /// screen can see. The same recurrence `component_agent_adapter_registry`
+    /// records, caught the same way.
+    #[test]
+    fn the_typescript_mirror_lists_every_serialized_field() {
+        let row = meta("a", "/repo", "claude", 1);
+        let json = serde_json::to_value(&row).unwrap();
+        let fields: Vec<String> =
+            json.as_object().unwrap().keys().cloned().collect();
+
+        let ts = include_str!("../../src/utils/sessionStore.ts");
+        let (_, after) = ts.split_once("export type SessionMeta = {").unwrap();
+        let (block, _) = after.split_once("};").unwrap();
+
+        for field in &fields {
+            assert!(
+                block.contains(&format!("{field}:")) || block.contains(&format!("{field}?:")),
+                "`{field}` is serialized but missing from the TypeScript mirror"
+            );
+        }
+        // And the other direction, so a field deleted in Rust does not linger
+        // in the mirror as a promise nothing keeps.
+        for line in block.lines().map(str::trim).filter(|l| l.ends_with(';')) {
+            let name = line.split(['?', ':']).next().unwrap_or_default();
+            assert!(
+                fields.iter().any(|f| f == name),
+                "`{name}` is declared in the TypeScript mirror but nothing serializes it"
+            );
+        }
+    }
+
+    /// A label is worth showing only when it tells two accounts apart, so a
+    /// machine that never added one renders exactly as it did before.
+    #[test]
+    fn an_account_is_named_only_when_there_is_another_to_confuse_it_with() {
+        let mut file = crate::accounts::AccountsFile::default();
+        assert_eq!(profile_label(&file, "x", Some("default")), None);
+
+        crate::accounts::add_profile(
+            &mut file,
+            "x",
+            added("work", "Work", Path::new("/homes/work")),
+        )
+        .unwrap();
+        assert_eq!(profile_label(&file, "x", Some("work")).as_deref(), Some("Work"));
+        assert_eq!(profile_label(&file, "x", Some("default")).as_deref(), Some("Default"));
+        // A row Sway cannot attribute names no account rather than the first one.
+        assert_eq!(profile_label(&file, "x", None), None);
+        // And a tag for a profile that has since been removed names nothing.
+        assert_eq!(profile_label(&file, "x", Some("gone")), None);
     }
 
     #[test]
