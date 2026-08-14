@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { tab } from "../../test/tabs";
+import { rightClick } from "../../test/menus";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
 // is what it is kept *out* of: CodeEditor's buffers (and so the language server),
@@ -205,5 +206,41 @@ describe("a sway:// tab in the editor pane", () => {
     fireEvent.contextMenu(tab("Commit log"));
 
     expect(screen.queryByText("File history")).toBeNull();
+  });
+
+  // Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). The test
+  // above proves the view's menu is empty; this proves what the tab does with
+  // the right-click *instead*, which is the half a migration can silently lose.
+  // Kobalte's ContextMenu.Trigger always calls `preventDefault` unless it is
+  // `disabled`, so the synthetic case has to become `disabled` rather than an
+  // early return, and this is what catches it if it does not.
+  //
+  // Selector coupling, i.e. what a migration has to rewrite here:
+  //   - `defaultPrevented` on the dispatched event: STABLE, and the contract.
+  //   - `role="menu"` for the surface: STABLE, Kobalte's Content sets it too.
+  //   - `tab()` resolves to the *ghost* copy of the strip (see src/test/tabs.ts:
+  //     jsdom gives the bar no geometry, so the visible row keeps almost
+  //     nothing). Phase 4 plans a menu-free ghost row to stop `renderTab` from
+  //     mounting menu machinery twice; the moment it lands, these two tests must
+  //     reach the visible copy instead, or they will right-click a tab that
+  //     deliberately no longer has a menu.
+  describe("what a right-click on a tab claims", () => {
+    it("claims the event on a file tab, which answers with its own menu", async () => {
+      await mountEditor();
+      await open(FILE);
+
+      expect(rightClick(tab("a.ts"))).toBe(true);
+      expect(await screen.findByRole("menu")).toBeTruthy();
+    });
+
+    it("leaves the event alone on a view, so the browser's own menu survives", async () => {
+      // A view has no file behind it, so Sway has nothing to offer and the
+      // browser's menu (copy, inspect) is more useful than an empty surface.
+      await mountEditor();
+      await open(LOG);
+
+      expect(rightClick(tab("Commit log"))).toBe(false);
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
   });
 });
