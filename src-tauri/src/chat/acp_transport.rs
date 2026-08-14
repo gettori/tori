@@ -37,7 +37,8 @@ use agent_client_protocol::schema::v1::{
     AuthMethod, CancelNotification, InitializeRequest, InitializeResponse, ListSessionsRequest,
     LoadSessionRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
-    SessionModeId, SessionNotification, SetSessionModeRequest,
+    SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
+    SessionModeId, SessionNotification, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
@@ -74,6 +75,12 @@ enum Command {
     Prompt(Vec<ContentBlock>),
     Cancel,
     SetMode(PermissionMode),
+    /// Switch one session config option, which is how a model switch travels.
+    /// Carries the agent's own config id rather than a Sway-side name for it.
+    SetModel {
+        config_id: String,
+        value: String,
+    },
     Close,
 }
 
@@ -110,6 +117,25 @@ struct Shared {
     current_turn: Mutex<String>,
     /// Monotonic counter behind minted request ids and turn numbering.
     seq: AtomicU64,
+    /// What this session can do about models, once it has said.
+    model_switch: Mutex<ModelSwitch>,
+}
+
+/// Whether a model switch has somewhere to go.
+///
+/// Three states rather than an `Option`, because `None` would mean two different
+/// things and the difference is what the user reads. A chat that has not finished
+/// opening has not asked the agent yet; a chat that has, and got no model
+/// selector, has an answer. Reporting the first as the second blames the agent
+/// for Sway's timing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ModelSwitch {
+    /// `session/new` has not answered yet, so nothing is known.
+    Unknown,
+    /// The session opened and offered no model selector.
+    Unsupported,
+    /// The agent's own config id for its model selector.
+    Available(String),
 }
 
 /// One parked permission question: the responder to answer, and the option ids
@@ -280,6 +306,7 @@ impl AcpTransport {
                 settled: std::sync::Condvar::new(),
                 current_turn: Mutex::new(String::new()),
                 seq: AtomicU64::new(0),
+                model_switch: Mutex::new(ModelSwitch::Unknown),
             }),
             commands: None,
             pid: None,
@@ -427,15 +454,36 @@ impl AgentTransport for AcpTransport {
         Ok(())
     }
 
-    /// Model selection in ACP 2.0.0 rides `session/set_config_option` rather
-    /// than a dedicated verb, and which options exist is per-agent and only
-    /// known from the handshake.
+    /// Model selection rides `session/set_config_option` rather than a dedicated
+    /// verb: `session/set_model` does not exist in ACP 2.0.0, and which options
+    /// a session has is the agent's own answer rather than a fixed set.
     ///
-    /// Reported as unsupported rather than silently accepted: a picker that
-    /// appeared to switch models while the session kept running the old one is
-    /// worse than one that says it cannot.
-    fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
-        Err("this agent does not support switching models mid-session".to_string())
+    /// Refused when this session offered no model selector, rather than sent to
+    /// an id Sway made up. A picker that appears to switch while the session
+    /// keeps running the old model is worse than one that says it cannot, and
+    /// that is also why the switch is *not* recorded locally as pending: the
+    /// agent answers with its whole option set, and what it says is running is
+    /// what `SessionStarted` already reported.
+    ///
+    /// `effort` is dropped deliberately. ACP has no notion of one, so no ACP
+    /// model claims `supports_effort` and the control never renders; accepting
+    /// it here silently would make a level look chosen.
+    fn set_model(&mut self, model: &str, _effort: Option<Effort>) -> Result<(), String> {
+        let config_id = match &*self.shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) {
+            ModelSwitch::Available(config_id) => config_id.clone(),
+            ModelSwitch::Unsupported => {
+                return Err("this agent offers no model to switch to".to_string())
+            }
+            // Not the agent's answer, Sway's timing: the options arrive with the
+            // session, so a switch attempted before it opens has nothing to name
+            // yet. Saying the agent offers no models would be a claim about the
+            // agent made from Sway not having asked.
+            ModelSwitch::Unknown => {
+                return Err("this chat is still opening, so its model list has not arrived yet"
+                    .to_string())
+            }
+        };
+        self.send_command(Command::SetModel { config_id, value: model.to_string() })
     }
 
     fn close(&mut self) -> Result<(), String> {
@@ -617,24 +665,40 @@ async fn drive_session(
         ChatEvent::SessionReady {
             session_id: shared.session_id.clone(),
             slash_commands: Vec::new(),
+            // The catalogue is not known yet: it arrives with the session, one
+            // request later, and rides `SessionStarted`. Empty here is the
+            // honest answer rather than a placeholder.
             models: Vec::new(),
             account: None,
+            capabilities: Some(acp::capabilities(&init)),
         },
     );
 
-    let session = open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
+    let opened = open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
+    let session = opened.session_id;
+
+    // The model catalogue and the running model both come from the session's own
+    // config options, so they reach the UI on the event that says a session
+    // exists. `model_args` is empty for every ACP adapter: a switch is a request,
+    // not a flag, so the id the switch has to name is kept here rather than
+    // re-derived from an option list nobody would have any more.
+    *shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) =
+        match acp::model_config_id(&opened.config_options) {
+            Some(config_id) => ModelSwitch::Available(config_id),
+            None => ModelSwitch::Unsupported,
+        };
 
     emit(
         sink,
         ChatEvent::SessionStarted {
             session_id: shared.session_id.clone(),
             cwd: cwd.to_string(),
-            model: String::new(),
+            model: acp::current_model(&opened.config_options).unwrap_or_default(),
             permission_mode: PermissionMode::new(String::new()),
             tools: Vec::new(),
             slash_commands: Vec::new(),
             mcp_servers: Vec::new(),
-            models: Vec::new(),
+            models: acp::model_catalogue(&opened.config_options),
             fast_mode_state: None,
             fast_mode_disabled_reason: None,
             account: None,
@@ -673,6 +737,48 @@ async fn drive_session(
             }
             Command::Cancel => {
                 let _ = conn.send_notification(CancelNotification::new(session_id.clone()));
+            }
+            Command::SetModel { config_id, value } => {
+                let request = SetSessionConfigOptionRequest::new(
+                    session_id.clone(),
+                    SessionConfigId::new(config_id.as_str()),
+                    SessionConfigOptionValue::ValueId {
+                        value: SessionConfigValueId::new(value.as_str()),
+                    },
+                );
+                match conn.send_request(request).block_task().await {
+                    Err(e) => emit(
+                        sink,
+                        ChatEvent::SessionError {
+                            session_id: shared.session_id.clone(),
+                            message: format!("this agent would not switch model: {e}"),
+                            fatal: false,
+                        },
+                    ),
+                    // **The answer is checked, not assumed.** The agent replies
+                    // with its whole option set, so it says what is *now*
+                    // selected - which need not be what was asked for. An agent
+                    // that accepts the request and keeps running the old model is
+                    // exactly the silent mismatch `set_model` refuses to risk,
+                    // and it would otherwise show as a picker that switched.
+                    Ok(response) => {
+                        let now = acp::current_model(&response.config_options);
+                        if let Some(now) = now {
+                            if now != value {
+                                emit(
+                                    sink,
+                                    ChatEvent::SessionError {
+                                        session_id: shared.session_id.clone(),
+                                        message: format!(
+                                            "this agent accepted the switch but reports it is running `{now}` rather than `{value}`."
+                                        ),
+                                        fatal: false,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
             }
             Command::SetMode(mode) => {
                 let request = SetSessionModeRequest::new(
@@ -783,16 +889,13 @@ fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
 /// absent key is a protocol error to agents that validate strictly. What the
 /// override controls is whether the array is *populated*, because an adapter
 /// that does not speak MCP can fail `session/new` outright when it is.
-fn new_session_request(cwd: &str, overrides: &AcpOverrides) -> NewSessionRequest {
+fn new_session_request(cwd: &str, _overrides: &AcpOverrides) -> NewSessionRequest {
     let mut request = NewSessionRequest::new(std::path::PathBuf::from(cwd));
-    request.mcp_servers = if overrides.send_mcp_servers {
-        // Populating this needs the session's own MCP config, which arrives
-        // with the adapter rather than with the transport. Until an adapter
-        // opts in there is nothing to send, and the empty array is still sent.
-        Vec::new()
-    } else {
-        Vec::new()
-    };
+    // Empty either way today, and deliberately not written as a branch on
+    // `send_mcp_servers`: populating this needs Sway's MCP configuration mapped
+    // onto ACP's server types, which nothing here does yet. A conditional whose
+    // two arms are the same value reads like a setting that works.
+    request.mcp_servers = Vec::new();
     request
 }
 
@@ -880,6 +983,17 @@ fn listed_session(info: &agent_client_protocol::schema::v1::SessionInfo) -> List
 /// notifications - which is why replay needs no new event, no transcript file
 /// and no change to `chat_history`.
 #[allow(clippy::too_many_arguments)]
+/// A session that is open, and what it said about itself as it opened.
+///
+/// The config options travel with the id rather than being fetched afterwards
+/// because there is no request that would fetch them: they are answered *by*
+/// `session/new` and `session/load`, once, and an agent is not obliged to
+/// mention them again.
+struct OpenedSession {
+    session_id: SessionId,
+    config_options: Vec<SessionConfigOption>,
+}
+
 async fn open_session(
     conn: &ConnectionTo<Agent>,
     shared: &Arc<Shared>,
@@ -888,13 +1002,18 @@ async fn open_session(
     agent: &str,
     overrides: &AcpOverrides,
     init: &InitializeResponse,
-) -> Result<SessionId, String> {
+) -> Result<OpenedSession, String> {
     if let Some(record) = acp_sessions::read(&shared.session_id) {
         if init.agent_capabilities.load_session {
             let session_id = SessionId::new(record.acp_session_id.as_str());
             let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
             match conn.send_request(request).block_task().await {
-                Ok(_) => return Ok(session_id),
+                Ok(loaded) => {
+                    return Ok(OpenedSession {
+                        session_id,
+                        config_options: loaded.config_options.unwrap_or_default(),
+                    })
+                }
                 // A session the agent has forgotten is not a failure to open a
                 // chat: say what was lost and start a fresh one, the same way a
                 // deleted transcript leaves a usable empty chat behind.
@@ -940,7 +1059,10 @@ async fn open_session(
         title: "(untitled session)".to_string(),
         updated_at: now_secs(),
     });
-    Ok(opened.session_id)
+    Ok(OpenedSession {
+        session_id: opened.session_id,
+        config_options: opened.config_options.unwrap_or_default(),
+    })
 }
 
 /// Name a `session/new` failure in terms the user can act on.
@@ -1038,6 +1160,7 @@ mod tests {
             settled: std::sync::Condvar::new(),
             current_turn: Mutex::new(String::new()),
             seq: AtomicU64::new(0),
+            model_switch: Mutex::new(ModelSwitch::Unknown),
         })
     }
 
@@ -1114,6 +1237,32 @@ mod tests {
         assert!(transport.send(&[]).is_err());
         assert!(transport.interrupt().is_err());
         assert!(transport.child_pid().is_none());
+    }
+
+    /// A refused model switch says **which** refusal it is.
+    ///
+    /// Both answers are "no", and they are not the same no: one is the agent
+    /// having offered no model selector, the other is Sway not having asked yet
+    /// because the session is still opening. Reporting the second as the first
+    /// blames the agent for Sway's timing, and it is the message a user would act
+    /// on by going to look for a setting that is not the problem.
+    #[test]
+    fn a_model_switch_says_which_refusal_it_is() {
+        let mut transport = AcpTransport::new("s1", "opencode", AcpOverrides::default());
+        let before = transport.set_model("anything", None).expect_err("nothing to switch yet");
+        assert!(before.contains("still opening"), "{before}");
+
+        *transport.shared.model_switch.lock().unwrap() = ModelSwitch::Unsupported;
+        let unsupported = transport.set_model("anything", None).expect_err("no selector");
+        assert!(unsupported.contains("offers no model"), "{unsupported}");
+        assert!(!unsupported.contains("still opening"), "{unsupported}");
+
+        // And with a selector, the refusal is gone: what stops it now is only
+        // that no session is running, which is a different error entirely.
+        *transport.shared.model_switch.lock().unwrap() = ModelSwitch::Available("model".into());
+        let with_selector = transport.set_model("anything", None).expect_err("not started");
+        assert!(!with_selector.contains("offers no model"), "{with_selector}");
+        assert!(!with_selector.contains("still opening"), "{with_selector}");
     }
 
     /// ACP has no mid-turn delivery, and the trait says a harness without one
@@ -1275,10 +1424,35 @@ mod tests {
         program: &str,
         args: &[&str],
     ) -> ((AcpTransport, Arc<Mutex<Vec<ChatEvent>>>), String) {
+        live_session_in(session_id, program, args, "shared", &[])
+    }
+
+    /// A live session in a cwd of its own, seeded with files before the agent
+    /// starts.
+    ///
+    /// The cwd matters more than it looks. An ACP agent reads *its own* config
+    /// out of the working directory, so a test that needs the agent configured a
+    /// particular way cannot share the directory every other live test runs in -
+    /// one asking for permission on every edit would leave the others waiting on
+    /// a prompt nobody answers.
+    #[cfg(test)]
+    #[allow(clippy::type_complexity)]
+    fn live_session_in(
+        session_id: &str,
+        program: &str,
+        args: &[&str],
+        dir_tag: &str,
+        files: &[(&str, &str)],
+    ) -> ((AcpTransport, Arc<Mutex<Vec<ChatEvent>>>), String) {
         use super::super::transport::new_sink;
 
-        let root = std::env::temp_dir().join(format!("sway-acp-live-{}", std::process::id()));
+        let root = std::env::temp_dir()
+            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join(dir_tag);
         std::fs::create_dir_all(&root).unwrap();
+        for (name, contents) in files {
+            std::fs::write(root.join(name), contents).unwrap();
+        }
         acp_sessions::use_dir_for_tests(root.join("locators"));
         let cwd = root.to_string_lossy().into_owned();
         let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
@@ -1315,6 +1489,223 @@ mod tests {
             }
             thread::sleep(Duration::from_millis(100));
         }
+    }
+
+    /// The model picker's whole supply for an ACP session, proven live.
+    ///
+    /// An ACP adapter declares no `[[chat.models]]` on purpose: measured on
+    /// `opencode acp` 1.18.3, the agent's own catalogue is 15 provider-qualified
+    /// ids and `opencode models` prints the same 15, so there is no shortfall to
+    /// make up and a bundled table could only go stale or contradict the user's
+    /// authenticated providers. What this pins is that the catalogue really does
+    /// arrive over the protocol, since the picker has nothing else to fall back
+    /// to.
+    #[test]
+    #[ignore = "drives the real `opencode acp` binary"]
+    fn a_live_session_reports_the_agents_own_model_catalogue() {
+        let (mut transport, seen) = live_session("live-models", "opencode", &["acp"]);
+        let events = wait_for(&seen, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+
+        let started = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::SessionStarted { models, model, .. } => Some((models, model)),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no session started: {events:?}"));
+        let (models, running) = started;
+
+        assert!(!models.is_empty(), "the agent offered a model selector, so the picker has rows");
+        assert!(
+            models.iter().any(|m| m.value.contains('/')),
+            "opencode's ids are provider-qualified: {:?}",
+            models.iter().map(|m| &m.value).collect::<Vec<_>>()
+        );
+        assert!(!running.is_empty(), "the session says which model it is running");
+        assert!(
+            models.iter().any(|m| &m.value == running),
+            "the running model is one of the offered ones: {running} not in {:?}",
+            models.iter().map(|m| &m.value).collect::<Vec<_>>()
+        );
+        // No effort levels are invented for a protocol that has no notion of one.
+        assert!(models.iter().all(|m| m.supported_effort_levels.is_empty()));
+
+        // A switch to another offered model is accepted. `session/set_model` does
+        // not exist in ACP 2.0.0, so this proves the `session/set_config_option`
+        // route rather than a verb the spec dropped.
+        let other = models.iter().map(|m| m.value.clone()).find(|v| v != running);
+        if let Some(other) = other {
+            transport.set_model(&other, None).expect("a switch to an offered model is accepted");
+            let after = wait_for(&seen, 20, |e| {
+                e.iter().any(|e| matches!(e, ChatEvent::SessionError { .. }))
+            });
+            assert!(
+                !after.iter().any(|e| matches!(e, ChatEvent::SessionError { .. })),
+                "the agent accepted the config option rather than refusing it: {after:?}"
+            );
+        }
+
+        let _ = transport.close();
+    }
+
+    /// **The genericity proof**: one agent, driven entirely from its own adapter
+    /// TOML, through streaming text, a tool call and a permission prompt.
+    ///
+    /// Nothing here names a program, an argument or a quirk. Every one of those
+    /// is read out of the bundled `opencode.toml`, so if this passes then adding
+    /// OpenCode really did cost a TOML file and no Rust - which is the claim
+    /// [[adr_harness_breadth]] rests on and the reason the ACP transport exists
+    /// rather than a second typed adapter.
+    ///
+    /// **The permission half needed the agent's own config, not Sway's.**
+    /// `opencode acp` approves edits silently by default, which is why Phases 4
+    /// and 5 both recorded the prompt as unproven against it and reached for a
+    /// different agent. Measured here: with `permission.edit = "ask"` in the
+    /// agent's own `opencode.json`, it asks - offering `once`, `always` and
+    /// `reject`. That whether-to-ask is the agent's setting and not Sway's is
+    /// exactly [[sway-harness-owns-permissions]], so the fix was to configure the
+    /// harness rather than to add anything here.
+    #[test]
+    #[ignore = "drives the real `opencode acp` binary: costs tokens"]
+    fn an_acp_agent_is_driven_entirely_from_its_own_adapter_toml() {
+        use super::super::transport::new_sink;
+
+        let adapter = crate::agents::find("opencode").expect("opencode ships bundled");
+        let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
+        let args =
+            crate::chat::commands::build_args(chat, "live-generic", false, None, None, None, None, &[]);
+
+        // The agent's own configuration, so it asks before it writes. Sway
+        // contributes nothing to this decision and could not.
+        let root = std::env::temp_dir()
+            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join("generic");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("opencode.json"),
+            r#"{"$schema":"https://opencode.ai/config.json","permission":{"edit":"ask"}}"#,
+        )
+        .unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+        let cwd = root.to_string_lossy().into_owned();
+
+        let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = seen.clone();
+        let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
+
+        // Program, args and quirks all from the adapter.
+        let mut transport =
+            AcpTransport::new("live-generic", &adapter.id, chat.acp.clone());
+        transport
+            .start(
+                StartSpec {
+                    session_id: "live-generic".to_string(),
+                    cwd: cwd.clone(),
+                    program: chat.program.clone(),
+                    args,
+                    env: HashMap::new(),
+                },
+                sink,
+            )
+            .expect("the adapter's launch should start the agent");
+
+        wait_for(&seen, 60, |e| e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. })));
+        transport
+            .send(&[ContentBlock::Text {
+                text: "Create a file named generic.txt containing exactly the word hello. \
+                       Use your write tool, then say done."
+                    .to_string(),
+            }])
+            .expect("a prompt goes out");
+
+        // Answer the question the agent asks, in the agent's own vocabulary.
+        let asked = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
+        });
+        let (request_id, suggestions) = asked
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::PermissionRequest { request_id, suggestions, .. } => {
+                    Some((request_id.clone(), suggestions.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                panic!("the agent's own config says ask, so it must ask: {asked:?}")
+            });
+
+        // Whatever the agent offered is what is on the prompt: Sway composes no
+        // option of its own, so this is a record of the agent's vocabulary
+        // rather than an assertion about Sway's.
+        let _ = suggestions;
+
+        assert!(
+            transport
+                .respond_permission(
+                    "",
+                    &request_id,
+                    PermissionDecision::Allow,
+                    PermissionScope::Once,
+                    None,
+                )
+                .expect("answering is in-protocol"),
+            "the answer went to the transport rather than to the PreToolUse bridge"
+        );
+
+        let done = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = transport.close();
+
+        assert!(
+            done.iter().any(|e| matches!(e, ChatEvent::TextDelta { .. } | ChatEvent::ThinkingDelta { .. })),
+            "streaming text: {done:?}"
+        );
+        assert!(
+            done.iter().any(|e| matches!(e, ChatEvent::ToolCallStarted { .. })),
+            "a tool call: {done:?}"
+        );
+        assert!(
+            done.iter().any(|e| matches!(
+                e,
+                ChatEvent::TurnCompleted { outcome: crate::chat::model::TurnOutcome::Completed, .. }
+            )),
+            "and a turn that completed: {done:?}"
+        );
+        assert!(
+            root.join("generic.txt").exists(),
+            "the approved write actually happened, so the allow reached the agent"
+        );
+    }
+
+    /// The capabilities Sway publishes for an ACP session come off the wire.
+    ///
+    /// This is what stops one generic transport publishing one answer for every
+    /// agent behind it. `opencode acp` 1.18.3 advertises `loadSession` and
+    /// `sessionCapabilities.list`; an agent that advertises neither must publish
+    /// neither, and nothing in the adapter TOML says either way.
+    #[test]
+    #[ignore = "drives the real `opencode acp` binary"]
+    fn a_live_handshake_is_where_the_published_capabilities_come_from() {
+        let (mut transport, seen) = live_session("live-caps", "opencode", &["acp"]);
+        let events = wait_for(&seen, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionReady { .. }))
+        });
+        let _ = transport.close();
+
+        let caps = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::SessionReady { capabilities, .. } => Some(*capabilities),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no session ready: {events:?}"))
+            .expect("an ACP session carries what its agent advertised");
+
+        assert!(caps.load_session, "opencode 1.18.3 advertises loadSession");
+        assert!(caps.list_sessions, "and sessionCapabilities.list");
     }
 
     /// **The measurement the transport rests on**: a real agent completes

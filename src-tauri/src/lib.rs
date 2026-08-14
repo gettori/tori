@@ -14,6 +14,7 @@ pub mod forge;
 mod format;
 mod fs;
 mod git;
+mod catalog;
 mod health;
 mod hooks;
 mod hot_exit;
@@ -307,6 +308,8 @@ pub fn run() {
             dap::dap_health,
             agents::list_agents,
             health::agent_health,
+            catalog::acp_catalog,
+            catalog::acp_catalog_source,
             onboarding::onboarding_should_show,
             onboarding::onboarding_mark_shown,
             hot_exit::hot_exit_load,

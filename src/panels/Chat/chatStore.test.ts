@@ -986,6 +986,7 @@ describe("the answered handshake (sessionReady)", () => {
     slashCommands: [{ name: "review", description: "Multi-lens code review", argumentHint: null, aliases: [] }],
     models: [MODEL],
     account: ACCOUNT,
+    capabilities: null,
     ...over,
   });
 

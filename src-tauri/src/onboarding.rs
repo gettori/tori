@@ -62,7 +62,15 @@ fn save_to(path: &Path, state: &State) -> Result<(), String> {
 /// hit: we only need existence, never the count, so a user with thousands of
 /// transcripts pays for one directory entry.
 fn has_any_session(adapter: &AgentAdapter) -> bool {
-    match &adapter.discovery {
+    let Some(discovery) = &adapter.discovery else {
+        // A protocol-backed adapter keeps nothing here to walk. Sway's own
+        // record of what its protocol said is the equivalent evidence, and it
+        // is the right one to use: a user whose only agent is an ACP one has
+        // still used Sway, and greeting them with onboarding would say
+        // otherwise.
+        return crate::chat::acp_sessions::all().iter().any(|s| s.agent == adapter.id);
+    };
+    match discovery {
         // Mirrors the sessions.rs layout: <dir>/<project slug>/<id>.jsonl.
         // Files sitting directly in `dir` count too, so an adapter with a flat
         // layout is not reported empty.
@@ -135,10 +143,10 @@ mod tests {
     /// An adapter discovering sessions from `dir` rather than the real `~`.
     fn adapter_at(dir: &Path) -> AgentAdapter {
         let mut a = agents::test_adapter("x");
-        a.discovery = Discovery::File {
+        a.discovery = Some(Discovery::File {
             dir: dir.to_path_buf(),
             filename_regex: regex::Regex::new(r"^(?P<id>.+)\.jsonl$").unwrap(),
-        };
+        });
         a
     }
 

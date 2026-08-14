@@ -53,6 +53,7 @@ const adapter: ChatConfig = {
   ],
   modes: [],
   effort: [],
+  acp: { serve_client_fs: false },
 };
 
 function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {

@@ -4,6 +4,7 @@ import {
   chatTier,
   publishedCapabilities,
   steerCostDetail,
+  unavailableCapabilities,
   steerCostLabel,
   stringList,
   NO_CHAT_TIER,
@@ -158,5 +159,145 @@ describe("the chat tier", () => {
   it("has no cost to quote where there is no steer", () => {
     expect(steerCostLabel(NO_CHAT_TIER)).toBeNull();
     expect(steerCostDetail(NO_CHAT_TIER)).toBeNull();
+  });
+});
+
+describe("every tier explains what it lacks", () => {
+  // The compiler makes a new transport state its values; this makes it state its
+  // *reasons*. Without it the honest half of the design - "omitted from the
+  // promise list, explained somewhere else" - degrades to just omitted, and a
+  // user meets a missing control with nothing to read.
+  it("names a reason for every affordance it does not have", () => {
+    for (const transport of ["claude_stream_json", "acp"] as const) {
+      const tier = chatTier(transport);
+      const published = new Set(publishedCapabilities(tier).map((c) => c.key));
+      const explained = new Set(unavailableCapabilities(tier).map((g) => g.key));
+
+      // Every gap in the tier's own values is explained...
+      const expected = [
+        ["rewind", tier.rewind === "none"],
+        ["steer", tier.steer === "none"],
+        ["approvals", tier.approvals === "none"],
+        ["rules", !tier.swayRules],
+        ["diffs", !tier.beforeStateDiffs],
+        ["budgets", !tier.spendCeilings],
+      ] as const;
+      for (const [key, missing] of expected) {
+        if (missing) {
+          expect(explained.has(key), `${transport} must explain why it has no ${key}`).toBe(true);
+        }
+      }
+
+      // ...and nothing is both promised and explained away, which would be a
+      // note left behind by a capability that has since shipped.
+      for (const key of explained) {
+        expect(published.has(key), `${transport}: ${key} is both published and missing`).toBe(false);
+      }
+      // A reason a user can act on, not a restatement of the key.
+      for (const gap of unavailableCapabilities(tier)) {
+        expect(gap.why.length, `${transport}.${gap.key}`).toBeGreaterThan(40);
+      }
+    }
+  });
+
+  it("says nothing five times over for an agent with no chat surface at all", () => {
+    expect(unavailableCapabilities(NO_CHAT_TIER)).toEqual([]);
+  });
+});
+
+describe("the ACP tier", () => {
+  it("publishes what an ACP session earns and omits every affordance it lacks", () => {
+    const tier = chatTier("acp");
+    const keys = publishedCapabilities(tier).map((c) => c.key);
+
+    // The one thing ACP earns outright: the agent asks, Sway renders.
+    expect(tier.approvals).toBe("in-protocol");
+    expect(publishedCapabilities(tier)).toContainEqual({
+      key: "approvals",
+      value: "in-protocol",
+      label: "approvals: in-protocol",
+    });
+
+    // The three the plan names as unsupported, absent from the listing rather
+    // than published as `none`. An entry for something absent invites reading
+    // the key and skipping the value.
+    expect(tier.beforeStateDiffs).toBe(false);
+    expect(tier.spendCeilings).toBe(false);
+    expect(tier.rewind).toBe("none");
+    expect(keys).not.toContain("diffs");
+    expect(keys).not.toContain("budgets");
+    expect(keys).not.toContain("rewind");
+    // And Sway's own rule store, which only the Claude hook reads.
+    expect(keys).not.toContain("rules");
+  });
+
+  it("never reports a budget as armed, because ACP reports no cost to measure", () => {
+    // The load-bearing half of "budgets never report as armed for an ACP
+    // session": `applyBudget` returns early on this flag, and a ceiling that
+    // reads as armed while nothing can fire it is the one failure a spend limit
+    // must not have. ACP's usage update carries context occupancy, not money.
+    expect(chatTier("acp").spendCeilings).toBe(false);
+  });
+
+  it("offers no rewind timestamp, so revert is unavailable rather than failing when clicked", () => {
+    // ChatView gates on `rewind === "fork"`. Both measured agents advertise
+    // `sessionCapabilities.fork`, but Sway's fork is `fork_args` plus a tree
+    // snapshot and the ACP transport implements no fork verb, so the honest
+    // answer is that the control does not appear.
+    expect(chatTier("acp").rewind).not.toBe("fork");
+  });
+
+  // The three the plan names, each with the reason a user can act on rather
+  // than the mechanism they cannot.
+  it("names exact diffs, revert and spend ceilings as unavailable, and says why", () => {
+    const gaps = unavailableCapabilities(chatTier("acp"));
+    const by = (key: string) => gaps.find((g) => g.key === key)?.why ?? "";
+
+    expect(by("diffs")).toContain("before-and-after");
+    expect(by("rewind")).toContain("fork");
+    // Not "it rides the hook", which stopped being true when the ceiling moved
+    // to the turn boundary. The real reason is that ACP reports no cost.
+    expect(by("budgets")).toContain("cost");
+    expect(by("budgets")).not.toContain("hook");
+    // And what the user still has instead, where there is something.
+    expect(by("rewind")).toContain("Changes panel");
+    expect(by("rules")).toContain("asks its own permission questions");
+  });
+
+  it("cannot steer, and quotes no cost for one", () => {
+    const tier = chatTier("acp");
+    expect(tier.steer).toBe("none");
+    expect(tier.steerCost).toBeNull();
+    expect(steerCostLabel(tier)).toBeNull();
+  });
+
+  // The point of a generic client: two agents behind one transport differ, and
+  // the tier alone cannot tell them apart.
+  it("folds in what the running agent advertised, so one transport can publish two answers", () => {
+    const tier = chatTier("acp");
+    const floor = publishedCapabilities(tier).map((c) => c.key);
+    expect(floor).not.toContain("history");
+    expect(floor).not.toContain("sessions");
+
+    const rich = publishedCapabilities(tier, { loadSession: true, listSessions: true });
+    expect(rich.map((c) => c.key)).toEqual([...floor, "history", "sessions"]);
+    expect(rich.find((c) => c.key === "history")?.label).toBe("history: session/load");
+
+    // An agent that advertises nothing publishes nothing extra, and null (a
+    // harness whose capabilities are measured rather than asked for) is the
+    // same as absent.
+    const bare = { loadSession: false, listSessions: false };
+    expect(publishedCapabilities(tier, bare).map((c) => c.key)).toEqual(floor);
+    expect(publishedCapabilities(tier, null).map((c) => c.key)).toEqual(floor);
+  });
+
+  it("does not let an advertisement reach Claude's measured tier", () => {
+    // Claude's capabilities are pinned from measurement, so a handshake claim
+    // would be a second, weaker source for the same facts. Nothing sends one,
+    // and if something did it would still only ever *add* the two advertised
+    // rows rather than change a measured value.
+    const claude = chatTier("claude_stream_json");
+    const measured = publishedCapabilities(claude);
+    expect(publishedCapabilities(claude, null)).toEqual(measured);
   });
 });

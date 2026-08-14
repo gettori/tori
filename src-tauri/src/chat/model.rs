@@ -241,6 +241,39 @@ pub struct ChatModelInfo {
     pub supports_auto_mode: bool,
 }
 
+/// What a harness said it can do, read off its own handshake.
+///
+/// **Advertised, not measured, and the distinction is the point.** Sway's
+/// per-transport tier records what *shipped* against a harness somebody sat down
+/// and measured; this records what *this* agent, on this machine, at this
+/// version, claims about itself. They answer different questions and the tier
+/// needs both: one generic transport carries agents that genuinely differ, so a
+/// tier that only knew the transport would publish the same capabilities for an
+/// agent that resumes conversations and one that cannot.
+///
+/// `None` on the event for a harness that advertises nothing. That is not a
+/// harness with no capabilities: Claude's are measured and pinned rather than
+/// asked for, so there is nothing to carry, and a surface reads the absence as
+/// "the tier is all there is" rather than as an empty list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatCapabilities {
+    /// The agent can replay a conversation it still holds (`session/load`).
+    pub load_session: bool,
+    /// The agent can enumerate its own sessions (`session/list`). An
+    /// advertisement, never a promise of rows: `opencode acp` 1.18.3 advertises
+    /// it and can answer with nothing.
+    pub list_sessions: bool,
+}
+
+// Session **fork** is deliberately absent, and the reason is worth keeping.
+// Both measured agents advertise `sessionCapabilities.fork` on the wire, but the
+// protocol schema this build speaks (v1) models no such field, so reading it
+// would mean parsing raw JSON around the crate. That would be worth doing for a
+// capability Sway could use - and it cannot: Sway's fork is `fork_args` plus a
+// tree snapshot, and the ACP transport implements no fork verb at all. A
+// capability published here would be one the UI could only offer and then fail.
+
 /// Who the session is signed in as, from the `initialize` handshake.
 ///
 /// Measured: like the model catalogue, this exists **only** in that control
@@ -434,6 +467,11 @@ pub enum ChatEvent {
         /// for the first `system/init` would hold back data already in hand.
         #[serde(default)]
         account: Option<ChatAccount>,
+        /// What this agent advertised about itself, for a harness that
+        /// advertises. `None` for one whose capabilities are measured and
+        /// pinned instead; see [`ChatCapabilities`].
+        #[serde(default)]
+        capabilities: Option<ChatCapabilities>,
     },
 
     /// One hook execution, from the in-band `hook_started`/`hook_response`
@@ -806,6 +844,7 @@ mod tests {
                     organization: "Acme".into(),
                     api_provider: "firstParty".into(),
                 }),
+                capabilities: Some(ChatCapabilities { load_session: true, list_sessions: true }),
             },
             ChatEvent::TurnStarted {
                 session_id: "s1".into(),

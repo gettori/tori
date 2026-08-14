@@ -56,7 +56,11 @@ pub struct AgentHealth {
     /// The version string the adapter declares it was captured against.
     pub verified_against: Option<String>,
     /// Where sessions are discovered from, and whether that path exists yet.
-    pub sessions_dir: String,
+    ///
+    /// `None` for an adapter that reaches its sessions over its protocol: there
+    /// is no directory to name, and naming one that never exists would read as a
+    /// broken install rather than as a different design.
+    pub sessions_dir: Option<String>,
     pub sessions_dir_exists: bool,
     /// Capability flags, rendered as chips.
     pub hooks: bool,
@@ -141,8 +145,8 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
         version,
         verified_against: adapter.verified_against.clone(),
-        sessions_dir: sessions_dir.to_string_lossy().into_owned(),
-        sessions_dir_exists: sessions_dir.exists(),
+        sessions_dir: sessions_dir.map(|d| d.to_string_lossy().into_owned()),
+        sessions_dir_exists: sessions_dir.is_some_and(|d| d.exists()),
         hooks: adapter.hooks,
         needs_you: adapter.needs_you,
         override_path: adapter.is_override().then(|| adapter.source.clone()),
@@ -191,6 +195,45 @@ mod tests {
         assert_eq!(compare(Some("1.18.4"), Some("claude 1.18.3")), BinaryStatus::VersionDrift);
         // An adapter that declares nothing to compare against is never drift.
         assert_eq!(compare(Some("1.18.3"), None), BinaryStatus::VersionUnknown);
+    }
+
+    /// Every bundled adapter gets a card, and the two things that card reads
+    /// from the adapter rather than from the binary are right for both shapes.
+    ///
+    /// `sessions_dir` is the one worth pinning: an ACP agent has no such
+    /// directory, and a card naming a path that will never exist reads as a
+    /// broken install rather than as a different design.
+    #[test]
+    fn a_protocol_backed_adapter_reports_no_sessions_directory() {
+        for adapter in agents::registry() {
+            let health = check(adapter);
+            assert_eq!(
+                health.sessions_dir.is_some(),
+                adapter.discovery.is_some(),
+                "{}: a sessions directory is reported exactly when one is discovered from",
+                adapter.id
+            );
+            if health.sessions_dir.is_none() {
+                assert!(!health.sessions_dir_exists, "{}: nothing to exist", adapter.id);
+            }
+        }
+    }
+
+    /// An adapter shipped without `verified_against` cannot report a version
+    /// match, however new the binary is - which is what lets the Agents card
+    /// label it untested instead of supported.
+    #[test]
+    fn an_adapter_that_declares_no_measurement_never_reports_a_match() {
+        let gemini = agents::find("gemini").expect("gemini ships bundled");
+        assert_eq!(gemini.verified_against, None);
+        assert_eq!(compare(Some("0.9.0"), gemini.verified_against.as_deref()), BinaryStatus::VersionUnknown);
+
+        // And the measured one does match its declared version.
+        let opencode = agents::find("opencode").expect("opencode ships bundled");
+        assert_eq!(
+            compare(Some("1.18.3"), opencode.verified_against.as_deref()),
+            BinaryStatus::VersionMatch
+        );
     }
 
     #[test]

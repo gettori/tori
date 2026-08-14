@@ -83,6 +83,10 @@
       "subscriptionType": "Claude Pro",
       "organization": "Acme",
       "apiProvider": "firstParty"
+    },
+    "capabilities": {
+      "loadSession": true,
+      "listSessions": true
     }
   },
   {

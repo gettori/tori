@@ -14,13 +14,15 @@
 //! mapping below lands on a variant that already existed.
 
 use agent_client_protocol::schema::v1::{
-    ContentBlock as AcpContentBlock, ContentChunk, PermissionOption, RequestPermissionRequest,
-    SessionUpdate, StopReason, ToolCall, ToolCallStatus, ToolCallUpdate,
+    ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse, PermissionOption,
+    RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory,
+    SessionConfigSelect, SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate,
+    StopReason, ToolCall, ToolCallStatus, ToolCallUpdate,
 };
 
 use super::model::{
-    ChatEvent, ContentBlock, PermissionSuggestion, PlanItem, PlanItemStatus, ToolStatus,
-    TurnOutcome, Usage,
+    ChatCapabilities, ChatEvent, ChatModelInfo, ContentBlock, PermissionSuggestion, PlanItem,
+    PlanItemStatus, ToolStatus, TurnOutcome, Usage,
 };
 
 /// How an agent departs from a spec-correct client's defaults.
@@ -31,7 +33,14 @@ use super::model::{
 /// what keeps [[adr_harness_breadth]]'s "a new harness is a TOML file" claim
 /// honest: a third quirk has to be argued for and named here, not smuggled in as
 /// free-form JSON.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// This is also the resolved `[chat.acp]` table: an adapter deserializes
+/// straight into it rather than into a parallel struct that would have to be
+/// kept in step. `deny_unknown_fields` makes a misspelled or invented quirk a
+/// loud load error, which is the same rule stated to the TOML instead of to the
+/// reader.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct AcpOverrides {
     /// Send Sway's MCP servers on `session/new`.
     ///
@@ -40,6 +49,14 @@ pub struct AcpOverrides {
     /// populated rather than ignoring it, so an agent has to opt in to being
     /// told about them. The key is still always *present* on the wire - an empty
     /// array is a value and an absent key is a protocol error.
+    ///
+    /// **Not settable from an adapter TOML**, alone among these, and the reason
+    /// is worth stating: Sway does not yet forward its MCP configuration over
+    /// ACP at all, so the array is empty whichever way this is set. A `[chat.acp]`
+    /// key for it would be a published setting that changes nothing on the wire.
+    /// It stays here as the shape the quirk needs, and becomes a TOML key in the
+    /// same change that populates the array.
+    #[serde(skip)]
     pub send_mcp_servers: bool,
     /// Advertise the client's filesystem and terminal capabilities.
     ///
@@ -48,6 +65,111 @@ pub struct AcpOverrides {
     /// some agents merely behave *better* when a client serves them, which is
     /// what this opts into.
     pub serve_client_fs: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Session configuration: the model catalogue and the modes, read off the wire
+// ---------------------------------------------------------------------------
+
+/// The one select option of `category` an agent offered, if it offered one.
+///
+/// Selected by the **category the agent gave it**, never by its id or its label.
+/// Measured on `opencode acp` 1.18.3: the model selector's id is `model` and the
+/// mode selector's is `mode`, which is tempting to match on and wrong to - the
+/// ids are the agent's own vocabulary and another agent may spell them anything,
+/// while `category` is the spec's word for what the option *is*.
+fn select_of(
+    options: &[SessionConfigOption],
+    category: SessionConfigOptionCategory,
+) -> Option<(&SessionConfigOption, &SessionConfigSelect)> {
+    options.iter().find_map(|o| match (&o.category, &o.kind) {
+        (Some(c), SessionConfigKind::Select(select)) if *c == category => Some((o, select)),
+        _ => None,
+    })
+}
+
+/// A select's entries, flattened out of the two shapes the spec allows.
+///
+/// Grouping is a display concern the picker does not have a row for, so the
+/// groups are flattened rather than dropped: a grouped catalogue would otherwise
+/// arrive as an empty model list, which reads as "this agent has no models".
+fn select_entries(select: &SessionConfigSelect) -> Vec<&SessionConfigSelectOption> {
+    match &select.options {
+        SessionConfigSelectOptions::Ungrouped(entries) => entries.iter().collect(),
+        SessionConfigSelectOptions::Grouped(groups) => {
+            groups.iter().flat_map(|g| g.options.iter()).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The models an agent offered, as the catalogue the picker already reads.
+///
+/// Empty when the agent offered no model selector, which the picker reads as
+/// "fall back to the adapter table" - and an ACP adapter declares no table, so
+/// the honest outcome is a picker with nothing to switch to rather than one
+/// offering models this agent never mentioned.
+///
+/// Every field Sway cannot learn from ACP is left at its empty value rather than
+/// guessed: `resolved_model` repeats the value because the agent reports no
+/// separate resolution, and no effort levels are claimed because ACP has no
+/// notion of one. Measured on `opencode acp` 1.18.3: 15 provider-qualified ids
+/// (`github-copilot/claude-sonnet-4.6`, `opencode/big-pickle`, ...), the same 15
+/// `opencode models` prints, so nothing is lost by reading them from the wire.
+pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
+    let Some((_, select)) = select_of(options, SessionConfigOptionCategory::Model) else {
+        return Vec::new();
+    };
+    select_entries(select)
+        .into_iter()
+        .map(|entry| ChatModelInfo {
+            value: entry.value.0.to_string(),
+            resolved_model: entry.value.0.to_string(),
+            display_name: entry.name.clone(),
+            description: entry.description.clone().unwrap_or_default(),
+            supports_effort: false,
+            supported_effort_levels: Vec::new(),
+            supports_auto_mode: false,
+        })
+        .collect()
+}
+
+/// The model this session is running right now, as the agent reports it.
+pub fn current_model(options: &[SessionConfigOption]) -> Option<String> {
+    let (_, select) = select_of(options, SessionConfigOptionCategory::Model)?;
+    Some(select.current_value.0.to_string())
+}
+
+/// The config id a model switch has to name on `session/set_config_option`.
+///
+/// Kept rather than re-derived at switch time because the options arrive once,
+/// with the session, and the request needs the agent's own id for them. `None`
+/// is an agent with no model selector, and a switch on one of those is refused
+/// rather than sent to an id Sway made up.
+pub fn model_config_id(options: &[SessionConfigOption]) -> Option<String> {
+    let (option, _) = select_of(options, SessionConfigOptionCategory::Model)?;
+    Some(option.id.0.to_string())
+}
+
+/// What the agent said it can do, from its `initialize` answer.
+///
+/// Read off the wire on every connection rather than declared in the adapter
+/// TOML, which is the whole difference between a generic client and a
+/// per-vendor one: two agents behind the same transport can differ here, and the
+/// crate's own stability labels disagree with what agents advertise (session
+/// fork is marked unstable in 2.0.0 while both measured agents advertise it).
+/// So the tier for an ACP session is the transport's floor plus this.
+///
+/// Whether the session has a model selector is deliberately *not* here: the
+/// catalogue itself already rides `SessionStarted`, and a boolean saying an
+/// empty list exists would be the same fact told twice, in two places that can
+/// disagree.
+pub fn capabilities(init: &InitializeResponse) -> ChatCapabilities {
+    let sessions = &init.agent_capabilities.session_capabilities;
+    ChatCapabilities {
+        load_session: init.agent_capabilities.load_session,
+        list_sessions: sessions.list.is_some(),
+    }
 }
 
 /// Sway's turn identity for an ACP turn.
@@ -370,6 +492,177 @@ mod tests {
 
     fn text_chunk(text: &str) -> ContentChunk {
         ContentChunk::new(AcpContentBlock::Text(TextContent::new(text.to_string())))
+    }
+
+    // --- session config options ------------------------------------------
+
+    /// One select option, in the shape `opencode acp` 1.18.3 actually sends it.
+    fn select(
+        id: &str,
+        name: &str,
+        category: Option<SessionConfigOptionCategory>,
+        current: &str,
+        values: &[(&str, &str)],
+    ) -> SessionConfigOption {
+        use agent_client_protocol::schema::v1::{SessionConfigId, SessionConfigValueId};
+        let entries: Vec<SessionConfigSelectOption> = values
+            .iter()
+            .map(|(value, label)| {
+                SessionConfigSelectOption::new(
+                    SessionConfigValueId::new(*value),
+                    (*label).to_string(),
+                )
+            })
+            .collect();
+        let mut option = SessionConfigOption::new(
+            SessionConfigId::new(id),
+            name.to_string(),
+            SessionConfigKind::Select(SessionConfigSelect::new(
+                SessionConfigValueId::new(current),
+                SessionConfigSelectOptions::Ungrouped(entries),
+            )),
+        );
+        option.category = category;
+        option
+    }
+
+    fn opencode_options() -> Vec<SessionConfigOption> {
+        vec![
+            select(
+                "model",
+                "Model",
+                Some(SessionConfigOptionCategory::Model),
+                "opencode/big-pickle",
+                &[
+                    ("github-copilot/claude-sonnet-4.6", "GitHub Copilot/Claude Sonnet 4.6"),
+                    ("opencode/big-pickle", "opencode/Big Pickle"),
+                ],
+            ),
+            select(
+                "mode",
+                "Session Mode",
+                Some(SessionConfigOptionCategory::Mode),
+                "build",
+                &[("build", "build"), ("plan", "plan")],
+            ),
+        ]
+    }
+
+    /// The catalogue is the agent's, provider-qualified ids and all.
+    #[test]
+    fn a_model_select_becomes_the_live_catalogue() {
+        let models = model_catalogue(&opencode_options());
+        assert_eq!(
+            models.iter().map(|m| m.value.as_str()).collect::<Vec<_>>(),
+            vec!["github-copilot/claude-sonnet-4.6", "opencode/big-pickle"],
+        );
+        assert_eq!(models[0].display_name, "GitHub Copilot/Claude Sonnet 4.6");
+        // ACP has no notion of an effort level, so none is claimed and the
+        // control stays hidden rather than rendering inert.
+        assert!(models.iter().all(|m| !m.supports_effort && m.supported_effort_levels.is_empty()));
+        // No separate resolution exists on the wire, so the value is its own.
+        assert!(models.iter().all(|m| m.value == m.resolved_model));
+
+        assert_eq!(current_model(&opencode_options()).as_deref(), Some("opencode/big-pickle"));
+        assert_eq!(model_config_id(&opencode_options()).as_deref(), Some("model"));
+    }
+
+    /// The **category** decides, never the id or the label.
+    ///
+    /// An agent that calls its model selector anything else is still understood,
+    /// and one whose *mode* selector happens to be called `model` is not
+    /// mistaken for a catalogue.
+    #[test]
+    fn a_selector_is_found_by_its_category_not_its_name() {
+        let renamed = vec![select(
+            "llm",
+            "Which brain",
+            Some(SessionConfigOptionCategory::Model),
+            "a",
+            &[("a", "A")],
+        )];
+        assert_eq!(model_config_id(&renamed).as_deref(), Some("llm"));
+
+        let misleading = vec![select(
+            "model",
+            "Model",
+            Some(SessionConfigOptionCategory::Mode),
+            "build",
+            &[("build", "build")],
+        )];
+        assert!(model_catalogue(&misleading).is_empty(), "a mode selector is not a catalogue");
+        assert_eq!(model_config_id(&misleading), None, "and offers nothing to switch");
+    }
+
+    /// An agent that offers no model selector yields an empty catalogue and no
+    /// id to switch with, which is what makes `set_model` refuse rather than
+    /// send a request naming an option that does not exist.
+    #[test]
+    fn an_agent_with_no_model_selector_offers_no_switch() {
+        let none: Vec<SessionConfigOption> = Vec::new();
+        assert!(model_catalogue(&none).is_empty());
+        assert_eq!(model_config_id(&none), None);
+        assert_eq!(current_model(&none), None);
+
+        // An option with no category at all is not guessed at either.
+        let uncategorised = vec![select("model", "Model", None, "a", &[("a", "A")])];
+        assert!(model_catalogue(&uncategorised).is_empty());
+    }
+
+    /// A grouped catalogue is flattened, not dropped: the spec allows both
+    /// shapes, and reading only one would report an agent's models as none.
+    #[test]
+    fn a_grouped_catalogue_is_flattened_rather_than_lost() {
+        use agent_client_protocol::schema::v1::{
+            SessionConfigGroupId, SessionConfigId, SessionConfigSelectGroup, SessionConfigValueId,
+        };
+        let group = SessionConfigSelectGroup::new(
+            SessionConfigGroupId::new("anthropic"),
+            "Anthropic".to_string(),
+            vec![SessionConfigSelectOption::new(
+                SessionConfigValueId::new("anthropic/claude-sonnet-4-5"),
+                "Claude Sonnet 4.5".to_string(),
+            )],
+        );
+        let mut option = SessionConfigOption::new(
+            SessionConfigId::new("model"),
+            "Model".to_string(),
+            SessionConfigKind::Select(SessionConfigSelect::new(
+                SessionConfigValueId::new("anthropic/claude-sonnet-4-5"),
+                SessionConfigSelectOptions::Grouped(vec![group]),
+            )),
+        );
+        option.category = Some(SessionConfigOptionCategory::Model);
+
+        let models = model_catalogue(&[option]);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].value, "anthropic/claude-sonnet-4-5");
+    }
+
+    /// Capabilities are read off the handshake, so two agents behind one
+    /// transport can differ - which is the whole reason they are not declared in
+    /// the adapter TOML.
+    #[test]
+    fn capabilities_come_from_the_handshake_rather_than_the_adapter() {
+        use agent_client_protocol::schema::v1::{AgentCapabilities, SessionCapabilities};
+        use agent_client_protocol::schema::ProtocolVersion;
+
+        let mut silent = InitializeResponse::new(ProtocolVersion::V1);
+        silent.agent_capabilities = AgentCapabilities::default();
+        let caps = capabilities(&silent);
+        assert!(!caps.load_session, "an agent that says nothing claims nothing");
+        assert!(!caps.list_sessions);
+
+        let mut advertised = InitializeResponse::new(ProtocolVersion::V1);
+        let mut agent_caps = AgentCapabilities::default();
+        agent_caps.load_session = true;
+        let mut sessions = SessionCapabilities::default();
+        sessions.list = Some(Default::default());
+        agent_caps.session_capabilities = sessions;
+        advertised.agent_capabilities = agent_caps;
+        let caps = capabilities(&advertised);
+        assert!(caps.load_session);
+        assert!(caps.list_sessions);
     }
 
     #[test]
