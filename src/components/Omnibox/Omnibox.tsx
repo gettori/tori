@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { agents } from "../../utils/agents";
+import { agentReady, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
@@ -169,6 +170,10 @@ export default function Omnibox(props: {
 
   onMount(() => {
     requestAnimationFrame(() => input?.focus());
+    // Which harnesses exist, so the "New ... session" rows offer only the ones
+    // that can start. Cached in the backend, so this is a no-op after the first
+    // call from anywhere.
+    ensureAgentHealthLoaded();
     const at = root();
     if (!at) return;
     void invoke<string[]>("list_project_files", { projectPath: at }).then(setFiles, () => setFiles([]));
@@ -324,7 +329,13 @@ export default function Omnibox(props: {
   const commandRows = createMemo((): Row[] => {
     const out: Row[] = [];
     const sel = props.selected;
-    for (const a of agents()) {
+    // Only harnesses this machine can actually start. An unavailable one is
+    // absent rather than offered-and-failing: a row that spawns a missing
+    // binary reports the failure after the user has already committed to a
+    // session, which is a worse place to learn it than the Agents panel.
+    // `agentReady` treats unknown as ready, so a slow or failed probe leaves
+    // the picker full rather than empty.
+    for (const a of agents().filter((a) => agentReady(a.id))) {
       out.push({
         id: `new:${a.id}`,
         label: `New ${a.label} session`,

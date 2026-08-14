@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 
@@ -114,5 +114,59 @@ describe("the ACP launch catalog in Settings > Agents", () => {
     // And the registry's own pinned version is not presented as a version Sway
     // checked: the row says untested, and nothing on it reads as a match.
     expect(container.textContent).not.toContain("Installed, version 2026.08.11");
+  });
+});
+
+/**
+ * Every non-ready state gets one action, so none of them is a row the user can
+ * only read. The action is "check again" rather than "install for me": Phase 5
+ * owns fetching from the registry, and a button that installed nothing would be
+ * the dead entry this exists to remove.
+ */
+describe("the action on a non-ready agent card", () => {
+  beforeEach(() => {
+    invoked.mockReset();
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health({ status: "notFound", path: null, version: null })];
+      if (cmd === "refresh_agent_health")
+        return [health({ status: "notFound", path: null, version: null })];
+      if (cmd === "acp_catalog") return [];
+      if (cmd === "acp_catalog_source") return null;
+      return undefined;
+    });
+  });
+
+  it("offers a re-probe on a missing binary, and stops telling the user to restart", async () => {
+    const { container, getByText } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("Not installed"));
+
+    // The old copy said "reopen Sway to pick it up", which stopped being true
+    // when the health sweep became invalidatable.
+    expect(container.textContent).not.toContain("reopen Sway");
+    getByText("Check again");
+  });
+
+  it("re-probes through the refresh command rather than re-reading the cache", async () => {
+    const { container, getByText } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("Not installed"));
+
+    invoked.mockClear();
+    fireEvent.click(getByText("Check again"));
+
+    await waitFor(() =>
+      expect(invoked.mock.calls.some(([cmd]) => cmd === "refresh_agent_health")).toBe(true),
+    );
+  });
+
+  it("leaves a healthy agent without an action, so the button means something", async () => {
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health") return [health()];
+      if (cmd === "acp_catalog") return [];
+      if (cmd === "acp_catalog_source") return null;
+      return undefined;
+    });
+    const { container, queryByText } = render(() => <AgentsSection />);
+    await waitFor(() => expect(container.textContent).toContain("Installed, version"));
+    expect(queryByText("Check again")).toBeNull();
   });
 });
