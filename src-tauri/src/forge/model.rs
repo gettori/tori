@@ -491,8 +491,37 @@ mod tests {
             ),
         });
 
-        let text = serde_json::to_string_pretty(&samples).expect("serialize samples");
+        let text = serde_json::to_string_pretty(&sort_keys(samples)).expect("serialize samples");
         std::fs::write(dir.join("model.json"), format!("{text}\n")).expect("write fixture");
+    }
+
+    /// Rewrite every object in the tree with its keys in sorted order.
+    ///
+    /// Without this the fixture's key order depends on whether anything in the
+    /// build graph turned on `serde_json`'s `preserve_order` feature, which is a
+    /// thing Sway does not choose: it arrives transitively (today through
+    /// `serde_with`, via `agent-client-protocol-schema`). With the feature off a
+    /// `serde_json::Map` is a `BTreeMap` and sorts itself; with it on it is an
+    /// `IndexMap` and keeps insertion order. `json!` turns even the derived
+    /// structs into maps, so the whole tree flips together.
+    ///
+    /// Nothing reads the order (`forgeTypes.test.ts` sorts keys before
+    /// comparing), so the churn was never a correctness problem. It was a
+    /// working tree that came back dirty from every `cargo test` with a diff
+    /// that said nothing, which is its own kind of expensive. Sorting here makes
+    /// the fixture a function of the samples alone, so a dependency change
+    /// cannot rewrite a file nobody edited.
+    fn sort_keys(value: serde_json::Value) -> serde_json::Value {
+        use serde_json::Value;
+        match value {
+            Value::Object(map) => {
+                let sorted: std::collections::BTreeMap<String, Value> =
+                    map.into_iter().map(|(k, v)| (k, sort_keys(v))).collect();
+                Value::Object(sorted.into_iter().collect())
+            }
+            Value::Array(items) => Value::Array(items.into_iter().map(sort_keys).collect()),
+            other => other,
+        }
     }
 
     #[test]
