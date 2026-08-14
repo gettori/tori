@@ -44,6 +44,19 @@ keyring-core = "1"
 # they exist for listing/restoring trash contents (and pull `chrono` to do it);
 # `trash::delete` is all the editor asks for.
 trash = { version = "5.2.6", default-features = false }
+# The generic ACP client. Brings the smol stack (`async-io`, `async-process`,
+# `futures-lite`, `blocking`) rather than tokio, so it runs on its own dedicated
+# thread per session and never becomes a second runtime beside Tauri's.
+agent-client-protocol = "2"
+# The SDK's stream and channel vocabulary: `ByteStreams` is defined over
+# `futures`' `AsyncRead`/`AsyncWrite`, and the command channel feeding the
+# connection loop has to be sendable from the sync trait methods.
+futures = "0.3"
+async-process = "2"
+# The handshake deadline. `[[concept_acp_agent_quirks]]` records that an agent
+# which never answers `initialize` leaves a client waiting forever, so the
+# deadline is Sway's to own - the same finding Phase 1 made about the Claude CLI.
+async-io = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # `keychain` is the login keychain (the one a desktop app shares with every

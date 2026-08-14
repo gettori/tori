@@ -14,6 +14,8 @@ use tauri::State;
 
 use crate::agents::{self, ChatConfig, ChatTransport};
 
+use super::acp::AcpOverrides;
+use super::acp_transport::AcpTransport;
 use super::approval::{self, ApprovalPrompt};
 use super::claude_transport::ClaudeTransport;
 use super::host::{AnsweredBy, ChatState, SessionBridge, Spawned};
@@ -36,6 +38,10 @@ use super::transport::{AgentTransport, StartSpec};
 fn make_transport(transport: ChatTransport, session_id: &str) -> Box<dyn AgentTransport> {
     match transport {
         ChatTransport::ClaudeStreamJson => Box::new(ClaudeTransport::new(session_id)),
+        // Every ACP agent reaches Sway through this one arm. Which agent it is
+        // comes from the adapter's `[chat]` table, not from here, which is what
+        // makes a new ACP harness a TOML file rather than a Rust change.
+        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, AcpOverrides::default())),
     }
 }
 
