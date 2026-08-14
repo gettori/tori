@@ -1087,6 +1087,103 @@ mod tests {
         );
     }
 
+    /// **The permission round trip, end to end over the real protocol.**
+    ///
+    /// The one property no mock establishes: that a real agent blocks on
+    /// `session/request_permission`, that Sway's answer reaches it in the
+    /// agent's *own* vocabulary, and that the agent then carries on. If the
+    /// answer were sent as a fixed token, or against the wrong request, the
+    /// agent would sit blocked until its own deadline and the turn would never
+    /// end.
+    ///
+    /// Measured against `@agentclientprotocol/claude-agent-acp` 0.67.0, which
+    /// asks before writing a file and offers three options of its own
+    /// (`reject`, `allow`, `allow_always`). OpenCode does not ask under its
+    /// default configuration, which is why this test names a different agent
+    /// from the others: whether to ask is the harness's decision, not Sway's.
+    #[test]
+    #[ignore = "drives the real claude-agent-acp over npx: costs tokens and needs network"]
+    fn a_live_permission_prompt_is_answered_in_the_agents_own_vocabulary() {
+        use super::super::model::PermissionSuggestion;
+
+        let (mut transport, seen) =
+            live_session("npx", &["-y", "@agentclientprotocol/claude-agent-acp"]);
+        wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        transport
+            .send(&[ContentBlock::Text {
+                text: "Create a file called probe.txt containing the word hello.".to_string(),
+            }])
+            .expect("the turn should submit");
+
+        let asked = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
+        });
+        let Some(ChatEvent::PermissionRequest { request_id, tool_use_id, suggestions, .. }) = asked
+            .iter()
+            .find(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
+            .cloned()
+        else {
+            panic!("the agent must ask before writing: {asked:?}");
+        };
+
+        // The agent's own option ids survive the crossing rather than being
+        // collapsed into a fixed Allow/Deny pair.
+        let offered: Vec<_> = suggestions
+            .iter()
+            .filter_map(|s| match s {
+                PermissionSuggestion::AddRules { destination, .. } => Some(destination.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            offered.contains(&"allow") && offered.contains(&"reject"),
+            "the agent's own option ids must reach the prompt, got {offered:?}"
+        );
+
+        // Answering must be claimed by *this* transport. `Ok(false)` would mean
+        // Sway went looking for the `PreToolUse` bridge instead, leaving the
+        // agent blocked on a question nobody answered.
+        let claimed = transport
+            .respond_permission(
+                &tool_use_id,
+                &request_id,
+                PermissionDecision::Allow,
+                PermissionScope::Once,
+                None,
+            )
+            .expect("answering must not error");
+        assert!(claimed, "an in-protocol question must be answered in protocol");
+
+        let events = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = transport.close();
+
+        assert!(
+            events.iter().any(|e| matches!(e, ChatEvent::ToolCallCompleted { .. })),
+            "an allowed tool call must run to completion: {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. })),
+            "the turn must end rather than hang on an unanswered question: {events:?}"
+        );
+
+        // A question is answered exactly once. The second attempt is the race a
+        // user cannot see: it must be disclaimed, never re-sent.
+        let again = transport
+            .respond_permission(
+                &tool_use_id,
+                &request_id,
+                PermissionDecision::Allow,
+                PermissionScope::Once,
+                None,
+            )
+            .expect("a second answer must not error");
+        assert!(!again, "a settled question must not be answerable twice");
+    }
+
     /// The agent's `kind` is what decides which direction an option answers in,
     /// not its label or its position. An agent is free to call its allow option
     /// anything, so reading the kind is the only stable way to sort them.
