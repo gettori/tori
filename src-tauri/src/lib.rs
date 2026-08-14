@@ -24,6 +24,7 @@ mod local_history;
 mod lsp;
 mod model;
 mod onboarding;
+mod owned_state;
 pub mod palette;
 mod patch;
 mod presence;
@@ -194,13 +195,9 @@ pub fn run() {
             chat::commands::chat_tool_diff,
             chat::commands::chat_session_diff,
             chat::commands::chat_revert_tool_hunk,
-            chat::commands::chat_list_rules,
             chat::commands::chat_mcp_list,
             chat::commands::chat_mcp_add,
             chat::commands::chat_mcp_remove,
-            chat::commands::chat_remove_rule,
-            chat::commands::chat_accept_rule_offer,
-            chat::commands::chat_add_restriction,
             chat::commands::chat_record_usage,
             chat::commands::chat_usage_totals,
             chat::commands::chat_prompt_count,
@@ -209,6 +206,7 @@ pub fn run() {
             chat::commands::chat_mark_turn,
             chat::commands::chat_take_interrupted_turn,
             chat::commands::chat_orphans,
+            chat::commands::chat_retired_stores,
             chat::commands::chat_terminate_orphan,
             config::get_config,
             config::get_docs_root,

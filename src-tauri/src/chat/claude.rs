@@ -1055,12 +1055,50 @@ mod tests {
         assert!(!owned(&m.map(&started("user"))));
 
         // The responses settle it. Only Sway's carries the marker.
-        let sway_out = super::super::approval::hook_output(&super::super::approval::HookResponse::allow(""));
+        let sway_out = super::super::approval::hook_output();
         assert!(owned(&m.map(&response("sway", &sway_out))));
         assert!(!owned(&m.map(&response("user", ""))));
 
         // And the id is now known, so a later frame for the same hook is ours.
         assert!(owned(&m.map(&started("sway"))));
+    }
+
+    /// **The marker really survives the CLI**, checked against the frames the
+    /// CLI actually sent rather than against frames this test wrote.
+    ///
+    /// The test above proves the mapper attributes a marker it is handed. That
+    /// is only worth anything if the CLI hands one back, and the two halves can
+    /// drift apart in silence: change `hook_output` and the hand-written frames
+    /// change with it, while the real `hook_response.output` would not. So this
+    /// replays `dev/protocol-probe.mjs`'s committed `hook-matcher` capture,
+    /// where the probe's hook printed exactly what the shipped helper prints.
+    #[test]
+    fn the_committed_capture_shows_the_cli_echoing_the_marker_back_verbatim() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/claude/hook-matcher.jsonl");
+        let text = std::fs::read_to_string(&path).expect("the hook-matcher capture is committed");
+
+        let mut m = ClaudeMapper::new("f592ef96-0eb0-4d56-b488-d6d86ab4c8e9");
+        let mut attributed = 0;
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let frame: Value = serde_json::from_str(line).expect("every captured line is JSON");
+            if frame["subtype"] != "hook_response" {
+                continue;
+            }
+            assert_eq!(
+                frame["output"].as_str().unwrap_or_default(),
+                super::super::approval::hook_output(),
+                "the CLI echoed something other than what the helper prints; re-run the probe"
+            );
+            for ev in m.map(&frame) {
+                if let ChatEvent::HookFired { sway_owned, .. } = ev {
+                    assert!(sway_owned, "a captured Sway hook row was not attributed to Sway");
+                    attributed += 1;
+                }
+            }
+        }
+        assert_eq!(attributed, 2, "the capture holds one hook response per write tool");
     }
 
     #[test]

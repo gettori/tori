@@ -219,14 +219,6 @@ pub struct ChatDefaults {
     /// gate's all-tools matcher they would bury those in noise.
     #[serde(default)]
     pub show_sway_hooks: bool,
-    /// Restore Sway's own permission gate instead of letting the harness ask.
-    ///
-    /// Off by default, because the harness now asks in-protocol and Sway's gate
-    /// would short-circuit that question before it was put. On, the pre-2.1.231
-    /// behaviour is back: Sway's rules decide every tool call. Kept only while
-    /// the in-protocol path proves itself in real use.
-    #[serde(default)]
-    pub legacy_permission_gate: bool,
     /// How many live chats before Sway says the cost is adding up. **Zero means
     /// no cap.**
     ///
@@ -276,7 +268,6 @@ impl Default for ChatDefaults {
             tool_output_lines: default_tool_output_lines(),
             approval_auto_deny_secs: default_approval_auto_deny_secs(),
             show_sway_hooks: false,
-            legacy_permission_gate: false,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
     }
@@ -593,16 +584,6 @@ pub fn harness_override() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-/// Whether this install still wants Sway's own permission gate.
-///
-/// Read at spawn rather than cached, and it applies only from that point: the
-/// hook arrives through `--settings` and the in-protocol question through
-/// `--permission-prompt-tool`, both of which bind when the child starts. A
-/// session already running keeps whichever gate it was born with.
-pub fn legacy_permission_gate() -> bool {
-    load_from(&settings_path()).chat_defaults.legacy_permission_gate
-}
-
 #[tauri::command]
 pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, String> {
     save_to(&settings_path(), &settings)?;
@@ -705,7 +686,6 @@ mod tests {
                 tool_output_lines: 5,
                 approval_auto_deny_secs: 30,
                 show_sway_hooks: true,
-                legacy_permission_gate: true,
                 max_concurrent_chats: 9,
             },
             harness: Harness { path: Some("/opt/claude".into()) },

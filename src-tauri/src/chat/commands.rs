@@ -16,10 +16,9 @@ use crate::agents::{self, ChatConfig, ChatTransport};
 
 use super::acp::AcpOverrides;
 use super::acp_transport::AcpTransport;
-use super::approval::{self, ApprovalPrompt};
+use super::approval;
 use super::claude_transport::ClaudeTransport;
-use super::host::{AnsweredBy, ChatState, SessionBridge, Spawned};
-use super::rules;
+use super::host::{ChatState, SessionBridge, Spawned};
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
@@ -116,15 +115,6 @@ pub struct SpawnResult {
     pub ownership: ClaimOutcome,
     /// `None` when ownership was refused, so nothing was started.
     pub spawned: Option<Spawned>,
-    /// Whether Sway's own gate is deciding this session's tool calls, which is
-    /// what makes a Sway rule mean anything.
-    ///
-    /// Reported per session rather than left to the frontend to read off the
-    /// setting, because the two disagree: the setting binds at spawn, so a
-    /// session started under the gate stays under it after the setting is turned
-    /// off. A rules panel following the setting would appear a session early and
-    /// vanish a session late.
-    pub sway_gated: bool,
 }
 
 /// Open a chat session: create it, resume it, or fork it.
@@ -169,13 +159,12 @@ pub async fn chat_spawn(
     let host = &state.0;
     let live = host.is_live(&session_id);
 
-    // **A remount rewires and stops.** Everything below builds a *new* approval
+    // **A remount rewires and stops.** Everything below builds a *new* capture
     // bridge, and the running child cannot be told about it: the socket path it
     // will call went into its `--settings` at launch and is fixed for the life of
     // the process. Falling through would install a second server, tear the live
-    // one down (denying whatever was blocked and deleting the session's rules),
-    // and leave the child talking to a socket that had just been shut down -
-    // approvals silently broken for the rest of the session.
+    // one down, and leave the child talking to a socket that had just been shut
+    // down - every diff silently lost for the rest of the session.
     if live {
         let spawned = host.spawn(
             &session_id,
@@ -189,13 +178,7 @@ pub async fn chat_spawn(
             || unreachable!("a live session rewires rather than spawning"),
         )?;
         host.set_visible(&session_id, visible);
-        return Ok(SpawnResult {
-            ownership: ClaimOutcome::Granted { contested: false },
-            spawned: Some(spawned),
-            // From the file this session was launched with, not from the setting:
-            // a rewire is exactly the case where the two can disagree.
-            sway_gated: approval::session_gated(&session_id),
-        });
+        return Ok(SpawnResult { ownership: ClaimOutcome::Granted { contested: false }, spawned: Some(spawned) });
     }
 
     let ownership = {
@@ -208,8 +191,7 @@ pub async fn chat_spawn(
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
-            // Nothing was started, so nothing is gated.
-            return Ok(SpawnResult { ownership: outcome, spawned: None, sway_gated: false });
+            return Ok(SpawnResult { ownership: outcome, spawned: None });
         }
         // Carried through rather than rebuilt: a granted-but-**contested** claim
         // means a `claude` we do not control is resuming this same id, and its
@@ -219,34 +201,14 @@ pub async fn chat_spawn(
         outcome
     };
 
-    // The approval socket has to exist before the child does: its path travels
+    // The capture socket has to exist before the child does: its path travels
     // in the `--settings` payload the child is launched with.
     let snapshots = Arc::new(Mutex::new(SnapshotCache::new(CACHE_CAP)));
-    let emitter = host.emitter();
     let repo = PathBuf::from(&cwd);
     let capture_into = snapshots.clone();
     let server = approval::start(
-        Box::new(move |p: ApprovalPrompt| {
-            emitter(
-                &p.session_id,
-                ChatEvent::PermissionRequest {
-                    session_id: p.session_id.clone(),
-                    tool_use_id: p.tool_use_id,
-                    tool_name: p.tool_name,
-                    input: p.input,
-                    request_id: p.request_id,
-                    auto_deny_at_ms: Some(p.auto_deny_at_ms),
-                    // The hook bridge sees neither: a `PreToolUse` payload names
-                    // no subagent, and the hook is Sway's own gate rather than
-                    // the harness offering its alternatives. Both are the
-                    // in-protocol path's to fill.
-                    agent_id: None,
-                    suggestions: Vec::new(),
-                },
-            );
-        }),
-        // Runs on every authenticated call, before any decision, so a file's
-        // prior content is captured while it still *is* the prior content.
+        // Runs on every authenticated call, while the file about to be written
+        // still holds its prior content.
         Box::new(move |req| {
             let captured = snapshot::capture_all(&repo, &req.tool_name, &req.tool_input);
             if !captured.is_empty() {
@@ -256,15 +218,8 @@ pub async fn chat_spawn(
             }
         }),
     )
-    .map_err(|e| format!("could not start the approval bridge: {e}"))?;
+    .map_err(|e| format!("could not start the capture bridge: {e}"))?;
 
-    // The project's durable rules become this session's compiled file before the
-    // child exists, so an "always allow in this project" from an earlier chat is
-    // in force on this one's very first tool call rather than from its second.
-    compile_project_rules(&session_id, &cwd)?;
-    // A fresh stamp before the child starts, so its very first tool call sees a
-    // supervised rules file rather than a stale one.
-    approval::refresh_stamp(&session_id);
     let mut args = build_args(
         chat,
         &session_id,
@@ -275,14 +230,7 @@ pub async fn chat_spawn(
         effort.as_deref(),
         &extra_dirs,
     );
-    // Read here rather than held anywhere: the role binds to this child, and a
-    // session already running keeps the one it was born with.
-    let role = if crate::settings::legacy_permission_gate() {
-        approval::HookRole::Gate
-    } else {
-        approval::HookRole::Capture
-    };
-    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), role)?);
+    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token())?);
 
     let spec = StartSpec {
         session_id: session_id.clone(),
@@ -344,7 +292,7 @@ pub async fn chat_spawn(
         }
     }
 
-    Ok(SpawnResult { ownership, spawned: Some(spawned), sway_gated: role == approval::HookRole::Gate })
+    Ok(SpawnResult { ownership, spawned: Some(spawned) })
 }
 
 #[tauri::command]
@@ -387,153 +335,24 @@ pub async fn chat_set_visible(state: State<'_, ChatState>, session_id: String, v
     Ok(())
 }
 
+/// Answer a permission question the harness asked.
+///
+/// **Nothing is persisted here.** The scope rode back to the harness in the same
+/// response, as `updatedPermissions`, in the harness's own rule grammar - and
+/// that copy is the one its next tool call consults. Sway used to write a rule
+/// of its own alongside it, which recorded one decision twice in two formats and
+/// left the two free to disagree. There is no second store now.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn chat_respond_permission(
     state: State<'_, ChatState>,
     session_id: String,
-    cwd: String,
     request_id: String,
     tool_use_id: String,
-    tool_name: String,
-    tool_input: serde_json::Value,
     decision: PermissionDecision,
     scope: PermissionScope,
     reason: Option<String>,
-) -> Result<Option<RuleOffer>, String> {
-    // **The answer goes out first.** Something is blocked on this call, and the
-    // rule below is only an optimisation for *later* ones. Persisting first
-    // meant an unwritable `~/.config` returned early and left the waiter
-    // unanswered until the 110s auto-deny - so a call the user clicked Allow on
-    // ended up denied, by a disk error.
-    //
-    // Which waiter it is, is the host's decision: a prompt can come from the
-    // harness asking in-protocol or from Sway's `PreToolUse` bridge, and only
-    // the transport can recognise its own request ids.
-    let answered_by =
-        state.0.answer_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason.as_deref())?;
-
-    // A harness-answered call has already been told how far the answer reaches:
-    // the scope rode back in the same response as `updatedPermissions`, in the
-    // harness's own rule grammar. Writing a Sway-owned rule as well would record
-    // one decision twice in two formats, and only the harness's copy is the one
-    // its next tool call consults. The repeat-approval offer is skipped for the
-    // same reason: it exists to sell a Sway rule the user no longer needs.
-    if matches!(answered_by, AnsweredBy::Harness) {
-        return Ok(None);
-    }
-
-    // "Allow, and stop asking" writes a Sway-owned rule so the next matching
-    // call takes the cheap path. Never written to `~/.claude/settings.json`: a
-    // click in one chat pane must not change how every terminal session and
-    // every other project behaves.
-    if matches!(decision, PermissionDecision::Allow) && !matches!(scope, PermissionScope::Once) {
-        // A failure here is reported, not swallowed: the call was allowed, but
-        // the promise not to ask again was not kept, and the user is the only
-        // one who can tell those apart.
-        add_rule(&session_id, &cwd, &tool_name, &tool_input, scope, rules::RuleOrigin::Manual)?;
-        return Ok(None);
-    }
-    if matches!(decision, PermissionDecision::Allow) {
-        return Ok(note_repeat_approval(&cwd, &tool_name, &tool_input));
-    }
-    Ok(None)
-}
-
-/// How many times the same call must be approved by hand before Sway offers to
-/// stop asking.
-///
-/// Three. Two is a coincidence - the same file opened twice in a row - and by
-/// five the offer arrives long after the user started finding it tedious, which
-/// is the moment it was meant to catch.
-pub const OFFER_AFTER: u32 = 3;
-
-/// An offer to turn a habit into a rule.
-#[derive(serde::Serialize, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RuleOffer {
-    pub tool: String,
-    /// What the rule would cover: a directory for a path-shaped tool, the exact
-    /// argument otherwise. Shown verbatim, so the user is agreeing to a scope
-    /// they can see rather than to the word "project".
-    pub prefix: String,
-    pub approvals: u32,
-}
-
-/// Count one hand-approved call and decide whether to offer a rule for it.
-///
-/// **Counted here, in the supervisor, and never in the helper.** The helper runs
-/// on every tool call and its cheap path is a single file read; a counter
-/// written there would put a file write on the path
-/// [[concept_pretooluse_approval_bridge]] exists to keep free. This runs once
-/// per prompt the user actually answered, which is orders of magnitude rarer.
-///
-/// Offered **at** the threshold rather than at or above it, so declining is
-/// remembered without storing that it was declined: the count keeps climbing and
-/// never equals the threshold again.
-///
-/// A counting failure returns no offer and no error. The call was already
-/// allowed and the answer already sent; failing the command over a tally would
-/// turn a bookkeeping problem into a visible one.
-fn note_repeat_approval(cwd: &str, tool: &str, input: &serde_json::Value) -> Option<RuleOffer> {
-    let scope = rules::offer_scope(tool, input)?;
-    if scope.is_empty() {
-        return None;
-    }
-    let n = rules::record_approval(&rules::counts_path(cwd), tool, &scope).ok()?;
-    (n == OFFER_AFTER).then(|| RuleOffer { tool: tool.to_string(), prefix: scope, approvals: n })
-}
-
-/// Accept an offer: write the rule it described, marked as learned.
-///
-/// Project-scoped, because the offer is made about a project path and the point
-/// is to stop being asked in the next chat too - a session-scoped rule would
-/// expire with the tab and the same offer would come back tomorrow.
-#[tauri::command]
-pub async fn chat_accept_rule_offer(
-    session_id: String,
-    cwd: String,
-    tool: String,
-    prefix: String,
 ) -> Result<(), String> {
-    let rule = rules::Rule {
-        origin: rules::RuleOrigin::Learned,
-        ..rules::Rule::allow(&tool, Some(&prefix))
-    };
-    write_rule(&session_id, &cwd, rule, true)
-}
-
-/// Add a rule to a session's compiled file, and to the project's durable file
-/// when it is project-scoped.
-fn write_rule(session_id: &str, cwd: &str, rule: rules::Rule, project_scoped: bool) -> Result<(), String> {
-    let path = rules::rules_path(session_id);
-    let mut file = rules::load_ok(&path)
-        .unwrap_or_else(|| rules::RuleFile::new(std::process::id(), rules::now_ms(), Vec::new()));
-    if !file.rules.iter().any(|r| r.same_scope(&rule)) {
-        file.rules.push(rule.clone());
-    }
-    file.sway_pid = std::process::id();
-    file.stamp_ms = rules::now_ms();
-    rules::save(&path, &file)?;
-
-    // A project rule also lands in the durable store. Without this it would live
-    // only in the session file, which is a compiled artefact deleted at
-    // teardown - so "always allow in this project" would quietly mean "until
-    // this tab closes", which is not what the button says.
-    if project_scoped {
-        let project_path = rules::project_rules_path(cwd);
-        // Read strictly, because the next line writes. A file this build cannot
-        // parse read as "empty" would be replaced by an empty one, and the
-        // durable store is the copy with nothing to rebuild it from.
-        let mut project = rules::read_project(&project_path).map_err(|e| {
-            format!("Sway could not read this project's saved rules, so it did not change them: {e}")
-        })?;
-        if !project.rules.iter().any(|r| r.same_scope(&rule)) {
-            project.rules.push(rule);
-            rules::save_project(&project_path, &project)?;
-        }
-    }
-    Ok(())
+    state.0.answer_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason.as_deref())
 }
 
 // --- spend ceilings --------------------------------------------------------
@@ -620,105 +439,11 @@ pub struct UsageTotals {
 // new turn starts at all. That belongs entirely to the panel, so there is
 // nothing left for a command to do.
 
-/// Add a restrictive rule: `ask` or `deny`, optionally scoped by a path glob.
-///
-/// Separate from the allow path on purpose. An allow rule is created by clicking
-/// a button on one specific call, so its scope is derived from that call; a
-/// restriction is written deliberately about a place in the tree, which is the
-/// only reason a glob is offered at all. See the note on `rules::Rule`.
-#[tauri::command]
-pub async fn chat_add_restriction(
-    session_id: String,
-    cwd: String,
-    tool: String,
-    kind: rules::RuleKind,
-    glob: Option<String>,
-    prefix: Option<String>,
-) -> Result<(), String> {
-    if matches!(kind, rules::RuleKind::Allow) {
-        return Err("Use the permission prompt to allow a tool; this is for restrictions.".into());
-    }
-    write_rule(session_id.as_str(), cwd.as_str(), rules::Rule { tool, prefix, glob, kind, origin: rules::RuleOrigin::Manual }, true)
-}
-
-/// One answer, as the blocked hook will emit it.
-///
-/// The reason is not decoration. `permissionDecisionReason` reaches the model as
-/// the tool result, which is what makes "deny with feedback" a redirection ("not
-/// that file, use the fixture") rather than just a refusal. A typed reason
-/// therefore has to survive verbatim; the defaults exist only for the buttons
-/// that carry no message.
-/// Record an allow rule for this session.
-///
-/// The scope decides how wide it is, and the widths are deliberately modest: a
-/// rule is created by clicking a button on one specific call, and a user
-/// clicking "always allow" on `Read /proj/a.rs` means files like that one, not
-/// every file on the machine.
-///
-///   * `Session` - this exact tool with this exact primary argument.
-///   * `Project` - this tool anywhere under the session's working directory.
-///
-/// `origin` records whether the user reached for this themselves or accepted an
-/// offer Sway made after counting repeat approvals, so a rule can be explained
-/// later rather than only listed.
-fn add_rule(
-    session_id: &str,
-    cwd: &str,
-    tool_name: &str,
-    tool_input: &serde_json::Value,
-    scope: PermissionScope,
-    origin: rules::RuleOrigin,
-) -> Result<(), String> {
-    let prefix = match scope {
-        PermissionScope::Once => return Ok(()),
-        PermissionScope::Session => rules::primary_arg(tool_name, tool_input),
-        // A project rule widens a path to its directory - but **only** for a
-        // tool whose primary argument really is a path. `Bash`'s is the command
-        // string, and `Path::parent("git status")` is `""`, which every argument
-        // starts with: one click on "always allow in this project" would have
-        // allowed every shell command the session ever runs. Widening is now
-        // opt-in per tool, and anything else falls back to the exact argument.
-        PermissionScope::Project => match rules::path_prefix_for(tool_name, tool_input) {
-            Some(dir) => Some(dir),
-            None => rules::primary_arg(tool_name, tool_input),
-        },
-    };
-    // An empty prefix matches everything, which is never what a click on one
-    // specific call meant. Belt and braces behind the widening rule above.
-    let prefix = prefix.filter(|p| !p.is_empty());
-    let rule = rules::Rule { origin, ..rules::Rule::allow(tool_name, prefix.as_deref()) };
-    write_rule(session_id, cwd, rule, matches!(scope, PermissionScope::Project))
-}
-
-/// Seed a session's compiled rule file from the project's durable one.
-fn compile_project_rules(session_id: &str, cwd: &str) -> Result<(), String> {
-    let project = rules::load_project(&rules::project_rules_path(cwd));
-    let path = rules::rules_path(session_id);
-    let existing = rules::load_ok(&path);
-    // Nothing to compile and nothing already there: leave the disk alone rather
-    // than writing an empty file the helper would have to read on every call.
-    if project.rules.is_empty() && existing.is_none() {
-        return Ok(());
-    }
-    let compiled = rules::compiled(&project, existing.as_ref(), std::process::id(), rules::now_ms());
-    rules::save(&path, &compiled)
-}
-
-/// One allow rule as the UI lists it: what it covers, and which store it lives
-/// in, because removing it has to reach that store.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScopedRule {
-    pub tool: String,
-    pub prefix: Option<String>,
-    pub glob: Option<String>,
-    pub kind: rules::RuleKind,
-    /// Why this rule exists. A learned rule was accepted from an offer rather
-    /// than reached for, so the list can say so instead of leaving the user to
-    /// wonder when they wrote it.
-    pub origin: rules::RuleOrigin,
-    pub scope: PermissionScope,
-}
+// `chat_add_restriction`, `chat_list_rules`, `chat_remove_rule` and
+// `chat_accept_rule_offer` used to live here, writing and reading Sway's own
+// allow/ask/deny store. There is no such store: the harness decides its own tool
+// calls and records its own grants, so a Sway-owned rule could only be a second
+// opinion nothing consults.
 
 /// Every MCP server configured for `cwd`, across Claude's three scopes.
 ///
@@ -739,79 +464,6 @@ pub async fn chat_mcp_add(cwd: String, name: String, config: serde_json::Value) 
 #[tauri::command]
 pub async fn chat_mcp_remove(cwd: String, name: String) -> Result<Vec<super::mcp::McpEntry>, String> {
     super::mcp::remove_from_project(&cwd, &name)
-}
-
-/// Every rule in force for this session, project-scoped ones marked as such.
-///
-/// Read from the compiled session file, which is the file the hook helper
-/// actually consults, so the list is what is really in effect rather than a
-/// second opinion about it.
-#[tauri::command]
-pub async fn chat_list_rules(session_id: String, cwd: String) -> Result<Vec<ScopedRule>, String> {
-    let project = rules::load_project(&rules::project_rules_path(&cwd));
-    let session = rules::load_ok(&rules::rules_path(&session_id)).map(|f| f.rules).unwrap_or_default();
-    Ok(session
-        .into_iter()
-        .map(|r| ScopedRule {
-            scope: if project.rules.iter().any(|p| p.same_scope(&r)) {
-                PermissionScope::Project
-            } else {
-                PermissionScope::Session
-            },
-            tool: r.tool,
-            prefix: r.prefix,
-            glob: r.glob,
-            kind: r.kind,
-            origin: r.origin,
-        })
-        .collect())
-}
-
-/// Revoke a rule, so the next matching call prompts again.
-///
-/// Removed from both stores unconditionally: leaving it in the durable project
-/// file would make it reappear in the next chat opened on this folder, which
-/// reads as the revoke not having worked.
-#[tauri::command]
-pub async fn chat_remove_rule(
-    session_id: String,
-    cwd: String,
-    tool: String,
-    prefix: Option<String>,
-    glob: Option<String>,
-    kind: Option<rules::RuleKind>,
-) -> Result<(), String> {
-    // Defaulted rather than required, so a caller that predates the restrictive
-    // kinds still names an allow rule and cannot accidentally revoke a `deny`
-    // that happens to share a tool and prefix with it.
-    let target = rules::Rule {
-        tool,
-        prefix,
-        glob,
-        kind: kind.unwrap_or(rules::RuleKind::Allow),
-        origin: rules::RuleOrigin::Manual,
-    };
-
-    let path = rules::rules_path(&session_id);
-    if let Some(mut file) = rules::load_ok(&path) {
-        file.rules.retain(|r| !r.same_scope(&target));
-        // The stamp is refreshed with the write, so the helper's next read is
-        // both current and rule-free rather than current and stale-looking.
-        file.sway_pid = std::process::id();
-        file.stamp_ms = rules::now_ms();
-        rules::save(&path, &file)?;
-    }
-
-    let project_path = rules::project_rules_path(&cwd);
-    // Strict for the same reason as `write_rule`: revoking one rule must not be
-    // able to drop every other rule in a file this build could not parse.
-    let mut project = rules::read_project(&project_path)
-        .map_err(|e| format!("Sway could not read this project's saved rules, so it did not change them: {e}"))?;
-    if project.rules.iter().any(|r| r.same_scope(&target)) {
-        project.rules.retain(|r| !r.same_scope(&target));
-        rules::save_project(&project_path, &project)?;
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -1147,6 +799,20 @@ pub async fn chat_orphans(orphans: State<'_, Orphans>) -> Result<Vec<Reaped>, St
     Ok(orphans.take())
 }
 
+/// Clear the rule store the retired gate left behind, and say what went.
+///
+/// Run from the frontend rather than from Tauri's `setup` for the same reason
+/// the reap above is pulled: nothing can be told to a webview that does not
+/// exist yet. Unlike the reap it needs no parking, because the sweep's own
+/// "once" is the disk - a second call finds nothing and answers `None`.
+///
+/// Late is fine. Nothing reads these files, which is the whole reason they are
+/// being removed, so there is no window in which their presence matters.
+#[tauri::command]
+pub async fn chat_retired_stores() -> Result<Option<super::retired::RetiredRuleStore>, String> {
+    Ok(super::retired::sweep_rule_store())
+}
+
 /// End a `claude` child left behind by a crashed Sway, so its session id becomes
 /// claimable again. Separate from `chat_close`, which only ever touches sessions
 /// this process owns.
@@ -1357,7 +1023,6 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::Granted { contested: true },
             spawned: Some(Spawned::Started),
-            sway_gated: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "granted");
@@ -1371,216 +1036,11 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-1".into() },
             spawned: None,
-            sway_gated: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "heldByOther");
         assert_eq!(json["ownership"]["tabId"], "pty-1");
         assert!(json["spawned"].is_null());
-    }
-
-    /// The five buttons are three decisions crossed with reach. This pins the
-    /// decision half: what the blocked hook emits, and therefore what the model
-    /// is told.
-    #[test]
-    fn every_answer_reaches_the_hook_as_the_decision_it_names() {
-        use super::super::host::hook_response_for;
-        let allow = approval::hook_output(&hook_response_for(PermissionDecision::Allow, None));
-        assert!(allow.contains("\"permissionDecision\":\"allow\""), "{allow}");
-
-        let deny = approval::hook_output(&hook_response_for(PermissionDecision::Deny, None));
-        assert!(deny.contains("\"permissionDecision\":\"deny\""), "{deny}");
-    }
-
-    /// "Deny with feedback" is a redirection, not a refusal: the typed reason is
-    /// delivered to the model as the tool result. A default substituted over it
-    /// would throw away the only part the user wrote.
-    #[test]
-    fn a_typed_denial_reason_survives_verbatim_into_the_tool_result() {
-        use super::super::host::hook_response_for;
-        let typed = "Not that file - use dev/fixtures/chat/events.json.";
-        let out = approval::hook_output(&hook_response_for(PermissionDecision::Deny, Some(typed)));
-        assert!(out.contains(typed), "{out}");
-        assert!(!out.contains("Denied in Sway."), "the default must not displace what the user wrote");
-    }
-
-    /// A working directory nothing else in the suite uses, so the durable
-    /// project store these tests write to cannot collide with a real one.
-    fn scratch_project(name: &str) -> String {
-        std::env::temp_dir()
-            .join(format!("sway-rules-{}-{name}", std::process::id()))
-            .to_string_lossy()
-            .into_owned()
-    }
-
-    fn cleanup(session_id: &str, cwd: &str) {
-        let _ = std::fs::remove_file(rules::rules_path(session_id));
-        let _ = std::fs::remove_file(rules::project_rules_path(cwd));
-    }
-
-    /// The whole point of the project scope: a rule granted in one chat is in
-    /// force in the *next* chat opened on that folder. Written against the
-    /// compiled file the hook helper actually reads, not against intent.
-    #[test]
-    fn a_project_rule_outlives_the_chat_that_granted_it() {
-        let cwd = scratch_project("outlives");
-        let first = format!("rules-first-{}", std::process::id());
-        let second = format!("rules-second-{}", std::process::id());
-        cleanup(&first, &cwd);
-        let _ = std::fs::remove_file(rules::rules_path(&second));
-
-        add_rule(&first, &cwd, "Read", &serde_json::json!({"file_path": format!("{cwd}/src/a.rs")}), PermissionScope::Project, rules::RuleOrigin::Manual).unwrap();
-        // The tab closes: its compiled file goes with it.
-        std::fs::remove_file(rules::rules_path(&first)).unwrap();
-
-        compile_project_rules(&second, &cwd).unwrap();
-        let compiled = rules::load_ok(&rules::rules_path(&second)).expect("the new session should have a compiled file");
-        assert_eq!(compiled.rules.len(), 1);
-        assert_eq!(compiled.rules[0].tool, "Read");
-
-        cleanup(&second, &cwd);
-    }
-
-    /// A session-scoped rule is exactly that. Leaking it into the durable store
-    /// would make "for this session" quietly permanent.
-    #[test]
-    fn a_session_rule_never_reaches_the_durable_project_store() {
-        let cwd = scratch_project("session-only");
-        let session = format!("rules-session-{}", std::process::id());
-        cleanup(&session, &cwd);
-
-        add_rule(&session, &cwd, "Bash", &serde_json::json!({"command": "git status"}), PermissionScope::Session, rules::RuleOrigin::Manual).unwrap();
-        assert!(rules::load_project(&rules::project_rules_path(&cwd)).rules.is_empty());
-
-        cleanup(&session, &cwd);
-    }
-
-    /// Removing a rule has to reach both stores. Left in the durable one it
-    /// would come back with the next chat on this folder, which reads as the
-    /// revoke having failed.
-    #[test]
-    fn removing_a_rule_clears_it_from_the_session_and_from_the_project() {
-        let cwd = scratch_project("remove");
-        let session = format!("rules-remove-{}", std::process::id());
-        let later = format!("rules-later-{}", std::process::id());
-        cleanup(&session, &cwd);
-        let _ = std::fs::remove_file(rules::rules_path(&later));
-
-        let input = serde_json::json!({"file_path": format!("{cwd}/src/a.rs")});
-        add_rule(&session, &cwd, "Read", &input, PermissionScope::Project, rules::RuleOrigin::Manual).unwrap();
-        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
-        assert_eq!(listed.len(), 1);
-        assert!(matches!(listed[0].scope, PermissionScope::Project), "a rule from the project store lists as project-scoped");
-
-        tauri::async_runtime::block_on(chat_remove_rule(
-            session.clone(),
-            cwd.clone(),
-            listed[0].tool.clone(),
-            listed[0].prefix.clone(),
-            listed[0].glob.clone(),
-            Some(listed[0].kind),
-        ))
-        .unwrap();
-
-        // Gone here, and gone for the next chat on this folder.
-        assert!(tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap().is_empty());
-        // The point of removing it: the next matching call prompts again rather
-        // than taking the cheap path.
-        let verdict = rules::evaluate(
-            &rules::load(&rules::rules_path(&session)),
-            "Read",
-            &input,
-            rules::now_ms(),
-            |_| true,
-        );
-        assert_eq!(verdict, rules::Verdict::Ask);
-        compile_project_rules(&later, &cwd).unwrap();
-        assert!(rules::load_ok(&rules::rules_path(&later)).map(|f| f.rules).unwrap_or_default().is_empty());
-
-        cleanup(&session, &cwd);
-        let _ = std::fs::remove_file(rules::rules_path(&later));
-    }
-
-    /// The guard the whole ownership layer exists for, stated as a fact about
-    /// the flags: two live drivers of one session id both resume it and both
-    /// append to one transcript.
-    /// The offer arrives once, at the threshold, and the rule it writes is
-    /// marked as learned so the rule list can explain itself later.
-    ///
-    /// **Offered at the threshold and not above it**, which is how declining is
-    /// remembered without recording that it was declined: the count keeps
-    /// climbing and never equals the threshold again. A `>=` here would nag on
-    /// every subsequent approval, which is the behaviour that makes people stop
-    /// reading prompts.
-    #[test]
-    fn a_repeatedly_approved_call_is_offered_as_a_rule_exactly_once() {
-        let cwd = scratch_project("offer");
-        let session = format!("rules-offer-{}", std::process::id());
-        cleanup(&session, &cwd);
-        let _ = std::fs::remove_file(rules::counts_path(&cwd));
-        let call = serde_json::json!({ "file_path": format!("{cwd}/src/a.rs") });
-
-        let mut offers = Vec::new();
-        for _ in 0..(OFFER_AFTER + 2) {
-            offers.push(note_repeat_approval(&cwd, "Read", &call));
-        }
-        let made: Vec<_> = offers.iter().flatten().collect();
-        assert_eq!(made.len(), 1, "exactly one offer, however many times it is approved");
-        assert_eq!(made[0].approvals, OFFER_AFTER);
-        assert_eq!(made[0].prefix, format!("{cwd}/src/"));
-        assert!(offers[OFFER_AFTER as usize - 1].is_some(), "the offer lands on the threshold approval");
-
-        // Accepting writes a project rule that says where it came from.
-        tauri::async_runtime::block_on(chat_accept_rule_offer(
-            session.clone(),
-            cwd.clone(),
-            made[0].tool.clone(),
-            made[0].prefix.clone(),
-        ))
-        .unwrap();
-        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
-        assert_eq!(listed.len(), 1);
-        assert!(matches!(listed[0].origin, rules::RuleOrigin::Learned), "a rule from an offer must say so");
-        assert!(matches!(listed[0].scope, PermissionScope::Project), "the offer was about the project");
-
-        let _ = std::fs::remove_file(rules::counts_path(&cwd));
-        cleanup(&session, &cwd);
-    }
-
-    /// A restriction is written about a place in the tree, which is the only
-    /// reason a glob exists at all - so the command that writes one refuses to
-    /// be used to widen a grant.
-    #[test]
-    fn the_restriction_command_will_not_write_an_allow_rule() {
-        let cwd = scratch_project("restrict");
-        let session = format!("rules-restrict-{}", std::process::id());
-        cleanup(&session, &cwd);
-
-        assert!(tauri::async_runtime::block_on(chat_add_restriction(
-            session.clone(),
-            cwd.clone(),
-            "Write".into(),
-            rules::RuleKind::Allow,
-            Some("**".into()),
-            None,
-        ))
-        .is_err());
-
-        tauri::async_runtime::block_on(chat_add_restriction(
-            session.clone(),
-            cwd.clone(),
-            "Write".into(),
-            rules::RuleKind::Ask,
-            Some("**/migrations/**".into()),
-            None,
-        ))
-        .unwrap();
-        let listed = tauri::async_runtime::block_on(chat_list_rules(session.clone(), cwd.clone())).unwrap();
-        assert_eq!(listed.len(), 1);
-        assert!(matches!(listed[0].kind, rules::RuleKind::Ask));
-        assert_eq!(listed[0].glob.as_deref(), Some("**/migrations/**"));
-
-        cleanup(&session, &cwd);
     }
 
     /// **The whole of what shipping an ACP harness costs**: a TOML naming the

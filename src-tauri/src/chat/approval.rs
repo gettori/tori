@@ -1,111 +1,73 @@
-//! The `PreToolUse` hook: a per-session Unix socket, and the hook helper that
-//! blocks on it.
+//! The `PreToolUse` capture hook: a per-session Unix socket, and the hook helper
+//! that blocks on it just long enough to hand over a file's before-state.
 //!
-//! **Why the hook, and what it does now.** This bridge was built because nothing
+//! **This was a gate, and is not one any more.** It was built because nothing
 //! else could ask: measured on claude 2.1.220, a permission prompt fires when a
 //! *dialog* would be shown and headless `-p` has none. `PreToolUse` does fire, it
 //! runs **first** in the permission chain (before deny rules, ask rules and
 //! permission mode), and a deny from it applies even under `bypassPermissions`.
 //! That made it the only authoritative gate available.
 //!
-//! That premise no longer holds. Measured on claude 2.1.231,
+//! That premise stopped holding on claude 2.1.231, where
 //! `--permission-prompt-tool stdio` makes the CLI ask in-protocol with a
-//! `can_use_tool` control request, which `claude_transport.rs` answers, so the
-//! harness gates its own tools headless after all.
+//! `can_use_tool` control request that `claude_transport.rs` answers. The two
+//! cannot both be live for one call, and the hook wins: a `PreToolUse` `allow`
+//! short-circuits the rest of the chain, so a hook that answers every tool means
+//! the harness is never reached and never asks (measured three ways in
+//! `dev/protocol-probe.mjs`). So the hook stopped answering, and now it is gone:
+//! Sway decides no tool call, in any mode, for any harness.
 //!
-//! **The two cannot both be live for one call**, and the hook wins: a
-//! `PreToolUse` `allow` short-circuits the rest of the chain, so a hook that
-//! answers every tool means the harness is never reached and never asks
-//! (measured three ways in `dev/protocol-probe.mjs`). So the hook stops
-//! answering. In its default [`HookRole::Capture`] it exits 0 emitting **no**
-//! decision at all, which lets the chain continue to the harness while the hook
-//! still runs - and running is all the before-state capture ever needed.
+//! **What is left is a capture, and only a capture.** The helper matches the
+//! write tools, exits 0 emitting **no** decision at all - which lets the chain
+//! continue to the harness while the hook still runs - and the one thing it does
+//! on the way is hand Sway the file's prior contents, synchronously, before the
+//! write lands. A before-state captured after the write is not a before-state,
+//! which is the whole reason a socket is involved rather than a fire-and-forget.
 //!
-//! **Two roles, and only one of them is a gate.**
-//!
-//! - [`HookRole::Capture`] (the default): matches only the write tools, decides
-//!   nothing, and exists so a tool card has a diff. It is **fail-open**, because
-//!   the cost of failing is a missing diff rather than an unauthorised write.
-//! - [`HookRole::Gate`] (the `legacyPermissionGate` setting): the behaviour
-//!   above, matching all tools and answering `allow` or `deny` from Sway's own
-//!   rules. Kept reachable while the in-protocol path proves itself in real use,
-//!   and deleted after. Here **fail-closed is the invariant**: any error, wrong
-//!   token, timeout, dropped socket, closed tab, or missing supervisor yields a
-//!   **deny with a reason**, never an allow and never a hang. Sway owns the
-//!   timeout and auto-denies strictly before the hook's own declared timeout
-//!   could fire, so an unanswered prompt is resolved by us, with an explanation,
-//!   rather than by the CLI.
-//!
-//! Both roles bind at spawn, so switching between them applies from the next
-//! session rather than the running one.
-//!
-//! `permissionDecision: "ask"` is useless here - it degrades to a denial with the
-//! reason surfaced - so the gate only ever answers `allow` or `deny`.
+//! **It is fail-open, deliberately.** Whatever goes wrong - no socket, wrong
+//! token, a dead server - the harness is still going to ask, and denying here
+//! would be Sway gating again by the back door on the one path built to have
+//! stopped. The cost of a failure is a tool card with no diff.
 //!
 //! **The shape is [[concept_askpass_bridge]]'s, reused rather than reinvented**:
 //! a private `0700` dir under `$TMPDIR`, a short socket path (Darwin caps
-//! `sun_path` at 104 bytes), a per-server random token, an accept loop with a
-//! thread per connection, and a fail-closed default on every gating path. The
-//! one real difference is the cheap path: askpass prompts on every call, while
-//! the gate answers most calls from a file without opening a socket at all,
-//! because it matches *all* tools and a turn doing fifty `Read`s must not cost
-//! fifty round trips. Capture achieves the same by never being handed a `Read`.
+//! `sun_path` at 104 bytes), a per-server random token, and an accept loop with a
+//! thread per connection. The gate needed a cheap path that answered most calls
+//! from a file without opening a socket, because it matched *all* tools and a
+//! turn doing fifty `Read`s must not cost fifty round trips. The capture gets
+//! that for free by never being handed a `Read` in the first place.
 
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::rules::{self, RuleFile, Verdict};
+use crate::owned_state::now_ms;
 
 /// Env markers the helper reads. Set inline on the hook command string rather
 /// than inherited, so only the hook process ever sees them.
 pub const ENV_SOCK: &str = "SWAY_CHAT_HOOK_SOCK";
 pub const ENV_TOKEN: &str = "SWAY_CHAT_HOOK_TOKEN";
-pub const ENV_RULES: &str = "SWAY_CHAT_HOOK_RULES";
-/// Set only for [`HookRole::Gate`]. Absent means capture-only, so the default
-/// role is the one that needs no marker and no migration.
-pub const ENV_GATE: &str = "SWAY_CHAT_HOOK_GATE";
 
-/// What the hook is for in a given session.
+/// The `matcher` the capture hook ships.
 ///
-/// Chosen at spawn and carried on the hook command string, because the matcher
-/// and the helper's behaviour have to agree: a `Gate` narrowed to the write
-/// tools would stop gating everything else, and a `Capture` matching all tools
-/// would open a socket for every `Read`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HookRole {
-    /// Record the before-state of a write and decide nothing, leaving the
-    /// permission question to the harness.
-    #[default]
-    Capture,
-    /// Sway's own gate: answer every tool call `allow` or `deny`.
-    Gate,
+/// Measured on claude 2.1.231: a matcher of `"Edit|Write|MultiEdit|NotebookEdit"`
+/// fires on `Edit` and `Write` and not on `Read`, so the alternation is a real
+/// selector rather than a literal name (`dev/protocol-probe.mjs`, scenario
+/// `hook-matcher`). Built from [`super::snapshot::WRITE_TOOLS`] rather than
+/// written out, so a tool added to the snapshot list cannot be left off the
+/// matcher and silently lose its diff.
+fn matcher() -> String {
+    super::snapshot::WRITE_TOOLS.join("|")
 }
 
-impl HookRole {
-    /// The `matcher` this role ships. Measured on claude 2.1.231: a matcher of
-    /// `"Edit|Write|MultiEdit|NotebookEdit"` fires on `Edit` and `Write` and not
-    /// on `Read`, so the alternation is a real selector rather than a literal
-    /// name (`dev/protocol-probe.mjs`, scenario `hook-matcher`).
-    fn matcher(self) -> String {
-        match self {
-            HookRole::Capture => super::snapshot::WRITE_TOOLS.join("|"),
-            HookRole::Gate => "*".to_string(),
-        }
-    }
-}
-
-/// How long Sway waits for the user before auto-denying.
+/// How long a harness may leave an in-protocol permission question unanswered.
 ///
 /// Must stay **strictly below** [`HOOK_TIMEOUT_SECS`], which is what the CLI is
 /// told. Sway owning the deadline is the point: if the CLI's timeout fired
@@ -120,7 +82,7 @@ pub const HOOK_TIMEOUT_SECS: u64 = 120;
 /// peer does not get to allocate without bound.
 const MAX_FRAME: u64 = 256 * 1024;
 
-/// What the helper asks about one tool call.
+/// What the helper hands over about one tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookRequest {
     pub token: String,
@@ -128,43 +90,17 @@ pub struct HookRequest {
     pub tool_use_id: String,
     pub tool_name: String,
     pub tool_input: Value,
-    /// A rule already allowed this call; the round trip is happening only so
-    /// Sway can capture the file's before-state. The server answers `allow`
-    /// without surfacing a prompt.
-    ///
-    /// This exists because the cheap path and the snapshot want opposite things.
-    /// A rule that allows `Edit` would otherwise let the write past without the
-    /// hook ever telling Sway, and the tool card would have no before-state to
-    /// diff against - silently, and only for the files the user trusted most.
-    /// So a write tool always round trips; only the read-shaped tools take the
-    /// zero-socket path, which is what the budget was ever about.
-    #[serde(default)]
-    pub pre_approved: bool,
-    /// The round trip is *only* for the capture, and no answer is wanted:
-    /// [`HookRole::Capture`]. The server observes and replies immediately so the
-    /// helper unblocks and the write proceeds, and the helper discards what it
-    /// replied. Distinct from `pre_approved`, which describes a call some rule
-    /// really did allow.
-    #[serde(default)]
-    pub capture_only: bool,
 }
 
-/// What the server answers. Mirrors the hook's own vocabulary so the helper does
-/// no translation beyond wrapping it.
+/// What the server answers a capture with.
+///
+/// The helper discards it: the reply exists so the helper's blocking read
+/// returns and the write can proceed, not to carry a decision - there is no
+/// decision left to carry. It stays a JSON line rather than a bare newline so a
+/// reader can still tell an answer from a hang-up.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HookResponse {
-    /// "allow" | "deny"
-    pub decision: String,
-    pub reason: String,
-}
-
-impl HookResponse {
-    pub fn deny(reason: impl Into<String>) -> Self {
-        Self { decision: "deny".to_string(), reason: reason.into() }
-    }
-    pub fn allow(reason: impl Into<String>) -> Self {
-        Self { decision: "allow".to_string(), reason: reason.into() }
-    }
+pub struct CaptureAck {
+    pub captured: bool,
 }
 
 /// The marker that makes Sway's own hook identifiable in the in-band
@@ -172,27 +108,31 @@ impl HookResponse {
 ///
 /// Needed because nothing else distinguishes it. Measured on claude 2.1.220:
 /// `hook_name` reports the **tool**, not the configured matcher, so Sway's
-/// all-tools hook and a user's `PreToolUse` hook on the same tool both arrive
-/// as `PreToolUse:Bash`, and the frames carry no command. Rather than guess
+/// write-tool hook and a user's `PreToolUse` hook on the same tool both arrive
+/// as `PreToolUse:Write`, and the frames carry no command. Rather than guess
 /// from the shape of the output, Sway stamps its own.
 ///
 /// Verified non-invasive: claude echoes the whole stdout string back in
-/// `hook_response.output` verbatim and ignores keys it does not know, and a
-/// `deny` carrying this marker was still honoured (it landed in
-/// `result.permission_denials`).
+/// `hook_response.output` verbatim and ignores keys it does not know.
 pub const SWAY_HOOK_MARKER: &str = "swayApproval";
 
-/// The JSON a `PreToolUse` hook writes to stdout to decide a call.
-pub fn hook_output(resp: &HookResponse) -> String {
-    json!({
-        SWAY_HOOK_MARKER: true,
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": resp.decision,
-            "permissionDecisionReason": resp.reason,
-        }
-    })
-    .to_string()
+/// The JSON the capture hook writes to stdout: the marker, and nothing else.
+///
+/// **There is deliberately no `permissionDecision` here.** Measured on claude
+/// 2.1.231, any `permissionDecision` ends the permission chain at the hook, so
+/// emitting one would take the question away from the harness - the exact
+/// failure this whole change exists to undo.
+///
+/// Measured alongside it on claude 2.1.232: an output carrying **only** unknown
+/// keys leaves the chain running - the `Write` still raised `can_use_tool` - and
+/// comes back verbatim in `hook_response.output`, so the marker rides along for
+/// free (`dev/protocol-probe.mjs`, scenario `hook-matcher`, which asserts both).
+///
+/// The marker is not decoration. It is what lets `claude.rs` say *whose* hook a
+/// failed `PreToolUse:Write` row belongs to, which is the one moment the user
+/// needs to know Sway put a hook there at all.
+pub fn hook_output() -> String {
+    json!({ SWAY_HOOK_MARKER: true }).to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -206,15 +146,12 @@ pub fn is_helper() -> bool {
     std::env::var_os(ENV_SOCK).is_some()
 }
 
-/// Everything the helper's decision is allowed to depend on.
+/// Everything the helper reads out of a `PreToolUse` payload.
 ///
 /// **`permission_mode` is deliberately not here**, though the payload carries
-/// it. It matters only under [`HookRole::Gate`], and there it is the whole
-/// point: hooks run first in the permission chain, ahead of deny rules, ask
-/// rules and the mode itself, which is what makes that gate authoritative when
-/// a user asks for it. Reading the mode would be the one way to give that up -
-/// under `bypassPermissions` the helper would stop asking, and the gate the user
-/// turned on would quietly stop applying exactly where it matters most.
+/// it. Nothing in Sway is entitled to branch on it: the mode is the harness's
+/// own control, and a helper that read it would be a helper capable of behaving
+/// differently in one mode than another - which is a gate, however small.
 pub struct HookInputs {
     pub tool_name: String,
     pub tool_input: Value,
@@ -231,129 +168,65 @@ pub fn hook_inputs(parsed: &Value) -> HookInputs {
     }
 }
 
-/// The helper: read the `PreToolUse` payload from stdin, do this session's job,
-/// print whatever that job owes to stdout. Returns the process exit code.
+/// The helper: read the `PreToolUse` payload from stdin, hand Sway the
+/// before-state if there is one, stamp the marker on stdout. Returns the process
+/// exit code.
 ///
 /// Exit code 0 whatever happens, never a non-zero exit: a hook that exits
 /// non-zero is a *malfunctioning* hook, and the CLI's handling of that is not a
-/// decision we control. Saying "deny, here is why" (or saying nothing) is both
-/// predictable and explainable.
+/// decision we control.
 pub fn run_helper() -> i32 {
-    let role = if std::env::var_os(ENV_GATE).is_some() { HookRole::Gate } else { HookRole::Capture };
     let mut payload = String::new();
-    let read = std::io::stdin().read_to_string(&mut payload);
-    let sock = std::env::var(ENV_SOCK).unwrap_or_default();
-    let rules_path = std::env::var(ENV_RULES).unwrap_or_default();
-    let out = match read {
-        Ok(_) => helper_run(
-            role,
-            &payload,
-            Path::new(&sock),
-            &std::env::var(ENV_TOKEN).unwrap_or_default(),
-            Path::new(&rules_path),
-        ),
-        Err(_) => unreadable_payload(role),
-    };
-    match out {
-        Some(resp) => emit_decision(&resp),
-        None => emit_nothing(),
+    // A payload that could not be read is a call whose before-state is lost, and
+    // nothing more. There is no decision to withhold and so nothing to fail
+    // closed about; the write proceeds and its card has no diff.
+    if std::io::stdin().read_to_string(&mut payload).is_ok() {
+        let sock = std::env::var(ENV_SOCK).unwrap_or_default();
+        helper_capture(&payload, Path::new(&sock), &std::env::var(ENV_TOKEN).unwrap_or_default());
     }
+    emit_marker()
 }
 
-/// What the helper owes stdout for one call. `None` means print nothing at all,
-/// which is what lets the permission chain continue to the harness.
+/// Hand the server this call's before-state, if this call has one.
 ///
-/// Split out of [`run_helper`] so both roles are testable against a real socket
-/// and a real rules file without re-execing the binary. Every input the decision
-/// depends on is an argument; nothing here reads the environment.
-fn helper_run(role: HookRole, payload: &str, sock: &Path, token: &str, rules_path: &Path) -> Option<HookResponse> {
+/// Split out of [`run_helper`] so it is testable against a real socket without
+/// re-execing the binary. Every input is an argument; nothing here reads the
+/// environment.
+fn helper_capture(payload: &str, sock: &Path, token: &str) {
     let parsed: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
     let HookInputs { tool_name, tool_input, session_id, tool_use_id } = hook_inputs(&parsed);
 
-    if role == HookRole::Capture {
-        // The matcher should already have kept this tool away from us, but the
-        // matcher is claude's and this is the claim Sway can keep on its own:
-        // nothing with no before-state to capture costs a socket.
-        if super::snapshot::write_targets(&tool_name, &tool_input).is_empty() {
-            return None;
-        }
-        // Rules are not consulted: this role decides nothing, so a rule could
-        // only change an answer it is not giving. The round trip still happens,
-        // and is still synchronous, because a before-state captured after the
-        // write is not a before-state.
-        let req = HookRequest {
-            token: token.to_string(),
-            session_id,
-            tool_use_id,
-            tool_name,
-            tool_input,
-            pre_approved: false,
-            capture_only: true,
-        };
-        // Fail-open, deliberately inverting the gate's rule: whatever went
-        // wrong, the harness is still going to ask, and denying here would be
-        // Sway gating again by the back door. The cost of the failure is a tool
-        // card with no diff.
-        let _ = helper_exchange(sock, &req);
-        return None;
+    // The matcher should already have kept this tool away from us, but the
+    // matcher is claude's and this is the claim Sway can keep on its own:
+    // nothing with no before-state to capture costs a socket.
+    if super::snapshot::write_targets(&tool_name, &tool_input).is_empty() {
+        return;
     }
-
-    // The cheap path: one file read, no socket. A write tool is excluded from
-    // it on purpose - see `HookRequest::pre_approved`.
-    let rules_file = rules::load(rules_path);
-    let writes = !super::snapshot::write_targets(&tool_name, &tool_input).is_empty();
-    let pre_approved = match rules::evaluate(&rules_file, &tool_name, &tool_input, rules::now_ms(), pid_alive) {
-        Verdict::Allow if !writes => return Some(HookResponse::allow("Allowed by a Sway rule.")),
-        Verdict::Allow => true,
-        Verdict::Deny(reason) => return Some(HookResponse::deny(reason)),
-        Verdict::Ask => false,
-    };
-
-    let req = HookRequest {
-        token: token.to_string(),
-        session_id,
-        tool_use_id,
-        tool_name,
-        tool_input,
-        pre_approved,
-        capture_only: false,
-    };
-    Some(
-        helper_exchange(sock, &req)
-            .unwrap_or_else(|_| HookResponse::deny("Sway could not be reached to approve this tool call.")),
-    )
+    let req = HookRequest { token: token.to_string(), session_id, tool_use_id, tool_name, tool_input };
+    // Fail-open: whatever went wrong, the harness is still going to ask, and
+    // refusing here would be Sway gating again by the back door. The round trip
+    // is still synchronous, because a before-state captured after the write is
+    // not a before-state.
+    let _ = helper_exchange(sock, &req);
 }
 
-/// stdin could not be read. The gate denies, because it cannot approve what it
-/// cannot see; the capture says nothing, because it was never going to.
-fn unreadable_payload(role: HookRole) -> Option<HookResponse> {
-    match role {
-        HookRole::Gate => Some(HookResponse::deny("Sway could not read the hook payload.")),
-        HookRole::Capture => None,
-    }
-}
-
-fn emit_decision(resp: &HookResponse) -> i32 {
-    let mut stdout = std::io::stdout();
-    if stdout.write_all(hook_output(resp).as_bytes()).is_err() || stdout.flush().is_err() {
-        return 1;
-    }
-    0
-}
-
-/// Exit 0 having written nothing at all.
+/// Exit 0 having written the marker and no decision.
 ///
-/// Not the same as writing an empty decision: measured on claude 2.1.231, a
-/// `PreToolUse` hook that exits 0 with no output still runs and lets the
-/// permission chain continue to the harness, whereas any `permissionDecision`
-/// ends the chain there.
-fn emit_nothing() -> i32 {
+/// Measured on claude 2.1.231: a `PreToolUse` hook that exits 0 without a
+/// `permissionDecision` lets the permission chain continue to the harness, while
+/// any `permissionDecision` ends the chain there. A stdout that cannot be
+/// written is not worth a non-zero exit - the capture already happened, and all
+/// that is lost is the row's attribution.
+fn emit_marker() -> i32 {
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(hook_output().as_bytes());
+    let _ = stdout.flush();
     0
 }
 
 /// One round trip to the server. Isolated from env and stdout so it is testable
 /// against a stub listener, the same split `askpass.rs` uses.
-fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<HookResponse> {
+fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck> {
     let mut stream = UnixStream::connect(sock)?;
     stream.write_all(serde_json::to_string(req)?.as_bytes())?;
     stream.write_all(b"\n")?;
@@ -363,83 +236,42 @@ fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<HookRespon
     let mut line = String::new();
     reader.read_line(&mut line)?;
     // An empty line means the server hung up without answering (it died, or the
-    // app quit mid-call). Fail closed rather than treating silence as consent.
+    // app quit mid-call). The capture is lost either way; saying so is only for
+    // a caller that wants to log it.
     if line.trim().is_empty() {
-        return Ok(HookResponse::deny("Sway closed the approval connection without answering."));
+        return Ok(CaptureAck { captured: false });
     }
     serde_json::from_str(line.trim_end())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-}
-
-fn pid_alive(pid: u32) -> bool {
-    if pid <= 1 {
-        return false;
-    }
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
 // Server (hosted by the app)
 // ---------------------------------------------------------------------------
 
-/// One tool call blocked awaiting an answer.
-struct Pending {
-    tx: Sender<HookResponse>,
-}
-
-#[derive(Default)]
-struct ServerState {
-    pending: HashMap<String, Pending>,
-    next_id: u64,
-}
-
-/// What the UI is told about a blocked call. Mirrors
-/// [`super::model::ChatEvent::PermissionRequest`]'s fields; the host turns this
-/// into that event.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApprovalPrompt {
-    pub session_id: String,
-    pub tool_use_id: String,
-    pub tool_name: String,
-    pub input: Value,
-    /// Correlates the answer back to the blocked helper process.
-    pub request_id: String,
-    pub auto_deny_at_ms: u64,
-}
-
-/// The live approval server.
-pub struct ApprovalServer {
+/// The live capture server.
+pub struct CaptureServer {
     token: String,
     sock_path: PathBuf,
     dir: PathBuf,
-    timeout: Duration,
-    state: Mutex<ServerState>,
-    /// Counts accepted connections, so a test can assert the cheap path really
-    /// avoided the socket rather than merely answering quickly.
+    /// Counts accepted connections, so a test can assert a read-shaped tool
+    /// really avoided the socket rather than merely being answered quickly.
     connections: AtomicU64,
-    /// Set by [`ApprovalServer::shutdown`] so the accept loop exits.
+    /// Set by [`CaptureServer::shutdown`] so the accept loop exits.
     stopping: AtomicBool,
-    emit: Box<dyn Fn(ApprovalPrompt) + Send + Sync>,
-    /// Called for every authenticated request, before any decision, so the
-    /// before-state of a file about to be written is captured *on the way past*.
-    /// Separate from `emit` because a pre-approved write is observed but never
-    /// prompted.
+    /// Called for every authenticated request, so the before-state of a file
+    /// about to be written is captured *on the way past*.
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
 }
 
-impl Drop for ApprovalServer {
+impl Drop for CaptureServer {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.sock_path);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
-impl ApprovalServer {
+impl CaptureServer {
     pub fn sock_path(&self) -> &Path {
         &self.sock_path
     }
@@ -452,7 +284,7 @@ impl ApprovalServer {
         self.connections.load(Ordering::SeqCst)
     }
 
-    /// Stop serving: deny everything blocked, then wind the accept loop down.
+    /// Wind the accept loop down.
     ///
     /// This exists because `Drop` alone cannot do it. The accept thread holds an
     /// `Arc` to this server, so as long as it is looping the refcount never
@@ -460,12 +292,15 @@ impl ApprovalServer {
     /// `$TMPDIR` directory per chat session ever opened. The self-connect is how
     /// a blocking `incoming()` is woken without a second signalling mechanism.
     ///
+    /// Nothing has to be released first: a capture blocks its helper for as long
+    /// as one snapshot takes, not for as long as a person takes to answer, so
+    /// there is no queue of waiters to resolve on the way out.
+    ///
     /// Idempotent: session close and app exit both call it.
     pub fn shutdown(&self) {
         if self.stopping.swap(true, Ordering::SeqCst) {
             return;
         }
-        deny_all(self, "Sway stopped supervising this session, so the tool call was denied.");
         let _ = UnixStream::connect(&self.sock_path);
     }
 }
@@ -476,18 +311,7 @@ impl ApprovalServer {
 /// 104 bytes ([[gotchas#darwin-caps-unix-socket-paths-at-104-bytes]]), and a
 /// UUID would eat a third of that for no benefit: the id already travels in the
 /// request payload, where it costs nothing.
-pub fn start(
-    emit: Box<dyn Fn(ApprovalPrompt) + Send + Sync>,
-    observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
-) -> std::io::Result<Arc<ApprovalServer>> {
-    start_with(emit, observe, Duration::from_secs(DECIDE_TIMEOUT_SECS))
-}
-
-fn start_with(
-    emit: Box<dyn Fn(ApprovalPrompt) + Send + Sync>,
-    observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
-    timeout: Duration,
-) -> std::io::Result<Arc<ApprovalServer>> {
+pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Result<Arc<CaptureServer>> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!("sway-cha-{}-{}", std::process::id(), seq));
@@ -505,15 +329,12 @@ fn start_with(
     let listener = UnixListener::bind(&sock_path)?;
     std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o700))?;
 
-    let server = Arc::new(ApprovalServer {
+    let server = Arc::new(CaptureServer {
         token: random_token(),
         sock_path,
         dir,
-        timeout,
-        state: Mutex::new(ServerState::default()),
         connections: AtomicU64::new(0),
         stopping: AtomicBool::new(false),
-        emit,
         observe,
     });
 
@@ -539,16 +360,15 @@ fn start_with(
     Ok(server)
 }
 
-fn handle_conn(server: &Arc<ApprovalServer>, stream: UnixStream) {
-    // Every failure inside becomes a deny with a reason, never a dropped
-    // connection: the helper would read an empty line and deny anyway, but with
-    // a vaguer reason than we can give here.
-    let resp = handle_request(server, &stream)
-        .unwrap_or_else(|| HookResponse::deny("Sway refused this tool call."));
-    let _ = write_response(&stream, &resp);
+fn handle_conn(server: &Arc<CaptureServer>, stream: UnixStream) {
+    // A failure inside still gets an answer rather than a dropped connection:
+    // the helper is blocking on this line and the write it belongs to is waiting
+    // on the helper, so silence would cost more than a `captured: false` does.
+    let ack = handle_request(server, &stream).unwrap_or(CaptureAck { captured: false });
+    let _ = write_response(&stream, &ack);
 }
 
-fn handle_request(server: &Arc<ApprovalServer>, stream: &UnixStream) -> Option<HookResponse> {
+fn handle_request(server: &Arc<CaptureServer>, stream: &UnixStream) -> Option<CaptureAck> {
     let mut reader = BufReader::new(stream.try_clone().ok()?.take(MAX_FRAME));
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
@@ -558,78 +378,16 @@ fn handle_request(server: &Arc<ApprovalServer>, stream: &UnixStream) -> Option<H
         return None;
     }
 
-    // Before any decision: the file is about to be written either way, and a
-    // before-state captured after the fact is not a before-state.
+    // The file is about to be written, and a before-state captured after the
+    // fact is not a before-state. This is the whole errand.
     (server.observe)(&req);
-
-    // The capture was the whole errand. Answering immediately is what unblocks
-    // the helper so the write can proceed; the helper discards this and emits no
-    // decision, leaving the permission question to the harness.
-    if req.capture_only {
-        return Some(HookResponse::allow("Sway captured the before-state; the harness decides this call."));
-    }
-
-    // A rule already allowed this; the round trip existed only for the capture
-    // above. Answering here rather than prompting is what keeps an "always allow
-    // Edit" rule feeling like one.
-    if req.pre_approved {
-        return Some(HookResponse::allow("Allowed by a Sway rule."));
-    }
-
-    let (tx, rx) = channel::<HookResponse>();
-    let request_id = {
-        let mut st = server.state.lock().ok()?;
-        st.next_id += 1;
-        let id = format!("apr-{}", st.next_id);
-        st.pending.insert(id.clone(), Pending { tx });
-        id
-    };
-
-    (server.emit)(ApprovalPrompt {
-        session_id: req.session_id.clone(),
-        tool_use_id: req.tool_use_id.clone(),
-        tool_name: req.tool_name.clone(),
-        input: req.tool_input.clone(),
-        request_id: request_id.clone(),
-        auto_deny_at_ms: rules::now_ms() + server.timeout.as_millis() as u64,
-    });
-
-    // Sway owns this deadline, strictly inside the hook's own. An unanswered
-    // prompt is denied *by us*, with a reason that distinguishes it from a
-    // deliberate refusal.
-    let resp = rx.recv_timeout(server.timeout).unwrap_or_else(|_| {
-        HookResponse::deny("Nobody answered this approval request in time, so Sway denied it.")
-    });
-
-    if let Ok(mut st) = server.state.lock() {
-        st.pending.remove(&request_id);
-    }
-    Some(resp)
+    Some(CaptureAck { captured: true })
 }
 
-fn write_response(mut stream: &UnixStream, resp: &HookResponse) -> std::io::Result<()> {
-    stream.write_all(serde_json::to_string(resp)?.as_bytes())?;
+fn write_response(mut stream: &UnixStream, ack: &CaptureAck) -> std::io::Result<()> {
+    stream.write_all(serde_json::to_string(ack)?.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()
-}
-
-/// Answer a blocked tool call. A `request_id` nobody is waiting on is a no-op:
-/// the prompt already timed out, or its tab closed.
-pub fn resolve(server: &ApprovalServer, request_id: &str, resp: HookResponse) {
-    let Ok(mut st) = server.state.lock() else { return };
-    if let Some(p) = st.pending.remove(request_id) {
-        let _ = p.tx.send(resp);
-    }
-}
-
-/// Deny everything currently blocked, with one reason. Called when a chat tab
-/// closes or its session dies: those calls would otherwise sit until the
-/// timeout, holding the turn open with nobody able to answer.
-pub fn deny_all(server: &ApprovalServer, reason: &str) {
-    let Ok(mut st) = server.state.lock() else { return };
-    for (_, p) in st.pending.drain() {
-        let _ = p.tx.send(HookResponse::deny(reason));
-    }
 }
 
 fn random_token() -> String {
@@ -639,8 +397,7 @@ fn random_token() -> String {
             return buf.iter().map(|b| format!("{b:02x}")).collect();
         }
     }
-    let t = rules::now_ms();
-    format!("{}-{}", std::process::id(), t)
+    format!("{}-{}", std::process::id(), now_ms())
 }
 
 // ---------------------------------------------------------------------------
@@ -654,20 +411,13 @@ fn random_token() -> String {
 /// `askpass.rs`: one thing to sign, one thing to keep in step with the protocol.
 /// The env is set on the command string rather than inherited so *only* the hook
 /// process ever sees the token.
-pub fn hook_command(exe: &Path, sock: &Path, token: &str, rules_path: &Path, role: HookRole) -> String {
-    let gate = match role {
-        HookRole::Gate => format!("{ENV_GATE}=1 "),
-        HookRole::Capture => String::new(),
-    };
+pub fn hook_command(exe: &Path, sock: &Path, token: &str) -> String {
     format!(
-        "{}{}={} {}={} {}={} {}",
-        gate,
+        "{}={} {}={} {}",
         ENV_SOCK,
         sh_quote(&sock.to_string_lossy()),
         ENV_TOKEN,
         sh_quote(token),
-        ENV_RULES,
-        sh_quote(&rules_path.to_string_lossy()),
         sh_quote(&exe.to_string_lossy()),
     )
 }
@@ -678,24 +428,22 @@ fn sh_quote(s: &str) -> String {
 
 /// The `--settings` payload for one chat session.
 ///
-/// The matcher comes from the role: the write tools for a capture, `"*"` for the
-/// gate, which needs to see everything to gate everything. Narrowing the capture
-/// is what makes the fifty-`Read` turn free, and it replaces the rules file's
-/// cheap path rather than adding to it - the helper never opens a socket for a
+/// The matcher is the write tools and nothing else. Narrowing it is what makes a
+/// turn doing fifty `Read`s cost zero sockets: the helper never opens one for a
 /// tool it is never handed.
 ///
 /// `--setting-sources` is **not** set, so this layers on top of the user's own
 /// settings rather than replacing them: their hooks still load and fire
 /// alongside ours. Passing `--setting-sources ''` would silently disable their
 /// hooks, permissions and config, and must never ship.
-pub fn settings_json(exe: &Path, sock: &Path, token: &str, rules_path: &Path, role: HookRole) -> String {
+pub fn settings_json(exe: &Path, sock: &Path, token: &str) -> String {
     json!({
         "hooks": {
             "PreToolUse": [{
-                "matcher": role.matcher(),
+                "matcher": matcher(),
                 "hooks": [{
                     "type": "command",
-                    "command": hook_command(exe, sock, token, rules_path, role),
+                    "command": hook_command(exe, sock, token),
                     "timeout": HOOK_TIMEOUT_SECS,
                 }],
             }],
@@ -710,31 +458,15 @@ pub fn settings_json(exe: &Path, sock: &Path, token: &str, rules_path: &Path, ro
 /// shell here) but because the command string embeds absolute paths and a token,
 /// and an argv-embedded JSON blob shows the token in `ps` output for every
 /// process on the machine. The file is `0600`.
-pub fn settings_args(session_id: &str, sock: &Path, token: &str, role: HookRole) -> Result<Vec<String>, String> {
+pub fn settings_args(session_id: &str, sock: &Path, token: &str) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json(&exe, sock, token, &rules::rules_path(session_id), role))
-        .map_err(|e| e.to_string())?;
+    std::fs::write(&path, settings_json(&exe, sock, token)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     Ok(vec!["--settings".to_string(), path.to_string_lossy().into_owned()])
-}
-
-/// Whether this session's hook is Sway's own gate.
-///
-/// Read back from the settings file the child was launched with, rather than
-/// from the setting or from a second copy kept in memory. The role binds at
-/// spawn and the file lives exactly as long as the supervised session does, so
-/// the file *is* the record: a session started under the gate keeps answering
-/// yes after the setting is turned off, which is the truth the rules UI needs
-/// and the one a live read of the setting would get wrong.
-///
-/// False for a session with no settings file, which is a session Sway is not
-/// supervising, and therefore not one it is gating either.
-pub fn session_gated(session_id: &str) -> bool {
-    std::fs::read_to_string(settings_path(session_id)).is_ok_and(|text| text.contains(ENV_GATE))
 }
 
 /// Where a session's `--settings` payload lives. Public so teardown can remove
@@ -747,47 +479,20 @@ pub fn settings_path(session_id: &str) -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/sway/chat-settings").join(format!("{safe}.json"))
 }
 
-/// Refresh a session's liveness stamp, keeping its rules.
-///
-/// The supervisor calls this on a timer. It is what turns an allow rule from a
-/// standing grant into a statement about what Sway permits *while it is
-/// watching*.
-pub fn refresh_stamp(session_id: &str) {
-    let path = rules::rules_path(session_id);
-    let mut file =
-        rules::load_ok(&path).unwrap_or_else(|| RuleFile::new(std::process::id(), 0, Vec::new()));
-    file.sway_pid = std::process::id();
-    file.stamp_ms = rules::now_ms();
-    let _ = rules::save(&path, &file);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::Receiver;
+    use std::sync::Mutex;
+    use std::time::Duration;
 
-    /// A server whose prompts land on a channel the test drains, so answers can
-    /// be injected deterministically. The [[lesson_offline_askpass_e2e]] shape:
-    /// emit closure injected, no Tauri anywhere.
-    fn test_server(timeout: Duration) -> (Arc<ApprovalServer>, Receiver<ApprovalPrompt>) {
-        let (tx, rx) = channel::<ApprovalPrompt>();
-        let server = start_with(Box::new(move |p| { let _ = tx.send(p); }), Box::new(|_| {}), timeout).unwrap();
-        (server, rx)
-    }
-
-    /// A server that also records every observed request, so the snapshot hook
-    /// can be asserted on.
-    fn observing_server(timeout: Duration) -> (Arc<ApprovalServer>, Receiver<ApprovalPrompt>, Arc<Mutex<Vec<HookRequest>>>) {
-        let (tx, rx) = channel::<ApprovalPrompt>();
+    /// A server that records every observed request, so the capture can be
+    /// asserted on. The [[lesson_offline_askpass_e2e]] shape: the closure is
+    /// injected, and no Tauri appears anywhere.
+    fn observing_server() -> (Arc<CaptureServer>, Arc<Mutex<Vec<HookRequest>>>) {
         let seen: Arc<Mutex<Vec<HookRequest>>> = Arc::new(Mutex::new(Vec::new()));
         let recorder = seen.clone();
-        let server = start_with(
-            Box::new(move |p| { let _ = tx.send(p); }),
-            Box::new(move |req| recorder.lock().unwrap().push(req.clone())),
-            timeout,
-        )
-        .unwrap();
-        (server, rx, seen)
+        let server = start(Box::new(move |req| recorder.lock().unwrap().push(req.clone()))).unwrap();
+        (server, seen)
     }
 
     fn request(token: &str, tool: &str, input: Value) -> HookRequest {
@@ -797,144 +502,66 @@ mod tests {
             tool_use_id: "toolu_1".to_string(),
             tool_name: tool.to_string(),
             tool_input: input,
-            pre_approved: false,
-            capture_only: false,
         }
     }
 
-    /// The end-to-end shape: the hook blocks until answered, and the answer is
-    /// what reaches the CLI.
+    fn payload(tool: &str, input: Value) -> String {
+        json!({
+            "session_id": "s1",
+            "tool_use_id": "toolu_1",
+            "tool_name": tool,
+            "tool_input": input,
+            "hook_event_name": "PreToolUse",
+        })
+        .to_string()
+    }
+
+    /// The whole reason a socket is involved: the write is held until Sway has
+    /// the file's prior contents.
     #[test]
-    fn the_hook_blocks_until_answered_and_a_deny_carries_its_reason() {
-        let (server, prompts) = test_server(Duration::from_secs(5));
+    fn a_write_is_captured_before_the_helper_is_released() {
+        let (server, observed) = observing_server();
+        let ack = helper_exchange(server.sock_path(), &request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"})))
+            .unwrap();
+
+        assert!(ack.captured, "the server should say it took the before-state");
+        let seen = observed.lock().unwrap();
+        assert_eq!(seen.len(), 1, "an Edit that captures nothing leaves its tool card with no diff");
+        assert_eq!(seen[0].tool_name, "Edit");
+        assert!(!super::super::snapshot::write_targets(&seen[0].tool_name, &seen[0].tool_input).is_empty());
+    }
+
+    /// An unauthenticated call must not be observed, or a stranger on the socket
+    /// could drive Sway's snapshot machinery.
+    #[test]
+    fn an_unauthenticated_call_is_never_observed() {
+        let (server, observed) = observing_server();
+        let ack = helper_exchange(server.sock_path(), &request("wrong-token", "Edit", json!({"file_path": "/a"}))).unwrap();
+        assert!(!ack.captured, "a wrong token must not be answered as a capture");
+        assert!(observed.lock().unwrap().is_empty());
+    }
+
+    /// The server dying mid-request must reach the helper as an answer, not as a
+    /// hang: the write is waiting on the helper, which is waiting on this line.
+    #[test]
+    fn a_server_that_goes_away_mid_request_releases_the_helper() {
+        let (server, _observed) = observing_server();
         let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Bash", json!({"command": "rm -rf /"}));
-
-        let handle = thread::spawn(move || helper_exchange(&sock, &req).unwrap());
-
-        // The call really is blocked: the prompt is out, and no answer exists.
-        let prompt = prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(prompt.tool_name, "Bash");
-        assert_eq!(prompt.tool_use_id, "toolu_1");
-        assert!(!handle.is_finished(), "the helper must still be blocked before anyone answers");
-
-        resolve(&server, &prompt.request_id, HookResponse::deny("Not on my machine."));
-        let resp = handle.join().unwrap();
-        assert_eq!(resp.decision, "deny");
-        assert_eq!(resp.reason, "Not on my machine.");
-
-        // And the reason is what the CLI actually receives, which is what puts
-        // it in front of the model and into `permission_denials`.
-        let out: Value = serde_json::from_str(&hook_output(&resp)).unwrap();
-        assert_eq!(out["hookSpecificOutput"]["hookEventName"], "PreToolUse");
-        assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "deny");
-        assert_eq!(out["hookSpecificOutput"]["permissionDecisionReason"], "Not on my machine.");
-    }
-
-    #[test]
-    fn an_allow_reaches_the_cli_as_an_allow() {
-        let (server, prompts) = test_server(Duration::from_secs(5));
-        let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Read", json!({"file_path": "/a"}));
-        let handle = thread::spawn(move || helper_exchange(&sock, &req).unwrap());
-
-        let prompt = prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        resolve(&server, &prompt.request_id, HookResponse::allow("You said yes."));
-        let resp = handle.join().unwrap();
-
-        let out: Value = serde_json::from_str(&hook_output(&resp)).unwrap();
-        assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "allow");
-    }
-
-    /// Sway owns the deadline, and the reason has to distinguish "you did not
-    /// answer" from "you said no" - they mean different things to whoever reads
-    /// the transcript later.
-    #[test]
-    fn an_unanswered_prompt_is_auto_denied_with_a_distinguishable_reason() {
-        let (server, prompts) = test_server(Duration::from_millis(200));
-        let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Bash", json!({"command": "ls"}));
-
-        let started = std::time::Instant::now();
-        let resp = helper_exchange(&sock, &req).unwrap();
-        assert!(prompts.recv_timeout(Duration::from_secs(1)).is_ok(), "a prompt should have been surfaced");
-
-        assert_eq!(resp.decision, "deny");
-        assert!(resp.reason.contains("in time"), "got {}", resp.reason);
-        assert_ne!(resp.reason, HookResponse::deny("Not on my machine.").reason);
-        assert!(started.elapsed() < Duration::from_secs(2), "the auto-deny must fire on Sway's deadline");
-    }
-
-    /// Sway's deadline must fire strictly first, or the outcome would be the
-    /// CLI's default rather than a denial we can explain.
-    #[test]
-    fn sways_deadline_is_strictly_inside_the_one_the_cli_is_told() {
-        assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
-        let settings: Value = serde_json::from_str(&settings_json(
-            Path::new("/bin/sway"),
-            Path::new("/tmp/s"),
-            "tok",
-            Path::new("/tmp/r.json"),
-            HookRole::Gate,
-        ))
-        .unwrap();
-        assert_eq!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"], HOOK_TIMEOUT_SECS);
-    }
-
-    #[test]
-    fn a_wrong_token_is_refused_without_surfacing_a_prompt() {
-        let (server, prompts) = test_server(Duration::from_secs(2));
-        let resp = helper_exchange(server.sock_path(), &request("not-the-token", "Bash", json!({}))).unwrap();
-        assert_eq!(resp.decision, "deny");
-        assert!(prompts.recv_timeout(Duration::from_millis(300)).is_err(), "an unauthenticated call must not prompt");
-    }
-
-    /// The socket dying mid-request must reach the helper as a deny, not as a
-    /// timeout that something later reads as consent.
-    #[test]
-    fn a_server_that_dies_mid_request_denies_rather_than_hanging() {
-        let (server, prompts) = test_server(Duration::from_secs(30));
-        let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Bash", json!({"command": "ls"}));
-        let handle = thread::spawn(move || helper_exchange(&sock, &req).unwrap());
-
-        prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        // The tab closed / the session died: everything blocked is denied.
-        deny_all(&server, "The chat tab was closed.");
-
-        let resp = handle.join().unwrap();
-        assert_eq!(resp.decision, "deny");
-        assert_eq!(resp.reason, "The chat tab was closed.");
-    }
-
-    /// The app shutting down mid-call must deny, not leave the tool hanging
-    /// until the CLI's own timeout resolves it however it likes.
-    ///
-    /// `drop` cannot express this: the accept thread holds an `Arc`, so the
-    /// refcount never reaches zero while the server is looping and `Drop` never
-    /// runs. That is why `shutdown` exists, and this is the test that found it -
-    /// the first version dropped the handle and sat for the full 30s timeout.
-    #[test]
-    fn shutting_the_server_down_mid_call_denies_rather_than_hanging() {
-        let (server, prompts) = test_server(Duration::from_secs(30));
-        let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Bash", json!({"command": "ls"}));
-        let handle = thread::spawn(move || helper_exchange(&sock, &req).unwrap());
-
-        prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        let started = std::time::Instant::now();
+        let token = server.token().to_string();
         server.shutdown();
 
-        let resp = handle.join().unwrap();
-        assert_eq!(resp.decision, "deny", "a shutting-down server must never yield an allow");
-        assert!(started.elapsed() < Duration::from_secs(5), "shutdown must not wait out the decide timeout");
+        let started = std::time::Instant::now();
+        // Either the connect fails outright or the answer is a non-capture; what
+        // must never happen is the helper sitting there.
+        let _ = helper_exchange(&sock, &request(&token, "Write", json!({"file_path": "/a"})));
+        assert!(started.elapsed() < Duration::from_secs(5), "a dead server must not hold a write open");
     }
 
     /// `shutdown` really winds the accept loop down, so the thread and the
     /// `$TMPDIR` directory are not leaked once per chat session ever opened.
     #[test]
     fn shutdown_stops_the_accept_loop_so_nothing_is_leaked_per_session() {
-        let (server, _rx) = test_server(Duration::from_secs(1));
+        let (server, _observed) = observing_server();
         let dir = server.dir.clone();
         assert!(dir.exists());
 
@@ -952,237 +579,138 @@ mod tests {
         assert!(!dir.exists(), "the socket directory should be cleaned up");
     }
 
-    /// No server at all: the helper's own fallback.
+    /// No server at all. The helper treats this as a lost diff and nothing more,
+    /// which is the fail-open rule; here we only pin that it is an error rather
+    /// than a hang.
     #[test]
-    fn an_unreachable_socket_denies() {
+    fn an_unreachable_socket_errors_rather_than_blocking() {
         let missing = std::env::temp_dir().join("sway-cha-does-not-exist/s");
-        assert!(helper_exchange(&missing, &request("t", "Bash", json!({}))).is_err());
+        assert!(helper_exchange(&missing, &request("t", "Write", json!({}))).is_err());
     }
 
-    /// The 104-byte `sun_path` cap, checked against the longest session id we
-    /// could realistically see. The id is not in the path, which is the whole
-    /// reason this holds.
+    /// The 104-byte `sun_path` cap. The session id is not in the path, which is
+    /// the whole reason this holds however long an id a harness mints.
     #[test]
     fn socket_paths_stay_under_the_darwin_104_byte_cap() {
-        let (server, _rx) = test_server(Duration::from_secs(1));
+        let (server, _observed) = observing_server();
         let len = server.sock_path().as_os_str().len();
         assert!(len < 104, "{} is {len} bytes", server.sock_path().display());
 
-        // A session id far longer than a UUID must not change that, because it
-        // never enters the path.
-        let long_id = "a".repeat(255);
-        let (other, _rx2) = test_server(Duration::from_secs(1));
-        assert_eq!(other.sock_path().as_os_str().len(), len, "the session id must not affect the socket path");
-        assert!(rules::rules_path(&long_id).as_os_str().len() > 104, "the rules path may be long; only the socket is capped");
+        let (other, _observed2) = observing_server();
+        assert_eq!(other.sock_path().as_os_str().len(), len, "the socket path is fixed-width by construction");
     }
 
-    /// Two blocked calls must each get their own answer, keyed by request id.
+    /// Two writes in flight must both be captured and both released.
     #[test]
-    fn concurrent_calls_each_get_their_own_answer() {
-        let (server, prompts) = test_server(Duration::from_secs(5));
+    fn concurrent_captures_are_each_answered() {
+        let (server, observed) = observing_server();
         let sock = server.sock_path().to_path_buf();
 
-        let s1 = sock.clone();
-        let t1 = server.token().to_string();
-        let h1 = thread::spawn(move || helper_exchange(&s1, &request(&t1, "Bash", json!({"command": "a"}))).unwrap());
-        let s2 = sock.clone();
-        let t2 = server.token().to_string();
-        let h2 = thread::spawn(move || helper_exchange(&s2, &request(&t2, "Read", json!({"file_path": "/b"}))).unwrap());
+        let handles: Vec<_> = ["Edit", "Write"]
+            .iter()
+            .map(|tool| {
+                let s = sock.clone();
+                let t = server.token().to_string();
+                let tool = tool.to_string();
+                thread::spawn(move || helper_exchange(&s, &request(&t, &tool, json!({"file_path": "/proj/a.rs"}))).unwrap())
+            })
+            .collect();
 
-        for _ in 0..2 {
-            let p = prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-            let decision = if p.tool_name == "Bash" { HookResponse::deny("no") } else { HookResponse::allow("yes") };
-            resolve(&server, &p.request_id, decision);
+        for h in handles {
+            assert!(h.join().unwrap().captured);
         }
-
-        assert_eq!(h1.join().unwrap().decision, "deny");
-        assert_eq!(h2.join().unwrap().decision, "allow");
+        assert_eq!(observed.lock().unwrap().len(), 2);
     }
 
-    /// Answering a request nobody is waiting on must be a harmless no-op, not a
-    /// panic: the prompt may have timed out a moment before the click landed.
-    #[test]
-    fn resolving_an_unknown_request_is_a_no_op() {
-        let (server, _rx) = test_server(Duration::from_secs(1));
-        resolve(&server, "apr-does-not-exist", HookResponse::allow("stale click"));
-    }
+    // ---- the helper ----
 
-    /// **A bypass-mode session still gets approved under [`HookRole::Gate`].**
+    /// **The claim the whole change rests on**: the helper emits no
+    /// `permissionDecision`. Any decision ends the permission chain at the hook,
+    /// so a helper that answered here would suppress the harness's own question
+    /// for exactly the write tools this hook is narrowed to.
     ///
-    /// `bypassPermissions` disables *Claude's* permission checks, and that is
-    /// now what it does - unless the user has asked for Sway's own gate, which
-    /// runs ahead of all of them, so a call matching no allow rule still stops
-    /// and asks. Pinned against a real `PreToolUse` payload declaring the mode,
-    /// because the guarantee is that the mode never reaches the decision.
+    /// It does emit the marker, which carries no decision and is what lets a
+    /// failed hook row be attributed to Sway rather than to the user.
     #[test]
-    fn a_bypass_mode_call_matching_no_rule_still_prompts() {
-        let payload = json!({
-            "hook_event_name": "PreToolUse",
-            "permission_mode": "bypassPermissions",
-            "session_id": "s1",
-            "tool_use_id": "toolu_1",
-            "tool_name": "Bash",
-            "tool_input": { "command": "rm -rf build" },
-        });
-        let inputs = hook_inputs(&payload);
-        assert_eq!(inputs.tool_name, "Bash");
-
-        let allows_reads =
-            rules::Parsed::Ok(RuleFile::new(std::process::id(), rules::now_ms(), vec![rules::Rule::allow("Read", None)]));
-        let verdict = rules::evaluate(
-            &allows_reads,
-            &inputs.tool_name,
-            &inputs.tool_input,
-            rules::now_ms(),
-            pid_alive,
-        );
-        assert_eq!(verdict, Verdict::Ask, "the mode must not be able to skip Sway's approval");
+    fn the_helper_prints_the_marker_and_no_decision() {
+        let out: Value = serde_json::from_str(&hook_output()).unwrap();
+        assert_eq!(out[SWAY_HOOK_MARKER], true);
+        assert_eq!(out.as_object().unwrap().len(), 1, "the marker is the whole output: {out}");
+        assert!(out.get("hookSpecificOutput").is_none(), "a decision here would short-circuit the harness");
     }
 
-    // ---- the cheap path ----
+    /// The capture happens, and it happens without the helper deciding anything.
+    #[test]
+    fn the_helper_captures_a_write_and_decides_nothing() {
+        let (server, observed) = observing_server();
+        helper_capture(&payload("Edit", json!({"file_path": "/proj/a.rs"})), server.sock_path(), server.token());
+        assert_eq!(observed.lock().unwrap().len(), 1, "the before-state must have been captured");
+    }
 
-    /// Run the helper's decision logic exactly as `run_helper` does, but against
-    /// an explicit rules path and socket, so the file read and the socket
-    /// decision are both real.
-    fn helper_decide(rules_path: &Path, sock: &Path, token: &str, tool: &str, input: Value) -> HookResponse {
-        let file = rules::load(rules_path);
-        match rules::evaluate(&file, tool, &input, rules::now_ms(), pid_alive) {
-            Verdict::Allow => HookResponse::allow("Allowed by a Sway rule."),
-            Verdict::Deny(reason) => HookResponse::deny(reason),
-            Verdict::Ask => {
-                let req = HookRequest {
-                    token: token.to_string(),
-                    session_id: "s1".to_string(),
-                    tool_use_id: "toolu_1".to_string(),
-                    tool_name: tool.to_string(),
-                    tool_input: input,
-                    pre_approved: false,
-                    capture_only: false,
-                };
-                helper_exchange(sock, &req)
-                    .unwrap_or_else(|_| HookResponse::deny("Sway could not be reached to approve this tool call."))
-            }
+    /// Fail-open. A capture that cannot reach Sway has lost a diff; refusing
+    /// instead would be Sway gating by the back door, silently, on the one path
+    /// that is supposed to have stopped gating.
+    #[test]
+    fn a_capture_that_cannot_reach_sway_is_not_a_refusal() {
+        // No panic, no error propagated, nothing printed but the marker.
+        helper_capture(&payload("Write", json!({"file_path": "/proj/new.rs"})), Path::new("/nonexistent/socket"), "tok");
+        let out: Value = serde_json::from_str(&hook_output()).unwrap();
+        assert!(out.get("hookSpecificOutput").is_none(), "an unreachable Sway must not become a denial");
+    }
+
+    /// A payload that is not JSON at all must be survivable for the same reason.
+    #[test]
+    fn an_unparseable_payload_is_a_lost_diff_and_nothing_more() {
+        let (server, observed) = observing_server();
+        helper_capture("not json", server.sock_path(), server.token());
+        assert!(observed.lock().unwrap().is_empty());
+        assert_eq!(server.connections(), 0, "there is nothing to capture, so nothing to connect for");
+    }
+
+    /// A read-heavy turn must cost nothing. The matcher is the first line of
+    /// this, but it belongs to claude; measured here on the server's own
+    /// connection counter, so the claim holds even if a read reaches the helper.
+    #[test]
+    fn fifty_reads_open_no_sockets() {
+        let (server, observed) = observing_server();
+        for _ in 0..50 {
+            helper_capture(&payload("Read", json!({"file_path": "/proj/a.rs"})), server.sock_path(), server.token());
         }
+        assert_eq!(server.connections(), 0, "a read has no before-state, so it must not cost a round trip");
+        assert!(observed.lock().unwrap().is_empty());
     }
 
-    fn write_rules(name: &str, sway_pid: u32, rules_list: Vec<rules::Rule>) -> PathBuf {
-        let path = std::env::temp_dir()
-            .join(format!("sway-approval-{}", std::process::id()))
-            .join(format!("{name}.json"));
-        rules::save(&path, &RuleFile::new(sway_pid, rules::now_ms(), rules_list)).unwrap();
-        path
-    }
-
-    /// The hook matches every tool, so a read-heavy turn would cost one socket
-    /// round trip per call without the cheap path. Measured on the server's own
-    /// connection counter rather than on elapsed time, so it cannot pass by
-    /// merely being fast.
+    /// The per-call cost of a capture, budgeted because it sits in front of every
+    /// write and a slow one would be felt as the agent stalling mid-edit.
     #[test]
-    fn fifty_allow_listed_calls_open_zero_sockets() {
-        let (server, prompts) = test_server(Duration::from_secs(5));
-        let rules_path = write_rules(
-            "cheap",
-            std::process::id(),
-            vec![
-                rules::Rule::allow("Read", None),
-                rules::Rule::allow("Grep", None),
-            ],
-        );
-
-        for i in 0..50 {
-            let (tool, input) = if i % 2 == 0 {
-                ("Read", json!({"file_path": format!("/proj/f{i}.rs")}))
-            } else {
-                ("Grep", json!({"pattern": "fn main"}))
-            };
-            let resp = helper_decide(&rules_path, server.sock_path(), server.token(), tool, input);
-            assert_eq!(resp.decision, "allow", "call {i} should be allowed by rule");
-        }
-
-        assert_eq!(server.connections(), 0, "the cheap path must not open a socket");
-        assert!(prompts.recv_timeout(Duration::from_millis(200)).is_err(), "and must never surface a prompt");
-
-        // The negative control: a tool with no rule really does open one.
-        let handle = {
-            let sock = server.sock_path().to_path_buf();
-            let token = server.token().to_string();
-            let path = rules_path.clone();
-            thread::spawn(move || helper_decide(&path, &sock, &token, "Bash", json!({"command": "ls"})))
-        };
-        let prompt = prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        resolve(&server, &prompt.request_id, HookResponse::allow("ok"));
-        handle.join().unwrap();
-        assert_eq!(server.connections(), 1, "an unruled tool must still round trip");
-    }
-
-    /// **The cheap path must not defeat fail-closed.** A `claude` orphaned by a
-    /// Sway crash keeps running and keeps calling tools; if the rule file alone
-    /// were enough, it would keep auto-approving them with nobody supervising.
-    ///
-    /// The supervising process here is a real one that is really killed, so the
-    /// liveness check is exercised against the process table rather than a stub.
-    #[test]
-    fn a_killed_supervisor_makes_the_cheap_path_deny_rather_than_allow() {
-        let (server, _rx) = test_server(Duration::from_secs(1));
-
-        let mut supervisor = std::process::Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .expect("the stand-in supervisor should start");
-        let rules_path = write_rules("supervised", supervisor.id(), vec![rules::Rule::allow("Read", None)]);
-
-        // While it is alive, the rule is honoured.
-        let allowed = helper_decide(&rules_path, server.sock_path(), server.token(), "Read", json!({"file_path": "/a"}));
-        assert_eq!(allowed.decision, "allow", "a supervised rule should be honoured");
-
-        // Kill it, exactly as a SIGKILL of Sway mid-turn would.
-        supervisor.kill().unwrap();
-        supervisor.wait().unwrap();
-
-        let denied = helper_decide(&rules_path, server.sock_path(), server.token(), "Read", json!({"file_path": "/a"}));
-        assert_eq!(denied.decision, "deny", "an orphaned child must not keep auto-approving tools");
-        assert!(denied.reason.contains("not supervising"), "got {}", denied.reason);
-        assert_eq!(server.connections(), 0, "the deny comes from the file check, not a round trip");
-    }
-
-    /// The per-call cost of the cheap path, budgeted because the hook runs on
-    /// **every** tool call and a slow one would be felt on every turn.
-    #[test]
-    fn the_cheap_path_stays_under_the_fifteen_millisecond_budget() {
-        let (server, _rx) = test_server(Duration::from_secs(1));
-        let rules_path = write_rules("budget", std::process::id(), vec![rules::Rule::allow("Read", None)]);
+    fn a_capture_stays_under_the_fifteen_millisecond_budget() {
+        let (server, _observed) = observing_server();
 
         let mut samples: Vec<Duration> = Vec::new();
         for i in 0..40 {
             let start = std::time::Instant::now();
-            let resp = helper_decide(
-                &rules_path,
+            helper_capture(
+                &payload("Edit", json!({"file_path": format!("/proj/f{i}.rs")})),
                 server.sock_path(),
                 server.token(),
-                "Read",
-                json!({"file_path": format!("/proj/f{i}.rs")}),
             );
             samples.push(start.elapsed());
-            assert_eq!(resp.decision, "allow");
         }
         samples.sort();
         let median = samples[samples.len() / 2];
-        assert!(
-            median < Duration::from_millis(15),
-            "median cheap-path decision was {median:?}, over the 15ms budget"
-        );
+        assert!(median < Duration::from_millis(15), "median capture round trip was {median:?}, over the 15ms budget");
         // Printed so the number on this machine is visible in the run and can be
         // recorded, making a later regression legible rather than just a failure.
-        eprintln!("cheap-path median decision: {median:?}");
+        eprintln!("capture round-trip median: {median:?}");
     }
 
-    /// The **end-to-end** cheap-path cost: the real binary re-exec'd as the hook,
-    /// reading a payload on stdin and printing a decision.
+    /// The **end-to-end** cost: the real binary re-exec'd as the hook, reading a
+    /// payload on stdin and handing over a before-state.
     ///
     /// Separate from the budget test above and opt-in, because it needs a built
-    /// binary that `cargo test` does not produce. It exists because the decision
-    /// logic is the cheap part: the honest per-call cost is dominated by
-    /// `exec`ing Sway, and a budget that measured only the file read would be
+    /// binary that `cargo test` does not produce. It exists because the socket
+    /// round trip is the cheap part: the honest per-call cost is dominated by
+    /// `exec`ing Sway, and a budget that measured only the round trip would be
     /// measuring the wrong thing.
     #[test]
     #[ignore = "needs a built binary: cargo build, then cargo test -- --ignored"]
@@ -1190,207 +718,58 @@ mod tests {
         let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
         assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
 
-        let rules_path = write_rules("e2e", std::process::id(), vec![rules::Rule::allow("Read", None)]);
-        let payload = json!({
-            "session_id": "s1",
-            "tool_use_id": "toolu_1",
-            "tool_name": "Read",
-            "tool_input": {"file_path": "/proj/a.rs"},
-            "hook_event_name": "PreToolUse",
-        })
-        .to_string();
+        let (server, observed) = observing_server();
+        let text = payload("Write", json!({"file_path": "/proj/a.rs"}));
 
         let mut samples = Vec::new();
         for _ in 0..20 {
             let start = std::time::Instant::now();
             let mut child = std::process::Command::new(&exe)
-                .env(ENV_SOCK, "/tmp/unused-because-the-rule-matches")
-                .env(ENV_TOKEN, "t")
-                .env(ENV_RULES, &rules_path)
+                .env(ENV_SOCK, server.sock_path())
+                .env(ENV_TOKEN, server.token())
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .expect("the hook should start");
-            child.stdin.take().unwrap().write_all(payload.as_bytes()).unwrap();
+            child.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
             let out = child.wait_with_output().unwrap();
             samples.push(start.elapsed());
 
-            let decision: Value = serde_json::from_slice(&out.stdout).expect("the hook should print a decision");
-            assert_eq!(
-                decision["hookSpecificOutput"]["permissionDecision"], "allow",
-                "the rule should be honoured without the socket"
-            );
+            let printed: Value = serde_json::from_slice(&out.stdout).expect("the hook should print its marker");
+            assert_eq!(printed[SWAY_HOOK_MARKER], true);
+            assert!(printed.get("hookSpecificOutput").is_none(), "the shipped helper must never print a decision");
         }
+        assert_eq!(observed.lock().unwrap().len(), 20, "every run should have captured");
         samples.sort();
         let median = samples[samples.len() / 2];
         eprintln!("end-to-end hook median (debug binary): {median:?}");
         assert!(median < Duration::from_millis(15), "median end-to-end hook cost was {median:?}, over the 15ms budget");
     }
 
-    /// The routing decision the cheap path and the snapshot forced.
-    ///
-    /// A read-shaped tool with a rule takes the zero-socket path. A **write**
-    /// tool with a rule still round trips - not to be approved, but so the
-    /// before-state is captured. Without this, an "always allow Edit" rule would
-    /// silently cost every diff for exactly the files the user trusted most.
+    /// The helper is selected by an env marker the app's own process never has.
     #[test]
-    fn a_pre_approved_write_still_round_trips_so_its_before_state_is_captured() {
-        let (server, prompts, observed) = observing_server(Duration::from_secs(5));
-        let mut req = request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"}));
-        req.pre_approved = true;
-
-        let resp = helper_exchange(server.sock_path(), &req).unwrap();
-
-        assert_eq!(resp.decision, "allow", "a rule already allowed it, so it must not prompt");
-        assert!(prompts.recv_timeout(Duration::from_millis(300)).is_err(), "a pre-approved call must not surface a prompt");
-        let seen = observed.lock().unwrap();
-        assert_eq!(seen.len(), 1, "but Sway must still see it, or there is no before-state");
-        assert_eq!(seen[0].tool_name, "Edit");
-    }
-
-    /// Every authenticated call is observed before any decision, including one
-    /// the user goes on to deny: the file's prior content is the same either way,
-    /// and capturing after the fact would not be a before-state.
-    #[test]
-    fn a_call_is_observed_before_it_is_decided() {
-        let (server, prompts, observed) = observing_server(Duration::from_secs(5));
-        let sock = server.sock_path().to_path_buf();
-        let req = request(server.token(), "Write", json!({"file_path": "/proj/new.rs"}));
-        let handle = thread::spawn(move || helper_exchange(&sock, &req).unwrap());
-
-        let prompt = prompts.recv_timeout(Duration::from_secs(5)).unwrap();
-        // Observed already, while the call is still blocked and undecided.
-        assert_eq!(observed.lock().unwrap().len(), 1);
-
-        resolve(&server, &prompt.request_id, HookResponse::deny("no"));
-        assert_eq!(handle.join().unwrap().decision, "deny");
-        assert_eq!(observed.lock().unwrap().len(), 1, "a denied call is still observed exactly once");
-    }
-
-    /// The capture role's whole reason to exist. It decides nothing, so if the
-    /// round trip stopped observing there would be no symptom at all until a
-    /// user opened a tool card and found the diff missing.
-    #[test]
-    fn a_capture_only_edit_is_observed_and_never_prompts() {
-        let (server, prompts, observed) = observing_server(Duration::from_secs(5));
-        let mut req = request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"}));
-        req.capture_only = true;
-
-        let resp = helper_exchange(server.sock_path(), &req).unwrap();
-
-        // The helper discards this; it exists to unblock the write.
-        assert_eq!(resp.decision, "allow");
-        assert!(
-            prompts.recv_timeout(Duration::from_millis(300)).is_err(),
-            "capture decides nothing, so it must never surface a prompt"
-        );
-        let seen = observed.lock().unwrap();
-        assert_eq!(seen.len(), 1, "an Edit that captures nothing leaves its tool card with no diff");
-        assert_eq!(seen[0].tool_name, "Edit");
-        assert!(!super::super::snapshot::write_targets(&seen[0].tool_name, &seen[0].tool_input).is_empty());
-    }
-
-    fn payload(tool: &str, input: Value) -> String {
-        json!({
-            "session_id": "s1",
-            "tool_use_id": "toolu_1",
-            "tool_name": tool,
-            "tool_input": input,
-            "hook_event_name": "PreToolUse",
-        })
-        .to_string()
-    }
-
-    /// The whole point of the capture role: it must print nothing. Any
-    /// `permissionDecision` ends the permission chain, so a helper that answered
-    /// here would suppress the harness's own question for exactly the write tools
-    /// this hook is narrowed to.
-    #[test]
-    fn the_capture_helper_prints_no_decision_at_all() {
-        let (server, prompts, observed) = observing_server(Duration::from_secs(5));
-        let out = helper_run(
-            HookRole::Capture,
-            &payload("Edit", json!({"file_path": "/proj/a.rs"})),
-            server.sock_path(),
-            server.token(),
-            Path::new("/nonexistent/rules.json"),
-        );
-        assert!(out.is_none(), "a decision here would short-circuit the harness");
-        assert_eq!(observed.lock().unwrap().len(), 1, "and the before-state must still have been captured");
-        assert!(prompts.recv_timeout(Duration::from_millis(300)).is_err());
-    }
-
-    /// Fail-open, inverting the gate's rule. A capture that cannot reach Sway
-    /// has lost a diff; denying instead would be Sway gating by the back door,
-    /// silently, on the one path that is supposed to have stopped gating.
-    #[test]
-    fn a_capture_that_cannot_reach_sway_still_says_nothing() {
-        let out = helper_run(
-            HookRole::Capture,
-            &payload("Write", json!({"file_path": "/proj/new.rs"})),
-            Path::new("/nonexistent/socket"),
-            "tok",
-            Path::new("/nonexistent/rules.json"),
-        );
-        assert!(out.is_none(), "an unreachable Sway must not become a denial");
-        assert!(unreadable_payload(HookRole::Capture).is_none());
-        assert_eq!(unreadable_payload(HookRole::Gate).unwrap().decision, "deny");
-    }
-
-    /// A read-heavy turn must cost nothing. The matcher is the first line of
-    /// this, but it belongs to claude; measured here on the server's own
-    /// connection counter, so the claim holds even if a read reaches the helper.
-    #[test]
-    fn fifty_reads_open_no_sockets_in_the_capture_role() {
-        let (server, _prompts, observed) = observing_server(Duration::from_secs(5));
-        for _ in 0..50 {
-            assert!(helper_run(
-                HookRole::Capture,
-                &payload("Read", json!({"file_path": "/proj/a.rs"})),
-                server.sock_path(),
-                server.token(),
-                Path::new("/nonexistent/rules.json"),
-            )
-            .is_none());
-        }
-        assert_eq!(server.connections(), 0, "a read has no before-state, so it must not cost a round trip");
-        assert!(observed.lock().unwrap().is_empty());
-    }
-
-    /// The gate is unchanged by any of this, which is what makes the setting a
-    /// way back rather than a different third behaviour.
-    #[test]
-    fn the_gate_role_still_answers_from_the_rules_file() {
-        let rules_path = write_rules("gate-role", std::process::id(), vec![rules::Rule::allow("Read", None)]);
-        let out = helper_run(
-            HookRole::Gate,
-            &payload("Read", json!({"file_path": "/proj/a.rs"})),
-            Path::new("/nonexistent/socket"),
-            "tok",
-            &rules_path,
-        )
-        .expect("the gate always answers");
-        assert_eq!(out.decision, "allow");
-        assert_eq!(out.reason, "Allowed by a Sway rule.");
-    }
-
-    /// An unauthenticated call must not be observed either, or a stranger on the
-    /// socket could drive Sway's snapshot machinery.
-    #[test]
-    fn an_unauthenticated_call_is_never_observed() {
-        let (server, _rx, observed) = observing_server(Duration::from_secs(1));
-        let _ = helper_exchange(server.sock_path(), &request("wrong-token", "Edit", json!({"file_path": "/a"})));
-        assert!(observed.lock().unwrap().is_empty());
+    fn the_app_process_is_never_mistaken_for_the_helper() {
+        assert!(!is_helper(), "the test process has no hook marker set");
     }
 
     // ---- settings injection ----
+
+    /// Sway's deadline for an in-protocol answer must fire strictly before the
+    /// timeout the CLI is told about, or the outcome would be the CLI's default
+    /// rather than one Sway can explain.
+    #[test]
+    fn sways_deadline_is_strictly_inside_the_one_the_cli_is_told() {
+        assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
+        let settings: Value =
+            serde_json::from_str(&settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok")).unwrap();
+        assert_eq!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"], HOOK_TIMEOUT_SECS);
+    }
 
     /// The user's own hooks must still load and fire. `--setting-sources ''`
     /// would strip them, and must never ship.
     #[test]
     fn the_settings_payload_never_disables_the_users_own_sources() {
-        let text =
-            settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok", Path::new("/tmp/r.json"), HookRole::Capture);
+        let text = settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok");
         assert!(!text.contains("setting-sources"), "the payload must not touch setting sources");
         assert!(!text.contains("permissions"), "the payload must not override the user's permissions");
         let parsed: Value = serde_json::from_str(&text).unwrap();
@@ -1400,24 +779,14 @@ mod tests {
         assert_eq!(parsed["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["PreToolUse"]);
     }
 
-    fn matcher_for(role: HookRole) -> String {
-        let parsed: Value = serde_json::from_str(&settings_json(
-            Path::new("/bin/sway"),
-            Path::new("/tmp/s"),
-            "tok",
-            Path::new("/tmp/r.json"),
-            role,
-        ))
-        .unwrap();
-        parsed["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap().to_string()
-    }
-
-    /// The capture hook is handed exactly the tools whose before-state is worth
-    /// keeping, and nothing else. A tool `write_targets` reports but the matcher
-    /// omits would lose its diff silently, which is why both read one list.
+    /// The hook is handed exactly the tools whose before-state is worth keeping,
+    /// and nothing else. A tool `write_targets` reports but the matcher omits
+    /// would lose its diff silently, which is why both read one list.
     #[test]
-    fn the_capture_hook_matches_the_write_tools_and_only_those() {
-        let matcher = matcher_for(HookRole::Capture);
+    fn the_hook_matches_the_write_tools_and_only_those() {
+        let parsed: Value =
+            serde_json::from_str(&settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok")).unwrap();
+        let matcher = parsed["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap().to_string();
         let named: Vec<&str> = matcher.split('|').collect();
         assert_eq!(named, super::super::snapshot::WRITE_TOOLS.to_vec());
         for tool in named {
@@ -1426,75 +795,32 @@ mod tests {
                 "{tool} is in the matcher but captures nothing"
             );
         }
-        assert!(!matcher.contains("Read"), "a read must never reach the capture hook");
-    }
-
-    /// The gate keeps all tools, and needs to: it promises approvals hold even
-    /// under `bypassPermissions`, which it cannot do for a tool it never sees.
-    #[test]
-    fn the_gate_still_matches_every_tool() {
-        assert_eq!(matcher_for(HookRole::Gate), "*");
-    }
-
-    /// The role rides on the command string, so the helper and the matcher
-    /// cannot disagree about which job this session's hook is doing.
-    #[test]
-    fn only_the_gate_role_marks_its_hook_command() {
-        let args = (Path::new("/bin/sway"), Path::new("/tmp/s"), "tok", Path::new("/tmp/r.json"));
-        assert!(hook_command(args.0, args.1, args.2, args.3, HookRole::Gate).starts_with(&format!("{ENV_GATE}=1 ")));
-        assert!(!hook_command(args.0, args.1, args.2, args.3, HookRole::Capture).contains(ENV_GATE));
+        assert!(!matcher.contains("Read"), "a read must never reach the hook");
+        assert_ne!(matcher, "*", "matching every tool is what the gate did, and there is no gate");
     }
 
     /// Paths with spaces survive the shell that runs the hook command.
     #[test]
     fn the_hook_command_quotes_paths_so_a_space_cannot_split_it() {
-        let cmd = hook_command(
-            Path::new("/Applications/My App/sway"),
-            Path::new("/tmp/dir with space/s"),
-            "tok",
-            Path::new("/tmp/r.json"),
-            HookRole::Capture,
-        );
+        let cmd = hook_command(Path::new("/Applications/My App/sway"), Path::new("/tmp/dir with space/s"), "tok");
         assert!(cmd.contains("'/Applications/My App/sway'"), "got {cmd}");
         assert!(cmd.contains("'/tmp/dir with space/s'"), "got {cmd}");
         assert!(cmd.starts_with(ENV_SOCK));
     }
 
-    /// The helper is selected by an env marker the app's own process never has.
-    #[test]
-    fn the_app_process_is_never_mistaken_for_the_helper() {
-        assert!(!is_helper(), "the test process has no hook marker set");
-    }
-
-    /// **Sway must never write to `~/.claude/settings.json`.** A click inside one
-    /// chat pane changing the behaviour of every terminal session and every other
-    /// project is not a thing a click inside one chat pane should be able to do.
+    /// **Sway must never write to `~/.claude/settings.json`.** A hook installed
+    /// inside one chat pane changing the behaviour of every terminal session and
+    /// every other project is not a thing one chat pane should be able to do.
     ///
-    /// Checked by bytes rather than by reading the code, and across the whole
-    /// rule lifecycle - add and remove - because "we do not write there" is a
-    /// claim about behaviour, not about intent.
+    /// Checked by bytes rather than by reading the code, because "we do not write
+    /// there" is a claim about behaviour, not about intent.
     #[test]
-    fn adding_and_removing_a_rule_leaves_the_users_claude_settings_byte_identical() {
+    fn spawning_a_session_leaves_the_users_claude_settings_byte_identical() {
         let user_settings = dirs::home_dir().unwrap_or_default().join(".claude/settings.json");
         let before = std::fs::read(&user_settings).ok();
 
         let session = format!("settings-guard-{}", std::process::id());
-        let path = rules::rules_path(&session);
-
-        // Add a rule, then remove it, through the real store.
-        rules::save(
-            &path,
-            &RuleFile::new(
-                std::process::id(),
-                rules::now_ms(),
-                vec![rules::Rule::allow("Bash", Some("git status"))],
-            ),
-        )
-        .unwrap();
-        refresh_stamp(&session);
-        assert!(matches!(rules::load(&path), rules::Parsed::Ok(_)), "the rule should have landed in Sway's own store");
-        let _ = settings_args(&session, Path::new("/tmp/s"), "tok", HookRole::Gate);
-        std::fs::remove_file(&path).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok").unwrap();
 
         let after = std::fs::read(&user_settings).ok();
         assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
@@ -1502,19 +828,17 @@ mod tests {
         // And Sway's own settings file, which claude *is* pointed at, layers only
         // hooks on top - it is a separate file entirely.
         assert_ne!(settings_path(&session), user_settings);
+        assert_eq!(args[1], settings_path(&session).to_string_lossy());
         let _ = std::fs::remove_file(settings_path(&session));
     }
 
-    /// A user-level `PreToolUse` hook and Sway's must both fire on one tool call.
-    ///
     /// `--settings` **merges**; it is `--setting-sources ''` that would strip the
-    /// user's own hooks, permissions and config, which is why it must never ship.
-    /// Asserted structurally on the payload - it declares only a hook, and names
-    /// no source list, so nothing it contains can displace the user's settings.
+    /// user's own hooks, permissions and config. Asserted structurally on the
+    /// payload: it declares only a hook and names no source list, so nothing it
+    /// contains can displace the user's settings.
     #[test]
     fn sways_settings_payload_can_only_add_a_hook_never_replace_the_users() {
-        let text =
-            settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok", Path::new("/tmp/r.json"), HookRole::Capture);
+        let text = settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok");
         let parsed: Value = serde_json::from_str(&text).unwrap();
 
         // One key, one hook event, one entry: there is nothing here that could
@@ -1526,8 +850,24 @@ mod tests {
         }
     }
 
-    /// **`--settings` merges; it does not replace.** A user's own `PreToolUse`
-    /// hook and Sway's must both fire on one tool call.
+    /// The settings file carries a token, so it must not be world-readable and
+    /// must not travel in argv where `ps` would show it to every process.
+    #[test]
+    fn the_settings_file_is_a_private_path_not_an_argv_blob() {
+        let session = format!("perm-{}", std::process::id());
+        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token").unwrap();
+        assert_eq!(args[0], "--settings");
+        assert!(!args[1].trim_start().starts_with('{'), "a token in argv is visible in `ps`");
+        assert!(!args[1].contains("super-secret-token"));
+
+        let mode = std::fs::metadata(&args[1]).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the settings file holds a token");
+        let _ = std::fs::remove_file(&args[1]);
+    }
+
+    // ---- against the real CLI ----
+
+    /// A user-level `PreToolUse` hook and Sway's must both fire on one tool call.
     ///
     /// Driven against the real CLI, because this is a claim about how `claude`
     /// layers settings sources, and no amount of inspecting our own payload can
@@ -1535,14 +875,23 @@ mod tests {
     /// directory rather than in `~/.claude/settings.json`: it exercises the same
     /// merge, and writing to the real file is the one thing this whole module
     /// promises never to do.
+    ///
+    /// The prompt asks for a *write*, because that is the only tool Sway's own
+    /// hook is handed now - a `Bash` call would prove only the user's hook fired.
+    /// The hook is pointed at the built `target/debug/sway`, not at
+    /// `current_exe()`: under `cargo test` that is the *test* binary, and handing
+    /// claude a command that re-runs the suite is not a hook.
     #[test]
-    #[ignore = "drives the real claude CLI: costs tokens and needs network"]
+    #[ignore = "drives the real claude CLI and needs a built binary: cargo build, then cargo test -- --ignored"]
     fn a_user_hook_and_sways_hook_both_fire_on_one_tool_call() {
+        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
+        assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
+
         let cwd = std::env::temp_dir().join(format!("sway-hook-merge-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(cwd.join(".claude")).unwrap();
 
-        // The "user's" own hook: it only leaves a marker, and allows.
+        // The "user's" own hook: it only leaves a marker, and decides nothing.
         let marker = cwd.join("user-hook-fired");
         std::fs::write(
             cwd.join(".claude/settings.json"),
@@ -1561,22 +910,26 @@ mod tests {
         )
         .unwrap();
 
-        // Sway's hook, allowing everything by rule so the turn can finish.
         // `--session-id` requires a UUID, so a readable name will not do.
         let session = crate::chat::claude_transport::tests::uuid_like();
-        let rules_path = rules::rules_path(&session);
-        rules::save(
-            &rules_path,
-            &RuleFile::new(std::process::id(), rules::now_ms(), vec![rules::Rule::allow("Bash", None)]),
-        )
-        .unwrap();
-        let (server, _rx) = test_server(Duration::from_secs(30));
-        let settings = settings_args(&session, server.sock_path(), server.token(), HookRole::Gate).unwrap();
+        let (server, observed) = observing_server();
+        let settings_file = cwd.join("sway-settings.json");
+        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
-        let mut args = crate::chat::commands::build_args(chat, &session, false, None, None, None, None, &[]);
-        args.extend(settings);
+        let mut args = crate::chat::commands::build_args(
+            chat,
+            &session,
+            false,
+            None,
+            None,
+            Some("bypassPermissions"),
+            None,
+            &[],
+        );
+        args.push("--settings".to_string());
+        args.push(settings_file.to_string_lossy().into_owned());
 
         let mut child = std::process::Command::new(&chat.program)
             .args(&args)
@@ -1594,7 +947,8 @@ mod tests {
             "{}",
             json!({
                 "type": "user",
-                "message": {"role": "user", "content": [{"type": "text", "text": "Run the bash command `echo hi` and then stop."}]},
+                "message": {"role": "user", "content": [{"type": "text", "text":
+                    "Write a file called note.txt containing the word ok, then stop."}]},
             })
         )
         .unwrap();
@@ -1622,11 +976,13 @@ mod tests {
 
         assert!(saw_result, "the turn should have completed; stderr: {err}");
         assert!(marker.exists(), "the user's own PreToolUse hook must still fire alongside Sway's");
-        // Sway's fired too: the rule file is what allowed the call, and the turn
-        // could not have completed a Bash call without our hook answering.
-        assert_eq!(server.connections(), 0, "the allow-listed Bash call took the cheap path");
+        // Sway's fired too, and this is the honest form of that claim: the
+        // capture really landed on our socket.
+        assert!(
+            !observed.lock().unwrap().is_empty(),
+            "Sway's own hook never reached the socket, so the merge did not include it"
+        );
 
-        let _ = std::fs::remove_file(&rules_path);
         let _ = std::fs::remove_dir_all(&cwd);
     }
 
@@ -1637,13 +993,9 @@ mod tests {
     ///
     /// Deliberately not a unit test. Every part of the claim belongs to somebody
     /// else: which tools claude gates is claude's, whether the narrowed matcher
-    /// selects is claude's, and whether a silent hook lets the chain continue is
-    /// claude's. What Sway contributes is the argv, so this uses `build_args` and
-    /// `settings_json` rather than a hand-written approximation of them.
-    ///
-    /// The hook is pointed at the built `target/debug/sway`, not at
-    /// `current_exe()`: under `cargo test` that is the *test* binary, and handing
-    /// claude a command that re-runs the suite is not a hook.
+    /// selects is claude's, and whether a hook that emits only the marker lets the
+    /// chain continue is claude's. What Sway contributes is the argv, so this uses
+    /// `build_args` and `settings_json` rather than a hand-written approximation.
     #[test]
     #[ignore = "drives the real claude CLI and needs a built binary: cargo build, then cargo test -- --ignored"]
     fn reads_raise_no_prompt_while_a_write_still_does() {
@@ -1656,13 +1008,9 @@ mod tests {
         std::fs::write(cwd.join("seed.txt"), "alpha\nbeta\n").unwrap();
 
         let session = crate::chat::claude_transport::tests::uuid_like();
-        let (server, _rx, observed) = observing_server(Duration::from_secs(60));
+        let (server, observed) = observing_server();
         let settings_file = cwd.join("sway-settings.json");
-        std::fs::write(
-            &settings_file,
-            settings_json(&exe, server.sock_path(), server.token(), &rules::rules_path(&session), HookRole::Capture),
-        )
-        .unwrap();
+        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
@@ -1744,7 +1092,7 @@ mod tests {
         // diff - a silence that nothing else here would have noticed.
         let seen = observed.lock().unwrap();
         assert!(
-            seen.iter().any(|r| r.tool_name == "Write" && r.capture_only),
+            seen.iter().any(|r| r.tool_name == "Write"),
             "the write's before-state was never captured; observed: {:?}",
             seen.iter().map(|r| r.tool_name.as_str()).collect::<Vec<_>>()
         );
@@ -1754,43 +1102,5 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&cwd);
-    }
-
-    /// The rules UI asks this, so a wrong answer is a panel that writes rules
-    /// nothing reads (or hides ones that are in force). Read from the file the
-    /// child was launched with, which is the only thing that still knows: the
-    /// setting can be toggled under a running session and the file cannot.
-    #[test]
-    fn a_sessions_gate_is_read_back_from_what_it_was_launched_with() {
-        let gated = format!("gate-on-{}", std::process::id());
-        let capture = format!("gate-off-{}", std::process::id());
-
-        // Neither exists yet: an unsupervised session is not a gated one.
-        assert!(!session_gated(&gated));
-
-        settings_args(&gated, Path::new("/tmp/s"), "tok", HookRole::Gate).unwrap();
-        settings_args(&capture, Path::new("/tmp/s"), "tok", HookRole::Capture).unwrap();
-        assert!(session_gated(&gated));
-        assert!(!session_gated(&capture), "the capture role's own markers must not read as the gate");
-
-        // Teardown removes the file, and the answer goes with it.
-        let _ = std::fs::remove_file(settings_path(&gated));
-        assert!(!session_gated(&gated));
-        let _ = std::fs::remove_file(settings_path(&capture));
-    }
-
-    /// The settings file carries a token, so it must not be world-readable and
-    /// must not travel in argv where `ps` would show it to every process.
-    #[test]
-    fn the_settings_file_is_a_private_path_not_an_argv_blob() {
-        let session = format!("perm-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", HookRole::Capture).unwrap();
-        assert_eq!(args[0], "--settings");
-        assert!(!args[1].trim_start().starts_with('{'), "a token in argv is visible in `ps`");
-        assert!(!args[1].contains("super-secret-token"));
-
-        let mode = std::fs::metadata(&args[1]).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "the settings file holds a token");
-        let _ = std::fs::remove_file(&args[1]);
     }
 }

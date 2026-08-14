@@ -59,7 +59,7 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
   return (
     <div class={`${styles.notice} ${failed() ? styles.noticeError : ""}`}>
       <span>
-        {props.item.swayOwned ? "Sway approval hook" : props.item.name} ({detail()})
+        {props.item.swayOwned ? "Sway's before-state hook" : props.item.name} ({detail()})
       </span>
       <Show when={failed() && props.item.stderr}>{(err) => <div>{err()}</div>}</Show>
     </div>
