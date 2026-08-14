@@ -1,0 +1,94 @@
+schema_version = 2
+id = "opencode"
+label = "OpenCode"
+
+# Measured against this build with dev/acp-probe.mjs. Unlike claude.toml, almost
+# nothing below is a captured wire format: an ACP adapter's job is to say how to
+# *launch* the agent, and everything else - the model list, the session modes,
+# what a permission prompt offers - is read from that agent's own handshake at
+# runtime. So this file is short on purpose, and a shorter file is the point of
+# the ACP transport rather than a gap in this one.
+verified_against = "opencode 1.18.3"
+
+[launch]
+program = "opencode"
+# The TUI, for a PTY tab. Nothing to do with the chat surface below, which
+# launches `opencode acp` instead.
+base_args = []
+# `--auto` is opencode's own "approve anything not explicitly denied". Its help
+# calls it dangerous, which is the same standing as claude's
+# `--dangerously-skip-permissions`.
+yolo_args = ["--auto"]
+# Deliberately empty, which the UI reads as "this agent's sessions can't be
+# resumed" (see ADAPTERS.md) and says so rather than mis-resuming.
+#
+# opencode *does* accept `--session <id>`, so this is not a missing capability
+# of the CLI. It is that the id Sway holds for an ACP row is **Sway's own**: the
+# agent's id lives in the locator store (chat/acp_sessions.rs) and only the chat
+# path reads it. Substituting `{id}` here would hand opencode an id it never
+# minted, and it would start a fresh session while claiming to resume one.
+resume_args = []
+
+# No [discovery], [parser] or [running].
+#
+# All three describe sessions that are files on disk, and an ACP agent's are
+# not: the id is minted inside `session/new`, the conversation is reached with
+# `session/load`, and every session of one agent shares the command line
+# `opencode acp`, so a pgrep pattern would report all of them running whenever
+# any one was. Sway records what the protocol told it in its own locator store
+# instead, which sessions.rs merges in beside adapter discovery. Omitting the
+# three is what the loader requires of a protocol-backed transport; declaring
+# plausible values would be worse than declaring none.
+
+[capabilities]
+pty_quiet_ms = 2000
+# The quiet-PTY x pending-tool_use join is Claude-shaped and has not been
+# measured against opencode's TUI, so it is not claimed. A chat tab does not
+# need it: over ACP the agent asks in-protocol and Sway renders the question.
+needs_you = false
+hooks = false
+
+[chat]
+transport = "acp"
+# The whole launch. `opencode acp` speaks ACP over stdio, and Sway spawns the
+# child itself (transport::build_command, so PATH comes from a login shell)
+# rather than letting the SDK spawn it.
+base_args = ["acp"]
+
+# Every one of these is empty because ACP has no command line for it, not
+# because opencode lacks the feature:
+#
+#   * session ids are minted by the agent inside `session/new`,
+#   * resume is `session/load`, fork is `session/fork`,
+#   * a model switch is `session/set_config_option` (measured: `session/set_model`
+#     does not exist in ACP 2.0.0),
+#   * modes are a `mode`-category config option the agent advertises, measured
+#     as `build` and `plan` on 1.18.3.
+session_id_args = []
+resume_args = []
+fork_args = []
+model_args = []
+effort_args = []
+mode_args = []
+add_dir_args = []
+
+# No [[chat.models]].
+#
+# Measured 2026-08-14 on opencode 1.18.3: `session/new` answers with a
+# `model`-category select carrying 15 provider-qualified ids
+# (`github-copilot/claude-sonnet-4.6`, `opencode/big-pickle`, ...), and
+# `opencode models` reports the same 15. So the live catalogue is complete, and
+# it is also **per user**: it lists the providers that account has authenticated,
+# which a bundled table cannot know. The picker takes the live list whenever
+# there is one and falls back to this table only when there is not, so leaving
+# it empty is what makes the picker show the user's own models rather than a
+# hand-maintained guess about somebody else's.
+
+# No [[chat.modes]] either, for the same reason: `build` and `plan` arrive as a
+# config option on the handshake.
+
+[chat.acp]
+# The two per-agent departures from a spec-correct client. Both are at their
+# defaults here, which is the shape measured to work against this agent: it does
+# its own file I/O and is not told about Sway's MCP servers.
+serve_client_fs = false

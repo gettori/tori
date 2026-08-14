@@ -81,6 +81,24 @@ impl ChatTransport {
             Self::Acp => "acp",
         }
     }
+
+    /// Does this transport reach its sessions through the protocol rather than
+    /// through files on disk?
+    ///
+    /// The question decides whether an adapter may omit `[discovery]`,
+    /// `[parser]` and `[running]`. A harness whose transcripts are files needs
+    /// all three; one that mints session ids inside the protocol and keeps them
+    /// somewhere only the protocol reaches has nothing true to put in any of
+    /// them (see [`AgentAdapter::discovery`]).
+    ///
+    /// Exhaustive on purpose, and the third such match over the enum: a new
+    /// transport has to say which kind it is rather than inheriting an answer.
+    pub fn sessions_over_protocol(&self) -> bool {
+        match self {
+            Self::ClaudeStreamJson => false,
+            Self::Acp => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -241,13 +259,13 @@ pub struct ChatConfig {
     pub models: Vec<ChatModel>,
     pub modes: Vec<ChatMode>,
     pub effort: Vec<ChatEffort>,
+    /// How this agent departs from a spec-correct ACP client. Always present
+    /// and at its defaults for a transport that is not ACP, where it is inert:
+    /// a per-transport option table would make the common case pay for the
+    /// uncommon one.
+    pub acp: crate::chat::acp::AcpOverrides,
 }
 
-/// Reachable only from tests until Phase 3 spawns a chat session and Phases 6
-/// and 9 build the mode and effort controls on these. **Phase 6 removes this
-/// allow**; if it survives once those controls exist, a resolver genuinely is
-/// unused and a call site is reading the fields directly instead.
-#[allow(dead_code)]
 impl ChatConfig {
     /// The args that select `mode_id`, resolving the two ways an adapter can
     /// say it.
@@ -334,11 +352,25 @@ pub struct AgentAdapter {
     pub yolo_args: Vec<String>,
     /// `{id}`/`{file}` placeholder template; `apply_template` substitutes.
     pub resume_args: Vec<String>,
+    /// Where this adapter's sessions are on disk, or `None` for a harness whose
+    /// sessions only its protocol reaches.
+    ///
+    /// The three file-era fields (`discovery`, `parser_kind`, `running_pattern`)
+    /// are absent together or present together, which the loader enforces: they
+    /// are one fact about an adapter, not three independent ones. An ACP agent
+    /// mints its session id inside `session/new`, puts it on no command line and
+    /// keeps the conversation somewhere only `session/load` reaches, so no
+    /// directory-and-regex describes its sessions, no parser kind has anything
+    /// to parse, and a `pgrep` pattern would match every session of that agent
+    /// at once (measured in Phase 5: two sessions of one ACP agent are two
+    /// identical command lines). Declaring plausible values would be worse than
+    /// declaring none: a wrong liveness pattern reports a live session dead or a
+    /// dead one live.
     #[serde(skip)]
-    pub discovery: Discovery,
-    pub parser_kind: ParserKind,
+    pub discovery: Option<Discovery>,
+    pub parser_kind: Option<ParserKind>,
     /// ERE template (for `pgrep -f`) with an `{id}` placeholder.
-    pub running_pattern: String,
+    pub running_pattern: Option<String>,
     pub pty_quiet_ms: u64,
     /// Whether the quiet-PTY x pending-tool_use join is trusted as a "needs
     /// you" signal for this agent (see `CapabilitiesToml::needs_you`).
@@ -376,9 +408,16 @@ struct AdapterToml {
     id: String,
     label: String,
     launch: LaunchToml,
-    discovery: DiscoveryToml,
-    parser: ParserToml,
-    running: RunningToml,
+    /// Absent together for a protocol-backed adapter; see
+    /// [`AgentAdapter::discovery`]. Optional here rather than required so the
+    /// combination can be validated as one rule with an error that names what a
+    /// partial declaration is missing.
+    #[serde(default)]
+    discovery: Option<DiscoveryToml>,
+    #[serde(default)]
+    parser: Option<ParserToml>,
+    #[serde(default)]
+    running: Option<RunningToml>,
     #[serde(default)]
     capabilities: CapabilitiesToml,
     #[serde(default)]
@@ -414,6 +453,9 @@ struct ChatToml {
     modes: Vec<ChatMode>,
     #[serde(default)]
     effort: Vec<ChatEffort>,
+    /// `[chat.acp]`, the per-agent departures from a spec-correct ACP client.
+    #[serde(default)]
+    acp: crate::chat::acp::AcpOverrides,
 }
 
 #[derive(Debug, Deserialize)]
@@ -495,8 +537,13 @@ fn expand_tilde(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-const REQUIRED_TOP_LEVEL: [&str; 7] =
-    ["schema_version", "id", "label", "launch", "discovery", "parser", "running"];
+/// What every adapter must declare, whatever it is.
+///
+/// `discovery`, `parser` and `running` are *not* here: they are required for a
+/// file-backed adapter and meaningless for a protocol-backed one, so the rule
+/// they obey is a combination rather than a per-key requirement and lives in
+/// [`check_session_plumbing`].
+const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
 const KNOWN_TOP_LEVEL: [&str; 10] = [
     "schema_version",
     "id",
@@ -509,6 +556,65 @@ const KNOWN_TOP_LEVEL: [&str; 10] = [
     "verified_against",
     "chat",
 ];
+
+/// Are `[discovery]`, `[parser]` and `[running]` declared in a combination this
+/// adapter is allowed to declare?
+///
+/// Three outcomes, and the middle one is the reason this is a function rather
+/// than three `Option`s left to the reader:
+///
+///   * **All three present.** A file-backed adapter, which is every v1 adapter
+///     and every Claude-shaped one. Always allowed.
+///   * **All three absent.** Only allowed when `[chat]` names a transport whose
+///     sessions come over the protocol. Otherwise the adapter could list no
+///     sessions at all and would look, from the outside, exactly like an agent
+///     the user has never run.
+///   * **Some present.** Always an error, naming the missing ones. This is the
+///     case worth the code: a typo in `[[discovery]]` or a table accidentally
+///     nested under `[chat]` would otherwise turn a working Claude-shaped
+///     adapter into a silent protocol adapter whose sessions stop appearing.
+fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String> {
+    let declared: [(&str, bool); 3] = [
+        ("discovery", raw.discovery.is_some()),
+        ("parser", raw.parser.is_some()),
+        ("running", raw.running.is_some()),
+    ];
+    let missing: Vec<&str> =
+        declared.iter().filter(|(_, present)| !present).map(|(k, _)| *k).collect();
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    if missing.len() < declared.len() {
+        return Err(format!(
+            "{source}: missing required field(s): {} (an adapter that declares any of \
+             discovery/parser/running must declare all three)",
+            missing.join(", ")
+        ));
+    }
+
+    let over_protocol = raw
+        .chat
+        .as_ref()
+        .and_then(|c| ChatTransport::from_str(&c.transport))
+        .is_some_and(|t| t.sessions_over_protocol());
+    if over_protocol {
+        return Ok(());
+    }
+
+    let protocol_transports: Vec<&str> = ChatTransport::ALL
+        .iter()
+        .filter(|t| t.sessions_over_protocol())
+        .map(|t| t.as_str())
+        .collect();
+    Err(format!(
+        "{source}: missing required field(s): {} (omit all three only for a \
+         chat.transport that reaches its sessions over the protocol: {})",
+        missing.join(", "),
+        protocol_transports.join(", ")
+    ))
+}
 
 /// Parse + validate one adapter TOML source. `source` labels the origin for
 /// error messages/warnings (a file path, or a fixed name for a built-in).
@@ -554,42 +660,59 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         ));
     }
 
-    let parser_kind = ParserKind::from_str(&raw.parser.kind).ok_or_else(|| {
-        format!(
-            "{source}: unknown parser kind `{}` (expected claude_jsonl)",
-            raw.parser.kind
-        )
-    })?;
+    // The three file-era tables stand or fall together, and whether they may be
+    // absent at all depends on the chat transport, so the combination is checked
+    // before any of them is resolved.
+    check_session_plumbing(&raw, source)?;
 
-    let discovery = match raw.discovery.backend.as_str() {
-        "file" => {
-            let dir = raw.discovery.dir.ok_or_else(|| {
-                format!("{source}: discovery.dir is required for backend = \"file\"")
-            })?;
-            let pattern = raw.discovery.filename_pattern.ok_or_else(|| {
-                format!("{source}: discovery.filename_pattern is required for backend = \"file\"")
-            })?;
-            let filename_regex = Regex::new(&pattern)
-                .map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
-            if filename_regex.capture_names().flatten().all(|n| n != "id") {
-                return Err(format!(
-                    "{source}: discovery.filename_pattern must have a named `id` capture group"
-                ));
+    let parser_kind = raw
+        .parser
+        .as_ref()
+        .map(|p| {
+            ParserKind::from_str(&p.kind).ok_or_else(|| {
+                format!("{source}: unknown parser kind `{}` (expected claude_jsonl)", p.kind)
+            })
+        })
+        .transpose()?;
+
+    let discovery = match raw.discovery {
+        None => None,
+        Some(d) => match d.backend.as_str() {
+            "file" => {
+                let dir = d.dir.ok_or_else(|| {
+                    format!("{source}: discovery.dir is required for backend = \"file\"")
+                })?;
+                let pattern = d.filename_pattern.ok_or_else(|| {
+                    format!(
+                        "{source}: discovery.filename_pattern is required for backend = \"file\""
+                    )
+                })?;
+                let filename_regex = Regex::new(&pattern)
+                    .map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
+                if filename_regex.capture_names().flatten().all(|n| n != "id") {
+                    return Err(format!(
+                        "{source}: discovery.filename_pattern must have a named `id` capture group"
+                    ));
+                }
+                Some(Discovery::File { dir: expand_tilde(&dir), filename_regex })
             }
-            Discovery::File { dir: expand_tilde(&dir), filename_regex }
-        }
-        other => {
-            return Err(format!("{source}: unknown discovery.backend `{other}` (expected file)"))
-        }
+            other => {
+                return Err(format!(
+                    "{source}: unknown discovery.backend `{other}` (expected file)"
+                ))
+            }
+        },
     };
 
     let chat = raw
         .chat
         .map(|c| {
             let transport = ChatTransport::from_str(&c.transport).ok_or_else(|| {
+                let known: Vec<&str> = ChatTransport::ALL.iter().map(|t| t.as_str()).collect();
                 format!(
-                    "{source}: unknown chat.transport `{}` (expected claude_stream_json)",
-                    c.transport
+                    "{source}: unknown chat.transport `{}` (expected one of {})",
+                    c.transport,
+                    known.join(", ")
                 )
             })?;
             // Every declared model's effort levels must exist in
@@ -619,6 +742,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 models: c.models,
                 modes: c.modes,
                 effort: c.effort,
+                acp: c.acp,
             })
         })
         .transpose()?;
@@ -632,7 +756,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         resume_args: raw.launch.resume_args,
         discovery,
         parser_kind,
-        running_pattern: raw.running.pattern,
+        running_pattern: raw.running.map(|r| r.pattern),
         pty_quiet_ms: raw.capabilities.pty_quiet_ms,
         needs_you: raw.capabilities.needs_you,
         hooks: raw.capabilities.hooks,
@@ -665,6 +789,20 @@ pub fn apply_chat_template(template: &[String], vars: &[(&str, &str)]) -> Vec<St
 }
 
 const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
+const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
+const BUILTIN_GEMINI: &str = include_str!("../agents/gemini.toml");
+
+/// Every adapter compiled into the binary, source label and text.
+///
+/// One list, because there are two readers: the registry builder and the test
+/// that emits the frontend's fallback fixture. Kept apart, a new bundled adapter
+/// would reach the app while the fixture the TypeScript fallback is checked
+/// against still described the old set - and that check would keep passing.
+const BUNDLED: [(&str, &str); 3] = [
+    ("bundled:claude", BUILTIN_CLAUDE),
+    ("bundled:opencode", BUILTIN_OPENCODE),
+    ("bundled:gemini", BUILTIN_GEMINI),
+];
 
 fn user_agents_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/sway/agents")
@@ -677,12 +815,13 @@ fn user_agents_dir() -> PathBuf {
 /// the id it would have overridden keeps its previous (built-in or
 /// earlier-loaded) entry, so one broken file can't make an agent disappear.
 ///
-/// One built-in ships today. The loop stays a loop: what makes this a registry
-/// is that nothing downstream knows how many adapters there are.
+/// Three built-ins ship today: one Claude-shaped file adapter and two ACP ones.
+/// The loop stays a loop: what makes this a registry is that nothing downstream
+/// knows how many adapters there are.
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
 
-    for (source, text) in [("bundled:claude", BUILTIN_CLAUDE)] {
+    for (source, text) in BUNDLED {
         match load_adapter_str(text, source) {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
@@ -739,9 +878,15 @@ impl AgentAdapter {
     /// cards report whether it exists, which is the difference between "the
     /// agent is installed but you have never run it" and "something is
     /// misconfigured".
-    pub fn discovery_path(&self) -> &Path {
+    ///
+    /// `None` for a protocol-backed adapter, which has no such location: its
+    /// sessions live wherever the agent keeps them, which Sway never reads.
+    /// A card showing a path that does not exist would report a
+    /// misconfiguration that is really just a different design.
+    pub fn discovery_path(&self) -> Option<&Path> {
         match &self.discovery {
-            Discovery::File { dir, .. } => dir,
+            Some(Discovery::File { dir, .. }) => Some(dir),
+            None => None,
         }
     }
 
@@ -770,21 +915,34 @@ pub fn apply_template(template: &[String], id: &str, file: &str) -> Vec<String> 
 /// ERE pattern (for `pgrep -f`) matching a live process resuming session
 /// `id`. Falls back to the claude pattern for an unrecognized agent id,
 /// matching this function's pre-registry implicit default.
-pub fn session_pattern(agent: &str, id: &str) -> String {
+///
+/// `None` for an adapter that declares no pattern, which is a protocol-backed
+/// one: its sessions are not on any command line, so there is no pattern to
+/// return and every caller has to say what it does without one. Returning a
+/// pattern that matches nothing, or borrowing Claude's, would answer a question
+/// the process table cannot answer for this agent.
+pub fn session_pattern(agent: &str, id: &str) -> Option<String> {
     match find(agent).or_else(|| find("claude")) {
-        Some(a) => a.running_pattern.replace("{id}", id),
+        Some(a) => a.running_pattern.as_ref().map(|p| p.replace("{id}", id)),
         // Kept in step with `agents/claude.toml`'s `[running] pattern`: the
         // token run is what makes a chat's command line match, since the chat
         // transport puts its base_args before `--resume`/`--session-id`.
-        None => format!("claude ([^ ]+ )*(--resume|-r|--session-id) {id}"),
+        None => Some(format!("claude ([^ ]+ )*(--resume|-r|--session-id) {id}")),
     }
 }
 
 /// The parser kind for `agent`, defaulting to Claude's shape for an
 /// unrecognized id (matches the pre-registry implicit `else` branch every
 /// transcript-parsing call site used to take).
-pub fn parser_kind_for(agent: &str) -> ParserKind {
-    find(agent).map(|a| a.parser_kind).unwrap_or(ParserKind::ClaudeJsonl)
+///
+/// `None` for an adapter that declares no parser, whose sessions are not files
+/// this build can read. A caller with nothing to parse returns nothing rather
+/// than parsing an unrelated format and reporting the empty result as content.
+pub fn parser_kind_for(agent: &str) -> Option<ParserKind> {
+    match find(agent) {
+        Some(a) => a.parser_kind,
+        None => Some(ParserKind::ClaudeJsonl),
+    }
 }
 
 #[tauri::command]
@@ -845,7 +1003,8 @@ mod tests {
     fn the_running_pattern_matches_chat_command_lines_not_just_pty_ones() {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let id = "2e0777d8-a84b-425c-9a71-7b875918dcf1";
-        let re = regex::Regex::new(&claude.running_pattern.replace("{id}", id)).expect("valid ERE");
+        let pattern = claude.running_pattern.as_ref().expect("claude declares a running pattern");
+        let re = regex::Regex::new(&pattern.replace("{id}", id)).expect("valid ERE");
 
         let base = "claude -p --input-format stream-json --output-format stream-json --verbose \
                     --include-partial-messages --include-hook-events";
@@ -874,7 +1033,7 @@ mod tests {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         assert_eq!(claude.id, "claude");
         assert_eq!(claude.program, "claude");
-        assert_eq!(claude.parser_kind, ParserKind::ClaudeJsonl);
+        assert_eq!(claude.parser_kind, Some(ParserKind::ClaudeJsonl));
         assert_eq!(claude.yolo_args, vec!["--dangerously-skip-permissions"]);
         // Empirically confirmed (phase 2): claude genuinely blocks-and-goes-quiet
         // on a permission prompt, so needs-you ships enabled.
@@ -883,12 +1042,48 @@ mod tests {
         assert!(claude.hooks);
     }
 
-    /// The registry mechanism is the point, not the count. One built-in ships,
+    /// The registry mechanism is the point, not the count. Three built-ins ship
     /// and nothing downstream may assume that number.
+    ///
+    /// What is worth pinning is the *shape spread*: one file-backed adapter and
+    /// two protocol-backed ones, so both halves of the loader's session-plumbing
+    /// rule are exercised by something that actually ships rather than only by a
+    /// fixture.
     #[test]
-    fn exactly_one_adapter_ships_bundled() {
+    fn the_bundled_adapters_cover_both_session_shapes() {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
-        assert_eq!(reg.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), vec!["claude"]);
+        let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["claude", "gemini", "opencode"]);
+
+        let by_id = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter").clone();
+        let claude = by_id("claude");
+        assert!(claude.discovery.is_some(), "claude discovers sessions from files");
+        assert!(claude.parser_kind.is_some());
+        assert!(claude.running_pattern.is_some());
+
+        for id in ["opencode", "gemini"] {
+            let a = by_id(id);
+            assert_eq!(
+                a.chat.as_ref().map(|c| c.transport),
+                Some(ChatTransport::Acp),
+                "{id} is an ACP adapter"
+            );
+            assert!(a.discovery.is_none(), "{id} has no on-disk discovery");
+            assert!(a.parser_kind.is_none(), "{id} has no transcript to parse");
+            assert!(a.running_pattern.is_none(), "{id} names no session on its command line");
+        }
+    }
+
+    /// Gemini ships **unmeasured**, and `verified_against` is how that is said.
+    /// Naming a version there would claim a measurement nobody took; the Agents
+    /// surface reads its absence to tell a measured harness from an untested one.
+    #[test]
+    fn an_unmeasured_bundled_adapter_declares_no_verified_version() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let find = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter");
+        assert_eq!(find("opencode").verified_against.as_deref(), Some("opencode 1.18.3"));
+        assert_eq!(find("gemini").verified_against, None);
     }
 
     #[test]
@@ -896,7 +1091,7 @@ mod tests {
         let a = load_adapter_str(VALID_MINIMAL, "test").expect("valid user adapter parses");
         assert_eq!(a.id, "x");
         assert_eq!(a.resume_args, vec!["--resume", "{id}"]);
-        match &a.discovery {
+        match a.discovery.as_ref().expect("a file-backed adapter declares discovery") {
             Discovery::File { filename_regex, .. } => assert!(filename_regex.is_match("abc.jsonl")),
         }
     }
@@ -949,18 +1144,17 @@ pattern = 'claude-beta (--resume|-r) {id}'
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// The reason only one adapter ships bundled is that adding one is a file
-    /// drop, not a code change. A user TOML naming a fresh id registers beside
-    /// the built-in rather than replacing it.
+    /// Adding an adapter is a file drop, not a code change. A user TOML naming a
+    /// fresh id registers beside the built-ins rather than replacing one.
     #[test]
     fn a_user_toml_for_a_new_id_registers_alongside_the_builtin() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("gemini.toml"), VALID_MINIMAL).unwrap();
+        std::fs::write(dir.join("another.toml"), VALID_MINIMAL).unwrap();
 
         let reg = build_registry_from(&dir);
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "x"]);
+        assert_eq!(ids, vec!["claude", "gemini", "opencode", "x"]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -997,7 +1191,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
         assert_eq!(a.id, "x");
         assert_eq!(a.program, "x");
         assert_eq!(a.resume_args, vec!["--resume", "{id}"]);
-        assert_eq!(a.parser_kind, ParserKind::ClaudeJsonl);
+        assert_eq!(a.parser_kind, Some(ParserKind::ClaudeJsonl));
     }
 
     /// A v2 adapter that simply has no chat surface is the normal case, not a
@@ -1204,10 +1398,10 @@ args = ["--effort", "low"]
     /// real wire shape, not a restatement of it.
     #[test]
     fn emit_bundled_adapters_for_the_typescript_fallback() {
-        let mut adapters: Vec<AgentAdapter> = [("bundled:claude", BUILTIN_CLAUDE)]
+        let mut adapters: Vec<AgentAdapter> = BUNDLED
             .into_iter()
-        .map(|(source, text)| load_adapter_str(text, source).expect("bundled adapter parses"))
-        .collect();
+            .map(|(source, text)| load_adapter_str(text, source).expect("bundled adapter parses"))
+            .collect();
         adapters.sort_by(|a, b| a.id.cmp(&b.id));
 
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("dev/fixtures/agents");
@@ -1466,9 +1660,45 @@ default = true
     #[test]
     fn partial_override_names_every_missing_field() {
         let err = load_adapter_str("schema_version = 1\nid = \"x\"\n", "test").unwrap_err();
-        for field in ["label", "launch", "discovery", "parser", "running"] {
+        for field in ["label", "launch"] {
             assert!(err.contains(field), "error should name missing field `{field}`: {err}");
         }
+    }
+
+    /// The three file-era tables are one fact about an adapter, not three, so a
+    /// file that declares some of them is an error naming the rest.
+    ///
+    /// This is the case the rule exists for. A typo that loses `[discovery]`
+    /// from a Claude-shaped adapter would otherwise resolve as a protocol-backed
+    /// one and its sessions would simply stop appearing, which looks nothing like
+    /// a config error from the outside.
+    #[test]
+    fn declaring_some_session_plumbing_and_not_the_rest_is_an_error() {
+        let text = VALID_MINIMAL.replacen("[discovery]", "[unused_discovery]", 1);
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("discovery"), "names the one that went missing: {err}");
+        assert!(err.contains("all three"), "says the three travel together: {err}");
+    }
+
+    /// Omitting all three is allowed only for a transport that reaches its
+    /// sessions over the protocol. A PTY-only adapter with none of them could
+    /// list no sessions at all, which is indistinguishable from an agent the
+    /// user has never run.
+    #[test]
+    fn omitting_all_session_plumbing_needs_a_protocol_transport() {
+        let bare = "schema_version = 2\nid = \"x\"\nlabel = \"X\"\n\n[launch]\nprogram = \"x\"\nresume_args = []\n";
+        let err = load_adapter_str(bare, "test").unwrap_err();
+        assert!(err.contains("over the protocol"), "says what would make it legal: {err}");
+        assert!(err.contains("acp"), "names the transport that qualifies: {err}");
+
+        let with_acp = format!("{bare}\n[chat]\ntransport = \"acp\"\nbase_args = [\"acp\"]\n");
+        let a = load_adapter_str(&with_acp, "test").expect("an ACP adapter may omit all three");
+        assert!(a.discovery.is_none());
+
+        // ...and the same file with a file-backed transport is still rejected,
+        // so the exemption is the transport's rather than the chat table's.
+        let with_claude = with_acp.replace("\"acp\"", "\"claude_stream_json\"");
+        assert!(load_adapter_str(&with_claude, "test").is_err());
     }
 
     #[test]
@@ -1494,8 +1724,28 @@ default = true
         let example = rest[fence_start..fence_end].trim();
 
         let a = load_adapter_str(example, "ADAPTERS.md example").expect("the example TOML should parse");
-        assert_eq!(a.id, "gemini");
-        assert_eq!(a.parser_kind, ParserKind::ClaudeJsonl);
+        assert_eq!(a.parser_kind, Some(ParserKind::ClaudeJsonl));
+    }
+
+    /// The doc's ACP example is the load-bearing one now: it is the file a user
+    /// writes to add a harness, and it claims to be *complete*. If it stopped
+    /// validating, the shortest path into Sway would be a broken copy-paste.
+    #[test]
+    fn adapters_md_acp_example_parses_and_needs_no_session_plumbing() {
+        let doc = include_str!("../../ADAPTERS.md");
+        let heading = "### An ACP agent";
+        let after = doc.find(heading).expect("ADAPTERS.md must document an ACP example") + heading.len();
+        let rest = &doc[after..];
+        let fence_start = rest.find("```toml").expect("the ACP example needs a ```toml block")
+            + "```toml".len();
+        let fence_end = rest[fence_start..].find("```").expect("unterminated fence") + fence_start;
+
+        let a = load_adapter_str(rest[fence_start..fence_end].trim(), "ADAPTERS.md ACP example")
+            .expect("the ACP example TOML should parse");
+        assert_eq!(a.chat.as_ref().map(|c| c.transport), Some(ChatTransport::Acp));
+        assert!(a.discovery.is_none(), "and it declares none of the three file-era tables");
+        assert!(a.parser_kind.is_none());
+        assert!(a.running_pattern.is_none());
     }
 
     #[test]

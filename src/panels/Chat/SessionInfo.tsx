@@ -1,7 +1,7 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
-import type { ChatPlugin } from "../../utils/chatCapabilities";
+import type { ChatPlugin, PublishedCapability } from "../../utils/chatCapabilities";
 import Button from "../../components/Button/Button";
 import styles from "./Chat.module.css";
 
@@ -45,6 +45,14 @@ export default function SessionInfo(props: {
    *  Required, unlike `cwd`: absence is the meaning here, so an omittable prop
    *  would let "nobody passed it" render identically to "we were never told". */
   account: ChatAccount | null;
+  /** What this chat can actually do, published from the transport's tier plus
+   *  whatever the running agent advertised about itself.
+   *
+   *  Rendered per *session* rather than only on the Agents cards in Settings,
+   *  because for a generic transport it is a per-session fact: two ACP agents
+   *  behind one transport answer differently, and so can one agent before and
+   *  after its user signs into another provider. */
+  capabilities: readonly PublishedCapability[];
   /** The session's cwd, used to locate the project `.mcp.json`. Omitted in
    *  tests that only exercise the read-only rendering. */
   cwd?: string;
@@ -103,6 +111,7 @@ export default function SessionInfo(props: {
     () =>
       !props.cwd &&
       !props.account &&
+      props.capabilities.length === 0 &&
       props.mcpServers.length === 0 &&
       props.skills.length === 0 &&
       props.agents.length === 0 &&
@@ -154,6 +163,26 @@ export default function SessionInfo(props: {
                   </p>
                 </section>
               )}
+            </Show>
+            {/* What this chat can do, in the same panel as what it loaded,
+                because both answer "what am I working with". Each entry is the
+                *qualified* value: a row reading "rewind" would promise the
+                unqualified capability, and an affordance this harness lacks is
+                absent rather than listed as `none`. */}
+            <Show when={props.capabilities.length}>
+              <section>
+                <h4>Chat capabilities</h4>
+                <p>
+                  <For each={props.capabilities}>
+                    {(cap, i) => (
+                      <>
+                        {i() > 0 ? " · " : ""}
+                        <code>{cap.label}</code>
+                      </>
+                    )}
+                  </For>
+                </p>
+              </section>
             </Show>
             <Show when={props.mcpServers.length}>
               <section>

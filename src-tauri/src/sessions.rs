@@ -284,7 +284,12 @@ fn parse_by_adapter(
     created: SystemTime,
 ) -> Option<SessionMeta> {
     match adapter.parser_kind {
-        agents::ParserKind::ClaudeJsonl => parse_session(path, mtime, created, &adapter.id),
+        Some(agents::ParserKind::ClaudeJsonl) => parse_session(path, mtime, created, &adapter.id),
+        // Unreachable through `ensure_index`, which never walks a directory for
+        // an adapter with no discovery, and answered anyway rather than
+        // unwrapped: a file reached some other way is still not this adapter's
+        // to parse.
+        None => None,
     }
 }
 
@@ -300,7 +305,10 @@ fn ensure_index(index: &SessionIndex) -> Vec<SessionMeta> {
     let mut seen: Vec<PathBuf> = Vec::new();
 
     for adapter in agents::registry() {
-        match &adapter.discovery {
+        // `None` is a protocol-backed adapter: nothing of its is on disk to
+        // walk, and its sessions arrive from the locator store below instead.
+        let Some(discovery) = &adapter.discovery else { continue };
+        match discovery {
             agents::Discovery::File { dir, filename_regex } => {
                 if let Ok(dirs) = std::fs::read_dir(dir) {
                     for dir in dirs.flatten() {
@@ -653,7 +661,11 @@ pub fn delete_session(path: String) -> Result<(), String> {
 /// `tail`/editor with the transcript file open). The template itself is now
 /// adapter data (`agents::session_pattern`); this stays as the call site's
 /// entry point so callers/tests are unaffected by the registry underneath.
-fn session_pattern(agent: &str, id: &str) -> String {
+///
+/// `None` for an adapter that declares no pattern, which every caller here
+/// answers the same way: the process table cannot speak for this agent, so it is
+/// not asked.
+fn session_pattern(agent: &str, id: &str) -> Option<String> {
     agents::session_pattern(agent, id)
 }
 
@@ -706,7 +718,7 @@ pub(crate) fn running_by_pattern(agent: &str, id: &str) -> bool {
     if !found_by_pattern(agent) {
         return false;
     }
-    let pattern = session_pattern(agent, id);
+    let Some(pattern) = session_pattern(agent, id) else { return false };
     let out = Command::new("pgrep").args(["-f", &pattern]).output();
     out.map(|o| o.status.success() && !o.stdout.is_empty())
         .unwrap_or(false)
@@ -732,7 +744,10 @@ pub struct SessionRef {
 /// and prints bare pids; `-l` combined with `-f` is what prints the full
 /// argument list this has to match against.
 fn agent_command_lines(agent: &str) -> Vec<String> {
-    let any_session = session_pattern(agent, "[^ ]+");
+    // No pattern, no command lines: an adapter whose sessions are not on any
+    // command line has none to collect, and `running_ids` would reject them all
+    // anyway.
+    let Some(any_session) = session_pattern(agent, "[^ ]+") else { return Vec::new() };
     let out = match Command::new("pgrep").args(["-lf", &any_session]).output() {
         Ok(o) => o,
         Err(_) => return Vec::new(),
@@ -748,12 +763,14 @@ fn agent_command_lines(agent: &str) -> Vec<String> {
 /// instead of whatever happens to be running on the machine.
 fn running_ids(agent: &str, ids: &[String], command_lines: &[String]) -> Vec<String> {
     ids.iter()
-        .filter(|id| match regex::Regex::new(&session_pattern(agent, id)) {
-            Ok(re) => command_lines.iter().any(|l| re.is_match(l)),
+        .filter(|id| match session_pattern(agent, id).map(|p| regex::Regex::new(&p)) {
+            Some(Ok(re)) => command_lines.iter().any(|l| re.is_match(l)),
             // An id that will not compile into a pattern matches nothing rather
             // than everything: a session wrongly reported dead costs a redundant
-            // spawn, one wrongly reported alive loses the user's work.
-            Err(_) => false,
+            // spawn, one wrongly reported alive loses the user's work. An
+            // adapter with no pattern at all is the same answer for a different
+            // reason: nothing about its command line names a session.
+            Some(Err(_)) | None => false,
         })
         .cloned()
         .collect()
@@ -1144,9 +1161,12 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
     // One parser kind ships. An exhaustive match rather than an ignored value:
     // adding a kind makes this arm non-exhaustive, so every reader of a
     // transcript has to answer for the new shape before it compiles. This is
-    // what "a reintroduced locator would not compile" rests on.
+    // what "a reintroduced locator would not compile" rests on. `None` is an
+    // adapter with no transcript format at all, whose sessions this build reads
+    // over its protocol; there is nothing here to parse and nothing to report.
     match agents::parser_kind_for(agent) {
-        agents::ParserKind::ClaudeJsonl => {}
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Vec::new(),
     }
 
     let mut cwd: Option<String> = None;
@@ -1285,9 +1305,9 @@ pub fn session_editing_now(
 fn watch_dirs() -> Vec<PathBuf> {
     agents::registry()
         .iter()
-        .map(|a| match &a.discovery {
-            agents::Discovery::File { dir, .. } => dir.clone(),
-        })
+        // An adapter with no discovery contributes no directory: its sessions
+        // change when its protocol says so, which no filesystem watcher sees.
+        .filter_map(|a| a.discovery.as_ref().map(|agents::Discovery::File { dir, .. }| dir.clone()))
         .collect()
 }
 
@@ -1466,13 +1486,14 @@ pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
 /// `<id>.jsonl`.
 pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
     let adapter = agents::find(agent)?;
-    // Destructured rather than matched: `Discovery` has one variant today, so an
-    // `else` arm here would be unreachable code claiming to handle a case that
-    // cannot arise. When a SQLite-backed harness is added (no per-session file,
-    // read through its own locator instead of a path on disk), this line stops
-    // compiling and says so, which is the outcome an unreachable early `return
-    // None` would have hidden.
-    let agents::Discovery::File { dir, .. } = &adapter.discovery;
+    // The case this comment used to predict has arrived. It read: "when a
+    // SQLite-backed harness is added (no per-session file, read through its own
+    // locator instead of a path on disk), this line stops compiling and says
+    // so". An ACP harness is that case in a different disguise - the store is
+    // the agent's own and the locator is Sway's - and the answer is that such a
+    // session has no transcript path at all. `chat_history` already returns
+    // empty for one, so `None` here is the same fact reaching a second caller.
+    let Some(agents::Discovery::File { dir, .. }) = &adapter.discovery else { return None };
     let matches = |name: &str| {
         let stem = name.strip_suffix(".jsonl").unwrap_or(name);
         stem == session_id || stem.ends_with(&format!("_{session_id}"))
@@ -1501,7 +1522,8 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
     let reader = BufReader::new(file);
     // See `extract_touched_files` on why the kind is matched exhaustively.
     match agents::parser_kind_for(agent) {
-        agents::ParserKind::ClaudeJsonl => {}
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Vec::new(),
     }
     let mut turns = Vec::new();
 
@@ -1721,7 +1743,8 @@ pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, St
     let reader = BufReader::new(file);
     // See `extract_touched_files` on why the kind is matched exhaustively.
     match agents::parser_kind_for(&agent) {
-        agents::ParserKind::ClaudeJsonl => {}
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Ok(PromptTail { count: 0, last_ts: 0 }),
     }
     let mut count = 0u32;
     let mut last_ts = 0u64;
@@ -1982,7 +2005,7 @@ mod tests {
     #[test]
     fn session_pattern_claude_matches_resume_and_alias_not_transcript_view() {
         let id = "abc-123-def";
-        let pat = session_pattern("claude", id);
+        let pat = session_pattern("claude", id).expect("claude declares a running pattern");
         assert!(ere_matches(&pat, "claude --resume abc-123-def"));
         assert!(ere_matches(&pat, "claude -r abc-123-def")); // -r alias
         // Trailing flags after the id still match (no end anchor).

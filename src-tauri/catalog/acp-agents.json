@@ -1,0 +1,420 @@
+{
+  "source": "https://github.com/agentclientprotocol/registry",
+  "registry_commit": "2dd65dacea186f587eac1bc3a6e0906b3a2eecac",
+  "generated_on": "2026-08-14",
+  "generated_by": "dev/acp-catalog.mjs",
+  "entries": [
+    {
+      "id": "amp-acp",
+      "label": "Amp",
+      "description": "ACP wrapper for Amp - the frontier coding agent",
+      "registry_version": "0.9.0",
+      "website": "https://github.com/tao12345666333/amp-acp",
+      "program": "amp-acp",
+      "args": [],
+      "needs": "on-path"
+    },
+    {
+      "id": "auggie",
+      "label": "Auggie CLI",
+      "description": "Augment Code's powerful software agent, backed by industry-leading context engine",
+      "registry_version": "0.35.0",
+      "website": "https://www.augmentcode.com/",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@augmentcode/auggie@0.35.0",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "autohand",
+      "label": "Autohand Code",
+      "description": "Autohand Code - AI coding agent powered by Autohand AI",
+      "registry_version": "0.2.1",
+      "website": "https://www.autohand.ai/cli/",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@autohandai/autohand-acp@0.2.1"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "claude-acp",
+      "label": "Claude Agent",
+      "description": "ACP wrapper for Anthropic's Claude",
+      "registry_version": "0.67.0",
+      "website": "https://github.com/agentclientprotocol/claude-agent-acp",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@agentclientprotocol/claude-agent-acp@0.67.0"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "cline",
+      "label": "Cline",
+      "description": "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
+      "registry_version": "3.0.54",
+      "website": "https://cline.bot/cli",
+      "program": "npx",
+      "args": [
+        "-y",
+        "cline@3.0.54",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "codex-acp",
+      "label": "Codex",
+      "description": "ACP adapter for OpenAI's coding assistant",
+      "registry_version": "1.2.0",
+      "website": "https://github.com/agentclientprotocol/codex-acp",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@agentclientprotocol/codex-acp@1.2.0"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "cortex-code",
+      "label": "Cortex Code",
+      "description": "Snowflake's Cortex Code coding agent",
+      "registry_version": "1.0.73",
+      "website": "https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code",
+      "program": "cortex",
+      "args": [
+        "acp",
+        "serve"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "corust-agent",
+      "label": "Corust Agent",
+      "description": "Co-building with a seasoned Rust partner.",
+      "registry_version": "0.6.0",
+      "website": "https://corust.ai/",
+      "program": "corust-agent-acp",
+      "args": [],
+      "needs": "on-path"
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "description": "Cursor's coding agent",
+      "registry_version": "2026.08.11",
+      "website": "https://cursor.com/docs/cli/acp",
+      "program": "cursor-agent",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "devin",
+      "label": "Devin",
+      "description": "Devin CLI coding agent by Cognition",
+      "registry_version": "3000.4.25",
+      "website": "https://docs.devin.ai/cli",
+      "program": "devin",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "dimcode",
+      "label": "DimCode",
+      "description": "A coding agent that puts leading models at your command.",
+      "registry_version": "0.3.12",
+      "website": "https://dimcode.dev/docs/acp.html",
+      "program": "npx",
+      "args": [
+        "-y",
+        "dimcode@0.3.12",
+        "acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "dirac",
+      "label": "Dirac",
+      "description": "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
+      "registry_version": "0.4.36",
+      "website": "https://dirac.run",
+      "program": "npx",
+      "args": [
+        "-y",
+        "dirac-cli@0.4.36",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "factory-droid",
+      "label": "Factory Droid",
+      "description": "Factory Droid - AI coding agent powered by Factory AI",
+      "registry_version": "0.196.0",
+      "website": "https://factory.ai/product/cli",
+      "program": "npx",
+      "args": [
+        "-y",
+        "droid@0.196.0",
+        "exec",
+        "--output-format",
+        "acp-daemon"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini CLI",
+      "description": "Google's official CLI for Gemini",
+      "registry_version": "0.55.1",
+      "website": "https://geminicli.com",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@google/gemini-cli@0.55.1",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "github-copilot",
+      "label": "GitHub Copilot",
+      "description": "GitHub's AI pair programmer",
+      "registry_version": "1.532.0",
+      "website": "https://github.com/features/copilot/cli/",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@github/copilot-language-server@1.532.0",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "github-copilot-cli",
+      "label": "GitHub Copilot",
+      "description": "GitHub's AI pair programmer",
+      "registry_version": "1.0.80",
+      "website": "https://github.com/features/copilot/cli/",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@github/copilot@1.0.80",
+        "--acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "glm-acp-agent",
+      "label": "GLM Agent",
+      "description": "ACP agent powered by Zhipu AI's GLM Coding Plan models (glm-5.1, glm-5-turbo, glm-4.7, glm-4.5-air). Supports streaming, tool calls, mid-session model switching, image input via Z.AI Coding Plan Vision MCP, and session load/fork/resume with on-disk persistence.",
+      "registry_version": "1.3.0",
+      "website": "https://github.com/stefandevo/glm-acp-agent",
+      "program": "npx",
+      "args": [
+        "-y",
+        "glm-acp-agent@1.3.0"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "goose",
+      "label": "goose",
+      "description": "A local, extensible, open source AI agent that automates engineering tasks",
+      "registry_version": "1.46.0",
+      "website": "https://block.github.io/goose/",
+      "program": "goose",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "grok-build",
+      "label": "Grok Build",
+      "description": "xAI's coding agent and CLI",
+      "registry_version": "1.0.4",
+      "website": "https://x.ai/cli",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@xai-official/grok@1.0.4",
+        "agent",
+        "stdio"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "harn",
+      "label": "Harn",
+      "description": "Harn runs .harn agent pipelines as a native ACP coding agent over stdio.",
+      "registry_version": "0.10.92",
+      "website": "https://harnlang.com",
+      "program": "harn",
+      "args": [
+        "serve",
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "junie",
+      "label": "Junie",
+      "description": "AI Coding Agent by JetBrains",
+      "registry_version": "2783.5.0",
+      "website": "https://junie.jetbrains.com",
+      "program": "junie",
+      "args": [
+        "--acp=true"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "kilo",
+      "label": "Kilo",
+      "description": "The open source coding agent",
+      "registry_version": "7.4.22",
+      "website": "https://kilo.ai/",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@kilocode/cli@7.4.22",
+        "acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "kimi",
+      "label": "Kimi CLI",
+      "description": "Moonshot AI's coding assistant",
+      "registry_version": "1.49.0",
+      "website": "https://moonshotai.github.io/kimi-cli/",
+      "program": "kimi",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "mistral-vibe",
+      "label": "Mistral Vibe",
+      "description": "Mistral's open-source coding assistant",
+      "registry_version": "2.24.1",
+      "website": "https://mistral.ai/products/vibe",
+      "program": "vibe-acp",
+      "args": [],
+      "needs": "on-path"
+    },
+    {
+      "id": "nova",
+      "label": "Nova",
+      "description": "Nova by Compass AI - a fully-fledged software engineer at your command",
+      "registry_version": "1.1.34",
+      "website": "https://www.compassap.ai/portfolio/nova.html",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@compass-ai/nova@1.1.34",
+        "acp"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "description": "The open source coding agent",
+      "registry_version": "1.18.18",
+      "website": "https://opencode.ai",
+      "program": "opencode",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "pi-acp",
+      "label": "pi ACP",
+      "description": "ACP adapter for pi coding agent",
+      "registry_version": "0.0.33",
+      "website": "https://github.com/svkozak/pi-acp",
+      "program": "npx",
+      "args": [
+        "-y",
+        "pi-acp@0.0.33"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "poolside",
+      "label": "Poolside",
+      "description": "Poolside's coding agent",
+      "registry_version": "1.0.15",
+      "website": "https://poolside.ai",
+      "program": "pool-darwin-arm64",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    },
+    {
+      "id": "qwen-code",
+      "label": "Qwen Code",
+      "description": "Alibaba's Qwen coding assistant",
+      "registry_version": "0.21.11",
+      "website": "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@qwen-code/qwen-code@0.21.11",
+        "--acp",
+        "--experimental-skills"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "sigit",
+      "label": "siGit Code",
+      "description": "Local-first coding agent. Runs entirely on your machine with optional on-device LLM inference via Onde.",
+      "registry_version": "1.5.2",
+      "website": "https://github.com/getsigit/sigit",
+      "program": "npx",
+      "args": [
+        "-y",
+        "@smbcloud/sigit@1.5.2"
+      ],
+      "needs": "npx"
+    },
+    {
+      "id": "stakpak",
+      "label": "Stakpak",
+      "description": "Open-source DevOps agent in Rust with enterprise-grade security",
+      "registry_version": "0.3.88",
+      "website": "https://stakpak.dev",
+      "program": "stakpak",
+      "args": [
+        "acp"
+      ],
+      "needs": "on-path"
+    }
+  ],
+  "quarantined": {
+    "agoragentic-acp": "Postinstall script",
+    "codebuddy-code": "npx cannot determine executable to run",
+    "crow-cli": "ACP initialize fails in crow-cli 0.1.25",
+    "deepagents": "Missing npm dependency",
+    "minion-code": "Python dependency issue",
+    "qoder": "ACP initialize fails in qodercli 0.2.15/0.2.16",
+    "vtcode": "Missing windows builds",
+    "fast-agent": "Timeout after 120s waiting for initialize response"
+  }
+}

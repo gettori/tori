@@ -26,6 +26,7 @@
 
 import type {
   ChatAccount,
+  ChatCapabilities,
   ChatEvent,
   ChatModelInfo,
   ContentBlock,
@@ -256,6 +257,11 @@ export type ChatState = {
    *  forever for a session that never handshook - which renders as nothing
    *  rather than as a guessed tier. */
   account: ChatAccount | null;
+  /** What the running agent advertised about itself at `initialize`, or null for
+   *  a harness that advertises nothing because its capabilities are measured and
+   *  pinned instead. Never overwritten by a later frame that did not carry one:
+   *  the handshake is the only source. */
+  capabilities: ChatCapabilities | null;
   /** The mode the session is actually in, as the child re-declares it on every
    *  turn. Never set from a click: a control that moved on its own would claim
    *  an effect the CLI cannot deliver mid-turn. */
@@ -335,6 +341,7 @@ export function initialChat(sessionId: string): ChatState {
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,
+    capabilities: null,
     compactions: 0,
     compactionReclaimed: 0,
     contextWindows: {},
@@ -578,6 +585,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       if (ev.slashCommands.length) s.slashCommands = ev.slashCommands;
       if (ev.models.length) s.models = ev.models;
       if (ev.account) s.account = ev.account;
+      if (ev.capabilities) s.capabilities = ev.capabilities;
       return;
     }
     case "turnStarted": {

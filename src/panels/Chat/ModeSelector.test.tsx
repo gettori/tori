@@ -28,6 +28,7 @@ function foreign(modes: ChatMode[]): ChatConfig {
     models: [],
     modes,
     effort: [],
+    acp: { serve_client_fs: false },
   };
 }
 

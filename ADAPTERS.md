@@ -6,8 +6,9 @@ transcripts live, how to tell a live process apart from a stray `less` on the
 same file, and which built-in parser turns its transcript into Sway's session
 model.
 
-One adapter ships bundled (`claude`). You add your own, or whole-replace the
-bundled one, by dropping a TOML file into `~/.config/sway/agents/`.
+Three adapters ship bundled (`claude`, `opencode`, `gemini`). You add your own,
+or whole-replace a bundled one, by dropping a TOML file into
+`~/.config/sway/agents/`.
 
 > **Schema stability: v2 (stable), v1 still loads.** **v2 is purely additive**:
 > it adds the optional `[chat]` table describing how to drive an agent as a
@@ -22,15 +23,69 @@ bundled one, by dropping a TOML file into `~/.config/sway/agents/`.
 working/needs-you dot, touched files, the History dropdown, and the native
 chat surface.
 
-Nothing else ships. That is a packaging decision, not a limit of the schema:
-everything below is what an adapter needs, and adding one is a file drop plus
-a restart. The one thing a TOML cannot supply is a **parser kind** for an
-agent whose transcript shape differs from claude's, which needs Rust (see
-[Parser kinds](#parser-kinds)). Sway once bundled two more adapters, and what
-that proved is worth keeping in mind when you write your own: an agent whose
-tools never block on a permission prompt wants `needs_you = false`, and an
-agent that keeps every session in one shared database rather than a file per
-session needs both a new parser kind and a new `discovery.backend`.
+**opencode** ships bundled over ACP, measured against `opencode 1.18.3`. Its
+chat surface is the generic ACP client: the agent asks its own permission
+questions, reports its own model catalogue, and replays a reopened conversation
+itself. What it does not get is anything riding Claude's `PreToolUse` hook -
+exact before-state diffs, hunk revert, Sway-owned rules - or a spend ceiling,
+since ACP reports context occupancy and no cost. Settings > Agents publishes the
+list per agent, and a chat session publishes its own under Session.
+
+**gemini** ships bundled and **untested**: nothing has measured it, which is why
+it declares no `verified_against` and why Settings labels it as a starting point
+rather than a supported harness. An ACP adapter is mostly launch instructions,
+which is what makes shipping one unmeasured reasonable - not what makes it
+tested.
+
+Adding another is a file drop plus a restart, and for an agent that speaks ACP
+first-party it is *only* a file drop: no Rust at all. The things a TOML cannot
+supply are a **transport** (`chat.transport` selects one that exists; see
+[The `[chat]` table](#the-chat-table)) and a **parser kind** for a file-backed
+agent whose transcript shape differs from claude's (see
+[Parser kinds](#parser-kinds)). One more lesson from the two adapters Sway once
+bundled and dropped: an agent whose tools never block on a permission prompt
+wants `needs_you = false`.
+
+## The ACP launch catalog
+
+Settings > Agents ends with **the other agents that speak ACP** - around forty of
+them - read from the official
+[ACP Registry](https://github.com/agentclientprotocol/registry) with the command
+that launches each.
+
+**A catalog entry is not a supported harness**, and the two are kept visibly
+apart because conflating them is how a listing ends up promising what nobody
+tested:
+
+| | Supported harness | Catalog entry |
+| --- | --- | --- |
+| What it is | An adapter TOML | A launch command from the registry |
+| Measured | Yes, `verified_against` names the version | No, nothing has run it |
+| Has a capability tier | Yes | No |
+| Can start a chat | Yes | No - write its adapter first |
+
+So a catalog entry is a suggestion. It carries no tier, appears in no launch
+picker, and turning one into a harness means writing the four-line TOML above -
+which is also the moment somebody decides the entry is worth trusting.
+
+**Provenance and refresh**, so the list cannot rot quietly: the committed file
+(`src-tauri/catalog/acp-agents.json`) records the upstream commit it was
+generated from and the date, and Settings shows both. `node dev/acp-catalog.mjs`
+regenerates it; `node dev/acp-catalog.mjs --check` exits non-zero when the
+registry has moved since. Nothing auto-updates - a new launch command reaching
+users without anyone looking at it is the failure a list of *unmeasured* entries
+most needs to avoid.
+
+**Agents the registry itself reports broken are not offered.** It publishes a
+`quarantine.json` (ACP initialize failing, a package `npx` cannot run, a
+postinstall script), and those eight are excluded with the upstream's reasons
+committed alongside them. A catalog entry claims only "untested by Sway"; a
+quarantined agent is known broken by the people who curate it, and putting one in
+the same list would launder the stronger claim into the weaker one.
+
+The catalogue is data in the binary rather than a runtime fetch. Sway adds no
+endpoint of its own, and a list that needed the network would be empty exactly
+when a user is offline and wondering what their options are.
 
 ## File location and loading
 
@@ -61,16 +116,17 @@ base_args = []          # optional, default []; args always included
 yolo_args = []           # optional, default []; extra args for "skip permissions" launches
 resume_args = []        # required; template for resuming a session - see placeholders below
 
+# --- the three file-era tables: all three, or none at all - see below ---
 [discovery]
 backend = "file"                # optional, default "file"; "file" is the only backend today - see below
 dir = "..."                     # required when backend = "file"; session-transcript root (~ expands to $HOME)
 filename_pattern = '...'        # required when backend = "file"; regex with a named `id` capture group
 
 [parser]
-kind = "..."     # required; must be one of the implemented kinds below
+kind = "..."     # required with [discovery]; must be one of the implemented kinds below
 
 [running]
-pattern = '...'   # required; ERE template (for `pgrep -f`) with an `{id}` placeholder
+pattern = '...'   # required with [discovery]; ERE template (for `pgrep -f`) with an `{id}` placeholder
 
 [capabilities]
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
@@ -106,6 +162,10 @@ args = []                 # optional; the args that select this mode
 id = "..."                # required; the level's identifier
 label = "..."             # required; display name
 args = []                 # optional; the args that select this level
+
+# --- only read by transport = "acp" ---
+[chat.acp]
+serve_client_fs = false   # optional, default false; advertise Sway's filesystem and terminal to the agent
 ```
 
 ### The `[chat]` table
@@ -118,9 +178,35 @@ fully functional as a PTY agent.
 
 `transport` is a **closed enum**, for the same reason `parser.kind` is: a
 transport is a Rust module implementing a specific wire protocol, so a TOML
-can only select one that already exists. Today the only member is
-`claude_stream_json`. An unrecognised value is rejected loudly and the id
-keeps its previous adapter, the same way a broken override does.
+can only select one that already exists. Two members ship:
+
+- **`claude_stream_json`** - `claude -p` with stream-json in both directions,
+  one long-lived child with stdin held open. One vendor's format.
+- **`acp`** - the [Agent Client Protocol](https://agentclientprotocol.com) over a
+  child's stdio. Not one vendor's format: **every agent speaking ACP
+  first-party reaches Sway through this one transport plus its own TOML**, which
+  is why `opencode.toml` is under 40 lines of actual settings.
+
+An unrecognised value is rejected loudly and the id keeps its previous adapter,
+the same way a broken override does.
+
+**An `acp` adapter declares far less, and the empty templates are not
+omissions.** ACP carries session ids, resume, model switching and modes *in the
+protocol*, so there is no command line to put them on: `session_id_args`,
+`resume_args`, `fork_args`, `model_args`, `effort_args` and `mode_args` are all
+empty for an ACP agent, and `[[chat.models]]` is empty too because the agent
+reports its own catalogue on the handshake (measured: `opencode acp` 1.18.3 lists
+the same 15 provider-qualified models `opencode models` prints, and which ones
+they are depends on the providers that user has authenticated). A bundled model
+table would only go stale or contradict the user's own account.
+
+`[chat.acp]` holds the per-agent departures from a spec-correct client. It is a
+**closed, named set** rather than free-form JSON: a third quirk has to be argued
+for in Rust before a TOML can spell it, which is what keeps "a new harness is a
+TOML file" from meaning "a new harness is a TOML file plus a pile of
+agent-specific escape hatches". `serve_client_fs` advertises Sway's filesystem
+and terminal to the agent; the default declines both, which is a complete
+configuration rather than a degraded one, since ACP agents do their own I/O.
 
 Everything else in the table is an **arg template**, so adding a harness is a
 TOML table rather than a Rust branch. Placeholders are substituted at spawn
@@ -134,11 +220,14 @@ concise default; per-entry `args` are the escape hatch for a harness whose
 modes are not one flag with a varying value. `claude.toml` states both, and
 they agree.
 
-Two rules the loader enforces, because both failures are otherwise silent:
+Three rules the loader enforces, because all three failures are otherwise
+silent:
 
 - **`[chat]` requires `schema_version = 2`.** A chat table in a v1 file is
   refused by name rather than ignored, since a silently-dropped table looks
   exactly like an adapter that has no chat surface.
+- **`[discovery]`, `[parser]` and `[running]` are all present or all absent.**
+  See [Sessions on disk, or over a protocol](#sessions-on-disk-or-over-a-protocol).
 - **Every `effort_levels` entry must name a `[[chat.effort]]` entry.** An
   undefined level would render a picker option carrying no args, so selecting
   it would appear to work and do nothing.
@@ -271,39 +360,93 @@ new variant here, because discovery, deletion, mtime and the file watcher all
 have to answer differently for it - and the compiler will say so at each of
 them.
 
+### Sessions on disk, or over a protocol
+
+`[discovery]`, `[parser]` and `[running]` are **one fact about an adapter, not
+three**, and the loader requires all three or none:
+
+- **All three** - a file-backed agent. Sway walks `discovery.dir`, parses each
+  transcript with `parser.kind`, and recognises a live session by matching
+  `running.pattern` against the process table. This is `claude`, and every v1
+  adapter.
+- **None** - an agent whose sessions only its own protocol reaches. Allowed only
+  when `chat.transport` is one that carries sessions in-protocol (today: `acp`).
+  Sway keeps its own small locator file per session instead, records what the
+  protocol told it, and reopens a conversation with `session/load`.
+- **Some** - always rejected, naming the missing tables. This is the case the
+  rule exists for: a typo that loses `[discovery]` from a Claude-shaped adapter
+  would otherwise resolve as a protocol-backed one, and its sessions would simply
+  stop appearing - which looks nothing like a config error from the outside.
+
+Why not declare them anyway for an ACP agent? Because each would be false in a
+way that costs something. No directory-and-regex describes a store only the
+agent can read; a parser kind would have nothing to parse; and a `pgrep` pattern
+is actively dangerous, since every session of one ACP agent shares the command
+line `opencode acp`, so a pattern match would report all of them running whenever
+any one was. Sway answers liveness for those agents from the child process it
+started itself.
+
 ## Example: a from-scratch third-party adapter
 
-A complete, valid adapter for a hypothetical `gemini` CLI that happens to
-write Claude-shaped transcripts (illustrative - a real Gemini adapter would
-likely need its own parser kind):
+### A file-backed agent
+
+A complete, valid adapter for a hypothetical `acme` CLI that happens to write
+Claude-shaped transcripts (illustrative - a real one would likely need its own
+parser kind):
 
 ```toml
 schema_version = 1
-id = "gemini"
-label = "Gemini"
+id = "acme"
+label = "Acme"
 
 [launch]
-program = "gemini"
+program = "acme"
 base_args = []
 yolo_args = ["--yolo"]
 resume_args = ["--resume", "{id}"]
 
 [discovery]
-dir = "~/.gemini/sessions"
+dir = "~/.acme/sessions"
 filename_pattern = '^(?P<id>.+)\.jsonl$'
 
 [parser]
 kind = "claude_jsonl"
 
 [running]
-pattern = 'gemini --resume {id}'
+pattern = 'acme --resume {id}'
 
 [capabilities]
 pty_quiet_ms = 2000
 ```
 
-Save this as `~/.config/sway/agents/gemini.toml` and restart Sway; a "+
-Gemini" launch option appears alongside Claude.
+Save this as `~/.config/sway/agents/acme.toml` and restart Sway; a "+ Acme"
+launch option appears alongside the bundled agents.
+
+### An ACP agent
+
+For an agent that speaks ACP first-party this is the whole file - no Rust, and
+no session plumbing, because the protocol carries all of it:
+
+```toml
+schema_version = 2
+id = "acme-acp"
+label = "Acme"
+
+[launch]
+program = "acme"
+base_args = []
+yolo_args = []
+resume_args = []
+
+[chat]
+transport = "acp"
+base_args = ["acp"]
+```
+
+The bundled `opencode` and `gemini` adapters are this plus comments explaining
+what was measured. Everything the chat surface shows - the model list, the
+permission questions, whether a closed chat can be reopened - comes from the
+agent's own handshake, so there is nothing here to keep in step with it.
 
 ## Whole-replacing a bundled adapter
 

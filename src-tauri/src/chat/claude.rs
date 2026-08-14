@@ -255,6 +255,11 @@ impl ClaudeMapper {
             slash_commands: self.command_catalogue.clone(),
             models: self.model_catalogue.clone(),
             account: self.account.clone(),
+            // Claude advertises no capability set of its own. What Sway knows
+            // about this harness was measured and pinned in the chat tier, so
+            // there is nothing on the wire to carry - and `None` says exactly
+            // that rather than claiming an agent that supports nothing.
+            capabilities: None,
         }]
     }
 

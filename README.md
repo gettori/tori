@@ -50,22 +50,40 @@ import a VS Code theme file.
 | Agent | Sessions read from | Status detection |
 | --- | --- | --- |
 | **Claude** (`claude`) | `~/.claude/projects` | Hook-driven, plus transcript and process state |
+| **OpenCode** (`opencode acp`) | the agent, over ACP | The child process Sway started |
+| **Gemini** (`gemini --acp`) | the agent, over ACP | The child process Sway started |
 
 Sway drives the agent CLIs you have installed; it does not ship one. After
 first launch, **Settings > Agents** shows which ones it found, at what version,
-and what it can do with each.
+and what it can do with each - including what it *cannot* do with each, since
+the three bundled adapters do not have the same capabilities.
+
+**Gemini ships untested.** Nothing has measured it, Settings says so on its card,
+and it is there because an ACP adapter is mostly launch instructions rather than
+captured wire format. OpenCode is measured against `opencode 1.18.3`.
 
 Adding another agent does not require a fork. Drop a TOML file into
-`~/.config/sway/agents/` describing how to launch it, where its transcripts
-live, and how to spot a live process. The schema is documented and stable at
-v2, and v1 files still load: see [ADAPTERS.md](ADAPTERS.md).
+`~/.config/sway/agents/` describing how to launch it. For an agent that speaks
+the [Agent Client Protocol](https://agentclientprotocol.com) that is the whole
+file - four lines and no Rust, because the protocol carries the models, the
+permission questions and the history itself. For one that does not, the TOML also
+says where its transcripts live and how to spot a live process. The schema is
+documented and stable at v2, and v1 files still load: see
+[ADAPTERS.md](ADAPTERS.md).
 
-Only `claude` ships bundled, which is a packaging decision rather than a limit
-of the schema. An adapter that omits the optional `[chat]` table runs its agent
-as a **PTY tab**, and that is the universal fallback: any CLI you can launch in
-a terminal can be driven that way, with the session tree, checkpoints and the
-working/needs-you dot around it. What a TOML alone cannot add is a parser for a
-transcript shaped unlike claude's, which needs Rust.
+**Settings > Agents also lists the ~40 other agents that speak ACP**, read from
+the official [ACP Registry](https://github.com/agentclientprotocol/registry) with
+the command to launch each. Those are suggestions, not supported harnesses: Sway
+has run none of them, each is labelled untested, and none can be started until
+somebody writes its adapter - which is also the moment somebody decides it is
+worth trusting.
+
+An adapter that omits the optional `[chat]` table runs its agent as a **PTY
+tab**, and that is the universal fallback: any CLI you can launch in a terminal
+can be driven that way, with the session tree, checkpoints and the
+working/needs-you dot around it. What a TOML alone cannot add is a **transport**
+for a protocol Sway does not speak, or a parser for a transcript shaped unlike
+claude's; both need Rust.
 
 ## Install
 

@@ -1,0 +1,63 @@
+schema_version = 2
+id = "gemini"
+label = "Gemini"
+
+# **No `verified_against`, and that is the load-bearing part of this file.**
+#
+# The key names the CLI version an adapter's conventions were empirically
+# captured against. `gemini` is not installed on the machine this was written on,
+# so nothing here has been measured: the launch command is read from Gemini
+# CLI's documentation, and everything else is the ACP transport's own default
+# behaviour. Absent rather than guessed, because a version string here would
+# claim a measurement that never happened, and the Agents settings surface reads
+# this key to tell a measured harness from an untested one.
+#
+# What makes shipping it honest anyway is that an ACP adapter declares almost
+# nothing: the model list, the modes and the permission prompts all come from
+# the agent's own handshake at runtime, so there is far less here that *could*
+# be wrong than in a typed adapter. Re-measure with `node dev/acp-probe.mjs
+# --agent gemini` on a machine that has it, then pin the version.
+
+[launch]
+program = "gemini"
+base_args = []
+# Gemini CLI's own "approve everything" flag. Untested, like everything here.
+yolo_args = ["--yolo"]
+# Empty: the UI reads this as "this agent's sessions can't be resumed" rather
+# than mis-resuming. See opencode.toml for why an ACP row's id is Sway's own.
+resume_args = []
+
+# No [discovery], [parser] or [running]: a protocol-backed adapter reaches its
+# sessions through ACP, never through files. See opencode.toml.
+
+[capabilities]
+pty_quiet_ms = 2000
+# Not claimed, and here not measurable at all until the CLI is installed.
+needs_you = false
+hooks = false
+
+[chat]
+transport = "acp"
+# `gemini --acp` is Gemini CLI's first-party ACP mode.
+base_args = ["--acp"]
+
+# All empty for the same reason as opencode's: ACP carries sessions, models and
+# modes in the protocol rather than on the command line.
+session_id_args = []
+resume_args = []
+fork_args = []
+model_args = []
+effort_args = []
+mode_args = []
+add_dir_args = []
+
+# No [[chat.models]]: whatever this agent advertises on its handshake is what
+# the picker will show. Declaring a table here would be a guess that overrides
+# nothing (the live catalogue wins) until the day it is the only list, which is
+# exactly the day it would be wrong.
+
+[chat.acp]
+# Left at the safe default. [[concept_acp_agent_quirks]] records that Gemini CLI
+# can open a browser sign-in when probed, which `NO_BROWSER` suppresses; that is
+# a probe-time concern rather than an adapter setting.
+serve_client_fs = false

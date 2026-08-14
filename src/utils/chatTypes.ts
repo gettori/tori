@@ -100,6 +100,23 @@ export type ChatModelInfo = {
   supportsAutoMode: boolean;
 };
 
+/// What a harness said it can do, read off its own handshake.
+///
+/// **Advertised, not measured.** Sway's per-transport tier records what shipped
+/// against a harness somebody sat down and measured; this records what *this*
+/// agent, at this version, on this machine, claims about itself. One generic
+/// transport carries agents that genuinely differ, so a tier that knew only the
+/// transport would publish the same answer for an agent that can reopen a
+/// conversation and one that cannot.
+export type ChatCapabilities = {
+  /// The agent can replay a conversation it still holds (`session/load`).
+  loadSession: boolean;
+  /// The agent can enumerate its own sessions. An advertisement, never a
+  /// promise of rows: `opencode acp` 1.18.3 advertises it and can answer with
+  /// nothing.
+  listSessions: boolean;
+};
+
 /// Who the session is signed in as, from the `initialize` handshake, which is
 /// its only source. `null` wherever it appears means the handshake did not
 /// happen, which is why every field can be trusted once the object exists.
@@ -190,6 +207,10 @@ export type ChatEvent =
       /// Carried here as well as on `sessionStarted` because this event can
       /// arrive a whole turn earlier, and the handshake is the only source.
       account: ChatAccount | null;
+      /// What this agent advertised about itself. Null for a harness whose
+      /// capabilities are measured and pinned in Sway's tier rather than asked
+      /// for on the wire, which reads as "the tier is all there is".
+      capabilities: ChatCapabilities | null;
     }
   /// One hook execution, from the in-band `hook_started`/`hook_response` frames
   /// that `--include-hook-events` turns on. One event per **frame**: a hook
@@ -424,7 +445,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     optional: ["extra"],
   },
   sessionReady: {
-    required: ["sessionId", "slashCommands", "models", "account"],
+    required: ["sessionId", "slashCommands", "models", "account", "capabilities"],
   },
   hookFired: {
     required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],

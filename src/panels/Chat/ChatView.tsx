@@ -64,7 +64,7 @@ import {
 } from "../../utils/chatModels";
 import { findAgent } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
-import { chatTier, steerCostLabel } from "../../utils/chatCapabilities";
+import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { settings } from "../Settings/settingsStore";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
@@ -1480,6 +1480,7 @@ export default function ChatView(props: {
                 agents={state.agents}
                 plugins={state.plugins}
                 account={state.account}
+                capabilities={publishedCapabilities(tier(), state.capabilities)}
                 cwd={props.cwd}
               />
             </div>
