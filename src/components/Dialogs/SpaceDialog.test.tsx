@@ -210,12 +210,47 @@ describe("SpaceDialog", () => {
       expect(onConfirm).toHaveBeenCalledWith({ name: "work", icon: null, color: null });
     });
 
+    // Added with #109. The automatic swatch previews the hue the space would
+    // derive if no colour is chosen, so it has to follow the name as it is
+    // typed - the one place the picker depends on a field outside it, and the
+    // one thing the move onto `IconGrid` could quietly have frozen.
+    it("keeps the automatic swatch previewing the name being typed", () => {
+      const { name, swatches } = open();
+      const auto = () => swatches()[0].getAttribute("style");
+      const before = auto();
+
+      fireEvent.input(name(), { target: { value: "telemetry" } });
+
+      expect(auto()).not.toBe(before);
+    });
+
     it("confirms on Enter", () => {
       const { onConfirm, name } = open();
 
       fireEvent.input(name(), { target: { value: "work" } });
       fireEvent.keyDown(name(), { key: "Enter" });
 
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    // Added with #109, and a deliberate change of behaviour rather than a
+    // characterization of the old one. Before the pickers moved onto `IconGrid`
+    // the dialog's own `onKeyDown` saw every Enter, including one aimed at a
+    // tile: it cancelled the button's activation and submitted, so the grid had
+    // no keyboard activation at all. `IconGrid` stops both activation keys at
+    // the group, so Enter on a tile picks that tile and confirming needs focus
+    // outside the picker.
+    it("picks a tile on Enter rather than confirming from inside the picker", () => {
+      const { onConfirm, tiles, name } = open();
+      fireEvent.input(name(), { target: { value: "work" } });
+
+      fireEvent.keyDown(tiles()[0], { key: "Enter" });
+
+      expect(onConfirm).not.toHaveBeenCalled();
+      expect(tiles()[0].getAttribute("aria-pressed")).toBe("true");
+
+      // The field still confirms, so the change is scoped to the picker.
+      fireEvent.keyDown(name(), { key: "Enter" });
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
