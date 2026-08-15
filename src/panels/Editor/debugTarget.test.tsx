@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
 import { tab, tabs } from "../../test/tabs";
+import { installAnimationFrame } from "../../test/frames";
 
 // Starting a run, from the editor's side.
 //
@@ -15,6 +16,10 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
+// The tab strip corrects its visible count in a frame, and these read tabs off
+// the row it draws. Without this the row is still seeded empty.
+installAnimationFrame();
 
 const REPO = "/space/proj/main";
 const PKG = `${REPO}/packages/api`;
@@ -282,7 +287,9 @@ describe("starting a run", () => {
     await flush();
     await dap.stopAllDap();
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    // Scoped to the drawn tab: the measuring ghost carries a close affordance
+    // of the same name.
+    fireEvent.click(within(tab("gone.ts")).getByLabelText("Close"));
     await waitFor(() => expect(tabs("gone.ts")).toHaveLength(0));
 
     emit(DEBUG_START);

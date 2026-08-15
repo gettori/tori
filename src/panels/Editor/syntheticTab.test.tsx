@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { tab, visibleTab } from "../../test/tabs";
+import { tab } from "../../test/tabs";
 import { pointerClick, rightClick } from "../../test/menus";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
@@ -12,12 +12,8 @@ import { pointerClick, rightClick } from "../../test/menus";
 // the shape that rots silently. This suite mounts the real pane and asserts what
 // CodeEditor is actually handed.
 
-import {
-  installAnimationFrame,
-  installResizeObserver,
-  selectionFor,
-  EMPTY_PANE,
-} from "./__fixtures__/editorHarness";
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installAnimationFrame } from "../../test/frames";
 
 installResizeObserver();
 // This suite right-clicks tabs, so it needs the row a browser would draw rather
@@ -186,7 +182,7 @@ describe("a sway:// tab in the editor pane", () => {
     const opened: string[] = [];
     const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
 
-    fireEvent.contextMenu(visibleTab("a.ts"));
+    fireEvent.contextMenu(tab("a.ts"));
     pointerClick(await screen.findByText("File history"));
 
     expect(parseSyntheticId(opened[0])).toEqual({ kind: "history", arg: "src/a.ts", workspace: REPO });
@@ -223,18 +219,19 @@ describe("a sway:// tab in the editor pane", () => {
   // the trigger's `disabled`, since Kobalte returns before `preventDefault` for
   // a disabled trigger and always calls it otherwise.
   //
-  // **These reach `visibleTab`, not `tab`.** Phase 1 predicted this and it
-  // landed: the measuring ghost is rendered menu-free now, so `tab()` resolves
-  // to a copy with nothing to answer with. Both assertions below fail against
-  // the ghost, the first because no menu opens and the second *vacuously*,
-  // which is the worse half: a `disabled` mapping that had been dropped
-  // entirely would still have passed.
+  // **These need the drawn tab, not the measuring ghost**, which is rendered
+  // menu-free and would answer a right-click with nothing. That used to need a
+  // second helper; `tab()` reaches the visible row for everyone now
+  // (skarif2/sway#111). Both assertions below fail against the ghost, the first
+  // because no menu opens and the second *vacuously*, which is the worse half:
+  // a `disabled` mapping that had been dropped entirely would still have
+  // passed.
   describe("what a right-click on a tab claims", () => {
     it("claims the event on a file tab, which answers with its own menu", async () => {
       await mountEditor();
       await open(FILE);
 
-      expect(rightClick(visibleTab("a.ts"))).toBe(true);
+      expect(rightClick(tab("a.ts"))).toBe(true);
       expect(await screen.findByRole("menu")).toBeTruthy();
     });
 
@@ -244,7 +241,7 @@ describe("a sway:// tab in the editor pane", () => {
       await mountEditor();
       await open(LOG);
 
-      expect(rightClick(visibleTab("Commit log"))).toBe(false);
+      expect(rightClick(tab("Commit log"))).toBe(false);
       expect(screen.queryByRole("menu")).toBeNull();
     });
 
@@ -256,7 +253,7 @@ describe("a sway:// tab in the editor pane", () => {
     it("takes its menu with it when the tab is closed under it", async () => {
       await mountEditor();
       await open(FILE);
-      fireEvent.contextMenu(visibleTab("a.ts"));
+      fireEvent.contextMenu(tab("a.ts"));
       await screen.findByRole("menu");
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
