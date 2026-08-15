@@ -23,8 +23,18 @@
   flex-direction: column;
   /* Kobalte locks the page behind the dialog (`preventScroll`), so a panel that
      overflows the window would put its own actions row out of reach - the page
-     cannot be scrolled to it. Bounded height plus a scrolling body instead. */
-  max-height: min(85vh, calc(720px * var(--ui-scale)));
+     cannot be scrolled to it. Bounded height plus a scrolling body instead.
+
+     Through a hook rather than as a plain value, because a caller that wants a
+     shorter panel (the command palette, whose list wants to stop well before
+     85vh) would otherwise have to redeclare `max-height` from its own stylesheet
+     on this same element. Both rules are a single class, so which one won would
+     be decided by the order the bundler happened to emit the two CSS modules in,
+     not by anything either file says - the trap
+     [[gotchas#same-specificity-hover-and-active-declare-active-last]] records.
+     A custom property resolves on the element instead, so a caller sets the hook
+     and bundle order stops mattering. */
+  max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
   padding: calc(20px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);

@@ -89,6 +89,22 @@ export default function Combobox(props: {
     (props.options as (ComboboxOption | ComboboxGroup)[]).some((entry) => "options" in entry),
   );
 
+  // Kobalte builds *every* section node with `key: ""` and the listbox renders
+  // the collection through `<Key by="key">`, so two headings are two entries
+  // claiming one key. That survives a first render but not an update: a list
+  // that goes from one heading to two comes back with one, in the other one's
+  // place. Rebuilding rather than reconciling the list when the headings change
+  // is the containable half of that; the rows themselves are unaffected, and a
+  // flat list yields a constant here so it never remounts.
+  const headings = createMemo(
+    () =>
+      "g:" +
+      (props.options as (ComboboxOption | ComboboxGroup)[])
+        .filter((entry): entry is ComboboxGroup => "options" in entry)
+        .map((group) => group.label)
+        .join("\n"),
+  );
+
   return (
     <Primitive.Root<ComboboxOption, ComboboxGroup>
       options={props.options}
@@ -108,6 +124,15 @@ export default function Combobox(props: {
       // its `aria-controls` names nothing is a critical `aria-required-attr`
       // violation. Collapsed is both the accessible answer and the true one.
       open={hasRows()}
+      // Pinned empty, which makes a commit an *event* rather than a state these
+      // surfaces then have to undo. Left uncontrolled, Kobalte treats a pick as
+      // a selection toggle, so picking the same row twice fires `onChange` with
+      // the value and then with `null`: the palette's mode signposts, which are
+      // picked repeatedly without the surface ever closing, would go dead on the
+      // second press. It also stops `resetInputValue` rewriting the filter box
+      // to the picked row's label, and it is what makes the "no row is ever
+      // `aria-selected`" shape below true rather than merely usual.
+      value={null}
       allowsEmptyCollection
       // Wrapping arrows, which is what both surfaces had by hand.
       shouldFocusWrap
@@ -125,7 +150,11 @@ export default function Combobox(props: {
       )}
       itemComponent={(item) => (
         <Primitive.Item item={item.item} class={styles.item}>
-          <Primitive.ItemLabel class={styles.itemLabel}>
+          {/* Still the label part when the caller owns the row's content: it is
+              what names the option in the accessibility tree, so a rich row
+              must be inside it rather than beside it. Only the layout differs,
+              a text run against a row of parts. */}
+          <Primitive.ItemLabel class={props.itemComponent ? styles.itemRow : styles.itemLabel}>
             {props.itemComponent?.(item.item.rawValue) ?? item.item.rawValue.label}
           </Primitive.ItemLabel>
         </Primitive.Item>
@@ -154,7 +183,15 @@ export default function Combobox(props: {
           </Show>
         }
       >
-        <Primitive.Listbox class={styles.listbox} aria-label={props.listLabel} />
+        {/* The child has to declare its parameter: `Show` only treats a
+            function child as a render callback when it takes one, and hands
+            back the function itself otherwise - which memoises to the same
+            reference and never rebuilds, quietly undoing `keyed`. */}
+        <Show when={headings()} keyed>
+          {(_signature) => (
+            <Primitive.Listbox class={styles.listbox} aria-label={props.listLabel} />
+          )}
+        </Show>
       </Show>
     </Primitive.Root>
   );

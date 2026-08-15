@@ -11,7 +11,7 @@
 //   5. Every token the theme workbench names as a literal resolves.
 //   6. Every hue the generated seti mapping emits has a scale.* role.
 //   7. Every role semantic tokens paint with has a --syntax-* role.
-//   8. The Omnibox palette declares the height bound nothing above it supplies.
+//   8. The Omnibox palette asks Dialog for its own shorter height bound.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
@@ -514,12 +514,17 @@ if (semanticProblems.length > 0) {
 
 // ---- Check 8: the Omnibox palette declares its own height bound ----
 //
-// The command palette is the one overlay that is not a `Dialog`. Every dialog
-// picker is bounded by `Dialog`'s own scrolling body; the Omnibox has no
-// `Dialog` under it, so if its stylesheet does not bound it, nothing does. With
-// MAX_RESULTS at 200 an unbounded panel overflows a fixed, centred backdrop in
-// *both* directions, and the rows above the fold cannot be reached - there is
-// no scroller to reach them with.
+// The palette composes `Dialog` now (#110), so it inherits a bound rather than
+// having none. But it wants a shorter one than a dialog's 85vh, because its list
+// is longer than a dialog's body, and with MAX_RESULTS at 200 a panel bounded
+// too generously still puts rows above the fold out of reach.
+//
+// It asks for that through `Dialog`'s `--dialog-max-height` hook rather than by
+// redeclaring `max-height`. That is the part worth guarding: both rules would be
+// a single class on the same element, so a plain redeclaration would be settled
+// by whichever CSS module the bundler emitted second, and this check would still
+// pass while the value it names did nothing. So the property scanned for below
+// is the hook, not the bound.
 //
 // This lives here rather than in vitest for the same reason checks 4 to 7 do:
 // the test stack cannot see a CSS rule at all. Vitest stubs CSS Modules, so
@@ -537,14 +542,25 @@ const omniboxSource = sources.get(OMNIBOX_CSS);
 
 // Comments are already stripped from `sources`, so a rule is a selector list and
 // a body. At-rules are skipped: their "body" is nested rules, not declarations.
-const omniboxRules = [...(omniboxSource ?? "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-  .map((m) => ({ selectors: m[1].split(",").map((s) => s.trim()), body: m[2] }))
-  .filter((rule) => !rule.selectors.some((s) => s.startsWith("@")));
+const cssRules = (source) =>
+  [...(source ?? "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({ selectors: m[1].split(",").map((s) => s.trim()), body: m[2] }))
+    .filter((rule) => !rule.selectors.some((s) => s.startsWith("@")));
+
+const declares = (rules, selector, property) =>
+  rules
+    .filter((rule) => rule.selectors.includes(selector))
+    .some((rule) => new RegExp(`(^|;)\\s*${property}\\s*:`).test(rule.body));
+
+const omniboxRules = cssRules(omniboxSource);
 
 // What the command palette must declare, and what breaks when it does not.
 const OMNIBOX_BOUND = [
-  [".panel", "max-height", "the panel grows past the viewport instead of bounding itself"],
-  [".list", "overflow-y", "the rows overflow the panel with no way to scroll to them"],
+  [
+    ".panel",
+    "--dialog-max-height",
+    "the palette takes a dialog's 85vh instead of its own shorter bound, and the rows past it go out of reach",
+  ],
 ];
 
 const omniboxProblems = [];
@@ -554,11 +570,33 @@ if (!omniboxSource) {
   omniboxProblems.push(`${OMNIBOX_CSS} parsed to no rules; the shape this check scans for changed`);
 }
 for (const [selector, property, consequence] of OMNIBOX_BOUND) {
-  const rules = omniboxRules.filter((rule) => rule.selectors.includes(selector));
-  if (rules.length === 0) {
+  if (!omniboxRules.some((rule) => rule.selectors.includes(selector))) {
     omniboxProblems.push(`${OMNIBOX_CSS} has no ${selector} rule, so ${consequence}`);
-  } else if (!rules.some((rule) => new RegExp(`(^|;)\\s*${property}\\s*:`).test(rule.body))) {
+  } else if (!declares(omniboxRules, selector, property)) {
     omniboxProblems.push(`${selector} does not declare ${property}, so ${consequence}`);
+  }
+}
+
+// The other half of the bound, in a file that has no reason to know this check
+// exists. Two things are asked of it: that it still reads the hook the palette
+// sets, and that its body is still the scroller. The palette's own list stopped
+// being one when it moved onto the shared <Combobox> (#110) - the rows are the
+// dialog body's children now, and a bound with nothing scrolling under it puts
+// the rows past it out of reach exactly as no bound at all does.
+const DIALOG_CSS = "src/components/Dialog/Dialog.module.css";
+const dialogSource = sources.get(DIALOG_CSS);
+if (!dialogSource) {
+  omniboxProblems.push(`could not read ${DIALOG_CSS}; this check needs the dialog panel's stylesheet`);
+} else {
+  if (!/max-height:\s*var\(\s*--dialog-max-height/.test(dialogSource)) {
+    omniboxProblems.push(
+      `${DIALOG_CSS} no longer reads --dialog-max-height, so the palette sets a variable nothing consumes`,
+    );
+  }
+  if (!declares(cssRules(dialogSource), ".body", "overflow-y")) {
+    omniboxProblems.push(
+      `${DIALOG_CSS} has no .body rule declaring overflow-y, so the palette's rows overflow its bound with no way to scroll to them`,
+    );
   }
 }
 

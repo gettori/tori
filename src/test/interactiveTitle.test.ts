@@ -121,6 +121,13 @@ const KEPT = new Map<string, Kept>([
   ["components/ForgeChip/ForgeChip.tsx", { count: 3, reason: TRUNCATION }],
   ["components/Menu/ContextMenu.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Menu/Dropdown.test.tsx", { count: 1, reason: FIXTURE }],
+  [
+    "components/Omnibox/Omnibox.tsx",
+    {
+      count: 1,
+      reason: `${HEADING}, and hidden at that: the palette's visible heading names the *mode* it is in, so its accessible name is carried by \`titleHidden\` instead`,
+    },
+  ],
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],

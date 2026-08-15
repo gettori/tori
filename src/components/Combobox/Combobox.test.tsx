@@ -154,6 +154,34 @@ describe("Combobox", () => {
       expect(screen.getByText("Everything else")).toBeTruthy();
       expect(screen.getAllByRole("option").map((r) => r.textContent)).toEqual(["alpha", "beta"]);
     });
+
+    // Kobalte builds every section node with `key: ""` and the listbox renders
+    // the collection through `<Key by="key">`, so two headings are two entries
+    // claiming one key. A first render survives that; an update does not, and a
+    // list that grows a second heading comes back with one, in the other one's
+    // place. The palette hits this the moment its project files arrive under the
+    // recent blocks, so the wrapper rebuilds the list when the headings change.
+    it("keeps every heading when a group is added to a list that already had one", () => {
+      const [groups, setGroups] = createSignal<ComboboxGroup[]>([
+        { label: "Recently visited", options: [{ value: "a", label: "alpha" }] },
+      ]);
+      render(() => (
+        <Combobox
+          aria-label="Filter"
+          options={groups()}
+          query=""
+          onQueryChange={() => {}}
+          onSelect={() => {}}
+        />
+      ));
+      expect(screen.getByText("Recently visited")).toBeTruthy();
+
+      setGroups((prev) => [...prev, { label: "Everything else", options: [{ value: "b", label: "beta" }] }]);
+
+      expect(screen.getByText("Recently visited")).toBeTruthy();
+      expect(screen.getByText("Everything else")).toBeTruthy();
+      expect(screen.getAllByRole("option").map((r) => r.textContent)).toEqual(["alpha", "beta"]);
+    });
   });
 
   describe("shape", () => {

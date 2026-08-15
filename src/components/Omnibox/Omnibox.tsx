@@ -1,6 +1,19 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  on,
+  onCleanup,
+  onMount,
+  For,
+  Show,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import Combobox, {
+  type ComboboxGroup,
+  type ComboboxOption,
+} from "../Combobox/Combobox";
+import Dialog from "../Dialog/Dialog";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { agents } from "../../utils/agents";
 import { agentReady, ensureAgentHealthLoaded } from "../../utils/agentHealth";
@@ -24,7 +37,12 @@ import { loadTaskRuns } from "../../utils/taskRecents";
 import { runTask } from "../../utils/runTask";
 import { MODES, parseLine, parseQuery, specOf } from "../../utils/omniboxModes";
 import { debounce } from "../../utils/debounce";
-import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
+import {
+  flattenSymbols,
+  searchWorkspaceSymbols,
+  symbolsFor,
+  type SymbolNode,
+} from "../../utils/symbols";
 import { mentionPath } from "../../utils/pathScope";
 import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
@@ -89,7 +107,9 @@ function unmetReason(req: Requirement): string | null {
     case "ahead":
       return canPush() ? null : "Nothing to push";
     case "sourceActions":
-      return offersAnySourceAction() ? null : "This language server has no whole-file actions";
+      return offersAnySourceAction()
+        ? null
+        : "This language server has no whole-file actions";
   }
 }
 
@@ -106,7 +126,9 @@ const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions"]);
 
 /** Whether a command should not be listed at all right now. */
 function suppressed(c: Command): boolean {
-  return (c.requires ?? []).some((req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null);
+  return (c.requires ?? []).some(
+    (req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null,
+  );
 }
 
 /** The first unmet requirement's reason, in the order the command listed them. */
@@ -147,12 +169,10 @@ export default function Omnibox(props: {
   onClose: () => void;
 }) {
   const [query, setQuery] = createSignal(props.prefix ?? "");
-  const [index, setIndex] = createSignal(0);
   const [files, setFiles] = createSignal<string[]>([]);
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [wsHits, setWsHits] = createSignal<SymbolNode[]>([]);
   let input: HTMLInputElement | undefined;
-  const rows: (HTMLDivElement | undefined)[] = [];
 
   const root = () => props.selected?.folderPath ?? null;
 
@@ -169,14 +189,19 @@ export default function Omnibox(props: {
   const term = () => parsed().term;
 
   onMount(() => {
-    requestAnimationFrame(() => input?.focus());
+    // Focus is `Dialog`'s (`initialFocus` below), which fires from Kobalte's
+    // own open-auto-focus event rather than from a frame this component asks
+    // for. What is left here is the data the box needs to have anything to show.
     // Which harnesses exist, so the "New ... session" rows offer only the ones
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
     ensureAgentHealthLoaded();
     const at = root();
     if (!at) return;
-    void invoke<string[]>("list_project_files", { projectPath: at }).then(setFiles, () => setFiles([]));
+    void invoke<string[]>("list_project_files", { projectPath: at }).then(
+      setFiles,
+      () => setFiles([]),
+    );
   });
 
   // Not on mount, unlike the file list: `fs_read_dir` shells out to
@@ -259,7 +284,9 @@ export default function Omnibox(props: {
       id: `sym:${node.path}:${node.selectLine}:${node.name}`,
       label: node.name,
       symbolKind: node.kind,
-      meta: node.container ?? (showFile ? basename(node.path) : (node.detail ?? "")),
+      meta:
+        node.container ??
+        (showFile ? basename(node.path) : (node.detail ?? "")),
       // The name, not the body: a class's opening brace is technically the
       // symbol and practically the wrong line to land on.
       run: () => openAt(node.path, node.selectLine, node.selectColumn),
@@ -313,9 +340,18 @@ export default function Omnibox(props: {
       // as broken however sensible each half is on its own.
       const at = root();
       const { rows: head, paths } = emptyFileRows();
-      const ranked = at ? rankByFrecency(all, (rel) => `${at}/${rel}`, stats, openedAt) : all;
-      const rest = at ? ranked.filter((rel) => !paths.has(`${at}/${rel}`)) : ranked;
-      return [...head, ...rest.slice(0, MAX_RESULTS).map((rel) => fileRow(rel, head.length ? "Project" : undefined))];
+      const ranked = at
+        ? rankByFrecency(all, (rel) => `${at}/${rel}`, stats, openedAt)
+        : all;
+      const rest = at
+        ? ranked.filter((rel) => !paths.has(`${at}/${rel}`))
+        : ranked;
+      return [
+        ...head,
+        ...rest
+          .slice(0, MAX_RESULTS)
+          .map((rel) => fileRow(rel, head.length ? "Project" : undefined)),
+      ];
     }
     const scored: { rel: string; score: number }[] = [];
     for (const rel of all) {
@@ -342,7 +378,11 @@ export default function Omnibox(props: {
         sub: sel ? sel.projectName : "Select a branch first",
         run: () => {
           if (!sel) return;
-          emitWith<NewSession>(NEW_SESSION, { folderPath: sel.folderPath, projectName: sel.projectName, agent: a.id });
+          emitWith<NewSession>(NEW_SESSION, {
+            folderPath: sel.folderPath,
+            projectName: sel.projectName,
+            agent: a.id,
+          });
         },
       });
     }
@@ -383,24 +423,34 @@ export default function Omnibox(props: {
       out.push({
         id: `stop:${c.sessionId}`,
         label: `Stop ${c.sessionName}`,
-        sub: c.status === "waitingForApproval" ? "Waiting for approval" : "Running a turn",
+        sub:
+          c.status === "waitingForApproval"
+            ? "Waiting for approval"
+            : "Running a turn",
         run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: c.sessionId }),
       });
     }
-    out.push({ id: "settings", label: "Open Settings", run: () => props.onOpenSettings() });
+    out.push({
+      id: "settings",
+      label: "Open Settings",
+      run: () => props.onOpenSettings(),
+    });
     return out;
   });
 
   // Flattened once per published tree rather than once per keystroke: the tree
   // can hold `MAX_SYMBOLS` nodes, and the query changes far more often than the
   // file does.
-  const docSymbols = createMemo(() => flattenSymbols(symbolsFor(editorState().activePath)));
+  const docSymbols = createMemo(() =>
+    flattenSymbols(symbolsFor(editorState().activePath)),
+  );
 
   const docRows = createMemo((): Row[] => {
     const all = docSymbols();
     const q = term();
     // No query: document order, which is the order the file reads in.
-    if (!q) return all.slice(0, MAX_RESULTS).map((node) => symbolRow(node, false));
+    if (!q)
+      return all.slice(0, MAX_RESULTS).map((node) => symbolRow(node, false));
     const scored: { node: SymbolNode; score: number }[] = [];
     for (const node of all) {
       const s = fuzzyScore(q, node.name);
@@ -414,7 +464,9 @@ export default function Omnibox(props: {
   // query against a whole index, which is more than a subsequence score over the
   // name can know.
   const workspaceRows = createMemo((): Row[] =>
-    wsHits().slice(0, MAX_RESULTS).map((node) => symbolRow(node, true)),
+    wsHits()
+      .slice(0, MAX_RESULTS)
+      .map((node) => symbolRow(node, true)),
   );
 
   const lineRows = createMemo((): Row[] => {
@@ -481,9 +533,13 @@ export default function Omnibox(props: {
       case "command":
         return "No matches";
       case "doc":
-        return docSymbols().length ? "No matching symbols" : "No symbols in the open file";
+        return docSymbols().length
+          ? "No matching symbols"
+          : "No symbols in the open file";
       case "workspace":
-        return term() ? "No matching symbols" : "Type to search project symbols";
+        return term()
+          ? "No matching symbols"
+          : "Type to search project symbols";
       case "line":
         return editorState().activePath ? "Type a line number" : "No file open";
       case "help":
@@ -493,148 +549,135 @@ export default function Omnibox(props: {
     }
   }
 
+  /** The rows by the value the surface commits, so a pick comes back as the row
+   *  it was built from. The id is already unique per row (`file:`, `jump:`,
+   *  `task:` and so on), which is what lets it be the option's value. */
+  const byId = createMemo(() => new Map(results().map((row) => [row.id, row])));
+
+  /** `Row.section` as the shared surface's group contract.
+   *
+   *  A list is either wholly grouped or wholly flat, never both, because Kobalte
+   *  decides "group or option" per top-level entry and throws on the mix. Every
+   *  mode but the empty file list is flat, and that one heads its project tail
+   *  as well as its two recent blocks, so the two shapes never meet. Rows under
+   *  one heading are already adjacent, which is the same thing the old
+   *  render-once-where-it-changes header relied on. */
+  const options = createMemo((): ComboboxOption[] | ComboboxGroup[] => {
+    const list = results();
+    const toOption = (row: Row): ComboboxOption => ({
+      value: row.id,
+      label: row.label,
+      disabled: !!row.disabled,
+    });
+    if (!list.some((row) => row.section)) return list.map(toOption);
+    const groups: ComboboxGroup[] = [];
+    for (const row of list) {
+      const heading = row.section ?? "";
+      const last = groups[groups.length - 1];
+      if (last && last.label === heading) last.options.push(toOption(row));
+      else groups.push({ label: heading, options: [toOption(row)] });
+    }
+    return groups;
+  });
+
+  /** A row's contents: the glyph, the name, and whatever secondary text or key
+   *  chips it carries. The surface owns the row itself (its role, its highlight,
+   *  its disabled state), so what is here is only what a palette row says. */
+  function rowContent(option: ComboboxOption) {
+    const item = byId().get(option.value);
+    if (!item) return option.label;
+    return (
+      <>
+        <Show when={item.fileIcon}>
+          {(name) => (
+            <span class={styles.itemIcon}>
+              <FileIcon name={name()} />
+            </span>
+          )}
+        </Show>
+        <Show when={item.symbolKind !== undefined}>
+          <span class={styles.itemIcon}>
+            <SymbolIcon kind={item.symbolKind!} />
+          </span>
+        </Show>
+        <span class={styles.itemLabel}>{item.label}</span>
+        <Show when={item.sub}>
+          <span class={styles.itemSub}>{item.sub}</span>
+        </Show>
+        <Show when={item.meta}>
+          <span class={styles.itemMeta}>{item.meta}</span>
+        </Show>
+        <Show when={item.keys}>
+          {(keys) => (
+            <span class={styles.itemKeys}>
+              <For each={keys()}>
+                {(key) => <kbd class={styles.key}>{key}</kbd>}
+              </For>
+            </span>
+          )}
+        </Show>
+      </>
+    );
+  }
+
   // A disabled row lists (that is how you learn why it is refused) but does not
   // run, and picking it leaves the box open rather than dismissing it on an
   // action that did nothing. A help row switches mode in place, for the same
   // reason: it is a signpost, not a destination.
+  //
+  // The disabled guard is now belt as well as braces - the surface refuses to
+  // commit such a row at all - but it is the sentence that says what a refused
+  // command does, so it stays.
   function pick(item: Row) {
     if (item.disabled) return;
     if (item.enters !== undefined) {
       setQuery(item.enters);
-      setIndex(0);
       input?.focus();
       return;
     }
     close(item.run);
   }
 
-  createEffect(() => {
-    const n = results().length;
-    if (index() >= n) setIndex(0);
-  });
-  createEffect(() => {
-    results();
-    rows[index()]?.scrollIntoView({ block: "nearest" });
-  });
-
-  function onKeyDown(e: KeyboardEvent) {
-    const n = results().length;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onClose();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setIndex((i) => (n ? (i + 1) % n : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setIndex((i) => (n ? (i - 1 + n) % n : 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const hit = results()[index()];
-      if (hit) pick(hit);
-    }
-  }
-
   return (
-    <Portal>
-      <div class={styles.backdrop} onMouseDown={() => props.onClose()}>
-        <div
-          class={styles.panel}
-          role="dialog"
-          aria-label="Command palette"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {/* The title names the mode, so the box says what it is looking at
-              without the user having to read their own prefix back. */}
-          <div class={styles.title}>{specOf(mode()).label}</div>
-          <div class={styles.inputWrap}>
-            <input
-              ref={input}
-              class={styles.input}
-              placeholder={`${specOf(mode()).placeholder}   (? for prefixes)`}
-              aria-label="Search files, actions and symbols"
-              value={query()}
-              onInput={(e) => {
-                setQuery(e.currentTarget.value);
-                setIndex(0);
-              }}
-              onKeyDown={onKeyDown}
-            />
-          </div>
-          {/* The listbox is the list of results, not the field above it: the
-              filter is a textbox and "No matches" is not an option, so neither
-              belongs inside a role that promises selectable children. */}
-          <Show
-            when={results().length}
-            fallback={
-              <div class={styles.list}>
-                <div class={styles.empty}>{emptyText()}</div>
-              </div>
-            }
-          >
-            <div class={styles.list} role="listbox" aria-label="Results">
-              <For each={results()}>
-                {(item, i) => (
-                  <>
-                    {/* Once, where the section changes, and hidden from the
-                        accessibility tree. A heading is not an option, and this
-                        listbox promises selectable children: announcing one the
-                        arrow keys can never reach is the same fault the filter
-                        and "No matches" are kept out for. Nothing is lost by
-                        hiding it, since each row already reads as what it is -
-                        a path, or an action's name. */}
-                    <Show when={item.section && item.section !== results()[i() - 1]?.section}>
-                      <div class={styles.sectionHeader} aria-hidden="true">
-                        {item.section}
-                      </div>
-                    </Show>
-                    <div
-                      ref={(el) => (rows[i()] = el)}
-                      class={styles.item}
-                      classList={{
-                        [styles.active]: i() === index(),
-                        [styles.disabled]: !!item.disabled,
-                      }}
-                      role="option"
-                      aria-selected={i() === index()}
-                      aria-disabled={!!item.disabled}
-                      onClick={() => pick(item)}
-                      onMouseEnter={() => setIndex(i())}
-                    >
-                      <Show when={item.fileIcon}>
-                        {(name) => (
-                          <span class={styles.itemIcon}>
-                            <FileIcon name={name()} />
-                          </span>
-                        )}
-                      </Show>
-                      <Show when={item.symbolKind !== undefined}>
-                        <span class={styles.itemIcon}>
-                          <SymbolIcon kind={item.symbolKind!} />
-                        </span>
-                      </Show>
-                      <span class={styles.itemLabel}>{item.label}</span>
-                      <Show when={item.sub}>
-                        <span class={styles.itemSub}>{item.sub}</span>
-                      </Show>
-                      <Show when={item.meta}>
-                        <span class={styles.itemMeta}>{item.meta}</span>
-                      </Show>
-                      <Show when={item.keys}>
-                        {(keys) => (
-                          <span class={styles.itemKeys}>
-                            <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
-                          </span>
-                        )}
-                      </Show>
-                    </div>
-                  </>
-                )}
-              </For>
-            </div>
-          </Show>
-        </div>
-      </div>
-    </Portal>
+    <Dialog
+      open
+      // Hidden, because the visible heading below names the *mode* rather than
+      // the surface: "Files" is what this box is looking at, "Command palette"
+      // is what it is. The accessibility tree needs the second one, and the
+      // layout would read as a stutter with both.
+      title="Command palette"
+      titleHidden
+      // The palette's width is `confirm`'s, character for character; only its
+      // height bound differs, and that arrives on the class below (which is
+      // also where `check-tokens.mjs` check 8 looks for it).
+      size="confirm"
+      class={styles.panel}
+      initialFocus={() => input}
+      onClose={() => props.onClose()}
+    >
+      {/* The title names the mode, so the box says what it is looking at
+          without the user having to read their own prefix back. */}
+      <div class={styles.title}>{specOf(mode()).label}</div>
+      {/* The filter and the list are both the shared surface's now (#110): the
+          `role="listbox"`, the `aria-activedescendant`, the arrow keys, the
+          scroll-into-view and the headings all belong to `Combobox`. What is
+          left here is what a palette row *says*, and what picking one means. */}
+      <Combobox
+        class={styles.field}
+        options={options()}
+        query={query()}
+        onQueryChange={setQuery}
+        onSelect={(value) => {
+          const item = byId().get(value);
+          if (item) pick(item);
+        }}
+        itemComponent={rowContent}
+        inputRef={(el) => (input = el)}
+        placeholder={`${specOf(mode()).placeholder}   (? for prefixes)`}
+        aria-label="Search files, actions and symbols"
+        listLabel="Results"
+        emptyLabel={emptyText()}
+      />
+    </Dialog>
   );
 }
