@@ -71,6 +71,10 @@
   padding: var(--sway-space-3) var(--sway-space-4);
   font-size: var(--sway-text-lg);
   color: var(--fg-default);
+  /* On the row, so every piece of it inherits: the ellipsis below (and the
+     palette's, on its own label span) is inert without this, and a branch name
+     or a deep path would wrap and grow the row instead of being cut. */
+  white-space: nowrap;
   border-radius: var(--sway-radius-md);
   cursor: pointer;
   outline: none;
@@ -102,6 +106,19 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The same part, when the caller passed an `itemComponent` and the row is a
+   line of pieces rather than a run of text (the palette's glyph, name,
+   secondary text and key chips). A flex row instead of an ellipsised one,
+   because the truncation now belongs to whichever piece the caller says gives
+   up room first. */
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  flex: 1;
+  min-width: 0;
 }
 
 /* A group's heading row. Not focusable, not selectable; the muted size drop is
