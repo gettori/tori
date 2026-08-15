@@ -15,9 +15,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
-import { nextSegmentIndex } from "../../components/controls";
 import { debounce } from "../../utils/debounce";
 import Tab from "../../components/Tab/Tab";
+import { Tabs } from "../../lib/tabs";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import AgentsPane from "./panes/AgentsPane";
@@ -60,6 +60,13 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   integrations: IntegrationsPane,
 };
 
+/** Trigger and panel ids, supplied rather than left to Kobalte.
+ *
+ *  Kobalte generates both, but it hands a panel its `aria-labelledby` out of a
+ *  plain `Map` that the triggers fill from an effect - so the panel renders
+ *  before the map has anything in it, reads `undefined`, and never re-reads,
+ *  because a `Map` is not reactive. Naming both ends removes the ordering from
+ *  the question entirely. */
 const tabId = (id: SettingTab) => `settings-tab-${id}`;
 const paneId = (id: SettingTab) => `settings-pane-${id}`;
 
@@ -93,7 +100,6 @@ export default function Settings(props: {
 }) {
   let firstControl: HTMLInputElement | undefined;
   let panelEl!: HTMLDivElement;
-  let stripEl!: HTMLDivElement;
 
   /** The filter box. Seeded from the prop rather than bound to it, because a
    *  `Preferences: ...` command opens the panel *at* a setting and the user has
@@ -304,21 +310,6 @@ export default function Settings(props: {
     if (m.counts[best.id] > 0) setActive(best.id);
   }
 
-  /** Arrow/Home/End across the strip. Automatic activation: the arrow both
-   *  moves focus and selects, which is what a six-tab strip with no expensive
-   *  panes should do. This is now the only user of `nextSegmentIndex`, and
-   *  deliberately unlike the segmented control, which moved onto Kobalte's
-   *  toggle group and with it to manual activation (arrows move focus, Space
-   *  or Enter selects). The tab-strip migration is what reunites them. */
-  function onStripKeyDown(e: KeyboardEvent) {
-    const current = SETTING_TABS.findIndex((t) => t.id === active());
-    const next = nextSegmentIndex(current, e.key, SETTING_TABS.length);
-    if (next === current) return;
-    e.preventDefault();
-    setActive(SETTING_TABS[next].id);
-    stripEl.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-  }
-
   return (
     <Portal>
       <div class={styles.backdrop} onMouseDown={() => props.onClose()}>
@@ -331,121 +322,128 @@ export default function Settings(props: {
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={onPanelKeyDown}
         >
-          <div class={styles.header}>
-            <div class={styles.titleRow}>
-              <div class={styles.title}>Settings</div>
-              <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
-                ×
-              </Button>
+          {/* Kobalte's Root is a real element and it has to span both the strip
+              and the panes, which sit in separate blocks of the panel.
+              `display: contents` is what keeps the panel's own layout as it
+              was. */}
+          <Tabs.Root
+            class={styles.tabsRoot}
+            value={active()}
+            onChange={(v) => setActive(v as SettingTab)}
+          >
+            <div class={styles.header}>
+              <div class={styles.titleRow}>
+                <div class={styles.title}>Settings</div>
+                <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
+                  ×
+                </Button>
+              </div>
+              {/* One box above the strip, not one per tab: it searches every tab,
+                  and a box inside a pane would read as filtering that pane alone. */}
+              <input
+                ref={firstControl}
+                class={`${styles.input} ${styles.search}`}
+                type="search"
+                aria-label="Search settings"
+                placeholder="Search settings"
+                value={query()}
+                onInput={(e) => setQuery(e.currentTarget.value)}
+                onKeyDown={onSearchKeyDown}
+              />
+              {/* Roving tabindex, arrow wrap and automatic activation all come
+                  from Kobalte now, so the strip carries no keyboard code of its
+                  own. */}
+              <Tabs.List class={styles.strip} aria-label="Settings sections">
+                <For each={SETTING_TABS}>
+                  {(t) => (
+                    <Tab
+                      value={t.id}
+                      id={tabId(t.id)}
+                      aria-label={tabName(t)}
+                      // Dimmed rather than disabled or hidden. A tab with no match
+                      // is still somewhere you may want to go, and removing it
+                      // would move the other five out from under the pointer.
+                      class={countIn(t.id) === 0 ? styles.tabEmpty : undefined}
+                      icon={<Icon icon={TAB_ICONS[t.icon]} />}
+                      trailing={
+                        <Show when={matches()}>
+                          <span class={styles.badge}>{countIn(t.id)}</span>
+                        </Show>
+                      }
+                    >
+                      {t.label}
+                    </Tab>
+                  )}
+                </For>
+              </Tabs.List>
             </div>
-            {/* One box above the strip, not one per tab: it searches every tab,
-                and a box inside a pane would read as filtering that pane alone. */}
-            <input
-              ref={firstControl}
-              class={`${styles.input} ${styles.search}`}
-              type="search"
-              aria-label="Search settings"
-              placeholder="Search settings"
-              value={query()}
-              onInput={(e) => setQuery(e.currentTarget.value)}
-              onKeyDown={onSearchKeyDown}
-            />
-            <div
-              ref={stripEl}
-              class={styles.strip}
-              role="tablist"
-              aria-label="Settings sections"
-              onKeyDown={onStripKeyDown}
-            >
+
+            <div class={styles.srOnly} role="status" aria-live="polite">
+              {announced()}
+            </div>
+
+            <div class={styles.body}>
+              {/* Agents leads the strip: it is the tab first-run opens onto, and
+                  the one answering "will this work with my setup?". */}
+              {/* Two greetings, because the old single one assumed a CLI was
+                  already installed. Telling somebody with none to "check which
+                  ones it found below" points them at a list of misses and reads
+                  as Sway being broken, when the real state is a step they have
+                  not taken. The backend decides which applies (it reads the same
+                  health sweep the cards below use); this only renders it. */}
+              <Show when={props.welcome}>
+                <Show
+                  when={onboardingContent()?.kind === "noHarness"}
+                  fallback={
+                    <div class={styles.welcome}>
+                      Welcome to Sway. It drives the agent CLIs you already have, so start by
+                      checking which ones it found below, then open a folder in the sidebar to
+                      begin a session.
+                    </div>
+                  }
+                >
+                  <div class={styles.welcome}>
+                    Welcome to Sway. It drives an agent CLI you install yourself, and it could
+                    not find one yet. Install {supportedList()}, then reopen this tab and Sway
+                    will pick it up.
+                  </div>
+                </Show>
+              </Show>
+              {/* Two different nothings, and conflating them is what makes a
+                  stay-put search feel broken. "Nowhere" is a query to change;
+                  "not here" is a tab to click, so it has to say how many are
+                  waiting and leave you where you are to decide. */}
+              <Show when={nothingMatched()}>
+                <div class={styles.hint}>No setting matches “{query().trim()}”.</div>
+              </Show>
+              <Show when={elsewhere() > 0}>
+                <div class={styles.hint}>
+                  No matches here, {elsewhere()} elsewhere. The counts on the tabs say where.
+                </div>
+              </Show>
+
+              {/* Every pane stays mounted and the inactive ones are `hidden`: a
+                  tab switch keeps each pane's scroll position and its in-flight
+                  edits, and `hidden` is what keeps them out of the focus trap.
+                  `forceMount` is how that survives the move onto Kobalte, which
+                  otherwise unmounts every pane but the selected one; `hidden` is
+                  still ours, because Kobalte marks a forced-mounted panel with a
+                  data attribute and leaves it in the tree. */}
               <For each={SETTING_TABS}>
                 {(t) => (
-                  <Tab
-                    active={active() === t.id}
-                    id={tabId(t.id)}
-                    aria-controls={paneId(t.id)}
-                    aria-label={tabName(t)}
-                    // Roving tabindex: one stop for the whole strip, so Tab
-                    // steps past it into the pane rather than through six.
-                    tabindex={active() === t.id ? 0 : -1}
-                    // Dimmed rather than disabled or hidden. A tab with no match
-                    // is still somewhere you may want to go, and removing it
-                    // would move the other five out from under the pointer.
-                    class={countIn(t.id) === 0 ? styles.tabEmpty : undefined}
-                    icon={<Icon icon={TAB_ICONS[t.icon]} />}
-                    trailing={
-                      <Show when={matches()}>
-                        <span class={styles.badge}>{countIn(t.id)}</span>
-                      </Show>
-                    }
-                    onClick={() => setActive(t.id)}
+                  <Tabs.Content
+                    value={t.id}
+                    id={paneId(t.id)}
+                    aria-labelledby={tabId(t.id)}
+                    forceMount
+                    hidden={active() !== t.id}
                   >
-                    {t.label}
-                  </Tab>
+                    <Dynamic component={PANES[t.id]} shown={shown} query={query()} />
+                  </Tabs.Content>
                 )}
               </For>
             </div>
-          </div>
-
-          <div class={styles.srOnly} role="status" aria-live="polite">
-            {announced()}
-          </div>
-
-          <div class={styles.body}>
-            {/* Agents leads the strip: it is the tab first-run opens onto, and
-                the one answering "will this work with my setup?". */}
-            {/* Two greetings, because the old single one assumed a CLI was
-                already installed. Telling somebody with none to "check which
-                ones it found below" points them at a list of misses and reads
-                as Sway being broken, when the real state is a step they have
-                not taken. The backend decides which applies (it reads the same
-                health sweep the cards below use); this only renders it. */}
-            <Show when={props.welcome}>
-              <Show
-                when={onboardingContent()?.kind === "noHarness"}
-                fallback={
-                  <div class={styles.welcome}>
-                    Welcome to Sway. It drives the agent CLIs you already have, so start by
-                    checking which ones it found below, then open a folder in the sidebar to
-                    begin a session.
-                  </div>
-                }
-              >
-                <div class={styles.welcome}>
-                  Welcome to Sway. It drives an agent CLI you install yourself, and it could
-                  not find one yet. Install {supportedList()}, then reopen this tab and Sway
-                  will pick it up.
-                </div>
-              </Show>
-            </Show>
-            {/* Two different nothings, and conflating them is what makes a
-                stay-put search feel broken. "Nowhere" is a query to change;
-                "not here" is a tab to click, so it has to say how many are
-                waiting and leave you where you are to decide. */}
-            <Show when={nothingMatched()}>
-              <div class={styles.hint}>No setting matches “{query().trim()}”.</div>
-            </Show>
-            <Show when={elsewhere() > 0}>
-              <div class={styles.hint}>
-                No matches here, {elsewhere()} elsewhere. The counts on the tabs say where.
-              </div>
-            </Show>
-
-            {/* Every pane stays mounted and the inactive ones are `hidden`: a
-                tab switch keeps each pane's scroll position and its in-flight
-                edits, and `hidden` is what keeps them out of the focus trap. */}
-            <For each={SETTING_TABS}>
-              {(t) => (
-                <div
-                  id={paneId(t.id)}
-                  role="tabpanel"
-                  aria-labelledby={tabId(t.id)}
-                  hidden={active() !== t.id}
-                >
-                  <Dynamic component={PANES[t.id]} shown={shown} query={query()} />
-                </div>
-              )}
-            </For>
-          </div>
+          </Tabs.Root>
         </div>
       </div>
     </Portal>

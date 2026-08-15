@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { tab } from "../../test/tabs";
+import { tab, closeOf } from "../../test/tabs";
 import { pointerClick, rightClick } from "../../test/menus";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
@@ -256,7 +256,7 @@ describe("a sway:// tab in the editor pane", () => {
       fireEvent.contextMenu(tab("a.ts"));
       await screen.findByRole("menu");
 
-      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      fireEvent.click(closeOf("a.ts"));
 
       await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
       expect(screen.getByText(EMPTY_PANE)).toBeTruthy();
@@ -275,13 +275,17 @@ describe("a sway:// tab in the editor pane", () => {
       const ghost = strip.querySelector(".otab-ghost")!;
       const trigger = '[id^="contextmenu-"][id$="-trigger"]';
 
-      // The ghost holds every tab and no menu at all.
-      expect(ghost.querySelectorAll('[role="tab"]').length).toBeGreaterThan(0);
+      // The ghost holds a box per tab and nothing that behaves like one: no
+      // menu, no `role="tab"`, and nothing focusable for `aria-hidden-focus` to
+      // catch. It is scaffolding for the measurement, and #111 is what made it
+      // say so.
+      expect(ghost.querySelectorAll("button").length).toBeGreaterThan(0);
+      expect(ghost.querySelectorAll('[role="tab"]').length).toBe(0);
+      expect(ghost.querySelectorAll("button:not([disabled])").length).toBe(0);
       expect(ghost.querySelectorAll(trigger).length).toBe(0);
 
-      // Every tab a browser would draw holds exactly one, and there is at least
-      // one to check (jsdom measures every width as 0, so the strip shows one).
-      const shown = [...strip.querySelectorAll('[role="tab"]')].filter((t) => !ghost.contains(t));
+      // Every tab a browser would draw holds exactly one menu trigger.
+      const shown = [...strip.querySelectorAll('[role="tab"]')];
       expect(shown.length).toBeGreaterThan(0);
       expect(strip.querySelectorAll(trigger).length).toBe(shown.length);
     });

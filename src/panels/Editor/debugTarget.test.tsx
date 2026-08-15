@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
-import { tab, tabs } from "../../test/tabs";
+import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { tab, tabs, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 
 // Starting a run, from the editor's side.
@@ -289,7 +289,7 @@ describe("starting a run", () => {
 
     // Scoped to the drawn tab: the measuring ghost carries a close affordance
     // of the same name.
-    fireEvent.click(within(tab("gone.ts")).getByLabelText("Close"));
+    fireEvent.click(closeOf("gone.ts"));
     await waitFor(() => expect(tabs("gone.ts")).toHaveLength(0));
 
     emit(DEBUG_START);

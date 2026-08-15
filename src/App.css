@@ -413,6 +413,14 @@ html {
 /* Inert measuring row: a hidden clone of every tab, used only to read true
    widths (gaps/padding/borders intact). Absolute + visibility:hidden keeps it
    measurable while out of flow; padding:0 so extents start at content-left. */
+/* The tablist wraps the tabs and nothing else, because a tablist may own no
+   other role: the `+N` button and the trailing action are its siblings, not its
+   children. `contents` is what lets it do that without adding a box to the
+   strip's flex row. */
+.otab-list {
+  display: contents;
+}
+
 .otab-ghost {
   position: absolute;
   top: 0;

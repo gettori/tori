@@ -1,5 +1,28 @@
 /* The shared tab pill (mirrors the editor/terminal strips): a floating rounded
-   pill, transparent at rest, a subtle --card2 fill when active or hovered. */
+   pill, transparent at rest, a subtle --card2 fill when active or hovered.
+
+   The fill lives on the wrapper rather than on the button, because the close is
+   a sibling of the button now (see Tab.tsx) and the two have to read as one
+   pill. The wrapper is always rendered, so a strip with no close button gets
+   the same box as one with. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--sway-radius-md);
+  background: transparent;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+/* Selected off Kobalte's own `data-selected` rather than off a prop, so the
+   highlight cannot drift from the selection the strip actually holds. */
+.pill:hover:not(:has([data-selected])) {
+  background: var(--tab-hover-bg);
+}
+
+.pill:has([data-selected]) {
+  background: var(--tab-active-bg);
+}
+
 .tab {
   display: inline-flex;
   align-items: center;
@@ -15,9 +38,7 @@
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+  transition: color var(--sway-duration-fast) ease;
 }
 
 .tab svg {
@@ -26,18 +47,19 @@
   flex: 0 0 auto;
 }
 
-.tab:hover:not(.active) {
+.pill:hover .tab,
+.pill:has([data-selected]) .tab {
   color: var(--tab-active-fg);
-  background: var(--tab-hover-bg);
 }
 
-.tab.active {
-  color: var(--tab-active-fg);
-  background: var(--tab-active-bg);
-}
-
+/* The ring is drawn on the whole pill, not on the button inside it: the button
+   no longer has the pill's full box, so a ring on it would stop short of the
+   close. */
 .tab:focus-visible {
   outline: none;
+}
+
+.pill:has(.tab:focus-visible) {
   box-shadow: 0 0 0 2px var(--brand-ring);
 }
 
@@ -47,16 +69,27 @@
   max-width: calc(160px * var(--ui-scale));
 }
 
-/* Trailing close: a small quiet glyph that brightens on hover, its own hit area
-   so it never triggers tab selection (the handler stops propagation). */
+/* Trailing close: a small quiet glyph that brightens on hover. A sibling of the
+   tab button rather than a child, so it is its own hit area and clicking it
+   never selects the tab. Pointer-only, and hidden from assistive tech; see the
+   note in Tab.tsx. */
 .close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: calc(2px * var(--ui-scale));
+  margin-right: calc(6px * var(--ui-scale));
+  background: transparent;
+  border: none;
   border-radius: var(--sway-radius-sm);
   color: var(--fg-muted);
   cursor: pointer;
+}
+
+/* The button already carries the pill's right padding, so the close sits closer
+   to the label than the pill edge without it. */
+.pill:has(.close) .tab {
+  padding-right: calc(4px * var(--ui-scale));
 }
 
 .close svg {

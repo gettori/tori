@@ -67,11 +67,17 @@ describe("the settings tab strip", () => {
     for (const t of tabs()) expect(t.querySelector("svg"), t.textContent ?? "").toBeTruthy();
   });
 
-  it("points each tab at its pane and labels the pane back", () => {
+  it("points the selected tab at its pane and labels every pane back", () => {
+    // `aria-controls` on the *selected* tab only, which is Kobalte's reading of
+    // the practice rather than an omission: the attribute is what a reader
+    // follows to jump into the panel, and only one panel is on screen. Every
+    // pane still names its own tab, in both directions for the one that is
+    // showing.
     render(() => <Settings onClose={() => {}} />);
     for (const [i, tab] of tabs().entries()) {
       const paneEl = panes()[i];
-      expect(tab.getAttribute("aria-controls")).toBe(paneEl.id);
+      const selected = tab.getAttribute("aria-selected") === "true";
+      expect(tab.getAttribute("aria-controls")).toBe(selected ? paneEl.id : null);
       expect(paneEl.getAttribute("aria-labelledby")).toBe(tab.id);
     }
   });

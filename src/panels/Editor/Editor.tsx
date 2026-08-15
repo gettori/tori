@@ -1811,8 +1811,7 @@ export default function Editor(props: {
             // with a box. The ghost row skips it: it is measured, never reached.
             <MaybeTabMenu when={!ghost} tab={t}>
               <Tab
-                active={tabId(t) === activeId()}
-                onClick={() => setActiveId(tabId(t))}
+                value={tabId(t)}
                 tooltip={tabTitle(t)}
                 // A synthetic view has no path to hand anyone: dropping its id on a
                 // terminal would paste `sway://…`, which names nothing on disk.
@@ -1839,7 +1838,6 @@ export default function Editor(props: {
                     </Show>
                   </>
                 }
-                closeLabel="Close"
                 onClose={() => closeTab(tabId(t))}
               >
                 {t.name}
@@ -2091,9 +2089,8 @@ export default function Editor(props: {
           trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
           renderTab={(t) => (
             <Tab
-              active={rightMode() === t.mode}
+              value={t.mode}
               icon={<Icon icon={t.icon} />}
-              onClick={() => setRightMode(t.mode)}
               tooltip={t.label}
               // The one `aria-label` on a tooltipped `Tab` in the app. A label
               // normally *replaces* a tab's visible text as its name, which is

@@ -9,6 +9,8 @@ import {
   type JSX,
 } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
+import { Tabs } from "../lib/tabs";
+import { TabRow } from "./Tab/Tab";
 import Dropdown from "./Menu/Dropdown";
 import { MenuRow } from "./Menu/rows";
 import Tooltip from "./Tooltip/Tooltip";
@@ -81,8 +83,51 @@ export default function OverflowTabBar<T>(props: {
     setVisibleCount(computeVisibleCount(extents, bar.clientWidth, reserves));
   }
 
+  /**
+   * Keep activation on the click rather than on the press.
+   *
+   * Kobalte's tab trigger selects on mouse press and offers no way to ask for
+   * press-up: `shouldSelectOnPressUp` is not a `Tabs.Trigger` prop, and
+   * `composeEventHandlers` ignores `defaultPrevented`, so a handler passed in
+   * beside Kobalte's cannot veto it. The editor's tabs are `draggable` and a
+   * drag is a press that never becomes a click, so without this, carrying a
+   * tab's path out to the terminal would load that file first.
+   *
+   * Capture on the bar, so the trigger's own listeners never run. This stops
+   * *listeners*, not default actions, so focus-on-press and the drag itself are
+   * untouched. With no press recorded, Kobalte's click handler takes the
+   * selection instead, which is the branch it uses for touch and pen.
+   *
+   * Scoped to the triggers: the `+N` button and the close buttons are not tabs
+   * and keep every event they had.
+   */
+  function onPress(e: Event) {
+    markGesture(e);
+    if (onTab) e.stopPropagation();
+  }
+
+  /** Whether the gesture being handled right now landed on one of this bar's
+   *  tabs. Set in the capture phase, so it is already true by the time
+   *  Kobalte's own handler runs, and cleared on a microtask, so it covers the
+   *  synchronous handler chain and nothing after it. */
+  let onTab = false;
+  function markGesture(e: Event) {
+    onTab = !!(e.target as Element | null)?.closest?.('[role="tab"]');
+    queueMicrotask(() => {
+      onTab = false;
+    });
+  }
+
   let ro: ResizeObserver | undefined;
   onMount(() => {
+    bar.addEventListener("pointerdown", onPress, true);
+    bar.addEventListener("click", markGesture, true);
+    bar.addEventListener("keydown", markGesture, true);
+    onCleanup(() => {
+      bar.removeEventListener("pointerdown", onPress, true);
+      bar.removeEventListener("click", markGesture, true);
+      bar.removeEventListener("keydown", markGesture, true);
+    });
     requestAnimationFrame(measure);
     ro = new ResizeObserver(() => measure());
     ro.observe(bar);
@@ -107,18 +152,73 @@ export default function OverflowTabBar<T>(props: {
     setMenuOpen(false);
   }
 
-  return (
-    <div class={props.class} ref={bar} style={{ position: "relative" }}>
-      {/* Inert ghost row: every tab in canonical order + a count sample, used
-          only to measure true widths (gaps/padding/borders included). */}
-      <div class={`${props.class ?? ""} otab-ghost`} ref={ghost} aria-hidden="true">
-        <For each={props.items}>{(t) => props.renderTab(t, true)}</For>
-        <button class="tab-overflow-count" ref={countSample}>
-          +{Math.max(1, props.items.length)}
-        </button>
-      </div>
+  /** Where a tab sits in the list the consumer holds, which is not the row on
+   *  screen: the whole point of this bar is that the two differ. */
+  function positionOf(id: string) {
+    const index = props.items.findIndex((t) => props.idOf(t) === id);
+    return index < 0 ? undefined : { index: index + 1, total: props.items.length };
+  }
 
-      <For each={visible()}>{(t) => props.renderTab(t)}</For>
+  /**
+   * Kobalte's selection, filtered down to the changes a user actually made.
+   *
+   * `TabsRoot` force-selects the first key whenever the value it is given names
+   * no rendered tab, and calls `onChange` on the way. That is a heal, not a
+   * click, and forwarding it would not blank the selection, it would open a
+   * different file: closing the active tab puts the strip in exactly that state
+   * for one render, before the panel has picked what comes next.
+   *
+   * The gesture is what separates the two, rather than the state: a heal runs
+   * from an effect with nothing but a render behind it. Closing a tab is the
+   * case that makes this worth getting right, and it lands correctly for a
+   * reason worth naming - the close button is a *sibling* of the trigger, so a
+   * click on it has no tab above it and reads as the heal it causes rather than
+   * as a selection.
+   */
+  function onChange(next: string) {
+    if (!onTab) return;
+    if (next === props.activeId) return;
+    props.onActivate(next);
+  }
+
+  return (
+    // Root sits *inside* the bar rather than above it, so the planned single
+    // merged editor+terminal strip is one bar over a mixed item list and a
+    // split is two instances of it.
+    <Tabs.Root
+      class={props.class}
+      ref={bar}
+      style={{ position: "relative" }}
+      activationMode="automatic"
+      // Never null: Kobalte reads `undefined` as "uncontrolled" and takes the
+      // selection over for good. An empty key keeps it controlled and names
+      // nothing, which `onChange` above is what handles.
+      value={props.activeId ?? ""}
+      onChange={onChange}
+    >
+      {/* Inert ghost row: every tab in canonical order + a count sample, used
+          only to measure true widths (gaps/padding/borders included). `TabRow
+          inert` is what keeps it out of both the accessibility tree and
+          Kobalte's collection, where it would register a second item under
+          every key the real row already holds. */}
+      <TabRow inert>
+        <div class={`${props.class ?? ""} otab-ghost`} ref={ghost} aria-hidden="true">
+          <For each={props.items}>{(t) => props.renderTab(t, true)}</For>
+          <button class="tab-overflow-count" ref={countSample} disabled>
+            +{Math.max(1, props.items.length)}
+          </button>
+        </div>
+      </TabRow>
+
+      {/* `.otab-list` is `display: contents`: the tablist has to wrap the tabs
+          and nothing else (a tablist may own no other role), while the strip
+          stays the one flex row it was, with `+N` and the trailing action
+          beside the tabs rather than inside them. */}
+      <TabRow position={positionOf}>
+        <Tabs.List class="otab-list">
+          <For each={visible()}>{(t) => props.renderTab(t)}</For>
+        </Tabs.List>
+      </TabRow>
 
       <Show when={overflow().length > 0}>
         {/* The `+N` button already belongs to its `Tooltip`, so the menu wraps
@@ -166,6 +266,6 @@ export default function OverflowTabBar<T>(props: {
       <div class="otab-trailing" ref={trailingEl}>
         {props.trailing}
       </div>
-    </div>
+    </Tabs.Root>
   );
 }

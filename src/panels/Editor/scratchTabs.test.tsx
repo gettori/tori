@@ -3,6 +3,8 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // Type-only, so it is erased and does not load the module ahead of the mocks
 // the dynamic imports below are waiting for.
 import type { ToastEvent } from "../../utils/events";
+import { closeOf } from "../../test/tabs";
+import { installAnimationFrame } from "../../test/frames";
 
 // Scratch buffers from the pane's side.
 //
@@ -25,6 +27,11 @@ globalThis.ResizeObserver ??= class {
 
 const REPO = "/space/proj/main";
 const FILE = `${REPO}/src/a.ts`;
+// This suite closes tabs, and the close button now lives on the row the bar
+// draws rather than on its measuring ghost. See the helper for why the two
+// differ in jsdom.
+installAnimationFrame();
+
 const SCRATCH_DIR = "/home/me/.config/sway/scratch";
 const SCRATCH = `${SCRATCH_DIR}/Untitled-1`;
 
@@ -231,7 +238,12 @@ describe("opening an untitled buffer", () => {
     stash = { [SCRATCH]: { savedText: "", state: { doc: "half a thought" }, savedAt: Date.now() } };
     await mountEditor();
     await waitFor(() => expect(code?.openPaths).toEqual([SCRATCH]));
-    fireEvent.click(screen.getByLabelText("Close"));
+    // The pane has the buffer, which is not the same as the strip having drawn
+    // the tab: the bar corrects its visible count in a frame of its own. The
+    // name is a prefix match because a stashed tab wears a dirty dot, and the
+    // dot is inside the button.
+    await screen.findByRole("tab", { name: /^Untitled-1/ });
+    fireEvent.click(closeOf(/^Untitled-1/));
     await waitFor(() => expect(screen.getByText(/Discard unsaved changes/)).toBeTruthy());
   });
 
@@ -355,7 +367,7 @@ describe("closing an untitled buffer", () => {
     await mountEditor();
     await open(SCRATCH);
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(closeOf("Untitled-1"));
     await waitFor(() => expect(deleted()).toEqual([TRASHED]));
     // Cmd+Shift+T would otherwise open a tab onto a file that is no longer
     // there, which reads as a broken reopen rather than as a finished scratch.
@@ -388,8 +400,9 @@ describe("closing an untitled buffer", () => {
     listening.ready = false;
     await mountEditor();
     await waitFor(() => expect(code?.openPaths).toEqual([SCRATCH]));
+    await screen.findByRole("tab", { name: /^Untitled-1/ });
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(closeOf(/^Untitled-1/));
     await waitFor(() => expect(screen.getByText("Discard")).toBeTruthy());
     fireEvent.click(screen.getByText("Discard"));
 
@@ -401,7 +414,7 @@ describe("closing an untitled buffer", () => {
     await mountEditor();
     await open(SCRATCH);
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(closeOf("Untitled-1"));
     await waitFor(() => expect(code?.openPaths).toEqual([]));
     expect(deleted()).toEqual([]);
   });
@@ -412,7 +425,7 @@ describe("closing an untitled buffer", () => {
     await mountEditor();
     await open(SCRATCH);
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(closeOf("Untitled-1"));
     await waitFor(() => expect(code?.openPaths).toEqual([]));
     expect(deleted()).toEqual([]);
   });
@@ -423,7 +436,7 @@ describe("closing an untitled buffer", () => {
     await open(FILE);
     invokes.length = 0;
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(closeOf("a.ts"));
     await waitFor(() => expect(code?.openPaths).toEqual([]));
     expect(deleted()).toEqual([]);
     expect(argsFor("fs_read_file")).toEqual([]);

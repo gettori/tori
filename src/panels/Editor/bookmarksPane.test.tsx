@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
-import { tab } from "../../test/tabs";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { tab, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 
 // Bookmarks from the pane's side.
@@ -143,7 +143,7 @@ describe("bookmarks, from the pane", () => {
     // Closing the tab takes the buffer with it; the mark belongs to the
     // workspace, not to the buffer. Scoped to the drawn tab: the measuring
     // ghost carries a close affordance of the same name.
-    fireEvent.click(within(tab("a.ts")).getByLabelText("Close"));
+    fireEvent.click(closeOf("a.ts"));
     await waitFor(() => expect(code?.activePath).toBe(null));
     await open(FILE);
     await waitFor(() => expect(code?.bookmarks).toEqual([{ line: 12 }]));
