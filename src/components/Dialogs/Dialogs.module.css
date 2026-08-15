@@ -25,6 +25,13 @@
   color: var(--fg-default);
   font-weight: 500;
 }
+/* A control that spans the dialog, and nothing else. Layout only, because
+   `Select` draws its own chrome: a call site reaching for `.input` would paint
+   a second field on top of the trigger (the split `Popover` documents). */
+.fill {
+  width: 100%;
+}
+
 .input {
   width: 100%;
   padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));

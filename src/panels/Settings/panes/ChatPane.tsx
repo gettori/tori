@@ -3,12 +3,14 @@ import {
   Row,
   clamp,
   optionalNumber,
+  rowLabelId,
   setBudgets,
   setChatDefaults,
   setCheckpoints,
   type PaneProps,
 } from "../paneKit";
 import { settings, type DefaultSurface, type TranscriptDensity } from "../settingsStore";
+import Select, { type SelectOption } from "../../../components/Select/Select";
 import styles from "../Settings.module.css";
 
 /**
@@ -26,6 +28,19 @@ import styles from "../Settings.module.css";
  * one being dropped from all three lists.
  */
 const SESSIONS = ["default-surface", "streaming", "transcript-density", "tool-output-lines", "show-hooks"];
+
+/** The two option lists, module-level so they are not rebuilt per render. The
+ *  values are the store's own unions, so a typo here is a type error at the
+ *  `onChange` cast rather than a row that silently never matches. */
+const SURFACES: SelectOption[] = [
+  { value: "chat", label: "Chat" },
+  { value: "agent", label: "Terminal (agent tab)" },
+];
+const DENSITIES: SelectOption[] = [
+  { value: "comfortable", label: "Comfortable" },
+  { value: "compact", label: "Compact" },
+];
+
 const SAFETY = ["checkpoints"];
 const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget"];
 
@@ -40,14 +55,12 @@ export default function ChatPane(props: PaneProps) {
           hint="Which surface a click on a session opens. The other one stays available from the split-button menu either way, and already-saved tabs reopen on the surface they were saved on."
         >
           <div class={styles.control}>
-            <select
-              class={styles.select}
+            <Select
+              options={SURFACES}
               value={settings.chatDefaults.defaultSurface}
-              onChange={(e) => setChatDefaults({ defaultSurface: e.currentTarget.value as DefaultSurface })}
-            >
-              <option value="chat">Chat</option>
-              <option value="agent">Terminal (agent tab)</option>
-            </select>
+              onChange={(value) => setChatDefaults({ defaultSurface: value as DefaultSurface })}
+              aria-labelledby={rowLabelId("default-surface")}
+            />
           </div>
         </Row>
 
@@ -65,14 +78,12 @@ export default function ChatPane(props: PaneProps) {
 
         <Row {...props} id="transcript-density" label="Transcript density">
           <div class={styles.control}>
-            <select
-              class={styles.select}
+            <Select
+              options={DENSITIES}
               value={settings.chatDefaults.density}
-              onChange={(e) => setChatDefaults({ density: e.currentTarget.value as TranscriptDensity })}
-            >
-              <option value="comfortable">Comfortable</option>
-              <option value="compact">Compact</option>
-            </select>
+              onChange={(value) => setChatDefaults({ density: value as TranscriptDensity })}
+              aria-labelledby={rowLabelId("transcript-density")}
+            />
           </div>
         </Row>
 

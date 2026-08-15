@@ -1,8 +1,9 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
+import Select from "../Select/Select";
 import { DEFAULT_ATTACH_PORT, isPort, type DebugTarget, type TargetKind } from "../../utils/debugTargets";
 
 // The visible line above each field is also its accessible name, rather than an
@@ -126,15 +127,14 @@ export default function DebugTargetDialog(props: {
           when={props.scripts.length}
           fallback={<div class={styles.msg}>No scripts in this project's package.json.</div>}
         >
-          <select
+          <Select
             ref={(el) => (first = el)}
-            class={styles.input}
+            class={styles.fill}
             aria-labelledby={SCRIPT_LABEL}
+            options={props.scripts.map((name) => ({ value: name, label: name }))}
             value={script()}
-            onChange={(e) => setScript(e.currentTarget.value)}
-          >
-            <For each={props.scripts}>{(name) => <option value={name}>{name}</option>}</For>
-          </select>
+            onChange={setScript}
+          />
         </Show>
       </Show>
 

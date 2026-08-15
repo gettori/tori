@@ -133,8 +133,10 @@
     gap: var(--sway-space-3);
   }
 
-  .input,
-  .select {
+  /* `.select` was here beside `.input` until #106 moved the pickers onto
+     `components/Select`, which draws its own trigger from the same tokens. The
+     field chrome below is now the native inputs' alone. */
+  .input {
     background: var(--canvas-input);
     color: var(--fg-default);
     border: var(--sway-border-thin) solid var(--border-default);
@@ -146,8 +148,7 @@
       border-color var(--sway-duration-fast) ease,
       box-shadow var(--sway-duration-fast) ease;
   }
-  .input:focus,
-  .select:focus {
+  .input:focus {
     outline: none;
     border-color: var(--brand-default);
     box-shadow: 0 0 0 3px var(--brand-ring);

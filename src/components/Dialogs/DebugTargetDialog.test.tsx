@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
+import { pointerClick } from "../../test/menus";
 import DebugTargetDialog from "./DebugTargetDialog";
 
 // Characterization test for the debug-target picker, written against the
@@ -26,7 +27,10 @@ import DebugTargetDialog from "./DebugTargetDialog";
 // it and the port input are now named by `aria-labelledby` pointing at that same
 // visible line, so the name and the text on screen cannot drift apart. The port
 // input was not a violation (its `placeholder` stood in as the name) and was
-// named anyway: a placeholder disappears the moment anything is typed.
+// named anyway: a placeholder disappears the moment anything is typed. #106
+// swapped the native `<select>` for `components/Select` and that naming carried
+// over unchanged: the wrapper takes the same `aria-labelledby`, so the mode
+// stayed clean across the migration rather than being re-fixed by it.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
@@ -54,8 +58,18 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   // the select, so these queries outlive both changes.
   const mode = (name: string) => screen.getByRole("radio", { name });
   const port = () => screen.getByRole("textbox") as HTMLInputElement;
-  const script = () => screen.getByRole("combobox") as HTMLSelectElement;
+  const script = () => screen.getByLabelText("Script") as HTMLButtonElement;
   return { onConfirm, onCancel, mode, port, script };
+}
+
+/** Pick a script by name. The control is a listbox behind a button since #106,
+ *  so a choice is two presses rather than a `change` event, and the rows only
+ *  exist while it is open. */
+async function pickScript(trigger: HTMLElement, name: string) {
+  pointerClick(trigger);
+  await screen.findByRole("listbox");
+  pointerClick(screen.getByRole("option", { name }));
+  await macrotask();
 }
 
 const start = () => screen.getByRole("button", { name: "Start" }) as HTMLButtonElement;
@@ -118,10 +132,10 @@ describe("DebugTargetDialog", () => {
       expect(onConfirm).toHaveBeenCalledWith({ kind: "script", script: "dev" });
     });
 
-    it("starts whichever script is picked", () => {
+    it("starts whichever script is picked", async () => {
       const { onConfirm, script } = open({ kind: "script", scripts: ["dev", "test"] });
 
-      fireEvent.change(script(), { target: { value: "test" } });
+      await pickScript(script(), "test");
       fireEvent.click(start());
 
       expect(onConfirm).toHaveBeenCalledWith({ kind: "script", script: "test" });
