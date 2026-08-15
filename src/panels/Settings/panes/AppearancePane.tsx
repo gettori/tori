@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo } from "solid-js";
 import {
   EDITOR_FONT_FALLBACK,
   Group,
@@ -7,6 +7,7 @@ import {
   UI_FONT_FALLBACK,
   clamp,
   idsIn,
+  rowLabelId,
   setAppearance,
   setTypography,
   withFallback,
@@ -15,17 +16,35 @@ import {
 import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID } from "../../../theme";
 import { primaryFamily } from "../../../utils/fontLoad";
+import Select, { type SelectGroup, type SelectOption } from "../../../components/Select/Select";
 import styles from "../Settings.module.css";
+
+/** A theme as a row: the id is what settings.json stores, the label is what the
+ *  user reads. */
+const asOption = (t: { id: string; label: string }): SelectOption => ({
+  value: t.id,
+  label: t.label,
+});
 
 /** The theme picker and the type scale: everything about what the app looks
  *  like, which is the one question a user arrives at this tab with. */
 export default function AppearancePane(props: PaneProps) {
   // One memo, split into the two groups the picker renders. The list folds the
   // bundled set together with whatever is in the themes folder, so rebuilding it
-  // per <For> would do that work four times for one render.
+  // per group would do that work twice for one render.
   const themes = createMemo(() => listSelectableThemes());
   const bundledThemes = createMemo(() => themes().filter((t) => t.source === "bundled"));
   const userThemes = createMemo(() => themes().filter((t) => t.source !== "bundled"));
+
+  // Grouped by source so a user theme is visibly not one of Sway's, and a file
+  // dropped in the folder is visibly the thing that appeared. The user group is
+  // omitted entirely when the folder is empty, rather than shown empty.
+  const themeGroups = createMemo<SelectGroup[]>(() => [
+    { label: "Bundled", options: bundledThemes().map(asOption) },
+    ...(userThemes().length > 0
+      ? [{ label: "From ~/.config/sway/themes", options: userThemes().map(asOption) }]
+      : []),
+  ]);
 
   // The registry falls back to the default for an id it does not know, so the
   // picker has to show what is actually painted. Binding the stored id directly
@@ -43,24 +62,12 @@ export default function AppearancePane(props: PaneProps) {
       <Group {...props} title="Display" ids={idsIn("appearance")}>
         <Row {...props} id="theme" label="Theme">
           <div class={styles.control}>
-            <select
-              class={styles.select}
+            <Select
+              options={themeGroups()}
               value={currentTheme()}
-              onChange={(e) => setAppearance({ theme: e.currentTarget.value })}
-            >
-              {/* Grouped by source so a user theme is visibly not one of Sway's,
-                  and a file dropped in the folder is visibly the thing that
-                  appeared. The user group is omitted entirely when the folder is
-                  empty, rather than shown empty. */}
-              <optgroup label="Bundled">
-                <For each={bundledThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
-              </optgroup>
-              <Show when={userThemes().length > 0}>
-                <optgroup label="From ~/.config/sway/themes">
-                  <For each={userThemes()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
-                </optgroup>
-              </Show>
-            </select>
+              onChange={(value) => setAppearance({ theme: value })}
+              aria-labelledby={rowLabelId("theme")}
+            />
           </div>
         </Row>
         <Row {...props} id="zoom" label="Zoom">

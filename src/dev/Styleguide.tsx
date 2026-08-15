@@ -5,6 +5,7 @@ import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";
 import IconButton from "../components/IconButton/IconButton";
 import SegmentedControl from "../components/SegmentedControl/SegmentedControl";
+import Select from "../components/Select/Select";
 import Tab from "../components/Tab/Tab";
 import type { ControlSize } from "../components/controls";
 import FileIcon from "../seti/FileIcon";
@@ -120,13 +121,13 @@ export default function Styleguide() {
           <Icon icon={Settings} /> sway theme workbench
         </strong>
         <div class={styles.controls}>
-          <select
-            class={styles.picker}
+          <Select
+            size="sm"
+            aria-label="Theme"
+            options={themes.map((t) => ({ value: t.id, label: t.label }))}
             value={themeId()}
-            onChange={(e) => setThemeId(e.currentTarget.value)}
-          >
-            <For each={themes}>{(t) => <option value={t.id}>{t.label}</option>}</For>
-          </select>
+            onChange={setThemeId}
+          />
           <label class={styles.slider}>
             scale {scale().toFixed(2)}
             <input type="range" min="0.85" max="1.4" step="0.05" value={scale()} onInput={(e) => setScale(+e.currentTarget.value)} />

@@ -126,6 +126,13 @@ export type PaneProps = { shown: (id: string) => boolean; query: string };
  *  step. */
 export const rowDomId = (id: string) => `settings-row-${id}`;
 
+/** The DOM id of a row's visible label, for a control that cannot be wrapped by
+ *  a `<label>`: `Select` renders a button, which takes no `for`. Pointing the
+ *  control at this id is what gives it an accessible name, and it is the row's
+ *  own label text, so the name and what is on screen cannot drift. Derived the
+ *  same way `rowDomId` is, for the same reason. */
+export const rowLabelId = (id: string) => `settings-label-${id}`;
+
 /**
  * A label or hint with the matched part marked.
  *
@@ -198,7 +205,7 @@ export function Row(props: PaneProps & { id: string; label: string; hint?: strin
   return (
     <Show when={props.shown(props.id)}>
       <div id={rowDomId(props.id)} class={styles.row}>
-        <label class={styles.label}>
+        <label id={rowLabelId(props.id)} class={styles.label}>
           <MarkedLabel query={props.query} text={props.label} />
         </label>
         {props.children}
