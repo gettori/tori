@@ -41,4 +41,30 @@ Object.defineProperty(document.documentElement, "clientWidth", {
   get: () => window.innerWidth,
 });
 
+// CSS error recovery, which jsdom does not implement for programmatic writes.
+//
+// A browser drops a declaration whose value it cannot parse and carries on;
+// that is the CSS spec's own error handling, not leniency. jsdom 30 parses
+// values with css-tree in throwing mode, so the same write becomes an exception
+// that takes down whatever was rendering.
+//
+// Kobalte's slider is the case that surfaced it. Its thumb finds its own index
+// by matching its DOM ref against the registered thumbs, and on the first
+// render that ref is not assigned yet, so the index is -1, the percent is NaN,
+// and it writes `left: calc(NaN%)`. The very next render, with the ref in hand,
+// writes the real percentage. In a browser the bad value is ignored and the
+// correct one lands a tick later, so nothing is visibly wrong - which is why
+// this is jsdom fidelity rather than a Kobalte bug to work around.
+//
+// Scoped to `setProperty`: stylesheets go through a different path, so a typo
+// in one of our own CSS modules still fails the way it should.
+const setProperty = CSSStyleDeclaration.prototype.setProperty;
+CSSStyleDeclaration.prototype.setProperty = function (property, value, priority) {
+  try {
+    setProperty.call(this, property, value, priority);
+  } catch {
+    // Unparseable: dropped, exactly as a browser drops it.
+  }
+};
+
 afterEach(cleanup);
