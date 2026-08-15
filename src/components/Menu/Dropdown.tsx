@@ -65,6 +65,12 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement>
   /** The element the trigger renders as. A tag name, not a component, for the
    *  reason `Tooltip`'s `as` documents. */
   as?: keyof JSX.HTMLElementTags;
+  /** The trigger is a *wrapper* around a control that is already interactive,
+   *  rather than being the control itself. Kobalte makes any non-`button`
+   *  trigger a `role="button"` with `tabindex="0"`, and a button inside a button
+   *  is two tab stops and one nested control. See `notAControl` below for what
+   *  this does and does not take back. */
+  wrapper?: boolean;
   /** What the menu portals into. Defaults to the enclosing dialog's panel when
    *  there is one, and to `document.body` otherwise. */
   mount?: HTMLElement;
@@ -108,6 +114,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
     "placement",
     "modal",
     "as",
+    "wrapper",
     "mount",
   ]);
 
@@ -118,6 +125,28 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
   // The same cast `Tooltip` documents: `T` buys the caller precise handler
   // types, and it is exactly that precision the polymorphic host cannot accept.
   const triggerProps = trigger as DropdownProps<HTMLButtonElement>;
+
+  /**
+   * A trigger that is only a wrapper, said out loud.
+   *
+   * Kobalte makes every non-`button` trigger a control: `role="button"`,
+   * `tabindex="0"`, and the popup semantics. Around a control that is already
+   * all three, that is two tab stops and a button inside a button, which axe
+   * reports as `nested-interactive`. Nothing is lost by taking it back:
+   * everything the trigger listens for (pointerdown, and Enter/Space/ArrowDown
+   * as keydown) reaches it by bubbling up from the control inside.
+   *
+   * `group` and not `presentation`, which reads like the obvious choice. Kobalte
+   * also writes `aria-haspopup`, `aria-expanded` and `aria-controls` here, and
+   * those cannot be spread away (an `undefined` value falls through to the one
+   * Kobalte set rather than deleting it). `presentation` is the one role that
+   * forbids the global ARIA attributes, so it would trade `nested-interactive`
+   * for `aria-allowed-attr`. `group` is non-interactive and allows them.
+   *
+   * An object rather than attributes because the keys have to be *absent* in the
+   * normal case, where Kobalte's own values are the right ones.
+   */
+  const notAControl = () => (local.wrapper ? { role: "group", tabIndex: -1 } : {});
 
   let restoreTo: HTMLElement | null = null;
 
@@ -162,7 +191,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
         getAnchorRect={atCursor() ? () => cursorRect(local.anchor) : undefined}
       >
         <Show when={!atCursor()}>
-          <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />
+          <Primitive.Trigger as={local.as ?? "button"} {...notAControl()} {...triggerProps} />
         </Show>
         <Primitive.Portal mount={mount()}>
           <Primitive.Content

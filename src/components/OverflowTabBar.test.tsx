@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import OverflowTabBar from "./OverflowTabBar";
+import { expectNoAxeViolations } from "../test/axe";
 import { pointerClick } from "../test/menus";
 import Tab from "./Tab/Tab";
 
@@ -55,7 +56,7 @@ describe("the overflow button", () => {
     pointerClick(more);
 
     // The button belongs to its `Tooltip`, so the menu wraps it rather than
-    // being it, and what this asserts is that the right-click still reaches the
+    // being it, and what this asserts is that the click still reaches the
     // wrapper: a trigger that swallowed the button would leave a control that
     // looks right and does nothing. Same shape as the ref this used to guard.
     const menu = await waitFor(() => screen.getByRole("menu"));
@@ -78,5 +79,42 @@ describe("the overflow button", () => {
     fireEvent.focus(more);
 
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(name));
+  });
+
+  it("still says it opens a menu, from the element a keyboard reaches", async () => {
+    // The cost of the wrapper, and the one a scan can catch. Kobalte writes
+    // `aria-haspopup` and `aria-expanded` on its trigger, which here is the
+    // wrapper: not focusable, not what a screen reader lands on. The button
+    // inside it is both, so it says this for itself, and this is the one open
+    // menu at a wrapped site that the suite scans end to end.
+    mount();
+    const more = await screen.findByRole("button", { name: /more$/ });
+    expect(more.getAttribute("aria-haspopup")).toBe("menu");
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+
+    pointerClick(more);
+    await waitFor(() => screen.getByRole("menu"));
+
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    // Two rows of rules off, for two different reasons.
+    //
+    // `aria-valid-attr-value` for the reason `Dropdown.test.tsx` records: axe
+    // raises `controlsWithinPopup` for any trigger carrying both
+    // `aria-haspopup` and `aria-controls`, in a real browser as much as here,
+    // because it cannot tell whether the popup is open. Every Kobalte trigger
+    // has both.
+    //
+    // The other two are this bar's own, they predate every menu here, and they
+    // are real: its tabs carry `role="tab"` with no `role="tablist"` above
+    // them, and its measuring ghost is `aria-hidden` while holding focusable
+    // buttons. Neither is menu-shaped and neither is #103's to fix, so they are
+    // named here rather than quietly swept into a passing scan.
+    await expectNoAxeViolations(document.body, {
+      rules: {
+        "aria-valid-attr-value": { enabled: false },
+        "aria-required-parent": { enabled: false },
+        "aria-hidden-focus": { enabled: false },
+      },
+    });
   });
 });
