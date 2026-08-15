@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
+import { ToggleGroup } from "../../lib/toggle-group";
 import Dialog from "../Dialog/Dialog";
 import IconButton from "../IconButton/IconButton";
 import Tooltip from "./Tooltip";
@@ -103,6 +104,34 @@ describe("Tooltip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     expect(clicked).toBe(1);
+  });
+
+  // `as` takes a component, not only a tag name, for the control that cannot be
+  // built from the inside: one that *is* a headless primitive's part, and so
+  // exists only under that primitive's context. `IconGrid`'s tiles are the
+  // reason, and the thing worth pinning is that the description still lands on
+  // the control the component rendered rather than on a wrapper - Kobalte's
+  // trigger props have to survive being handed through a second polymorphic
+  // component to get there.
+  it("renders a component host, and still describes the control it rendered", () => {
+    render(() => (
+      <ToggleGroup.Root value="run" onChange={() => {}} aria-label="Actions">
+        <Tooltip label="Run the file" as={ToggleGroup.ButtonItem} value="run">
+          Run
+        </Tooltip>
+      </ToggleGroup.Root>
+    ));
+
+    const trigger = screen.getByRole("button", { name: "Run" });
+    // The item's own behaviour survived the composition: this is a toggle
+    // button reporting its state, not a plain button the tooltip took over.
+    expect(trigger.getAttribute("aria-pressed")).toBe("true");
+
+    focusTrigger(trigger);
+
+    const tooltip = screen.getByRole("tooltip");
+    expect(trigger.getAttribute("aria-describedby")).toBe(tooltip.id);
+    expect(tooltip.textContent).toBe("Run the file");
   });
 
   it("has no accessibility violations while open", async () => {
