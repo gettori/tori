@@ -1,6 +1,7 @@
 import { For, type JSX } from "solid-js";
+import { ToggleGroup } from "../../lib/toggle-group";
 import styles from "./SegmentedControl.module.css";
-import { nextSegmentIndex, type ControlSize } from "../controls";
+import { type ControlSize } from "../controls";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -23,29 +24,41 @@ export interface SegmentedControlProps<T extends string> {
 }
 
 /** A single-select strip of segments on the shared control tokens: one bordered
- *  group, the selected segment filled. Roving tabindex + arrow-key navigation
- *  (see `nextSegmentIndex`); only the selected segment is in the tab order. */
+ *  group, the selected segment filled. Kobalte's toggle group underneath, so
+ *  segments are toggle buttons (`aria-pressed`), arrows/Home/End move focus
+ *  without selecting, and Space/Enter select the focused segment; Tab enters
+ *  on the selected one.
+ *
+ *  Two contract points Kobalte does not give for free:
+ *
+ *  **Always exactly one selected.** Kobalte's single mode lets a press on the
+ *  pressed segment clear the selection (`onChange(null)`); this control's API
+ *  has no empty state, so that change is dropped and the controlled `value`
+ *  holds.
+ *
+ *  **Activation keys stay inside.** Kobalte selects on Enter/Space keydown and
+ *  lets the event bubble, and both dialog consumers confirm on a form-level
+ *  Enter, so one keystroke would select a segment *and* submit the dialog.
+ *  Stopping propagation here makes the rule predictable: Enter inside the
+ *  strip selects, confirming needs focus outside it. */
 export default function SegmentedControl<T extends string>(
   props: SegmentedControlProps<T>,
 ) {
-  let group: HTMLDivElement | undefined;
+  const onChange = (value: string | string[] | null) => {
+    if (value == null || Array.isArray(value)) return;
+    if (value !== props.value) props.onChange(value as T);
+  };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const current = props.options.findIndex((o) => o.value === props.value);
-    const next = nextSegmentIndex(current, e.key, props.options.length);
-    if (next === current) return;
-    e.preventDefault();
-    props.onChange(props.options[next].value);
-    // Move focus to the newly selected segment so the roving index follows.
-    group?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
+    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
   };
 
   return (
-    <div
-      ref={group}
-      role="radiogroup"
-      aria-label={props["aria-label"]}
+    <ToggleGroup.Root
+      value={props.value}
+      onChange={onChange}
       onKeyDown={onKeyDown}
+      aria-label={props["aria-label"]}
       class={props.class}
       classList={{
         [styles.group]: true,
@@ -53,24 +66,17 @@ export default function SegmentedControl<T extends string>(
       }}
     >
       <For each={props.options}>
-        {(opt) => {
-          const selected = () => opt.value === props.value;
-          return (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={selected()}
-              aria-label={opt["aria-label"]}
-              tabindex={selected() ? 0 : -1}
-              classList={{ [styles.segment]: true, [styles.selected]: selected() }}
-              onClick={() => props.onChange(opt.value)}
-            >
-              {opt.icon}
-              {opt.label != null && <span>{opt.label}</span>}
-            </button>
-          );
-        }}
+        {(opt) => (
+          <ToggleGroup.Item
+            value={opt.value}
+            aria-label={opt["aria-label"]}
+            class={styles.segment}
+          >
+            {opt.icon}
+            {opt.label != null && <span>{opt.label}</span>}
+          </ToggleGroup.Item>
+        )}
       </For>
-    </div>
+    </ToggleGroup.Root>
   );
 }

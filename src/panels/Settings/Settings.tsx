@@ -304,10 +304,12 @@ export default function Settings(props: {
     if (m.counts[best.id] > 0) setActive(best.id);
   }
 
-  /** Arrow/Home/End across the strip, shared with the segmented control so the
-   *  two cannot disagree about what a wrap is. Automatic activation: the arrow
-   *  both moves focus and selects, which is what a six-tab strip with no
-   *  expensive panes should do. */
+  /** Arrow/Home/End across the strip. Automatic activation: the arrow both
+   *  moves focus and selects, which is what a six-tab strip with no expensive
+   *  panes should do. This is now the only user of `nextSegmentIndex`, and
+   *  deliberately unlike the segmented control, which moved onto Kobalte's
+   *  toggle group and with it to manual activation (arrows move focus, Space
+   *  or Enter selects). The tab-strip migration is what reunites them. */
   function onStripKeyDown(e: KeyboardEvent) {
     const current = SETTING_TABS.findIndex((t) => t.id === active());
     const next = nextSegmentIndex(current, e.key, SETTING_TABS.length);
