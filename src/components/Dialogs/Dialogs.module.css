@@ -55,54 +55,22 @@
   margin-top: calc(8px * var(--ui-scale));
   line-height: 1.4;
 }
-/* ---- Filterable single-select picker (PickerModal). Lives inside `Dialog`'s
-   own scrolling body, so the list does not scroll itself: the panel is
-   height-bounded and the body is the scroller. The filter field is sticky
-   instead, so the input stays put while a few hundred branch names move past
-   it. (The command palette needs the opposite - its own panel is the scroller -
-   which is one reason its chrome now lives in Omnibox.module.css.) ---- */
-.pickerInputWrap {
+/* ---- Filterable single-select picker (PickerModal). The field and the list
+   are the shared <Combobox> (#110), so all that is left here is where the field
+   sits. The dialog panel is height-bounded and its body is the scroller, so the
+   list does not scroll itself; the field is sticky instead, and stays put while
+   a few hundred branch names move past it. (The command palette needs the
+   opposite, its own panel is the scroller, which is one reason its chrome lives
+   in Omnibox.module.css.) ---- */
+.pickerField {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  /* Opaque, or the rows scroll visibly underneath it. */
-  background: var(--canvas-card);
 }
-.pickerInput {
-  padding-right: calc(26px * var(--ui-scale)); /* room for the clear button */
-}
-/* Positioning only; the visual treatment now comes from the shared <Button>. */
+/* Inside the field's own flex row, so it needs no positioning of its own; the
+   visual treatment comes from the shared <Button>. */
 .pickerClear {
-  position: absolute;
-  right: calc(6px * var(--ui-scale));
-}
-.pickerList {
-  margin-top: calc(10px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-}
-.pickerItem {
-  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--fg-default);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pickerItem:hover {
-  background: var(--neutral-hover);
-}
-/* Keyboard/selected row wins over hover (declared after, same specificity). */
-.pickerItem.active {
-  background: var(--brand-subtle);
-}
-.pickerEmpty {
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--fg-muted);
+  flex: 0 0 auto;
 }
 
 /* ---- Delete-space confirmation extras ---- */
