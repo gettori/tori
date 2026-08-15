@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { nextSegmentIndex } from "./controls";
 
-describe("nextSegmentIndex (SegmentedControl roving nav)", () => {
+describe("nextSegmentIndex (Settings tab-strip roving nav)", () => {
   it("steps forward with Right/Down and wraps past the end", () => {
     expect(nextSegmentIndex(0, "ArrowRight", 3)).toBe(1);
     expect(nextSegmentIndex(1, "ArrowDown", 3)).toBe(2);

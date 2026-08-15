@@ -40,7 +40,7 @@
   flex: 0 0 auto;
 }
 
-.segment:hover:not(.selected) {
+.segment:hover:not([data-pressed]) {
   color: var(--fg-default);
   background: var(--neutral-hover);
 }
@@ -50,7 +50,9 @@
   box-shadow: inset 0 0 0 2px var(--brand-ring);
 }
 
-.selected {
+/* Selected state rides Kobalte's data-pressed attribute rather than a passed
+   class, which is the classList-clobber fix this migration exists for. */
+.segment[data-pressed] {
   color: var(--fg-default);
   background: var(--tab-active-bg);
 }

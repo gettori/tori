@@ -32,7 +32,7 @@ function open(props: Partial<Omit<NewProps, "onConfirm" | "onCancel">> = {}) {
       {...props}
     />
   ));
-  const mode = (name: string) => screen.getByRole("radio", { name });
+  const mode = (name: string) => screen.getByRole("button", { name });
   const name = () =>
     (screen.queryByPlaceholderText("folder name") ??
       screen.getByPlaceholderText("defaults from the URL")) as HTMLInputElement;
@@ -60,7 +60,7 @@ describe("NewProjectDialog", () => {
     it("starts on a plain folder, with no URL to give", () => {
       const { mode } = open();
 
-      expect(mode("Folder").getAttribute("aria-checked")).toBe("true");
+      expect(mode("Folder").getAttribute("aria-pressed")).toBe("true");
       expect(screen.queryByPlaceholderText("https://…")).toBeNull();
       expect(screen.getByText("A plain, non-git folder.")).toBeTruthy();
     });

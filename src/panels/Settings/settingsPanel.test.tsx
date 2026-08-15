@@ -101,8 +101,7 @@ describe("the settings tab strip", () => {
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
     expect(activeTab()).toBe("Agents");
 
-    // Wraps rather than stopping, which is what `nextSegmentIndex` already does
-    // for the segmented control.
+    // Wraps rather than stopping, which is what `nextSegmentIndex` does.
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
     expect(activeTab()).toBe("Integrations");
 

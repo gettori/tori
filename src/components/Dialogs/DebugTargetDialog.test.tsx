@@ -55,8 +55,9 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   ));
   // Asked through the accessibility tree, not through the class. Each mode
   // renders at most one of these, and they keep their roles after phase 2 names
-  // the select, so these queries outlive both changes.
-  const mode = (name: string) => screen.getByRole("radio", { name });
+  // the select, so these queries outlive both changes. The segments are toggle
+  // buttons (Kobalte ToggleGroup), named uniquely, so `button` stays unambiguous.
+  const mode = (name: string) => screen.getByRole("button", { name });
   const port = () => screen.getByRole("textbox") as HTMLInputElement;
   const script = () => screen.getByLabelText("Script") as HTMLButtonElement;
   return { onConfirm, onCancel, mode, port, script };
@@ -79,7 +80,7 @@ describe("DebugTargetDialog", () => {
     it("opens on the mode the caller asked for", () => {
       const { mode } = open({ kind: "attach" });
 
-      expect(mode("Attach").getAttribute("aria-checked")).toBe("true");
+      expect(mode("Attach").getAttribute("aria-pressed")).toBe("true");
     });
 
     it("offers all three meanings of debug side by side", () => {

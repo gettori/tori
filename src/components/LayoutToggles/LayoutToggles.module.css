@@ -9,9 +9,11 @@
 }
 
 /* Pane hidden: accent the glyph (only the glyph, the border keeps its token),
-   held through hover. The "shown" state is the plain IconButton look, so this is
-   a passed modifier rather than IconButton's brand-fill `active`. */
-.off,
-.off:hover {
+   held through hover. The "shown" state is the plain IconButton look, so this
+   is the *un*pressed rule rather than IconButton's brand-fill `active`.
+   Selected state reads off Kobalte's `data-pressed`, so no class has to survive
+   IconButton's own classList. */
+.item:not([data-pressed]),
+.item:not([data-pressed]):hover {
   color: var(--brand-default);
 }

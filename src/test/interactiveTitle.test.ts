@@ -478,9 +478,18 @@ function tooltipSites(): TooltipSite[] {
     while ((match = prop.exec(source))) {
       const region = regionAt(regions, match.index);
       const attrs = region ? source.slice(region[0], region[1]) : "";
+      // A polymorphic host renders *as* another component and hands it every
+      // prop it did not claim, so the component that implements `tooltip` is
+      // the `as` target rather than the tag it is written on. That is how
+      // `<ToggleGroup.Item as={IconButton} tooltip=…>` reaches a real tooltip:
+      // Kobalte's item owns the toggle behaviour and IconButton owns the name
+      // and the trigger. Resolving it here keeps the check strict rather than
+      // widening it - an `as` naming something that does not implement the prop
+      // still fails, and so does a tooltip on a raw element.
+      const polymorphic = /\bas=\{([A-Za-z][\w.]*)\}/.exec(attrs);
       sites.push({
         path,
-        tag: region ? region[2] : null,
+        tag: polymorphic ? polymorphic[1] : region ? region[2] : null,
         hasAriaLabel: /\baria-label=/.test(attrs),
         selfClosing: attrs.trimEnd().endsWith("/"),
       });
