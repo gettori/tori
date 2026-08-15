@@ -1,4 +1,11 @@
-import { createSignal, onCleanup, Show, splitProps, type JSX } from "solid-js";
+import {
+  createSignal,
+  onCleanup,
+  Show,
+  splitProps,
+  type Component,
+  type JSX,
+} from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { Tooltip as Primitive } from "../../lib/tooltip";
 import { useDialogSurface } from "../Dialog/surface";
@@ -29,9 +36,19 @@ const SKIP_DELAY = 300;
  *  props interface fixed to `HTMLElement` would reject it. `ButtonHTMLAttributes`
  *  as the base rather than the plain HTML set because ~130 of the ticket's 134
  *  triggers are buttons; the handful that are not (`label`, `input`) name their
- *  element - `<Tooltip<HTMLLabelElement> as="label" …>`. */
-export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
-  extends Omit<JSX.ButtonHTMLAttributes<T>, "type" | "title"> {
+ *  element - `<Tooltip<HTMLLabelElement> as="label" …>`.
+ *
+ *  Generic in `P` as well, the props of a *component* host. It is `{}` for the
+ *  tag-name hosts that are the overwhelming majority, and inferred from `as`
+ *  when a component is passed, which is what makes that component's own
+ *  required props required here - see the `as` field below. `as` and `children`
+ *  are dropped from `P` because this component owns both: the host's `as` would
+ *  otherwise intersect with this one's and admit nothing. */
+export type TooltipProps<
+  T extends HTMLElement = HTMLButtonElement,
+  P extends Record<string, any> = {},
+> = Omit<JSX.ButtonHTMLAttributes<T>, "type" | "title"> &
+  Omit<P, "as" | "children"> & {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
    *  and nothing in Sway passes the fourth. */
@@ -66,22 +83,38 @@ export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
    *  it in the module comment for why it cannot be the default and what no test
    *  here can prove about it. */
   whenDisabled?: boolean;
-  /** The element the trigger renders as. A tag name, not a component: the
-   *  trigger has to *be* the control (see the module comment), and Sway's own
-   *  controls compose this from the inside rather than passing themselves in.
+  /** The element the trigger renders as. Either a tag name, or a component
+   *  whose props then have to be passed here too.
+   *
+   *  Whichever it is, the trigger has to *be* the control (see the module
+   *  comment), so this is a host to render, never a child to wrap. Sway's own
+   *  controls still compose this from the inside rather than passing themselves
+   *  in; the component form exists for the case they cannot cover, a control
+   *  that is itself a headless primitive's part. `IconGrid`'s tiles are the
+   *  first: the control is a `ToggleGroup.Item`, which only the toggle group's
+   *  context can supply, so `Button`'s trick of wrapping a plain `button` from
+   *  the inside is not available.
+   *
+   *  **A component host's own props are required here.** `P` is inferred from
+   *  this field, so `<Tooltip as={ToggleGroup.ButtonItem}>` without the `value`
+   *  that item needs is a type error. Without that, `ButtonHTMLAttributes` would
+   *  quietly satisfy it - it declares an optional `value` of its own - and the
+   *  grid would compile and then register every tile under the same undefined
+   *  key. Inference needs a *concrete* component, which is why `toggle-group.ts`
+   *  hands out a pinned `ButtonItem` beside the generic `Item`.
    *
    *  **Button-shaped tags only, in practice.** These props extend
    *  `ButtonHTMLAttributes`, so an attribute belonging to some other element -
    *  an `input`'s `placeholder`, a `label`'s `for` - is a type error here. The
-   *  two sets cannot simply be merged either: an interface extending both
-   *  `ButtonHTMLAttributes` and `InputHTMLAttributes` is rejected outright,
-   *  because they declare the same names at different types. A non-button
-   *  control that wants a description is usually better served by
-   *  `aria-describedby` and a visually-hidden hint - which is what the search
-   *  box does, and why it reads better there than a tooltip would. */
-  as?: keyof JSX.HTMLElementTags;
+   *  two sets cannot simply be merged either: a type combining both
+   *  `ButtonHTMLAttributes` and `InputHTMLAttributes` declares the same names at
+   *  different types and admits nothing. A non-button control that wants a
+   *  description is usually better served by `aria-describedby` and a
+   *  visually-hidden hint - which is what the search box does, and why it reads
+   *  better there than a tooltip would. */
+  as?: keyof JSX.HTMLElementTags | Component<P>;
   children?: JSX.Element;
-}
+};
 
 /**
  * The one tooltip surface: Kobalte's tooltip behind Sway's chrome and Sway's
@@ -93,10 +126,12 @@ export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
  * `onPointerEnter`, `onBlur`. Solid does not delegate `focus` and `focus` does
  * not bubble, so a trigger wrapped around the control would receive neither the
  * description nor the keyboard opening, and would look correct on hover while
- * being unreachable by keyboard. That is why `as` takes a tag name and this
- * component renders the control, rather than accepting one as a child: a Solid
- * JSX element is already-constructed DOM, and nothing can inject the trigger's
- * props into it after the fact.
+ * being unreachable by keyboard. That is why `as` names a host for this
+ * component to render, rather than accepting a built control as a child: a
+ * Solid JSX element is already-constructed DOM, and nothing can inject the
+ * trigger's props into it after the fact. A tag name is the usual host; a
+ * component is the escape hatch for a control that is itself a headless
+ * primitive's part, and it carries its own props with it (see `as`).
  *
  * **A tooltip is a description, not a name.** `aria-describedby` is what
  * Kobalte wires, and a description is announced after the name and skipped by
@@ -137,9 +172,10 @@ export interface TooltipProps<T extends HTMLElement = HTMLButtonElement>
  * its handlers exist when asked for, and the behaviour itself rests on the
  * manual walk recorded with the ticket.
  */
-export default function Tooltip<T extends HTMLElement = HTMLButtonElement>(
-  props: TooltipProps<T>,
-) {
+export default function Tooltip<
+  T extends HTMLElement = HTMLButtonElement,
+  P extends Record<string, any> = {},
+>(props: TooltipProps<T, P>) {
   const [local, trigger] = splitProps(props, [
     "label",
     "placement",
