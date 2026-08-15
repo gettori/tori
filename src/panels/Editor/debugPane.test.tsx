@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import { tab, tabs } from "../../test/tabs";
+import { installAnimationFrame } from "../../test/frames";
 
 // The Debug pane from the editor's side.
 //
@@ -16,6 +17,10 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
+// The tab strip corrects its visible count in a frame, and these read tabs off
+// the row it draws. Without this the row is still seeded empty.
+installAnimationFrame();
 
 const REPO = "/space/proj/main";
 

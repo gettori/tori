@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { tab } from "../../test/tabs";
+import { installAnimationFrame } from "../../test/frames";
 
 // Bookmarks from the pane's side.
 //
@@ -16,6 +17,10 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
+// The tab strip corrects its visible count in a frame, and these read tabs off
+// the row it draws. Without this the row is still seeded empty.
+installAnimationFrame();
 
 const REPO = "/space/proj/main";
 const FILE = `${REPO}/src/a.ts`;
@@ -136,8 +141,9 @@ describe("bookmarks, from the pane", () => {
     mark(FILE, 12);
     await waitFor(() => expect(code?.bookmarks).toEqual([{ line: 12 }]));
     // Closing the tab takes the buffer with it; the mark belongs to the
-    // workspace, not to the buffer.
-    fireEvent.click(screen.getByLabelText("Close"));
+    // workspace, not to the buffer. Scoped to the drawn tab: the measuring
+    // ghost carries a close affordance of the same name.
+    fireEvent.click(within(tab("a.ts")).getByLabelText("Close"));
     await waitFor(() => expect(code?.activePath).toBe(null));
     await open(FILE);
     await waitFor(() => expect(code?.bookmarks).toEqual([{ line: 12 }]));

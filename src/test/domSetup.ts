@@ -11,6 +11,7 @@
 // *unhandled* error after the test that caused it has already passed.
 import { afterEach } from "vitest";
 import { cleanup } from "@solidjs/testing-library";
+import { installTabLayout, resetTabBarWidth } from "./tabLayout";
 
 Element.prototype.scrollTo ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
@@ -67,4 +68,10 @@ CSSStyleDeclaration.prototype.setProperty = function (property, value, priority)
   }
 };
 
+// The one component whose behaviour is a measurement gets a measurable layout,
+// scoped to itself. See `tabLayout.ts` for why the ghost row was answering for
+// the strip and why that had to stop.
+installTabLayout();
+
 afterEach(cleanup);
+afterEach(resetTabBarWidth);
