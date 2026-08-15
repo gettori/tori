@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onCleanup, onMount, lazy, Match, Show, Suspense, Switch } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, lazy, Match, Show, Suspense, Switch, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -65,7 +65,8 @@ import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
-import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
+import ContextMenu from "../../components/Menu/ContextMenu";
+import { type MenuItem } from "../../components/Menu/rows";
 import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
@@ -739,23 +740,26 @@ export default function Editor(props: {
     }
   }
 
-  // The tab strip's right-click menu.
-  const [tabMenu, setTabMenu] = createSignal<MenuState | null>(null);
-
   // `blameOn` is the module's signal, not a local one: the Settings row switches
   // the same preference, and a copy seeded at mount would ignore it.
   function toggleBlame() {
     writeBlamePref(!blameOn());
   }
 
-  function openTabMenu(e: MouseEvent, t: FileTab) {
+  /** A view has no history of its own, so it has no menu to answer with, and the
+   *  browser's own menu is more useful than an empty one. This is the trigger's
+   *  `disabled`: Kobalte returns before `preventDefault()` when it is set, which
+   *  is exactly what the old handler did by returning early. */
+  const tabHasMenu = (t: FileTab) => {
+    const r = root();
+    return !!r && !!repoRelative(t.path, r);
+  };
+
+  function tabMenuItems(t: FileTab): MenuItem[] {
     const r = root();
     const rel = r && repoRelative(t.path, r);
-    // A view has no history of its own, so the menu it would open is empty, and
-    // the browser's own menu is more useful than a menu with nothing in it.
-    if (!r || !rel) return;
-    e.preventDefault();
-    const items: MenuItem[] = [
+    if (!r || !rel) return [];
+    return [
       {
         label: "File history",
         onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
@@ -769,7 +773,22 @@ export default function Editor(props: {
           emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
       },
     ];
-    setTabMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  /** The tab, with its right-click menu around it or without. `when` is fixed
+   *  for the life of the node (a ghost never becomes a real row), so this is a
+   *  plain branch rather than a `Show`. */
+  function MaybeTabMenu(p: { when: boolean; tab: FileTab; children: JSX.Element }) {
+    if (!p.when) return p.children;
+    return (
+      <ContextMenu
+        class={styles.tabMenu}
+        disabled={!tabHasMenu(p.tab)}
+        items={tabMenuItems(p.tab)}
+      >
+        {p.children}
+      </ContextMenu>
+    );
   }
 
   // The editable `.shared/` folder lives on the worktree container (projectPath);
@@ -1783,42 +1802,49 @@ export default function Editor(props: {
           idOf={tabId}
           onActivate={setActiveId}
           onReorder={setTabs}
-          renderTab={(t) => (
-            <Tab
-              active={tabId(t) === activeId()}
-              onClick={() => setActiveId(tabId(t))}
-              onContextMenu={(e) => openTabMenu(e, t)}
-              tooltip={tabTitle(t)}
-              // A synthetic view has no path to hand anyone: dropping its id on a
-              // terminal would paste `sway://…`, which names nothing on disk.
-              draggable={!isSyntheticId(t.path)}
-              onDragStart={(e) => {
-                e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
-                e.dataTransfer?.setData("text/plain", t.path);
-                if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-              }}
-              icon={tabIcon(t)}
-              trailing={
-                <>
-                  <Show when={isTouched(t.path) || isEditingNow(t.path)}>
-                    <span
-                      class={styles.tabTouched}
-                      classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
-                      title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
-                    >
-                      ●
-                    </span>
-                  </Show>
-                  <Show when={dirty()[t.path]}>
-                    <span class="tab-dirty">●</span>
-                  </Show>
-                </>
-              }
-              closeLabel="Close"
-              onClose={() => closeTab(tabId(t))}
-            >
-              {t.name}
-            </Tab>
+          renderTab={(t, ghost) => (
+            // The menu wraps the tab instead of being the tab: `Tab` composes
+            // `Tooltip`, which already renders *as* the button, and two wrappers
+            // cannot own one element. `.tabMenu` is `display: contents`, so the
+            // strip's flex row and its drag-reorder see exactly what they saw
+            // before, and the drag stays on the `Tab` itself, which is the thing
+            // with a box. The ghost row skips it: it is measured, never reached.
+            <MaybeTabMenu when={!ghost} tab={t}>
+              <Tab
+                active={tabId(t) === activeId()}
+                onClick={() => setActiveId(tabId(t))}
+                tooltip={tabTitle(t)}
+                // A synthetic view has no path to hand anyone: dropping its id on a
+                // terminal would paste `sway://…`, which names nothing on disk.
+                draggable={!isSyntheticId(t.path)}
+                onDragStart={(e) => {
+                  e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
+                  e.dataTransfer?.setData("text/plain", t.path);
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+                }}
+                icon={tabIcon(t)}
+                trailing={
+                  <>
+                    <Show when={isTouched(t.path) || isEditingNow(t.path)}>
+                      <span
+                        class={styles.tabTouched}
+                        classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
+                        title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+                      >
+                        ●
+                      </span>
+                    </Show>
+                    <Show when={dirty()[t.path]}>
+                      <span class="tab-dirty">●</span>
+                    </Show>
+                  </>
+                }
+                closeLabel="Close"
+                onClose={() => closeTab(tabId(t))}
+              >
+                {t.name}
+              </Tab>
+            </MaybeTabMenu>
           )}
           renderMenuItem={(t) => (
             <>
@@ -2158,9 +2184,6 @@ export default function Editor(props: {
           </Match>
         </Switch>
       </div>
-      <Show when={tabMenu()}>
-        <Menu x={tabMenu()!.x} y={tabMenu()!.y} items={tabMenu()!.items} onClose={() => setTabMenu(null)} />
-      </Show>
       <Show when={debugPick()}>
         {(pick) => (
           <DebugTargetDialog

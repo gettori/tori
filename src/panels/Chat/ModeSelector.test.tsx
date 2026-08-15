@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 import ModeSelector from "./ModeSelector";
 import { capabilitiesFor, pickableModels } from "../../utils/chatModels";
 import type { ChatConfig, ChatMode } from "../../utils/agents";
@@ -34,7 +35,9 @@ function foreign(modes: ChatMode[]): ChatConfig {
 
 /** The last portaled menu, since earlier renders leave theirs in the document. */
 function openMenu(getByLabelText: (t: string) => HTMLElement) {
-  fireEvent.click(getByLabelText("Permission mode"));
+  // `pointerClick`, not `fireEvent.click`: a Kobalte trigger opens on
+  // `pointerdown` and answers a bare click with nothing (src/test/menus.ts).
+  pointerClick(getByLabelText("Permission mode"));
   const menus = document.querySelectorAll('[role="menu"]');
   return menus[menus.length - 1] as HTMLElement;
 }
@@ -82,7 +85,7 @@ describe("ModeSelector", () => {
     ));
     const menu = openMenu(getByLabelText);
     const row = [...menu.querySelectorAll("*")].find((el) => el.textContent?.trim().startsWith("Yolo"));
-    fireEvent.click(row!);
+    pointerClick(row as HTMLElement);
     expect(onSelect).toHaveBeenCalledWith("yolo");
   });
 

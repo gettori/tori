@@ -78,6 +78,13 @@
   border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
 }
 
+/* The caret's menu trigger. It has to have a box, since a dropdown anchors on
+   its trigger's rect, so the caret gained an ancestor and the two rules that
+   reach it as `.termNewMain`'s next sibling are written through this instead. */
+.termNewCaretWrap {
+  display: inline-flex;
+}
+
 /* The History dropdown's button. Its own rounded box beside the launch split,
    and the anchor the panel positions against. `position: relative` is what the
    detached-sessions badge hangs off. */
@@ -132,7 +139,9 @@
   transition: transform var(--sway-duration-fast) ease;
 }
 
-.termNewCaret[aria-expanded="true"] .termNewChevron {
+/* Kobalte stamps the open state on the trigger, which is the wrapper now, not
+   the button. The chevron is still the button's. */
+.termNewCaretWrap[data-expanded] .termNewChevron {
   transform: rotate(180deg);
 }
 
@@ -141,8 +150,9 @@
   border-color: var(--brand-default);
 }
 
-/* Keep the shared divider crisp when only one half is hovered. */
-.termNewMain:hover:not(:disabled) + .termNewCaret:not(:hover) {
+/* Keep the shared divider crisp when only one half is hovered. Reaches through
+   the caret's trigger wrapper, which sits between the two halves now. */
+.termNewMain:hover:not(:disabled) + .termNewCaretWrap > .termNewCaret:not(:hover) {
   border-left-color: var(--brand-default);
 }
 

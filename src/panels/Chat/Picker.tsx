@@ -1,7 +1,8 @@
 import { Show, createSignal, type Component, type JSX } from "solid-js";
 import { Check, ChevronDown, ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
-import Menu, { MenuRow } from "../../components/Menu/Menu";
+import Dropdown from "../../components/Menu/Dropdown";
+import { MenuRow } from "../../components/Menu/rows";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./Chat.module.css";
 
@@ -16,8 +17,7 @@ import styles from "./Chat.module.css";
  * choosing was the one surface that did not look like the app.
  *
  * Opens upward. The composer sits at the bottom of the pane, so a menu placed
- * below its trigger would be dragged back over the trigger by the viewport
- * clamp.
+ * below its trigger would have nowhere to go but back over it.
  */
 export default function Picker(props: {
   icon: Component<{ size?: number | string }>;
@@ -40,41 +40,45 @@ export default function Picker(props: {
   /** Called as the menu closes, for a caller holding page state inside it. */
   onClose?: () => void;
 }) {
-  const [at, setAt] = createSignal<{ x: number; y: number } | null>(null);
-  let trigger: HTMLButtonElement | undefined;
-
-  function close() {
-    setAt(null);
-    props.onClose?.();
-  }
-
-  function toggle() {
-    if (at()) return close();
-    if (!trigger) return;
-    const r = trigger.getBoundingClientRect();
-    // Left edge of the trigger, and its top as the line the menu sits above, so
-    // the menu reads as belonging to this pill rather than to the bar.
-    setAt({ x: r.left, y: r.top - 6 });
-  }
+  const [open, setOpen] = createSignal(false);
 
   return (
-    <>
+    // The pill belongs to its `Tooltip`, so the menu wraps it rather than being
+    // it. The wrapper keeps a box, since a dropdown is anchored on its trigger's
+    // rect; `display: contents` would leave it with none and open the menu in
+    // the corner of the window.
+    <Dropdown
+      as="span"
+      class={styles.pillMenu}
+      open={open()}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) props.onClose?.();
+      }}
+      // Above the pill, and left-aligned to it, so the menu reads as belonging
+      // to this control rather than to the bar. Kobalte flips it back down on
+      // its own if the space above ever runs out, which is what the old viewport
+      // clamp could only do by dragging the menu over the trigger.
+      placement="top-start"
+      menu={props.children}
+    >
       <Tooltip
         as="button"
-        ref={trigger}
         type="button"
         class={styles.pill}
         classList={{
           [styles.pillPending]: !!props.pending,
           [styles.pillAttention]: !!props.attention,
-          [styles.pillOpen]: !!at(),
+          [styles.pillOpen]: open(),
         }}
         aria-label={props.ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={!!at()}
         label={props.tooltip}
         disabled={props.disabled}
-        onClick={toggle}
+        // Kobalte writes these on the trigger, which is the wrapper, and a
+        // wrapper is neither focusable nor what a screen reader lands on. The
+        // pill is both, so it says this for itself.
+        aria-haspopup="menu"
+        aria-expanded={open()}
       >
         <Icon icon={props.icon} size={13} class={styles.pillIcon} />
         <Show when={props.prefix}>{(p) => <span class={styles.pillPrefix}>{p()}</span>}</Show>
@@ -83,14 +87,7 @@ export default function Picker(props: {
           <Icon icon={ChevronDown} size={13} />
         </span>
       </Tooltip>
-      <Show when={at()}>
-        {(pos) => (
-          <Menu x={pos().x} y={pos().y} openAbove anchorEl={trigger} onClose={close}>
-            {props.children}
-          </Menu>
-        )}
-      </Show>
-    </>
+    </Dropdown>
   );
 }
 
@@ -124,7 +121,7 @@ export function PickerOption(props: {
 /** A row that leads to another page of the same menu, rather than choosing. */
 export function PickerMore(props: { label: string; onOpen: () => void }) {
   return (
-    <MenuRow keepOpen onClick={props.onOpen}>
+    <MenuRow closeOnSelect={false} onClick={props.onOpen}>
       <span class={styles.pickBody}>
         <span class={styles.pickName}>{props.label}</span>
       </span>

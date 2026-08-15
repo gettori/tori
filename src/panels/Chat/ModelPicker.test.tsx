@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 import ModelPicker from "./ModelPicker";
 import { pickableModels } from "../../utils/chatModels";
 import type { ChatConfig } from "../../utils/agents";
@@ -75,8 +76,10 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   // The pills are buttons in the container; their menus are portaled to the
   // body, so rows are read off the document rather than off the render root.
   const pills = () => [...result.container.querySelectorAll("button")] as HTMLButtonElement[];
+  // `pointerClick`, not `fireEvent.click`: a Kobalte trigger opens on
+  // `pointerdown` and answers a bare click with nothing (src/test/menus.ts).
   const open = (i: number) => {
-    fireEvent.click(pills()[i]);
+    pointerClick(pills()[i]);
     // The last one: menus are portaled to the body, and a menu another render
     // in this file left behind is still a match for the first selector.
     const menus = [...document.querySelectorAll('[role="menu"]')];
@@ -91,7 +94,7 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
       (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === name,
     );
     if (!row) throw new Error(`no row named ${name}`);
-    fireEvent.click(row);
+    pointerClick(row as HTMLElement);
   };
   return { ...result, pills, open, rowNames, pick, onSelectModel, onSelectEffort };
 }
