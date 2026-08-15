@@ -88,6 +88,14 @@ export default defineConfig({
           // link deterministic. Note the plugin's entry is *appended* to this
           // array rather than replacing it, so both run.
           setupFiles: ["src/test/domSetup.ts"],
+          // Vitest's default is 5s, and the heaviest axe scans (the icon grid in
+          // `ProjectIconDialog`, the one in `SpaceDialog`) measure ~5s on their
+          // own under a full run's parallel load - fast in isolation, over the
+          // line when every worker is running axe at once. Adding two test files
+          // in #106 was enough to tip them, which makes 5s a cliff the suite
+          // happened to be standing on rather than a limit anything chose. The
+          // scans are genuinely that expensive; the timeout is what was wrong.
+          testTimeout: 20_000,
           server: inlineSolid,
         },
       },
