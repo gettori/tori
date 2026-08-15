@@ -165,6 +165,23 @@
   background: transparent;
 }
 
+/* A row that opens a level rather than committing a choice. It keeps its
+   highlight for as long as its flyout is open, because the pointer has left it
+   by then and `data-highlighted` alone would leave the trail back up the tree
+   unmarked. */
+.item[data-expanded] {
+  background: var(--neutral-hover);
+}
+
+/* Pushed to the trailing edge by the glyph's own auto margin rather than by the
+   label: a plain-text label is a text node with no box to grow, and a rich row's
+   `.tab-name` already takes the free space. Both land the chevron in the same
+   place this way. */
+.subInto {
+  margin-left: auto;
+  color: var(--fg-subtle);
+}
+
 .separator {
   height: 1px;
   margin: var(--sway-space-2) var(--sway-space-3);

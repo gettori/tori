@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 
 // Back and Forward, from the pane's side.
 //
@@ -161,8 +162,8 @@ describe("recording where you have been", () => {
     await arrive({ path: `${REPO}/src/thing.ts` });
     expect(backBtn().disabled).toBe(true);
 
-    fireEvent.click(inTrail().getByText("thing.ts"));
-    fireEvent.click(await screen.findByText("other.ts"));
+    pointerClick(inTrail().getByText("thing.ts"));
+    pointerClick(await screen.findByRole("menuitem", { name: "other.ts" }));
     await waitFor(() => expect(code?.activePath).toBe(`${REPO}/src/other.ts`));
     expect(backBtn().disabled).toBe(false);
     await goBack(`${REPO}/src/thing.ts`);
