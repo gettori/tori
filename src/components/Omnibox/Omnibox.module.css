@@ -1,42 +1,29 @@
-/* The command palette's own chrome. It used to borrow the dialog cluster's
-   hand-rolled backdrop, panel, title and picker rules, but every dialog now
-   composes `Dialog`, so those rules had no other consumer and the Omnibox was
-   the one thing keeping them alive. The palette stays native
-   (Kobalte covers the dialogs; this is a command bar, not a dialog), so the
-   chrome moved here rather than dying with them.
+/* The command palette's own chrome, on top of `Dialog` (#110). The palette used
+   to hand-roll its own portal, backdrop and panel, staying native while every
+   dialog moved onto Kobalte, on the reasoning that a command bar is not a
+   dialog. It behaves like one in every way that matters (modal, dismissable,
+   focus-trapped), so it composes `Dialog` now and the hand-rolled shell is
+   gone.
 
-   What did not come across, and why: the dialogs' picker is bounded and
-   scrolled by `Dialog`'s own body, and its filter field is stuck to the top of
-   that scroller. Here the panel is the scroller, the field is a flex sibling
-   that never moves, and there is no clear button to leave room for. */
+   What is left here is the one dimension `Dialog` does not supply. Its width is
+   `confirm`'s already, character for character, and its padding, surface,
+   border, radius and shadow are `Dialog`'s panel exactly; only the height bound
+   is the palette's own, because this list is longer than a dialog's body and
+   wants to stop sooner than 85vh.
 
-/* Above menus (1000) and below toasts (1200) and dialogs (1250): a toast still
-   reaches the user over an open palette, and a dialog the palette opened stacks
-   over it. */
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--scrim-default);
-}
+   The height bound is the whole reason this class still exists, and it is not
+   decoration: the panel is fixed and centred, so an unbounded one overflows in
+   both directions and the rows above the fold become unreachable. That has
+   already happened once, when a shared rule was deleted for the dialogs while
+   this file was still borrowing it. Guarded by check 8 of
+   scripts/check-tokens.mjs, because no test in this stack can see a CSS rule.
 
-/* The height bound nothing above supplies: the backdrop is `position: fixed`
-   and centres its child, so an unbounded panel overflows it in both directions
-   and the rows above the fold become unreachable. Guarded by check 8 of
-   scripts/check-tokens.mjs, because no test in this stack can see a CSS rule. */
+   Set as `Dialog`'s hook rather than as a `max-height` of its own: both rules
+   would be a single class on the same element, so the winner would be whichever
+   CSS module the bundler emitted second, which is not something either file
+   states or controls. Setting the variable resolves on the element instead. */
 .panel {
-  display: flex;
-  flex-direction: column;
-  max-height: min(70vh, calc(520px * var(--ui-scale)));
-  width: min(calc(420px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
-  padding: calc(20px * var(--ui-scale));
-  background: var(--canvas-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
-  box-shadow: var(--shadow-lg);
+  --dialog-max-height: min(70vh, calc(520px * var(--ui-scale)));
 }
 
 .title {
@@ -47,74 +34,26 @@
   white-space: pre-wrap;
 }
 
-.inputWrap {
-  display: flex;
-  align-items: center;
+/* The filter field, pinned to the top of the dialog's scrolling body. Every
+   row-and-list rule this file used to carry is the shared <Combobox>'s now
+   (#110); what is left below is only what a palette *row* says.
+
+   Sticky rather than a flex header, because the scroller is `Dialog`'s body and
+   this is one of its children rather than a sibling of it. Same call
+   `PickerModal` makes for the same reason. The mode heading above scrolls away
+   with the rows, which is the right half to give up: it names what the box is
+   looking at, and the field is what you are typing into. */
+.field {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
-.input {
-  width: 100%;
-  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-xl);
-  background: var(--canvas-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-default);
-  outline: none;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
-}
-.input:focus {
-  border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
-}
-
-/* The scroller. `flex: 1 1 auto` inside the bounded column is what gives the
-   rows somewhere to scroll rather than somewhere to overflow. */
-.list {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  margin-top: calc(10px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-}
-
-.empty {
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--fg-muted);
-}
-
-/* One rule, where there used to be two: a row class in Dialogs.module.css and
-   this file's `.item` for the label + secondary-text + key-chip line laid over
-   it. Split across two stylesheets, which of `.item` and `.disabled` won was an
-   import-order accident; merged, the source order below is the answer. (The
-   dialogs' half is gone entirely now that the picker renders through the shared
-   <Combobox>.) */
-.item {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--fg-default);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.item:hover {
-  background: var(--neutral-hover);
-}
-/* Keyboard/selected row wins over hover (declared after, same specificity).
-   Load-bearing: `onMouseEnter` moves the index too, so the pointer and the
-   arrow keys are competing for this row constantly. */
-.item.active {
-  background: var(--brand-subtle);
-}
-
+/* `min-width: 0` because a flex item refuses to shrink below its content
+   otherwise, which would leave the ellipsis with nothing to do and push the
+   secondary text off the row instead. */
 .itemLabel {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -142,27 +81,6 @@
   text-overflow: ellipsis;
   color: var(--fg-muted);
   font-size: var(--sway-text-sm);
-}
-
-/* Names the block of rows below it ("Recently visited", "Recent files"). Quiet
-   and small: it is a label on the list, not a row in it, and nothing selects
-   it. */
-.sectionHeader {
-  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
-  color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-/* A command whose requirements are unmet still lists - the row is where its
-   reason is shown - but reads as unavailable and does not run. Declared after
-   `.item`, which is what makes this `cursor` win at equal specificity. */
-.disabled {
-  cursor: default;
-}
-.disabled .itemLabel {
-  color: var(--fg-muted);
 }
 
 /* The keys this command also answers to, matching the Cmd+/ sheet's chips so

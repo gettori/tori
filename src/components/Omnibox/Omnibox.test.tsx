@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // The one box, and its six modes. It carries what ⌘P and ⌘K each used to own, so
 // most of what is asserted here was asserted of one of them before: the files,
@@ -83,7 +84,9 @@ function open(prefix = "") {
   ));
 }
 
-const input = () => screen.getByRole("textbox");
+// `combobox`, not `textbox`: the filter drives a listbox, and since #110 that is
+// the shared surface's own input saying so.
+const input = () => screen.getByRole("combobox");
 const typeInto = (value: string) => fireEvent.input(input(), { target: { value } });
 
 /** Every row's label, in order. */
@@ -198,6 +201,24 @@ describe("? - what the prefixes do", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect((input() as HTMLInputElement).value).toBe(">");
     expect(rowLabels()).toContain("Show or hide the sidebar");
+  });
+
+  // A signpost is the one row the box is picked from more than once without
+  // ever closing, so it is where "a pick is an event, not a selection" is
+  // load-bearing: a surface that committed the row instead would treat the
+  // second press as unpicking it, and would leave the row's label in the box
+  // rather than the prefix.
+  it("answers the same signpost twice, rather than going dead after the first", () => {
+    open("?");
+    fireEvent.click(screen.getByText(/^>\s+Commands$/));
+    expect((input() as HTMLInputElement).value).toBe(">");
+
+    typeInto("?");
+    fireEvent.click(screen.getByText(/^>\s+Commands$/));
+
+    expect((input() as HTMLInputElement).value).toBe(">");
+    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
@@ -328,16 +349,46 @@ describe("the empty box's recent blocks", () => {
     expect(fire("src/hot.ts", OPEN_IN_EDITOR)).toEqual({ path: `${REPO}/src/hot.ts` });
   });
 
-  // The listbox promises selectable children, and a heading is not one: it is
-  // visible, but nothing in the accessibility tree may offer it, or the arrow
-  // keys would appear to skip a row that was announced.
-  it("keeps the headings out of the accessibility tree", () => {
+  // Once any block is headed, the rest of the project is headed too rather than
+  // trailing off unlabelled. A half-grouped list reads as a bug on screen, and
+  // it is also the one shape the shared surface cannot render: Kobalte decides
+  // "group or option" per entry, so one bare row in a grouped list throws.
+  it("heads the project's own files too, rather than trailing off unlabelled", async () => {
+    bridge.files = ["src/alpha.ts", "src/beta.ts"];
     worked("src/hot.ts");
     open();
-    const list = screen.getByRole("listbox");
-    const announced = [...list.children].filter((el) => el.getAttribute("aria-hidden") !== "true");
-    expect(announced).toHaveLength(screen.getAllByRole("option").length);
-    expect(screen.getByText("Recent files").getAttribute("aria-hidden")).toBe("true");
+
+    await waitFor(() => expect(screen.getByText("src/alpha.ts")).toBeTruthy());
+    expect(screen.getByText("Recent files")).toBeTruthy();
+    expect(screen.getByText("Project")).toBeTruthy();
+  });
+
+  // Kobalte's default, adopted in #110 over the `aria-hidden` heading #100 wrote.
+  // The worry was the same either way: the listbox promises selectable children,
+  // so a heading announced *as one* would look like a row the arrow keys skip.
+  // Presentational answers it without hiding the text, which is the better half
+  // of the trade - the heading is still readable, and still not an option.
+  it("keeps the headings readable without making them options", () => {
+    worked("src/hot.ts");
+    open();
+
+    const heading = screen.getByText("Recent files");
+    expect(heading.getAttribute("role")).toBe("presentation");
+    expect(heading.getAttribute("aria-hidden")).toBeNull();
+    expect(screen.getAllByRole("option").map((r) => r.textContent)).not.toContain("Recent files");
+  });
+
+  it("has no accessibility violations with its blocks headed", async () => {
+    worked("src/hot.ts");
+    open();
+    input().focus();
+
+    // `aria-valid-attr-value` off for the same reason every expanded scan in
+    // this repo turns it off: axe's `controlsWithinPopup` declines to judge
+    // `aria-controls` on anything carrying `aria-haspopup`.
+    await expectNoAxeViolations(document.body, {
+      rules: { "aria-valid-attr-value": { enabled: false } },
+    });
   });
 });
 
@@ -381,22 +432,31 @@ describe("> - actions", () => {
     // rather than either vanishing (you would never learn it exists) or running
     // and saving nothing.
     open(">");
-    const row = screen.getByText("Save file").parentElement!;
+    const row = screen.getByText("Save file").closest('[role="option"]')!;
     expect(row.textContent).toContain("No file open");
     expect(row.getAttribute("aria-disabled")).toBe("true");
-
-    // Filtered down first, so the row Enter would take is unambiguously this one
-    // rather than whatever happened to be at the top of the full list.
-    typeInto(">Save file");
-    expect(rowLabels()[0]).toBe("Save file");
 
     let fired = false;
     const on = () => (fired = true);
     window.addEventListener(EDITOR_SAVE, on);
-    fireEvent.keyDown(input(), { key: "Enter" });
     fireEvent.click(screen.getByText("Save file"));
     window.removeEventListener(EDITOR_SAVE, on);
     expect(fired).toBe(false);
+  });
+
+  // Kobalte's default, adopted in #110. #100 deliberately let the arrow keys
+  // land on a refused command so its reason could be read by keyboard; the
+  // shared surface skips a disabled row entirely, so the reason is now only
+  // readable on screen. An accepted regression, not an oversight.
+  it("never puts a refused command under Enter, since the arrows skip it", () => {
+    open(">");
+    // Filtered down first, so the row at the top is unambiguously the refused
+    // one rather than whatever happened to head the full list.
+    typeInto(">Save file");
+    expect(rowLabels()[0]).toBe("Save file");
+
+    const row = screen.getByText("Save file").closest('[role="option"]')!;
+    expect(input().getAttribute("aria-activedescendant")).not.toBe(row.id);
   });
 
   it("runs a command once its requirement is met", () => {
@@ -647,5 +707,77 @@ describe(": - go to line", () => {
     open(":");
     typeInto(":120");
     expect(screen.getByText("No file open")).toBeTruthy();
+  });
+});
+
+// The shell, which had no assertions at all until the palette moved onto
+// `Dialog` (#110). That is worth stating plainly: the box hand-rolled its own
+// portal, backdrop, `role="dialog"` and outside-press dismissal, and every one
+// of those could have broken without a single case in this file noticing. The
+// whole shell was replaced and the 48 assertions above stayed green, which is
+// evidence about their coverage rather than about the change.
+describe("the shell", () => {
+  // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so
+  // a press fired before this yield lands on nobody.
+  const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("names itself as a modal, whatever mode it is showing", () => {
+    open(">");
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    // Resolved the way a screen reader would: `titleHidden` keeps the name out
+    // of the layout but not out of the tree, so it arrives by reference rather
+    // than as an `aria-label`.
+    const labelledBy = dialog.getAttribute("aria-labelledby");
+    expect(labelledBy).toBeTruthy();
+    expect(document.getElementById(labelledBy!)?.textContent).toBe("Command palette");
+    // The visible heading names the *mode*, and is not the accessible name.
+    expect(screen.getByText("Commands")).toBeTruthy();
+  });
+
+  it("puts the caret in the filter, so the first keystroke is a query", async () => {
+    open();
+
+    await waitFor(() => expect(document.activeElement).toBe(input()));
+  });
+
+  it("closes on Escape", () => {
+    open();
+
+    fireEvent.keyDown(input(), { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on a pointer down outside the panel", async () => {
+    open();
+    await macrotask();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays open on a pointer down inside the panel", async () => {
+    open();
+    await macrotask();
+
+    fireEvent.pointerDown(screen.getByRole("dialog"));
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("has no accessibility violations", async () => {
+    open();
+
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("has no accessibility violations with nothing to show", async () => {
+    open();
+    typeInto("zzzzzz");
+
+    await expectNoAxeViolations(document.body);
   });
 });
