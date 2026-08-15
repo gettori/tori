@@ -1,0 +1,75 @@
+/* Track, thumb and label as one row, scaling with --ui-scale like every other
+   control. The track is deliberately close to the checkbox's height so a pane
+   mixing the two does not look like two different control families. */
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* Visually hidden, never removed: the native input is what Space toggles, what
+   carries role="switch", and what `getByRole("switch")` finds. See the same
+   comment in Checkbox.module.css. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  flex: none;
+  width: calc(26px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--neutral-hover);
+  transition:
+    background var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+.control[data-checked] {
+  background: var(--accent-fg);
+}
+
+/* Focus lives on the hidden input, so the ring comes off the root's
+   focus-within. Same ring as Button.module.css. */
+.root:focus-within .control {
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.control[data-disabled] {
+  opacity: 0.5;
+}
+
+.thumb {
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--sway-white);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--sway-duration-fast) var(--sway-ease);
+}
+
+.thumb[data-checked] {
+  transform: translateX(calc(11px * var(--ui-scale)));
+}
+
+.label {
+  color: var(--fg-default);
+  font-size: var(--sway-text-sm);
+  line-height: var(--sway-line-normal);
+  cursor: default;
+}
+
+.root[data-disabled] .label {
+  color: var(--fg-muted);
+}
