@@ -9,6 +9,7 @@ import {
   type JSX,
 } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
+import { tabGesture } from "../utils/tabGesture";
 import { Tabs } from "../lib/tabs";
 import { TabRow } from "./Tab/Tab";
 import Dropdown from "./Menu/Dropdown";
@@ -83,6 +84,12 @@ export default function OverflowTabBar<T>(props: {
     setVisibleCount(computeVisibleCount(extents, bar.clientWidth, reserves));
   }
 
+  /** What the bar is handling right now, and whether it is a user selecting a
+   *  tab. Marked in the capture phase and read from inside a handler Kobalte
+   *  owns; `tabGesture` is where the lifetime and the exclusions are explained,
+   *  and it is deliberately not a flag this file clears by hand. */
+  const gesture = tabGesture();
+
   /**
    * Keep activation on the click rather than on the press.
    *
@@ -102,31 +109,19 @@ export default function OverflowTabBar<T>(props: {
    * and keep every event they had.
    */
   function onPress(e: Event) {
-    markGesture(e);
-    if (onTab) e.stopPropagation();
-  }
-
-  /** Whether the gesture being handled right now landed on one of this bar's
-   *  tabs. Set in the capture phase, so it is already true by the time
-   *  Kobalte's own handler runs, and cleared on a microtask, so it covers the
-   *  synchronous handler chain and nothing after it. */
-  let onTab = false;
-  function markGesture(e: Event) {
-    onTab = !!(e.target as Element | null)?.closest?.('[role="tab"]');
-    queueMicrotask(() => {
-      onTab = false;
-    });
+    gesture.mark(e);
+    if (gesture.live()) e.stopPropagation();
   }
 
   let ro: ResizeObserver | undefined;
   onMount(() => {
     bar.addEventListener("pointerdown", onPress, true);
-    bar.addEventListener("click", markGesture, true);
-    bar.addEventListener("keydown", markGesture, true);
+    bar.addEventListener("click", gesture.mark, true);
+    bar.addEventListener("keydown", gesture.mark, true);
     onCleanup(() => {
       bar.removeEventListener("pointerdown", onPress, true);
-      bar.removeEventListener("click", markGesture, true);
-      bar.removeEventListener("keydown", markGesture, true);
+      bar.removeEventListener("click", gesture.mark, true);
+      bar.removeEventListener("keydown", gesture.mark, true);
     });
     requestAnimationFrame(measure);
     ro = new ResizeObserver(() => measure());
@@ -169,14 +164,19 @@ export default function OverflowTabBar<T>(props: {
    * for one render, before the panel has picked what comes next.
    *
    * The gesture is what separates the two, rather than the state: a heal runs
-   * from an effect with nothing but a render behind it. Closing a tab is the
-   * case that makes this worth getting right, and it lands correctly for a
-   * reason worth naming - the close button is a *sibling* of the trigger, so a
-   * click on it has no tab above it and reads as the heal it causes rather than
-   * as a selection.
+   * from an effect with nothing but a render behind it. Gating on the state
+   * instead would swallow a real click on a strip that starts with nothing
+   * selected, since Kobalte's heal picks the leftmost tab and so does a user.
+   *
+   * Closing a tab is the case that makes this worth getting right, and both
+   * ways of closing one land on the same side of the line. A click on the close
+   * button has no tab above it, because the button is a *sibling* of the
+   * trigger. A Delete or Backspace does land on the tab, and the heal it causes
+   * arrives while that keystroke is still dispatching, which is why
+   * `tabGesture` refuses to call a close keystroke a selection.
    */
   function onChange(next: string) {
-    if (!onTab) return;
+    if (!gesture.live()) return;
     if (next === props.activeId) return;
     props.onActivate(next);
   }
