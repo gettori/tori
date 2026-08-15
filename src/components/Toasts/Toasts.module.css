@@ -1,13 +1,15 @@
-.toastStack {
+.toastRegion {
   position: fixed;
   right: calc(14px * var(--ui-scale));
   bottom: calc(14px * var(--ui-scale));
   z-index: 1200;
+  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(28px * var(--ui-scale))));
+  pointer-events: none;
+}
+.toastStack {
   display: flex;
   flex-direction: column;
   gap: calc(8px * var(--ui-scale));
-  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(28px * var(--ui-scale))));
-  pointer-events: none;
 }
 .toast {
   display: flex;

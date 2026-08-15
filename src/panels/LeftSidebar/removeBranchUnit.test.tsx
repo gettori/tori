@@ -110,6 +110,9 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
+// The toast stack lives in App, not in the sidebar (#105), so the region the
+// sidebar's setError writes to is mounted alongside it here.
+const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { REMOVE_BRANCH_UNIT, emitWith } = await import("../../utils/events");
@@ -117,7 +120,12 @@ const { REMOVE_BRANCH_UNIT, emitWith } = await import("../../utils/events");
 const cmds = () => bridge.calls.map((c) => c.cmd);
 
 async function mounted() {
-  const r = render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
+  const r = render(() => (
+    <>
+      <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />
+      <ToastRegion />
+    </>
+  ));
   await waitFor(() => expect(screen.queryByText("proj")).toBeTruthy());
   bridge.calls.length = 0;
   return r;
