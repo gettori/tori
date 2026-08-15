@@ -1,86 +1,16 @@
-/* The one menu/dropdown surface: right-click menus, the tab-overflow (+N) list,
-   and button dropdowns all render through <Menu>. Container + rows live here so
-   the design can't drift per call site. */
-.menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: calc(180px * var(--ui-scale));
-  max-width: calc(320px * var(--ui-scale));
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: calc(6px * var(--ui-scale));
-  -webkit-user-select: none;
-  user-select: none;
-  background: var(--canvas-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
-  box-shadow: var(--shadow-md);
-}
+/* The one menu surface: right-click menus, the tab-overflow (+N) list, button
+   dropdowns and Breadcrumbs' folder flyouts all render through `ContextMenu.tsx`
+   or `Dropdown.tsx` over `rows.tsx`. Container and rows live here so the design
+   cannot drift per call site.
 
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
-  color: var(--fg-default);
-  border-radius: var(--sway-radius-md);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--sway-duration-fast) ease;
-}
-.menuItem:hover {
-  background: var(--neutral-hover);
-}
-
-/* A leading glyph in a rich row (direct child, so a nested control's own icon -
-   e.g. a .tab-close X - keeps its own size). CSS-sized to the control icon so it
-   tracks --ui-scale. */
-.menuItem > svg {
-  width: var(--control-icon);
-  height: var(--control-icon);
-}
-
-/* Rich rows (overflow menu) put the label in a .tab-name/.tab-label; let it take
-   the free space so trailing controls (e.g. the close button) sit at the edge. */
-.menuItem :global(.tab-name),
-.menuItem :global(.tab-label) {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.menuItem.danger {
-  color: var(--danger-fg);
-}
-.menuItem.warn {
-  color: var(--attention-fg);
-}
-.menuItem.disabled {
-  color: var(--fg-muted);
-  cursor: default;
-}
-.menuItem.disabled:hover {
-  background: transparent;
-}
-
-.menuSep {
-  height: 1px;
-  margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: var(--border-default);
-}
-
-/* ---- The Kobalte surface (ContextMenu.tsx, Dropdown.tsx, rows.tsx).
-
-   Same design as the block above, restated against the primitive's own DOM
-   rather than copied: the container is positioned by floating-ui instead of by
-   `position: fixed`, the rows are real `role="menuitem"` elements, and the rule
-   is an `<hr>`. Both blocks live here until #103 phase 6 deletes the old one, so
-   the two are read side by side while both are on screen.
+   Written against Kobalte's own DOM: the container is positioned by floating-ui
+   rather than by `position: fixed`, the rows are real `role="menuitem"`
+   elements, and the rule is an `<hr>`. The hand-rolled block this replaced stood
+   beside it from #103 phase 2 until phase 6 deleted it with `Menu.tsx`.
 
    Values are recorded as a recipe on the Menu component page. Where they came
    from: the solid-ui reference per adr_solid_ui_reference, snapped to Sway's
-   ramps, with Sway's density winning wherever the two disagree. ---- */
+   ramps, with Sway's density winning wherever the two disagree. */
 .content {
   z-index: 1000;
   min-width: calc(180px * var(--ui-scale));

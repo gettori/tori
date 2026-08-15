@@ -129,6 +129,7 @@ export default function OverflowTabBar<T>(props: {
             was, margins included, so the strip lays out unchanged. */}
         <Dropdown
           as="span"
+          wrapper
           class="tab-overflow-wrap"
           open={menuOpen()}
           onOpenChange={setMenuOpen}
@@ -150,9 +151,10 @@ export default function OverflowTabBar<T>(props: {
             classList={{ active: menuOpen() }}
             label={`${overflow().length} more`}
             aria-label={`${overflow().length} more`}
-            // Kobalte writes these on the trigger, which is the wrapper, and a
-            // wrapper is neither focusable nor what a screen reader lands on.
-            // The button is both, so it says this for itself.
+            // Kobalte writes these on the trigger, which is the wrapper, and
+            // they cannot be taken off it (`wrapper` removes its `role` and tab
+            // stop, not its ARIA). The button is what the keyboard reaches, so
+            // it says this too.
             aria-haspopup="menu"
             aria-expanded={menuOpen()}
           >

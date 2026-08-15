@@ -49,6 +49,7 @@ export default function Picker(props: {
     // the corner of the window.
     <Dropdown
       as="span"
+      wrapper
       class={styles.pillMenu}
       open={open()}
       onOpenChange={(next) => {
@@ -74,9 +75,9 @@ export default function Picker(props: {
         aria-label={props.ariaLabel}
         label={props.tooltip}
         disabled={props.disabled}
-        // Kobalte writes these on the trigger, which is the wrapper, and a
-        // wrapper is neither focusable nor what a screen reader lands on. The
-        // pill is both, so it says this for itself.
+        // Kobalte writes these on the trigger, which is the wrapper, and they
+        // cannot be taken off it (`wrapper` removes its `role` and tab stop, not
+        // its ARIA). The pill is what the keyboard reaches, so it says this too.
         aria-haspopup="menu"
         aria-expanded={open()}
       >
