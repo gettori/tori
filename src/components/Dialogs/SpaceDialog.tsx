@@ -1,11 +1,11 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
+import IconGrid from "../IconGrid/IconGrid";
 import { searchIcons } from "../Icon/iconRegistry";
 import { SPACE_COLORS, spaceHueRgb, rgbTriple } from "../../utils/spaceTint";
-import Tooltip from "../Tooltip/Tooltip";
 
 export type SpaceDialogMode = "new" | "edit";
 
@@ -42,7 +42,6 @@ export default function SpaceDialog(props: {
   const [name, setName] = createSignal(props.name);
   const [icon, setIcon] = createSignal<string | null>(props.icon);
   const [color, setColor] = createSignal<string | null>(props.color);
-  const [iconQuery, setIconQuery] = createSignal("");
   let first: HTMLInputElement | undefined;
 
   const isNew = () => props.mode === "new";
@@ -122,85 +121,47 @@ export default function SpaceDialog(props: {
       </Show>
 
       <div class={styles.label}>Colour</div>
-      <div class={styles.swatchRow} role="group" aria-label="Space colour">
-        {/* "Auto" is a state, not a swatch: it hands the hue back to the
-            name, which is what an untouched space already uses. Its own
-            preview shows what that derives to, so the choice is visible
-            rather than a leap. */}
-        <Tooltip
-          as="button"
-          type="button"
-          class={styles.swatch}
-          classList={{ [styles.swatchSelected]: color() === null }}
-          aria-pressed={color() === null}
-          label="Automatic (from the name)"
-          aria-label="Automatic (from the name)"
-          style={{ "--swatch-rgb": spaceHueRgb(isNew() ? name() : props.name, null) }}
-          onClick={() => setColor(null)}
-        >
-          <span class={styles.swatchAuto}>A</span>
-        </Tooltip>
-        <For each={SPACE_COLORS}>
-          {(entry) => (
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.swatch}
-              classList={{ [styles.swatchSelected]: color() === entry.name }}
-              aria-pressed={color() === entry.name}
-              label={entry.name}
-              aria-label={entry.name}
-              style={{ "--swatch-rgb": rgbTriple(entry.hex) }}
-              onClick={() => setColor(entry.name)}
-            />
-          )}
-        </For>
-      </div>
+      {/* "Auto" is a state, not a swatch: it hands the hue back to the name,
+          which is what an untouched space already uses. Its own preview shows
+          what that derives to, so the choice is visible rather than a leap. */}
+      <IconGrid
+        variant="swatch"
+        aria-label="Space colour"
+        value={color()}
+        onChange={setColor}
+        leading={{
+          label: "Automatic (from the name)",
+          tint: spaceHueRgb(isNew() ? name() : props.name, null),
+          content: <span class={styles.swatchAuto}>A</span>,
+        }}
+        tiles={() =>
+          SPACE_COLORS.map((entry) => ({
+            value: entry.name,
+            label: entry.name,
+            tint: rgbTriple(entry.hex),
+          }))
+        }
+      />
       <div class={styles.note}>Tints the window behind this space.</div>
 
       <div class={styles.label}>Icon</div>
-      <input
-        class={styles.input}
-        value={iconQuery()}
-        placeholder="Search icons"
-        aria-label="Search icons"
-        onInput={(e) => setIconQuery(e.currentTarget.value)}
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck={false}
+      {/* "None" is a state, not a search result, so it stays put while the grid
+          filters - otherwise clearing an icon would need the query cleared
+          first. */}
+      <IconGrid
+        aria-label="Space icon"
+        value={icon()}
+        onChange={setIcon}
+        leading={{ label: "No icon", content: <span class={styles.iconNone}>None</span> }}
+        tiles={(query) =>
+          searchIcons(query).map((entry) => ({
+            value: entry.name,
+            label: entry.name,
+            content: <Icon icon={entry.icon} />,
+          }))
+        }
+        search={{ label: "Search icons", placeholder: "Search icons" }}
       />
-      <div class={styles.iconGrid} role="group" aria-label="Space icon">
-        {/* "None" is a state, not a search result, so it stays put while the
-            grid filters - otherwise clearing an icon would need the query
-            cleared first. */}
-        <Tooltip
-          as="button"
-          type="button"
-          class={styles.iconTile}
-          classList={{ [styles.iconSelected]: icon() === null }}
-          aria-pressed={icon() === null}
-          label="No icon"
-          onClick={() => setIcon(null)}
-        >
-          <span class={styles.iconNone}>None</span>
-        </Tooltip>
-        <For each={searchIcons(iconQuery())}>
-          {(entry) => (
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.iconTile}
-              classList={{ [styles.iconSelected]: icon() === entry.name }}
-              aria-pressed={icon() === entry.name}
-              label={entry.name}
-              aria-label={entry.name}
-              onClick={() => setIcon(entry.name)}
-            >
-              <Icon icon={entry.icon} />
-            </Tooltip>
-          )}
-        </For>
-      </div>
     </Dialog>
   );
 }

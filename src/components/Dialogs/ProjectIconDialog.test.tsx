@@ -193,6 +193,26 @@ describe("ProjectIconDialog", () => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
+    // Added with #109, and a deliberate change of behaviour rather than a
+    // characterization of the old one. Before the picker moved onto `IconGrid`
+    // the dialog's own `onKeyDown` saw every Enter, including one aimed at a
+    // tile: it cancelled the button's activation and saved, so the grid had no
+    // keyboard activation at all. `IconGrid` stops both activation keys at the
+    // group, so Enter on a tile picks that tile and saving needs focus outside
+    // the picker.
+    it("picks a tile on Enter rather than saving from inside the picker", () => {
+      const { onConfirm, tiles, search } = open();
+
+      fireEvent.keyDown(tiles()[0], { key: "Enter" });
+
+      expect(onConfirm).not.toHaveBeenCalled();
+      expect(tiles()[0].getAttribute("aria-pressed")).toBe("true");
+
+      // The search field still saves, so the change is scoped to the picker.
+      fireEvent.keyDown(search(), { key: "Enter" });
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
     it("ignores Enter while it is already working", () => {
       const { onConfirm, search } = open({ busy: true });
 

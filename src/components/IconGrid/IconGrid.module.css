@@ -1,0 +1,111 @@
+/* The search field over the group.
+   Its own rule rather than the dialogs' `.input`: this component is not owned
+   by the dialogs and cannot reach into their module, and a shared control is
+   what #106's `Select` and friends are for. Kept token-for-token identical to
+   `Dialogs.module.css`'s `.input` so the field looks the same as the Name field
+   above it in the same dialog. */
+.search {
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  font-size: var(--sway-text-xl);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+.search:focus {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.group {
+  gap: calc(6px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
+}
+/* The group is one tab stop, so it takes a focus ring of its own for the state
+   where it holds the stop itself: nothing selected yet, or the tile that had
+   focus was filtered away. Without this that state is invisible. */
+.group:focus-visible {
+  outline: 2px solid var(--brand-default);
+  outline-offset: 2px;
+  border-radius: var(--sway-radius-md);
+}
+
+/* Shared by both variants: a tile is a centred box with no chrome of its own,
+   and each variant paints the rest. */
+.tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---- grid: the fixed icon set ----
+   Scrollable, because the set outgrew a screenful. `grid-template-columns` is
+   set inline by the component, from the same constant its ArrowUp/Down handler
+   steps by (see IconGrid.tsx): one owner for the column count, rather than a
+   number here and a matching one there that nothing keeps in step. */
+.grid {
+  display: grid;
+  max-height: calc(216px * var(--ui-scale));
+  overflow-y: auto;
+}
+.grid .tile {
+  aspect-ratio: 1;
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-muted);
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    color var(--sway-duration-fast) ease;
+}
+/* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.grid .tile svg {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+}
+.grid .tile:hover {
+  color: var(--fg-default);
+  border-color: var(--brand-default);
+}
+/* Declared after :hover so a selected tile keeps its ring while the pointer is
+   over it, the same ordering rule the sidebar's selected rows depend on. */
+.grid .tile[aria-pressed="true"] {
+  color: var(--brand-default);
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+
+/* ---- swatch: the space colour row ----
+   One wrapped row, no scroll: the set is deliberately small enough to take in
+   at a glance. */
+.swatch {
+  display: flex;
+  flex-wrap: wrap;
+}
+.swatch .tile {
+  /* Declared so the var always resolves; every tile overrides it inline with
+     its own hue from the swatch table, as a channel triple (see spaceTint.ts
+     for why a triple rather than a colour). */
+  --tile-tint: var(--shell-glow-rgb);
+  width: calc(22px * var(--ui-scale));
+  height: calc(22px * var(--ui-scale));
+  background: rgb(var(--tile-tint));
+  border: 1px solid transparent;
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-on-emphasis);
+  transition: box-shadow var(--sway-duration-fast) ease;
+}
+.swatch .tile:hover {
+  box-shadow: 0 0 0 2px var(--border-strong);
+}
+.swatch .tile[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--brand-ring);
+  border-color: var(--brand-default);
+}
