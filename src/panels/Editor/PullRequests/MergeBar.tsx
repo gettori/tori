@@ -16,10 +16,11 @@
 // agents, and a second delete path in this panel would be a second place for
 // those guards to be forgotten.
 
-import { For, Show, createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { mergeGate } from "../../../utils/mergeGate";
 import { MERGE_METHODS, type MergeMethod, type MergeableState } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
+import Select, { type SelectOption } from "../../../components/Select/Select";
 import styles from "./MergeBar.module.css";
 
 const METHOD_LABEL: Record<MergeMethod, string> = {
@@ -27,6 +28,13 @@ const METHOD_LABEL: Record<MergeMethod, string> = {
   squash: "Squash and merge",
   rebase: "Rebase and merge",
 };
+
+/** All three methods, in the order `MERGE_METHODS` declares them: the picker
+ *  offers every one and lets the server refuse, per the module comment. */
+const METHOD_OPTIONS: SelectOption[] = MERGE_METHODS.map((m) => ({
+  value: m,
+  label: METHOD_LABEL[m],
+}));
 
 export default function MergeBar(props: {
   /** null until the verdict has been read, which is not the same as `unknown`:
@@ -75,17 +83,14 @@ export default function MergeBar(props: {
             </Button>
           </Show>
 
-          <select
-            class={styles.method}
+          <Select
+            size="xs"
             aria-label="How to merge"
+            options={METHOD_OPTIONS}
             value={method()}
             disabled={props.busy}
-            onChange={(e) => setMethod(e.currentTarget.value as MergeMethod)}
-          >
-            <For each={MERGE_METHODS}>
-              {(m) => <option value={m}>{METHOD_LABEL[m]}</option>}
-            </For>
-          </select>
+            onChange={(value) => setMethod(value as MergeMethod)}
+          />
 
           {/* An unread verdict falls through `gate()` to `unknown`, which
               blocks. That is the same answer for the same reason: nothing has

@@ -60,16 +60,6 @@
   color: var(--brand-default);
 }
 
-.picker {
-  background: var(--canvas-input);
-  color: var(--fg-default);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font: inherit;
-  cursor: pointer;
-}
-
 .slider {
   display: inline-flex;
   align-items: center;

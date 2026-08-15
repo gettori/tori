@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../../test/axe";
+import { pointerClick } from "../../../test/menus";
 import { createSignal } from "solid-js";
 import type { PrFile, PullRequest, ReviewThread } from "../../../utils/forgeTypes";
 
@@ -1104,6 +1105,42 @@ describe("landing a pull request", () => {
     // The picker's own value, not a method chosen here: a repo can forbid any of
     // the three and that setting is not readable from this side.
     expect(cmds("github_merge")[0].args).toMatchObject({ number: 42, method: "squash" });
+  });
+
+  it("shuts the method picker while the merge is in flight", async () => {
+    // The picker is disabled on the same `busy` flag as the buttons beside it:
+    // a method changed mid-merge would name one thing while the command already
+    // in flight carries another. Asserted before the await, which is the whole
+    // window the flag is up for.
+    await signInAs("skarif2");
+    await open(pr({ author: "skarif2" }));
+    await waitFor(() => expect(state()).toBe("clean"));
+
+    const picker = () => screen.getByLabelText("How to merge") as HTMLButtonElement;
+    expect(picker().disabled).toBe(false);
+
+    fireEvent.click(button("Merge"));
+    expect(picker().disabled).toBe(true);
+
+    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
+  });
+
+  it("merges by whichever method the picker names", async () => {
+    // The picker is a listbox behind a button since #106, so a choice is two
+    // presses and the rows exist only while it is open. What this pins is the
+    // round trip: the row pressed is the method the command carries.
+    await signInAs("skarif2");
+    await open(pr({ author: "skarif2" }));
+    await waitFor(() => expect(state()).toBe("clean"));
+
+    pointerClick(screen.getByLabelText("How to merge"));
+    await screen.findByRole("listbox");
+    pointerClick(screen.getByRole("option", { name: "Merge commit" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.click(button("Merge"));
+    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
+    expect(cmds("github_merge")[0].args).toMatchObject({ number: 42, method: "merge" });
   });
 
   it("holds the button shut on the server's verdict, and says which one", async () => {
