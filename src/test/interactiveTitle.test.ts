@@ -119,6 +119,8 @@ const KEPT = new Map<string, Kept>([
   ],
   ["components/Dialogs/stackedDialogs.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/ForgeChip/ForgeChip.tsx", { count: 3, reason: TRUNCATION }],
+  ["components/Menu/ContextMenu.test.tsx", { count: 1, reason: FIXTURE }],
+  ["components/Menu/Dropdown.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
