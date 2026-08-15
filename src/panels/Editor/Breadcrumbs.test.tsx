@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import Breadcrumbs from "./Breadcrumbs";
+import { pointerClick } from "../../test/menus";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
@@ -81,6 +82,11 @@ afterEach(() => {
 
 const crumbs = () => [...document.querySelectorAll("nav button")].map((b) => b.textContent);
 
+// Kobalte's focus scope focuses the content from a `setTimeout(0)`; asserting on
+// the keyboard before yielding is asserting on machinery that does not exist
+// yet. Same seam `Dropdown.test.tsx` documents.
+const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe("the path half of the bar", () => {
   it("renders for a file with no language server attached", () => {
     // Nothing published for this path, which is what a project with no server
@@ -137,9 +143,9 @@ describe("picking somewhere else from a crumb", () => {
       entry(`${ROOT}/src/panels`, "thing.ts"),
     ];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("panels"));
-    const row = await screen.findByText("other.ts");
-    fireEvent.click(row);
+    pointerClick(screen.getByText("panels"));
+    await screen.findByRole("menuitem", { name: "other.ts" });
+    pointerClick(screen.getByRole("menuitem", { name: "other.ts" }));
     // Through OPEN_IN_EDITOR, which is where the pane records arrivals: this is
     // what makes the pick worth a jump-list entry, and worth exactly one.
     expect(opened).toEqual([{ path: `${ROOT}/src/panels/other.ts` }]);
@@ -148,25 +154,80 @@ describe("picking somewhere else from a crumb", () => {
   it("lists the file crumb's own neighbours rather than the file", async () => {
     dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts")];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("thing.ts"));
-    await screen.findByText("other.ts");
+    pointerClick(screen.getByText("thing.ts"));
+    await screen.findByRole("menuitem", { name: "other.ts" });
     expect(reads).toEqual([`${ROOT}/src/panels`]);
   });
 
-  it("drills into a folder without closing the picker", async () => {
+  it("reads nothing at all until a crumb is opened", async () => {
+    // Three crumbs, three menus, and one folder read. Each crumb owns its own
+    // menu now, and a menu's contents are mounted by the portal only while it
+    // is open, so the bar costs nothing to render.
+    dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts")];
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
+    expect(reads).toEqual([]);
+
+    pointerClick(screen.getByText("panels"));
+
+    await screen.findByRole("menuitem", { name: "other.ts" });
+    expect(reads).toEqual([`${ROOT}/src/panels`]);
+  });
+
+  it("opens a subfolder beside its row, keeping the level it came from", async () => {
+    // The whole point of the change. Descending used to replace the list in
+    // place, so the way back out was the Escape key and the trail you had
+    // walked was gone from the screen.
+    dirs[`${ROOT}/src`] = [entry(`${ROOT}/src`, "utils", true), entry(`${ROOT}/src`, "main.ts")];
+    dirs[`${ROOT}/src/utils`] = [entry(`${ROOT}/src/utils`, "fuzzy.ts")];
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
+    pointerClick(screen.getByText("src"));
+    pointerClick(await screen.findByRole("menuitem", { name: "utils" }));
+
+    const row = await screen.findByRole("menuitem", { name: "fuzzy.ts" });
+    expect(screen.getByRole("menuitem", { name: "main.ts" })).toBeTruthy();
+
+    pointerClick(row);
+    expect(opened).toEqual([{ path: `${ROOT}/src/utils/fuzzy.ts` }]);
+    await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
+  });
+
+  it("reads a folder only when its own level is opened", async () => {
+    dirs[`${ROOT}/src`] = [entry(`${ROOT}/src`, "utils", true), entry(`${ROOT}/src`, "panels", true)];
+    dirs[`${ROOT}/src/utils`] = [entry(`${ROOT}/src/utils`, "fuzzy.ts")];
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
+    pointerClick(screen.getByText("src"));
+    await screen.findByRole("menuitem", { name: "utils" });
+    expect(reads).toEqual([`${ROOT}/src`]);
+
+    pointerClick(screen.getByRole("menuitem", { name: "utils" }));
+
+    await screen.findByRole("menuitem", { name: "fuzzy.ts" });
+    // Its sibling folder is on screen the whole time and is never read.
+    expect(reads).toEqual([`${ROOT}/src`, `${ROOT}/src/utils`]);
+  });
+
+  it("descends with the right arrow and comes back with the left", async () => {
     dirs[`${ROOT}/src`] = [entry(`${ROOT}/src`, "utils", true)];
     dirs[`${ROOT}/src/utils`] = [entry(`${ROOT}/src/utils`, "fuzzy.ts")];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("src"));
-    fireEvent.click(await screen.findByText("utils"));
-    const row = await screen.findByText("fuzzy.ts");
-    fireEvent.click(row);
-    expect(opened).toEqual([{ path: `${ROOT}/src/utils/fuzzy.ts` }]);
+    pointerClick(screen.getByText("src"));
+    const menu = await screen.findByRole("menu");
+    await macrotask();
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "utils" }), { key: "ArrowRight" });
+    const level = await screen.findByRole("menuitem", { name: "fuzzy.ts" });
+
+    fireEvent.keyDown(level, { key: "ArrowLeft" });
+
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "fuzzy.ts" })).toBeNull());
+    // Back where it started rather than closed outright.
+    expect(screen.getByRole("menuitem", { name: "utils" })).toBeTruthy();
   });
 
   it("says a folder is empty rather than opening a blank menu", async () => {
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("panels"));
+    pointerClick(screen.getByText("panels"));
     expect(await screen.findByText("This folder is empty.")).toBeTruthy();
   });
 
@@ -176,7 +237,7 @@ describe("picking somewhere else from a crumb", () => {
     // nothing in it.
     unreadable.add(`${ROOT}/src/panels`);
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("panels"));
+    pointerClick(screen.getByText("panels"));
     expect(await screen.findByText("Could not read this folder.")).toBeTruthy();
   });
 
@@ -186,38 +247,76 @@ describe("picking somewhere else from a crumb", () => {
       entry(`${ROOT}/src/panels`, "thing.ts"),
     ];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("panels"));
+    pointerClick(screen.getByText("panels"));
     // Scoped to the menu: `thing.ts` is also the crumb that opened it.
-    await screen.findByText("other.ts");
-    const rows = within(document.querySelector("[role='menu']") as HTMLElement);
+    await screen.findByRole("menuitem", { name: "other.ts" });
+    const rows = within(screen.getByRole("menu"));
     expect(rows.getByText("thing.ts").getAttribute("aria-current")).toBe("true");
     expect(rows.getByText("other.ts").getAttribute("aria-current")).toBeNull();
+  });
+
+  it("says on the crumb itself that it opens a menu", async () => {
+    // The crumb is the trigger rather than something wrapped in one, which is
+    // what puts these on the element a keyboard reaches. Every other dropdown in
+    // the app belongs to a Tooltip and has to write them by hand.
+    dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts")];
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
+    const crumb = screen.getByText("panels");
+    expect(crumb.tagName).toBe("BUTTON");
+    expect(crumb.getAttribute("aria-haspopup")).toBe("true");
+    expect(crumb.getAttribute("aria-expanded")).toBe("false");
+
+    pointerClick(crumb);
+
+    await screen.findByRole("menuitem", { name: "other.ts" });
+    expect(crumb.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("offers a symbol crumb its siblings, and opens the name rather than the body", async () => {
     publishSymbols(PATH, TREE);
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={{ line: 2, column: 4 }} />);
     // The `go` crumb: its siblings are the other methods of `Thing`.
-    fireEvent.click(screen.getByText("go"));
-    const row = await screen.findByText("stop");
-    fireEvent.click(row);
+    pointerClick(screen.getByText("go"));
+    // Matched at the end: the kind glyph is labelled, so the row's whole
+    // accessible name reads "Method stop".
+    const row = await screen.findByRole("menuitem", { name: /stop$/ });
+    pointerClick(row);
     // `stop`'s body starts at column 3 and its name at column 3 of line 5;
     // OutlinePanel makes the same choice for the same reason.
     expect(opened).toEqual([{ path: PATH, line: 5, col: 3 }]);
   });
 
+  it("takes its menu with it when the crumb goes", async () => {
+    // The other half of one menu per crumb: the menu belongs to the crumb, so a
+    // trail that loses the crumb loses the menu with it. Nothing here is
+    // listening for that, and Kobalte reports no close for a trigger that
+    // unmounts, so a shared open-menu signal would have been left holding one.
+    publishSymbols(PATH, TREE);
+    const [caret, setCaret] = createSignal<{ line: number; column: number } | null>({
+      line: 2,
+      column: 4,
+    });
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={caret()} />);
+    pointerClick(screen.getByText("go"));
+    await screen.findByRole("menu");
+
+    setCaret(null);
+
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
   it("offers the outermost crumb the file's top level", async () => {
     publishSymbols(PATH, TREE);
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={{ line: 2, column: 4 }} />);
-    fireEvent.click(screen.getByText("Thing"));
-    expect(await screen.findByText("helper")).toBeTruthy();
+    pointerClick(screen.getByText("Thing"));
+    expect(await screen.findByRole("menuitem", { name: /helper$/ })).toBeTruthy();
   });
 
   it("closes the picker once something is picked", async () => {
     dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts")];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
-    fireEvent.click(screen.getByText("panels"));
-    fireEvent.click(await screen.findByText("other.ts"));
-    await waitFor(() => expect(document.querySelector("[role='menu']")).toBeNull());
+    pointerClick(screen.getByText("panels"));
+    pointerClick(await screen.findByRole("menuitem", { name: "other.ts" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 });

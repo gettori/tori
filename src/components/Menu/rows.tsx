@@ -1,5 +1,8 @@
 import { For, type JSX } from "solid-js";
+import { ChevronRight } from "lucide-solid";
+import Icon from "../Icon/Icon";
 import { DropdownMenu as Primitive } from "../../lib/menu";
+import { useMenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
 /** A menu entry: an action row, or a visual separator. Covers the flat cases
@@ -62,6 +65,65 @@ export function MenuRow(props: {
     >
       {props.children}
     </Primitive.Item>
+  );
+}
+
+/** How far a flyout sits from the row that opened it, and how far back up. Both
+ *  in px and neither a token, for the reason `Dropdown`'s `TRIGGER_GUTTER`
+ *  documents: floating-ui takes numbers, so these never reach CSS and cannot
+ *  read `--ui-scale`.
+ *
+ *  The gutter is the surface's own `--sway-space-3` padding plus the same 4px a
+ *  dropdown clears its button by, since the row it is measured from is inset by
+ *  that padding: the flyout clears the parent's *edge* by the gap the eye reads,
+ *  not the row's. The shift undoes the padding on the other axis, so the
+ *  flyout's first row lines up with the row that opened it rather than sitting
+ *  one padding lower. */
+const SUB_GUTTER = 10;
+const SUB_SHIFT = -6;
+
+/**
+ * A row that opens another page of the menu beside itself.
+ *
+ * The four Kobalte parts arrive as one component rather than four exports,
+ * because they are never composed apart and one of the four is easy to leave
+ * out: the `Portal` is what makes a level *lazy*, since it renders its children
+ * only while the submenu is present. A call site that forgot it would mount
+ * every level of a tree at once, and a per-level `createResource` would fetch
+ * every folder the moment the menu opened.
+ *
+ * `SubTrigger` is a `role="menuitem"` like any other row, so it carries the row
+ * class: a flyout's opener is not a different kind of row, it is a row that
+ * happens to lead somewhere. Kobalte writes `aria-haspopup` and `aria-expanded`
+ * on it, and closes the whole stack when a row anywhere inside is picked.
+ */
+export function MenuSub(props: {
+  /** The trigger row's own content, the same shape a `MenuRow` takes. */
+  label: JSX.Element;
+  disabled?: boolean;
+  /** What typeahead matches on, when the label is not plain text. */
+  textValue?: string;
+  /** The rows of the level this row opens. */
+  children: JSX.Element;
+}) {
+  // The wrapper's mount, not this row's own reading of it: see `surface.ts`.
+  const surface = useMenuSurface();
+
+  return (
+    <Primitive.Sub gutter={SUB_GUTTER} shift={SUB_SHIFT}>
+      <Primitive.SubTrigger class={styles.item} disabled={props.disabled} textValue={props.textValue}>
+        {props.label}
+        <Icon icon={ChevronRight} class={styles.subInto} aria-hidden="true" />
+      </Primitive.SubTrigger>
+      <Primitive.Portal mount={surface()}>
+        <Primitive.SubContent
+          class={styles.content}
+          onContextMenu={(e: MouseEvent) => e.preventDefault()}
+        >
+          {props.children}
+        </Primitive.SubContent>
+      </Primitive.Portal>
+    </Primitive.Sub>
   );
 }
 
