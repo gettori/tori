@@ -57,15 +57,18 @@ describe("SegmentedControl accessibility", () => {
     await expectNoAxeViolations(container);
   });
 
-  // `SegmentedOption` documents `aria-label` as "required when there is no text
-  // label", but both fields are optional to the type system, so nothing stops an
-  // icon-only segment shipping nameless. This is the case the gate has to catch,
-  // and asserting it is what keeps the test above from being decorative.
+  // A nameless segment is now a type error (#116), and the two directives below
+  // are the assertion: remove the union from `SegmentedOption` and they turn into
+  // unused-directive errors, so this test fails without a line changing. The axe
+  // run stays because the type is a gate, not a proof - it says a name must be
+  // passed, and this says what a browser reports when one is not.
   it("catches an icon-only segment with no accessible name", async () => {
     const { container } = render(() => (
       <SegmentedControl
         options={[
+          // @ts-expect-error an icon-only segment with no `aria-label` is the defect
           { value: "list", icon: <svg width="16" height="16" /> },
+          // @ts-expect-error the same, for the second segment
           { value: "grid", icon: <svg width="16" height="16" /> },
         ]}
         value="list"
