@@ -86,11 +86,12 @@
   color: var(--fg-muted);
 }
 
-/* One rule, where there used to be two: the dialogs' `.pickerItem` for the row
-   itself and this file's `.item` for the label + secondary-text + key-chip line
-   laid over it. Split across two stylesheets, which of `.item` and `.disabled`
-   won was an import-order accident; merged, the source order below is the
-   answer. */
+/* One rule, where there used to be two: a row class in Dialogs.module.css and
+   this file's `.item` for the label + secondary-text + key-chip line laid over
+   it. Split across two stylesheets, which of `.item` and `.disabled` won was an
+   import-order accident; merged, the source order below is the answer. (The
+   dialogs' half is gone entirely now that the picker renders through the shared
+   <Combobox>.) */
 .item {
   display: flex;
   align-items: center;
