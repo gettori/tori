@@ -69,3 +69,105 @@
   margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--border-default);
 }
+
+/* ---- The Kobalte surface (ContextMenu.tsx, Dropdown.tsx, rows.tsx).
+
+   Same design as the block above, restated against the primitive's own DOM
+   rather than copied: the container is positioned by floating-ui instead of by
+   `position: fixed`, the rows are real `role="menuitem"` elements, and the rule
+   is an `<hr>`. Both blocks live here until #103 phase 6 deletes the old one, so
+   the two are read side by side while both are on screen.
+
+   Values are recorded as a recipe on the Menu component page. Where they came
+   from: the solid-ui reference per adr_solid_ui_reference, snapped to Sway's
+   ramps, with Sway's density winning wherever the two disagree. ---- */
+.content {
+  z-index: 1000;
+  min-width: calc(180px * var(--ui-scale));
+  max-width: calc(320px * var(--ui-scale));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--sway-space-3);
+  -webkit-user-select: none;
+  user-select: none;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--shadow-md);
+}
+.content:focus {
+  /* The content takes focus when the menu opens, before any row is highlighted.
+     A ring around the whole surface indicates no target; the highlighted row is
+     what says where the keyboard is. Same call `.panel:focus` makes in
+     Dialog.module.css. */
+  outline: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-lg);
+  color: var(--fg-default);
+  border-radius: var(--sway-radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+/* Pointer and keyboard reach the same state. Kobalte stamps `data-highlighted`
+   on whichever row the arrows, Home/End or typeahead landed on, and it also
+   stamps it on hover, so the two never disagree about which row is live.
+   `:hover` is kept beside it rather than dropped: the row is styled the moment
+   the pointer is over it, without waiting for the primitive's own pointer-move
+   handler, and a row is still highlighted if a future refactor renders one
+   outside a menu context. */
+.item:hover,
+.item[data-highlighted] {
+  background: var(--neutral-hover);
+}
+
+/* A leading glyph in a rich row (direct child, so a nested control's own icon -
+   e.g. a .tab-close X - keeps its own size). CSS-sized to the control icon so it
+   tracks --ui-scale. */
+.item > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+/* Rich rows (overflow menu) put the label in a .tab-name/.tab-label; let it take
+   the free space so trailing controls (e.g. the close button) sit at the edge. */
+.item :global(.tab-name),
+.item :global(.tab-label) {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item.danger {
+  color: var(--danger-fg);
+}
+.item.warn {
+  color: var(--attention-fg);
+}
+
+/* `data-disabled` rather than a class: the row layer passes `disabled` to the
+   primitive, which owns the state (see rows.tsx). Muted rather than the
+   reference's `opacity`, because a role is theme-correct and an opacity is not.
+   Kobalte already blocks activation, so nothing here has to. */
+.item[data-disabled] {
+  color: var(--fg-muted);
+  cursor: default;
+}
+.item[data-disabled]:hover {
+  background: transparent;
+}
+
+.separator {
+  height: 1px;
+  margin: var(--sway-space-2) var(--sway-space-3);
+  border: 0;
+  background: var(--border-default);
+}

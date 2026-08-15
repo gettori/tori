@@ -23,3 +23,23 @@ export function rightClick(el: HTMLElement): boolean {
   el.dispatchEvent(ev);
   return ev.defaultPrevented;
 }
+
+/**
+ * Click `el` the way a mouse does: down, up, then click.
+ *
+ * **Nothing in a Kobalte menu responds to `fireEvent.click` alone.** A trigger
+ * opens on `pointerdown`; a row runs its action on `pointerup` with
+ * `button === 0` (or on Enter/Space from the keyboard). A bare click reaches
+ * both and changes neither, which reads as "the menu did not open" or "the
+ * action did not fire" rather than as a wrong event.
+ *
+ * The surfaces being migrated were plain `div`s and `button`s with `onClick`
+ * handlers, so every pre-migration test drives them with `fireEvent.click`.
+ * Each of those has to move to this helper as its surface migrates, and that is
+ * the single largest mechanical change phases 3 and 4 carry.
+ */
+export function pointerClick(el: HTMLElement): void {
+  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+  el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, button: 0 }));
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+}
