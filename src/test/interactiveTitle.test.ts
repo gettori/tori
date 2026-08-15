@@ -386,8 +386,11 @@ const NAMED_BY_TEXT = new Set(["Tab"]);
 /** Components that accept `tooltip` and take a *required* name prop of their
  *  own, so the tooltip is a description on a control that is already named and
  *  no backfill is wanted. `Picker`'s `ariaLabel` is required by its type, which
- *  is why there is nothing further to assert here. */
-const NAMES_ITSELF = new Set(["Picker"]);
+ *  is why there is nothing further to assert here. `Toast.CloseButton` is
+ *  Kobalte's, which always carries an `aria-label` (its own translation when
+ *  the caller passes none) and forwards the rest to `as={Button}`, so the
+ *  tooltip reaches an implementation the `as=` hides from this scan. */
+const NAMES_ITSELF = new Set(["Picker", "Toast.CloseButton"]);
 
 /** The attribute region of every JSX opening tag: `[start, end, tagName]`.
  *

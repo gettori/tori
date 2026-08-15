@@ -7,6 +7,7 @@ import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
+import ToastRegion from "./components/Toasts/Toasts";
 import Settings from "./panels/Settings/Settings";
 import UpdatePill from "./components/UpdatePill/UpdatePill";
 import Button from "./components/Button/Button";
@@ -627,6 +628,7 @@ function App() {
       </Show>
 
       <AskpassDialog />
+      <ToastRegion />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   emitWith,
   FOCUS_SEARCH,
   FOCUS_TERMINAL,
+  FOCUS_TOASTS,
   RUN_LAST_TASK,
   DEBUG_START,
   DEBUG_STOP,
@@ -341,6 +342,19 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdOpt("KeyB"),
     run: () => emit(TOGGLE_FILETREE),
+  },
+  {
+    id: "focus-toasts",
+    keys: ["⌘", "⌥", "T"],
+    label: "Focus notifications",
+    sub: "Tab moves between toasts; Escape dismisses the focused one.",
+    group: "view",
+    scope: "global",
+    match: cmdOpt("KeyT"),
+    // Kobalte ships its own Alt+T document listener for this; it is disabled in
+    // ToastRegion because Option+T types a glyph on macOS and the listener
+    // never yields to a defaultPrevented key. This entry is the one handler.
+    run: () => emit(FOCUS_TOASTS),
   },
   {
     id: "project-search",

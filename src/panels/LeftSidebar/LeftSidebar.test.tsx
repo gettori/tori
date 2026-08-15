@@ -94,6 +94,9 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
+// The toast stack lives in App, not in the sidebar (#105), so a test that
+// asserts on a toast has to mount the region the sidebar's setError writes to.
+const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 
 describe("fan-out groups in the tree", () => {
@@ -186,7 +189,12 @@ describe("fan-out groups in the tree", () => {
 
   it("promotes a winner by its recorded path, and says what did not go", async () => {
     bridge.promoteProblems = [`${ROOT}/.sway-attempts/try-3: worktree removed, but branch stayed`];
-    render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
+    render(() => (
+      <>
+        <LeftSidebar selected={null} onSelect={() => {}} />
+        <ToastRegion />
+      </>
+    ));
 
     fireEvent.click(await screen.findByText(GOAL));
     const winner = await screen.findByText("try-2");

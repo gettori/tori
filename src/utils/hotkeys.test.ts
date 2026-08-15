@@ -45,6 +45,7 @@ describe("the canonical binding table", () => {
         "editor-new-scratch",
         "filter-sidebar",
         "focus-terminal",
+        "focus-toasts",
         "lsp-code-action",
         "lsp-definition",
         "lsp-format",
