@@ -1,0 +1,163 @@
+/* The one select: the settings rows, the merge-method picker, the debug-script
+   picker and the styleguide's theme picker all render through `Select.tsx`.
+   Trigger and listbox live here so the design cannot drift per call site;
+   layout (width) stays with the caller's own class.
+
+   Values are recorded as a recipe on the Select component page. Where they came
+   from: the solid-ui reference per adr_solid_ui_reference (trigger = a bordered
+   field with a trailing caret; content = the same surface family as Menu's
+   .content; item = shadcn's row with a trailing check), snapped to Sway's
+   ramps. The trigger takes its chrome from the settings field family
+   (--canvas-input, --border-default, brand focus ring) rather than from
+   Button: a select reads as a field you set, not an action you take. The item
+   recipe restates Menu's `.item` on purpose - the listbox should read as the
+   same family of transient surface - minus the menu's rich-row machinery. */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sway-space-3);
+  height: var(--control-height);
+  padding: 0 var(--sway-space-3) 0 var(--sway-space-4);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+/* Keyboard focus: the field family's gold brand ring (pointer focus stays
+   quiet, same as Button). */
+.trigger:focus-visible {
+  outline: none;
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The caret is CSS-sized to the standard control icon (overrides Lucide's
+   numeric width/height attrs), so it scales with the UI and no call site sets
+   a size. */
+.trigger svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: 0 0 auto;
+}
+
+.value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+/* ---- Sizes: fixed outer height (md is the base above), tighter horizontal
+   padding as they shrink. Same scheme as Button. ---- */
+.md {
+}
+
+.sm {
+  height: var(--control-height-sm);
+  padding: 0 var(--sway-space-2) 0 var(--sway-space-3);
+}
+
+.xs {
+  height: var(--control-height-xs);
+  padding: 0 var(--sway-space-2) 0 var(--sway-space-3);
+  font-size: var(--sway-text-md);
+}
+
+/* ---- The listbox surface: Menu's .content, minus the menu machinery ---- */
+
+.content {
+  z-index: 1000;
+  min-width: calc(140px * var(--ui-scale));
+  max-width: calc(320px * var(--ui-scale));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--sway-space-3);
+  -webkit-user-select: none;
+  user-select: none;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.listbox {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-lg);
+  color: var(--fg-default);
+  border-radius: var(--sway-radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+/* Pointer and keyboard reach the same state; same call as Menu's .item. */
+.item:hover,
+.item[data-highlighted] {
+  background: var(--neutral-hover);
+}
+
+/* Muted rather than opacity, because a role is theme-correct and an opacity is
+   not. Kobalte already blocks activation, so nothing here has to. */
+.item[data-disabled] {
+  color: var(--fg-muted);
+  cursor: default;
+}
+.item[data-disabled]:hover {
+  background: transparent;
+}
+
+.itemLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The selected row's check, at the trailing edge. Brand gold: selection is the
+   --brand-* family's job (adr_premium_design_system). */
+.check {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--brand-default);
+}
+.check svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+/* A group's heading row. Not focusable, not selectable; the muted size drop is
+   what says "this names the rows below it". */
+.section {
+  padding: var(--sway-space-2) var(--sway-space-4);
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+}
