@@ -14,7 +14,8 @@ import Chevron from "../../../components/Chevron/Chevron";
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "lucide-solid";
-import Menu, { type MenuItem, type MenuState } from "../../../components/Menu/Menu";
+import ContextMenu from "../../../components/Menu/ContextMenu";
+import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
 import { isEditingNow } from "../../../utils/editingNow";
@@ -30,9 +31,10 @@ const HIDDEN = new Set([".git"]);
 
 // When editable, the tree can create/rename/delete under a single containment
 // root: `.shared` for the Shared tab, the workspace itself for the project tree.
-// `root` is the boundary every fs mutation is scoped to; the menu opener and
-// `askText` are threaded down so a deep node can prompt + open the shared context
-// menu without owning that state itself.
+// `root` is the boundary every fs mutation is scoped to; `askText` is threaded
+// down so a deep node can prompt without owning that state itself. Its menu is
+// its own: every row is a `ContextMenu` trigger, so nothing about the menu
+// travels through here.
 //
 // `noun` only names that boundary in a refusal ("outside the project folder"),
 // so it is presentation: the backend fences on `root` whether or not it is set.
@@ -41,7 +43,6 @@ type EditCtx = {
   noun: string;
   askText: (title: string, initial?: string) => Promise<string | null>;
   askConfirm: (opts: ConfirmOpts) => Promise<boolean>;
-  openMenu: (e: MouseEvent, items: MenuItem[]) => void;
   /** Directories mounted right now, keyed by path. A mutation sometimes has to
    *  re-read a directory it does not own: a move touches the source's parent and
    *  the destination, and the drop handler sits on only one of them. */
@@ -377,11 +378,11 @@ function TreeNode(props: {
     }
   });
 
-  function onContextMenu(e: MouseEvent) {
+  // Read only once the menu is open: Kobalte mounts the portal on open, so a row
+  // that is never right-clicked never builds a list.
+  function menuItems(): MenuItem[] {
     const ctx = props.ctx;
-    if (!ctx) return;
-    e.preventDefault();
-    e.stopPropagation();
+    if (!ctx) return [];
     const items: MenuItem[] = [];
     if (props.entry.is_dir) {
       items.push({ label: "New File", onClick: () => newFileIn(ctx, props.entry.path, reloadSelf) });
@@ -390,12 +391,17 @@ function TreeNode(props: {
     }
     items.push({ label: "Rename", onClick: () => renameEntry(ctx, props.entry, props.reloadParent) });
     items.push({ label: "Delete", danger: true, onClick: () => deleteEntry(ctx, props.entry, props.reloadParent) });
-    ctx.openMenu(e, items);
+    return items;
   }
 
   return (
     <div>
-      <div
+      <ContextMenu
+        // A read-only tree has nothing to offer, so it leaves the right-click
+        // alone and the browser's own menu opens, which is what the old handler's
+        // `if (!ctx) return` did before `preventDefault`.
+        disabled={!props.ctx}
+        items={menuItems()}
         ref={row}
         class={styles.treeRow}
         classList={{
@@ -405,7 +411,6 @@ function TreeNode(props: {
         }}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
-        onContextMenu={onContextMenu}
         draggable={true}
         onDragStart={(e) => {
           e.dataTransfer?.setData(DRAG_PATH_MIME, props.entry.path);
@@ -466,7 +471,7 @@ function TreeNode(props: {
             ●
           </span>
         </Show>
-      </div>
+      </ContextMenu>
       <Show when={open() && children()}>
         <For each={children()!}>
           {(child) => (
@@ -533,7 +538,6 @@ export default function FileTree(props: {
   const [filter, setFilter] = createSignal("");
   const [allFiles, setAllFiles] = createSignal<string[] | null>(null);
   const [collapseNonce, setCollapseNonce] = createSignal(0);
-  const [menu, setMenu] = createSignal<MenuState | null>(null);
   const [dropRoot, setDropRoot] = createSignal(false);
   const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set());
   // The file the tree is walking to. Deliberately never cleared: the walk is a
@@ -624,7 +628,6 @@ export default function FileTree(props: {
       noun: props.noun ?? "workspace folder",
       askText: props.askText,
       askConfirm: props.askConfirm,
-      openMenu: (e, items) => setMenu({ x: e.clientX, y: e.clientY, items }),
       mounted,
       selected,
       toggleSelected: (path) =>
@@ -725,9 +728,6 @@ export default function FileTree(props: {
           )}
         </For>
       </Show>
-      </Show>
-      <Show when={menu()}>
-        <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={() => setMenu(null)} />
       </Show>
     </div>
   );

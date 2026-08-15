@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 
 // The fan-out group is a rendering claim, so it is asserted against the real
 // tree rather than against the grouping function alone (see attempts.test.ts for
@@ -152,7 +153,7 @@ describe("fan-out groups in the tree", () => {
     const project = (await screen.findByText("repo")).parentElement!;
 
     fireEvent.contextMenu(project);
-    fireEvent.click(await screen.findByText("Fan out…"));
+    pointerClick(await screen.findByText("Fan out…"));
 
     // Reached through the accessibility tree: since the prompt moved onto
     // `Dialog`, its title is the panel's heading and the input is no longer a
@@ -191,7 +192,7 @@ describe("fan-out groups in the tree", () => {
     const winner = await screen.findByText("try-2");
 
     fireEvent.contextMenu(winner.parentElement!);
-    fireEvent.click(await screen.findByText("Promote this attempt"));
+    pointerClick(await screen.findByText("Promote this attempt"));
 
     // The confirm says what promotion costs before it happens: the other two go
     // outright, and nothing is merged.
@@ -210,7 +211,7 @@ describe("fan-out groups in the tree", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
     fireEvent.click(await screen.findByText(GOAL));
     fireEvent.contextMenu((await screen.findByText("try-2")).parentElement!);
-    fireEvent.click(await screen.findByText("Promote this attempt"));
+    pointerClick(await screen.findByText("Promote this attempt"));
     fireEvent.click(await screen.findByText("Cancel"));
 
     await waitFor(() => expect(screen.queryByText(/other 2 attempts/)).toBeNull());
