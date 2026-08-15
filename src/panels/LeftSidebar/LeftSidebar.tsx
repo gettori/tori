@@ -14,7 +14,7 @@ import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
-import Toasts, { type Toast, type ToastAction } from "../../components/Toasts/Toasts";
+import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import {
   on as onEvent,
@@ -26,14 +26,12 @@ import {
   OPEN_TERMINAL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
-  TOAST,
   TERMINAL_TAB_FOCUSED,
   REMOVE_BRANCH_UNIT,
   type RemoveBranchUnit,
   type OpenTerminal,
   type NewSession,
   type PurgeUnderPath,
-  type ToastEvent,
   type LiveTab,
   type TerminalTabFocused,
   SESSION_DELETED,
@@ -279,16 +277,10 @@ export default function LeftSidebar(props: {
 
   // Errors surface as auto-dismissing toasts (bottom-right) rather than a banner
   // pinned above the tree. setError keeps its old signature so all call sites are
-  // unchanged; an empty string (the old "clear the banner" idiom) is a no-op.
-  const [toasts, setToasts] = createSignal<Toast[]>([]);
-  let toastSeq = 0;
-  function dismissToast(id: number) {
-    setToasts((ts) => ts.filter((t) => t.id !== id));
-  }
+  // unchanged; the stack itself moved to components/Toasts (#105), where the
+  // empty-string no-op (the old "clear the banner" idiom) now lives too.
   function setError(msg: string, kind: "error" | "info" = "error", action?: ToastAction) {
-    const message = String(msg ?? "").trim();
-    if (!message) return;
-    setToasts((ts) => [...ts, { id: ++toastSeq, message, kind, action }]);
+    pushToast(msg, kind, action);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
   // Per-project origin URL, keyed by project path: gates whether Attach Existing
@@ -800,7 +792,6 @@ export default function LeftSidebar(props: {
   onCleanup(
     onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
   );
-  onCleanup(onWith<ToastEvent>(TOAST, (d) => setError(d.message, d.kind ?? "error", d.action)));
   // "Delete the branch" from the Pull Requests panel, after it landed one.
   //
   // Routed here rather than done there because this is where the guards live: a
@@ -2755,8 +2746,6 @@ export default function LeftSidebar(props: {
           onCancel={() => setSpaceReq(null)}
         />
       </Show>
-
-      <Toasts toasts={toasts()} onDismiss={dismissToast} />
     </div>
   );
 }

@@ -23,6 +23,11 @@ export type LiveTab = {
 
 export const FOCUS_SEARCH = "sway:focus-search";
 export const FOCUS_TERMINAL = "sway:focus-terminal";
+// Moves keyboard focus into the toast region (Cmd+Option+T), from which Tab
+// reaches each toast and Escape dismisses the focused one. Routed through the
+// command registry rather than Kobalte's own document-level hotkey listener,
+// which never checks defaultPrevented (the double-fire gotcha).
+export const FOCUS_TOASTS = "sway:focus-toasts";
 // Switches the editor's right panel to the project-wide Search mode and
 // focuses its input (Cmd+Shift+F). Distinct from FOCUS_SEARCH, which focuses
 // the left sidebar's own filter box.
@@ -424,9 +429,9 @@ export type PurgeUnderPath = { path: string };
 export const REMOVE_BRANCH_UNIT = "sway:remove-branch-unit";
 export type RemoveBranchUnit = { projectPath: string; branch: string };
 
-// Payload-carrying event: surface a toast from anywhere. The sidebar owns the
-// toast stack (setError), so components outside it (e.g. the editor's file tree)
-// emit this instead of holding their own notifier.
+// Payload-carrying event: surface a toast from anywhere. components/Toasts owns
+// the stack (ToastRegion listens, pushToast writes), so panels emit this instead
+// of holding their own notifier.
 export const TOAST = "sway:toast";
 // `action` is an optional single button. It exists for a notice whose undo has
 // nowhere else to live: a cross-file rename rewrote files nobody is looking at,
