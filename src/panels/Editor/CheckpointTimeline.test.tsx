@@ -18,6 +18,9 @@ const backstops = [
 ];
 
 let restoreArgs: unknown[] = [];
+// Every `checkpoint_turn_files` call, so the "workspace since here" toggle can
+// be checked on what it actually asks the backend for.
+let turnFileArgs: { cumulative?: boolean }[] = [];
 // The turn strip, empty unless a test asks for it: this suite is about the
 // backstop half, which renders with no session at all.
 let checkpoints: { prompt_ts: number; kind: string; file_count: number; bytes: number }[] = [];
@@ -38,6 +41,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "checkpoint_list":
         return Promise.resolve(checkpoints);
       case "checkpoint_turn_files":
+        turnFileArgs.push(args as { cumulative?: boolean });
         return Promise.resolve(turnFiles);
       case "backstop_restore_tree":
         restoreArgs.push(args);
@@ -59,6 +63,7 @@ import { TOAST, type ToastEvent } from "../../utils/events";
 
 beforeEach(() => {
   restoreArgs = [];
+  turnFileArgs = [];
   live = [];
   checkpoints = [];
   turnFiles = [];
@@ -120,6 +125,38 @@ describe("backstop rows", () => {
     // Hard block, so there was never a confirm to click through.
     expect(screen.queryByText("Restore files")).toBeNull();
     expect(restoreArgs).toEqual([]);
+  });
+});
+
+// Written for the control migration (#107): "workspace since here" is now a
+// `<Switch>`, and nothing tested it before, so a migration that left it inert
+// would have gone in green. The toggle's whole job is to change what the turn
+// is compared against, which is a flag on the files query rather than anything
+// visible, so that is what this pins.
+describe("the cumulative toggle", () => {
+  const lastTurnArgs = () => turnFileArgs[turnFileArgs.length - 1] ?? {};
+  const turn = () => {
+    checkpoints = [{ prompt_ts: 1_700_000_100, kind: "turn", file_count: 1, bytes: 40 }];
+    turnFiles = [{ path: "src/a.ts", status: "modified" }];
+    return render(() => <CheckpointTimeline root="/proj" sessionId="s1" folderPath="/proj" />);
+  };
+
+  it("asks for a per-turn diff until it is switched on", async () => {
+    turn();
+    await waitFor(() => expect(turnFileArgs.length).toBeGreaterThan(0));
+    expect(lastTurnArgs().cumulative).toBe(false);
+  });
+
+  it("re-asks cumulatively when switched on, and per-turn again when off", async () => {
+    turn();
+    await waitFor(() => expect(turnFileArgs.length).toBeGreaterThan(0));
+    const toggle = screen.getByRole("switch", { name: /workspace since here/i });
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(lastTurnArgs().cumulative).toBe(true));
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(lastTurnArgs().cumulative).toBe(false));
   });
 });
 

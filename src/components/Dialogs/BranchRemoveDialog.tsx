@@ -2,6 +2,7 @@ import { createSignal, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
+import Checkbox from "../Checkbox/Checkbox";
 
 // The removal confirmation for a plain-repo branch (mirrors WorktreeRemoveDialog).
 // The base action removes the branch from Sway's list; the checkboxes escalate that
@@ -80,24 +81,20 @@ export default function BranchRemoveDialog(props: {
         </div>
       </Show>
 
-      <label class={styles.wtCheck}>
-        <input
-          type="checkbox"
-          checked={deleteLocal()}
-          onChange={(e) => setDeleteLocal(e.currentTarget.checked)}
-        />
-        <span>Delete local branch (git branch -D)</span>
-      </label>
+      <Checkbox
+        class={styles.wtCheck}
+        checked={deleteLocal()}
+        onChange={setDeleteLocal}
+        label="Delete local branch (git branch -D)"
+      />
 
       <Show when={props.hasRemote}>
-        <label class={styles.wtCheck}>
-          <input
-            type="checkbox"
-            checked={deleteRemote()}
-            onChange={(e) => setDeleteRemote(e.currentTarget.checked)}
-          />
-          <span>Delete remote branch (git push --delete)</span>
-        </label>
+        <Checkbox
+          class={styles.wtCheck}
+          checked={deleteRemote()}
+          onChange={setDeleteRemote}
+          label="Delete remote branch (git push --delete)"
+        />
       </Show>
 
       <Show when={!deleteLocal()}>

@@ -12,6 +12,7 @@ import {
 import { settings, type DefaultSurface, type TranscriptDensity } from "../settingsStore";
 import Select, { type SelectOption } from "../../../components/Select/Select";
 import styles from "../Settings.module.css";
+import Switch from "../../../components/Switch/Switch";
 
 /**
  * Chat, in three groups.
@@ -69,10 +70,10 @@ export default function ChatPane(props: PaneProps) {
             change course mid-conversation. */}
 
         <Row {...props} id="streaming" label="Stream responses">
-          <input
-            type="checkbox"
+          <Switch
             checked={settings.chatDefaults.streaming}
-            onChange={(e) => setChatDefaults({ streaming: e.currentTarget.checked })}
+            onChange={(streaming) => setChatDefaults({ streaming })}
+            aria-label="Stream responses"
           />
         </Row>
 
@@ -113,10 +114,10 @@ export default function ChatPane(props: PaneProps) {
           label="Show every hook event"
           hint="Off, the transcript shows a hook only when it fails; a hook that ran as configured is not news. On reveals every execution, Sway's own per-tool-call approval hook included."
         >
-          <input
-            type="checkbox"
+          <Switch
             checked={settings.chatDefaults.showSwayHooks}
-            onChange={(e) => setChatDefaults({ showSwayHooks: e.currentTarget.checked })}
+            onChange={(showSwayHooks) => setChatDefaults({ showSwayHooks })}
+            aria-label="Show every hook event"
           />
         </Row>
       </Group>
@@ -128,10 +129,10 @@ export default function ChatPane(props: PaneProps) {
           label="Snapshot on each prompt"
           hint="Lets a session's turns be diffed and reverted. Adds one git snapshot per prompt."
         >
-          <input
-            type="checkbox"
+          <Switch
             checked={settings.checkpoints.enabled}
-            onChange={(e) => setCheckpoints({ enabled: e.currentTarget.checked })}
+            onChange={(enabled) => setCheckpoints({ enabled })}
+            aria-label="Snapshot on each prompt"
           />
         </Row>
       </Group>

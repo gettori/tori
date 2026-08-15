@@ -14,6 +14,7 @@ import { overlayRoot } from "../settingsStore";
 import { blameOn, writeBlamePref } from "../../../utils/blamePref";
 import { sideBySideOn, writeSideBySide } from "../../../utils/sideBySide";
 import styles from "../Settings.module.css";
+import Switch from "../../../components/Switch/Switch";
 
 /**
  * The two Editor sections, merged into one pane.
@@ -47,17 +48,13 @@ export default function EditorPane(props: PaneProps) {
             `EditorDefaults`, so they get plain rows: no workspace badge and no
             "Set here", because there is no overlay layer under them to write. */}
         <Row {...props} id="blame" label="Git blame">
-          <input
-            type="checkbox"
-            checked={blameOn()}
-            onChange={(e) => writeBlamePref(e.currentTarget.checked)}
-          />
+          <Switch checked={blameOn()} onChange={writeBlamePref} aria-label="Git blame" />
         </Row>
         <Row {...props} id="side-by-side-diff" label="Side-by-side diffs">
-          <input
-            type="checkbox"
+          <Switch
             checked={sideBySideOn()}
-            onChange={(e) => writeSideBySide(e.currentTarget.checked)}
+            onChange={writeSideBySide}
+            aria-label="Side-by-side diffs"
           />
         </Row>
         <Show

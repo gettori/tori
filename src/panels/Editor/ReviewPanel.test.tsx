@@ -829,8 +829,7 @@ describe("stash", () => {
 describe("amend", () => {
   /** Toggle amend on and wait for HEAD's message to land in the fields. */
   async function turnAmendOn() {
-    const box = screen.getByLabelText(/Amend last commit/i).closest("label")!;
-    fireEvent.click(box.querySelector("input")!);
+    fireEvent.click(screen.getByLabelText(/Amend last commit/i));
     await waitFor(() => expect(screen.getByText("Amend")).toBeTruthy());
   }
 

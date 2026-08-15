@@ -53,6 +53,7 @@ import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
+import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
@@ -1369,19 +1370,16 @@ export default function ReviewPanel(props: {
               on hover and never on the keyboard - the same half-measure the
               `title` was. As a description it is announced when the checkbox is
               focused, which is when it is wanted. */}
-          <label class={styles.amendRow}>
-            <input
-              type="checkbox"
-              aria-describedby={UNTRACKED_HINT_ID}
-              checked={includeUntracked()}
-              onChange={(e) => setIncludeUntracked(e.currentTarget.checked)}
-            />
-            include untracked
-            <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
-              Also stash files git has never seen, which usually means build output and local
-              scratch
-            </span>
-          </label>
+          <Checkbox
+            class={styles.amendRow}
+            aria-describedby={UNTRACKED_HINT_ID}
+            checked={includeUntracked()}
+            onChange={setIncludeUntracked}
+            label="include untracked"
+          />
+          <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
+            Also stash files git has never seen, which usually means build output and local scratch
+          </span>
           {/* Off while anything is unmerged: `git stash` refuses such a tree
               outright, so the button would only ever produce git's error. */}
           <Button
@@ -1423,18 +1421,16 @@ export default function ReviewPanel(props: {
           value={commitBody()}
           onInput={(e) => setCommitBody(e.currentTarget.value)}
         />
-        <label class={styles.amendRow}>
-          <input
-            type="checkbox"
-            aria-describedby={AMEND_HINT_ID}
-            checked={amend()}
-            onChange={(e) => void toggleAmend(e.currentTarget.checked)}
-          />
-          Amend last commit
-          <span id={AMEND_HINT_ID} class={styles.srOnly}>
-            Rewrite the last commit instead of adding one
-          </span>
-        </label>
+        <Checkbox
+          class={styles.amendRow}
+          aria-describedby={AMEND_HINT_ID}
+          checked={amend()}
+          onChange={(checked) => void toggleAmend(checked)}
+          label="Amend last commit"
+        />
+        <span id={AMEND_HINT_ID} class={styles.srOnly}>
+          Rewrite the last commit instead of adding one
+        </span>
         <div class={styles.commitActions}>
           <Button
             size="sm"
