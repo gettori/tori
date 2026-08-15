@@ -1,10 +1,19 @@
 import { describe, it, expect } from "vitest";
+import { createSignal, type JSX } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import OverflowTabBar from "./OverflowTabBar";
 import { expectNoAxeViolations } from "../test/axe";
 import { pointerClick } from "../test/menus";
 import { setTabBarWidth } from "../test/tabLayout";
 import Tab from "./Tab/Tab";
+import ContextMenu from "./Menu/ContextMenu";
+
+/** The editor's tab wrapper, in miniature: `display: contents` around the tab,
+ *  skipped for the ghost row. */
+function MaybeMenu(p: { when: boolean; children: JSX.Element }) {
+  if (!p.when) return p.children;
+  return <ContextMenu items={[{ label: "Close", onClick: () => {} }]}>{p.children}</ContextMenu>;
+}
 
 // The `+N` button, which issue 102 turned from a raw button carrying a native
 // title into a `Tooltip as="button"`. (Spelled out rather than written as an
@@ -44,7 +53,7 @@ function mount(onActivate: (id: string) => void = () => {}) {
       idOf={(t) => t.id}
       onActivate={onActivate}
       onReorder={() => {}}
-      renderTab={(t) => <Tab>{t.name}</Tab>}
+      renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
       renderMenuItem={(t) => <span>{t.name}</span>}
     />
   ));
@@ -68,7 +77,7 @@ describe("what fits", () => {
         idOf={(t) => t.id}
         onActivate={() => {}}
         onReorder={onReorder}
-        renderTab={(t) => <Tab>{t.name}</Tab>}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
         renderMenuItem={(t) => <span>{t.name}</span>}
       />
     ));
@@ -99,9 +108,134 @@ describe("what fits", () => {
   it("activates on the click, not on the press", async () => {
     // The editor's tabs are `draggable`, and a drag begins with a press that
     // never becomes a click: pressing a tab and dragging its path out to the
-    // terminal must not load that file first. Kobalte's tab trigger selects on
-    // pointerdown, so this is the contract #111 has to keep deliberately rather
-    // than inherit.
+    // terminal must not load that file first.
+    //
+    // `pointerType: "mouse"` is the whole test. Kobalte's trigger selects on
+    // press for a mouse and only for a mouse, and jsdom's default pointerdown
+    // carries no pointer type at all - so the version of this without it passed
+    // against a bar that selects on press in every real browser. The bar
+    // swallows the press in the capture phase to keep this true; see the note
+    // on `swallowPress`.
+    const picked: string[] = [];
+    setTabBarWidth(2000);
+    render(() => (
+      <OverflowTabBar
+        items={MANY}
+        activeId="t0"
+        idOf={(t) => t.id}
+        onActivate={(id) => picked.push(id)}
+        onReorder={() => {}}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+
+    const target = await waitFor(() => screen.getByRole("tab", { name: "tab 4" }));
+    fireEvent.mouseDown(target);
+    fireEvent.pointerDown(target, { pointerType: "mouse", button: 0 });
+    expect(picked).toEqual([]);
+
+    fireEvent.click(target);
+    expect(picked).toEqual(["t4"]);
+  });
+
+  it("counts every open tab, not the ones that fit", async () => {
+    // The harm #114 names. Three of twelve are drawn at this width, and a strip
+    // announcing "3 of 3" tells a reader the other nine do not exist. Kobalte
+    // writes neither attribute, so the bar supplies both off the list the
+    // consumer holds.
+    mountMany(500);
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+    const third = screen.getByRole("tab", { name: "tab 2" });
+    expect(third.getAttribute("aria-posinset")).toBe("3");
+    expect(third.getAttribute("aria-setsize")).toBe("12");
+  });
+
+  it("keeps the heal to itself when the active tab is closed under it", async () => {
+    // Kobalte's tab root force-selects the first key whenever the value it
+    // holds names no rendered tab, and calls `onChange` doing it. Closing the
+    // active tab puts the strip in exactly that state for one render, before
+    // the panel has picked what comes next - so an unguarded bar would not
+    // blank the selection, it would open whatever file happens to be leftmost.
+    const picked: string[] = [];
+    const [items, setItems] = createSignal(MANY);
+    setTabBarWidth(500);
+    render(() => (
+      <OverflowTabBar
+        items={items()}
+        activeId="t0"
+        idOf={(t) => t.id}
+        onActivate={(id) => picked.push(id)}
+        onReorder={() => {}}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+
+    // The tab the strip is pointed at is gone, and `activeId` has not moved yet.
+    setItems(MANY.filter((t) => t.id !== "t0"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "tab 1" })).toBeTruthy());
+
+    expect(picked).toEqual([]);
+  });
+
+  it("keeps arrow order matching visual order across a +N pick", async () => {
+    // The only reorder this strip has. `moveIntoView` puts the pick in the last
+    // visible slot and pushes the tab that was there into the overflow, so the
+    // canonical list changes and the row redraws. What has to survive is that
+    // the three lists agree: what is drawn, what an arrow walks, and what
+    // `aria-posinset` announces.
+    const [items, setItems] = createSignal(MANY);
+    const [active, setActive] = createSignal<string | null>("t0");
+    setTabBarWidth(500);
+    render(() => (
+      <OverflowTabBar
+        items={items()}
+        activeId={active()}
+        idOf={(t) => t.id}
+        onActivate={setActive}
+        onReorder={setItems}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+
+    const more = await screen.findByRole("button", { name: "9 more" });
+    pointerClick(more);
+    const menu = await waitFor(() => screen.getByRole("menu"));
+    pointerClick(screen.getAllByText("tab 7").find((el) => menu.contains(el))!);
+
+    // Slot 2 is the last visible one at this width, so the pick lands there.
+    await waitFor(() =>
+      expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual([
+        "tab 0",
+        "tab 1",
+        "tab 7",
+      ]),
+    );
+    const picked = screen.getByRole("tab", { name: "tab 7" });
+    expect(active()).toBe("t7");
+    // Third on screen and third in the canonical list, which is what makes the
+    // arrows and the announcement say the same thing.
+    expect(picked.getAttribute("aria-posinset")).toBe("3");
+    expect(picked.getAttribute("aria-setsize")).toBe("12");
+
+    // ArrowLeft from the pick lands on the tab now drawn to its left, not on
+    // whatever used to sit there.
+    picked.focus();
+    fireEvent.keyDown(picked, { key: "ArrowLeft" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("tab", { name: "tab 1" })));
+    expect(active()).toBe("t1");
+  });
+
+  it("still forwards a click when the strip has nothing active", async () => {
+    // The heal guard keys off the gesture rather than off `activeId`, so a
+    // strip that starts with no selection is still clickable. Gating on the
+    // state instead would swallow this, and the two are indistinguishable from
+    // the value alone: Kobalte's heal picks the leftmost tab, which is also
+    // something a user can click.
     const picked: string[] = [];
     setTabBarWidth(2000);
     render(() => (
@@ -111,18 +245,14 @@ describe("what fits", () => {
         idOf={(t) => t.id}
         onActivate={(id) => picked.push(id)}
         onReorder={() => {}}
-        renderTab={(t) => <Tab onClick={() => picked.push(t.id)}>{t.name}</Tab>}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
         renderMenuItem={(t) => <span>{t.name}</span>}
       />
     ));
 
-    const target = await waitFor(() => screen.getByRole("tab", { name: "tab 4" }));
-    fireEvent.mouseDown(target);
-    fireEvent.pointerDown(target);
-    expect(picked).toEqual([]);
-
+    const target = await waitFor(() => screen.getByRole("tab", { name: "tab 0" }));
     fireEvent.click(target);
-    expect(picked).toEqual(["t4"]);
+    expect(picked).toEqual(["t0"]);
   });
 
   function mountActive(width: number, activeId: string | null) {
@@ -134,7 +264,7 @@ describe("what fits", () => {
         idOf={(t) => t.id}
         onActivate={() => {}}
         onReorder={() => {}}
-        renderTab={(t) => <Tab active={activeId === t.id}>{t.name}</Tab>}
+        renderTab={(t) => <Tab value={t.id}>{t.name}</Tab>}
         renderMenuItem={(t) => <span>{t.name}</span>}
       />
     ));
@@ -180,6 +310,70 @@ describe("what fits", () => {
     // Slot 2 is the last visible one at this width, so `tab 7` lands there and
     // `tab 2` is the one displaced.
     expect(orders[0].slice(0, 4)).toEqual(["t0", "t1", "t7", "t2"]);
+  });
+});
+
+describe("the strip a panel actually renders", () => {
+  it("is clean with a context menu between the tablist and the tab", async () => {
+    // The editor wraps every tab in a `ContextMenu` for the right-click menu,
+    // so the real tablist's children are menu triggers rather than tabs. A
+    // tablist may own nothing but tabs and axe reads straight through a
+    // role-less wrapper to what is underneath, so this is the shape that
+    // decides whether the strip on screen is legal - and it is not the shape
+    // the scans above cover.
+    setTabBarWidth(2000);
+    const { container } = render(() => (
+      <OverflowTabBar
+        items={ITEMS}
+        activeId="a"
+        idOf={(t) => t.id}
+        onActivate={() => {}}
+        onReorder={() => {}}
+        renderTab={(t, ghost) => (
+          <MaybeMenu when={!ghost}>
+            <Tab value={t.id} onClose={() => {}}>
+              {t.name}
+            </Tab>
+          </MaybeMenu>
+        )}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+    await expectNoAxeViolations(container, {
+      rules: { "aria-valid-attr-value": { enabled: false } },
+    });
+  });
+
+  it("is clean while overflowing, with a trailing action beside the tabs", async () => {
+    // The other shape a panel renders, and what `OverflowTabBar.stories.tsx`
+    // opens on: too narrow for its tabs, so the `+N` is up, with a pinned
+    // action after it. Both sit outside the tablist, since a tablist may own
+    // nothing but tabs, and this is what proves they are actually outside it
+    // rather than merely drawn that way.
+    setTabBarWidth(200);
+    const { container } = render(() => (
+      <OverflowTabBar
+        items={ITEMS}
+        activeId="a"
+        idOf={(t) => t.id}
+        onActivate={() => {}}
+        onReorder={() => {}}
+        trailing={<button type="button">New</button>}
+        renderTab={(t) => (
+          <Tab value={t.id} onClose={() => {}}>
+            {t.name}
+          </Tab>
+        )}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+
+    await screen.findByRole("button", { name: /more$/ });
+    await expectNoAxeViolations(container, {
+      rules: { "aria-valid-attr-value": { enabled: false } },
+    });
   });
 });
 
@@ -232,25 +426,18 @@ describe("the overflow button", () => {
     await waitFor(() => screen.getByRole("menu"));
 
     expect(more.getAttribute("aria-expanded")).toBe("true");
-    // Two rows of rules off, for two different reasons.
+    // One rule off, for the reason `Dropdown.test.tsx` records: axe raises
+    // `controlsWithinPopup` for any trigger carrying both `aria-haspopup` and
+    // `aria-controls`, in a real browser as much as here, because it cannot
+    // tell whether the popup is open. Every Kobalte trigger has both.
     //
-    // `aria-valid-attr-value` for the reason `Dropdown.test.tsx` records: axe
-    // raises `controlsWithinPopup` for any trigger carrying both
-    // `aria-haspopup` and `aria-controls`, in a real browser as much as here,
-    // because it cannot tell whether the popup is open. Every Kobalte trigger
-    // has both.
-    //
-    // The other two are this bar's own, they predate every menu here, and they
-    // are real: its tabs carry `role="tab"` with no `role="tablist"` above
-    // them, and its measuring ghost is `aria-hidden` while holding focusable
-    // buttons. Neither is menu-shaped and neither is #103's to fix, so they are
-    // named here rather than quietly swept into a passing scan.
+    // `aria-required-parent` and `aria-hidden-focus` used to be named here too,
+    // and were this bar's own: its tabs carried `role="tab"` with no tablist
+    // above them, and its measuring ghost was `aria-hidden` around focusable
+    // buttons. #111 fixed both rather than disabling them, so a scan that stops
+    // being clean now fails.
     await expectNoAxeViolations(document.body, {
-      rules: {
-        "aria-valid-attr-value": { enabled: false },
-        "aria-required-parent": { enabled: false },
-        "aria-hidden-focus": { enabled: false },
-      },
+      rules: { "aria-valid-attr-value": { enabled: false } },
     });
   });
 });

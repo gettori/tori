@@ -8,6 +8,7 @@ import Slider from "../components/Slider/Slider";
 import SegmentedControl from "../components/SegmentedControl/SegmentedControl";
 import Select from "../components/Select/Select";
 import Tab from "../components/Tab/Tab";
+import { Tabs } from "../lib/tabs";
 import type { ControlSize } from "../components/controls";
 import FileIcon from "../seti/FileIcon";
 import { checkPalette } from "../theme/contrast";
@@ -377,21 +378,28 @@ export default function Styleguide() {
               </div>
             )}
           </For>
-          <div class={styles.btnRow}>
-            <For each={["README.md", "tokens.css", "settings.rs"]}>
-              {(name, i) => (
-                <Tab
-                  active={activeTab() === i()}
-                  icon={<Icon icon={FileText} />}
-                  onClick={() => setActiveTab(i())}
-                  onClose={() => {}}
-                  closeLabel={`Close ${name}`}
-                >
-                  {name}
-                </Tab>
-              )}
-            </For>
-          </div>
+          {/* A Root and a List around the demo, because a `Tab` with a `value`
+              is a Kobalte trigger and reads its selection from the strip above
+              it. The signal stays so the demo still shows what a controlled
+              strip looks like. */}
+          <Tabs.Root
+            value={String(activeTab())}
+            onChange={(v) => setActiveTab(Number(v))}
+          >
+            <Tabs.List class={styles.btnRow} aria-label="Tab pill">
+              <For each={["README.md", "tokens.css", "settings.rs"]}>
+                {(name, i) => (
+                  <Tab
+                    value={String(i())}
+                    icon={<Icon icon={FileText} />}
+                    onClose={() => {}}
+                  >
+                    {name}
+                  </Tab>
+                )}
+              </For>
+            </Tabs.List>
+          </Tabs.Root>
         </section>
 
         <section>

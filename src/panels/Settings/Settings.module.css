@@ -52,6 +52,13 @@
      carries no border of its own and no gap under it. Horizontal scroll rather
      than wrap: six pills fit at every supported width, and a strip that became
      two rows would move the panes down as the window narrowed. */
+  /* Kobalte's Tabs.Root is a real element and it has to span the strip and the
+     panes, which sit in separate blocks of the panel. `contents` is what keeps
+     the panel's own layout exactly as it was. */
+  .tabsRoot {
+    display: contents;
+  }
+
   .strip {
     display: flex;
     align-items: center;

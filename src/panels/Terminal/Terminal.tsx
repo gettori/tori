@@ -1088,7 +1088,7 @@ export default function Terminal(props: {
     // first tab when its remembered id is now gone.
   }
 
-  function close(id: string, e: MouseEvent) {
+  function close(id: string, e: Event) {
     e.stopPropagation();
     closeId(id);
   }
@@ -1154,10 +1154,8 @@ export default function Terminal(props: {
         onReorder={mergeReorder}
         renderTab={(t) => (
           <Tab
-            active={visibleId() === t.id}
-            onClick={() => selectTab(t)}
+            value={t.id}
             tooltip={blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
-            closeLabel="Close"
             onClose={(e) => close(t.id, e)}
             // A session's state is true whether or not you are looking at it, so
             // the tab carries it: without this a background session waiting on

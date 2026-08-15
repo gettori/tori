@@ -183,10 +183,14 @@ describe("Enter, the one keystroke that does navigate", () => {
     // fixture has to be a tie the two rules disagree about, and this one is.
     render(() => <Settings onClose={() => {}} />);
     type("path");
-    const badgeOf = (id: string) =>
-      document.querySelector(`[role="tab"][id="settings-tab-${id}"] .${styles.badge}`)?.textContent;
-    expect(badgeOf("agents")).toBe("2");
-    expect(badgeOf("editor")).toBe("2");
+    // By label rather than by id: Kobalte generates the trigger ids now, so
+    // `settings-tab-agents` no longer exists to query.
+    const badgeOf = (label: string) =>
+      screen
+        .getByRole("tab", { name: new RegExp(`^${label},`) })
+        .querySelector(`.${styles.badge}`)?.textContent;
+    expect(badgeOf("Agents")).toBe("2");
+    expect(badgeOf("Editor")).toBe("2");
     expect(SETTING_TABS.findIndex((t) => t.id === "agents")).toBeLessThan(
       SETTING_TABS.findIndex((t) => t.id === "editor"),
     );

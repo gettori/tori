@@ -10,8 +10,14 @@ import { createEffect } from "solid-js";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installAnimationFrame } from "../../test/frames";
+import { closeOf } from "../../test/tabs";
 
 installResizeObserver();
+// This suite closes tabs, and the close button now lives on the row the bar
+// draws rather than on its measuring ghost. See the helper for why the two
+// differ in jsdom.
+installAnimationFrame();
 
 const REPO = "/space/proj/main";
 const FILES = [`${REPO}/a.txt`, `${REPO}/b.txt`, `${REPO}/c.txt`];
@@ -86,17 +92,15 @@ async function relaunch() {
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
 }
 
-/** How many tabs are wearing a dirty dot. */
+/** How many tabs are wearing a dirty dot, on the row the bar draws.
+ *
+ *  The measuring ghost renders a second copy of every tab, dots included, so an
+ *  unscoped count is exactly double. It is `aria-hidden`, which is why the
+ *  role-based helpers never saw it and this one does. */
 function dirtyDots(): number {
-  return mounted!.container.querySelectorAll(".tab-dirty").length;
-}
-
-/** The close button on the tab whose label is `name`. */
-function closeTabFor(name: string): HTMLElement {
-  const tab = [...mounted!.container.querySelectorAll("[role='tab'], button")].find((el) =>
-    el.textContent?.includes(name),
-  )!;
-  return tab.querySelector<HTMLElement>('[aria-label="Close"]') ?? tab.parentElement!.querySelector('[aria-label="Close"]')!;
+  return [...mounted!.container.querySelectorAll(".tab-dirty")].filter(
+    (el) => !el.closest(".otab-ghost"),
+  ).length;
 }
 
 beforeEach(() => {
@@ -178,7 +182,9 @@ describe("relaunching with unsaved work stashed", () => {
     // command: the tab carrying the stash is deliberately *not* the active one,
     // because the one that never gets focus is the one with no buffer to claim
     // its entry.
-    closeTabFor("b.txt").click();
+    // A stashed tab wears a dirty dot, and the dot is inside the button, so the
+    // accessible name is "b.txt\u25cf" rather than "b.txt".
+    closeOf(/^b\.txt/).click();
     await waitFor(() => expect(screen.getByText("Discard")).toBeTruthy());
     screen.getByText("Discard").click();
 
