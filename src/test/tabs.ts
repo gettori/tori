@@ -28,3 +28,19 @@ export function tab(name: string | RegExp): HTMLElement {
 export function tabs(name: string | RegExp): HTMLElement[] {
   return screen.queryAllByRole("tab", { name });
 }
+
+/** A named tab's close button.
+ *
+ *  Reached by attribute rather than by label, because the close is hidden from
+ *  assistive tech and so has no accessible name to query: `role="tablist"` may
+ *  own nothing but tabs, so a labelled button beside the trigger fails axe.
+ *  Delete or Backspace on the focused tab is the path that *is* announced, and
+ *  the one a keyboard test should use. See `src/components/Tab/Tab.tsx`.
+ *
+ *  The close is a sibling of the trigger inside the pill, not a child of it,
+ *  which is why this steps up before it looks down. */
+export function closeOf(name: string | RegExp): HTMLElement {
+  const el = tab(name).parentElement?.querySelector<HTMLElement>("[data-tab-close]");
+  if (!el) throw new Error(`the tab matching ${String(name)} has no close button`);
+  return el;
+}

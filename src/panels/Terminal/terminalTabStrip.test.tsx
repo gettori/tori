@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
-import { tab, tabs } from "../../test/tabs";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { tab, tabs, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 
 // The terminal tab strip, characterized before it moves onto Kobalte Tabs
@@ -135,7 +135,7 @@ describe("the terminal tab strip", () => {
     mount();
     await openShell("one");
     await openShell("two");
-    fireEvent.click(within(tab("two")).getByLabelText("Close"));
+    fireEvent.click(closeOf("two"));
 
     await waitFor(() => expect(tabs("two")).toHaveLength(0));
     expect(tabs("one")).toHaveLength(1);
