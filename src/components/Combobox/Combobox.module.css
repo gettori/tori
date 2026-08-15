@@ -1,0 +1,121 @@
+/* The one filter-and-pick surface: the picker dialog's body and the Omnibox
+   palette both render their field and list through `Combobox.tsx`.
+
+   Values are recorded as a recipe on the Combobox component page. Where they
+   came from: the field family the settings rows and `Select`'s trigger already
+   use (--canvas-input, --border-default, brand focus ring), and the row recipe
+   restates Menu's and Select's `.item` on purpose, so a list of things to pick
+   reads as the same family of surface wherever it appears. The list itself has
+   no card chrome of its own: unlike Select's popper, it is rendered *inside* a
+   surface the caller already painted (a dialog panel, the palette), so a second
+   border and shadow here would draw a box inside a box. */
+
+/* `Control` is the field, not a wrapper around one: the chrome lives here so a
+   trailing affordance (the picker's clear button) sits *inside* the border
+   rather than beside it, which is also the split Kobalte's own part names
+   imply. `Input` is then just the text. */
+.control {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  height: var(--control-height);
+  padding: 0 var(--sway-space-3) 0 var(--sway-space-4);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+/* The field family's gold brand ring, same call as Select's trigger. Keyed off
+   the input's own focus rather than the field's, so a click on the clear button
+   does not light the ring; `:focus-within` would. The input holds focus for the
+   whole interaction (the list is driven by aria-activedescendant), so this ring
+   is on screen the entire time and is the thing that says which control the
+   arrow keys are talking to. */
+.control:has(.input:focus-visible) {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  line-height: 1.4;
+}
+
+.input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.listbox {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-lg);
+  color: var(--fg-default);
+  border-radius: var(--sway-radius-md);
+  cursor: pointer;
+  outline: none;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+/* Pointer and keyboard reach the same state; same call as Menu's and Select's
+   `.item`. `data-highlighted` is the active row here, and it is *not*
+   `aria-selected`: in a combobox that attribute means the committed value, and
+   these pickers commit and close, so no visible row is ever selected. */
+.item:hover,
+.item[data-highlighted] {
+  background: var(--neutral-hover);
+}
+
+/* Muted rather than opacity, because a role is theme-correct and an opacity is
+   not. Kobalte already blocks activation and skips these rows with the arrow
+   keys, so nothing here has to. */
+.item[data-disabled] {
+  color: var(--fg-muted);
+  cursor: default;
+}
+.item[data-disabled]:hover {
+  background: transparent;
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A group's heading row. Not focusable, not selectable; the muted size drop is
+   what says "this names the rows below it". */
+.section {
+  padding: var(--sway-space-2) var(--sway-space-4);
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+}
+
+/* Shown where the list would be, when nothing matches. Same muted register as a
+   section heading: it is a report about the list, not a row in it. */
+.empty {
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-md);
+  color: var(--fg-subtle);
+}
