@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
+import Checkbox from "../Checkbox/Checkbox";
 
 // Turn a non-git folder into a repo, in one dialog. Replaces the separate
 // "Initialize git repo…" and "Bare + worktree…" menu items: pick the initial
@@ -83,14 +84,12 @@ export default function InitGitDialog(props: {
           spellcheck={false}
         />
 
-        <label class={`${styles.wtCheck} ${styles.initCheck}`}>
-          <input
-            type="checkbox"
-            checked={bare()}
-            onChange={(e) => setBare(e.currentTarget.checked)}
-          />
-          <span>Bare + worktree layout (branches as sibling folders)</span>
-        </label>
+        <Checkbox
+          class={`${styles.wtCheck} ${styles.initCheck}`}
+          checked={bare()}
+          onChange={setBare}
+          label="Bare + worktree layout (branches as sibling folders)"
+        />
         <div class={styles.msg}>
           {bare()
             ? "Creates a .bare repo with one initial worktree; add more branches as their own folders."

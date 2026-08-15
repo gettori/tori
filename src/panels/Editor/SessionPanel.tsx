@@ -11,6 +11,7 @@ import { editingNow } from "../../utils/editingNow";
 import HunkCommentInput from "./HunkCommentInput";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./SessionPanel.module.css";
+import Switch from "../../components/Switch/Switch";
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
@@ -276,10 +277,12 @@ export default function SessionPanel(props: {
           </div>
         )}
       </Show>
-      <label class={styles.readsToggle}>
-        <input type="checkbox" checked={showReads()} onChange={(e) => setShowReads(e.currentTarget.checked)} />
-        Show reads
-      </label>
+      <Switch
+        class={styles.readsToggle}
+        checked={showReads()}
+        onChange={setShowReads}
+        label="Show reads"
+      />
       <div class={styles.touchList}>
         <Show
           when={visible().length}

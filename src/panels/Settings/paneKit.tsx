@@ -30,6 +30,7 @@ import {
 } from "./settingsStore";
 import styles from "./Settings.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import Switch from "../../components/Switch/Switch";
 
 // Font inputs show only the primary family; the app's fallback stack is kept
 // out of the field and re-attached on save, so a user types "JetBrains Mono"
@@ -328,10 +329,13 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
             workspace
           </span>
         </Show>
-        <input
-          type="checkbox"
+        {/* The row's own `<label>` is chrome rather than a form label (it wraps
+            nothing and carries the search highlighting), so the control names
+            itself from the entry. */}
+        <Switch
           checked={editorDefaults()[key()]}
-          onChange={(e) => setEditorDefault(key(), e.currentTarget.checked)}
+          onChange={(checked) => setEditorDefault(key(), checked)}
+          aria-label={props.entry.label}
         />
         <Show when={overlayRoot()}>
           <Tooltip

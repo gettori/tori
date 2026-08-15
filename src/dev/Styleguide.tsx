@@ -4,6 +4,7 @@ import Icon from "../components/Icon/Icon";
 import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";
 import IconButton from "../components/IconButton/IconButton";
+import Slider from "../components/Slider/Slider";
 import SegmentedControl from "../components/SegmentedControl/SegmentedControl";
 import Select from "../components/Select/Select";
 import Tab from "../components/Tab/Tab";
@@ -128,10 +129,18 @@ export default function Styleguide() {
             value={themeId()}
             onChange={setThemeId}
           />
-          <label class={styles.slider}>
-            scale {scale().toFixed(2)}
-            <input type="range" min="0.85" max="1.4" step="0.05" value={scale()} onInput={(e) => setScale(+e.currentTarget.value)} />
-          </label>
+          {/* The wrapper stacks its label over the track, so the row gives it a
+              width to lay out in rather than letting it collapse. */}
+          <div class={styles.slider} style={{ width: "160px" }}>
+            <Slider
+              value={scale()}
+              onChange={setScale}
+              min={0.85}
+              max={1.4}
+              step={0.05}
+              label={`scale ${scale().toFixed(2)}`}
+            />
+          </div>
         </div>
       </header>
 

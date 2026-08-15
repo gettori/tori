@@ -3,6 +3,7 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import { submitBlockedReason } from "../../utils/createPr";
+import Checkbox from "../Checkbox/Checkbox";
 
 // Open a pull request without leaving the app. Reached only when the remote is
 // github.com and the integration is signed in and enabled; every other case goes
@@ -154,14 +155,12 @@ export default function CreatePrDialog(props: {
           {props.head} into {props.base || "…"}
         </div>
 
-        <label class={styles.wtCheck}>
-          <input
-            type="checkbox"
-            checked={draft()}
-            onChange={(e) => setDraft(e.currentTarget.checked)}
-          />
-          <span>Open as a draft</span>
-        </label>
+        <Checkbox
+          class={styles.wtCheck}
+          checked={draft()}
+          onChange={setDraft}
+          label="Open as a draft"
+        />
 
         <Show when={blocked()}>
           {(reason) => <div class={styles.msg}>{reason()}</div>}

@@ -11,6 +11,7 @@ import { isUnderPath } from "../../utils/pathScope";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import Button from "../../components/Button/Button";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import Switch from "../../components/Switch/Switch";
 import styles from "./CheckpointTimeline.module.css";
 
 /** Ties the cumulative checkbox to the sentence explaining what it compares. */
@@ -446,18 +447,16 @@ export default function CheckpointTimeline(props: {
                 2: a `<label>` takes no focus at all, so a tooltip on one would
                 open on hover and never on the keyboard - the same half-measure
                 the `title` was. As a description it is announced on focus. */}
-            <label class={styles.cumulativeToggle}>
-              <input
-                type="checkbox"
-                checked={cumulative()}
-                aria-describedby={CUMULATIVE_HINT_ID}
-                onChange={(e) => setCumulative(e.currentTarget.checked)}
-              />
-              workspace since here
-              <span id={CUMULATIVE_HINT_ID} class={styles.srOnly}>
-                Compare this checkpoint against the working tree as it is now
-              </span>
-            </label>
+            <Switch
+              class={styles.cumulativeToggle}
+              checked={cumulative()}
+              aria-describedby={CUMULATIVE_HINT_ID}
+              onChange={setCumulative}
+              label="workspace since here"
+            />
+            <span id={CUMULATIVE_HINT_ID} class={styles.srOnly}>
+              Compare this checkpoint against the working tree as it is now
+            </span>
           </div>
           {/* Roving-focus strip: one tab stop, left/right moves the pick, so the
               timeline is scrubbable without a mouse. */}
