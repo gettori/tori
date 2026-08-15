@@ -1,83 +1,97 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
-import Popover, { type PopoverAnchor } from "./Popover";
+import Popover from "./Popover";
+import { expectNoAxeViolations } from "../../test/axe";
 
-// jsdom reports every rect as zero, so what a test can hold here is *which
-// edge* the surface is pinned to and *when* it is painted, not its measured
-// width. Both are what actually went wrong: the History panel used to paint
-// left-aligned and then re-align right on the next frame, jumping its whole
-// width across the screen.
-const surface = () => screen.getByRole("dialog");
-const placed = async () => await waitFor(() => expect(surface().style.opacity).toBe(""));
+// The old hand-rolled suite pinned pixel placement (style.left, the opacity
+// dance), which was that implementation's own RAF clamp. Position now belongs
+// to floating-ui, which jsdom cannot exercise past "it mounted", so what this
+// suite holds is the wrapper's actual contract: who dismisses it, who gets
+// focus, and what the anchor's own press means. The panel-level invariants live
+// in HistoryPanel.test.tsx.
+//
+// Kobalte installs its outside listener from a setTimeout(0) and listens for
+// pointerdown, so dismissal tests yield a macrotask first and fire the
+// pointerdown/mousedown pair a real pointer sends (see test/menuIdioms.test.ts).
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function open(over: Partial<Parameters<typeof Popover>[0]> = {}) {
   const onClose = vi.fn();
-  const anchor: PopoverAnchor = { left: 100, right: 400, top: 50 };
+  const anchorEl = document.createElement("button");
+  anchorEl.textContent = "toggle";
+  document.body.append(anchorEl);
   const r = render(() => (
-    <Popover anchor={anchor} onClose={onClose} role="dialog" aria-label="Test" {...over}>
+    <Popover anchorEl={anchorEl} onClose={onClose} aria-label="Test" {...over}>
       <button>inside</button>
     </Popover>
   ));
-  return { onClose, ...r };
+  return {
+    onClose,
+    anchorEl,
+    ...r,
+    unmount: () => {
+      r.unmount();
+      anchorEl.remove();
+    },
+  };
 }
 
 describe("Popover", () => {
-  it("paints nothing until it has been placed", async () => {
-    open();
-    // Before the measuring frame: laid out (so it can be measured) and in the
-    // accessibility tree (so a screen reader does not lose it), but invisible.
-    expect(surface().style.opacity).toBe("0");
-    expect(surface().style.pointerEvents).toBe("none");
-
-    await placed();
-    expect(surface().style.pointerEvents).toBe("");
+  it("portals a labelled dialog to the body", () => {
+    const { container, unmount } = open();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Test" })).toBeTruthy();
+    unmount();
   });
 
-  it.each([
-    ["start", "100px"],
-    ["end", "400px"],
-  ] as const)("pins its %s edge to the anchor", async (align, left) => {
-    open({ align });
-    await placed();
-    expect(surface().style.left).toBe(left);
-  });
+  it("closes on Escape and on an outside press, but not on the anchor's own", async () => {
+    const { onClose, anchorEl, unmount } = open();
+    await settle();
 
-  it("clamps back in from the viewport edge rather than overflowing", async () => {
-    open({ anchor: { left: 5000, right: 5000, top: 50 } });
-    await placed();
-    // 1024 (jsdom's window) less the 6px gutter, since the rect measures zero.
-    expect(surface().style.left).toBe("1018px");
-  });
-
-  it("closes on Escape and on an outside click, but not on the anchor's own", async () => {
-    const anchorEl = document.createElement("button");
-    document.body.append(anchorEl);
-    const { onClose } = open({ anchorEl });
-    await placed();
-
-    // The toggle that opened it: its click is the caller's to interpret, or the
+    // The toggle that opened it: its press is the caller's to interpret, or the
     // button would fight its own open/close.
+    fireEvent.pointerDown(anchorEl);
     fireEvent.mouseDown(anchorEl);
-    // Nor does a click on the surface itself count as leaving it.
+    // Nor does a press on the surface itself count as leaving it.
+    fireEvent.pointerDown(screen.getByText("inside"));
     fireEvent.mouseDown(screen.getByText("inside"));
     expect(onClose).not.toHaveBeenCalled();
 
+    fireEvent.pointerDown(document.body);
     fireEvent.mouseDown(document.body);
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(2);
-
-    anchorEl.remove();
+    unmount();
   });
 
-  it("hands dismissal over while something nested owns it", async () => {
-    const { onClose } = open({ dismissable: false });
-    await placed();
+  it("focuses what initialFocus names, and hands focus back on unmount", async () => {
+    const before = document.createElement("button");
+    document.body.append(before);
+    before.focus();
 
-    // A row's context menu is portalled elsewhere, so every click and Escape
-    // meant for it reads as "outside" this surface.
-    fireEvent.mouseDown(document.body);
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).not.toHaveBeenCalled();
+    const { unmount } = open({
+      initialFocus: () => screen.queryByText("inside") ?? undefined,
+    });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("inside")));
+
+    unmount();
+    expect(document.activeElement).toBe(before);
+    before.remove();
+  });
+
+  it("exposes the content element through ref", () => {
+    let el: HTMLDivElement | undefined;
+    const { unmount } = open({ ref: (node) => (el = node) });
+    expect(el).toBe(screen.getByRole("dialog", { name: "Test" }));
+    unmount();
+  });
+
+  // Body-scoped, because the surface portals out of its render container; see
+  // the scope section of src/test/axe.ts.
+  it("passes the axe gate", async () => {
+    const { unmount } = open();
+    await expectNoAxeViolations(document.body);
+    unmount();
   });
 });

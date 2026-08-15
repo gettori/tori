@@ -1,123 +1,97 @@
-import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { onCleanup, onMount, type JSX } from "solid-js";
+import { Popover as Primitive } from "../../lib/popover";
+import styles from "./Popover.module.css";
 
-/** What the surface hangs off, in viewport coordinates. A cursor position is
- *  the degenerate case, where `left` and `right` are the same point. */
-export type PopoverAnchor = {
-  left: number;
-  right: number;
-  /** The edge it opens below, or above when `openAbove` is set. */
-  top: number;
-};
+/** Where the surface sits relative to its anchor. Kobalte accepts twelve
+ *  placements; these four are what an anchored panel uses, and keeping the
+ *  union local is what lets this file expose a placement type without the app
+ *  importing one from the primitives package - which `boundary.test.ts` would
+ *  fail it for, this file included. */
+export type PopoverPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end";
 
-// Kept off every viewport edge by this much.
-const PAD = 6;
+/** The gap between the anchor and the surface, in px. Not a token: Kobalte
+ *  takes a number and hands it to floating-ui, so it never reaches CSS and
+ *  cannot read `--ui-scale`. 12 is the offset the hand-rolled panel opened at
+ *  (`r.bottom + 12`), restated rather than re-derived. */
+const ANCHOR_GUTTER = 12;
 
 /**
- * The one anchored, portalled surface. Right-click menus, button dropdowns and
- * the History panel all position through this.
+ * The anchored panel surface: Kobalte's popover behind Sway's chrome and Sway's
+ * API. The menus have their own pair of wrappers (`Menu/`); this is for a panel
+ * with arbitrary content that hangs off a control, and its one consumer is the
+ * History dropdown.
  *
- * **Portalled**, because the bars these hang off are `overflow: hidden` - a long
- * tab strip has to collapse into `+N` rather than scroll - and a child of one is
- * clipped to the bar's own height.
+ * **Anchored controlled mode, and mounted is open.** There is no `Trigger`: the
+ * opening button belongs to the caller, which mounts this inside a `<Show>`
+ * while it is open. Kobalte's open state therefore never transitions while the
+ * surface exists - Escape and outside presses arrive as `onOpenChange(false)`,
+ * the caller flips its own signal, and the whole tree unmounts still "open".
  *
- * **Unpainted until placed.** Its own size is knowable only after a layout pass,
- * so the viewport clamp costs a frame; painting the unclamped position first
- * makes the surface visibly jump into place, which is worst for a right-aligned
- * panel, whose first guess is out by its whole width.
+ * **Focus is owned here, at both ends.** On open, Kobalte's autofocus is
+ * prevented and redirected to `initialFocus`, so the caller decides what the
+ * keyboard lands on rather than whichever focusable happens to render first.
+ * On close, the element focused at mount is restored from `onCleanup`, not
+ * `onCloseAutoFocus`: the close pipeline that hook belongs to only runs on an
+ * open-to-closed transition Kobalte gets to see, and unmounting is not one.
  *
- * That frame is hidden with `opacity`, not `visibility` or `display`: those two
- * take the surface out of the accessibility tree, so a screen reader would lose
- * it exactly as long as the eye does, and it still has to lay out for the
- * measurement to mean anything.
+ * **The anchor's own press is excluded from dismissal.** Kobalte excludes only
+ * its `Trigger`, and in anchor mode there is none, so without this a press on
+ * the toggle would dismiss the surface and the button's own click would reopen
+ * it in the same gesture. The exclusion covers focus too: shift-tabbing back
+ * onto the anchor is not leaving.
  *
- * Chrome - width, background, z-index - belongs to the caller's own class. This
- * owns position and dismissal, and nothing else.
+ * Chrome is split: this owns the base surface (background, border, shadow,
+ * z-index, in `Popover.module.css`), the caller's `class` adds layout.
  */
 export default function Popover(props: {
-  anchor: PopoverAnchor;
-  /** Which edge is pinned: `start` puts the surface's left edge on the anchor's
-   *  left, `end` puts its right edge on the anchor's right. */
-  align?: "start" | "end";
-  /** Open upward from `anchor.top`. For a control near the bottom of the window,
-   *  where opening downward means the clamp drags the surface back over the
-   *  thing that opened it. */
-  openAbove?: boolean;
-  /** The toggle that opened it, so its own click is not also read as an outside
-   *  click closing what it is trying to toggle. */
+  /** The control the surface hangs off. Kobalte anchors to it directly, and a
+   *  press on it is the control's own to interpret rather than an outside
+   *  dismissal - see the module comment. */
   anchorEl?: HTMLElement;
-  /** False while something nested owns dismissal - a row's context menu is
-   *  portalled elsewhere, so a click or Escape inside it is "outside" this. */
-  dismissable?: boolean;
+  placement?: PopoverPlacement;
+  /** What takes focus when the surface opens. An accessor, because the caller's
+   *  ref is not assigned until the surface's children have rendered. */
+  initialFocus?: () => HTMLElement | undefined;
   onClose: () => void;
   class?: string;
-  role?: JSX.AriaAttributes["role"];
   "aria-label"?: string;
-  onContextMenu?: (e: MouseEvent) => void;
+  /** The content element, for callers that scroll or query inside it. */
   ref?: (el: HTMLDivElement) => void;
   children: JSX.Element;
 }) {
-  let el: HTMLDivElement | undefined;
-  const [pos, setPos] = createSignal({ left: props.anchor.left, top: props.anchor.top });
-  const [placed, setPlaced] = createSignal(false);
-
-  // The opening anchor is read here, not inside the frame callback: an owner
-  // that renders this from a signal it clears on close would leave the callback
-  // reading a position that no longer exists. Clamping to where it actually
-  // opened is also the only correct answer.
   onMount(() => {
-    const at = { ...props.anchor };
-    const align = props.align ?? "start";
-    const above = props.openAbove;
-    requestAnimationFrame(() => {
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      let left = align === "end" ? at.right - r.width : at.left;
-      if (left + r.width > window.innerWidth - PAD) left = window.innerWidth - r.width - PAD;
-      let top = above ? at.top - r.height : at.top;
-      if (top + r.height > window.innerHeight - PAD) top = window.innerHeight - r.height - PAD;
-      setPos({ left: Math.max(PAD, left), top: Math.max(PAD, top) });
-      setPlaced(true);
-    });
-  });
-
-  function onDocMouseDown(e: MouseEvent) {
-    if (props.dismissable === false) return;
-    const t = e.target as Node;
-    if (el?.contains(t) || props.anchorEl?.contains(t)) return;
-    props.onClose();
-  }
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape" && props.dismissable !== false) props.onClose();
-  }
-  onMount(() => {
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-  });
-  onCleanup(() => {
-    document.removeEventListener("mousedown", onDocMouseDown);
-    document.removeEventListener("keydown", onKeyDown);
+    const returnTo = document.activeElement as HTMLElement | null;
+    onCleanup(() => returnTo?.focus?.());
   });
 
   return (
-    <Portal>
-      <div
-        ref={(node) => {
-          el = node;
-          props.ref?.(node);
-        }}
-        class={props.class}
-        role={props.role}
-        aria-label={props["aria-label"]}
-        style={{
-          left: `${pos().left}px`,
-          top: `${pos().top}px`,
-          ...(placed() ? null : { opacity: 0, "pointer-events": "none" }),
-        }}
-        onContextMenu={(e) => props.onContextMenu?.(e)}
-      >
-        {props.children}
-      </div>
-    </Portal>
+    <Primitive.Root
+      open
+      modal={false}
+      placement={props.placement ?? "bottom-end"}
+      gutter={ANCHOR_GUTTER}
+      anchorRef={() => props.anchorEl}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) props.onClose();
+      }}
+    >
+      <Primitive.Portal>
+        <Primitive.Content
+          class={[styles.surface, props.class].filter(Boolean).join(" ")}
+          aria-label={props["aria-label"]}
+          ref={props.ref}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            props.initialFocus?.()?.focus();
+          }}
+          onInteractOutside={(e) => {
+            const target = e.detail.originalEvent.target as Node | null;
+            if (target && props.anchorEl?.contains(target)) e.preventDefault();
+          }}
+        >
+          {props.children}
+        </Primitive.Content>
+      </Primitive.Portal>
+    </Primitive.Root>
   );
 }
