@@ -2,6 +2,7 @@ import { Show, splitProps, type JSX } from "solid-js";
 import { DropdownMenu as Primitive } from "../../lib/menu";
 import { useDialogSurface } from "../Dialog/surface";
 import { MenuRows, type MenuItem } from "./rows";
+import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
 /** Where the menu sits relative to its anchor. Kobalte accepts twelve
@@ -146,32 +147,36 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
   }
 
   return (
-    <Primitive.Root
-      modal={local.modal ?? false}
-      open={local.open}
-      onOpenChange={local.onOpenChange}
-      placement={local.placement ?? (atCursor() ? "right-start" : "bottom-start")}
-      gutter={atCursor() ? CURSOR_GUTTER : TRIGGER_GUTTER}
-      shift={atCursor() ? CURSOR_SHIFT : undefined}
-      // Floating-ui treats the point as a zero-size anchor and flips or slides
-      // the menu against the viewport from there.
-      getAnchorRect={atCursor() ? () => cursorRect(local.anchor) : undefined}
-    >
-      <Show when={!atCursor()}>
-        <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />
-      </Show>
-      <Primitive.Portal mount={mount()}>
-        <Primitive.Content
-          class={styles.content}
-          onOpenAutoFocus={onOpenAutoFocus}
-          onCloseAutoFocus={onCloseAutoFocus}
-          // A right-click inside an open menu would otherwise open the browser's
-          // menu on top of Sway's. The hand-rolled Menu did the same.
-          onContextMenu={(e: MouseEvent) => e.preventDefault()}
-        >
-          {local.menu ?? <MenuRows items={local.items ?? []} />}
-        </Primitive.Content>
-      </Primitive.Portal>
-    </Primitive.Root>
+    // Published rather than only used here: a flyout inside this menu is its own
+    // portal and mounts where the menu it belongs to does. See `surface.ts`.
+    <MenuSurface.Provider value={mount}>
+      <Primitive.Root
+        modal={local.modal ?? false}
+        open={local.open}
+        onOpenChange={local.onOpenChange}
+        placement={local.placement ?? (atCursor() ? "right-start" : "bottom-start")}
+        gutter={atCursor() ? CURSOR_GUTTER : TRIGGER_GUTTER}
+        shift={atCursor() ? CURSOR_SHIFT : undefined}
+        // Floating-ui treats the point as a zero-size anchor and flips or slides
+        // the menu against the viewport from there.
+        getAnchorRect={atCursor() ? () => cursorRect(local.anchor) : undefined}
+      >
+        <Show when={!atCursor()}>
+          <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />
+        </Show>
+        <Primitive.Portal mount={mount()}>
+          <Primitive.Content
+            class={styles.content}
+            onOpenAutoFocus={onOpenAutoFocus}
+            onCloseAutoFocus={onCloseAutoFocus}
+            // A right-click inside an open menu would otherwise open the
+            // browser's menu on top of Sway's. The hand-rolled Menu did the same.
+            onContextMenu={(e: MouseEvent) => e.preventDefault()}
+          >
+            {local.menu ?? <MenuRows items={local.items ?? []} />}
+          </Primitive.Content>
+        </Primitive.Portal>
+      </Primitive.Root>
+    </MenuSurface.Provider>
   );
 }

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For, createSignal } from "solid-js";
 import Button from "../Button/Button";
 import Dropdown, { type MenuPlacement } from "./Dropdown";
-import { MenuRow, MenuSeparator } from "./rows";
+import { MenuRow, MenuSeparator, MenuSub } from "./rows";
 
 const PLACEMENTS: MenuPlacement[] = [
   "bottom-start",
@@ -126,6 +126,36 @@ export const CustomRows: Story = {
       }
     >
       +2
+    </Dropdown>
+  ),
+};
+
+/** A level that opens beside its row rather than replacing the list. This is
+ *  what Breadcrumbs' folder picker became: the old one navigated *in place*, so
+ *  the way back out was the Escape key and the trail you had walked was gone
+ *  from the screen. A flyout keeps every level you opened on screen at once.
+ *
+ *  Hover the row, or press ArrowRight on it. ArrowLeft comes back. */
+export const Submenus: Story = {
+  render: () => (
+    <Dropdown
+      menu={
+        <>
+          <MenuRow onClick={() => {}}>package.json</MenuRow>
+          <MenuSub label={<span class="tab-name">src</span>}>
+            <MenuRow onClick={() => {}}>main.tsx</MenuRow>
+            <MenuSub label={<span class="tab-name">panels</span>}>
+              <MenuRow onClick={() => {}}>Editor.tsx</MenuRow>
+              <MenuRow onClick={() => {}}>Terminal.tsx</MenuRow>
+            </MenuSub>
+          </MenuSub>
+          <MenuSub label={<span class="tab-name">node_modules</span>} disabled>
+            <MenuRow onClick={() => {}}>Never reached.</MenuRow>
+          </MenuSub>
+        </>
+      }
+    >
+      src
     </Dropdown>
   ),
 };

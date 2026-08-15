@@ -5,7 +5,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
 import Dialog from "../Dialog/Dialog";
 import Dropdown, { cursorRect } from "./Dropdown";
-import type { MenuItem } from "./rows";
+import { MenuRow, MenuSub, type MenuItem } from "./rows";
 
 // Kobalte's focus scope focuses the content from a `setTimeout(0)`, and its
 // dismissable layer installs the outside-pointerdown listener from another one.
@@ -206,6 +206,130 @@ describe("Dropdown", () => {
       await macrotask();
       expect(alpha).toHaveBeenCalledOnce();
       expect(screen.queryByRole("menu")).toBeNull();
+    });
+  });
+
+  describe("a level that opens beside a row", () => {
+    // `mounted` counts renders of the submenu's contents, which is the whole
+    // point of the level being lazy: Breadcrumbs puts a `createResource` here,
+    // and a level that mounts with its parent would read every folder in the
+    // list the moment the menu opened.
+    function Level(props: { mounted: () => void }) {
+      props.mounted();
+      return <MenuRow onClick={() => {}}>main.tsx</MenuRow>;
+    }
+
+    function withSub(mounted: () => void) {
+      return (
+        <Dropdown
+          menu={
+            <>
+              <MenuRow onClick={() => {}}>Alpha</MenuRow>
+              <MenuSub label="src">
+                <Level mounted={mounted} />
+              </MenuSub>
+            </>
+          }
+        >
+          Open
+        </Dropdown>
+      );
+    }
+
+    it("mounts the level only once its row is opened", async () => {
+      const mounted = vi.fn();
+      render(() => withSub(mounted));
+
+      pointerClick(screen.getByText("Open"));
+      await screen.findByRole("menu");
+      expect(mounted).not.toHaveBeenCalled();
+
+      pointerClick(screen.getByRole("menuitem", { name: "src" }));
+
+      expect(await screen.findByRole("menuitem", { name: "main.tsx" })).toBeTruthy();
+      expect(mounted).toHaveBeenCalledOnce();
+    });
+
+    it("says it opens something, on the row rather than beside it", async () => {
+      render(() => withSub(() => {}));
+      pointerClick(screen.getByText("Open"));
+      const row = await screen.findByRole("menuitem", { name: "src" });
+
+      expect(row.getAttribute("aria-haspopup")).toBe("true");
+      expect(row.getAttribute("aria-expanded")).toBe("false");
+
+      pointerClick(row);
+
+      await screen.findByRole("menuitem", { name: "main.tsx" });
+      expect(row.getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it("closes the whole stack when a row inside the level is picked", async () => {
+      // Not only its own level: the parent menu is what the pick was made
+      // *from*, and leaving it open would leave the choice looking unmade.
+      const pick = vi.fn();
+      render(() => (
+        <Dropdown
+          menu={
+            <MenuSub label="src">
+              <MenuRow onClick={pick}>main.tsx</MenuRow>
+            </MenuSub>
+          }
+        >
+          Open
+        </Dropdown>
+      ));
+      pointerClick(screen.getByText("Open"));
+      pointerClick(await screen.findByRole("menuitem", { name: "src" }));
+
+      pointerClick(await screen.findByRole("menuitem", { name: "main.tsx" }));
+
+      await macrotask();
+      expect(pick).toHaveBeenCalledOnce();
+      expect(screen.queryAllByRole("menu")).toEqual([]);
+    });
+
+    it("mounts the level where the menu it belongs to is mounted", async () => {
+      // A flyout is its own portal, and asked where to go it would answer for
+      // itself: in the body, while the rows it came from sat wherever the menu
+      // was told to go. An explicit `mount` is what shows the difference, since
+      // a dialog would answer the same for both.
+      const elsewhere = document.createElement("div");
+      document.body.append(elsewhere);
+      onTestFinished(() => elsewhere.remove());
+
+      render(() => (
+        <Dropdown
+          mount={elsewhere}
+          menu={
+            <MenuSub label="src">
+              <MenuRow onClick={() => {}}>main.tsx</MenuRow>
+            </MenuSub>
+          }
+        >
+          Open
+        </Dropdown>
+      ));
+      pointerClick(screen.getByText("Open"));
+      pointerClick(await screen.findByRole("menuitem", { name: "src" }));
+
+      const level = await screen.findByRole("menuitem", { name: "main.tsx" });
+      expect(elsewhere.contains(level)).toBe(true);
+    });
+
+    it("has no violations with both levels on screen", async () => {
+      render(() => withSub(() => {}));
+      pointerClick(screen.getByText("Open"));
+      pointerClick(await screen.findByRole("menuitem", { name: "src" }));
+      await screen.findByRole("menuitem", { name: "main.tsx" });
+
+      // Disabled for the reason the trigger scan below documents, and for one
+      // more element here: a `SubTrigger` carries `aria-haspopup` and
+      // `aria-controls` too, so it draws the same review item its menu's
+      // trigger does.
+      await expectNoAxeViolations(document.body, {
+        rules: { "aria-valid-attr-value": { enabled: false } },
+      });
     });
   });
 

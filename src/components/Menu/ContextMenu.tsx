@@ -2,6 +2,7 @@ import { splitProps, type JSX } from "solid-js";
 import { ContextMenu as Primitive } from "../../lib/menu";
 import { useDialogSurface } from "../Dialog/surface";
 import { MenuRows, type MenuItem } from "./rows";
+import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
 export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement>
@@ -96,25 +97,29 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(
   const triggerProps = trigger as ContextMenuProps<HTMLDivElement>;
 
   return (
-    <Primitive.Root
-      modal={local.modal ?? false}
-      onOpenChange={local.onOpenChange}
-    >
-      <Primitive.Trigger
-        as={local.as ?? "div"}
-        disabled={local.disabled}
-        {...triggerProps}
-      />
-      <Primitive.Portal mount={mount()}>
-        <Primitive.Content
-          class={styles.content}
-          // A right-click *inside* an open menu would otherwise open the
-          // browser's menu on top of Sway's. The hand-rolled Menu did the same.
-          onContextMenu={(e: MouseEvent) => e.preventDefault()}
-        >
-          {local.menu ?? <MenuRows items={local.items ?? []} />}
-        </Primitive.Content>
-      </Primitive.Portal>
-    </Primitive.Root>
+    // Published rather than only used here: a flyout inside this menu is its own
+    // portal and mounts where the menu it belongs to does. See `surface.ts`.
+    <MenuSurface.Provider value={mount}>
+      <Primitive.Root
+        modal={local.modal ?? false}
+        onOpenChange={local.onOpenChange}
+      >
+        <Primitive.Trigger
+          as={local.as ?? "div"}
+          disabled={local.disabled}
+          {...triggerProps}
+        />
+        <Primitive.Portal mount={mount()}>
+          <Primitive.Content
+            class={styles.content}
+            // A right-click *inside* an open menu would otherwise open the
+            // browser's menu on top of Sway's. The hand-rolled Menu did the same.
+            onContextMenu={(e: MouseEvent) => e.preventDefault()}
+          >
+            {local.menu ?? <MenuRows items={local.items ?? []} />}
+          </Primitive.Content>
+        </Primitive.Portal>
+      </Primitive.Root>
+    </MenuSurface.Provider>
   );
 }
