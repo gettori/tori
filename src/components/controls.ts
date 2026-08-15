@@ -4,7 +4,8 @@
 /** The three control sizes, each mapping to a fixed --control-height* token. */
 export type ControlSize = "md" | "sm" | "xs";
 
-/** Roving-tabindex arrow navigation for a horizontal group (SegmentedControl).
+/** Roving-tabindex arrow navigation for a horizontal group (the Settings tab
+ *  strip; the segmented control gets the same movement from Kobalte).
  *  Left/Up step back, Right/Down step forward, Home/End jump to the ends; the
  *  index wraps. Any other key returns the current index unchanged (no move).
  *  Pure so it can be tested without a DOM. */
