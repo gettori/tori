@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { rightClick } from "../../test/menus";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
+import { pointerClick, rightClick } from "../../test/menus";
 
 // What the sidebar is *for* once its session level is gone: spaces, projects,
 // branch-units, the rollup badges that report what is live underneath, and the
@@ -309,20 +309,23 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(screen.getByText("Remove worktree")).toBeTruthy();
   });
 
-  // Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). What the
-  // three menus *contain* is asserted above; this is how they open and close, so
-  // it has to survive a change of implementation. Where a menu opens is not
-  // pinned anywhere: no position assertion spans both implementations, so the
-  // phase-2 wrapper owns that.
+  // Written against the hand-rolled menu (skarif2/sway#103, phase 1), now
+  // running against Kobalte's (phase 3). What the three menus *contain* is
+  // asserted above; this is how they open and close. Where a menu opens is
+  // pinned in `ContextMenu.test.tsx`, since no position assertion could span
+  // both implementations.
   //
-  // Selector coupling, i.e. what a migration has to rewrite here:
-  //   - `role="menu"` on the surface: STABLE, Kobalte's Content sets it too.
-  //   - `defaultPrevented` on the dispatched event: STABLE, and load-bearing.
-  //     It is the whole difference between a row that owns its right-click and
-  //     one that lets the browser's own menu through.
-  //   - Escape and outside-click as *document* events: STABLE in effect only.
-  //     They move from Popover's document listeners to Kobalte's dismissable
-  //     layer, so assert the closing, never the mechanism.
+  // What the migration actually had to rewrite here, against phase 1's list:
+  //   - `role="menu"` on the surface: unchanged, Kobalte's Content sets it too.
+  //   - `defaultPrevented` on the dispatched event: unchanged, and still the
+  //     whole difference between a row that owns its right-click and one that
+  //     lets the browser's own menu through. Kobalte's trigger is what calls
+  //     `preventDefault` now.
+  //   - The outside click had to become `pointerDown`: Popover listened for
+  //     `mousedown`, the dismissable layer listens for `pointerdown`.
+  //   - Picking a row had to become `pointerClick` (`src/test/menus.ts`).
+  //   - Replacing an open menu had to spell out the pointerdown a right-click
+  //     carries, which the single shared menu signal never needed.
   describe("how the context menus open and close", () => {
     it("claims the right-click on every row that has a menu", async () => {
       mount(["p:work/repo"]);
@@ -350,7 +353,11 @@ describe("the sidebar levels that outlive the session rows", () => {
       mount(["p:work/repo"]);
       fireEvent.contextMenu(await row("repo"));
       await screen.findByRole("menu");
+      // Kobalte installs the outside listener from a `setTimeout(0)`, so a click
+      // dispatched before this yield lands on a listener that does not exist yet.
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
+      fireEvent.pointerDown(document.body);
       fireEvent.mouseDown(document.body);
 
       await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -360,7 +367,7 @@ describe("the sidebar levels that outlive the session rows", () => {
       mount(["p:work/repo"]);
       fireEvent.contextMenu(await row("feat"));
 
-      fireEvent.click(await screen.findByText("Commit log"));
+      pointerClick(await screen.findByText("Commit log"));
 
       await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     });
@@ -369,12 +376,54 @@ describe("the sidebar levels that outlive the session rows", () => {
       mount(["p:work/repo"]);
       fireEvent.contextMenu(await row("repo"));
       await screen.findByRole("menu");
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      fireEvent.contextMenu(await row("feat"));
+      // A right-click on the *other* row, spelled out: the pointerdown is what
+      // dismisses the open menu, and each row now owns its own menu rather than
+      // sharing one signal, so the closing is no longer implicit in the opening.
+      const feat = await row("feat");
+      fireEvent.pointerDown(feat, { button: 2 });
+      fireEvent.contextMenu(feat);
 
       // One surface at a time, whichever row was asked last.
       await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(1));
       expect(await screen.findByText("New session")).toBeTruthy();
+    });
+
+    // Each row owns its own menu now, where before one signal held whichever the
+    // last handler wrote. So the question "does a branch row inside an open
+    // project answer with the branch's menu" stopped being answered by the
+    // sidebar's code and started being answered by the DOM. It is only ever the
+    // branch's because the rows are siblings rather than nested: a project row
+    // ends before its branch list begins, so the right-click never passes
+    // through it. This pins that shape, since a refactor that wrapped the branch
+    // list inside the project row would silently change what a branch offers.
+    // What `menuActive` used to do by hand, and what the CSS now keys on. Only
+    // the attribute is assertable: vitest stubs the CSS module import and jsdom
+    // resolves no `var()`, so there is no computed background to read here.
+    it("marks the row its menu belongs to, and unmarks it on close", async () => {
+      mount(["p:work/repo"]);
+      const repo = await row("repo");
+
+      fireEvent.contextMenu(repo);
+      await screen.findByRole("menu");
+      expect(repo.hasAttribute("data-expanded")).toBe(true);
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => expect(repo.hasAttribute("data-expanded")).toBe(false));
+    });
+
+    it("answers a branch row with the branch's menu, not the project's", async () => {
+      mount(["p:work/repo"]);
+
+      fireEvent.contextMenu(await row("feat"));
+
+      const m = await screen.findByRole("menu");
+      expect(within(m).getByText("New session")).toBeTruthy();
+      expect(within(m).queryByText("Fan out…")).toBeNull();
+      expect(within(m).queryByText("Remove project")).toBeNull();
+      expect(screen.getAllByRole("menu")).toHaveLength(1);
     });
   });
 
@@ -385,7 +434,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     window.addEventListener(OPEN_IN_EDITOR, listener);
 
     fireEvent.contextMenu(await row("feat"));
-    fireEvent.click(await screen.findByText("Commit log"));
+    pointerClick(await screen.findByText("Commit log"));
 
     // The tab is workspace-scoped, so the unit has to be selected first or the
     // log would open into a workspace nobody is looking at.

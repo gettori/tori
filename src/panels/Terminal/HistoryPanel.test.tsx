@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 
 // The History dropdown is the only way to reach a session once the sidebar's
 // rows are gone, so what is asserted here is mostly *reach*: every session in
@@ -66,17 +67,21 @@ function unmountPanel() {
   mounted = null;
 }
 
+/** How many times the panel asked to be dismissed. */
+let closed = 0;
+
 /** Mount the panel over a seeded store, the way the tab bar opens it. */
 async function open(folder = REPO, openSessionIds: string[] = []) {
   await trackFolders([REPO, OTHER]);
   bridge.calls.length = 0;
+  closed = 0;
   mounted = render(() => (
     <HistoryPanel
       folder={folder}
       breadcrumb={["work", "repo", "main"]}
       openSessionIds={openSessionIds}
       anchor={{ left: 100, right: 300, top: 40 }}
-      onClose={() => {}}
+      onClose={() => closed++}
     />
   ));
   return mounted;
@@ -237,13 +242,71 @@ describe("what a History row can do", () => {
   it("offers rename and delete, and nothing else", async () => {
     await open();
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
-    const items = Array.from(document.querySelectorAll('[role="menu"] > div'))
+    const menu = await screen.findByRole("menu");
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
       .map((d) => d.textContent ?? "")
       .filter(Boolean);
     expect(items).toEqual(["Rename…", "Delete"]);
 
-    fireEvent.click(screen.getByText("Delete"));
+    pointerClick(screen.getByText("Delete"));
     expect(actions).toEqual([{ sessionId: "s1", action: "delete" }]);
+  });
+
+  // The row menu is portalled out of the panel, so every interaction with it is
+  // an interaction *outside* the panel as far as the panel can tell. These two
+  // pin what stops that from closing the thing the menu belongs to, and what
+  // stops the panel's own keys from answering underneath it. Both are driven off
+  // the wrapper's `onOpenChange`, which is the whole reason it is exposed.
+  it("keeps the panel open while a row menu is being used", async () => {
+    await open();
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    const menu = await screen.findByRole("menu");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.pointerDown(menu);
+    fireEvent.mouseDown(menu);
+
+    expect(screen.queryByRole("dialog", { name: "Session history" })).toBeTruthy();
+    expect(closed).toBe(0);
+  });
+
+  it("gives the arrows and Enter to the row menu while one is open", async () => {
+    bridge.listings[REPO] = [session("first", now()), session("second", now() - DAY)];
+    await open();
+    const selected = () =>
+      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    await screen.findByRole("menu");
+
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    // The list's own highlight has not moved: the menu's has.
+    expect(selected()?.getAttribute("title")).toBe("first");
+
+    fireEvent.keyDown(document, { key: "Enter" });
+    expect(actions).toEqual([]);
+  });
+
+  // Kobalte does not report a close for a trigger that simply goes away, so the
+  // row has to give the panel its keys back itself. Without that the panel is
+  // left believing a menu is open forever: undismissable, arrows dead, and no
+  // menu on screen to explain why.
+  it("takes its keys back when the row holding the menu is filtered away", async () => {
+    bridge.listings[REPO] = [session("alpha", now()), session("beta", now() - DAY)];
+    await open();
+    const selected = () =>
+      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    await screen.findByRole("menu");
+
+    // "alpha" no longer matches, so its row unmounts with its menu still open.
+    fireEvent.input(screen.getByLabelText("Search sessions"), { target: { value: "beta" } });
+    await waitFor(() => expect(rowLabels()).toEqual(["beta"]));
+
+    fireEvent.keyDown(document, { key: "Enter" });
+    expect(actions).toEqual([{ sessionId: "beta", action: "open" }]);
+    expect(selected()?.getAttribute("title")).toBe("beta");
   });
 
   // TabMark's rule, not the sidebar's four-glyph one: these rows are scanned,

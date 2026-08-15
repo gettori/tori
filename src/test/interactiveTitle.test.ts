@@ -200,7 +200,10 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Terminal/HistoryPanel.tsx",
-    { count: 3, reason: `one ${TRUNCATION}, and two of ${ROW_ONCLICK}` },
+    {
+      count: 3,
+      reason: `one ${TRUNCATION}, one ${ROW_ONCLICK}, and one that is still a row onClick but now reads as a prop of ContextMenu, which passes it through`,
+    },
   ],
   [
     "panels/Terminal/Terminal.tsx",
@@ -212,11 +215,20 @@ const KEPT = new Map<string, Kept>([
 ]);
 
 /** The `title=` this ticket set out to keep: the full text behind a truncated
- *  label, on a `span`, `div` or `code` that no keyboard can reach. */
-const RAW_ELEMENT_TITLES = 63;
+ *  label, on a `span`, `div` or `code` that no keyboard can reach.
+ *
+ *  **This scan cannot see through a passthrough wrapper, and one row is now
+ *  behind one.** #103 moved HistoryPanel's row from a raw `<div title=… onClick=…>`
+ *  to `<ContextMenu title=… onClick=…>`, which spreads what it does not consume
+ *  straight onto its trigger - so the attribute is still native at runtime and
+ *  this file stopped counting it. The number below went down by one for that
+ *  reason and not because anything was fixed. A wrapper is therefore the quiet
+ *  way out of this guard, which is worth knowing before the next one is written. */
+const RAW_ELEMENT_TITLES = 62;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
- *  (see the header); pinned here so the list cannot grow quietly. */
-const ROW_ONCLICK_ROWS = 10;
+ *  (see the header); pinned here so the list cannot grow quietly. Down one from
+ *  ten for the same reason as above, and the row itself is unchanged. */
+const ROW_ONCLICK_ROWS = 9;
 
 const TITLE = /\btitle=/g;
 
@@ -307,7 +319,7 @@ describe("the title= guard", () => {
     // if some other file lost one and the sum still came out right.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       code: 1,
-      div: 16,
+      div: 15,
       span: 46,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);

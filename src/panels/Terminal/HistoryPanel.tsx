@@ -4,7 +4,8 @@ import { ChevronRight } from "lucide-solid";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
-import Menu, { type MenuItem } from "../../components/Menu/Menu";
+import ContextMenu from "../../components/Menu/ContextMenu";
+import { type MenuItem } from "../../components/Menu/rows";
 import Popover from "../../components/Popover/Popover";
 import TabMark from "./TabMark";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
@@ -51,7 +52,16 @@ export default function HistoryPanel(props: {
   let searchEl: HTMLInputElement | undefined;
   const [query, setQuery] = createSignal("");
   const [histOpen, setHistOpen] = createSignal(false);
-  const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  // Which row's menu is open, by session id. Every row owns its own menu now, so
+  // this cannot be a boolean that two rows write to: one closing as the next
+  // opens would report "closed" last and leave the panel dismissable underneath
+  // an open menu. Each row only ever clears its own id, and clears it on unmount
+  // too - Kobalte does not fire `onOpenChange(false)` for a trigger that goes
+  // away, and a store refresh remounts every row, so without that the panel
+  // would be left permanently undismissable with its arrow keys dead.
+  const [menuRow, setMenuRow] = createSignal<string | null>(null);
+  const menuOpen = () => menuRow() != null;
+  const releaseMenu = (id: string) => setMenuRow((cur) => (cur === id ? null : cur));
 
   // The verdict writes to disk (it auto-adopts), so it is asked for exactly the
   // folder whose Historical section is about to render and for no other. Opening
@@ -75,6 +85,11 @@ export default function HistoryPanel(props: {
   // which is also what lets them work from inside the search field. Escape is
   // Popover's, along with the outside click.
   function onKeyDown(e: KeyboardEvent) {
+    // An open row menu answers the arrows itself, and Enter picks the row it has
+    // highlighted. Both handlers are on the document, so without this the two
+    // highlights would move together and Enter would open a session behind the
+    // menu that was asked to rename it.
+    if (menuOpen()) return;
     const rows = visibleRows();
     if (!rows.length) return;
     if (e.key === "ArrowDown") step(e, 1, rows.length);
@@ -160,41 +175,47 @@ export default function HistoryPanel(props: {
     { label: "Delete", danger: true, onClick: () => act(s, "delete") },
   ];
 
-  function openRowMenu(e: MouseEvent, s: SessionMeta) {
-    e.preventDefault();
-    e.stopPropagation();
-    setMenu({ x: e.clientX, y: e.clientY, items: rowMenu(s) });
-  }
-
-  const row = (s: SessionMeta) => (
-    <div
-      class={styles.row}
-      classList={{ [styles.rowActive]: isActive(s) }}
-      role="option"
-      aria-selected={isActive(s)}
-      title={label(s)}
-      onClick={() => act(s, "open")}
-      onContextMenu={(e) => openRowMenu(e, s)}
-    >
-      {/* One glyph position for agent and status together, the tab strip's rule
-          rather than the sidebar's four-glyph one: these rows are scanned, and
-          a row that changes shape when a session merely goes quiet pulls the
-          eye to the wrong one. */}
-      <TabMark
-        agentId={s.agent ?? "claude"}
-        status={sessionStatus(s.id)}
-        certainty={sessionCertainty(s.id)}
-      />
-      <span class={styles.rowLabel}>{label(s)}</span>
-      {/* The backend sends a label only when there is a second account to tell
-          this one apart from, so a machine that never added one renders exactly
-          the list it rendered before. */}
-      <Show when={s.profile_label}>
-        {(profile) => <span class={styles.rowProfile}>{profile()}</span>}
-      </Show>
-      <span class={styles.rowWhen}>{ago(s.last_active)}</span>
-    </div>
-  );
+  const row = (s: SessionMeta) => {
+    // `For` gives each item its own owner, so this fires when the row goes.
+    onCleanup(() => releaseMenu(s.id));
+    return (
+      <ContextMenu
+        class={styles.row}
+        classList={{ [styles.rowActive]: isActive(s) }}
+        role="option"
+        aria-selected={isActive(s)}
+        title={label(s)}
+        onClick={() => act(s, "open")}
+        items={rowMenu(s)}
+        // The trigger is inside the panel but the surface is not: the wrapper
+        // portals it out, which is what keeps it clear of `.panel`'s `overflow:
+        // hidden` and its z-index. That is also why the panel has to be told to
+        // stop dismissing itself, since a click in the menu is a click outside it.
+        //
+        // Non-modal, deliberately: a modal menu would `aria-hidden` the very panel
+        // it is asking about a row in. See the wrapper's module comment.
+        onOpenChange={(open) => (open ? setMenuRow(s.id) : releaseMenu(s.id))}
+      >
+        {/* One glyph position for agent and status together, the tab strip's rule
+            rather than the sidebar's four-glyph one: these rows are scanned, and
+            a row that changes shape when a session merely goes quiet pulls the
+            eye to the wrong one. */}
+        <TabMark
+          agentId={s.agent ?? "claude"}
+          status={sessionStatus(s.id)}
+          certainty={sessionCertainty(s.id)}
+        />
+        <span class={styles.rowLabel}>{label(s)}</span>
+        {/* The backend sends a label only when there is a second account to tell
+            this one apart from, so a machine that never added one renders exactly
+            the list it rendered before. */}
+        <Show when={s.profile_label}>
+          {(profile) => <span class={styles.rowProfile}>{profile()}</span>}
+        </Show>
+        <span class={styles.rowWhen}>{ago(s.last_active)}</span>
+      </ContextMenu>
+    );
+  };
 
   return (
     <>
@@ -209,7 +230,7 @@ export default function HistoryPanel(props: {
         // A row's context menu is portalled elsewhere, so a click or Escape
         // inside it is "outside" this panel and would close the thing the menu
         // belongs to.
-        dismissable={!menu()}
+        dismissable={!menuOpen()}
         onClose={props.onClose}
         class={styles.panel}
         role="dialog"
@@ -290,13 +311,6 @@ export default function HistoryPanel(props: {
           </Show>
         </div>
       </Popover>
-
-      {/* A sibling, not a child: `.panel` is `overflow: hidden` and carries its
-          own z-index, so a menu nested inside it would be both clipped and
-          trapped under the panel's stacking context. */}
-      <Show when={menu()}>
-        <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={() => setMenu(null)} />
-      </Show>
     </>
   );
 }
