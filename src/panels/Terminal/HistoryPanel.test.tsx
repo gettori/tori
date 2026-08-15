@@ -51,6 +51,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 const { default: HistoryPanel } = await import("./HistoryPanel");
+const { expectNoAxeViolations } = await import("../../test/axe");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { noteLiveTabs, probeBatch, resetSessionActivityForTests } = await import(
   "../../utils/sessionActivity"
@@ -62,9 +63,13 @@ const { ago } = await import("../../utils/relativeTime");
 // reach, so each mount is disposed by hand rather than left for the next test
 // to count as its own rows.
 let mounted: ReturnType<typeof render> | null = null;
+/** The History button the panel hangs off, focused the way a click leaves it. */
+let anchorBtn: HTMLButtonElement | null = null;
 function unmountPanel() {
   mounted?.unmount();
   mounted = null;
+  anchorBtn?.remove();
+  anchorBtn = null;
 }
 
 /** How many times the panel asked to be dismissed. */
@@ -75,12 +80,16 @@ async function open(folder = REPO, openSessionIds: string[] = []) {
   await trackFolders([REPO, OTHER]);
   bridge.calls.length = 0;
   closed = 0;
+  anchorBtn = document.createElement("button");
+  anchorBtn.textContent = "History";
+  document.body.append(anchorBtn);
+  anchorBtn.focus();
   mounted = render(() => (
     <HistoryPanel
       folder={folder}
       breadcrumb={["work", "repo", "main"]}
       openSessionIds={openSessionIds}
-      anchor={{ left: 100, right: 300, top: 40 }}
+      anchorEl={anchorBtn!}
       onClose={() => closed++}
     />
   ));
@@ -328,6 +337,121 @@ describe("what a History row can do", () => {
     notePtyActivity("tab-1", "active");
     await waitFor(() => expect(glyph().className).not.toBe(idle));
     expect(glyph().childElementCount).toBe(1); // still one glyph: no shape change
+  });
+});
+
+// The invariants of skarif2/sway#104: how the panel opens, closes, and hands
+// focus around must survive the move onto Kobalte exactly as pinned here.
+// Dismissal fires the pointerdown/mousedown pair a real pointer sends (see
+// test/menuIdioms.test.ts) and yields a macrotask after mounting, because the
+// migrated surface installs its outside listener from a `setTimeout(0)`.
+describe("how the panel opens, closes, and hands focus", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    actions.length = 0;
+    bridge.calls.length = 0;
+    bridge.historical = false;
+    bridge.running = [];
+    bridge.listings = { [REPO]: [session("s1", now())], [OTHER]: [] };
+  });
+  afterEach(unmountPanel);
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("opens off the button with its search focused", async () => {
+    await open();
+    expect(screen.getByRole("dialog", { name: "Session history" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText("Search sessions"));
+  });
+
+  it("closes on Escape", async () => {
+    await open();
+    await settle();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closed).toBe(1);
+  });
+
+  it("closes on an outside pointer, but not on its own or the anchor's", async () => {
+    await open();
+    await settle();
+
+    // Inside the panel: staying open is what makes it usable at all.
+    const search = screen.getByLabelText("Search sessions");
+    fireEvent.pointerDown(search);
+    fireEvent.mouseDown(search);
+    // The toggle that opened it: its press is the button's to interpret, or it
+    // would fight its own open/close.
+    fireEvent.pointerDown(anchorBtn!);
+    fireEvent.mouseDown(anchorBtn!);
+    expect(closed).toBe(0);
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.mouseDown(document.body);
+    expect(closed).toBe(1);
+  });
+
+  it("hands focus back to the button when it goes away", async () => {
+    await open();
+    expect(document.activeElement).not.toBe(anchorBtn);
+    mounted?.unmount();
+    mounted = null;
+    expect(document.activeElement).toBe(anchorBtn);
+  });
+
+  it("scrolls the arrow-key highlight into view", async () => {
+    bridge.listings[REPO] = [session("first", now()), session("second", now() - DAY)];
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView");
+    await open();
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    spy.mockRestore();
+  });
+
+  // Body-scoped, because the panel portals out of its render container; see the
+  // scope section of src/test/axe.ts.
+  it("passes the axe gate while open", async () => {
+    await open();
+    await expectNoAxeViolations(document.body);
+  });
+
+  // The dismissal semantics of the move onto Kobalte (skarif2/sway#104), pinned
+  // as measured rather than assumed. One changed, one did not.
+
+  // Did NOT change: the old dismissable={!menuOpen()} behavior survives, now by
+  // Kobalte's layer stack instead of a hand-wired prop. A press outside
+  // everything dismisses only the topmost layer, so the menu goes, the panel
+  // stays for that press, and the next one reaches the panel.
+  it("gives up only the row menu to a press outside both, then itself", async () => {
+    await open();
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    await screen.findByRole("menu");
+    await settle();
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(closed).toBe(0);
+    expect(screen.queryByRole("dialog", { name: "Session history" })).toBeTruthy();
+
+    await settle();
+    fireEvent.pointerDown(document.body);
+    fireEvent.mouseDown(document.body);
+    expect(closed).toBe(1);
+  });
+
+  // DID change, and is adopted: the hand-rolled surface dismissed on pointer
+  // and Escape only, so the panel stayed open when the keyboard left it.
+  // Kobalte's interact-outside covers focus too, so focusing away closes it.
+  it("closes when focus leaves it", async () => {
+    await open();
+    await settle();
+
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    expect(closed).toBe(1);
+    outside.remove();
   });
 });
 

@@ -41,10 +41,8 @@ export default function HistoryPanel(props: {
   breadcrumb: readonly string[];
   /** Sessions this workspace currently has open in a tab. */
   openSessionIds: readonly string[];
-  /** The History button's rect, in viewport coordinates. */
-  anchor: { left: number; right: number; top: number };
-  /** The button that opened it, so its own click is not also read as an
-   *  outside-click that closes what it is trying to toggle. */
+  /** The History button, which the panel hangs off. Its own press is the
+   *  button's to interpret, not an outside dismissal - see the wrapper. */
   anchorEl?: HTMLElement;
   onClose: () => void;
 }) {
@@ -54,11 +52,13 @@ export default function HistoryPanel(props: {
   const [histOpen, setHistOpen] = createSignal(false);
   // Which row's menu is open, by session id. Every row owns its own menu now, so
   // this cannot be a boolean that two rows write to: one closing as the next
-  // opens would report "closed" last and leave the panel dismissable underneath
-  // an open menu. Each row only ever clears its own id, and clears it on unmount
+  // opens would report "closed" last and hand the arrows back underneath an
+  // open menu. Each row only ever clears its own id, and clears it on unmount
   // too - Kobalte does not fire `onOpenChange(false)` for a trigger that goes
   // away, and a store refresh remounts every row, so without that the panel
-  // would be left permanently undismissable with its arrow keys dead.
+  // would be left with its arrow keys dead. Dismissal is not involved anymore:
+  // the panel and the row menus share Kobalte's layer stack, which already
+  // knows a press in a menu is not a press outside the panel.
   const [menuRow, setMenuRow] = createSignal<string | null>(null);
   const menuOpen = () => menuRow() != null;
   const releaseMenu = (id: string) => setMenuRow((cur) => (cur === id ? null : cur));
@@ -69,15 +69,6 @@ export default function HistoryPanel(props: {
   // rather than `onMount` because the panel is not re-created when the workspace
   // under it changes - only when it is closed and reopened.
   createEffect(on(() => props.folder, (folder) => void checkHistorical(folder)));
-
-  // The search field takes focus, and gives it back to whatever had it. Without
-  // the second half, dismissing the panel leaves the terminal unfocused and the
-  // next keystroke goes nowhere.
-  onMount(() => {
-    const returnTo = document.activeElement as HTMLElement | null;
-    searchEl?.focus();
-    onCleanup(() => returnTo?.focus?.());
-  });
 
   // Arrow keys and Enter, so `role="option"` is a description of how the list
   // works rather than a claim about it. Bound at the document while the panel is
@@ -189,8 +180,7 @@ export default function HistoryPanel(props: {
         items={rowMenu(s)}
         // The trigger is inside the panel but the surface is not: the wrapper
         // portals it out, which is what keeps it clear of `.panel`'s `overflow:
-        // hidden` and its z-index. That is also why the panel has to be told to
-        // stop dismissing itself, since a click in the menu is a click outside it.
+        // hidden` and its z-index.
         //
         // Non-modal, deliberately: a modal menu would `aria-hidden` the very panel
         // it is asking about a row in. See the wrapper's module comment.
@@ -224,16 +214,12 @@ export default function HistoryPanel(props: {
           children are neither is one a screen reader reads back wrong. */}
       <Popover
         ref={(node) => (el = node)}
-        anchor={props.anchor}
-        align="end"
         anchorEl={props.anchorEl}
-        // A row's context menu is portalled elsewhere, so a click or Escape
-        // inside it is "outside" this panel and would close the thing the menu
-        // belongs to.
-        dismissable={!menuOpen()}
+        // The search field takes the keyboard the moment the panel opens, which
+        // is also what makes the arrow keys reachable without a click first.
+        initialFocus={() => searchEl}
         onClose={props.onClose}
         class={styles.panel}
-        role="dialog"
         aria-label="Session history"
       >
         <div class={styles.head}>

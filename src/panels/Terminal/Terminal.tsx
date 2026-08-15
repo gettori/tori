@@ -376,20 +376,9 @@ export default function Terminal(props: {
   // --- History dropdown -------------------------------------------------------
 
   const [historyOpen, setHistoryOpen] = createSignal(false);
-  const [historyAnchor, setHistoryAnchor] = createSignal({ left: 0, right: 0, top: 0 });
   let historyEl: HTMLButtonElement | undefined;
 
-  function toggleHistory() {
-    if (historyOpen()) {
-      setHistoryOpen(false);
-      return;
-    }
-    if (historyEl) {
-      const r = historyEl.getBoundingClientRect();
-      setHistoryAnchor({ left: r.left, right: r.right, top: r.bottom + 12 });
-    }
-    setHistoryOpen(true);
-  }
+  const toggleHistory = () => setHistoryOpen(!historyOpen());
 
   // Which of this workspace's sessions are open in a tab: History lists those
   // first, whatever their age, and everything else falls into time buckets.
@@ -1315,7 +1304,6 @@ export default function Terminal(props: {
             folder={ws()}
             breadcrumb={historyCrumb()}
             openSessionIds={openSessionIds()}
-            anchor={historyAnchor()}
             anchorEl={historyEl}
             onClose={() => setHistoryOpen(false)}
           />
