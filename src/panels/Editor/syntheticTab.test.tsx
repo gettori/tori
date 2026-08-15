@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { tab } from "../../test/tabs";
-import { rightClick } from "../../test/menus";
+import { tab, visibleTab } from "../../test/tabs";
+import { pointerClick, rightClick } from "../../test/menus";
 
 // A `sway://` tab is a view, not a file, and the whole point of the convention
 // is what it is kept *out* of: CodeEditor's buffers (and so the language server),
@@ -12,9 +12,17 @@ import { rightClick } from "../../test/menus";
 // the shape that rots silently. This suite mounts the real pane and asserts what
 // CodeEditor is actually handed.
 
-import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import {
+  installAnimationFrame,
+  installResizeObserver,
+  selectionFor,
+  EMPTY_PANE,
+} from "./__fixtures__/editorHarness";
 
 installResizeObserver();
+// This suite right-clicks tabs, so it needs the row a browser would draw rather
+// than the measuring ghost. See the helper for why the two differ in jsdom.
+installAnimationFrame();
 
 const REPO = "/space/proj/main";
 
@@ -178,8 +186,8 @@ describe("a sway:// tab in the editor pane", () => {
     const opened: string[] = [];
     const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
 
-    fireEvent.contextMenu(tab("a.ts"));
-    fireEvent.click(await screen.findByText("File history"));
+    fireEvent.contextMenu(visibleTab("a.ts"));
+    pointerClick(await screen.findByText("File history"));
 
     expect(parseSyntheticId(opened[0])).toEqual({ kind: "history", arg: "src/a.ts", workspace: REPO });
     off();
@@ -208,28 +216,25 @@ describe("a sway:// tab in the editor pane", () => {
     expect(screen.queryByText("File history")).toBeNull();
   });
 
-  // Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). The test
-  // above proves the view's menu is empty; this proves what the tab does with
-  // the right-click *instead*, which is the half a migration can silently lose.
-  // Kobalte's ContextMenu.Trigger always calls `preventDefault` unless it is
-  // `disabled`, so the synthetic case has to become `disabled` rather than an
-  // early return, and this is what catches it if it does not.
+  // Written against the hand-rolled menu (skarif2/sway#103, phase 1), now
+  // running against Kobalte's (phase 4). The test above proves the view's menu
+  // is empty; this proves what the tab does with the right-click *instead*,
+  // which is the half a migration can silently lose. The synthetic case is now
+  // the trigger's `disabled`, since Kobalte returns before `preventDefault` for
+  // a disabled trigger and always calls it otherwise.
   //
-  // Selector coupling, i.e. what a migration has to rewrite here:
-  //   - `defaultPrevented` on the dispatched event: STABLE, and the contract.
-  //   - `role="menu"` for the surface: STABLE, Kobalte's Content sets it too.
-  //   - `tab()` resolves to the *ghost* copy of the strip (see src/test/tabs.ts:
-  //     jsdom gives the bar no geometry, so the visible row keeps almost
-  //     nothing). Phase 4 plans a menu-free ghost row to stop `renderTab` from
-  //     mounting menu machinery twice; the moment it lands, these two tests must
-  //     reach the visible copy instead, or they will right-click a tab that
-  //     deliberately no longer has a menu.
+  // **These reach `visibleTab`, not `tab`.** Phase 1 predicted this and it
+  // landed: the measuring ghost is rendered menu-free now, so `tab()` resolves
+  // to a copy with nothing to answer with. Both assertions below fail against
+  // the ghost, the first because no menu opens and the second *vacuously*,
+  // which is the worse half: a `disabled` mapping that had been dropped
+  // entirely would still have passed.
   describe("what a right-click on a tab claims", () => {
     it("claims the event on a file tab, which answers with its own menu", async () => {
       await mountEditor();
       await open(FILE);
 
-      expect(rightClick(tab("a.ts"))).toBe(true);
+      expect(rightClick(visibleTab("a.ts"))).toBe(true);
       expect(await screen.findByRole("menu")).toBeTruthy();
     });
 
@@ -239,8 +244,49 @@ describe("a sway:// tab in the editor pane", () => {
       await mountEditor();
       await open(LOG);
 
-      expect(rightClick(tab("Commit log"))).toBe(false);
+      expect(rightClick(visibleTab("Commit log"))).toBe(false);
       expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    // The tab strip derives nothing from "a menu is open" (HistoryPanel does,
+    // and phase 3 found what that costs), so what is at risk here is simpler and
+    // worse: a menu left on screen with no tab behind it. Kobalte reports no
+    // close for a trigger that unmounts, so this asserts the portal goes with
+    // its owner rather than that anything was told about it.
+    it("takes its menu with it when the tab is closed under it", async () => {
+      await mountEditor();
+      await open(FILE);
+      fireEvent.contextMenu(visibleTab("a.ts"));
+      await screen.findByRole("menu");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+      expect(screen.getByText(EMPTY_PANE)).toBeTruthy();
+    });
+
+    // The strip renders every tab twice, once to measure and once to show. Only
+    // the second one can be right-clicked, so only the second one gets a menu:
+    // two triggers per tab would double the machinery for a row nobody can reach
+    // and leave two of them claiming the same tab.
+    it("mounts one menu trigger per tab, not one per copy", async () => {
+      await mountEditor();
+      await open(FILE);
+      await open(LOG);
+
+      const strip = document.querySelector('[class*="editorTabs"]')!;
+      const ghost = strip.querySelector(".otab-ghost")!;
+      const trigger = '[id^="contextmenu-"][id$="-trigger"]';
+
+      // The ghost holds every tab and no menu at all.
+      expect(ghost.querySelectorAll('[role="tab"]').length).toBeGreaterThan(0);
+      expect(ghost.querySelectorAll(trigger).length).toBe(0);
+
+      // Every tab a browser would draw holds exactly one, and there is at least
+      // one to check (jsdom measures every width as 0, so the strip shows one).
+      const shown = [...strip.querySelectorAll('[role="tab"]')].filter((t) => !ghost.contains(t));
+      expect(shown.length).toBeGreaterThan(0);
+      expect(strip.querySelectorAll(trigger).length).toBe(shown.length);
     });
   });
 });

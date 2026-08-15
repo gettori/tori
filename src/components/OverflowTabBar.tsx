@@ -9,7 +9,8 @@ import {
   type JSX,
 } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
-import Menu, { MenuRow } from "./Menu/Menu";
+import Dropdown from "./Menu/Dropdown";
+import { MenuRow } from "./Menu/rows";
 import Tooltip from "./Tooltip/Tooltip";
 
 // A tab bar that never scrolls: it renders only the tabs that fully fit, plus a
@@ -24,7 +25,14 @@ export default function OverflowTabBar<T>(props: {
   idOf: (t: T) => string;
   onActivate: (id: string) => void;
   onReorder: (next: T[]) => void;
-  renderTab: (t: T) => JSX.Element;
+  /** The tab's markup. Called twice per tab: once for the row on screen, and
+   *  once with `ghost` set for the inert measuring copy.
+   *
+   *  A consumer whose tab carries a context menu should skip it for the ghost.
+   *  The menu is invisible either way, but mounting one per tab twice doubles
+   *  the machinery for a row nobody can reach, and leaves the document with two
+   *  triggers claiming the same tab. */
+  renderTab: (t: T, ghost?: boolean) => JSX.Element;
   renderMenuItem: (t: T) => JSX.Element;
   trailing?: JSX.Element;
   class?: string;
@@ -32,12 +40,10 @@ export default function OverflowTabBar<T>(props: {
   let bar!: HTMLDivElement;
   let ghost!: HTMLDivElement;
   let countSample: HTMLButtonElement | undefined;
-  let countBtn: HTMLButtonElement | undefined;
   let trailingEl: HTMLDivElement | undefined;
 
   const [visibleCount, setVisibleCount] = createSignal(props.items.length);
   const [menuOpen, setMenuOpen] = createSignal(false);
-  const [menuPos, setMenuPos] = createSignal({ left: 0, top: 0 });
 
   // Display order: pull the active tab into the last visible slot for rendering
   // only (no onReorder), so resizing never reorders the user's canonical tabs.
@@ -95,16 +101,6 @@ export default function OverflowTabBar<T>(props: {
     if (menuOpen() && overflow().length === 0) setMenuOpen(false);
   });
 
-  function openMenu() {
-    if (!countBtn) return;
-    const r = countBtn.getBoundingClientRect();
-    setMenuPos({ left: r.left, top: r.bottom + 2 });
-    setMenuOpen(true);
-  }
-  function toggleMenu() {
-    if (menuOpen()) setMenuOpen(false);
-    else openMenu();
-  }
   function pickOverflow(id: string) {
     props.onReorder(moveIntoView(props.items, id, visibleCount() - 1, props.idOf));
     props.onActivate(id);
@@ -116,7 +112,7 @@ export default function OverflowTabBar<T>(props: {
       {/* Inert ghost row: every tab in canonical order + a count sample, used
           only to measure true widths (gaps/padding/borders included). */}
       <div class={`${props.class ?? ""} otab-ghost`} ref={ghost} aria-hidden="true">
-        <For each={props.items}>{(t) => props.renderTab(t)}</For>
+        <For each={props.items}>{(t) => props.renderTab(t, true)}</For>
         <button class="tab-overflow-count" ref={countSample}>
           +{Math.max(1, props.items.length)}
         </button>
@@ -125,36 +121,49 @@ export default function OverflowTabBar<T>(props: {
       <For each={visible()}>{(t) => props.renderTab(t)}</For>
 
       <Show when={overflow().length > 0}>
-        <Tooltip
-          as="button"
-          type="button"
-          class="tab-overflow-count"
-          classList={{ active: menuOpen() }}
-          ref={countBtn}
-          label={`${overflow().length} more`}
-          aria-label={`${overflow().length} more`}
-          onClick={toggleMenu}
+        {/* The `+N` button already belongs to its `Tooltip`, so the menu wraps
+            it. Unlike the tab rows' wrapper this one keeps a box: a dropdown is
+            anchored on its trigger's rect, and a `display: contents` element has
+            none, so the menu would open in the window's top-left corner. An
+            inline-flex box around one flex item is the same width the button
+            was, margins included, so the strip lays out unchanged. */}
+        <Dropdown
+          as="span"
+          class="tab-overflow-wrap"
+          open={menuOpen()}
+          onOpenChange={setMenuOpen}
+          placement="bottom-start"
+          menu={
+            <For each={overflow()}>
+              {(t) => (
+                <MenuRow onClick={() => pickOverflow(props.idOf(t))}>
+                  {props.renderMenuItem(t)}
+                </MenuRow>
+              )}
+            </For>
+          }
         >
-          +{overflow().length}
-        </Tooltip>
+          <Tooltip
+            as="button"
+            type="button"
+            class="tab-overflow-count"
+            classList={{ active: menuOpen() }}
+            label={`${overflow().length} more`}
+            aria-label={`${overflow().length} more`}
+            // Kobalte writes these on the trigger, which is the wrapper, and a
+            // wrapper is neither focusable nor what a screen reader lands on.
+            // The button is both, so it says this for itself.
+            aria-haspopup="menu"
+            aria-expanded={menuOpen()}
+          >
+            +{overflow().length}
+          </Tooltip>
+        </Dropdown>
       </Show>
 
       <div class="otab-trailing" ref={trailingEl}>
         {props.trailing}
       </div>
-
-      <Show when={menuOpen()}>
-        <Menu
-          x={menuPos().left}
-          y={menuPos().top}
-          anchorEl={countBtn}
-          onClose={() => setMenuOpen(false)}
-        >
-          <For each={overflow()}>
-            {(t) => <MenuRow onClick={() => pickOverflow(props.idOf(t))}>{props.renderMenuItem(t)}</MenuRow>}
-          </For>
-        </Menu>
-      </Show>
     </div>
   );
 }

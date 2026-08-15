@@ -142,7 +142,11 @@ import {
 } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
-import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
+import Dropdown from "../../components/Menu/Dropdown";
+import { type MenuItem } from "../../components/Menu/rows";
+/** Where the code-action menu opens and what it offers. The old shared
+ *  `MenuState` in the same shape; local now, since nothing else needs it. */
+type ActionMenu = { x: number; y: number; items: MenuItem[] };
 import styles from "./CodeEditor.module.css";
 
 function relTo(root: string, abs: string): string {
@@ -391,7 +395,12 @@ export default function CodeEditor(props: {
   // The code-action menu, open at the caret. Held here rather than in a CM6
   // panel so it is the same menu component as every other list of choices in
   // the app, with the same keyboard and outside-click behaviour.
-  const [actionMenu, setActionMenu] = createSignal<MenuState | null>(null);
+  //
+  // The one surface in Sway with no trigger element: the caret is a coordinate,
+  // not a control. That is what `Dropdown`'s `anchor` mode exists for, and why
+  // it is a `DropdownMenu` rather than a `ContextMenu` (only the former accepts
+  // both `open` and a virtual anchor).
+  const [actionMenu, setActionMenu] = createSignal<ActionMenu | null>(null);
 
   // A pending "jump to line/col", applied once that file is the shown buffer
   // (the open may still be reading the file when the request arrives).
@@ -1991,7 +2000,7 @@ export default function CodeEditor(props: {
 
   /** The menu, anchored on the caret rather than the mouse: this opens from a
    *  keystroke, and the caret is where the user is looking. */
-  function menuAt(v: EditorView, path: string, actions: CodeAction[]): MenuState {
+  function menuAt(v: EditorView, path: string, actions: CodeAction[]): ActionMenu {
     const coords = v.coordsAtPos(v.state.selection.main.head);
     const items: MenuItem[] = [];
     for (const group of groupedCodeActions(actions)) {
@@ -2207,14 +2216,18 @@ export default function CodeEditor(props: {
       <div class={styles.codeEditor} ref={host} />
       <Show when={actionMenu()}>
         {(m) => (
-          <Menu
-            x={m().x}
-            y={m().y}
+          <Dropdown
+            anchor={{ x: m().x, y: m().y }}
+            open
             items={m().items}
-            onClose={() => {
+            onOpenChange={(open) => {
+              if (open) return;
               setActionMenu(null);
               // Closing without picking should leave the caret where it was and
-              // the focus where it came from.
+              // the focus where it came from. The wrapper restores focus to
+              // whatever held it at open, which in anchor mode is the CM6 view,
+              // so this is the belt to that braces: a pick moves the document
+              // first and the restore would land on a node that has been redrawn.
               view?.focus();
             }}
           />

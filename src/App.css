@@ -433,6 +433,16 @@ html {
 }
 
 /* The +N overflow count button. */
+/* The `+N` button's menu trigger. It has to have a box, unlike the tab rows'
+   `display: contents` one: a dropdown anchors on its trigger's rect. One
+   inline-flex box around one flex item measures what the button did, margins
+   included, so the strip lays out exactly as before. */
+.tab-overflow-wrap {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+}
+
 .tab-overflow-count {
   align-self: center;
   flex: none;

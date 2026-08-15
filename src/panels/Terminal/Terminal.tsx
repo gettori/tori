@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import OverflowTabBar from "../../components/OverflowTabBar";
-import Menu from "../../components/Menu/Menu";
+import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import Tab from "../../components/Tab/Tab";
 import TabMark from "./TabMark";
@@ -368,25 +368,10 @@ export default function Terminal(props: {
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
 
-  // The "+ Claude ›" split button's dropdown of yolo-mode launchers. The menu is
-  // portalled to <body> and anchored to the caret because the tab bar clips
-  // overflow, which would otherwise hide a menu rendered inside it.
+  // The "+ Claude ›" split button's dropdown of yolo-mode launchers. Still
+  // portalled out, because the tab bar clips overflow and would hide a menu
+  // rendered inside it; the caret's rect is Kobalte's problem now.
   const [menuOpen, setMenuOpen] = createSignal(false);
-  const [menuPos, setMenuPos] = createSignal({ left: 0, right: 0, top: 0 });
-  let splitEl: HTMLDivElement | undefined;
-  let caretEl: HTMLButtonElement | undefined;
-
-  function toggleMenu() {
-    if (menuOpen()) {
-      setMenuOpen(false);
-      return;
-    }
-    if (caretEl) {
-      const r = caretEl.getBoundingClientRect();
-      setMenuPos({ left: r.left, right: r.right, top: r.bottom + 12 });
-    }
-    setMenuOpen(true);
-  }
 
   // --- History dropdown -------------------------------------------------------
 
@@ -1209,7 +1194,7 @@ export default function Terminal(props: {
         )}
         trailing={
           <>
-            <div class={styles.termNewSplit} ref={splitEl}>
+            <div class={styles.termNewSplit}>
               {/* Main half: quick new shell (terminal icon). Caret half: launch an
                   agent session from a fixed three-option menu. */}
               {/* `whenDisabled`: with no branch picked the label is the reason
@@ -1226,63 +1211,67 @@ export default function Terminal(props: {
               >
                 <Icon icon={SquareTerminal} />
               </Tooltip>
-              <Tooltip
-                as="button"
-                type="button"
-                ref={caretEl}
-                class={`${styles.termNew} ${styles.termNewCaret}`}
-                disabled={!props.selected}
-                label="Launch an agent session"
-                aria-label="Launch an agent session"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen()}
-                onClick={toggleMenu}
+              {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
+                  wrapper keeps a box (a dropdown anchors on its trigger's rect),
+                  and the two sibling rules the split button relies on are
+                  written through it, see the stylesheet. */}
+              <Dropdown
+                as="span"
+                class={styles.termNewCaretWrap}
+                open={menuOpen()}
+                onOpenChange={setMenuOpen}
+                placement="bottom-end"
+                items={[
+                  // The user's default surface leads, and the other one sits
+                  // directly under it: whichever way the setting points, the
+                  // other route stays a single click from this menu.
+                  ...(settings.chatDefaults.defaultSurface === "agent"
+                    ? [
+                        { label: findAgent("claude").label, onClick: () => newSession("claude") },
+                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                      ]
+                    : [
+                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                        { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                      ]),
+                  // Only for a session selection, since there is nothing to
+                  // continue from a bare branch. The session need not have been
+                  // started in chat: every surface writes the transcript this
+                  // resumes and backfills from.
+                  ...(props.selected?.sessionId
+                    ? [
+                        {
+                          label: "Continue this session in chat",
+                          onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                        },
+                        // The counterpart route for a session selection, so the
+                        // PTY surface is reachable for an existing session and
+                        // not only for a new one.
+                        {
+                          label: "Continue this session in terminal",
+                          onClick: () => void focusOrResume(props.selected!),
+                        },
+                      ]
+                    : []),
+                  { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+                ]}
               >
-                <Icon icon={ChevronDown} class={styles.termNewChevron} />
-              </Tooltip>
-              <Show when={menuOpen()}>
-                <Menu
-                  x={menuPos().left}
-                  right={menuPos().right}
-                  y={menuPos().top}
-                  anchorEl={splitEl}
-                  onClose={() => setMenuOpen(false)}
-                  items={[
-                    // The user's default surface leads, and the other one sits
-                    // directly under it: whichever way the setting points, the
-                    // other route stays a single click from this menu.
-                    ...(settings.chatDefaults.defaultSurface === "agent"
-                      ? [
-                          { label: findAgent("claude").label, onClick: () => newSession("claude") },
-                          { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
-                        ]
-                      : [
-                          { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
-                          { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
-                        ]),
-                    // Only for a session selection, since there is nothing to
-                    // continue from a bare branch. The session need not have been
-                    // started in chat: every surface writes the transcript this
-                    // resumes and backfills from.
-                    ...(props.selected?.sessionId
-                      ? [
-                          {
-                            label: "Continue this session in chat",
-                            onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                          },
-                          // The counterpart route for a session selection, so the
-                          // PTY surface is reachable for an existing session and
-                          // not only for a new one.
-                          {
-                            label: "Continue this session in terminal",
-                            onClick: () => void focusOrResume(props.selected!),
-                          },
-                        ]
-                      : []),
-                    { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
-                  ]}
-                />
-              </Show>
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={`${styles.termNew} ${styles.termNewCaret}`}
+                  disabled={!props.selected}
+                  label="Launch an agent session"
+                  aria-label="Launch an agent session"
+                  // Kobalte writes these on the trigger, which is the wrapper,
+                  // and a wrapper is neither focusable nor what a screen reader
+                  // lands on. The button is both, so it says this for itself.
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen()}
+                >
+                  <Icon icon={ChevronDown} class={styles.termNewChevron} />
+                </Tooltip>
+              </Dropdown>
             </div>
             {/* Session navigation, at the surface the sessions run in rather than
                 in a tree you have to find them in. Last in the trailing cluster,

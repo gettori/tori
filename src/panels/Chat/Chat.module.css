@@ -1279,6 +1279,14 @@
    a native <select> stretched invisibly over it: the platform menu brought the
    platform's look to the one surface in the pane that is most about choosing. */
 
+/* The pill's menu trigger. It has to have a box, since a dropdown anchors on
+   its trigger's rect, and `flex: none` so the composer bar treats it exactly as
+   it treated the pill it now contains. */
+.pillMenu {
+  display: inline-flex;
+  flex: none;
+}
+
 .pill {
   display: inline-flex;
   flex: none;

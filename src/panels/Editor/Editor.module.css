@@ -79,6 +79,15 @@
   color: var(--tab-dirty);
 }
 
+/* The right-click menu's trigger for a file tab. `Tab` already renders as the
+   Tooltip's button, so the menu can only wrap it, and the strip is a flex row
+   with drag-reorder: anything with a box here would change both what the row
+   lays out and what the reorder sees. This has neither box nor style of its
+   own, deliberately, so the tab keeps every state class it had. */
+.tabMenu {
+  display: contents;
+}
+
 /* Agent-touched dot on a file tab. Deliberately NOT nested under .editorTabs:
    the same renderer feeds OverflowTabBar's overflow menu, which portals outside
    this subtree (the reason .tab-dirty next door has to be a :global class). */
