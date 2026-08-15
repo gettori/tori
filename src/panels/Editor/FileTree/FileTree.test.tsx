@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../../test/axe";
+import { pointerClick } from "../../../test/menus";
 
 // The file tree's editable mode, driven through the real component.
 //
@@ -150,7 +151,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Rename"));
+    pointerClick(await screen.findByText("Rename"));
 
     await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
     expect(sent("fs_rename")[0].args).toEqual({
@@ -169,7 +170,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Rename"));
+    pointerClick(await screen.findByText("Rename"));
 
     await waitFor(() => expect(sent("local_history_rename")).toHaveLength(1));
     expect(sent("local_history_rename")[0].args).toEqual({
@@ -189,7 +190,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Delete"));
+    pointerClick(await screen.findByText("Delete"));
 
     await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
     expect(sent("local_history_forget")[0].args).toEqual({
@@ -207,7 +208,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Delete"));
+    pointerClick(await screen.findByText("Delete"));
 
     await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
     expect(sent("fs_delete")[0].args).toEqual({
@@ -226,7 +227,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Delete"));
+    pointerClick(await screen.findByText("Delete"));
 
     await waitFor(() => expect(screen.queryByText("Delete")).toBeNull());
     expect(sent("fs_delete")).toHaveLength(0);
@@ -385,7 +386,7 @@ describe("the undo contract", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Rename"));
+    pointerClick(await screen.findByText("Rename"));
 
     await waitFor(() => expect(renames.seen).toHaveLength(1));
     expect(renames.seen[0]).toEqual({ from: `${ROOT}/README.md`, to: `${ROOT}/guide.md` });
@@ -399,7 +400,7 @@ describe("the undo contract", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Rename"));
+    pointerClick(await screen.findByText("Rename"));
     await waitFor(() => expect(notices.seen.some((t) => t.action)).toBe(true));
 
     const undo = notices.seen.find((t) => t.action)?.action;
@@ -452,7 +453,7 @@ describe("the undo contract", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Rename"));
+    pointerClick(await screen.findByText("Rename"));
     await waitFor(() => expect(notices.seen.some((t) => t.action)).toBe(true));
 
     // Something took the old name back in the meantime, so the reverse refuses.
@@ -476,7 +477,7 @@ describe("selecting and revealing", () => {
     cmdClick("docs");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Delete"));
+    pointerClick(await screen.findByText("Delete"));
 
     await waitFor(() => expect(sent("fs_delete")).toHaveLength(2));
     expect(sent("fs_delete").map((c) => c.args.path)).toEqual([`${ROOT}/README.md`, `${ROOT}/docs`]);
@@ -490,7 +491,7 @@ describe("selecting and revealing", () => {
 
     cmdClick("docs");
     fireEvent.contextMenu(screen.getByText("README.md"));
-    fireEvent.click(await screen.findByText("Delete"));
+    pointerClick(await screen.findByText("Delete"));
 
     await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
     expect(sent("fs_delete")[0].args.path).toBe(`${ROOT}/README.md`);
@@ -701,21 +702,21 @@ describe("dragging in the tree", () => {
   });
 });
 
-// Pinned ahead of the Kobalte migration (skarif2/sway#103, phase 1). These
-// assertions describe what a right-click menu *does*, so they must survive a
-// change of implementation; the phase-2 wrapper is what pins where it opens,
-// because no position assertion can span both (the current Popover reports the
-// cursor in jsdom only because a zero-size rect skips its clamp, while Kobalte
-// places asynchronously through floating-ui onto a different node).
+// Written against the hand-rolled menu (skarif2/sway#103, phase 1), now running
+// against Kobalte's (phase 3). Every assertion below is the one phase 1 wrote:
+// what a right-click menu *does* was chosen to survive the change, and it did.
+// Where it opens is pinned in `ContextMenu.test.tsx` instead, since no position
+// assertion could span both implementations.
 //
-// Selector coupling, i.e. what a migration has to rewrite here:
-//   - `role="menu"` on the surface: STABLE, Kobalte's Content sets it too.
-//   - `within(menu).getByText(...)`: STABLE, the labels are the contract.
-//   - Escape and outside-click as *document* events: STABLE in effect, but they
-//     move from Popover's own document listeners to Kobalte's dismissable
-//     layer, so only the closing is guaranteed, never the mechanism.
-//   - Rows are plain divs today with no `role="menuitem"`. Deliberately not
-//     asserted, so that the migration may add it without editing this block.
+// What the migration actually had to rewrite here, against phase 1's list:
+//   - `role="menu"` on the surface: unchanged, Kobalte's Content sets it too.
+//   - `within(menu).getByText(...)`: unchanged, the labels are the contract.
+//   - Escape: unchanged, though it is now the dismissable layer answering.
+//   - The outside click had to become `pointerDown`. Popover listened for
+//     `mousedown`, Kobalte's dismissable layer listens for `pointerdown`, which
+//     is why phase 1 asserted only the closing and never the mechanism.
+//   - Picking a row had to become `pointerClick`. Rows are real menu items now
+//     and act on `pointerup`; see `src/test/menus.ts`.
 describe("the row context menu", () => {
   it("offers a file only the actions a file has", async () => {
     mountProject();
@@ -763,7 +764,11 @@ describe("the row context menu", () => {
     await screen.findByText("README.md");
     fireEvent.contextMenu(screen.getByText("README.md"));
     await screen.findByRole("menu");
+    // Kobalte installs the outside listener from a `setTimeout(0)`, so a click
+    // dispatched before this yield lands on a listener that does not exist yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
+    fireEvent.pointerDown(document.body);
     fireEvent.mouseDown(document.body);
 
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -776,7 +781,7 @@ describe("the row context menu", () => {
     await screen.findByText("README.md");
     fireEvent.contextMenu(screen.getByText("README.md"));
 
-    fireEvent.click(within(await screen.findByRole("menu")).getByText("Rename"));
+    pointerClick(within(await screen.findByRole("menu")).getByText("Rename"));
 
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));

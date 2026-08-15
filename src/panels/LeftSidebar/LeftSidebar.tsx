@@ -2,7 +2,8 @@ import { createSignal, For, Show, onMount, onCleanup, createEffect, createMemo, 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import Menu, { type MenuItem, type MenuState } from "../../components/Menu/Menu";
+import ContextMenu from "../../components/Menu/ContextMenu";
+import { type MenuItem } from "../../components/Menu/rows";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
@@ -355,9 +356,6 @@ export default function LeftSidebar(props: {
     return gs.find((g) => g.name === activeSpaceName()) ?? gs[0] ?? null;
   };
   const activeProjects = () => (activeSpace()?.projects ?? []).filter(projectVisible);
-
-  // Per-node right-click menu. Set on `contextmenu`, cleared on close.
-  const [menu, setMenu] = createSignal<MenuState | null>(null);
 
   // In-app replacement for window.prompt (unimplemented in WKWebView). Holds the
   // pending request plus its resolver; askText opens the modal and awaits an
@@ -911,24 +909,6 @@ export default function LeftSidebar(props: {
     } catch (e) {
       setError(String(e));
     }
-  }
-
-  // The row whose context menu is open, kept highlighted (styles.menuActive)
-  // until the menu closes so it's clear which item the menu belongs to.
-  let menuActiveEl: HTMLElement | undefined;
-  function openMenu(e: MouseEvent, items: MenuItem[]) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!items.length) return; // a node with no actions yet opens nothing
-    menuActiveEl?.classList.remove(styles.menuActive);
-    menuActiveEl = e.currentTarget as HTMLElement;
-    menuActiveEl.classList.add(styles.menuActive);
-    setMenu({ x: e.clientX, y: e.clientY, items });
-  }
-  function closeMenu() {
-    menuActiveEl?.classList.remove(styles.menuActive);
-    menuActiveEl = undefined;
-    setMenu(null);
   }
 
   // Persist expansion state so the tree reopens where you left it.
@@ -2089,12 +2069,10 @@ export default function LeftSidebar(props: {
           [styles.railSel]: unitSelected(u),
         }}
       >
-        <div
+        <ContextMenu
           class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
           onClick={() => selectUnit(g, p, u)}
-          onContextMenu={(e) =>
-            openMenu(e, attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u))
-          }
+          items={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
           draggable={true}
           onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         >
@@ -2108,7 +2086,7 @@ export default function LeftSidebar(props: {
           </Show>
           {forgeChipNode(g, p, u)}
           {statusBubble(bubbleForUnits(p, [u]))}
-        </div>
+        </ContextMenu>
       </div>
     );
   }
@@ -2387,39 +2365,48 @@ export default function LeftSidebar(props: {
   // initial; active-marked, with its context menu and drag payload (all of the
   // space's project paths). It carries its own hue too, so the whole set of
   // spaces is legible at once rather than one switch at a time.
+  //
+  // The one row whose menu trigger cannot be the row itself. `Tooltip` and
+  // `ContextMenu` both render *as* their control - each puts its handlers on the
+  // element, and neither can inject them into an already-built JSX child - so
+  // the tile can only be one of them. It stays the Tooltip's, and the menu takes
+  // a `display: contents` wrapper: layout-neutral, and it still receives the
+  // right-click on its way up. Nothing is lost positionally either, since a
+  // context menu anchors on the cursor and never on its trigger's box.
   const spaceTile = (g: Space) => (
-    <Tooltip
-      as="button"
-      type="button"
-      class={styles.space}
-      style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
-      classList={{
-        [styles.active]: activeSpace()?.name === g.name,
-        [styles.dragging]: dragSpace() === g.name,
-        [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
-        [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
-      }}
-      label={g.external ? `${g.name} (pinned)` : g.name}
-      aria-label={g.external ? `${g.name} (pinned)` : g.name}
-      onClick={() => setActiveSpaceName(g.name)}
-      onContextMenu={(e) => openMenu(e, spaceMenu(g))}
-      draggable={true}
-      onDragStart={(e) => {
-        startAbsDrag(e, g.projects.map((p) => p.path));
-        if (!g.external) setDragSpace(g.name);
-      }}
-      onDragOver={(e) => onSpaceDragOver(e, g)}
-      onDrop={(e) => onSpaceDrop(e, g)}
-      onDragEnd={() => {
-        setDragSpace(null);
-        setDropHint(null);
-      }}
-    >
-      <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
-        {(glyph) => <Icon icon={glyph()} />}
-      </Show>
-      {spaceBubble(g)}
-    </Tooltip>
+    <ContextMenu class={styles.spaceMenu} items={spaceMenu(g)}>
+      <Tooltip
+        as="button"
+        type="button"
+        class={styles.space}
+        style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
+        classList={{
+          [styles.active]: activeSpace()?.name === g.name,
+          [styles.dragging]: dragSpace() === g.name,
+          [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
+          [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
+        }}
+        label={g.external ? `${g.name} (pinned)` : g.name}
+        aria-label={g.external ? `${g.name} (pinned)` : g.name}
+        onClick={() => setActiveSpaceName(g.name)}
+        draggable={true}
+        onDragStart={(e) => {
+          startAbsDrag(e, g.projects.map((p) => p.path));
+          if (!g.external) setDragSpace(g.name);
+        }}
+        onDragOver={(e) => onSpaceDragOver(e, g)}
+        onDrop={(e) => onSpaceDrop(e, g)}
+        onDragEnd={() => {
+          setDragSpace(null);
+          setDropHint(null);
+        }}
+      >
+        <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
+          {(glyph) => <Icon icon={glyph()} />}
+        </Show>
+        {spaceBubble(g)}
+      </Tooltip>
+    </ContextMenu>
   );
 
   // A space tile's own rollup badge: for the inactive spaces, their whole tree
@@ -2503,13 +2490,13 @@ export default function LeftSidebar(props: {
             ];
             return (
               <div class={`node ${styles.projectCard}`}>
-                <div
+                <ContextMenu
                   class={`${styles.row} ${styles.project}`}
                   onClick={() => {
                     if (plainDir()) selectUnit(g, p, folderUnit());
                     else toggle(pkey(g, p));
                   }}
-                  onContextMenu={(e) => openMenu(e, projectMenu(g, p))}
+                  items={projectMenu(g, p)}
                   draggable={true}
                   onDragStart={(e) => startAbsDrag(e, p.path)}
                 >
@@ -2536,7 +2523,7 @@ export default function LeftSidebar(props: {
                   <Show when={!plainDir()}>
                     <RowChevron open={popen()} />
                   </Show>
-                </div>
+                </ContextMenu>
                 <Show when={popen() && !plainDir()}>
                   <For
                     each={shown().units}
@@ -2639,10 +2626,6 @@ export default function LeftSidebar(props: {
             </Tooltip>
           </Show>
         </div>
-      </Show>
-
-      <Show when={menu()}>
-        <Menu x={menu()!.x} y={menu()!.y} items={menu()!.items} onClose={closeMenu} />
       </Show>
 
       <Show when={promptReq()}>

@@ -220,10 +220,11 @@
   transition: background var(--sway-duration-fast) ease;
 }
 
-/* .menuActive mirrors :hover: it persists on the row a context menu belongs to,
-   so it stays highlighted while the menu is open (toggled from LeftSidebar.tsx). */
+/* [data-expanded] mirrors :hover: it persists on the row a context menu belongs
+   to, so it stays highlighted while the menu is open. Kobalte stamps it on the
+   trigger, which IS the row, so nothing in the sidebar toggles a class for it. */
 .row:hover,
-.row.menuActive {
+.row[data-expanded] {
   background: var(--neutral-hover);
 }
 
@@ -338,11 +339,11 @@
   background: transparent;
 }
 .row.branch:hover,
-.row.branch.menuActive {
+.row.branch[data-expanded] {
   background: transparent;
 }
 .row.branch:hover::before,
-.row.branch.menuActive::before {
+.row.branch[data-expanded]::before {
   background: var(--neutral-hover);
 }
 
@@ -645,9 +646,21 @@
   width: calc(18px * var(--ui-scale));
   height: calc(18px * var(--ui-scale));
 }
+/* The tile is the Tooltip's element, so its menu trigger is the wrapper around
+   it (see `spaceTile` in LeftSidebar.tsx) and `data-expanded` lands there. */
+.spaceMenu {
+  display: contents;
+}
 .space:hover,
-.space.menuActive {
+.spaceMenu[data-expanded] > .space:not(.active) {
   color: var(--fg-default);
+  border-color: var(--brand-default);
+}
+/* The border half of the rule above, for the active tile: it takes the hover
+   border while its menu is open but keeps its own hue, which is the same trade
+   `.active` after `:hover` makes below. Split out because the descendant
+   selector outranks `.active` and would otherwise win on colour too. */
+.spaceMenu[data-expanded] > .space.active {
   border-color: var(--brand-default);
 }
 /* Active space: its own hue on the glyph, nothing else - no fill, no ring.
