@@ -121,90 +121,17 @@
   cursor: not-allowed;
 }
 
-/* ---- Icon pickers (SpaceDialog, ProjectIconDialog). A search field over a
-   scrollable grid of the fixed icon set, plus the picker's own leading tile
-   ("None" for a space, the two mode buttons below for a project). ---- */
-.iconGrid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: calc(6px * var(--ui-scale));
-  margin-bottom: calc(4px * var(--ui-scale));
-  max-height: calc(216px * var(--ui-scale));
-  overflow-y: auto;
-}
-.iconTile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1;
-  padding: 0;
-  background: var(--canvas-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    color var(--sway-duration-fast) ease;
-}
-/* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.iconTile svg {
-  width: calc(18px * var(--ui-scale));
-  height: calc(18px * var(--ui-scale));
-}
-.iconTile:hover {
-  color: var(--fg-default);
-  border-color: var(--brand-default);
-}
-.iconTile.iconSelected {
-  color: var(--brand-default);
-  border-color: var(--brand-default);
-  box-shadow: 0 0 0 2px var(--brand-ring);
-}
+/* ---- Icon picker contents (SpaceDialog) ----
+   The tiles and their layout moved to `IconGrid` with #109; what stays here is
+   what these dialogs put *inside* a tile, which is theirs rather than the
+   grid's. */
+
+/* The leading tile's word, in place of a glyph. */
 .iconNone {
   font-size: var(--sway-text-sm);
   font-weight: 500;
 }
-
-/* ---- Space colour swatches (SpaceDialog) ----
-   A row of filled circles, each carrying its own hue in `--swatch` (set inline
-   from the swatch table, which is data rather than palette - see
-   utils/spaceTint.ts). One row, no scroll: the set is deliberately small enough
-   to take in at a glance. */
-.swatchRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(6px * var(--ui-scale));
-  margin-bottom: calc(4px * var(--ui-scale));
-}
-.swatch {
-  /* Declared so the var always resolves; every tile overrides it inline with
-     its own hue from the swatch table, as a channel triple (see spaceTint.ts
-     for why a triple rather than a colour). */
-  --swatch-rgb: var(--shell-glow-rgb);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(22px * var(--ui-scale));
-  height: calc(22px * var(--ui-scale));
-  padding: 0;
-  background: rgb(var(--swatch-rgb));
-  border: 1px solid transparent;
-  border-radius: var(--sway-radius-pill);
-  color: var(--fg-on-emphasis);
-  cursor: pointer;
-  transition: box-shadow var(--sway-duration-fast) ease;
-}
-.swatch:hover {
-  box-shadow: 0 0 0 2px var(--border-strong);
-}
-/* Declared after :hover so a selected swatch keeps its ring while the pointer
-   is over it, the same ordering rule the sidebar's selected rows depend on. */
-.swatch.swatchSelected {
-  box-shadow: 0 0 0 2px var(--brand-ring);
-  border-color: var(--brand-default);
-}
-/* The automatic tile shows the derived hue, so it needs a legible mark on top
+/* The automatic swatch shows the derived hue, so it needs a legible mark on top
    of an arbitrary colour rather than beside it. */
 .swatchAuto {
   font-size: var(--sway-text-sm);
@@ -212,10 +139,9 @@
   mix-blend-mode: difference;
 }
 
-/* An uploaded/detected image standing in for a glyph, in a tile or a mode
-   button. `contain` so a wide logo is letterboxed rather than cropped, and the
-   same box as the glyph beside it so the two options read as one row. */
-.iconTile img,
+/* An uploaded/detected image standing in for a glyph on a mode button.
+   `contain` so a wide logo is letterboxed rather than cropped, and the same box
+   as the glyph beside it so the two options read as one row. */
 .iconMode img {
   width: calc(18px * var(--ui-scale));
   height: calc(18px * var(--ui-scale));
@@ -224,8 +150,10 @@
 
 /* The two non-glyph choices in ProjectIconDialog (automatic, upload). Wider
    than a grid tile because each carries a label: what "automatic" resolves to
-   is not self-evident from its preview alone. They share .iconSelected with the
-   grid, so exactly one of the three states ever reads as chosen. */
+   is not self-evident from its preview alone. They are not tiles in the picker
+   below - the grid holds nothing selected while one of these is - so keeping
+   exactly one of the three chosen is the dialog's own job, not a shared class's.
+*/
 .iconModes {
   display: grid;
   grid-template-columns: 1fr 1fr;

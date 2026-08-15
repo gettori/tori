@@ -1,13 +1,13 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
+import IconGrid from "../IconGrid/IconGrid";
 import ProjectIcon from "../Icon/ProjectIcon";
 import { searchIcons } from "../Icon/iconRegistry";
 import { Upload } from "lucide-solid";
-import Tooltip from "../Tooltip/Tooltip";
 
 /** What the dialog hands back. Exactly one branch is in force at a time, which
  *  mirrors the storage: `[[project_meta]]` holds a name or a file, never both.
@@ -46,7 +46,6 @@ export default function ProjectIconDialog(props: {
   const [sel, setSel] = createSignal<ProjectIconChoice>(
     props.iconFile ? { file: props.iconFile } : props.icon ? { icon: props.icon } : {},
   );
-  const [query, setQuery] = createSignal("");
   const [picking, setPicking] = createSignal(false);
   let first: HTMLInputElement | undefined;
 
@@ -122,35 +121,31 @@ export default function ProjectIconDialog(props: {
       <div class={styles.note}>SVG, PNG or ICO, up to 2 MB.</div>
 
       <div class={styles.label}>Or pick an icon</div>
-      <input
-        ref={first}
-        class={styles.input}
-        value={query()}
-        placeholder="Search icons"
-        aria-label="Search icons"
-        onInput={(e) => setQuery(e.currentTarget.value)}
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck={false}
+      {/* No leading tile: this picker's "no glyph" states are the two mode
+          buttons above, which are a choice between three shapes rather than a
+          value in the grid. So the grid holds nothing selected whenever one of
+          them is, and `null` never comes back out of it. */}
+      <IconGrid
+        aria-label="Project icon"
+        value={sel().icon ?? null}
+        onChange={(name) => {
+          // `null` is the grid's leading tile, and this one has none, so this
+          // only satisfies the prop's type.
+          if (name != null) setSel({ icon: name });
+        }}
+        tiles={(query) =>
+          searchIcons(query).map((entry) => ({
+            value: entry.name,
+            label: entry.name,
+            content: <Icon icon={entry.icon} />,
+          }))
+        }
+        search={{
+          label: "Search icons",
+          placeholder: "Search icons",
+          ref: (el) => (first = el),
+        }}
       />
-      <div class={styles.iconGrid} role="group" aria-label="Project icon">
-        <For each={searchIcons(query())}>
-          {(entry) => (
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.iconTile}
-              classList={{ [styles.iconSelected]: sel().icon === entry.name }}
-              aria-pressed={sel().icon === entry.name}
-              label={entry.name}
-              aria-label={entry.name}
-              onClick={() => setSel({ icon: entry.name })}
-            >
-              <Icon icon={entry.icon} />
-            </Tooltip>
-          )}
-        </For>
-      </div>
     </Dialog>
   );
 }
