@@ -1,0 +1,77 @@
+/* The box, the tick and the label as one row. Everything scales with
+   --ui-scale like every other control, so a checkbox next to a button in the
+   same row keeps its proportions at any UI font size. */
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* Visually hidden, never removed: the native input is what Space toggles, what
+   the label points at, and what `getByRole("checkbox")` finds. `display: none`
+   or `visibility: hidden` would take all three away. Kobalte positions it over
+   the control, so a pointer press lands on the input itself. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-input);
+  color: var(--fg-on-emphasis);
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+.control[data-checked] {
+  border-color: var(--accent-fg);
+  background: var(--accent-fg);
+}
+
+/* The ring is drawn on the box, but the focus lives on the hidden input, so the
+   selector has to come off the root's own focus-within. Same ring as
+   Button.module.css: one focus idiom for every control. */
+.root:focus-within .control {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.control[data-disabled] {
+  opacity: 0.5;
+}
+
+/* Kobalte mounts the indicator only while checked, so this needs no hidden
+   state of its own. */
+.indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.label {
+  color: var(--fg-default);
+  font-size: var(--sway-text-sm);
+  line-height: var(--sway-line-normal);
+  cursor: default;
+}
+
+.root[data-disabled] .label {
+  color: var(--fg-muted);
+}
