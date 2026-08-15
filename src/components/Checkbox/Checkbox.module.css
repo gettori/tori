@@ -65,9 +65,14 @@
   justify-content: center;
 }
 
+/* Typography is inherited, not set here. The box is this component's; the words
+   beside it belong to the row the caller built, and those rows disagree on
+   purpose (a dialog's option is --sway-text-lg, a panel's filter is muted and
+   smaller). Hard-coding a size here silently restyled every call site that had
+   already made that choice. */
 .label {
-  color: var(--fg-default);
-  font-size: var(--sway-text-sm);
+  color: inherit;
+  font-size: inherit;
   line-height: var(--sway-line-normal);
   cursor: default;
 }

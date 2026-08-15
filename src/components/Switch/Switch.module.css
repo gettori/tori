@@ -63,9 +63,11 @@
   transform: translateX(calc(11px * var(--ui-scale)));
 }
 
+/* Inherited rather than set: see the same rule in Checkbox.module.css. The
+   track is this component's, the words beside it belong to the caller's row. */
 .label {
-  color: var(--fg-default);
-  font-size: var(--sway-text-sm);
+  color: inherit;
+  font-size: inherit;
   line-height: var(--sway-line-normal);
   cursor: default;
 }

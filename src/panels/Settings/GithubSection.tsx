@@ -6,6 +6,7 @@ import { settings, saveSettings } from "./settingsStore";
 import type { AuthState } from "../../utils/forgeTypes";
 import { noteForgeAuth } from "../../utils/forgeStatus";
 import styles from "./Settings.module.css";
+import Switch from "../../components/Switch/Switch";
 
 // The GitHub account section: sign in by device flow, see who you are signed in
 // as, sign out, and the integration's kill switch.
@@ -245,14 +246,11 @@ export default function GithubSection() {
       <div class={styles.row}>
         <label class={styles.label}>Integration</label>
         <div class={styles.control}>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.github.enabled}
-              onChange={(e) => void setEnabled(e.currentTarget.checked)}
-            />{" "}
-            Show pull requests and checks
-          </label>
+          <Switch
+            checked={settings.github.enabled}
+            onChange={(checked) => void setEnabled(checked)}
+            label="Show pull requests and checks"
+          />
         </div>
       </div>
     </section>

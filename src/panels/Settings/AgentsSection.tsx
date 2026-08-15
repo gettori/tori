@@ -19,6 +19,7 @@ import AgentAccounts from "./AgentAccounts";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import { TOAST, emitWith, type ToastEvent } from "../../utils/events";
 import styles from "./Settings.module.css";
+import Checkbox from "../../components/Checkbox/Checkbox";
 
 // One card per registered adapter, answering the question a new user actually
 // has: "which of my agent CLIs does this thing work with?" The backend
@@ -460,14 +461,11 @@ function CatalogRowItem(props: {
             {/* Only where the flag exists. A control that provably does nothing
                 is worse than no control: it reads as a choice being made. */}
             <Show when={onDarwin()}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={clearQuarantine()}
-                  onChange={(e) => setClearQuarantine(e.currentTarget.checked)}
-                />{" "}
-                Clear the macOS quarantine flag, so Gatekeeper does not check it
-              </label>
+              <Checkbox
+                checked={clearQuarantine()}
+                onChange={setClearQuarantine}
+                label="Clear the macOS quarantine flag, so Gatekeeper does not check it"
+              />
             </Show>
           </div>
         )}
