@@ -1,16 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import OverflowTabBar from "./OverflowTabBar";
+import { pointerClick } from "../test/menus";
 import Tab from "./Tab/Tab";
 
 // The `+N` button, which issue 102 turned from a raw button carrying a native
 // title into a `Tooltip as="button"`. (Spelled out rather than written as an
-// attribute: `interactiveTitle.test.ts` counts prose too, by design.) That matters more than the tooltip itself: the button
-// holds a `ref` that `openMenu()` reads for its anchor and returns early
-// without, so a ref swallowed by the polymorphic trigger would leave the
-// overflow menu silently unopenable - a control that looks right and does
-// nothing. The same shape as `Picker`'s trigger ref, which the model/mode
-// picker suites happen to cover; nothing covered this one.
+// attribute: `interactiveTitle.test.ts` counts prose too, by design.) That
+// matters more than the tooltip itself. It used to be about a `ref`: `openMenu`
+// read the button's rect for an anchor and bailed without it, so a ref swallowed
+// by the polymorphic trigger left a control that looked right and did nothing.
+// The rect is gone (#103 phase 4 put the menu on a real trigger), and the same
+// failure is now one layer out: the button belongs to its `Tooltip`, so the menu
+// wraps it, and a wrapper that swallowed the button would fail the same way.
 //
 // jsdom reports every width as 0, so `computeVisibleCount` keeps nothing and
 // every tab overflows. That is what puts the `+N` button on screen here without
@@ -50,12 +52,14 @@ describe("the overflow button", () => {
     mount((id) => picked.push(id));
 
     const more = await screen.findByRole("button", { name: /more$/ });
-    fireEvent.click(more);
+    pointerClick(more);
 
-    // `openMenu` reads `countBtn.getBoundingClientRect()` for the anchor and
-    // bails if the ref is unset, so the menu existing at all is the assertion.
+    // The button belongs to its `Tooltip`, so the menu wraps it rather than
+    // being it, and what this asserts is that the right-click still reaches the
+    // wrapper: a trigger that swallowed the button would leave a control that
+    // looks right and does nothing. Same shape as the ref this used to guard.
     const menu = await waitFor(() => screen.getByRole("menu"));
-    fireEvent.click(screen.getAllByText("beta").find((el) => menu.contains(el))!);
+    pointerClick(screen.getAllByText("beta").find((el) => menu.contains(el))!);
 
     expect(picked).toEqual(["b"]);
   });

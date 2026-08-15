@@ -16,6 +16,28 @@ export function installResizeObserver(): void {
   } as unknown as typeof ResizeObserver;
 }
 
+/**
+ * Run `requestAnimationFrame` callbacks synchronously, for a test that needs the
+ * tab strip's *visible* row rather than its measuring ghost.
+ *
+ * `OverflowTabBar` seeds its visible count from the item list at mount, which is
+ * empty, and only corrects it in an `onMount` rAF. jsdom never runs that frame,
+ * so the count stays at zero and every tab overflows: the ghost ends up the only
+ * copy of a tab in the document. That is why `src/test/tabs.ts`'s `tab()` looks
+ * past `aria-hidden`, and it was harmless until the ghost stopped carrying a
+ * context menu (skarif2/sway#103 phase 4), because a right-click on the ghost
+ * now asks a copy with nothing to answer with.
+ *
+ * Widths are still all zero, so this does not fake a layout. It only lets the
+ * measurement happen at all, which is enough to put one tab on screen.
+ */
+export function installAnimationFrame(): void {
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    cb(0);
+    return 0;
+  }) as typeof requestAnimationFrame;
+}
+
 /** A plain branch-unit selection rooted at `folderPath`. Cast at the call site:
  *  `Selection` carries session fields the editor does not read here. */
 export function selectionFor(folderPath: string): Partial<Selection> {
