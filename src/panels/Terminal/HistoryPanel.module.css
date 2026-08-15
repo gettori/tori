@@ -1,13 +1,9 @@
 /* The History dropdown: every session anchored on the workspace on screen.
-   Portalled to <body>, so these are viewport coordinates - the tab bar it hangs
-   off is overflow:hidden and would clip it to a single row's height. */
+   Base chrome (background, border, shadow, z-index) is the Popover wrapper's
+   `.surface` (Popover.module.css); what lives here is this panel's layout. */
 
 /* The dialog is the panel; only the scrolling list inside it is the listbox. */
 .panel {
-  position: fixed;
-  /* Below <Menu>'s 1000, so a row's own context menu still lands on top of the
-     panel that opened it. */
-  z-index: 900;
   display: flex;
   flex-direction: column;
   /* One inset for every row, heading and header in the panel, so the left edge
@@ -28,13 +24,6 @@
      title is a session title whichever surface lists it. Anything that steps
      down from it does so explicitly below. */
   font-size: var(--sway-text-xl);
-  background: var(--canvas-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 .head {

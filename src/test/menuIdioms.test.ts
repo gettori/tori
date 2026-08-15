@@ -47,10 +47,6 @@ const SOURCES = Object.fromEntries(
  *  that is correct, and why it is correct there. */
 const LONE_MOUSEDOWN = new Map<string, string>([
   [
-    "components/Popover/Popover.test.tsx",
-    "Popover's own suite. Popover is not a menu and still listens for `mousedown`; it keeps serving HistoryPanel and is issue 104's to migrate",
-  ],
-  [
     "panels/Settings/settingsPanel.test.tsx",
     "the Settings backdrop, which is a panel's own dismissal and has never involved a menu",
   ],
