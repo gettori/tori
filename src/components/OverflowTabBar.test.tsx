@@ -181,6 +181,52 @@ describe("what fits", () => {
     expect(picked).toEqual([]);
   });
 
+  it("keeps the heal to itself when a tab is closed by keystroke", async () => {
+    // The close gesture that *does* land on a tab, and so the one the gate
+    // cannot tell from a selection by target alone. A panel closes in two
+    // writes (drop the tab, then move the id), Solid does not batch a delegated
+    // handler, so the heal fires between them while this keystroke is still
+    // dispatching. Without the close keys excluded at the mark, the bar reads
+    // Kobalte's leftmost pick as the user's and opens the wrong tab.
+    const picked: string[] = [];
+    const [items, setItems] = createSignal(MANY);
+    const [active, setActive] = createSignal<string | null>("t0");
+    setTabBarWidth(2000);
+    render(() => (
+      <OverflowTabBar
+        items={items()}
+        activeId={active()}
+        idOf={(t) => t.id}
+        onActivate={(id) => {
+          picked.push(id);
+          setActive(id);
+        }}
+        onReorder={() => {}}
+        renderTab={(t) => (
+          <Tab
+            value={t.id}
+            onClose={() => {
+              const remaining = items().filter((o) => o.id !== t.id);
+              setItems(remaining);
+              setActive(remaining[remaining.length - 1]?.id ?? null);
+            }}
+          >
+            {t.name}
+          </Tab>
+        )}
+        renderMenuItem={(t) => <span>{t.name}</span>}
+      />
+    ));
+
+    const target = await waitFor(() => screen.getByRole("tab", { name: "tab 0" }));
+    target.focus();
+    fireEvent.keyDown(target, { key: "Delete" });
+
+    await waitFor(() => expect(screen.queryAllByRole("tab", { name: "tab 0" })).toHaveLength(0));
+    expect(picked).toEqual([]);
+    expect(active()).toBe("t11");
+  });
+
   it("keeps arrow order matching visual order across a +N pick", async () => {
     // The only reorder this strip has. `moveIntoView` puts the pick in the last
     // visible slot and pushes the tab that was there into the overflow, so the
