@@ -3,15 +3,41 @@ import { ToggleGroup } from "../../lib/toggle-group";
 import styles from "./SegmentedControl.module.css";
 import { type ControlSize } from "../controls";
 
-export interface SegmentedOption<T extends string> {
+/**
+ * One segment, which always has a name.
+ *
+ * The requirement is in the type rather than in this sentence, which is the
+ * point of the shape (#116): a segment carries visible text, or it carries an
+ * `aria-label`, and one of the two is not optional. Documenting it as a rule and
+ * typing both halves as optional is how an icon-only segment with no name at all
+ * shipped and reached axe as `button-name`, impact critical.
+ *
+ * `Button` cannot be fixed this way and warns at runtime instead: its name is
+ * conditional on what it renders and can be backfilled from a tooltip, neither
+ * of which a prop type can see. Here there is nothing to infer.
+ *
+ * `NonNullable` because Solid types `JSX.Element` as including `undefined`, so a
+ * bare `label: JSX.Element` would be satisfied by an explicit `label={undefined}`
+ * and the union would promise more than it checks.
+ */
+export type SegmentedOption<T extends string> = {
   value: T;
-  /** Visible text; optional for an icon-only segment (then pass `label` via `aria`). */
-  label?: JSX.Element;
   /** Leading glyph. */
   icon?: JSX.Element;
-  /** Accessible name, required when there is no text `label`. */
-  "aria-label"?: string;
-}
+} & (
+  | {
+      /** Visible text, which names the segment. */
+      label: NonNullable<JSX.Element>;
+      /** Replaces the visible text as the name; rarely what you want here. */
+      "aria-label"?: string;
+    }
+  | {
+      /** No visible text: this is an icon-only segment. */
+      label?: undefined;
+      /** The segment's only name, so it is required. */
+      "aria-label": string;
+    }
+);
 
 export interface SegmentedControlProps<T extends string> {
   options: SegmentedOption<T>[];
