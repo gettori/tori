@@ -17,9 +17,9 @@
 
   /* `min(scaled px, share of window)`: a percentage alone would ignore
      `--ui-scale`, so a larger UI would get a tighter panel, and a pixel cap
-     alone floats a small dialog on a big display. The two axes differ because
-     height is a pure win while width stops helping once a row's label and its
-     control no longer read as one row. */
+     alone floats a small dialog on a big display. Both axes carry the same
+     bound now: height is a pure win, and the width no longer has to stop where
+     a row stops reading, because `.pane > *` holds the measure instead. */
   .panel {
     /* The type scale, one rung up, for the panel and everything portalled
        inside it. Remapped here rather than bumped declaration by declaration:
@@ -37,8 +37,8 @@
     --sway-text-4xl: calc(24px * var(--ui-scale));
     display: flex;
     flex-direction: column;
-    width: min(calc(1320px * var(--ui-scale)), 94vw);
-    height: min(calc(1080px * var(--ui-scale)), 90vh);
+    width: min(calc(1200px * var(--ui-scale)), 90vw);
+    height: min(calc(1200px * var(--ui-scale)), 90vh);
     max-width: 100%;
     max-height: 100%;
     /* The app's own shell at panel scale: flat canvas plus the active space's
@@ -263,6 +263,16 @@
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-xl);
     padding: var(--sway-space-6) var(--sway-space-7) var(--sway-space-8);
+  }
+
+  /* A reading measure, centred, rather than a card that keeps growing: a row is
+     a label at the left edge and its control at the right, and past ~760 the
+     two stop reading as one row. The card itself still fills the panel, so the
+     surface stays where it was and only the column inside it is bounded. */
+  .pane > * {
+    width: 100%;
+    max-width: calc(760px * var(--ui-scale));
+    margin-inline: auto;
   }
 
   .section {
