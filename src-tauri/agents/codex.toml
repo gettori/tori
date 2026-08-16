@@ -90,6 +90,24 @@ base_args = ["-y", "@agentclientprotocol/codex-acp@1.2.0"]
 #     agent-full-access) and `collaboration_mode` (default, plan),
 #   * reasoning effort is a `thought_level` select with six levels
 #     (low, medium, high, xhigh, max, ultra).
+#
+# Re-measured 2026-08-17 with the catalogue probe (`catalog_probe.rs`, live test
+# `the_real_codex_answers_a_catalogue_from_one_session`), which reads the same
+# handshake without submitting a turn. Four config options, and two findings
+# worth keeping:
+#
+#   * the effort selector's **id is `reasoning_effort`** while its **category is
+#     `thought_level`**. Sway selects by category, which is the only reason it
+#     finds this at all: opencode's ids happen to match their categories, and
+#     matching on the id here would have found nothing.
+#   * `collaboration_mode` is categorized as *itself*, so no bespoke control
+#     claims it. It is the first live option to reach the chat's generic mirror,
+#     and before that mirror existed it was read off the wire and dropped.
+#
+# `session/list` is advertised and answered, **scoped to the asking session's
+# cwd**: a chat in a project directory is told about that directory's sessions
+# and nothing else. So a probe session in Sway's probe directory is out of a
+# user's history twice over, the agent's scoping and `adopt`'s own filter.
 session_id_args = []
 resume_args = []
 fork_args = []
