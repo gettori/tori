@@ -12,13 +12,13 @@ import {
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
+import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
-import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
 import AgentsPane from "./panes/AgentsPane";
 import AppearancePane from "./panes/AppearancePane";
 import ChatPane from "./panes/ChatPane";
@@ -362,11 +362,13 @@ export default function Settings(props: {
         >
           <div class={styles.header}>
             <div class={styles.title}>Settings</div>
-            <div class={styles.titleRow}>
-              <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
-                ×
-              </Button>
-            </div>
+            <IconButton
+              icon={<Icon icon={X} />}
+              size="sm"
+              aria-label="Close"
+              tooltip="Close"
+              onClick={() => props.onClose()}
+            />
           </div>
 
           <div class={styles.srOnly} role="status" aria-live="polite">
