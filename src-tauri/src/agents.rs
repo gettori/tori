@@ -187,32 +187,33 @@ pub enum Discovery {
     File { dir: PathBuf, filename_regex: Regex },
 }
 
-/// One model a chat-capable adapter can run.
+/// Something Sway knows about a model, keyed by the id the harness names it by.
 ///
-/// `effort_levels` is empty for a model that has no effort control, which is
-/// what hides the picker rather than rendering an inert one.
+/// **Not a model list, and the distinction is the whole point.** An adapter used
+/// to declare `[[chat.models]]`: a hand-maintained table that was the picker's
+/// fallback and the context meter's pre-first-turn denominator. It was wrong in
+/// both jobs. Sonnet 5 and Opus 5 both said 200k while the harness reported 1M
+/// for each, and a session that never handshook offered four models the CLI had
+/// no say in. A model Sway names is a claim Sway cannot back.
+///
+/// So an annotation only ever **decorates a model the harness itself named**. It
+/// contributes nothing to any list: an entry whose id no catalogue mentions
+/// renders nothing at all, and there is deliberately no code path that turns one
+/// of these into a picker row.
+///
+/// One field, because there is exactly one thing in this category. Everything
+/// else the old table carried (label, window, effort levels, thinking, images)
+/// is something the harness says better, and now does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChatModel {
+pub struct ChatAnnotation {
     pub id: String,
-    pub label: String,
-    /// Total context in tokens, when the adapter declares one. The meter only
-    /// renders when it does, rather than inventing a denominator.
-    #[serde(default)]
-    pub context_window: Option<u64>,
-    #[serde(default)]
-    pub effort_levels: Vec<String>,
-    #[serde(default)]
-    pub supports_thinking: bool,
     /// Whether this model has a fast mode to toggle.
     ///
-    /// Adapter-declared because the live catalogue has no flag for it: the only
-    /// signal the CLI gives is the `/fast` command describing itself as
-    /// "Toggle fast mode (Opus 5)". **Phase 3 owns proving this by probe** and
-    /// must correct whatever is declared here if the measurement disagrees.
+    /// Sway's own claim, and the one thing here that has to be: the live
+    /// catalogue carries no flag for it, and the only signal the CLI gives is
+    /// the `/fast` command describing itself as "Toggle fast mode (Opus 5)".
     #[serde(default)]
     pub fast_mode: bool,
-    #[serde(default)]
-    pub supports_images: bool,
 }
 
 /// What a requested mode resolved to, and what it displaced if anything.
@@ -316,7 +317,9 @@ pub struct ChatConfig {
     pub mode_args: Vec<String>,
     /// `{dir}` template, applied once per extra directory.
     pub add_dir_args: Vec<String>,
-    pub models: Vec<ChatModel>,
+    /// What Sway knows about individual models, never what models exist. See
+    /// [`ChatAnnotation`].
+    pub annotations: Vec<ChatAnnotation>,
     pub modes: Vec<ChatMode>,
     pub effort: Vec<ChatEffort>,
     /// How this agent departs from a spec-correct ACP client. Always present
@@ -395,8 +398,14 @@ impl ChatConfig {
     /// The args that select `model_id`. Models have no per-entry override, so
     /// this is just the template, but it is exposed alongside the other two so
     /// a caller never reaches past the resolver for one of the three.
+    ///
+    /// **Any id fills the template.** This used to require the id to appear in
+    /// `[[chat.models]]`, which turned a hand-maintained table into a gate on
+    /// what the user could run: a model the CLI offered but the TOML had not
+    /// caught up with produced no `--model` flag and silently started the
+    /// session on something else. The catalogue the id came from is the check,
+    /// and it is a better one.
     pub fn model_args_for(&self, model_id: &str) -> Option<Vec<String>> {
-        self.models.iter().find(|m| m.id == model_id)?;
         Some(apply_chat_template(&self.model_args, &[("model", model_id)]))
     }
 }
@@ -605,7 +614,7 @@ struct ChatToml {
     #[serde(default)]
     add_dir_args: Vec<String>,
     #[serde(default)]
-    models: Vec<ChatModel>,
+    annotations: Vec<ChatAnnotation>,
     #[serde(default)]
     modes: Vec<ChatMode>,
     #[serde(default)]
@@ -875,7 +884,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 
     let chat = raw
         .chat
-        .map(|c| {
+        .map(|c| -> Result<ChatConfig, String> {
             let transport = ChatTransport::from_str(&c.transport).ok_or_else(|| {
                 let known: Vec<&str> = ChatTransport::ALL.iter().map(|t| t.as_str()).collect();
                 format!(
@@ -884,19 +893,12 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                     known.join(", ")
                 )
             })?;
-            // Every declared model's effort levels must exist in
-            // `[[chat.effort]]`, or the picker offers a level with no args to
-            // send and the switch silently does nothing.
-            for m in &c.models {
-                for level in &m.effort_levels {
-                    if !c.effort.iter().any(|e| &e.id == level) {
-                        return Err(format!(
-                            "{source}: chat model `{}` lists effort level `{level}`, which no [[chat.effort]] entry defines",
-                            m.id
-                        ));
-                    }
-                }
-            }
+            // The effort levels a declared model listed used to be checked
+            // against `[[chat.effort]]` here. There is no declared model left to
+            // check: a model's levels come from the harness's own catalogue
+            // (`supportedEffortLevels`), and `[[chat.effort]]` now says only how
+            // to *spell* a level as args, for whichever levels the catalogue
+            // turns out to name.
             Ok(ChatConfig {
                 transport,
                 program: c.program.unwrap_or_else(|| raw.launch.program.clone()),
@@ -908,7 +910,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 effort_args: c.effort_args,
                 mode_args: c.mode_args,
                 add_dir_args: c.add_dir_args,
-                models: c.models,
+                annotations: c.annotations,
                 modes: c.modes,
                 effort: c.effort,
                 acp: c.acp,
@@ -1344,7 +1346,7 @@ mod tests {
         assert_eq!(chat.program, "npx");
         assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.2.0"]);
         // Everything else comes off the handshake, so there is nothing to declare.
-        assert!(chat.models.is_empty(), "the model list is the user's own, read live");
+        assert!(chat.annotations.is_empty(), "nothing to annotate on a harness Sway has not measured");
         assert!(chat.modes.is_empty());
         assert!(chat.effort.is_empty());
     }
@@ -1482,11 +1484,9 @@ effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
 
-[[chat.models]]
+[[chat.annotations]]
 id = "m1"
-label = "M1"
-context_window = 200000
-effort_levels = ["low"]
+fast_mode = true
 
 [[chat.modes]]
 id = "plan"
@@ -1831,55 +1831,28 @@ supports_isolation = true
         assert_eq!(claiming, ["claude"], "only measured adapters may claim isolation");
     }
 
-    /// An effort level with no matching `[[chat.effort]]` entry would render a
-    /// picker option carrying no args, so switching to it would silently do
-    /// nothing.
+    /// The bundled claude adapter is what actually ships, so its tables are
+    /// asserted against real content rather than mere presence.
     #[test]
-    fn a_model_referencing_an_undefined_effort_level_is_rejected() {
-        let chat = CHAT_TABLE.replacen("effort_levels = [\"low\"]", "effort_levels = [\"low\", \"ludicrous\"]", 1);
-        let err = load_adapter_str(&v2_with_chat(&chat), "test").unwrap_err();
-        assert!(err.contains("ludicrous"), "error should name the undefined level: {err}");
-    }
-
-    /// The bundled claude adapter is what actually ships, so its three tables
-    /// are asserted against real content rather than mere presence.
-    #[test]
-    fn bundled_claude_declares_models_modes_and_effort() {
+    fn bundled_claude_declares_modes_effort_and_no_models() {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let chat = claude.chat.expect("claude ships a chat table");
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
         assert_eq!(claude.verified_against.as_deref(), Some("claude 2.1.231"));
 
-        assert!(!chat.models.is_empty(), "no models declared");
-        assert!(chat.models.iter().any(|m| m.id == "claude-opus-5"));
-        assert!(
-            chat.models.iter().all(|m| m.context_window.is_some()),
-            "a declared model without a context window would render a meter with no denominator"
+        // The annotation table is not a model list and must never grow into one.
+        // Its predecessor `[[chat.models]]` declared four models with labels,
+        // windows and effort levels, and was measurably wrong: Opus 5 and Sonnet
+        // 5 both said 200000 while the harness reports 1000000 for each on
+        // `result.modelUsage` (dev/fixtures/claude/plain-turn.jsonl,
+        // fast-mode.jsonl), and Fable's figure was inferred from a `[1m]` suffix
+        // by a build that had never run a Fable turn.
+        assert_eq!(
+            chat.annotations.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            ["claude-opus-5"],
+            "only the one model Sway has something to say about"
         );
-        // The figures themselves, because this table was measurably wrong: Opus 5
-        // and Sonnet 5 both declared 200000 while the harness reports 1000000 for
-        // each on `result.modelUsage` (dev/fixtures/claude/plain-turn.jsonl,
-        // fast-mode.jsonl). These are the pre-first-turn answer only - a completed
-        // turn overrides them - but a wrong provisional figure is still what the
-        // user reads until their first turn lands.
-        let window_of = |id: &str| {
-            chat.models
-                .iter()
-                .find(|m| m.id == id)
-                .unwrap_or_else(|| panic!("{id} is not declared"))
-                .context_window
-        };
-        assert_eq!(window_of("claude-opus-5"), Some(1_000_000));
-        assert_eq!(window_of("claude-sonnet-5"), Some(1_000_000));
-        assert_eq!(window_of("claude-haiku-4-5-20251001"), Some(200_000));
-        // Inferred from the `[1m]` suffix on its catalogue value rather than
-        // measured, unlike the three above. Pinned so the inference is at least
-        // visible when someone finally measures it.
-        assert_eq!(window_of("claude-fable-5"), Some(1_000_000));
-        // Haiku declares no effort levels, which is what hides the control
-        // rather than rendering an inert one.
-        let haiku = chat.models.iter().find(|m| m.label == "Haiku 4.5").expect("haiku present");
-        assert!(haiku.effort_levels.is_empty());
+        assert!(chat.annotations.iter().all(|a| a.fast_mode), "an annotation carrying nothing is just a model list");
 
         // The six modes --permission-mode both accepts *and honours*, spelled
         // exactly as it takes them. `manual` is deliberately absent: the CLI
@@ -1984,7 +1957,15 @@ supports_isolation = true
         // template for a mode the adapter never declared.
         assert_eq!(chat.mode_args_for("not_a_mode"), None);
         assert_eq!(chat.effort_args_for("not_a_level"), None);
-        assert_eq!(chat.model_args_for("not_a_model"), None);
+        // Models are the exception, and deliberately so: there is no declared
+        // list to be unknown to. The adapter says how to *spell* a model as
+        // args; the catalogue the id came from says which models exist. Gating
+        // here meant a model the CLI offered but the TOML lacked produced no
+        // `--model` flag and silently ran something else.
+        assert_eq!(
+            chat.model_args_for("a-model-no-toml-mentions"),
+            Some(vec!["--model".to_string(), "a-model-no-toml-mentions".to_string()])
+        );
     }
 
     /// The other half of the rule: an entry with no args of its own falls back

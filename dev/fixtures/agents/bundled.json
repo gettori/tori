@@ -63,60 +63,10 @@
         "--add-dir",
         "{dir}"
       ],
-      "models": [
+      "annotations": [
         {
           "id": "claude-opus-5",
-          "label": "Opus 5",
-          "context_window": 1000000,
-          "effort_levels": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "supports_thinking": true,
-          "fast_mode": true,
-          "supports_images": true
-        },
-        {
-          "id": "claude-sonnet-5",
-          "label": "Sonnet 5",
-          "context_window": 1000000,
-          "effort_levels": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "supports_thinking": true,
-          "fast_mode": false,
-          "supports_images": true
-        },
-        {
-          "id": "claude-fable-5",
-          "label": "Fable 5",
-          "context_window": 1000000,
-          "effort_levels": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "supports_thinking": true,
-          "fast_mode": false,
-          "supports_images": true
-        },
-        {
-          "id": "claude-haiku-4-5-20251001",
-          "label": "Haiku 4.5",
-          "context_window": 200000,
-          "effort_levels": [],
-          "supports_thinking": false,
-          "fast_mode": false,
-          "supports_images": true
+          "fast_mode": true
         }
       ],
       "modes": [
@@ -287,7 +237,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "models": [],
+      "annotations": [],
       "modes": [],
       "effort": [],
       "acp": {
@@ -339,7 +289,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "models": [],
+      "annotations": [],
       "modes": [],
       "effort": [],
       "acp": {
@@ -377,7 +327,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "models": [],
+      "annotations": [],
       "modes": [],
       "effort": [],
       "acp": {

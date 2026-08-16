@@ -973,13 +973,27 @@ mod tests {
         assert_eq!(args.iter().filter(|a| *a == "--add-dir").count(), 2);
     }
 
-    /// An unknown model is dropped rather than passed through: sending
-    /// `--model not-a-model` would fail the whole session, where omitting it
-    /// leaves the CLI on its own default.
+    /// **No pick, no flag**, which is the rule that actually matters here: a
+    /// session nobody chose a model for starts on the CLI's own default rather
+    /// than on one Sway asserted.
+    ///
+    /// What this test used to say was that an *undeclared* model was dropped,
+    /// back when `[[chat.models]]` was a list and `model_args_for` gated on it.
+    /// That gate is gone with the list: a hand-maintained table deciding what
+    /// the user may run meant a model the CLI offered but the TOML had not
+    /// caught up with produced no `--model` and silently ran something else.
+    /// Which models exist is the catalogue's answer now, and the frontend drops
+    /// a stored pick the catalogue does not offer (`restoredPicks`) before it
+    /// can reach here.
     #[test]
-    fn an_undeclared_model_is_omitted_rather_than_guessed() {
-        let args = build_args(claude_chat(), "s1", false, None, Some("no-such-model"), None, None, &[]);
+    fn no_model_asked_for_means_no_model_flag() {
+        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(!args.iter().any(|a| a == "--model"));
+
+        // And an id that no TOML mentions now reaches the argv, because the
+        // catalogue it came from is what vouched for it.
+        let args = build_args(claude_chat(), "s1", false, None, Some("some-new-model"), None, None, &[]);
+        assert!(args.windows(2).any(|w| w == ["--model", "some-new-model"]));
     }
 
     /// **A mode is not treated like a model, on purpose.**
