@@ -362,21 +362,6 @@ export default function Settings(props: {
         >
           <div class={styles.header}>
             <div class={styles.title}>Settings</div>
-            {/* One box for the panel, not one per category: inside a pane it
-                would read as filtering that pane alone. */}
-            <input
-              ref={firstControl}
-              class={`${styles.input} ${styles.search}`}
-              type="search"
-              aria-label="Search settings"
-              placeholder="Search all settings"
-              value={query()}
-              onInput={(e) => {
-                setQuery(e.currentTarget.value);
-                setTyped(true);
-              }}
-              onKeyDown={onSearchKeyDown}
-            />
             <div class={styles.titleRow}>
               <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
                 ×
@@ -389,54 +374,77 @@ export default function Settings(props: {
           </div>
 
           <div class={styles.body}>
-            {/* The headings are plain text, not items: they group, they do not
+            <div class={styles.railCol}>
+              {/* Above the list, where the sidebar keeps its project filter.
+                  One box for the panel, not one per category: inside a pane it
+                  would read as filtering that pane alone, and it sits outside
+                  the tablist because a tablist owns tabs and a field is not
+                  one. */}
+              <div class={styles.railSearch}>
+                <input
+                  ref={firstControl}
+                  class={styles.searchInput}
+                  type="search"
+                  aria-label="Search settings"
+                  placeholder="Search all settings"
+                  value={query()}
+                  onInput={(e) => {
+                    setQuery(e.currentTarget.value);
+                    setTyped(true);
+                  }}
+                  onKeyDown={onSearchKeyDown}
+                />
+              </div>
+              {/* The headings are plain text, not items: they group, they do not
                 go anywhere, so neither Tab nor an arrow key stops on one.
                 Roving tabindex and arrow wrap come from Kobalte, so the rail
                 carries no keyboard code of its own; `orientation` on the Root
                 is what makes Up and Down the keys that move it. */}
-            <div
-              ref={railEl}
-              class={styles.rail}
-              role="tablist"
-              aria-orientation="vertical"
-              aria-label="Settings sections"
-              onKeyDown={onRailKeyDown}
-            >
-              <For each={SETTING_TABS}>
-                {(t, i) => {
-                  const selected = () => !searching() && active() === t.id;
-                  return (
-                    <>
-                      <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
-                        <div class={styles.railGroup}>{t.group}</div>
-                      </Show>
-                      <button
-                        type="button"
-                        role="tab"
-                        id={tabId(t.id)}
-                        class={styles.railItem}
-                        classList={{ [styles.railItemActive]: selected() }}
-                        // On the selected tab only: the attribute is what a
-                        // reader follows to jump into the panel, and while a
-                        // search is running there is no one panel to jump to.
-                        aria-controls={selected() ? paneId(t.id) : undefined}
-                        aria-selected={selected()}
-                        aria-label={tabName(t)}
-                        // Roving tabindex: one stop for the whole rail, so Tab
-                        // steps past it into the pane rather than through six.
-                        tabindex={active() === t.id ? 0 : -1}
-                        onClick={() => openTab(t.id)}
-                      >
-                        <Icon icon={TAB_ICONS[t.icon]} />
-                        <span class={styles.railLabel}>{t.label}</span>
-                        <Show when={railBadge(t.id)}>
-                          {(badge) => <span class={styles.railBadge}>{badge()}</span>}
+              <div
+                ref={railEl}
+                class={styles.rail}
+                role="tablist"
+                aria-orientation="vertical"
+                aria-label="Settings sections"
+                onKeyDown={onRailKeyDown}
+              >
+                <For each={SETTING_TABS}>
+                  {(t, i) => {
+                    const selected = () => !searching() && active() === t.id;
+                    return (
+                      <>
+                        <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
+                          <div class={styles.railGroup}>{t.group}</div>
                         </Show>
-                      </button>
-                    </>
-                  );
-                }}
-              </For>
+                        <button
+                          type="button"
+                          role="tab"
+                          id={tabId(t.id)}
+                          class={styles.railItem}
+                          classList={{ [styles.railItemActive]: selected() }}
+                          // On the selected tab only: the attribute is what a
+                          // reader follows to jump into the panel, and while a
+                          // search is running there is no one panel to jump to.
+                          aria-controls={selected() ? paneId(t.id) : undefined}
+                          aria-selected={selected()}
+                          aria-label={tabName(t)}
+                          // Roving tabindex: one stop for the whole rail, so Tab
+                          // steps past it into the pane rather than through six.
+                          tabindex={active() === t.id ? 0 : -1}
+                          onClick={() => openTab(t.id)}
+                        >
+                          <Icon icon={TAB_ICONS[t.icon]} />
+                          <span class={styles.railLabel}>{t.label}</span>
+                          <Show when={railBadge(t.id)}>
+                            {(badge) => <span class={styles.railBadge}>{badge()}</span>}
+                          </Show>
+                        </button>
+                      </>
+                    );
+                  }}
+                </For>
+              </div>
+
               {/* Where a change lands, which no row on screen can say. Outside
                   the list rather than inside it: a tablist owns tabs, and a
                   paragraph is not one. */}

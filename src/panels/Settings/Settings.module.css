@@ -89,13 +89,6 @@
     flex: none;
   }
 
-  /* In the header because it searches every category: inside a pane it would
-     read as one more setting. */
-  .search {
-    flex: 1;
-    max-width: calc(340px * var(--ui-scale));
-  }
-
   /* Breathing room around the raised card, on the three sides that are not the
      rail. Matches the shell's own gap so the card floats the same way. */
   .body {
@@ -111,23 +104,65 @@
   /* Transparent and unbordered, like the sidebar: it blends into the shell and
      only the card beside it is elevated. Never scrolls with the pane, so where
      you are stays put while what you are reading moves. */
-  .rail {
+  .railCol {
     display: flex;
     flex-direction: column;
     width: calc(206px * var(--ui-scale));
+    gap: var(--sway-space-4);
     flex: none;
+    min-height: 0;
     padding: var(--sway-space-3) var(--sway-space-4) var(--sway-space-5);
     background: transparent;
+  }
+
+  /* The list scrolls, the field and the footer above and below it do not. */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow-y: auto;
+  }
+
+  /* The sidebar's project filter, at the top of the column rather than in the
+     header: same bare-border field, same place to look for it. */
+  .railSearch {
+    display: flex;
+    align-items: center;
+    flex: none;
+    min-height: calc(40px * var(--ui-scale));
+    margin-bottom: var(--sway-space-3);
+  }
+
+  .searchInput {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-md);
+    color: var(--fg-default);
+    caret-color: var(--brand-default);
+    padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    font: inherit;
+    font-size: var(--sway-text-lg);
+    outline: none;
+    transition: border-color var(--sway-duration-fast) ease;
+  }
+  /* Placeholder reads as a faint hint, not real content. */
+  .searchInput::placeholder {
+    color: var(--fg-subtle);
+    opacity: 1;
+  }
+  .searchInput:focus {
+    border-color: var(--brand-default);
   }
 
   /* Uppercase mono, so it names a group rather than reading as pressable. */
   .railGroup {
-    padding: var(--sway-space-5) var(--sway-space-4) var(--sway-space-3);
+    padding: var(--sway-space-4);
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     font-weight: 600;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
     color: var(--fg-subtle);
   }
