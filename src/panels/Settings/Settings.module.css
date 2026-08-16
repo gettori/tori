@@ -71,16 +71,10 @@
   .header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--sway-space-6);
     flex: none;
     padding: var(--sway-space-5) var(--sway-space-5) var(--sway-space-4) var(--sway-space-6);
-  }
-
-  .titleRow {
-    display: flex;
-    align-items: center;
-    gap: var(--sway-space-4);
-    margin-left: auto;
   }
 
   .title {
