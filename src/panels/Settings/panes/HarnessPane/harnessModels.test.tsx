@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import AgentsSection from "./AgentsSection";
+import HarnessSection from "./HarnessSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
 import type { CatalogModel, ModelCatalog, ProbeFailureReason } from "../../../../utils/modelCatalog";
 
@@ -134,7 +134,7 @@ function mount(over: Record<string, unknown> = {}, catalogs: ModelCatalog[] = []
     if (cmd === "model_catalogs") return catalogs;
     return [];
   });
-  return render(() => <AgentsSection />);
+  return render(() => <HarnessSection />);
 }
 
 const open = async (r: ReturnType<typeof render>, name: RegExp) => {
@@ -434,7 +434,7 @@ describe("asking every harness at once", () => {
   };
 
   it("fills each row as its own answer lands rather than waiting for the slowest", async () => {
-    const r = render(() => <AgentsSection />);
+    const r = render(() => <HarnessSection />);
     await r.findByRole("button", { name: /Claude/ });
     await clickCheckAll(r);
 
@@ -449,7 +449,7 @@ describe("asking every harness at once", () => {
   });
 
   it("does not ask again for a harness that has already answered", async () => {
-    const r = render(() => <AgentsSection />);
+    const r = render(() => <HarnessSection />);
     await r.findByRole("button", { name: /Claude/ });
     await clickCheckAll(r);
     await waitFor(() => expect(r.container.textContent).toContain("1 model"));

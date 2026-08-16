@@ -19,7 +19,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import type { AgentHealth, BinaryStatus } from "../../../../utils/agentHealth";
 import { mirroredOptions } from "../../../../utils/chatTypes";
-import AgentAccounts from "./AgentAccounts";
+import HarnessAccounts from "./HarnessAccounts";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -386,7 +386,7 @@ export default function HarnessDetail(props: {
           not there would be a set of controls with nothing behind them. It
           renders itself away for an adapter that declares no `[accounts]`. */}
       <Show when={a().status !== "notFound"}>
-        <AgentAccounts agentId={a().id} agentLabel={a().label} />
+        <HarnessAccounts agentId={a().id} agentLabel={a().label} />
       </Show>
     </div>
   );

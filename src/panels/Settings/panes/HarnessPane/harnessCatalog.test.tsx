@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import AgentsSection from "./AgentsSection";
+import HarnessSection from "./HarnessSection";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invoked = vi.mocked(invoke);
@@ -88,7 +88,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("labels every entry untested and shows the command that would start it", async () => {
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     expect(container.textContent).toContain("untested");
@@ -99,7 +99,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("names where the list came from and how to refresh it", async () => {
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("ACP Registry"));
 
     // Provenance: a list of unmeasured launch commands with no origin and no
@@ -120,7 +120,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
       return [];
     });
 
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("Claude"));
 
     // The whole section is gone when every row is covered: a measured harness
@@ -131,7 +131,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("gives a catalog entry no status dot, no version and no capability list", async () => {
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     // One card, for the one adapter. A catalog row is a list item, not a card,
@@ -162,7 +162,7 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "installed_agents") return over.installed ?? [];
       return [];
     });
-    return render(() => <AgentsSection />);
+    return render(() => <HarnessSection />);
   };
 
   const cmds = () => invoked.mock.calls.map(([c]) => c);
@@ -259,7 +259,7 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "acp_catalog_source") return source({ hostPlatform: "linux-x86_64" });
       return [];
     });
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     expect(screen.queryByRole("checkbox")).toBeNull();
@@ -342,7 +342,7 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "acp_catalog_source") return source({ generatedOn: twelveDaysAgo });
       return [];
     });
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("12 days old"));
 
     // Everything on screen came from the committed file: the only commands are
@@ -375,7 +375,7 @@ describe("installing an agent from the catalog", () => {
         });
       return [];
     });
-    const { container } = render(() => <AgentsSection />);
+    const { container } = render(() => <HarnessSection />);
     await waitFor(() => expect(container.textContent).toContain("the registry's own probe"));
     expect(container.textContent).toContain("31 agents");
     expect(container.textContent).toContain("not from anything Sway measured");
@@ -409,7 +409,7 @@ describe("the action on a non-ready agent card", () => {
   };
 
   it("offers a re-probe on a missing binary, and stops telling the user to restart", async () => {
-    const { container, getByText } = await openCard(render(() => <AgentsSection />));
+    const { container, getByText } = await openCard(render(() => <HarnessSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     // The old copy said "reopen Sway to pick it up", which stopped being true
@@ -419,7 +419,7 @@ describe("the action on a non-ready agent card", () => {
   });
 
   it("re-probes through the refresh command rather than re-reading the cache", async () => {
-    const { container, getByText } = await openCard(render(() => <AgentsSection />));
+    const { container, getByText } = await openCard(render(() => <HarnessSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     invoked.mockClear();
@@ -439,7 +439,7 @@ describe("the action on a non-ready agent card", () => {
       if (cmd === "acp_catalog_source") return null;
       return undefined;
     });
-    const r = render(() => <AgentsSection />);
+    const r = render(() => <HarnessSection />);
     await waitFor(() => expect(r.container.textContent).toContain("Claude"));
     expect(r.queryByText("Check again")).toBeNull();
 
