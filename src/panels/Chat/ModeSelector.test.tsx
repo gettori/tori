@@ -26,7 +26,7 @@ function foreign(modes: ChatMode[]): ChatConfig {
     effort_args: [],
     mode_args: ["--approval-mode", "{mode}"],
     add_dir_args: [],
-    models: [],
+    annotations: [],
     modes,
     effort: [],
     acp: { serve_client_fs: false },
@@ -168,7 +168,7 @@ describe("a mode gated on a model capability", () => {
   // runtime contradicts the pick, so offering the row is what would lie.
   it("is hidden for a model that does not declare the capability", () => {
     const chat = foreign(GATED);
-    const model = pickableModels(catalogue(false), chat)[0];
+    const model = pickableModels(catalogue(false), [], chat)[0];
     const { getByLabelText } = render(() => (
       <ModeSelector
         mode="default"
@@ -185,7 +185,7 @@ describe("a mode gated on a model capability", () => {
 
   it("is offered to a model that does declare it", () => {
     const chat = foreign(GATED);
-    const model = pickableModels(catalogue(true), chat)[0];
+    const model = pickableModels(catalogue(true), [], chat)[0];
     const { getByLabelText } = render(() => (
       <ModeSelector
         mode="default"

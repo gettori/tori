@@ -2,7 +2,7 @@ import { For, Show, Switch, Match, onMount } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
-import { agents, findAgent } from "../../utils/agents";
+import { findAgent } from "../../utils/agents";
 import {
   chatTier,
   publishedCapabilities,
@@ -34,12 +34,6 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   sessions: "This agent can list its own sessions, including ones started outside Sway.",
 };
 
-/** Rounded to the unit the adapter's own comments use, so 1000000 reads as the
- *  1M the model is sold as rather than as a raw token count. */
-function contextWindow(tokens: number): string {
-  return tokens >= 1_000_000 ? `${Math.round(tokens / 100_000) / 10}M` : `${Math.round(tokens / 1000)}K`;
-}
-
 /**
  * One harness, in full: everything the card had to drop to stay scannable.
  *
@@ -63,10 +57,6 @@ export default function HarnessDetail(props: {
   const tier = () => chatTier(findAgent(a().id).chat?.transport);
   const capabilities = () => publishedCapabilities(tier());
   const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
-  // By hand rather than through `findAgent`, which falls back to the first
-  // bundled adapter: inheriting Claude's models for an unresolved id would put
-  // four names on a page that has none.
-  const models = () => agents().find((x) => x.id === a().id)?.chat?.models ?? [];
 
   onMount(() => backEl?.focus());
 
@@ -183,39 +173,15 @@ export default function HarnessDetail(props: {
       <div class={styles.groupHead}>
         <span class={styles.groupTitle}>Models</span>
         <span class={styles.sectionRule} />
-        <Show when={models().length}>
-          <span class={styles.groupCount}>{models().length}</span>
-        </Show>
       </div>
-      <Show
-        when={models().length}
-        fallback={
-          <div class={styles.cardMeta}>
-            {a().label} names its own models when a session starts, so there is no list to show
-            here.
-          </div>
-        }
-      >
-        <ul class={styles.modelList}>
-          <For each={models()}>
-            {(m) => (
-              <li class={styles.modelRow}>
-                <span class={styles.modelName}>{m.label}</span>
-                <code class={styles.modelId}>{m.id}</code>
-                <span class={styles.modelFacts}>
-                  <Show when={m.context_window}>{(w) => <>{contextWindow(w())} context</>}</Show>
-                  <Show when={m.effort_levels.length}>
-                    {" · "}
-                    {m.effort_levels.join(", ")}
-                  </Show>
-                  <Show when={m.supports_thinking}> · thinking</Show>
-                  <Show when={m.supports_images}> · images</Show>
-                </span>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
+      {/* No list and no count. This used to render the adapter's
+          `[[chat.models]]`, a hand-maintained table shown as what the harness
+          could run; it said 200k for two models the harness reports 1M for.
+          Every harness now reads the same way until the probe cache is wired in:
+          the models are the harness's to name. */}
+      <div class={styles.cardMeta}>
+        {a().label} names its own models when a session starts, so there is no list to show here.
+      </div>
 
       <div class={styles.groupHead}>
         <span class={styles.groupTitle}>Chat capabilities</span>

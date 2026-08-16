@@ -34,16 +34,7 @@ function adapter(): ChatConfig {
     effort_args: [],
     mode_args: [],
     add_dir_args: [],
-    models: [
-      {
-        id: "claude-sonnet-5",
-        label: "Sonnet 5",
-        context_window: 1_000_000,
-        effort_levels: [],
-        supports_thinking: true,
-        supports_images: true,
-      },
-    ],
+    annotations: [],
     modes: [],
     effort: [],
     acp: { serve_client_fs: false },
@@ -104,15 +95,15 @@ describe("SessionStats", () => {
   // session" passed by construction rather than by behaviour. Asserted against
   // the resolver, which is the only thing that reaches the catalogue now.
   it("makes no context-caps call for a Claude session", () => {
-    contextWindowFor(adapter(), "claude-sonnet-5", { "claude-sonnet-5": 1_000_000 });
-    contextWindowFor(adapter(), "claude-opus-5", {});
-    contextWindowFor(null, "claude-fable-5", {});
+    contextWindowFor( "claude-sonnet-5", { "claude-sonnet-5": 1_000_000 });
+    contextWindowFor( "claude-opus-5", {});
+    contextWindowFor( "claude-fable-5", {});
     render(() => <SessionStats detail={detail()} contextWindow={1_000_000} />);
     expect(invoked).not.toHaveBeenCalled();
   });
 
   it("still reaches for OpenRouter when a non-Claude model has no closer source", () => {
-    expect(contextWindowFor(null, "qwen3-6-plus", {})).toBe(1_000_000);
+    expect(contextWindowFor( "qwen3-6-plus", {})).toBe(1_000_000);
     expect(invoked).toHaveBeenCalledWith("model_context_caps");
   });
 });
@@ -135,8 +126,8 @@ describe("one model, one denominator", () => {
       },
     ];
     const reported = { "claude-sonnet-5": 1_000_000 };
-    const composer = pickableModels(live, adapter(), reported)[0].contextWindow;
-    const strip = contextWindowFor(adapter(), "claude-sonnet-5", reported);
+    const composer = pickableModels(live, [], adapter(), reported)[0].contextWindow;
+    const strip = contextWindowFor( "claude-sonnet-5", reported);
 
     expect(composer).toBe(1_000_000);
     expect(strip).toBe(composer);

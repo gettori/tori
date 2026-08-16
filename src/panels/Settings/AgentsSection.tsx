@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
-import { agents, ensureAgentsLoaded } from "../../utils/agents";
+import { ensureAgentsLoaded } from "../../utils/agents";
 import {
   ensureAgentHealthLoaded,
   refreshAgentHealth,
@@ -60,19 +60,6 @@ const STATE_PILL: Record<BinaryStatus, string> = {
 };
 
 /**
- * The models this adapter names, which is not every model the harness can run.
- *
- * `findAgent` falls back to the first bundled adapter for an id it does not
- * know, so the lookup is done by hand here: a count is a claim, and inheriting
- * Claude's four for an unresolved harness would be a false one. An ACP agent
- * declares none and reports its own on the session handshake, which is why zero
- * renders as nothing rather than as "0 models".
- */
-function declaredModels(id: string) {
-  return agents().find((a) => a.id === id)?.chat?.models ?? [];
-}
-
-/**
  * One harness at a glance: is it here, which build, and who is signed in.
  *
  * A button rather than a div with a handler, so it is reachable and announced
@@ -85,7 +72,6 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
   // The pill is for the states that need acting on. Painting "READY" on every
   // healthy card spends the reader's attention on the answer they expected.
   const settled = () => a().status === "versionMatch" || a().status === "versionUnknown";
-  const models = () => declaredModels(a().id);
   return (
     <button
       type="button"
@@ -119,14 +105,10 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
             <code>{a().program}</code>
           </Match>
         </Switch>
-        <Show when={models().length}>
-          {(n) => (
-            <>
-              {" · "}
-              {n()} {n() === 1 ? "model" : "models"}
-            </>
-          )}
-        </Show>
+        {/* No model count. It used to come from the adapter's `[[chat.models]]`,
+            which meant the card claimed "4 models" for Claude no matter what the
+            installed CLI could run. A count is a claim, so it waits for the
+            probe cache to have something the harness actually said. */}
       </span>
       <span class={styles.hcardGo} aria-hidden="true">
         <Icon icon={ChevronRight} size={14} />
