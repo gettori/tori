@@ -253,6 +253,86 @@ pub struct ChatModeInfo {
     pub hint: String,
 }
 
+/// One configuration lever the agent published, in the shape a generic control
+/// can render.
+///
+/// **The mirror's point is that Sway does not have to recognise an option to
+/// show it.** The three categories with bespoke controls (model, mode, thought
+/// level) are three entries in the agent's list, not the whole of it, and an
+/// agent is free to publish a fourth tomorrow. Everything representable is
+/// carried across; which rows already have a control of their own is the
+/// surface's decision, made from `category`, not this type's.
+///
+/// `category` stays the agent's own word rather than an enum, and the
+/// uncategorized case is the interesting one: an option with no category is
+/// exactly the one no bespoke control claims, so normalising it away would drop
+/// the rows this type exists for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatConfigOption {
+    pub id: String,
+    /// The agent's own label, rendered verbatim: for a lever Sway knows nothing
+    /// else about, it is the only name the user will ever see.
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// `model`, `mode`, `thought_level`, `model_config`, whatever the agent
+    /// wrote, or empty for one it left uncategorized.
+    #[serde(default)]
+    pub category: String,
+    #[serde(flatten)]
+    pub kind: ChatConfigKind,
+}
+
+/// What sort of control an option needs, and the state it is in.
+///
+/// Flattened onto [`ChatConfigOption`] so the wire shape is one object with a
+/// `kind` discriminator, which is what a renderer switches on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ChatConfigKind {
+    Select {
+        current: String,
+        choices: Vec<ChatConfigChoice>,
+    },
+    Boolean {
+        value: bool,
+    },
+}
+
+/// One entry of a select-shaped option.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatConfigChoice {
+    pub value: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// What a switch carries back to the agent: a select's value id, or a toggle's
+/// state.
+///
+/// Untagged because the two are disjoint JSON types, so a caller sends `"high"`
+/// or `true` and nothing has to spell out which it meant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ChatConfigValue {
+    Value(String),
+    Flag(bool),
+}
+
+impl ChatConfigValue {
+    /// How the value reads in a message to the user, and how a readback of the
+    /// agent's answer is compared against it.
+    pub fn as_text(&self) -> String {
+        match self {
+            Self::Value(v) => v.clone(),
+            Self::Flag(b) => b.to_string(),
+        }
+    }
+}
+
 /// One model the live harness says it can run, as the picker needs it.
 ///
 /// Measured: this catalogue exists **only** in the `initialize` control
@@ -534,6 +614,23 @@ pub enum ChatEvent {
         /// pinned instead; see [`ChatCapabilities`].
         #[serde(default)]
         capabilities: Option<ChatCapabilities>,
+    },
+
+    /// The agent's configuration levers, as they now stand.
+    ///
+    /// Emitted when the session opens and again whenever the agent reports a
+    /// change, its own `session/update` and the answer to a switch Sway sent
+    /// alike. **The whole set every time, never a delta**: the agent replies
+    /// with its full list, one option can re-cut another's choices (picking a
+    /// model changes which thinking levels exist), and a mirror rebuilt from the
+    /// whole answer cannot drift from it.
+    ///
+    /// Its own variant rather than a field on `SessionStarted`, because the
+    /// interesting half is the *re-render*: `SessionStarted` fires once and the
+    /// options move for the rest of the session.
+    ConfigOptions {
+        session_id: String,
+        options: Vec<ChatConfigOption>,
     },
 
     /// One hook execution, from the in-band `hook_started`/`hook_response`
@@ -830,6 +927,16 @@ pub enum ChatCommand {
         #[serde(default)]
         effort: Option<Effort>,
     },
+    /// Set one of the agent's own configuration options, named by the id the
+    /// agent gave it. The generic counterpart of [`Self::SetModel`] and
+    /// [`Self::SetMode`], which stay separate because a model or a mode has
+    /// session state behind it (a pending pick, a permission story) that a
+    /// mirrored toggle does not.
+    SetConfigOption {
+        session_id: String,
+        config_id: String,
+        value: ChatConfigValue,
+    },
     Close {
         session_id: String,
     },
@@ -1073,6 +1180,35 @@ mod tests {
                 output: Some("{\"hookSpecificOutput\":{}}".into()),
                 stderr: None,
             },
+            // After the hook frame for the same reason: the options move
+            // whenever the agent says so, which is not a step in the lifecycle
+            // sequence the replay tests read this list as.
+            ChatEvent::ConfigOptions {
+                session_id: "s1".into(),
+                options: vec![
+                    ChatConfigOption {
+                        id: "web_search".into(),
+                        name: "Web search".into(),
+                        description: "Let the agent search the web".into(),
+                        category: String::new(),
+                        kind: ChatConfigKind::Boolean { value: true },
+                    },
+                    ChatConfigOption {
+                        id: "verbosity".into(),
+                        name: "Verbosity".into(),
+                        description: String::new(),
+                        category: "model_config".into(),
+                        kind: ChatConfigKind::Select {
+                            current: "concise".into(),
+                            choices: vec![ChatConfigChoice {
+                                value: "concise".into(),
+                                label: "Concise".into(),
+                                description: "Short answers".into(),
+                            }],
+                        },
+                    },
+                ],
+            },
         ]
     }
 
@@ -1115,6 +1251,11 @@ mod tests {
                 session_id: "s1".into(),
                 model: "claude-opus-5".into(),
                 effort: Some(Effort::Xhigh),
+            },
+            ChatCommand::SetConfigOption {
+                session_id: "s1".into(),
+                config_id: "web_search".into(),
+                value: ChatConfigValue::Flag(true),
             },
             ChatCommand::Close { session_id: "s1".into() },
         ]
@@ -1168,10 +1309,11 @@ mod tests {
                 ChatEvent::TurnCompleted { .. } => "turnCompleted",
                 ChatEvent::SessionError { .. } => "sessionError",
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
+                ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 19 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 19, "every_event() must hold exactly one sample per variant");
+        // 20 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 20, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]
@@ -1185,10 +1327,11 @@ mod tests {
                 ChatCommand::RespondPermission { .. } => "respondPermission",
                 ChatCommand::SetMode { .. } => "setMode",
                 ChatCommand::SetModel { .. } => "setModel",
+                ChatCommand::SetConfigOption { .. } => "setConfigOption",
                 ChatCommand::Close { .. } => "close",
             };
         }
-        assert_eq!(cmds.len(), 7, "every_command() must hold exactly one sample per variant");
+        assert_eq!(cmds.len(), 8, "every_command() must hold exactly one sample per variant");
     }
 
     /// The wire shape the TypeScript mirror is written against: tagged on

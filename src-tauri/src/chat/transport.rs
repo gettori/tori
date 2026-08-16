@@ -21,7 +21,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 
 /// Delivers one event to whoever is currently listening to a session.
 pub type Emit = Box<dyn Fn(ChatEvent) + Send + Sync>;
@@ -131,6 +131,21 @@ pub trait AgentTransport: Send {
     /// Same next-turn semantics as [`Self::set_mode`].
     fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String>;
 
+    /// Set one of the harness's **own** configuration options, by the id it
+    /// published for it.
+    ///
+    /// Separate from [`Self::set_model`] and [`Self::set_mode`] because those
+    /// two have Sway-side state behind them (a pending pick, a permission
+    /// story) and this one has none: Sway does not know what the option
+    /// governs, so it forwards the switch and renders whatever the harness says
+    /// afterwards.
+    ///
+    /// A harness that publishes no such options **errors** rather than
+    /// succeeding silently. Nothing can reach this without a mirror to click
+    /// in, so a quiet `Ok(())` here would only ever hide a routing bug.
+    fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue)
+        -> Result<(), String>;
+
     /// Terminate the child. Must be idempotent: the host calls it on tab close,
     /// and again on app exit for anything still in the map.
     fn close(&mut self) -> Result<(), String>;
@@ -155,6 +170,9 @@ pub(crate) mod mock {
         /// which is the whole point of the two being distinct.
         pub steered: Vec<Vec<ContentBlock>>,
         pub interrupts: u32,
+        /// Every mirrored switch, so a test can assert the id and value that
+        /// actually left rather than that something was called.
+        pub config_switches: Vec<(String, ChatConfigValue)>,
         pub closed: bool,
         sink: Option<Sink>,
     }
@@ -191,6 +209,14 @@ pub(crate) mod mock {
             Ok(())
         }
         fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_config_option(
+            &mut self,
+            config_id: &str,
+            value: &ChatConfigValue,
+        ) -> Result<(), String> {
+            self.config_switches.push((config_id.to_string(), value.clone()));
             Ok(())
         }
         fn close(&mut self) -> Result<(), String> {

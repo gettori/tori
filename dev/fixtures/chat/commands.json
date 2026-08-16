@@ -56,6 +56,12 @@
     "effort": "xhigh"
   },
   {
+    "type": "setConfigOption",
+    "sessionId": "s1",
+    "configId": "web_search",
+    "value": true
+  },
+  {
     "type": "close",
     "sessionId": "s1"
   }

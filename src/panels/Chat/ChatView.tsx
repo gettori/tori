@@ -9,6 +9,7 @@ import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
 import ModeSelector from "./ModeSelector";
+import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
 import FastModeStatus from "./FastModeStatus";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
@@ -46,7 +47,13 @@ import {
 } from "../../utils/chatCompose";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
-import { parseChatEvent, type ChatEvent, type ContentBlock, type PermissionMode } from "../../utils/chatTypes";
+import {
+  parseChatEvent,
+  type ChatConfigValue,
+  type ChatEvent,
+  type ContentBlock,
+  type PermissionMode,
+} from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, liveChats, setLiveChat } from "../../utils/chatSessions";
 import { checkpointChatTurn } from "../../utils/checkpoints";
 import type { UsageTotals } from "../../utils/chatUsageStore";
@@ -1048,6 +1055,18 @@ export default function ChatView(props: {
     });
   }
 
+  /** The one path to `chat_set_config_option`, for the mirrored controls.
+   *
+   *  Nothing is reverted on failure because nothing moved optimistically: the
+   *  control renders the option set the agent last published, and the agent
+   *  answers every switch with a fresh one. So a refused switch leaves the
+   *  control showing what is actually in force, and the error says why. */
+  function applyConfigOption(configId: string, value: ChatConfigValue) {
+    void invoke("chat_set_config_option", { sessionId: props.sessionId, configId, value }).catch(
+      (e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
+    );
+  }
+
   // The project's file index, for `@` completion. Fetched on demand rather than
   // on mount: it is a full walk of the tree, and a chat that never mentions a
   // file should not pay for one. The composer asks once and caches.
@@ -1482,6 +1501,14 @@ export default function ChatView(props: {
               pending={modePending(state)}
               disabled={refused() || state.ended}
               onSelect={onSelectMode}
+            />
+            {/* Last, after the three Sway has controls of its own for: these
+                are the agent's, in the agent's own words, and their order is
+                the order it published them in. */}
+            <ConfigMirror
+              options={state.configOptions}
+              disabled={refused() || state.ended}
+              onSet={applyConfigOption}
             />
           </>
         }

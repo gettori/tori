@@ -393,6 +393,10 @@ pub fn codex_support(command: &ChatCommand) -> Support {
         ChatCommand::RespondPermission { .. } => Support::Native,
         ChatCommand::SetMode { .. } => Support::Native,
         ChatCommand::SetModel { .. } => Support::Native,
+        // `app-server` has no generic option-setting verb: each lever it
+        // exposes is its own named method, so a switch aimed at an id has
+        // nowhere to go.
+        ChatCommand::SetConfigOption { .. } => Support::Refuses,
         ChatCommand::Close { .. } => Support::Native,
     }
 }
@@ -408,6 +412,10 @@ pub fn acp_support(command: &ChatCommand) -> Support {
         // mode update is an event ACP *sends*, not one it takes.
         ChatCommand::SetMode { .. } => Support::Refuses,
         ChatCommand::SetModel { .. } => Support::Refuses,
+        // `session/set_config_option`, and the one verb the two refusals above
+        // are actually routed through by the live transport: what the captured
+        // vocabulary lacked was a *model* switch, not a way to set an option.
+        ChatCommand::SetConfigOption { .. } => Support::Native,
         ChatCommand::Close { .. } => Support::Native,
     }
 }
@@ -443,6 +451,7 @@ mod tests {
             ChatEvent::TurnCompleted { .. } => "turnCompleted",
             ChatEvent::SessionError { .. } => "sessionError",
             ChatEvent::SessionEnded { .. } => "sessionEnded",
+            ChatEvent::ConfigOptions { .. } => "configOptions",
         }
     }
 

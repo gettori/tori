@@ -238,6 +238,47 @@ describe("the model list on a harness page", () => {
     expect(container.textContent).toContain("Asked Claude 2.1.231");
   });
 
+  /** Phase 5's preview: the levers with no control of Sway's own, read from the
+   *  same probe rather than only appearing once a chat is open. The three with
+   *  bespoke controls are not repeated here - the model list above is already
+   *  the model option, rendered properly. */
+  it("previews the harness's own options, minus the ones it renders properly", async () => {
+    const r = mount({}, [
+      probed("claude", [model("sonnet", "claude-sonnet-5")], {
+        options: [
+          {
+            id: "model",
+            name: "Model",
+            description: "",
+            category: "model",
+            kind: "select",
+            current: "sonnet",
+            choices: [],
+          },
+          {
+            id: "web_search",
+            name: "Web search",
+            description: "Let the agent search the web",
+            category: "",
+            kind: "boolean",
+            value: true,
+          },
+        ],
+      }),
+    ]);
+    const { container } = await open(r, /Claude/);
+    expect(container.textContent).toContain("Web search");
+    expect(container.textContent).toContain("Let the agent search the web");
+    // Its state, in the agent's own terms, and read-only: there is no session
+    // on this page to set it on.
+    expect(container.textContent).toContain("on");
+    // Two lists on the page: the models, then the options. The model *option*
+    // is not repeated in the second, because the first is already it.
+    const lists = container.querySelectorAll("ul");
+    expect(lists).toHaveLength(2);
+    expect(lists[1].children).toHaveLength(1);
+  });
+
   // The answer describes the binary that answered it. A different one is
   // installed now, so the list may have moved and the page says so rather than
   // presenting a remembered answer as a current one.

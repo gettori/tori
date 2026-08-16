@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
-use super::model::{ChatCommand, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
@@ -280,6 +280,7 @@ impl ChatHost {
             | ChatCommand::RespondPermission { session_id, .. }
             | ChatCommand::SetMode { session_id, .. }
             | ChatCommand::SetModel { session_id, .. }
+            | ChatCommand::SetConfigOption { session_id, .. }
             | ChatCommand::Close { session_id } => session_id.clone(),
         };
         let Some(transport) = lock(&self.sessions).get(&session_id).map(|e| e.transport.clone()) else {
@@ -298,6 +299,9 @@ impl ChatHost {
             }
             ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
             ChatCommand::SetModel { model, effort, .. } => t.set_model(model, *effort),
+            ChatCommand::SetConfigOption { config_id, value, .. } => {
+                t.set_config_option(config_id, value)
+            }
             ChatCommand::Close { .. } => {
                 drop(t);
                 self.close(&session_id)
@@ -325,6 +329,19 @@ impl ChatHost {
 
     pub fn set_model(&self, session_id: &str, model: &str, effort: Option<Effort>) -> Result<(), String> {
         self.dispatch(&ChatCommand::SetModel { session_id: session_id.to_string(), model: model.to_string(), effort })
+    }
+
+    pub fn set_config_option(
+        &self,
+        session_id: &str,
+        config_id: &str,
+        value: ChatConfigValue,
+    ) -> Result<(), String> {
+        self.dispatch(&ChatCommand::SetConfigOption {
+            session_id: session_id.to_string(),
+            config_id: config_id.to_string(),
+            value,
+        })
     }
 
     /// End a session: kill the child, drop the entry, release the claim.
@@ -451,6 +468,9 @@ mod tests {
             Ok(())
         }
         fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_config_option(&mut self, _id: &str, _v: &ChatConfigValue) -> Result<(), String> {
             Ok(())
         }
         fn close(&mut self) -> Result<(), String> {
@@ -709,6 +729,9 @@ mod tests {
             fn set_model(&mut self, _m: &str, _e: Option<Effort>) -> Result<(), String> {
                 Ok(())
             }
+            fn set_config_option(&mut self, _i: &str, _v: &ChatConfigValue) -> Result<(), String> {
+                Ok(())
+            }
             fn close(&mut self) -> Result<(), String> {
                 Ok(())
             }
@@ -931,6 +954,7 @@ mod tests {
         host.interrupt("s1").unwrap();
         host.set_mode("s1", PermissionMode::new("plan")).unwrap();
         host.set_model("s1", "claude-opus-5", Some(Effort::High)).unwrap();
+        host.set_config_option("s1", "web_search", ChatConfigValue::Flag(true)).unwrap();
 
         // Close goes through the host's own teardown, not straight to the
         // transport, so the map entry and the claim go with it.

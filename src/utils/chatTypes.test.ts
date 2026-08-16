@@ -182,6 +182,16 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "sessionEnded":
           expect(ev.reason).toBeTruthy();
           break;
+        case "configOptions": {
+          // The two shapes a mirrored control comes in, and the uncategorized
+          // one is the row the mirror exists for.
+          const toggle = ev.options.find((o) => o.kind === "boolean");
+          expect(toggle?.kind === "boolean" && toggle.value).toBe(true);
+          expect(toggle?.category).toBe("");
+          const select = ev.options.find((o) => o.kind === "select");
+          expect(select?.kind === "select" && select.current).toBe("concise");
+          break;
+        }
         default: {
           const never: never = ev;
           throw new Error(`unhandled event variant: ${JSON.stringify(never)}`);
@@ -217,6 +227,12 @@ describe("chatTypes mirrors the Rust chat model", () => {
           break;
         case "setModel":
           expect(cmd.effort).toBe("xhigh");
+          break;
+        case "setConfigOption":
+          // A toggle's state travels as a bare boolean, a select's as its
+          // value id, which is what the untagged Rust value serializes to.
+          expect(cmd.configId).toBe("web_search");
+          expect(cmd.value).toBe(true);
           break;
         default: {
           const never: never = cmd;

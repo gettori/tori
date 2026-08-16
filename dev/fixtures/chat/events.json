@@ -297,5 +297,34 @@
     "exitCode": 0,
     "output": "{\"hookSpecificOutput\":{}}",
     "stderr": null
+  },
+  {
+    "type": "configOptions",
+    "sessionId": "s1",
+    "options": [
+      {
+        "id": "web_search",
+        "name": "Web search",
+        "description": "Let the agent search the web",
+        "category": "",
+        "kind": "boolean",
+        "value": true
+      },
+      {
+        "id": "verbosity",
+        "name": "Verbosity",
+        "description": "",
+        "category": "model_config",
+        "kind": "select",
+        "current": "concise",
+        "choices": [
+          {
+            "value": "concise",
+            "label": "Concise",
+            "description": "Short answers"
+          }
+        ]
+      }
+    ]
   }
 ]

@@ -48,7 +48,8 @@ use futures::StreamExt;
 use super::acp::{self, AcpOverrides};
 use super::acp_sessions::{self, AcpSession, ListedSession};
 use super::model::{
-    ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope,
+    ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision,
+    PermissionMode, PermissionScope,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -77,13 +78,13 @@ enum Command {
     /// The spec's own `session/set_mode`, used only for an agent that published
     /// no `mode`-category config option. Neither measured agent has answered it.
     SetMode(PermissionMode),
-    /// Switch one session config option, which is how both a model switch and a
-    /// mode switch travel. Carries the agent's own config id rather than a
-    /// Sway-side name for it, and `what` only so a failure can say which control
-    /// the user touched.
+    /// Switch one session config option, which is how a model switch, a mode
+    /// switch and every mirrored control travel alike. Carries the agent's own
+    /// config id rather than a Sway-side name for it, and `what` only so a
+    /// failure can say which control the user touched.
     SetConfigOption {
         config_id: String,
-        value: String,
+        value: ChatConfigValue,
         what: ConfigOption,
     },
     Close,
@@ -96,29 +97,60 @@ enum Command {
 /// the *same* selector back out of the agent's answer. Reading the model
 /// selector after a mode switch would compare two unrelated values and report a
 /// mismatch on every mode change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ConfigOption {
     Model,
     Mode,
     Effort,
+    /// A control Sway has no bespoke one for, driven by the mirror. It carries
+    /// the agent's own id because neither the noun nor the readback can be
+    /// derived from a selector Sway knows nothing about: the three above are
+    /// found by category, and this one is exactly the option no category claims.
+    Mirrored { id: String },
 }
 
 impl ConfigOption {
-    fn noun(self) -> &'static str {
+    fn noun(&self) -> String {
         match self {
-            Self::Model => "model",
-            Self::Mode => "mode",
-            Self::Effort => "reasoning effort",
+            Self::Model => "model".into(),
+            Self::Mode => "mode".into(),
+            Self::Effort => "reasoning effort".into(),
+            Self::Mirrored { id } => id.clone(),
         }
     }
 
     /// What the agent now reports for this selector, from its own answer.
-    fn current(self, options: &[SessionConfigOption]) -> Option<String> {
+    fn current(&self, options: &[SessionConfigOption]) -> Option<String> {
         match self {
             Self::Model => acp::current_model(options),
             Self::Mode => acp::current_mode(options),
             Self::Effort => acp::current_effort(options),
+            // Read back through the same mapping the mirror renders, so the
+            // check compares what the user will see rather than a second
+            // reading of the wire that could disagree with it.
+            Self::Mirrored { id } => acp::config_options(options)
+                .into_iter()
+                .find(|o| &o.id == id)
+                .map(|o| match o.kind {
+                    ChatConfigKind::Select { current, .. } => current,
+                    ChatConfigKind::Boolean { value } => value.to_string(),
+                }),
         }
+    }
+}
+
+/// A switch's value on the wire.
+///
+/// The two shapes are not interchangeable: a toggle sent as the *string*
+/// `"true"` is a value id an agent will reject or, worse, quietly not
+/// understand, and nothing downstream would say so. Split out of the send so
+/// that mapping is a test rather than a line inside an async loop.
+fn option_value(value: &ChatConfigValue) -> SessionConfigOptionValue {
+    match value {
+        ChatConfigValue::Value(id) => {
+            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new(id.as_str()) }
+        }
+        ChatConfigValue::Flag(on) => SessionConfigOptionValue::Boolean { value: *on },
     }
 }
 
@@ -469,7 +501,7 @@ impl AgentTransport for AcpTransport {
             let command = match switch {
                 Switch::Available(config_id) => Command::SetConfigOption {
                     config_id,
-                    value: mode.as_str().to_string(),
+                    value: ChatConfigValue::Value(mode.as_str().to_string()),
                     what: ConfigOption::Mode,
                 },
                 Switch::Unsupported | Switch::Unknown => Command::SetMode(mode),
@@ -561,7 +593,7 @@ impl AgentTransport for AcpTransport {
         };
         self.send_command(Command::SetConfigOption {
             config_id,
-            value: model.to_string(),
+            value: ChatConfigValue::Value(model.to_string()),
             what: ConfigOption::Model,
         })?;
 
@@ -573,8 +605,31 @@ impl AgentTransport for AcpTransport {
         let Switch::Available(config_id) = switch else { return Ok(()) };
         self.send_command(Command::SetConfigOption {
             config_id,
-            value: level.as_str().to_string(),
+            value: ChatConfigValue::Value(level.as_str().to_string()),
             what: ConfigOption::Effort,
+        })
+    }
+
+    /// A mirrored control's switch, named by the agent's own config id.
+    ///
+    /// **Sent straight away, unlike the mode.** A mode decides whether the agent
+    /// asks before it writes, so it waits for a turn boundary; a mirrored option
+    /// is whatever the agent published, Sway knows nothing about what it governs,
+    /// and holding it back would be Sway inventing next-turn semantics for a
+    /// lever it has never seen.
+    ///
+    /// Nothing is checked against a local list first, on purpose: the ids in the
+    /// mirror came from this session's own answer, and re-validating them here
+    /// would be a second copy of that list to keep in step.
+    fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue) -> Result<(), String> {
+        self.send_command(Command::SetConfigOption {
+            config_id: config_id.to_string(),
+            value: value.clone(),
+            // The agent's own id is the noun a failure names. Sway has no
+            // friendlier word for a lever it has never seen, and the label is
+            // the agent's too, so quoting the id at least names the thing the
+            // agent itself refused.
+            what: ConfigOption::Mirrored { id: config_id.to_string() },
         })
     }
 
@@ -823,6 +878,16 @@ async fn drive_session(
             extra: Default::default(),
         },
     );
+    // Right behind the session, and separately from it: the three categories
+    // above have controls of their own, and everything else the agent published
+    // reaches the user only through this.
+    emit(
+        sink,
+        ChatEvent::ConfigOptions {
+            session_id: shared.session_id.clone(),
+            options: acp::config_options(&opened.config_options),
+        },
+    );
     // **After the chat is open, never before it.** Enumerating an agent's other
     // sessions is worth one request on a connection that already exists, but it
     // is not worth making the user wait: an agent with pages of history would
@@ -860,9 +925,7 @@ async fn drive_session(
                 let request = SetSessionConfigOptionRequest::new(
                     session_id.clone(),
                     SessionConfigId::new(config_id.as_str()),
-                    SessionConfigOptionValue::ValueId {
-                        value: SessionConfigValueId::new(value.as_str()),
-                    },
+                    option_value(&value),
                 );
                 match conn.send_request(request).block_task().await {
                     Err(e) => emit(
@@ -884,15 +947,27 @@ async fn drive_session(
                     // did not take means the agent is deciding permissions by a
                     // rule other than the one on screen.
                     Ok(response) => {
+                        // The answer carries the agent's whole option set, and
+                        // a switch on one option can re-cut another's choices,
+                        // so the mirror is rebuilt from it rather than left
+                        // showing the state the session opened in.
+                        emit(
+                            sink,
+                            ChatEvent::ConfigOptions {
+                                session_id: shared.session_id.clone(),
+                                options: acp::config_options(&response.config_options),
+                            },
+                        );
+                        let asked = value.as_text();
                         let now = what.current(&response.config_options);
                         if let Some(now) = now {
-                            if now != value {
+                            if now != asked {
                                 emit(
                                     sink,
                                     ChatEvent::SessionError {
                                         session_id: shared.session_id.clone(),
                                         message: format!(
-                                            "this agent accepted the switch but reports its {} is `{now}` rather than `{value}`.",
+                                            "this agent accepted the switch but reports its {} is `{now}` rather than `{asked}`.",
                                             what.noun()
                                         ),
                                         fatal: false,
@@ -1352,6 +1427,48 @@ mod tests {
 
     fn ids(values: &[&str]) -> Vec<String> {
         values.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// A toggle travels as a boolean and a choice as a value id. Sending the
+    /// string `"true"` for a toggle is the failure this pins: the spec has a
+    /// shape for each, and an agent given the wrong one either refuses or
+    /// silently does nothing.
+    #[test]
+    fn a_toggle_and_a_choice_leave_in_different_shapes() {
+        assert_eq!(
+            option_value(&ChatConfigValue::Flag(true)),
+            SessionConfigOptionValue::Boolean { value: true }
+        );
+        assert_eq!(
+            option_value(&ChatConfigValue::Value("detailed".into())),
+            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new("detailed") }
+        );
+    }
+
+    /// **The readback follows the id, not the category.** The three bespoke
+    /// selectors are found by what the agent called them; a mirrored option is
+    /// exactly the one no category claims, so reading one back through a
+    /// category lookup would compare an unrelated selector's value and report a
+    /// mismatch on every switch.
+    #[test]
+    fn a_mirrored_switch_is_read_back_by_the_agents_own_id() {
+        use agent_client_protocol::schema::v1::{
+            SessionConfigBoolean, SessionConfigId, SessionConfigKind,
+        };
+
+        let options = vec![SessionConfigOption::new(
+            SessionConfigId::new("web_search"),
+            "Web search".to_string(),
+            SessionConfigKind::Boolean(SessionConfigBoolean::new(true)),
+        )];
+        let what = ConfigOption::Mirrored { id: "web_search".to_string() };
+
+        assert_eq!(what.current(&options).as_deref(), Some("true"));
+        assert_eq!(what.noun(), "web_search", "and a failure names what the agent called it");
+        // An id the answer does not mention reads as unknown rather than as a
+        // mismatch: "we cannot tell" must not render as the agent refusing.
+        let absent = ConfigOption::Mirrored { id: "verbosity".to_string() };
+        assert_eq!(absent.current(&options), None);
     }
 
     /// An answer must come back in the agent's own vocabulary. Sending a fixed

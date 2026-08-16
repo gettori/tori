@@ -8,7 +8,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agentHealth } from "./agentHealth";
-import type { ChatAccount, ChatModeInfo, ChatModelInfo } from "./chatTypes";
+import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo } from "./chatTypes";
 
 // Which of the three things a harness's catalogue currently is.
 //
@@ -44,9 +44,11 @@ export type Catalogue = {
   probedAtMs: number;
   models: CatalogModel[];
   modes: ChatModeInfo[];
-  // The agent's own config options, verbatim. Empty for claude, which publishes
-  // none. Typed loosely here because nothing reads them yet.
-  options?: unknown[];
+  // The agent's own config options, in the same shape the live chat mirrors
+  // them. Empty for claude, which publishes none. One shape rather than two is
+  // what lets the detail page preview an agent's options with the renderer's
+  // own rule for which ones have a bespoke control.
+  options?: ChatConfigOption[];
   // The account the harness named, when it named one. A catalogue can differ per
   // account, so a surface showing one has to be able to say whose answer it is.
   account: ChatAccount | null;

@@ -47,7 +47,7 @@ use crate::agents::{AgentAdapter, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::ClaudeMapper;
-use crate::chat::model::{ChatAccount, ChatEvent, ChatModeInfo, ChatModelInfo};
+use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo};
 use crate::chat::transport::{build_command, StartSpec};
 
 /// How long one harness gets to answer before the probe gives up on it.
@@ -178,12 +178,14 @@ pub struct Catalogue {
     /// than published on the wire, which is claude today.
     #[serde(default)]
     pub modes: Vec<ChatModeInfo>,
-    /// The agent's own config options, verbatim, including the ones Sway has no
-    /// bespoke control for. Empty for claude, which publishes none. Phase 5
-    /// mirrors these into the chat; keeping them whole here is what lets the
-    /// settings page preview them before any chat exists.
+    /// The agent's own config options, including the ones Sway has no bespoke
+    /// control for. Empty for claude, which publishes none.
+    ///
+    /// **The same shape the live chat mirrors**, not the raw protocol structs:
+    /// the settings page previews an agent's options before any chat exists, and
+    /// a cache in a different shape would mean two renderers for one list.
     #[serde(default)]
-    pub options: Vec<SessionConfigOption>,
+    pub options: Vec<ChatConfigOption>,
     /// The account the harness named, when it named one. Load-bearing for the
     /// surface's honesty: a catalogue can differ per account, so a page showing
     /// one has to be able to say whose answer it is.
@@ -488,13 +490,11 @@ pub fn probe_cwd_spellings() -> Vec<String> {
 /// Pure, and separated from the process work so the shape of the answer is
 /// testable from a fixture rather than only against a live agent.
 ///
-/// **The options are stored whole.** `models` and `modes` are the two the chat
-/// has bespoke controls for, but the agent's full set is kept beside them
-/// verbatim, including categories this build has no control for: Phase 5 mirrors
-/// them into the chat, and keeping them here is what lets the settings page
-/// preview an agent's options before any chat exists. Filtering to the three
-/// known categories at the cache boundary would make the cache the place a new
-/// option gets lost.
+/// **The options are stored whole**, in the shape the chat's mirror renders.
+/// `models` and `modes` are the two the chat has bespoke controls for, but the
+/// agent's full set is kept beside them, including categories this build has no
+/// control for. Filtering to the three known categories at the cache boundary
+/// would make the cache the place a new option gets lost.
 fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> Catalogue {
     Catalogue {
         version,
@@ -504,7 +504,7 @@ fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> 
             .map(|info| CatalogModel { info, user_configured: false })
             .collect(),
         modes: acp::mode_catalogue(&options),
-        options,
+        options: acp::config_options(&options),
         // ACP publishes no account on the handshake. Empty rather than guessed,
         // which also means the surface's "whose answer is this" line correctly
         // says nothing for an ACP harness.
@@ -1292,7 +1292,7 @@ mod tests {
 
         assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
         assert_eq!(catalogue.models[0].info.value, "sonnet");
-        let ids: Vec<&str> = catalogue.options.iter().map(|o| o.id.0.as_ref()).collect();
+        let ids: Vec<&str> = catalogue.options.iter().map(|o| o.id.as_str()).collect();
         assert_eq!(ids, ["model", "reasoning-depth"], "and the uncategorized one survives beside it");
     }
 

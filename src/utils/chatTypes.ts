@@ -114,6 +114,32 @@ export type ChatModeInfo = {
   hint: string;
 };
 
+/// One configuration lever the agent published, in the shape a generic control
+/// can render.
+///
+/// **Sway does not have to recognise an option to show it.** Model, mode and
+/// thinking level have controls of their own; everything else the agent
+/// publishes reaches the user only through the mirror, which renders by `kind`
+/// and shows the agent's own label and description verbatim.
+///
+/// `category` is the agent's own word, and empty means it published none. That
+/// empty case is the interesting one: an uncategorized option is exactly the one
+/// no bespoke control claims.
+export type ChatConfigOption = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+} & (
+  | { kind: "select"; current: string; choices: ChatConfigChoice[] }
+  | { kind: "boolean"; value: boolean }
+);
+
+export type ChatConfigChoice = { value: string; label: string; description: string };
+
+/// What a switch sends back: a select's value id, or a toggle's state.
+export type ChatConfigValue = string | boolean;
+
 /// What a harness said it can do, read off its own handshake.
 ///
 /// **Advertised, not measured.** Sway's per-transport tier records what shipped
@@ -233,6 +259,11 @@ export type ChatEvent =
       /// for on the wire, which reads as "the tier is all there is".
       capabilities: ChatCapabilities | null;
     }
+  /// The agent's configuration levers, as they now stand: once when the session
+  /// opens, and again whenever the agent reports a change. **The whole set every
+  /// time, never a delta**, because one option can re-cut another's choices and
+  /// a mirror rebuilt from the whole answer cannot drift from it.
+  | { type: "configOptions"; sessionId: string; options: ChatConfigOption[] }
   /// One hook execution, from the in-band `hook_started`/`hook_response` frames
   /// that `--include-hook-events` turns on. One event per **frame**: a hook
   /// produces a `started` and then a `finished` sharing one `hookId`.
@@ -375,6 +406,7 @@ export type ChatEventType = ChatEvent["type"];
 export const CHAT_EVENT_TYPES = [
   "sessionStarted",
   "sessionReady",
+  "configOptions",
   "hookFired",
   "turnStarted",
   "userMessage",
@@ -416,6 +448,10 @@ export type ChatCommand =
   /// Applies from the *next* turn, not the running one.
   | { type: "setMode"; sessionId: string; mode: PermissionMode }
   | { type: "setModel"; sessionId: string; model: string; effort: Effort | null }
+  /// Set one of the harness's own options, by the id it published. Sway knows
+  /// nothing about what the option governs, so it forwards the switch and
+  /// renders whatever the harness reports afterwards.
+  | { type: "setConfigOption"; sessionId: string; configId: string; value: ChatConfigValue }
   | { type: "close"; sessionId: string };
 
 export type ChatCommandType = ChatCommand["type"];
@@ -427,6 +463,7 @@ export const CHAT_COMMAND_TYPES = [
   "respondPermission",
   "setMode",
   "setModel",
+  "setConfigOption",
   "close",
 ] as const satisfies readonly ChatCommandType[];
 
@@ -505,6 +542,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   },
   sessionError: { required: ["sessionId", "message", "fatal"] },
   sessionEnded: { required: ["sessionId", "reason"] },
+  configOptions: { required: ["sessionId", "options"] },
 };
 
 export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; optional?: string[] }> = {
@@ -516,6 +554,7 @@ export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; op
   },
   setMode: { required: ["sessionId", "mode"] },
   setModel: { required: ["sessionId", "model", "effort"] },
+  setConfigOption: { required: ["sessionId", "configId", "value"] },
   close: { required: ["sessionId"] },
 };
 
@@ -536,6 +575,20 @@ export function parseChatEvent(raw: unknown): ChatEvent | null {
   if (typeof ev.type !== "string" || typeof ev.sessionId !== "string") return null;
   if (!(CHAT_EVENT_TYPES as readonly string[]).includes(ev.type)) return null;
   return raw as ChatEvent;
+}
+
+/// The categories the chat already has a control of its own for.
+///
+/// A mirrored copy of the model picker would be a second control writing one
+/// piece of session state, which is how two controls end up disagreeing about
+/// what the session is running.
+const BESPOKE_CATEGORIES = new Set(["model", "mode", "thought_level"]);
+
+/// The options a generic surface renders: the agent's own, minus the three
+/// above. Stated once, here, because both the chat's mirror and the settings
+/// page's preview need the same answer and a second copy would drift.
+export function mirroredOptions(options: readonly ChatConfigOption[]): ChatConfigOption[] {
+  return options.filter((o) => !BESPOKE_CATEGORIES.has(o.category));
 }
 
 /// True when this event belongs to a turn (and therefore carries a `turnId`).
