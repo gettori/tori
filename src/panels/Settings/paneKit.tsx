@@ -9,10 +9,14 @@ import { For, Show, type JSX } from "solid-js";
 import { hintRanges, labelRanges, segments, type Range } from "./searchHighlight";
 import {
   SETTINGS,
+  SETTING_TABS,
+  tabOfEntry,
   type SettingEntry,
   type SettingSection,
+  type SettingTab,
   type EditorToggleKey,
 } from "../../utils/settingsCatalog";
+import Button from "../../components/Button/Button";
 import {
   settings,
   saveSettings,
@@ -120,7 +124,17 @@ export const TODO_TAGS: SettingEntry = SETTINGS.find((s) => s.edits === "todoPat
  *  the query itself so a row can mark *why* it is one of them. `shown` answers
  *  true for everything when nothing is typed, so a pane never has to ask whether
  *  a search is running; `query` is `""` then, which marks nothing. */
-export type PaneProps = { shown: (id: string) => boolean; query: string };
+export type PaneProps = {
+  shown: (id: string) => boolean;
+  query: string;
+  /** The category this pane belongs to, set **only** while a search is running.
+   *  Results from all six panes are one list then, so a group heading has to say
+   *  where its rows came from; "Editing" alone does not place them. */
+  prefix?: string;
+  /** Go to a category and stop searching. What a card section offers instead of
+   *  unfolding its whole runtime contents into a list of search results. */
+  openTab?: (tab: SettingTab) => void;
+};
 
 /** The DOM id of a setting's row, so a palette deep link can find it. Derived
  *  from the catalogue id rather than stored, so there is nothing to keep in
@@ -176,15 +190,105 @@ export function Group(props: {
   shown: (id: string) => boolean;
   title: string;
   ids: string[];
+  /** Passed down by every pane via `{...props}`; set only while searching. */
+  prefix?: string;
   children: JSX.Element;
 }) {
   return (
     <Show when={props.ids.some((id) => props.shown(id))}>
       <section class={styles.section}>
-        <div class={styles.sectionTitle}>{props.title}</div>
+        <div class={styles.sectionTitle}>
+          {/* One span, so `section > div:first-child` still reads back the
+              title alone - the rule beside it carries no text. */}
+          <span>{props.prefix ? `${props.prefix} · ${props.title}` : props.title}</span>
+          <span class={styles.sectionRule} />
+        </div>
         {props.children}
       </section>
     </Show>
+  );
+}
+
+/** A real `input[type=number]`, not the mock's read-only display: a zoom of 200
+ *  is a lot of clicking away from its default, and a spinbutton is what a screen
+ *  reader should meet here.
+ *
+ *  Here rather than in `src/components/` because it is sized for the fixed
+ *  control column and means nothing outside it. The switch and select beside it
+ *  are the shared ones, so this is the only control the kit still owns. */
+export function Stepper(props: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
+  "aria-label": string;
+}) {
+  let field!: HTMLInputElement;
+  const step = () => props.step ?? 1;
+  // Fractional steps (line height moves by 0.1) accumulate float noise, so every
+  // result is rounded to the step's own precision rather than left at
+  // 1.7000000000000002.
+  const places = () => (step() < 1 ? 1 : 0);
+  const bound = (v: number) =>
+    Math.min(props.max, Math.max(props.min, Number(v.toFixed(places()))));
+
+  /** Steps above `min`: the unit both the buttons and the typed field work in. */
+  const units = () => (props.value - props.min) / step();
+
+  /** To the next grid point, not `value ± step`: an off-grid 12 with a step of 5
+   *  would walk 17 from the button and 15 from the field's own Up arrow. */
+  const nudge = (dir: 1 | -1) => {
+    const u = units();
+    // 1e-9, because (1.5 - 1) / 0.1 is 4.999999999999996 and an on-grid value
+    // must not be treated as off-grid.
+    const onGrid = Math.abs(u - Math.round(u)) < 1e-9;
+    const next = onGrid ? Math.round(u) + dir : dir > 0 ? Math.ceil(u) : Math.floor(u);
+    props.onChange(bound(props.min + next * step()));
+  };
+
+  /** An entry can resolve to the value already stored (clamped, blank, snapped),
+   *  and then nothing re-renders and the field keeps text the setting never
+   *  took: 99 typed into a font size at its maximum of 24 stayed on screen. */
+  const commit = (raw: string) => {
+    const u = (clamp(raw, props.min, props.max, props.value) - props.min) / step();
+    const next = bound(props.min + Math.round(u) * step());
+    if (next === props.value) field.value = String(next);
+    props.onChange(next);
+  };
+
+  return (
+    <div class={styles.stepper}>
+      <button
+        type="button"
+        class={styles.stepperBtn}
+        aria-label={`Decrease ${props["aria-label"]}`}
+        disabled={props.value <= props.min}
+        onClick={() => nudge(-1)}
+      >
+        −
+      </button>
+      <input
+        ref={field}
+        type="number"
+        class={styles.num}
+        min={props.min}
+        max={props.max}
+        step={step()}
+        aria-label={props["aria-label"]}
+        value={props.value}
+        onChange={(e) => commit(e.currentTarget.value)}
+      />
+      <button
+        type="button"
+        class={styles.stepperBtn}
+        aria-label={`Increase ${props["aria-label"]}`}
+        disabled={props.value >= props.max}
+        onClick={() => nudge(1)}
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -205,17 +309,20 @@ export function Row(props: PaneProps & { id: string; label: string; hint?: strin
   const hint = () => props.hint ?? SETTINGS.find((s) => s.id === props.id)?.hint;
   return (
     <Show when={props.shown(props.id)}>
+      {/* Siblings placed by grid, never nested columns: a wrapper div would lay
+          out identically and quietly break `label.closest("div")`, which is how
+          the suite reaches every control here. */}
       <div id={rowDomId(props.id)} class={styles.row}>
         <label id={rowLabelId(props.id)} class={styles.label}>
           <MarkedLabel query={props.query} text={props.label} />
         </label>
-        {props.children}
+        <div class={styles.control}>{props.children}</div>
+        <Show when={hint()}>
+          <div class={styles.hint}>
+            <MarkedHint query={props.query} text={hint()!} />
+          </div>
+        </Show>
       </div>
-      <Show when={hint()}>
-        <div class={styles.hint}>
-          <MarkedHint query={props.query} text={hint()!} />
-        </div>
-      </Show>
     </Show>
   );
 }
@@ -228,7 +335,11 @@ export function Row(props: PaneProps & { id: string; label: string; hint?: strin
  * exactly what its single catalogue entry means, and what the badge counted.
  */
 export function CardSection(props: PaneProps & { id: string; children: JSX.Element }) {
-  const matched = () => props.query.trim() !== "" && props.shown(props.id);
+  const searching = () => props.query.trim() !== "";
+  const matched = () => searching() && props.shown(props.id);
+  const entry = () => SETTINGS.find((s) => s.id === props.id);
+  const tab = () => tabOfEntry(props.id);
+  const tabLabel = () => SETTING_TABS.find((t) => t.id === tab())?.label ?? "";
   return (
     <Show when={props.shown(props.id)}>
       {/* The wrapper carries `.cardSection`, not just the hit marker. Wrapping
@@ -239,7 +350,26 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
         id={rowDomId(props.id)}
         classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}
       >
-        {props.children}
+        {/* A result, not the section: a harness grid and a 31-entry catalogue
+            unfolding into a list of matching *settings* is the wall this
+            redesign removes. So it says where the thing is and offers to go. */}
+        <Show when={searching()} fallback={props.children}>
+          <div class={styles.row}>
+            <label class={styles.label}>
+              <MarkedLabel query={props.query} text={entry()?.label ?? props.id} />
+            </label>
+            <div class={styles.control}>
+              <Button size="sm" onClick={() => tab() && props.openTab?.(tab()!)}>
+                Open {tabLabel()}
+              </Button>
+            </div>
+            <Show when={entry()?.hint}>
+              <div class={styles.hint}>
+                <MarkedHint query={props.query} text={entry()!.hint!} />
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
     </Show>
   );
@@ -262,43 +392,45 @@ export function TodoTagsRow(props: PaneProps) {
         <label class={styles.label}>
           <MarkedLabel query={props.query} text={TODO_TAGS.label} />
         </label>
-        <Show when={fromWorkspace()}>
-          <span class={styles.originBadge} title={workspaceName()}>
-            workspace
-          </span>
-        </Show>
-        <input
-          class={`${styles.input} ${styles.text}`}
-          aria-label={TODO_TAGS.label}
-          value={editorDefaults().todoPatterns}
-          onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
-        />
-        <Show when={overlayRoot()}>
-          <Tooltip
-            as="button"
-            type="button"
-            class={styles.originAction}
-            onClick={() =>
-              void setWorkspaceOverride(
-                "todoPatterns",
-                fromWorkspace() ? undefined : editorDefaults().todoPatterns,
-              )
-            }
-            label={
-              fromWorkspace()
-                ? "Stop overriding this here and follow your global setting again"
-                : "Pin these tags for this workspace only, leaving your global setting alone"
-            }
-          >
-            {fromWorkspace() ? "Clear" : "Set here"}
-          </Tooltip>
+        <div class={styles.control}>
+          <Show when={fromWorkspace()}>
+            <span class={styles.originBadge} title={workspaceName()}>
+              workspace
+            </span>
+          </Show>
+          <input
+            class={`${styles.input} ${styles.text}`}
+            aria-label={TODO_TAGS.label}
+            value={editorDefaults().todoPatterns}
+            onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
+          />
+          <Show when={overlayRoot()}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.originAction}
+              onClick={() =>
+                void setWorkspaceOverride(
+                  "todoPatterns",
+                  fromWorkspace() ? undefined : editorDefaults().todoPatterns,
+                )
+              }
+              label={
+                fromWorkspace()
+                  ? "Stop overriding this here and follow your global setting again"
+                  : "Pin these tags for this workspace only, leaving your global setting alone"
+              }
+            >
+              {fromWorkspace() ? "Clear" : "Set here"}
+            </Tooltip>
+          </Show>
+        </div>
+        <Show when={TODO_TAGS.hint}>
+          <div class={styles.hint}>
+            <MarkedHint query={props.query} text={TODO_TAGS.hint!} />
+          </div>
         </Show>
       </div>
-      <Show when={TODO_TAGS.hint}>
-        <div class={styles.hint}>
-          <MarkedHint query={props.query} text={TODO_TAGS.hint!} />
-        </div>
-      </Show>
     </Show>
   );
 }
@@ -321,45 +453,47 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
         <label class={styles.label}>
           <MarkedLabel query={props.query} text={props.entry.label} />
         </label>
-        {/* Only where the overlay actually supplies the value. "user" and
-            "default" are the ordinary case and would be a badge on almost every
-            row, which says nothing. */}
-        <Show when={fromWorkspace()}>
-          <span class={styles.originBadge} title={workspaceName()}>
-            workspace
-          </span>
-        </Show>
-        {/* The row's own `<label>` is chrome rather than a form label (it wraps
-            nothing and carries the search highlighting), so the control names
-            itself from the entry. */}
-        <Switch
-          checked={editorDefaults()[key()]}
-          onChange={(checked) => setEditorDefault(key(), checked)}
-          aria-label={props.entry.label}
-        />
-        <Show when={overlayRoot()}>
-          <Tooltip
-            as="button"
-            type="button"
-            class={styles.originAction}
-            onClick={() =>
-              void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])
-            }
-            label={
-              fromWorkspace()
-                ? "Stop overriding this here and follow your global setting again"
-                : "Pin this setting for this workspace only, leaving your global setting alone"
-            }
-          >
-            {fromWorkspace() ? "Clear" : "Set here"}
-          </Tooltip>
+        <div class={styles.control}>
+          {/* Only where the overlay actually supplies the value. "user" and
+              "default" are the ordinary case and would be a badge on almost
+              every row, which says nothing. */}
+          <Show when={fromWorkspace()}>
+            <span class={styles.originBadge} title={workspaceName()}>
+              workspace
+            </span>
+          </Show>
+          {/* The row's own `<label>` is chrome rather than a form label (it wraps
+              nothing and carries the search highlighting), so the control names
+              itself from the entry. */}
+          <Switch
+            checked={editorDefaults()[key()]}
+            aria-label={props.entry.label}
+            onChange={(v) => setEditorDefault(key(), v)}
+          />
+          <Show when={overlayRoot()}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.originAction}
+              onClick={() =>
+                void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])
+              }
+              label={
+                fromWorkspace()
+                  ? "Stop overriding this here and follow your global setting again"
+                  : "Pin this setting for this workspace only, leaving your global setting alone"
+              }
+            >
+              {fromWorkspace() ? "Clear" : "Set here"}
+            </Tooltip>
+          </Show>
+        </div>
+        <Show when={props.entry.hint}>
+          <div class={styles.hint}>
+            <MarkedHint query={props.query} text={props.entry.hint!} />
+          </div>
         </Show>
       </div>
-      <Show when={props.entry.hint}>
-        <div class={styles.hint}>
-          <MarkedHint query={props.query} text={props.entry.hint!} />
-        </div>
-      </Show>
     </Show>
   );
 }

@@ -57,10 +57,17 @@ export type SettingTab =
   | "appearance"
   | "integrations";
 
+/** Not "Workspace": the panel already uses that word for a folder, and most of
+ *  these rows write your global settings. */
+export type SettingGroup = "Workbench" | "Application";
+
 export type SettingTabDef = {
   id: SettingTab;
-  /** What the tab is labelled in the strip. */
+  /** What the tab is labelled in the rail. */
   label: string;
+  /** The rail draws a heading whenever this changes, so this list's order is
+   *  the rail's order. */
+  group: SettingGroup;
   /** A lucide icon id, kebab-case, **as a name rather than the component.**
    *  This module is reachable from the terminal's chunk (see the module
    *  comment), so importing six icon components here would drag lucide in with
@@ -72,20 +79,24 @@ export type SettingTabDef = {
 };
 
 /**
- * The six tabs, in strip order.
+ * The six tabs, in rail order.
  *
  * The pairings are the ones that read as one subject rather than the ones that
  * happen to be adjacent today: the harness binary is a property of the agent
  * that runs it, checkpoints are what makes a chat's turns revertible, and the
  * two Editor sections were already titled the same thing.
+ *
+ * "Harnesses" rather than "Agents" because the catalogue's 31 entries are agents
+ * too. Only the label moved; the id stays `agents`, so settings.json, the
+ * schemas and every `Preferences:` command are untouched.
  */
 export const SETTING_TABS: SettingTabDef[] = [
-  { id: "agents", label: "Agents", icon: "bot", sections: ["agents", "harness"] },
-  { id: "chat", label: "Chat", icon: "message-square", sections: ["chat", "checkpoints"] },
-  { id: "editor", label: "Editor", icon: "file-code", sections: ["editor", "editing"] },
-  { id: "languages", label: "Languages", icon: "braces", sections: ["lsp", "dap"] },
-  { id: "appearance", label: "Appearance", icon: "palette", sections: ["appearance", "typography"] },
-  { id: "integrations", label: "Integrations", icon: "plug", sections: ["github"] },
+  { id: "agents", label: "Harnesses", group: "Workbench", icon: "bot", sections: ["agents", "harness"] },
+  { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
+  { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
+  { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
+  { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
+  { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["github"] },
 ];
 
 /** Which tab a section is shown under. Derived from `SETTING_TABS` rather than
@@ -103,7 +114,7 @@ export function tabOfEntry(id: string): SettingTab | undefined {
 }
 
 export const SECTION_TITLES: Record<SettingSection, string> = {
-  agents: "Agents",
+  agents: "Harnesses",
   lsp: "Language servers",
   dap: "Debuggers",
   github: "GitHub",
@@ -150,7 +161,7 @@ export const SETTINGS: SettingEntry[] = [
   {
     id: "agents",
     section: "agents",
-    label: "Agents",
+    label: "Harnesses",
     hint: "Which agent CLIs Sway found on your PATH, their versions, and the drift from what its adapters were built against.",
   },
   {

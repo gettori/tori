@@ -1,14 +1,13 @@
 // The header search on the Settings panel, and the `Preferences: ...` command
 // that opens the panel at one setting.
 //
-// Rewritten when the panel became six tabs. What used to be asserted here was
-// section granularity: a query narrowed the panel to whole sections. The
-// contract now is row granularity *inside the tab you are on*, plus the one rule
-// that makes count badges usable at all - **typing never moves you**. A command
-// is the exception, because a palette row is the user pointing at one setting.
+// Two modes, and which one you are in depends on how the query got there.
+// Typing asks about every category, so all six answer at once and the rail
+// selects nothing. A command points at one setting, so it lands you on that
+// setting's category with the box seeded.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -19,7 +18,6 @@ import { withAcpCatalog } from "../../test/settingsInvoke";
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
 import { SETTING_TABS } from "../../utils/settingsCatalog";
-import styles from "./Settings.module.css";
 
 beforeEach(async () => {
   invoke.mockReset();
@@ -35,57 +33,52 @@ beforeEach(async () => {
 const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
 const type = (q: string) => fireEvent.input(box(), { target: { value: q } });
 
-/** The one pane on screen. Every pane stays mounted (a switch must not lose a
- *  pane's scroll position), so a query about what is *visible* has to be asked
- *  of the tabpanel that is not `hidden`. */
-const pane = () => document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
+/** A list, not one element: all six show at once while a search is running. */
+const panes = () =>
+  [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
 
-/** The tab currently selected, by its label alone. Read off the label span
- *  rather than the tab's `textContent`, which also carries the count badge once
- *  a query is running. */
+/** Null while results are showing: the rail claims no place then. */
 const activeTab = () =>
   document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
 
-/** The labelled rows on screen in the active pane. */
-const rows = () => [...pane().querySelectorAll("label")].map((el) => el.textContent);
+/** The labelled rows on screen, wherever they came from. */
+const rows = () => panes().flatMap((p) => [...p.querySelectorAll("label")].map((el) => el.textContent));
 
-/** Anchored rather than exact: once a query is running a tab's accessible name
- *  carries its match count too ("Editor, 1 match"). */
 const clickTab = (label: string) =>
   fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${label}`) }));
 
 describe("the settings search box", () => {
-  it("opens on Agents with every row of that tab and no query", () => {
+  it("opens on Harnesses with every row of that category and no query", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
     expect(box().value).toBe("");
     expect(rows()).toContain("Binary path");
   });
 
-  it("filters to the matching rows within the active tab", () => {
-    render(() => <Settings onClose={() => {}} />);
-    clickTab("Editor");
-    expect(rows()).toContain("Indentation guides");
-
-    type("minim");
-
-    expect(rows()).toEqual(["Minimap"]);
-    // The neighbours the old section-level filter kept are gone: a badge saying
-    // "1" over a pane showing eleven rows is the state row granularity exists to
-    // rule out.
-    expect(rows()).not.toContain("Indentation guides");
-  });
-
-  it("never changes the active tab while you type", () => {
-    // The rule the whole search design rests on. "Minimap" lives in Editor, and
-    // typing it from Appearance must leave you in Appearance.
+  it("answers across every category, not inside the one you were on", () => {
+    // A match in Editor is now a result you can read from Appearance.
     render(() => <Settings onClose={() => {}} />);
     clickTab("Appearance");
 
     type("minim");
 
-    expect(activeTab()).toBe("Appearance");
-    type("theme");
+    expect(rows()).toEqual(["Minimap"]);
+    expect(panes()).toHaveLength(SETTING_TABS.length);
+    // The neighbours the old section-level filter kept are gone: a count saying
+    // "1" over a pane showing eleven rows is the state row granularity exists to
+    // rule out.
+    expect(rows()).not.toContain("Indentation guides");
+  });
+
+  it("holds your place in the rail for when you stop searching", () => {
+    // Typing does not move you: clearing returns to where you were.
+    render(() => <Settings onClose={() => {}} />);
+    clickTab("Appearance");
+
+    type("minim");
+    expect(activeTab()).toBeUndefined();
+
+    type("");
     expect(activeTab()).toBe("Appearance");
   });
 
@@ -109,66 +102,29 @@ describe("the settings search box", () => {
     expect(rows()).toEqual([]);
   });
 
-  it("says how many matches are waiting elsewhere rather than moving you", () => {
-    // The other half of stay-put. A blank pane with no explanation reads as a
-    // broken search; the count plus the badges is what makes staying put a
-    // choice rather than a dead end.
-    render(() => <Settings onClose={() => {}} />);
-    clickTab("Appearance");
-
-    type("minim");
-
-    expect(activeTab()).toBe("Appearance");
-    expect(rows()).toEqual([]);
-    expect(screen.getByText(/No matches here, 1 elsewhere/)).toBeTruthy();
-    // Not the same message as "nothing matched at all", which is a query to fix.
-    expect(screen.queryByText(/No setting matches/)).toBeNull();
-  });
-
-  it("says nothing matched anywhere, rather than pointing at other tabs", () => {
-    render(() => <Settings onClose={() => {}} />);
-    clickTab("Appearance");
-
-    type("zzzqqq");
-
-    expect(screen.getByText(/No setting matches/)).toBeTruthy();
-    expect(screen.queryByText(/elsewhere/)).toBeNull();
-  });
-
-  it("drops the elsewhere note once you land on a tab that has matches", () => {
-    render(() => <Settings onClose={() => {}} />);
-    clickTab("Appearance");
-    type("minim");
-    expect(screen.getByText(/elsewhere/)).toBeTruthy();
-
-    clickTab("Editor");
-
-    expect(screen.queryByText(/elsewhere/)).toBeNull();
-    expect(rows()).toEqual(["Minimap"]);
-  });
-
   it("keeps a filtered row's group heading, so it is still read in context", () => {
-    // What survives of the retired section-level rule: the granularity changed,
-    // but a lone checkbox floating under nothing is still the thing to avoid.
+    // A lone switch floating under nothing is still the thing to avoid, and the
+    // heading names its category because the rows around it came from elsewhere.
     render(() => <Settings onClose={() => {}} />);
-    clickTab("Chat");
     type("Stop at context");
 
     expect(rows()).toEqual(["Stop at context"]);
-    expect(within(pane()).getByText("Spending")).toBeTruthy();
-    // And the two groups with nothing left in them took their headings with them.
-    expect(within(pane()).queryByText("Sessions")).toBeNull();
+    expect(screen.getByText("Chat · Spending")).toBeTruthy();
+    // And the groups with nothing left in them took their headings with them.
+    expect(screen.queryByText("Chat · Sessions")).toBeNull();
   });
 });
 
 describe("Enter, the one keystroke that does navigate", () => {
   const enter = () => fireEvent.keyDown(box(), { key: "Enter" });
 
-  it("goes to the tab with the most matches", () => {
+  it("goes to the category with the most matches, keeping the query", () => {
+    // Results mode ends and the rail claims a place again, but the box keeps
+    // what you typed: Enter is a decision about *where*, not a reset.
     render(() => <Settings onClose={() => {}} />);
     clickTab("Appearance");
     type("minim");
-    expect(activeTab()).toBe("Appearance");
+    expect(activeTab()).toBeUndefined();
 
     enter();
 
@@ -176,51 +132,47 @@ describe("Enter, the one keystroke that does navigate", () => {
     expect(rows()).toEqual(["Minimap"]);
   });
 
-  it("resolves a tie to the earliest tab in strip order", () => {
-    // "path" ties Agents and Editor at two matches each. The rule falls out of a
-    // `>` scan keeping the first maximum; a `>=` would silently turn it into
-    // "whichever tab happened to be scanned last", which is Editor here - so the
-    // fixture has to be a tie the two rules disagree about, and this one is.
+  it("resolves a tie to the earliest category in rail order", () => {
+    // "path" ties Harnesses and Editor at two matches each. The rule falls out
+    // of a `>` scan keeping the first maximum; a `>=` would silently turn it
+    // into "whichever category happened to be scanned last", which is Editor
+    // here - so the fixture has to be a tie the two rules disagree about.
     render(() => <Settings onClose={() => {}} />);
     type("path");
-    // By label rather than by id: Kobalte generates the trigger ids now, so
-    // `settings-tab-agents` no longer exists to query.
-    const badgeOf = (label: string) =>
-      screen
-        .getByRole("tab", { name: new RegExp(`^${label},`) })
-        .querySelector(`.${styles.badge}`)?.textContent;
-    expect(badgeOf("Agents")).toBe("2");
-    expect(badgeOf("Editor")).toBe("2");
     expect(SETTING_TABS.findIndex((t) => t.id === "agents")).toBeLessThan(
       SETTING_TABS.findIndex((t) => t.id === "editor"),
     );
 
-    clickTab("Integrations");
     enter();
 
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
   });
 
   it("does nothing when the query matches nothing anywhere", () => {
+    // Checked after clearing, because the rail selects nothing while results
+    // are on screen: "did Enter move me?" can only be read once it does again.
     render(() => <Settings onClose={() => {}} />);
     clickTab("Appearance");
     type("zzzqqq");
 
     enter();
 
+    type("");
     expect(activeTab()).toBe("Appearance");
   });
 
   it("never navigates on the keystrokes that built the query", () => {
     // The rule Enter is the exception to: typing "minim" from Appearance passes
-    // through five states in which Editor is the highest-count tab, and none of
-    // them may move you.
+    // through five states in which Editor is the highest-count category, and
+    // none of them may move you.
     render(() => <Settings onClose={() => {}} />);
     clickTab("Appearance");
     for (const q of ["m", "mi", "min", "mini", "minim"]) {
       type(q);
-      expect(activeTab(), q).toBe("Appearance");
+      expect(activeTab(), q).toBeUndefined();
     }
+    type("");
+    expect(activeTab()).toBe("Appearance");
   });
 });
 
@@ -256,13 +208,19 @@ describe("a command that opens the panel at one setting", () => {
     expect(rows()).toEqual(["Sticky scroll"]);
   });
 
-  it("lets the query be typed past straight away, without moving the tab again", () => {
+  it("lets the query be typed past straight away, and answers it as a search", () => {
+    // The first keystroke past the seed switches to results, and the category
+    // the command chose is still what clearing returns to.
     render(() => <Settings onClose={() => {}} query="Line height" />);
     expect(activeTab()).toBe("Appearance");
 
     // "Minimap" is an Editor setting, but this is typing, not a command.
     type("minim");
 
+    expect(activeTab()).toBeUndefined();
+    expect(rows()).toEqual(["Minimap"]);
+
+    type("");
     expect(activeTab()).toBe("Appearance");
   });
 
@@ -282,7 +240,7 @@ describe("a command that opens the panel at one setting", () => {
     // Better than landing on the first tab and showing it empty: nothing was
     // pointed at, so nothing should move.
     render(() => <Settings onClose={() => {}} query="zzzqqq" />);
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
   });
 });
 

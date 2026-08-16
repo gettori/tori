@@ -1,32 +1,27 @@
-import { For, Show, Switch, Match, createResource, createSignal, onMount } from "solid-js";
+import { For, Show, Switch, Match, createMemo, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronRight } from "lucide-solid";
 import Button from "../../components/Button/Button";
-import { ensureAgentsLoaded, findAgent } from "../../utils/agents";
-import {
-  chatTier,
-  publishedCapabilities,
-  steerCostDetail,
-  unavailableCapabilities,
-  type PublishedCapability,
-} from "../../utils/chatCapabilities";
+import Icon from "../../components/Icon/Icon";
+import { agents, ensureAgentsLoaded } from "../../utils/agents";
 import {
   ensureAgentHealthLoaded,
   refreshAgentHealth,
   type AgentHealth,
   type BinaryStatus,
 } from "../../utils/agentHealth";
-import AgentAccounts from "./AgentAccounts";
+import HarnessDetail from "./HarnessDetail";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import { TOAST, emitWith, type ToastEvent } from "../../utils/events";
 import styles from "./Settings.module.css";
 import Checkbox from "../../components/Checkbox/Checkbox";
 
-// One card per registered adapter, answering the question a new user actually
-// has: "which of my agent CLIs does this thing work with?" The backend
-// (`agent_health`) resolves each launch binary against the login-shell PATH,
-// so an agent installed via nvm/asdf shows as found rather than missing.
+// One row per registered adapter, grouped by whether the binary is on this
+// machine, and each one opening a page of its own. The backend (`agent_health`)
+// resolves each launch binary against the login-shell PATH, so an agent
+// installed via nvm/asdf shows as found rather than missing.
 //
-// Tone matters here: a missing agent is not an error. Nobody has all three
+// Tone matters here: a missing agent is not an error. Nobody has all four
 // installed, so an uninstalled one gets an install hint, and an unparseable
 // version gets neutral text - never red, never a warning icon.
 
@@ -47,216 +42,119 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-// What each published key means, since the value alone is deliberately terse.
-// Keyed on the capability's own `key`, so a value changing (a better rewind, a
-// re-measured steer) does not orphan its explanation.
-const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
-  rewind:
-    "Puts the files back to a chosen turn and carries the conversation into a fork. The forked agent still remembers the turns you undid.",
-  steer: "A message typed during a turn goes into that turn rather than waiting for the next one.",
-  approvals:
-    "Where a tool call's permission question comes from. In-protocol means the agent asks and Sway shows it, so the agent's own permission modes are the ones in force.",
-  // Two sources now, which is why the note names both rather than the one Sway
-  // happens to use for Claude: `before-state` is Sway reading the file ahead of
-  // the write, `agent-supplied` is the agent sending it, and a reader on an ACP
-  // harness needs to know theirs depends on which agent they picked.
-  diffs: "A tool card can show what a write changed, either because Sway recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
-  budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
-  history:
-    "This agent can reopen a conversation it still holds, so a chat closed and reopened replays its earlier turns.",
-  sessions: "This agent can list its own sessions, including ones started outside Sway.",
+/** The same four states as a word, and in the same three tones as the dot.
+ *  "Ready" covers both healthy statuses for the reason above: a CLI that does
+ *  not report a version is not a worse install, only a quieter one. */
+const STATE_LABEL: Record<BinaryStatus, string> = {
+  versionMatch: "Ready",
+  versionUnknown: "Ready",
+  versionDrift: "Version drift",
+  notFound: "Not installed",
 };
 
-function AgentCard(props: {
-  agent: AgentHealth;
-  onRecheck: () => Promise<unknown>;
-  rechecking: boolean;
-}) {
+const STATE_PILL: Record<BinaryStatus, string> = {
+  versionMatch: styles.statePillOk,
+  versionUnknown: styles.statePillOk,
+  versionDrift: styles.statePillWarn,
+  notFound: "",
+};
+
+/**
+ * The models this adapter names, which is not every model the harness can run.
+ *
+ * `findAgent` falls back to the first bundled adapter for an id it does not
+ * know, so the lookup is done by hand here: a count is a claim, and inheriting
+ * Claude's four for an unresolved harness would be a false one. An ACP agent
+ * declares none and reports its own on the session handshake, which is why zero
+ * renders as nothing rather than as "0 models".
+ */
+function declaredModels(id: string) {
+  return agents().find((a) => a.id === id)?.chat?.models ?? [];
+}
+
+/**
+ * One harness at a glance: is it here, which build, and who is signed in.
+ *
+ * A button rather than a div with a handler, so it is reachable and announced
+ * without inventing a role. Everything it used to carry (capabilities, gaps,
+ * accounts, the sessions directory) moved to `HarnessDetail`, which is what
+ * lets four of these be read in one look.
+ */
+function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
   const a = () => props.agent;
-  // From the resolved adapter rather than from `agent_health`, which answers
-  // about the binary on disk and knows nothing about the chat transport. An
-  // agent still resolving reports the PTY-only tier, which is the honest
-  // answer to "what can it do" before the adapter has been read.
-  const tier = () => chatTier(findAgent(a().id).chat?.transport);
-  const capabilities = () => publishedCapabilities(tier());
-  // Only for an agent that has a chat surface at all. A PTY-only adapter's
-  // absences are one fact, which the fallback line below states once.
-  const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
+  // The pill is for the states that need acting on. Painting "READY" on every
+  // healthy card spends the reader's attention on the answer they expected.
+  const settled = () => a().status === "versionMatch" || a().status === "versionUnknown";
+  const models = () => declaredModels(a().id);
   return (
-    <div class={styles.card}>
-      <div class={styles.cardHead}>
-        <span class={`${styles.dot} ${TONE[a().status]}`} />
-        <span class={styles.cardTitle}>{a().label}</span>
-        <code class={styles.cardProgram}>{a().program}</code>
-      </div>
-
-      <div class={styles.cardStatus}>
+    <button
+      type="button"
+      class={styles.hcard}
+      data-harness={a().id}
+      onClick={() => props.onOpen()}
+    >
+      <span class={`${styles.dot} ${TONE[a().status]}`} />
+      <span class={styles.hcardName}>{a().label}</span>
+      <Show when={a().version}>{(v) => <span class={styles.hcardVersion}>{v()}</span>}</Show>
+      <Show when={!settled()}>
+        <span class={`${styles.statePill} ${STATE_PILL[a().status]}`}>
+          {STATE_LABEL[a().status]}
+        </span>
+      </Show>
+      {/* One line, and the fact it carries differs by group: an installed
+          harness is asked who it is signed in as, a missing one what it would
+          take to get it. Neither question is interesting for the other. */}
+      <span class={styles.hcardMeta}>
         <Switch>
-          {/* "Reopen Sway" was true while the sweep was memoized for the app's
-              lifetime. It is not any more: the health cache is invalidatable,
-              so the honest instruction is to install and press the button
-              below. */}
           <Match when={a().status === "notFound"}>
-            Not installed. Install <code>{a().program}</code>, then check again.
+            Install <code>{a().program}</code> to use it
           </Match>
-          <Match when={a().status === "versionMatch"}>Installed, version {a().version}.</Match>
-          {/* Installed, but **this adapter** was never measured against it: the
-              adapter declares no `verified_against` at all. Said plainly rather
-              than folded into "version not reported", which is about the CLI
-              being quiet and would read as supported. An ACP adapter is mostly
-              launch instructions, which is what makes shipping one unmeasured
-              reasonable - but not what makes it tested. */}
-          <Match when={a().status === "versionUnknown" && a().version && !a().verifiedAgainst}>
-            Installed, version {a().version}. Untested: nobody has measured Sway against this
-            agent, so treat it as a starting point rather than a supported harness.
+          <Match when={a().apiKeySource}>
+            {(source) => <>Billing against {source()}</>}
           </Match>
-          {/* Unknown covers two different situations, and saying "version not
-              reported" for an agent that plainly reported one reads as a bug.
-              Split on what we actually have. */}
-          <Match when={a().status === "versionUnknown" && a().version}>
-            Installed, version {a().version}.
-          </Match>
-          <Match when={a().status === "versionUnknown"}>
-            Installed. It does not report a version, so Sway cannot check it.
-          </Match>
-          <Match when={a().status === "versionDrift"}>
-            Installed, version {a().version}. Sway's adapter was built against{" "}
-            {a().verifiedAgainst}, so some behaviour may differ.
-          </Match>
-        </Switch>
-        {/* The third state Phase 1 could not render, because nothing produced
-            it yet: installed and signed-out are two independent facts, and this
-            one is the harness's own answer rather than Sway's inference. Said
-            in its own sentence rather than folded into the line above, which is
-            about the binary. */}
-        <Show when={a().status !== "notFound" && a().signIn === "signedOut"}>
-          {" "}
-          Nobody is signed in, so it is not offered for a new session.
-        </Show>
-        <Show when={a().signIn === "signedIn" && a().account}>
-          {(account) => <> Signed in as {account()}.</>}
-        </Show>
-      </div>
-      {/* The harness's own statement about which credential it will bill
-          against, not Sway reading its environment and guessing which variables
-          matter to which agent. Never a block: the session still runs. */}
-      <Show when={a().apiKeySource}>
-        {(source) => (
-          <div class={styles.hint}>
-            <code>{source()}</code> is set in this environment, so {a().label} bills against that
-            API key rather than the subscription it is signed in with.
-          </div>
-        )}
-      </Show>
-
-      {/* One primary action per non-ready state, so none of them is a dead
-          entry the user can only read. Both actions are the same button
-          because both states are resolved the same way: change something
-          outside Sway, then have Sway look again. Drift keeps it because
-          updating the CLI is the fix, and drift is a notice rather than a
-          gate: the harness still starts either way.
-
-          Not-installed does not offer to *do* the install. Phase 5 owns
-          fetching from the registry, and a button that installed nothing
-          would be the dead entry this is meant to remove. */}
-      <Show when={a().status === "notFound" || a().status === "versionDrift"}>
-        <div class={styles.cardActions}>
-          <Button size="sm" onClick={() => void props.onRecheck()} disabled={props.rechecking}>
-            {props.rechecking ? "Checking…" : "Check again"}
-          </Button>
-        </div>
-      </Show>
-
-      <div class={styles.cardMeta}>
-        <Switch>
-          {/* No directory at all, because this agent keeps its sessions
-              somewhere only its protocol reaches. Naming a path that will never
-              exist would read as a misconfiguration rather than as a design. */}
-          <Match when={!a().sessionsDir}>Sessions come over the agent's own protocol.</Match>
-          <Match when={a().sessionsDirExists}>
-            Sessions read from <code>{a().sessionsDir}</code>
-          </Match>
+          <Match when={a().signIn === "signedOut"}>Signed out</Match>
+          <Match when={a().account}>{(account) => <>Signed in as {account()}</>}</Match>
+          <Match when={a().signIn === "signedIn"}>Signed in</Match>
           <Match when={true}>
-            No sessions yet at <code>{a().sessionsDir}</code>
+            <code>{a().program}</code>
           </Match>
         </Switch>
-      </div>
-
-      <div class={styles.chips}>
-        <Show when={a().hooks}>
-          <span class={styles.chip} title="Status comes from the agent's own hooks">
-            live status
-          </span>
+        <Show when={models().length}>
+          {(n) => (
+            <>
+              {" · "}
+              {n()} {n() === 1 ? "model" : "models"}
+            </>
+          )}
         </Show>
-        <Show when={a().needsYou}>
-          <span class={styles.chip} title="Sway can detect when this agent is waiting on you">
-            needs-you
-          </span>
-        </Show>
+      </span>
+      <span class={styles.hcardGo} aria-hidden="true">
+        <Icon icon={ChevronRight} size={14} />
+      </span>
+    </button>
+  );
+}
+
+/** Installed first, then the rest, alphabetical inside each so the order does
+ *  not shuffle when a re-check changes one harness's state. */
+function byLabel(list: AgentHealth[]) {
+  return [...list].sort((x, y) => x.label.localeCompare(y.label));
+}
+
+function HarnessGroup(props: { heading: string; agents: AgentHealth[]; onOpen: (id: string) => void }) {
+  return (
+    <Show when={props.agents.length}>
+      <div class={styles.groupHead}>
+        <span class={styles.groupTitle}>{props.heading}</span>
+        <span class={styles.sectionRule} />
+        <span class={styles.groupCount}>{props.agents.length}</span>
       </div>
-
-      {/* What the chat surface can actually do with this agent, beside the
-          probes rather than on a page of its own: "is it installed" and "how
-          much of Sway works with it" are the same question asked twice.
-
-          Each entry publishes the *qualified* value, never the bare feature
-          name. A chip reading "rewind" would promise the unqualified capability
-          when what shipped is a fork the agent still remembers. */}
-      <div class={styles.cardMeta}>
-        <Show
-          when={capabilities().length}
-          fallback={<>Terminal only. Sway has no chat transport for this agent.</>}
-        >
-          Chat:{" "}
-          <For each={capabilities()}>
-            {(cap, i) => (
-              <>
-                {i() > 0 ? ", " : ""}
-                <code title={CAPABILITY_NOTES[cap.key]}>{cap.label}</code>
-              </>
-            )}
-          </For>
-        </Show>
+      <div class={styles.cardGrid}>
+        <For each={props.agents}>
+          {(agent) => <HarnessCard agent={agent} onOpen={() => props.onOpen(agent.id)} />}
+        </For>
       </div>
-      {/* What it cannot do, and why - separate from the list above, which is a
-          promise. An affordance is omitted from that list rather than published
-          as `none`, and omission alone would leave a user with a control that
-          is simply not there and nothing to read about it. */}
-      <Show when={missing().length}>
-        <div class={styles.cardMeta}>
-          Not available:{" "}
-          <For each={missing()}>
-            {(gap, i) => (
-              <>
-                {i() > 0 ? ", " : ""}
-                <code>{gap.key}</code>
-              </>
-            )}
-          </For>
-        </div>
-        {/* The reasons in full, visible rather than behind hover text: they are
-            the answer to "why is this control missing", and a tooltip on a
-            terse key would make finding it the user's problem. */}
-        <ul class={styles.hint}>
-          <For each={missing()}>{(gap) => <li>{gap.why}</li>}</For>
-        </ul>
-      </Show>
-      <Show when={steerCostDetail(tier())}>
-        {(detail) => <div class={styles.hint}>{detail()}</div>}
-      </Show>
-
-      <Show when={a().overridePath}>
-        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
-      </Show>
-
-      {/* Below everything else, and only for an installed harness: an account
-          list for a binary that is not there would be a set of controls with
-          nothing behind them. It renders itself away for an adapter that
-          declares no `[accounts]` table. */}
-      <Show when={a().status !== "notFound"}>
-        <AgentAccounts agentId={a().id} agentLabel={a().label} />
-      </Show>
-    </div>
+    </Show>
   );
 }
 
@@ -309,6 +207,22 @@ type Installed = {
   env: Record<string, string>;
   quarantineCleared: boolean;
   installedAt: number;
+};
+
+/** The three ways to narrow the catalogue, named after what they cost you
+ *  rather than after the packaging: what Sway can fetch, and what runs from a
+ *  package registry without anything being installed at all. */
+type CatalogFilter = "All" | "Downloadable" | "No install step";
+
+const CATALOG_FILTERS: CatalogFilter[] = ["All", "Downloadable", "No install step"];
+
+const MATCHES_FILTER: Record<CatalogFilter, (r: CatalogRow) => boolean> = {
+  All: () => true,
+  // The build for *this* machine, not the fact that the agent publishes some
+  // binary: a row offering a download that cannot run here is the case
+  // `noBuildHere` exists to say out loud.
+  Downloadable: (r) => r.build !== null,
+  "No install step": (r) => r.needs === "npx" || r.needs === "uvx",
 };
 
 const NEEDS_NOTE: Record<CatalogRow["needs"], string> = {
@@ -380,21 +294,18 @@ function CatalogRowItem(props: {
   row: CatalogRow;
   installed: Installed | undefined;
   hostPlatform: string | null;
+  clearQuarantine: boolean;
   onChanged: () => void;
   confirm: (title: string, message: string, label: string) => Promise<boolean>;
 }) {
   const row = () => props.row;
   const [busy, setBusy] = createSignal(false);
-  // Off by default. The flag is macOS refusing to run something it did not see
-  // notarized, and turning that off is the user's call to make deliberately
-  // rather than a default they never noticed.
-  const [clearQuarantine, setClearQuarantine] = createSignal(false);
   const onDarwin = () => props.hostPlatform?.startsWith("darwin") ?? false;
 
   const install = async (build: Build) => {
     const ok = await props.confirm(
       `Install ${row().label} from the ACP Registry?`,
-      installConsent(row(), build, onDarwin(), clearQuarantine()),
+      installConsent(row(), build, onDarwin(), props.clearQuarantine),
       "Download and install",
     );
     if (!ok) return;
@@ -402,7 +313,7 @@ function CatalogRowItem(props: {
     try {
       await invoke<Installed>("install_agent", {
         id: row().id,
-        allowQuarantineBypass: clearQuarantine(),
+        allowQuarantineBypass: props.clearQuarantine,
       });
       props.onChanged();
     } catch (e) {
@@ -425,58 +336,55 @@ function CatalogRowItem(props: {
   };
 
   return (
-    <li>
-      {/* "untested" stays on the row whether or not it is installed. Downloading
-          a binary is not measuring one, and the label is the whole reason this
-          list is separate from the cards above. */}
-      <strong>{row().label}</strong> · untested · <code>{row().command}</code>{" "}
-      <span>({NEEDS_NOTE[row().needs]})</span>
-      <Show when={row().description}>
-        <div>{row().description}</div>
-      </Show>
-      {/* An architecture with no build says so, rather than disappearing or
-          offering a download for somebody else's machine. */}
-      <Show when={row().noBuildHere}>
-        <div>
-          No build for {props.hostPlatform ?? "this machine"}, so there is nothing to install here.
+    <li class={styles.catalogRow}>
+      <div class={styles.catalogMain}>
+        <div class={styles.catalogName}>
+          {row().label}
+          {/* "untested" stays on the row whether or not it is installed.
+              Downloading a binary is not measuring one, and the label is the
+              whole reason this list is separate from the cards above. */}
+          <span class={styles.catalogTag}>untested · {NEEDS_NOTE[row().needs]}</span>
         </div>
-      </Show>
-      <Show when={props.installed}>
-        {(it) => (
-          <div>
-            Installed at <code>{it().program}</code>.{" "}
-            {it().sha256
-              ? "Verified against the registry's sha256."
-              : "The registry published no checksum, so this download was never verified."}{" "}
-            Sway has still run nothing: add an adapter TOML naming that path to use it.
+        {/* One line each, clipped rather than wrapped: an upstream description
+            and a launch command are unbounded strings, and 31 rows of wrapped
+            prose is the wall this list exists to replace. */}
+        <Show when={row().description}>
+          <div class={styles.catalogDesc}>{row().description}</div>
+        </Show>
+        <div class={styles.catalogCmd}>{row().command}</div>
+        {/* An architecture with no build says so, rather than disappearing or
+            offering a download for somebody else's machine. */}
+        <Show when={row().noBuildHere}>
+          <div class={styles.catalogNote}>
+            No build for {props.hostPlatform ?? "this machine"}, so there is nothing to install here.
           </div>
-        )}
-      </Show>
-      <Show when={!props.installed && row().build}>
-        {(build) => (
-          <div class={styles.cardActions}>
+        </Show>
+        <Show when={props.installed}>
+          {(it) => (
+            <div class={styles.catalogNote}>
+              Installed at <code>{it().program}</code>.{" "}
+              {it().sha256
+                ? "Verified against the registry's sha256."
+                : "The registry published no checksum, so this download was never verified."}{" "}
+              Sway has still run nothing: add an adapter TOML naming that path to use it.
+            </div>
+          )}
+        </Show>
+      </div>
+      <div class={styles.catalogAction}>
+        <Show when={!props.installed && row().build}>
+          {(build) => (
             <Button size="sm" onClick={() => void install(build())} disabled={busy()}>
               Install
             </Button>
-            {/* Only where the flag exists. A control that provably does nothing
-                is worse than no control: it reads as a choice being made. */}
-            <Show when={onDarwin()}>
-              <Checkbox
-                checked={clearQuarantine()}
-                onChange={setClearQuarantine}
-                label="Clear the macOS quarantine flag, so Gatekeeper does not check it"
-              />
-            </Show>
-          </div>
-        )}
-      </Show>
-      <Show when={props.installed}>
-        <div class={styles.cardActions}>
+          )}
+        </Show>
+        <Show when={props.installed}>
           <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy()}>
             Remove
           </Button>
-        </div>
-      </Show>
+        </Show>
+      </div>
     </li>
   );
 }
@@ -494,6 +402,27 @@ function CatalogList() {
   // properly is a downgrade dressed as a choice.
   const untested = () => (rows() ?? []).filter((r) => !r.coveredBy);
   const installedFor = (id: string) => (installed() ?? []).find((i) => i.id === id);
+
+  const [query, setQuery] = createSignal("");
+  const [filter, setFilter] = createSignal<CatalogFilter>("All");
+  // Off by default. The flag is macOS refusing to run something it did not see
+  // notarized, and turning that off is the user's call to make deliberately
+  // rather than a default they never noticed. One control rather than one per
+  // row: it is a policy about installing, not a fact about an agent, and the
+  // consent dialog names the choice again at the moment it is acted on.
+  const [clearQuarantine, setClearQuarantine] = createSignal(false);
+  const onDarwin = () => source()?.hostPlatform?.startsWith("darwin") ?? false;
+
+  /** Matched over the three strings a reader can actually see, so a row that
+   *  answers a query is a row they can then point at. */
+  const shownRows = () => {
+    const q = query().trim().toLowerCase();
+    return untested().filter((r) => {
+      if (!MATCHES_FILTER[filter()](r)) return false;
+      if (!q) return true;
+      return `${r.label} ${r.description} ${r.command}`.toLowerCase().includes(q);
+    });
+  };
 
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   const askConfirm = (title: string, message: string, confirmLabel: string) =>
@@ -513,34 +442,86 @@ function CatalogList() {
 
   return (
     <Show when={untested().length}>
-      <div class={styles.sectionTitle}>Other agents that speak ACP</div>
-      <div class={styles.hint}>
+      <div class={styles.groupHead}>
+        <span class={styles.groupTitle}>Other agents that speak ACP</span>
+        <span class={styles.sectionRule} />
+        <span class={styles.groupCount}>
+          {shownRows().length} of {untested().length}
+        </span>
+      </div>
+      <div class={styles.note}>
         Sway can drive any of these over the same protocol as OpenCode, but has run none of them,
         so none is a supported harness. Add one by dropping a four-line TOML into{" "}
         <code>~/.config/sway/agents/</code> with its command below (see ADAPTERS.md), and it becomes
         an agent you have tested. Installing one downloads a binary and nothing more: it stays
         untested, and it goes nowhere near your PATH.
       </div>
-      <ul class={styles.hint}>
-        <For each={untested()}>
+      {/* This list's own filter box, not the panel's: the panel's searches
+          settings, and 31 rows that are neither settings nor harnesses would
+          have to be excluded from it or explained inside it. */}
+      <div class={styles.catalogFilters}>
+        <input
+          class={styles.input}
+          type="search"
+          aria-label="Filter agents"
+          placeholder={`Filter ${untested().length} agents`}
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+        />
+        <For each={CATALOG_FILTERS}>
+          {(f) => (
+            <button
+              type="button"
+              class={styles.filterChip}
+              classList={{ [styles.filterChipOn]: filter() === f }}
+              aria-pressed={filter() === f}
+              onClick={() => setFilter(f)}
+            >
+              {f}
+            </button>
+          )}
+        </For>
+      </div>
+      {/* Capped and scrolling in place. The catalogue is a snapshot of an
+          upstream registry that only grows, and a list that grows the pane it
+          sits in makes every setting under it harder to reach for. */}
+      <ul class={styles.catalogList}>
+        <For each={shownRows()}>
           {(row) => (
             <CatalogRowItem
               row={row}
               installed={installedFor(row.id)}
               hostPlatform={source()?.hostPlatform ?? null}
+              clearQuarantine={clearQuarantine()}
               onChanged={changed}
               confirm={askConfirm}
             />
           )}
         </For>
+        <Show when={shownRows().length === 0}>
+          <li class={styles.catalogEmpty}>
+            No agent matches that. Any ACP agent can be added with a four-line TOML in{" "}
+            <code>~/.config/sway/agents/</code>, whether or not the registry lists it.
+          </li>
+        </Show>
       </ul>
+      {/* Only where the flag exists. A control that provably does nothing is
+          worse than no control: it reads as a choice being made. */}
+      <Show when={onDarwin()}>
+        <Checkbox
+          class={styles.catalogFoot}
+          checked={clearQuarantine()}
+          onChange={setClearQuarantine}
+          label="Clear the macOS quarantine flag, so Gatekeeper does not check it"
+        />
+      </Show>
       {/* Provenance, so the list cannot rot silently: where it came from, which
           upstream commit, when, and how old that makes it. The list is a pinned
           snapshot rather than a fetch on open, so it renders offline, and the age
           is what keeps "pinned" from reading as "current". */}
       <Show when={source()}>
         {(src) => (
-          <div class={styles.hint}>
+          <div class={styles.catalogFoot}>
             From the ACP Registry ({src().source}) at commit{" "}
             <code>{src().registryCommit.slice(0, 8)}</code>
             <Show when={src().generatedOn}>{(on) => <>, {on()}</>}</Show>
@@ -584,6 +565,28 @@ function CatalogList() {
 export default function AgentsSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   const [rechecking, setRechecking] = createSignal(false);
+  const [openId, setOpenId] = createSignal<string | null>(null);
+
+  // Guarded rather than defaulted: `agent_health` is an IPC call, and a reply
+  // that is not a list must empty the groups rather than throw through them.
+  const all = () => {
+    const h = health();
+    return Array.isArray(h) ? h : [];
+  };
+  const installed = createMemo(() => byLabel(all().filter((a) => a.status !== "notFound")));
+  const supported = createMemo(() => byLabel(all().filter((a) => a.status === "notFound")));
+  const opened = createMemo(() => all().find((a) => a.id === openId()));
+
+  /** Back to the card that opened the page, not to the top of the list: a
+   *  keyboard user who drilled in has to land where they left. */
+  const close = () => {
+    const id = openId();
+    setOpenId(null);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>(`[data-harness="${id}"]`)?.focus(),
+    );
+  };
+
   /** Re-probe now. Goes through the shared store as well as this resource so
    *  the chat picker and these cards cannot end up disagreeing about what is
    *  installed. The second call is a cache hit. */
@@ -609,23 +612,45 @@ export default function AgentsSection() {
 
   return (
     <section class={styles.section}>
-      <div class={styles.sectionTitle}>Agents</div>
-      <Switch>
-        <Match when={health.loading}>
-          <div class={styles.hint}>Checking which agent CLIs are installed…</div>
-        </Match>
-        <Match when={health.error}>
-          <div class={styles.hint}>Could not check agent CLIs: {String(health.error)}</div>
-        </Match>
-        <Match when={health()}>
-          <For each={health()}>
-            {(agent) => (
-              <AgentCard agent={agent} onRecheck={recheck} rechecking={rechecking()} />
-            )}
-          </For>
-        </Match>
-      </Switch>
-      <CatalogList />
+      <Show
+        when={opened()}
+        fallback={
+          <>
+            <div class={styles.sectionTitle}>
+              <span>Harnesses</span>
+              <span class={styles.sectionRule} />
+            </div>
+            <Switch>
+              <Match when={health.loading}>
+                <div class={styles.note}>Checking which agent CLIs are installed…</div>
+              </Match>
+              <Match when={health.error}>
+                <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
+              </Match>
+              <Match when={health()}>
+                {/* Split on the one question a reader arrives with. A harness
+                    Sway supports but this machine does not have is not a
+                    failure, so it gets a group rather than a warning. */}
+                <HarnessGroup heading="Installed" agents={installed()} onOpen={setOpenId} />
+                <HarnessGroup heading="Supported" agents={supported()} onOpen={setOpenId} />
+              </Match>
+            </Switch>
+            <CatalogList />
+          </>
+        }
+      >
+        {(agent) => (
+          <HarnessDetail
+            agent={agent()}
+            tone={TONE}
+            stateLabel={STATE_LABEL}
+            statePill={STATE_PILL}
+            onBack={close}
+            onRecheck={recheck}
+            rechecking={rechecking()}
+          />
+        )}
+      </Show>
     </section>
   );
 }
