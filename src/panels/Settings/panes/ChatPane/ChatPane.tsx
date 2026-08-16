@@ -8,11 +8,11 @@ import {
   setChatDefaults,
   setCheckpoints,
   type PaneProps,
-} from "../paneKit";
-import { settings, type DefaultSurface, type TranscriptDensity } from "../settingsStore";
-import Select, { type SelectOption } from "../../../components/Select/Select";
-import styles from "../Settings.module.css";
-import Switch from "../../../components/Switch/Switch";
+} from "../../components/paneKit";
+import { settings, type DefaultSurface, type TranscriptDensity } from "../../settingsStore";
+import Select, { type SelectOption } from "../../../../components/Select/Select";
+import styles from "../../Settings.module.css";
+import Switch from "../../../../components/Switch/Switch";
 
 /**
  * Chat, in three groups.

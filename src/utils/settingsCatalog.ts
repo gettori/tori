@@ -11,7 +11,7 @@
 // `TerminalView` imports `hotkeys.ts`, so anything reachable from here lands in
 // the terminal's chunk. The one import below is `import type`, which the bundler
 // erases; the matching rule that searches this list lives next to the panel, in
-// `panels/Settings/settingsSearch.ts`, for the same reason.
+// `panels/Settings/utils/settingsSearch.ts`, for the same reason.
 /** A boolean the three-layer resolution answers for (default < user <
  *  workspace), so it can be flipped without opening the panel. Defined beside
  *  `EditorDefaults` because it is derived from that shape; re-exported here

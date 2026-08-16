@@ -1,6 +1,6 @@
 import { For, Show, Switch, Match, createResource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import styles from "./Settings.module.css";
+import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
 // Agents cards answer for agent CLIs: "which languages does this thing

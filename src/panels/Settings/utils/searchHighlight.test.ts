@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { hintRanges, labelRanges, segments } from "./searchHighlight";
 import { matchingEntries } from "./settingsSearch";
-import { SETTINGS } from "../../utils/settingsCatalog";
+import { SETTINGS } from "../../../utils/settingsCatalog";
 
 /** The marked pieces of `text`, which is what a reader actually sees bolded. */
 const marks = (text: string, ranges: { start: number; end: number }[]) =>

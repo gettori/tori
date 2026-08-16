@@ -1,6 +1,6 @@
 import { For, Switch, Match, createResource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import styles from "./Settings.module.css";
+import styles from "../../Settings.module.css";
 
 // One card per debug adapter, answering for the debugger what the LSP cards
 // answer for intelligence: "can this thing actually run here?"
