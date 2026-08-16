@@ -1,13 +1,13 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import Button from "../../components/Button/Button";
-import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
-import PromptModal from "../../components/Dialogs/PromptModal";
+import Button from "../../../../components/Button/Button";
+import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
+import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
-import { OPEN_TERMINAL, TOAST, emitWith, type OpenTerminal, type ToastEvent } from "../../utils/events";
-import { refreshAgentHealth, type SignIn } from "../../utils/agentHealth";
-import { loginTab, loginNote, type LoginRoute } from "../../utils/signIn";
-import styles from "./Settings.module.css";
+import { OPEN_TERMINAL, TOAST, emitWith, type OpenTerminal, type ToastEvent } from "../../../../utils/events";
+import { refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
+import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
+import styles from "../../Settings.module.css";
 
 // The accounts half of an agent card: who is signed in, and the one control
 // that changes it.

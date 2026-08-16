@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
-import type { AuthState } from "../../utils/forgeTypes";
+import type { AuthState } from "../../../../utils/forgeTypes";
 
 // The four surfaces the GitHub section has to tell apart, driven through the
 // real component.
@@ -51,7 +51,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-vi.mock("../../utils/clipboard", () => ({ copyText: () => Promise.resolve(true) }));
+vi.mock("../../../../utils/clipboard", () => ({ copyText: () => Promise.resolve(true) }));
 
 import GithubSection from "./GithubSection";
 

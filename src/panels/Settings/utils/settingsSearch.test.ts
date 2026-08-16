@@ -9,7 +9,7 @@
 // it) is now a rendering property, checked in `settingsPanel.test.tsx`.
 import { describe, it, expect } from "vitest";
 import { matchingEntries } from "./settingsSearch";
-import { SETTINGS, SETTING_TABS, TAB_OF_SECTION } from "../../utils/settingsCatalog";
+import { SETTINGS, SETTING_TABS, TAB_OF_SECTION } from "../../../utils/settingsCatalog";
 
 describe("counting the settings a query matches, per row and per tab", () => {
   /** The tabs a query put a non-zero badge on, which is what the strip shows. */

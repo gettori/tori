@@ -11,7 +11,7 @@
 // Pure, and separate from the store for the usual reason: which layer wins is a
 // rule with cases in it, and a rule tests without a mounted panel.
 
-import type { EditorDefaults } from "./settingsStore";
+import type { EditorDefaults } from "../settingsStore";
 
 /** A workspace's answers. Absent means "no answer here", which is distinct from
  *  an explicit `false` - that is this workspace saying no. */

@@ -1,7 +1,7 @@
-import AgentsSection from "../AgentsSection";
-import { CardSection, Group, Row, idsIn, setHarness, type PaneProps } from "../paneKit";
-import { settings } from "../settingsStore";
-import styles from "../Settings.module.css";
+import AgentsSection from "./AgentsSection";
+import { CardSection, Group, Row, idsIn, setHarness, type PaneProps } from "../../components/paneKit";
+import { settings } from "../../settingsStore";
+import styles from "../../Settings.module.css";
 
 /**
  * The agents Sway found, and the binary override that points past discovery.

@@ -1,26 +1,26 @@
 import { For, Show, Switch, Match, onMount } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
-import Button from "../../components/Button/Button";
-import Icon from "../../components/Icon/Icon";
-import { findAgent } from "../../utils/agents";
+import Button from "../../../../components/Button/Button";
+import Icon from "../../../../components/Icon/Icon";
+import { findAgent } from "../../../../utils/agents";
 import {
   chatTier,
   publishedCapabilities,
   steerCostDetail,
   unavailableCapabilities,
   type PublishedCapability,
-} from "../../utils/chatCapabilities";
+} from "../../../../utils/chatCapabilities";
 import {
   catalogFor,
   isProbing,
   isStale,
   refreshCatalog,
   type ProbeFailureReason,
-} from "../../utils/modelCatalog";
-import type { AgentHealth, BinaryStatus } from "../../utils/agentHealth";
-import { mirroredOptions } from "../../utils/chatTypes";
+} from "../../../../utils/modelCatalog";
+import type { AgentHealth, BinaryStatus } from "../../../../utils/agentHealth";
+import { mirroredOptions } from "../../../../utils/chatTypes";
 import AgentAccounts from "./AgentAccounts";
-import styles from "./Settings.module.css";
+import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
 // Keyed on the capability's own `key`, so a value changing (a better rewind, a
