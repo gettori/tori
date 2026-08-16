@@ -153,3 +153,26 @@ describe("the model list on a harness page", () => {
     expect(container.textContent).toContain("names its own models when a session starts");
   });
 });
+
+// A catalogue probe spawns the harness's binary. `model_catalogs` reads the
+// cache and is free; the two `refresh_*` commands are not, and nothing a user
+// merely *looks at* may call them. The split exists so a read cannot become a
+// probe by accident, and this is what keeps that true once Phase 4 gives the
+// page real catalogue data to render.
+describe("looking at Settings never probes a harness", () => {
+  beforeEach(() => invoked.mockReset());
+
+  const probes = () =>
+    invoked.mock.calls.map(([cmd]) => cmd as string).filter((cmd) => cmd.startsWith("refresh_model_catalog"));
+
+  it("issues no probe on open", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.textContent).toContain("2 models"));
+    expect(probes()).toEqual([]);
+  });
+
+  it("issues no probe on opening a harness page either", async () => {
+    await open(mount(), /Claude/);
+    expect(probes()).toEqual([]);
+  });
+});
