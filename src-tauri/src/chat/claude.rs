@@ -152,7 +152,13 @@ impl ClaudeMapper {
         // rendering hangs off "did the handshake answer" rather than off
         // whether every string came back non-empty. `email` is read past
         // deliberately; see `ChatAccount`.
-        if let Some(account) = inner["account"].as_object() {
+        if inner["account"].is_object() {
+            // Read through `Value` rather than the inner `Map`, which **panics**
+            // on a missing key where `Value` yields null. A plan with no
+            // organization is the documented case right above this, so indexing
+            // the map made the one shape this branch exists to tolerate crash
+            // the reader thread.
+            let account = &inner["account"];
             self.account = Some(ChatAccount {
                 subscription_type: account["subscriptionType"].as_str().unwrap_or_default().to_string(),
                 organization: account["organization"].as_str().unwrap_or_default().to_string(),
@@ -1294,6 +1300,28 @@ mod tests {
                 assert_eq!(account.as_ref(), Some(&ready), "the account did not survive onto SessionStarted");
             }
             other => panic!("expected SessionStarted, got {other:?}"),
+        }
+    }
+
+    /// The doc comment above `absorb_control_response` claims a plan with no
+    /// organization is still a known account. It was not: the branch indexed the
+    /// inner `Map`, which panics on a missing key rather than yielding null, so
+    /// the one shape it exists to tolerate killed the reader thread. Found by
+    /// the catalogue probe, which drives this same response with a fixture
+    /// rather than a captured one.
+    #[test]
+    fn an_account_missing_a_field_is_read_rather_than_panicking() {
+        let mut m = ClaudeMapper::new("s1");
+        let control = serde_json::json!({
+            "type": "control_response",
+            "response": { "response": { "account": { "apiProvider": "firstParty" } } },
+        });
+        match m.map(&control).as_slice() {
+            [ChatEvent::SessionReady { account: Some(account), .. }] => {
+                assert_eq!(account.api_provider, "firstParty");
+                assert!(account.organization.is_empty(), "an absent field reads as absent");
+            }
+            other => panic!("expected a SessionReady carrying the account, got {other:?}"),
         }
     }
 
