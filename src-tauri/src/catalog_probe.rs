@@ -1402,6 +1402,159 @@ mod tests {
         assert!(!catalogue.options.is_empty(), "and the agent's own option set is kept whole");
     }
 
+    /// The same probe against Codex, and **the first live agent to publish an
+    /// option Sway has no control for**.
+    ///
+    /// Measured on `codex-cli 0.147.0` with `@agentclientprotocol/codex-acp`
+    /// 1.2.0, 2026-08-17. Four config options where opencode sends two:
+    ///
+    ///   * `model`, four models, each with a description,
+    ///   * `mode`, three (read-only, agent, agent-full-access),
+    ///   * `reasoning_effort`, **categorized `thought_level`**, six levels,
+    ///   * `collaboration_mode` (default, plan), categorized as itself.
+    ///
+    /// That last one is the whole of Phase 5's case, live: Sway has no control
+    /// for it, its category is the agent's own word, and before the mirror it
+    /// was read off the wire and dropped. It is a real lever (Codex's plan mode),
+    /// not a curiosity.
+    ///
+    /// **The effort selector's id is `reasoning_effort`, not `thought_level`.**
+    /// The category is what says what it is, and reading it by id - which is the
+    /// tempting shortcut, since opencode's ids do match their categories - would
+    /// have found nothing here.
+    ///
+    /// Asserted structurally rather than by exact ids: the model list is per
+    /// account (signed out, the native app-server offers seven), so pinning the
+    /// four would make somebody else's entitlement a test failure.
+    #[test]
+    #[ignore = "drives the real `codex` binary"]
+    fn the_real_codex_answers_a_catalogue_from_one_session() {
+        let codex = crate::agents::find("codex").expect("the bundled codex adapter");
+
+        let catalogue =
+            probe_with(codex, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
+
+        assert!(!catalogue.models.is_empty(), "the handshake names this account's models");
+        assert!(
+            catalogue.models.iter().all(|m| m.info.supported_effort_levels.len() == 5),
+            "every model carries the five levels Sway can send, and not the sixth: {:?}",
+            catalogue.models
+        );
+        assert_eq!(catalogue.modes.len(), 3, "read-only, agent, agent-full-access");
+
+        let uncategorized: Vec<&str> = catalogue
+            .options
+            .iter()
+            .filter(|o| !["model", "mode", "thought_level"].contains(&o.category.as_str()))
+            .map(|o| o.id.as_str())
+            .collect();
+        assert!(
+            uncategorized.contains(&"collaboration_mode"),
+            "the option no bespoke control claims is kept, and the mirror is what renders it: {:?}",
+            catalogue.options
+        );
+    }
+
+    /// The phantom-session question for Codex: it **does** advertise
+    /// `session/list`, so the same filter proof OpenCode gets applies here
+    /// rather than the weaker "no listing, so nothing to leak" answer.
+    ///
+    /// Measured 2026-08-17, and the second finding is the reassuring one:
+    /// **Codex's listing is scoped to the asking session's cwd.** A chat in a
+    /// project directory is answered with that directory's sessions and nothing
+    /// else, so a probe session opened in the probe directory is out of reach
+    /// twice over - once by the agent's own scoping, and once by `adopt`'s
+    /// filter, which is the half Sway controls and the half that survives an
+    /// agent changing its mind about scoping.
+    ///
+    /// Which means this test proves the **outcome** against a real Codex, not
+    /// the filter: with that scoping in place the row could not appear here
+    /// whatever `adopt` did. The filter itself is pinned by
+    /// `acp_sessions::a_session_sways_own_probe_opened_is_not_adopted_as_history`,
+    /// and what this adds is that Codex answers listings at all, so that filter
+    /// is load-bearing rather than theoretical.
+    ///
+    /// No turn is submitted by either agent, so this costs a launch and no
+    /// tokens. Run with `--test-threads=1`: it redirects the locator store, a
+    /// process-global for the reason `acp_sessions` documents.
+    #[test]
+    #[ignore = "drives the real `codex` binary twice"]
+    fn a_codex_probe_is_not_adopted_into_the_history_a_chat_lists() {
+        use crate::chat::acp_sessions;
+        use crate::chat::acp_transport::AcpTransport;
+        use crate::chat::transport::{new_sink, AgentTransport};
+
+        let codex = crate::agents::find("codex").expect("the bundled codex adapter");
+        let chat = codex.chat.as_ref().expect("with an ACP chat transport");
+
+        let root = std::env::temp_dir().join(format!("sway-codex-phantom-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+
+        probe_with(codex, None, PROBE_DEADLINE).expect("codex should answer the probe");
+
+        let id = "live-codex-phantom";
+        let args = crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
+        let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = seen.clone();
+        let mut transport = AcpTransport::new(id, &codex.id, chat.acp.clone());
+        transport
+            .start(
+                StartSpec {
+                    session_id: id.to_string(),
+                    cwd: root.to_string_lossy().into_owned(),
+                    program: chat.program.clone(),
+                    args,
+                    env: std::collections::HashMap::new(),
+                },
+                new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev))),
+            )
+            .expect("the adapter's launch should start the agent");
+
+        let mut lists = None;
+        for _ in 0..120 {
+            lists = seen.lock().unwrap().iter().find_map(|e| match e {
+                ChatEvent::SessionReady { capabilities, .. } => *capabilities,
+                _ => None,
+            });
+            if lists.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        let capabilities = lists.expect("codex answers the handshake");
+        assert!(
+            capabilities.list_sessions,
+            "codex advertises session/list, so the filter is what keeps the probe out"
+        );
+
+        // The listing runs behind the session opening, so this waits on its
+        // effect (locators on disk) rather than on an event of its own.
+        let mut adopted = Vec::new();
+        for _ in 0..40 {
+            adopted = acp_sessions::all();
+            if !adopted.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        let _ = transport.close();
+
+        // Loudly, and before the real assertion: an empty store means the chat
+        // never opened, and "no probe row" is then true of a test that measured
+        // nothing at all.
+        assert!(
+            !adopted.is_empty(),
+            "the chat session must reach the locator store for its listing to mean anything"
+        );
+        let spellings = probe_cwd_spellings();
+        assert!(
+            !adopted.iter().any(|s| spellings.contains(&s.cwd)),
+            "a session opened in the probe directory is never adopted as the user\'s history: {adopted:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The hygiene claim, end to end: the probe's session exists on the agent's
     /// side (there is no verb that would delete it), and it is nonetheless not
     /// in the history Sway would show.

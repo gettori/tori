@@ -71,7 +71,7 @@ const adapter = (id: string) => ({
   accounts: null,
 });
 
-const ADAPTERS = [adapter("claude"), adapter("solo"), adapter("overprotocol")];
+const ADAPTERS = [adapter("claude"), adapter("solo"), adapter("overprotocol"), adapter("gemini")];
 
 const model = (value: string, resolved: string, over: Partial<CatalogModel> = {}): CatalogModel => ({
   value,
@@ -193,6 +193,26 @@ describe("how many models a harness offers", () => {
       ]),
     ]);
     await waitFor(() => expect(container.textContent).toContain("2 models"));
+  });
+
+  /** The harness nobody here can measure. No machine in this project has
+   *  `gemini` installed, so its catalogue is the never-probed state for real
+   *  rather than as a fixture, and the surface has to read as "we have not
+   *  asked" rather than as a broken install or an empty list. */
+  it("shows a harness nobody can ask as unasked, not as broken", async () => {
+    const r = mount(
+      { id: "gemini", label: "Gemini", program: "gemini", status: "notFound", version: null, path: null },
+      [neverProbed("gemini")],
+    );
+    await waitFor(() => expect(r.container.textContent).toContain("Gemini"));
+    const gemini = () => r.container.querySelector('[data-harness="gemini"]')?.textContent ?? "";
+    expect(gemini()).not.toContain("model");
+    expect(gemini()).not.toContain("Error");
+
+    // And the page says so in words, with the ask as the next step.
+    const { container } = await open(r, /Gemini/);
+    expect(container.textContent).toContain("Nobody has asked Gemini what it can run");
+    expect(container.textContent).not.toContain("Error");
   });
 
   it("says Error when the last probe failed and there was never an answer", async () => {
