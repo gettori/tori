@@ -20,19 +20,18 @@ export type AgentId = string;
 // implementing a wire protocol, so a TOML can only select one that exists.
 export type ChatTransport = "claude_stream_json" | "acp";
 
-export type ChatModel = {
+// Something Sway knows about a model, keyed by the id the harness names it by.
+//
+// **Not a model list.** An annotation only ever decorates a model the harness
+// itself named; an id here that no catalogue mentions renders nothing at all,
+// and nothing turns one of these into a picker row. Its predecessor
+// `[[chat.models]]` was a list, and was wrong twice over: it offered four models
+// to a session that never handshook, and its windows said 200k for models the
+// harness reported 1M for.
+export type ChatAnnotation = {
   id: string;
-  label: string;
-  // Null when the adapter declares no window; the context meter only renders
-  // when one is declared rather than inventing a denominator.
-  context_window: number | null;
-  // Empty for a model with no effort control, which hides the picker rather
-  // than rendering an inert one.
-  effort_levels: string[];
-  supports_thinking: boolean;
-  supports_images: boolean;
-  // Whether this model has a fast mode to toggle. Adapter-declared because the
-  // live catalogue has no flag for it; Phase 3 proves it by probe.
+  // Whether this model has a fast mode to toggle. Sway's own claim, and the one
+  // thing here that has to be: the live catalogue carries no flag for it.
   fast_mode?: boolean;
 };
 
@@ -79,7 +78,8 @@ export type ChatConfig = {
   effort_args: string[];
   mode_args: string[];
   add_dir_args: string[];
-  models: ChatModel[];
+  // What Sway knows about individual models, never what models exist.
+  annotations: ChatAnnotation[];
   modes: ChatMode[];
   effort: ChatEffort[];
   // `[chat.acp]`: how this agent departs from a spec-correct ACP client. Present
@@ -262,18 +262,6 @@ export function chatCapable(agent: Agent): boolean {
   return agent.chat != null;
 }
 
-// The effort levels a model actually supports, resolved against the adapter's
-// `[[chat.effort]]` entries. Empty means the control is hidden rather than
-// rendered inert. The backend rejects a model naming an undefined level, so a
-// miss here means the adapter was not resolved, not that the TOML is bad.
-export function effortLevelsFor(chat: ChatConfig, modelId: string): ChatEffort[] {
-  const model = chat.models.find((m) => m.id === modelId);
-  if (!model) return [];
-  return model.effort_levels
-    .map((id) => chat.effort.find((e) => e.id === id))
-    .filter((e): e is ChatEffort => e != null);
-}
-
 // An adapter can express a mode or effort level two ways: the table-level
 // template (`mode_args = ["--permission-mode", "{mode}"]`) or the entry's own
 // `args`. Without a stated rule each consumer would pick one and they would
@@ -302,8 +290,11 @@ export function effortArgsFor(chat: ChatConfig, effortId: string): string[] | nu
   return level.args.length > 0 ? level.args : fillTemplate(chat.effort_args, "effort", effortId);
 }
 
-export function modelArgsFor(chat: ChatConfig, modelId: string): string[] | null {
-  if (!chat.models.some((m) => m.id === modelId)) return null;
+// Unlike the two above, any id fills the template: there is no declared model
+// list to be unknown to. The adapter says how to spell a model as args, the
+// catalogue the id came from says which models exist. Mirrors the backend's
+// `ChatConfig::model_args_for`.
+export function modelArgsFor(chat: ChatConfig, modelId: string): string[] {
   return fillTemplate(chat.model_args, "model", modelId);
 }
 

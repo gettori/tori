@@ -2,9 +2,11 @@
 //
 // This is the **last** step of `contextWindowFor`, and it exists only for
 // non-Claude ids. A Claude session reports its own window on every completed
-// turn (`result.modelUsage`), and the adapter table declares a provisional one
-// before the first turn lands; a third-party catalogue's idea of the same
-// number could only disagree with the harness that is actually running.
+// turn (`result.modelUsage`); a third-party catalogue's idea of the same number
+// could only disagree with the harness that is actually running. Before that
+// first turn a Claude session now has no window at all, and that is the intended
+// answer rather than a gap for this to fill: the adapter's declared figure used
+// to sit there and was wrong (200k for models the harness reports 1M for).
 //
 // The fetch is **lazy on a miss**, not eager at mount. It used to fire from
 // `StatusStrip`'s body on every mount, which made "we do not call out for a

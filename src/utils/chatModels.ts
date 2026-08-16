@@ -5,23 +5,31 @@
 // is; four readers reaching into two differently-shaped sources is how they end
 // up offering a model one of them cannot resolve.
 //
-// The two sources are not equal and the difference is measured, not assumed:
+// Both sources are the harness's own answer, and the difference between them is
+// only how fresh it is:
 //
 //   - The **live catalogue** rides the `initialize` control response and is the
 //     truth about what this machine's CLI can run right now. It carries `value`
 //     (what `--model` takes) and `resolvedModel` (what `system/init` reports
 //     back) as separate fields, because several values resolve to one id.
-//   - The **adapter table** (`[[chat.models]]`) is hand-maintained TOML. It is
-//     the fallback for a session that never handshook, and the provisional
-//     source of a context window before any turn has reported one.
-//   - A **completed turn** reports the real window, per model and per provider,
-//     in `modelUsage`. It is the authority and it cannot drift, being the
-//     running session describing itself; it just does not exist until turn one
-//     ends. See `contextWindowFor` for the order the three combine in.
+//   - The **cache** is the same answer, from the last time `catalog_probe` asked
+//     this harness. It exists so a picker opened before any session does can
+//     offer something true rather than nothing.
+//   - **Nothing.** A harness that has neither has no models, and says so.
 //
-// A model no source knows a window for reports null rather than a guess.
+// What is *not* a source any more: the adapter's `[[chat.models]]`. That was
+// hand-maintained TOML, and it was wrong in both jobs it had. It offered four
+// models to a session that never handshook regardless of what the installed CLI
+// could run, and its windows said 200k for models the harness reports 1M for.
+// Sway names no model the harness did not name first.
+//
+// A completed turn reports the real context window, per model and per provider,
+// in `modelUsage`. It is the authority and it cannot drift, being the running
+// session describing itself; it just does not exist until turn one ends, and
+// nothing stands in for it before then. See `contextWindowFor`.
 import { foreignWindow } from "./modelCaps";
-import type { ChatConfig, ChatMode, ChatModel } from "./agents";
+import type { ChatConfig, ChatMode } from "./agents";
+import type { CatalogModel } from "./modelCatalog";
 import type { ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
 
 export type PickableModel = {
@@ -37,15 +45,18 @@ export type PickableModel = {
    *  than rendering an inert one. Measured: haiku omits the effort keys
    *  entirely rather than declaring them empty. */
   effortLevels: string[];
-  /** Null when nothing declares a window, which is what keeps the meter from
-   *  rendering a denominator it invented. */
+  /** Null until a completed turn reports one, which is what keeps the meter
+   *  from rendering a denominator it invented. */
   contextWindow: number | null;
-  /** False for a model that came from the adapter table because the handshake
-   *  did not happen. Surfaced so the picker can say the list may be stale. */
+  /** False for a model that came from the cache because this session has not
+   *  handshaken yet. Surfaced so the picker can say the list may be stale. */
   live: boolean;
-  /** Whether this model has a fast mode to toggle. Adapter-declared and looked
-   *  up by `resolvedModel`, exactly like `contextWindow`, because the live
-   *  catalogue declares no such flag. */
+  /** This row is a model the user configured in the harness's own settings, not
+   *  one the harness published. It carries an empty `resolvedModel`, since Sway
+   *  passes the configured string to the CLI unresolved. */
+  userConfigured: boolean;
+  /** Whether this model has a fast mode to toggle. Sway's own annotation,
+   *  looked up by `resolvedModel`, because no catalogue carries such a flag. */
   fastMode: boolean;
   /** Whether this model honours `--permission-mode auto`. From the live
    *  catalogue, which omits the key entirely for a model that lacks it. */
@@ -116,19 +127,20 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
  *
  *   1. **What the session reported** (`reported`). Measured per model and per
  *      provider by the harness that is running the turn, so it beats anything
- *      written down here. It only exists once a turn has completed, which is
- *      why there is a step 2 at all.
- *   2. **What the adapter declares.** A hand-maintained figure, and therefore
- *      the one that can be wrong: the rows for Sonnet 5 and Opus 5 both said
- *      200k while the harness reported 1M for each. It survives as the
- *      *pre-first-turn* answer only, and step 1 overrides it the moment a turn
- *      lands rather than the two disagreeing forever.
- *   3. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
- *      Claude id never reaches it: the two steps above are closer to the truth
- *      than a third party's idea of the same number, and a Claude id arriving
- *      here means neither knew, which is an answer rather than a cue to guess.
- *   4. **Nothing.** No guess by family, no rounding to a familiar number. A
+ *      written down anywhere. It only exists once a turn has completed.
+ *   2. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
+ *      Claude id never reaches it: step 1 is closer to the truth than a third
+ *      party's idea of the same number, and a Claude id arriving here means
+ *      nothing knew, which is an answer rather than a cue to guess.
+ *   3. **Nothing.** No guess by family, no rounding to a familiar number. A
  *      meter with an invented denominator reads as a measurement.
+ *
+ * There used to be a step between the two: the adapter's declared window, as
+ * the pre-first-turn answer. It is gone with the table it came from, and it is
+ * the one step that was demonstrably wrong (Sonnet 5 and Opus 5 both declared
+ * 200k against a reported 1M). **So a Claude session shows no denominator at all
+ * until its first turn completes.** That is the accepted cost of not printing a
+ * number nobody measured.
  *
  * Note what is deliberately *not* a step: the `[1m]` suffix some catalogue
  * values carry (`claude-fable-5[1m]`). It is real but redundant - the session
@@ -136,15 +148,10 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
  * resolver acquires a vendor's naming convention as a dependency.
  */
 export function contextWindowFor(
-  chat: ChatConfig | null,
   resolvedModel: string,
   reported: Readonly<Record<string, number>> = {},
 ): number | null {
-  return (
-    reported[resolvedModel] ??
-    chat?.models.find((m) => m.id === resolvedModel)?.context_window ??
-    foreignWindow(resolvedModel)
-  );
+  return reported[resolvedModel] ?? foreignWindow(resolvedModel);
 }
 
 /**
@@ -182,66 +189,58 @@ function warnOnce(key: string, message: string) {
   console.warn(message);
 }
 
-/** Whether the adapter declares a fast mode for a resolved model id. Same
- *  lookup as the window, and for the same reason: the live catalogue has no
- *  flag for it, so the adapter is the only source. */
+/**
+ * Whether Sway claims a fast mode for a resolved model id.
+ *
+ * The one thing still read out of the adapter, and the one thing that has to be:
+ * no catalogue carries a fast-mode flag. It is an **annotation**, so it can only
+ * decorate a model that reached here from a catalogue in the first place. An
+ * annotated id no catalogue named produces no row and therefore no toggle.
+ */
 export function fastModeFor(chat: ChatConfig | null, resolvedModel: string): boolean {
-  return chat?.models.find((m) => m.id === resolvedModel)?.fast_mode ?? false;
-}
-
-function fromAdapter(m: ChatModel): PickableModel {
-  // The adapter table names models by their resolved id, so `value` and
-  // `resolvedModel` are the same string here. That is not a special case to
-  // paper over: `--model claude-sonnet-5` is a valid pick, it is just a less
-  // convenient one than the alias the live catalogue offers.
-  return {
-    value: m.id,
-    resolvedModel: m.id,
-    label: m.label,
-    description: "",
-    effortLevels: m.effort_levels,
-    contextWindow: m.context_window,
-    live: false,
-    fastMode: m.fast_mode ?? false,
-    // The adapter table declares no capability flags of its own, and a session
-    // reading from it never handshook. Claiming a capability here would be a
-    // guess about a model this build has only a hand-maintained row for.
-    supportsAutoMode: false,
-  };
+  return chat?.annotations.find((a) => a.id === resolvedModel)?.fast_mode ?? false;
 }
 
 /**
- * Everything the picker may offer, live catalogue first and the adapter table
- * only when there is no live one.
+ * Everything the picker may offer: the live catalogue, else the cached one,
+ * else nothing at all.
  *
- * Not a merge. A session that handshook has the authoritative list, and folding
- * the TOML into it would re-offer a model the CLI no longer has purely because
- * a hand-maintained file still mentions it.
+ * **Not a merge, at either step.** A session that handshook has the
+ * authoritative list, and folding a cached answer into it would re-offer a model
+ * this CLI no longer has purely because an older probe saw it. The same argument
+ * that retired the adapter table applies to the cache the moment something
+ * fresher exists.
+ *
+ * Nothing is the third answer and a real one. A harness whose cache is empty and
+ * whose session never handshook offers no models, rather than four the CLI was
+ * never asked about.
  */
 export function pickableModels(
   live: readonly ChatModelInfo[],
+  cached: readonly CatalogModel[],
   chat: ChatConfig | null,
-  /** Windows the running session reported, from `reportedWindows`. Empty
-   *  before the first turn completes, which is the adapter table's whole
-   *  remaining job. */
+  /** Windows the running session reported, from `reportedWindows`. Empty before
+   *  the first turn completes, and nothing stands in for it until then. */
   reported: Readonly<Record<string, number>> = {},
 ): PickableModel[] {
-  if (live.length > 0) {
-    return live.map((m) => ({
-      value: m.value,
-      resolvedModel: m.resolvedModel,
-      label: m.displayName || m.value,
-      description: m.description,
-      // `supportsEffort` and the level list can disagree only by being absent;
-      // the levels are what the control renders, so they are what decides.
-      effortLevels: m.supportsEffort ? m.supportedEffortLevels : [],
-      contextWindow: contextWindowFor(chat, m.resolvedModel, reported),
-      live: true,
-      fastMode: fastModeFor(chat, m.resolvedModel),
-      supportsAutoMode: m.supportsAutoMode,
-    }));
-  }
-  return (chat?.models ?? []).map(fromAdapter);
+  // `CatalogModel` is a `ChatModelInfo` with one optional extra, so a live row is
+  // already one of these. Typing the union this way rather than casting per row
+  // is what keeps the two sources genuinely interchangeable here.
+  const rows: readonly CatalogModel[] = live.length > 0 ? live : cached;
+  return rows.map((m) => ({
+    value: m.value,
+    resolvedModel: m.resolvedModel,
+    label: m.displayName || m.value,
+    description: m.description,
+    // `supportsEffort` and the level list can disagree only by being absent;
+    // the levels are what the control renders, so they are what decides.
+    effortLevels: m.supportsEffort ? m.supportedEffortLevels : [],
+    contextWindow: contextWindowFor(m.resolvedModel, reported),
+    live: live.length > 0,
+    userConfigured: m.userConfigured ?? false,
+    fastMode: fastModeFor(chat, m.resolvedModel),
+    supportsAutoMode: m.supportsAutoMode,
+  }));
 }
 
 /**

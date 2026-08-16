@@ -14,6 +14,7 @@ import {
   selectedModel,
 } from "./chatModels";
 import type { ChatConfig, ChatMode } from "./agents";
+import type { CatalogModel } from "./modelCatalog";
 import type { ChatModeInfo, ChatModelInfo } from "./chatTypes";
 
 // The shape of the real thing, trimmed to what these functions read. Written by
@@ -30,28 +31,39 @@ function adapter(): ChatConfig {
     effort_args: ["--effort", "{effort}"],
     mode_args: ["--permission-mode", "{mode}"],
     add_dir_args: [],
-    models: [
-      {
-        id: "claude-sonnet-5",
-        label: "Sonnet 5",
-        context_window: 200000,
-        effort_levels: ["low", "high"],
-        supports_thinking: true,
-        supports_images: true,
-      },
-      {
-        id: "claude-haiku-4-5-20251001",
-        label: "Haiku 4.5",
-        context_window: null,
-        effort_levels: [],
-        supports_thinking: false,
-        supports_images: true,
-      },
-    ],
+    // Annotations, not models. An id here decorates a model some catalogue
+    // named; it can never put one on the list.
+    annotations: [{ id: "claude-sonnet-5", fast_mode: true }],
     modes: [],
     effort: [],
     acp: { serve_client_fs: false },
   };
+}
+
+// What `catalog_probe` cached the last time it asked this harness. Same shape as
+// a live row, which is the point: a picker reads one where it reads the other.
+function cached(): CatalogModel[] {
+  return [
+    {
+      value: "sonnet",
+      resolvedModel: "claude-sonnet-5",
+      displayName: "Sonnet",
+      description: "Sonnet 5",
+      supportsEffort: true,
+      supportedEffortLevels: ["low", "high"],
+      supportsAutoMode: true,
+    },
+    {
+      value: "claude-opus-5-20260101",
+      resolvedModel: "",
+      displayName: "claude-opus-5-20260101",
+      description: "Configured in settings.json `env.ANTHROPIC_MODEL`",
+      supportsEffort: false,
+      supportedEffortLevels: [],
+      supportsAutoMode: false,
+      userConfigured: true,
+    },
+  ];
 }
 
 // The measured catalogue: `default` and `sonnet` resolve to one id, and haiku
@@ -90,43 +102,75 @@ function live(): ChatModelInfo[] {
 
 describe("pickableModels", () => {
   it("prefers the live catalogue and keeps both ids apart", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(models.map((m) => m.value)).toEqual(["default", "sonnet", "haiku"]);
     expect(models[0].resolvedModel).toBe("claude-sonnet-5");
     expect(models[0].label).toBe("Default (recommended)");
     expect(models.every((m) => m.live)).toBe(true);
   });
 
-  it("takes the context window from the adapter, the only thing that declares one", () => {
-    const models = pickableModels(live(), adapter());
-    expect(models.find((m) => m.value === "sonnet")?.contextWindow).toBe(200000);
-    // Declared null in the table: the meter renders nothing rather than a
-    // denominator it made up.
+  // The adapter used to declare a window per model, which is what a fresh
+  // session's meter divided by. It is gone, and nothing replaces it before the
+  // first turn: `reported` is empty until one completes.
+  it("reports no context window before a turn has measured one", () => {
+    const models = pickableModels(live(), [], adapter());
+    expect(models.every((m) => m.contextWindow === null)).toBe(true);
+  });
+
+  it("takes the window from the running session once a turn has reported one", () => {
+    const models = pickableModels(live(), [], adapter(), { "claude-sonnet-5": 1_000_000 });
+    expect(models.find((m) => m.value === "sonnet")?.contextWindow).toBe(1_000_000);
+    // Nothing reported for haiku, so nothing is shown for haiku.
     expect(models.find((m) => m.value === "haiku")?.contextWindow).toBeNull();
   });
 
-  it("falls back to the adapter table when the handshake did not happen", () => {
-    const models = pickableModels([], adapter());
-    expect(models.map((m) => m.value)).toEqual(["claude-sonnet-5", "claude-haiku-4-5-20251001"]);
-    // The table names models by resolved id, so a pick from it is confirmable
-    // the same way a live one is.
-    expect(models[0].resolvedModel).toBe("claude-sonnet-5");
+  it("falls back to the cache when the handshake did not happen", () => {
+    const models = pickableModels([], cached(), adapter());
+    expect(models.map((m) => m.value)).toEqual(["sonnet", "claude-opus-5-20260101"]);
     expect(models.every((m) => m.live)).toBe(false);
   });
 
-  it("is empty when neither source has anything, rather than inventing a model", () => {
-    expect(pickableModels([], null)).toEqual([]);
+  // The rule the whole phase exists for: a hand-maintained table used to answer
+  // here with four models the installed CLI was never asked about.
+  it("offers nothing when neither the session nor the cache has an answer", () => {
+    expect(pickableModels([], [], adapter())).toEqual([]);
+    expect(pickableModels([], [], null)).toEqual([]);
   });
 
-  it("does not merge the table into a live catalogue", () => {
-    // The table lists haiku by its dated id; the live catalogue lists it as
-    // `haiku`. A merge would offer both and one of them would be a duplicate.
-    const models = pickableModels(live(), adapter());
+  it("does not merge the cache into a live catalogue", () => {
+    // The cache holds two rows and the live catalogue three. A merge would offer
+    // `sonnet` twice and re-offer a configured id this CLI may no longer take.
+    const models = pickableModels(live(), cached(), adapter());
     expect(models).toHaveLength(3);
+    expect(models.map((m) => m.value)).not.toContain("claude-opus-5-20260101");
+  });
+
+  // A configured row cannot claim a resolution, so it carries an empty one and
+  // says where it came from. Anything deduping by `resolvedModel` has to notice.
+  it("marks a row the user configured rather than mixing it in", () => {
+    const models = pickableModels([], cached(), adapter());
+    const configured = models.find((m) => m.value === "claude-opus-5-20260101");
+    expect(configured?.userConfigured).toBe(true);
+    expect(configured?.resolvedModel).toBe("");
+    expect(models.find((m) => m.value === "sonnet")?.userConfigured).toBe(false);
+  });
+
+  // Fast mode is Sway's own claim and the one thing still read from the adapter.
+  // It decorates a model a catalogue named; it never adds one.
+  it("annotates fast mode onto a harness-named model and nothing else", () => {
+    const models = pickableModels(live(), [], adapter());
+    expect(models.filter((m) => m.fastMode).map((m) => m.value)).toEqual(["default", "sonnet"]);
+  });
+
+  it("an annotation for an id no catalogue names renders nothing at all", () => {
+    const chat = { ...adapter(), annotations: [{ id: "claude-opus-5", fast_mode: true }] };
+    const models = pickableModels(live(), [], chat);
+    expect(models.some((m) => m.fastMode)).toBe(false);
+    expect(models.map((m) => m.resolvedModel)).not.toContain("claude-opus-5");
   });
 
   it("hides effort for a model that declares none", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(models.find((m) => m.value === "haiku")?.effortLevels).toEqual([]);
     expect(models.find((m) => m.value === "sonnet")?.effortLevels).toContain("xhigh");
   });
@@ -134,19 +178,19 @@ describe("pickableModels", () => {
 
 describe("selectedModel", () => {
   it("prefers the value that was picked over the id init reports", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     // Both resolve to claude-sonnet-5; only the picked value says which.
     expect(selectedModel(models, "sonnet", "claude-sonnet-5")?.value).toBe("sonnet");
     expect(selectedModel(models, "default", "claude-sonnet-5")?.value).toBe("default");
   });
 
   it("falls back to the resolved id when nothing has been picked yet", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(selectedModel(models, null, "claude-haiku-4-5-20251001")?.value).toBe("haiku");
   });
 
   it("names the model rather than the alias when several values share a resolution", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     // `default` is listed first and resolves to the same id as `sonnet`. Taking
     // the first match showed "Default (recommended)" on a fresh session while
     // every other readout named the real model.
@@ -164,7 +208,7 @@ describe("selectedModel", () => {
           supportedEffortLevels: [],
           supportsAutoMode: false,
         },
-      ],
+      ], [],
       adapter(),
     );
     expect(selectedModel(withExact, null, "claude-sonnet-5")?.value).toBe("claude-sonnet-5");
@@ -173,7 +217,7 @@ describe("selectedModel", () => {
   });
 
   it("ignores a picked value the catalogue no longer offers", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     // Falls back to the resolution, and names the model rather than the alias.
     expect(selectedModel(models, "gone", "claude-sonnet-5")?.value).toBe("sonnet");
     expect(selectedModel(models, "gone", null)).toBeNull();
@@ -182,7 +226,7 @@ describe("selectedModel", () => {
 
 describe("pickLanded", () => {
   it("confirms through resolvedModel, never through the picked value", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(pickLanded(models, "haiku", "claude-haiku-4-5-20251001")).toBe(true);
     // The trap: init never reports "haiku", so comparing the value would say
     // the switch failed on every successful switch.
@@ -190,19 +234,19 @@ describe("pickLanded", () => {
   });
 
   it("does not confirm a pick the session has not moved to", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(pickLanded(models, "haiku", "claude-sonnet-5")).toBe(false);
   });
 
   it("refuses to confirm a value the catalogue does not know", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(pickLanded(models, "gone", "claude-sonnet-5")).toBe(false);
   });
 });
 
 describe("restoredPicks", () => {
   it("restores a combination the catalogue still offers", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(restoredPicks(models, { model: "sonnet", effort: "xhigh" })).toEqual({
       model: expect.objectContaining({ value: "sonnet" }),
       effort: "xhigh",
@@ -211,7 +255,7 @@ describe("restoredPicks", () => {
   });
 
   it("drops a model the catalogue no longer offers, keeping the session's own", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     // Re-sending it would open every session with an error, and the picker
     // still has the session's resolved model to show.
     expect(restoredPicks(models, { model: "opus-3", effort: "high" })).toEqual({
@@ -222,12 +266,12 @@ describe("restoredPicks", () => {
   });
 
   it("drops an effort level the restored model does not offer", () => {
-    const models = pickableModels(live(), adapter());
+    const models = pickableModels(live(), [], adapter());
     expect(restoredPicks(models, { model: "haiku", effort: "max" }).effort).toBeNull();
   });
 
   it("restores nothing from an empty preference", () => {
-    expect(restoredPicks(pickableModels(live(), adapter()), {})).toEqual({
+    expect(restoredPicks(pickableModels(live(), [], adapter()), {})).toEqual({
       model: null,
       effort: null,
       mode: null,
@@ -237,7 +281,7 @@ describe("restoredPicks", () => {
   it("restores a mode the adapter still declares", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
-    const models = pickableModels(live(), chat);
+    const models = pickableModels(live(), [], chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat).mode).toBe("plan");
   });
 
@@ -251,7 +295,7 @@ describe("restoredPicks", () => {
       { id: "auto_edit", label: "Auto edit", hint: "", args: [], default: true },
       { id: "yolo", label: "Yolo", hint: "", args: [] },
     ];
-    const models = pickableModels(live(), chat);
+    const models = pickableModels(live(), [], chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "bypassPermissions" }, chat).mode).toBeNull();
   });
 });
@@ -314,7 +358,7 @@ describe("pickableModes", () => {
   it("does not move a live mode on a model switch", () => {
     const chat = adapter();
     chat.modes = [];
-    const model = pickableModels(live(), chat)[0];
+    const model = pickableModels(live(), [], chat)[0];
     expect(modeAfterModelSwitch(model, chat, "read-only", pickableModes(liveModes(), chat))).toBe(
       null,
     );
@@ -327,7 +371,7 @@ describe("capabilitiesFor", () => {
   it("offers nothing model-scoped for a model that declares nothing", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
-    const models = pickableModels(live(), chat);
+    const models = pickableModels(live(), [], chat);
     const haiku = models.find((m) => m.value === "haiku")!;
 
     const caps = capabilitiesFor(haiku, chat);
@@ -340,8 +384,7 @@ describe("capabilitiesFor", () => {
   it("offers everything for a model that declares everything", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
-    chat.models[0].fast_mode = true;
-    const models = pickableModels(live(), chat);
+    const models = pickableModels(live(), [], chat);
     const sonnet = models.find((m) => m.value === "sonnet")!;
 
     const caps = capabilitiesFor(sonnet, chat);
@@ -378,19 +421,19 @@ describe("modeAfterModelSwitch", () => {
   // runs `default`, so nothing downstream would report the disagreement.
   it("drops a gated mode when moving to a model that cannot honour it", () => {
     const chat = gatedAdapter();
-    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    const haiku = pickableModels(live(), [], chat).find((m) => m.value === "haiku")!;
     expect(modeAfterModelSwitch(haiku, chat, "auto")).toBe("default");
   });
 
   it("keeps the mode when the new model can honour it", () => {
     const chat = gatedAdapter();
-    const sonnet = pickableModels(live(), chat).find((m) => m.value === "sonnet")!;
+    const sonnet = pickableModels(live(), [], chat).find((m) => m.value === "sonnet")!;
     expect(modeAfterModelSwitch(sonnet, chat, "auto")).toBeNull();
   });
 
   it("leaves an ungated mode alone whatever the model", () => {
     const chat = gatedAdapter();
-    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    const haiku = pickableModels(live(), [], chat).find((m) => m.value === "haiku")!;
     expect(modeAfterModelSwitch(haiku, chat, "default")).toBeNull();
   });
 
@@ -405,7 +448,7 @@ describe("modeAfterModelSwitch", () => {
       { id: "auto", label: "Auto", hint: "", args: [], default: true, requires: "supportsAutoMode" },
       { id: "plan", label: "Plan", hint: "", args: [] },
     ];
-    const haiku = pickableModels(live(), chat).find((m) => m.value === "haiku")!;
+    const haiku = pickableModels(live(), [], chat).find((m) => m.value === "haiku")!;
     expect(modeAfterModelSwitch(haiku, chat, "auto")).toBe("plan");
   });
 });
@@ -471,25 +514,21 @@ describe("contextTokens", () => {
 });
 
 describe("contextWindowFor", () => {
-  it("is null without an adapter, so the meter stays hidden", () => {
-    expect(contextWindowFor(null, "claude-sonnet-5")).toBeNull();
-    expect(contextWindowFor(adapter(), "claude-opus-5")).toBeNull();
-    expect(contextWindowFor(adapter(), "claude-sonnet-5")).toBe(200000);
+  // **The accepted cost of the phase.** A Claude session has no denominator
+  // until its first turn completes. What used to sit here was the adapter's
+  // declared figure, and it was measurably wrong: 200k written down for models
+  // the harness runs at 1M. Showing nothing beats showing that.
+  it("is null before a turn has measured one, so the meter stays hidden", () => {
+    expect(contextWindowFor("claude-sonnet-5")).toBeNull();
+    expect(contextWindowFor("claude-opus-5", {})).toBeNull();
   });
 
-  // The whole point of the order. The adapter figure is hand-maintained and was
-  // measurably wrong (200k written down for a model the harness runs at 1M), so
-  // the session's own report has to win rather than tie.
-  it("prefers what the session reported over what the adapter declares", () => {
-    expect(contextWindowFor(adapter(), "claude-sonnet-5", { "claude-sonnet-5": 1_000_000 })).toBe(1_000_000);
-  });
-
-  it("falls back to the adapter before any turn has reported one", () => {
-    expect(contextWindowFor(adapter(), "claude-sonnet-5", {})).toBe(200000);
+  it("takes the window the session reported once one exists", () => {
+    expect(contextWindowFor("claude-sonnet-5", { "claude-sonnet-5": 1_000_000 })).toBe(1_000_000);
   });
 
   it("reports nothing for a model no source knows, rather than a guessed window", () => {
-    expect(contextWindowFor(adapter(), "some-model-nobody-declared", {})).toBeNull();
+    expect(contextWindowFor("some-model-nobody-declared", {})).toBeNull();
   });
 });
 

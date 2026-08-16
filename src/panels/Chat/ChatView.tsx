@@ -62,6 +62,7 @@ import {
   selectedModel,
   type PickableModel,
 } from "../../utils/chatModels";
+import type { CatalogModel } from "../../utils/modelCatalog";
 import { findAgent } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
@@ -892,13 +893,19 @@ export default function ChatView(props: {
   }
 
   // What the picker may offer: the session's own catalogue when the handshake
-  // gave us one, the adapter's table when it did not. `pickableModels` owns
-  // that choice so the picker, the effort control and the meter cannot each
-  // decide it differently.
-  // One accessor for the adapter's chat table, so the model list, the mode
-  // fallback and the capability resolver cannot each reach for it differently.
+  // gave us one, the probe cache when it did not, nothing when neither has an
+  // answer. `pickableModels` owns that choice so the picker, the effort control
+  // and the meter cannot each decide it differently.
+  // One accessor for the adapter's chat table, so the mode fallback and the
+  // capability resolver cannot each reach for it differently. It no longer
+  // carries models at all; the harness names those.
   const chatConfig = () => findAgent(props.agentId).chat ?? null;
-  const models = () => pickableModels(state.models, chatConfig(), state.contextWindows);
+  // Empty until Phase 4 wires `model_catalogs` in. Passing it explicitly rather
+  // than defaulting the parameter keeps the gap visible: right now a session
+  // that has not handshaken offers nothing, which is the honest answer and not
+  // an oversight.
+  const cachedModels = (): CatalogModel[] => [];
+  const models = () => pickableModels(state.models, cachedModels(), chatConfig(), state.contextWindows);
 
   // The entry the picker shows as selected. Resolved through the catalogue
   // rather than read straight off the store, because before the first pick the
@@ -961,13 +968,10 @@ export default function ChatView(props: {
   // The window for the model the **stats row is describing**, which is the one
   // the transcript says ran - not `shownModel()`, the one currently selected in
   // the picker. The two differ after a mid-session switch, where dividing the
-  // historical figures by the new model's window would be simply wrong, and for
-  // any model the picker offers but the adapter table has no row for
-  // (`claude-fable-5`), where reading the selection produced no window at all
-  // and silently dropped the whole stat.
+  // historical figures by the new model's window would be simply wrong.
   const stripWindow = () => {
     const ran = detail()?.model;
-    if (ran) return contextWindowFor(chatConfig(), ran, state.contextWindows);
+    if (ran) return contextWindowFor(ran, state.contextWindows);
     return shownModel()?.contextWindow ?? null;
   };
 
