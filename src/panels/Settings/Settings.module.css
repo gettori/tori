@@ -271,7 +271,7 @@
      surface stays where it was and only the column inside it is bounded. */
   .pane > * {
     width: 100%;
-    max-width: calc(760px * var(--ui-scale));
+    max-width: calc(720px * var(--ui-scale));
     margin-inline: auto;
   }
 
@@ -551,19 +551,14 @@
 
   /* --- Cards: harnesses, language servers, debuggers --- */
 
-  /* Two at most, never three: a harness card is a name and a fact, and a third
-     column would shrink the fact to an ellipsis on the widths this panel
-     actually gets. Collapses to one where two would clip. */
+  /* One per row. Two across fit while the pane was as wide as the panel, but
+     the content now stops at a 720px measure, and half of that leaves a card's
+     second line (sign-in, then models) ellipsised to nothing. */
   .cardGrid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--sway-space-4);
     margin-bottom: var(--sway-space-6);
-  }
-  @media (max-width: 900px) {
-    .cardGrid {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 
   /* --- The harness card: a button, so the whole thing is one target --- */
