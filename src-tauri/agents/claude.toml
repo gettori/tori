@@ -154,59 +154,40 @@ effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
 
-# Context windows here are the **pre-first-turn** answer only. A completed turn
-# reports the real window per model and per provider in `result.modelUsage`, and
-# that overrides these the moment it lands; the meter renders nothing at all for
-# a model no source knows, rather than a wrong denominator.
+# No [[chat.models]]. **Sway declares no model this CLI did not name.**
 #
-# These were wrong until measured. Both Sonnet 5 and Opus 5 said 200000 while
-# the harness reports 1000000 for each (dev/fixtures/claude/plain-turn.jsonl and
-# fast-mode.jsonl, provider `firstParty`). That is exactly the drift the live
-# reading exists to end, so treat a figure here as provisional, not as a fact.
-[[chat.models]]
+# There used to be a table of four here, carrying labels, context windows and
+# effort levels. It was the picker's fallback and the meter's pre-first-turn
+# denominator, and it was wrong at both. Sonnet 5 and Opus 5 both said 200000
+# while the harness reported 1000000 for each (dev/fixtures/claude/plain-turn.jsonl
+# and fast-mode.jsonl, provider `firstParty`), and Fable's figure was inferred
+# from the `[1m]` suffix on a catalogue value by a build that had never run a
+# Fable turn. A session that never handshook offered all four regardless of what
+# the installed CLI could actually run.
+#
+# All of it comes from the harness now: the model list and the effort levels from
+# the `initialize` control response (live, or cached by `catalog_probe`), the
+# context window from a completed turn's `result.modelUsage`. Nothing renders
+# before one of those has spoken, which is the point.
+#
+# What survives is below, and it is a different kind of thing.
+
+# Annotations decorate a model the harness named. They never add one.
+#
+# An id here that no catalogue mentions renders nothing at all. This is the one
+# category of thing Sway knows and the CLI does not say, so it is Sway's claim
+# and is presented as such.
+[[chat.annotations]]
 id = "claude-opus-5"
-label = "Opus 5"
-context_window = 1000000
-effort_levels = ["low", "medium", "high", "xhigh", "max"]
-supports_thinking = true
-supports_images = true
-# The live catalogue carries no fast-mode flag; the only thing the CLI says is
-# the `/fast` command describing itself as "Toggle fast mode (Opus 5)". Probed
-# since: the model claim holds and is moot here, because fast mode cannot be
-# reached over stream-json at all - `/fast on` on this very model answers "Fast
-# mode is not available in the Agent SDK" and `fast_mode_state` never leaves
-# "off" (dev/fixtures/claude/fast-mode.jsonl). So nothing renders from this
-# today; it is the model-scope half of the answer, kept for the day the SDK is
-# opted in, at which point that fixture's scenario fails and says so.
+# The only signal the CLI gives is the `/fast` command describing itself as
+# "Toggle fast mode (Opus 5)". Probed since: the model claim holds and is moot
+# here, because fast mode cannot be reached over stream-json at all. `/fast on`
+# on this very model answers "Fast mode is not available in the Agent SDK" and
+# `fast_mode_state` never leaves "off" (dev/fixtures/claude/fast-mode.jsonl). So
+# nothing renders from this today; it is the model-scope half of the answer,
+# kept for the day the SDK is opted in, at which point that fixture's scenario
+# fails and says so.
 fast_mode = true
-
-[[chat.models]]
-id = "claude-sonnet-5"
-label = "Sonnet 5"
-context_window = 1000000
-effort_levels = ["low", "medium", "high", "xhigh", "max"]
-supports_thinking = true
-supports_images = true
-
-[[chat.models]]
-id = "claude-fable-5"
-label = "Fable 5"
-# 1M is **inferred from the catalogue value's `[1m]` suffix**, not measured:
-# nothing here has run a Fable turn. It is the weakest figure in this table and
-# is marked so deliberately. A completed turn reports the real number and
-# overrides it, so the inference only ever governs a session's first turn.
-context_window = 1000000
-effort_levels = ["low", "medium", "high", "xhigh", "max"]
-supports_thinking = true
-supports_images = true
-
-[[chat.models]]
-id = "claude-haiku-4-5-20251001"
-label = "Haiku 4.5"
-context_window = 200000
-effort_levels = []
-supports_thinking = false
-supports_images = true
 
 # The six permission modes `--permission-mode` accepts and honours, and they now
 # mean what they say: Sway's hook no longer decides anything, so nothing runs
