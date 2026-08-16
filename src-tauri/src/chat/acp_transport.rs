@@ -989,7 +989,10 @@ fn run_turn(
 /// `fs` and `terminal` are declined by default: agents do their own I/O, and
 /// declining all three is a complete configuration rather than a degraded one.
 /// An adapter opts back in through [`AcpOverrides::serve_client_fs`].
-fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
+/// Shared with the catalogue probe rather than copied: a probe that handshook
+/// with different capabilities than a real session would be measuring an agent
+/// Sway never actually runs.
+pub fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
     use agent_client_protocol::schema::v1::{ClientCapabilities, FileSystemCapabilities};
 
     let mut capabilities = ClientCapabilities::default();
@@ -1012,7 +1015,10 @@ fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
 /// absent key is a protocol error to agents that validate strictly. What the
 /// override controls is whether the array is *populated*, because an adapter
 /// that does not speak MCP can fail `session/new` outright when it is.
-fn new_session_request(cwd: &str, _overrides: &AcpOverrides) -> NewSessionRequest {
+/// Shared with the catalogue probe for the same reason as
+/// [`initialize_request`]: the options a probe reads are the ones this exact
+/// payload asks for.
+pub fn new_session_request(cwd: &str, _overrides: &AcpOverrides) -> NewSessionRequest {
     let mut request = NewSessionRequest::new(std::path::PathBuf::from(cwd));
     // Empty either way today, and deliberately not written as a branch on
     // `send_mcp_servers`: populating this needs Sway's MCP configuration mapped
@@ -1100,7 +1106,8 @@ async fn refresh_listing(
         }
     }
 
-    let adopted = acp_sessions::adopt(agent, &rows, &known, now_secs());
+    let adopted =
+        acp_sessions::adopt(agent, &rows, &known, now_secs(), &crate::catalog_probe::probe_cwd_spellings());
     let mut written = 0;
     for session in &adopted {
         // A listing runs on every connection and most of it is the same rows as

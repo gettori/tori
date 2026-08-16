@@ -6,13 +6,18 @@
 //! purpose: a picker opened before any session exists reads the cache, and the
 //! live handshake replaces it the moment a session starts.
 //!
-//! **A probe is token-free or it does not ship.** For `claude_stream_json` that
-//! is free: the `initialize` control response carries the whole catalogue and
+//! **A probe submits no turn.** For `claude_stream_json` that costs nothing at
+//! all: the `initialize` control response carries the whole catalogue and
 //! arrives before any session exists, so the probe is spawn, handshake, kill,
-//! with nothing written to disk on the harness's side and nothing to clean up.
-//! ACP is not free that way (its catalogue only appears on `session/new`) and is
-//! deliberately not implemented here; the exhaustive `match` in [`probe_with`]
-//! is what will name that obligation when Phase 3 arrives.
+//! with nothing written on the harness's side and nothing to clean up.
+//!
+//! **ACP cannot be that clean, and the difference is stated rather than hidden.**
+//! An ACP catalogue exists only as part of `session/new`, so asking means opening
+//! a session. The probe opens exactly one, in [`probe_cwd`] (a directory that is
+//! nobody's project), sends no `session/prompt`, and asks for a close when the
+//! agent advertises one. `session/close` frees resources rather than deleting a
+//! record, so the leftover is filtered out of Sway's own history by where it was
+//! opened; see [`probe_cwd_spellings`].
 //!
 //! Three facts are kept apart because the UI renders them differently:
 //!
@@ -33,11 +38,14 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use agent_client_protocol::schema::v1::SessionConfigOption;
+use agent_client_protocol::schema::v1::{CloseSessionRequest, SessionConfigOption};
+use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::agents::{AgentAdapter, ChatTransport};
+use crate::chat::acp;
+use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::ClaudeMapper;
 use crate::chat::model::{ChatAccount, ChatEvent, ChatModeInfo, ChatModelInfo};
 use crate::chat::transport::{build_command, StartSpec};
@@ -57,6 +65,19 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(45);
 /// own tail. Enough for a usage error or an auth message, bounded so a chatty
 /// child cannot grow a cache file without limit.
 const STDERR_TAIL: usize = 4096;
+
+/// The last [`STDERR_TAIL`] bytes of what a child said, cut on a character
+/// boundary.
+///
+/// The boundary search is not pedantry: a harness that writes a box-drawing
+/// banner puts multi-byte characters in the buffer, and slicing a `String` mid
+/// character is a panic, on the thread that was collecting the explanation for a
+/// failure.
+fn tail_of(text: &str) -> &str {
+    let want = text.len().saturating_sub(STDERR_TAIL);
+    let cut = (want..=text.len()).find(|i| text.is_char_boundary(*i)).unwrap_or(text.len());
+    &text[cut..]
+}
 
 // --- the stored shape ---
 
@@ -315,8 +336,8 @@ fn tail_stderr(stderr: impl Read + Send + 'static) -> StderrTail {
             if let Ok(mut t) = into.lock() {
                 t.push_str(&String::from_utf8_lossy(&buf[..n]));
                 if t.len() > STDERR_TAIL {
-                    let cut = t.len() - STDERR_TAIL;
-                    *t = t[cut..].to_string();
+                    let kept = tail_of(&t).to_string();
+                    *t = kept;
                 }
             }
         }
@@ -421,6 +442,245 @@ fn probe_claude(spec: &StartSpec, version: Option<String>, deadline: Duration) -
     }
 }
 
+// --- the ACP probe ---
+
+/// The one directory every ACP probe opens its session in.
+///
+/// **A constant path is the whole hygiene mechanism.** An ACP catalogue only
+/// exists on `session/new`, so probing an ACP agent creates a session on that
+/// agent's side, and `session/close` is not a delete: the spec says it frees
+/// resources, and both measured agents keep the record and list it afterwards.
+/// So Sway cannot prevent the phantom, only recognise it, and it recognises it
+/// by *where* it was opened rather than by a growing list of ids to remember.
+/// One path means a probe that crashed before it could record anything, and a
+/// probe from a Sway build that predates the id list that does not exist, are
+/// both still recognisable. See [`probe_cwd_spellings`].
+pub fn probe_cwd() -> PathBuf {
+    dirs::data_dir().unwrap_or_default().join("sway/probe")
+}
+
+/// The probe directory, created if it is not there, in the spelling an agent
+/// will be handed.
+///
+/// Canonicalized through the same helper `accounts.rs` uses, and for a related
+/// reason: a harness told about `/var/...` records `/private/var/...`, so
+/// handing over the resolved form is what makes the recorded path and the one
+/// Sway filters on the same string.
+fn probe_cwd_ready() -> Result<String, String> {
+    let dir = probe_cwd();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    crate::accounts::canonicalize_home(&dir)
+}
+
+/// Every spelling of the probe directory a listed row might carry.
+///
+/// Both forms rather than the canonical one alone: a row recorded by an older
+/// build, or by an agent that stored what it was given rather than what it
+/// resolved, carries the unresolved spelling. Comparing against both is cheap
+/// and is what lets [`crate::chat::acp_sessions::adopt`] stay pure, since it
+/// receives the answers rather than touching the filesystem for them.
+pub fn probe_cwd_spellings() -> Vec<String> {
+    let raw = probe_cwd().to_string_lossy().into_owned();
+    let mut spellings = vec![raw.clone()];
+    if let Ok(canonical) = crate::accounts::canonicalize_home(&probe_cwd()) {
+        if canonical != raw {
+            spellings.push(canonical);
+        }
+    }
+    spellings
+}
+
+/// What one ACP agent's `session/new` answer means as a catalogue.
+///
+/// Pure, and separated from the process work so the shape of the answer is
+/// testable from a fixture rather than only against a live agent.
+///
+/// **The options are stored whole.** `models` and `modes` are the two the chat
+/// has bespoke controls for, but the agent's full set is kept beside them
+/// verbatim, including categories this build has no control for: Phase 5 mirrors
+/// them into the chat, and keeping them here is what lets the settings page
+/// preview an agent's options before any chat exists. Filtering to the three
+/// known categories at the cache boundary would make the cache the place a new
+/// option gets lost.
+fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> Catalogue {
+    Catalogue {
+        version,
+        probed_at_ms: now_ms(),
+        models: acp::model_catalogue(&options)
+            .into_iter()
+            .map(|info| CatalogModel { info, user_configured: false })
+            .collect(),
+        modes: acp::mode_catalogue(&options),
+        options,
+        // ACP publishes no account on the handshake. Empty rather than guessed,
+        // which also means the surface's "whose answer is this" line correctly
+        // says nothing for an ACP harness.
+        account: None,
+    }
+}
+
+/// Does this agent advertise `session/close`?
+///
+/// Read off the handshake, on the same rule as `acp_transport::lists_sessions`:
+/// an agent that does not advertise it is never sent the method, because a
+/// `method not found` is noise Sway would then have to explain. **Absence is not
+/// an error and not worth reporting** - the catalogue is already in hand by the
+/// time this is asked, and the probe's real hygiene is the directory it opened
+/// in, not the close.
+fn closes_sessions(init: &agent_client_protocol::schema::v1::InitializeResponse) -> bool {
+    init.agent_capabilities.session_capabilities.close.is_some()
+}
+
+/// Which failure a JSON-RPC error from `session/new` is.
+///
+/// `auth_required` is the one code worth branching on, for the reason
+/// `acp_transport::describe_session_failure` states: it means the agent works
+/// and nobody is signed in, which has a different fix from a broken install.
+/// Measured value, not a guess at one: `-32000` **is** `AuthRequired` in ACP's
+/// own numbering, which `an_agent_reporting_minus_32000_is_a_sign_in_failure`
+/// pins on the transport side.
+fn acp_failure(error: &agent_client_protocol::Error) -> ProbeFailure {
+    let reason = if error.code == ErrorCode::AuthRequired {
+        FailureReason::SignedOut
+    } else {
+        FailureReason::NoAnswer
+    };
+    ProbeFailure::now(reason, error.to_string())
+}
+
+/// Drive an ACP agent far enough to read its config options, then close.
+///
+/// **This one is not free the way the claude probe is**, and the difference is
+/// structural rather than incidental: ACP publishes a catalogue only as part of
+/// `session/new`, so there is no way to ask without opening a session. What the
+/// probe can promise instead is that it opens exactly one, in a directory that
+/// is nobody's project, submits no `session/prompt`, and asks for the session to
+/// be closed when the agent says it can be. The phantom that survives that is
+/// filtered out of Sway's own history by [`probe_cwd_spellings`], not left for
+/// the user to notice.
+fn probe_acp(
+    spec: &StartSpec,
+    overrides: &acp::AcpOverrides,
+    version: Option<String>,
+    deadline: Duration,
+) -> Result<Catalogue, ProbeFailure> {
+    use futures::future::{select, Either};
+    use futures::AsyncReadExt as _;
+
+    let mut std_cmd = build_command(spec);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // Same reason as the transport's: agents are commonly launched behind a
+        // wrapper, and killing only the immediate child orphans the real agent.
+        std_cmd.process_group(0);
+    }
+    // The pipes go on **after** the conversion: `async_process::Command::from`
+    // does not carry a std command's stdio settings across, which would leave
+    // the child with inherited stdio and no protocol to speak over.
+    let mut cmd = async_process::Command::from(std_cmd);
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        ProbeFailure::now(FailureReason::SpawnFailed, format!("could not start {}: {e}", spec.program))
+    })?;
+    let (Some(stdin), Some(stdout), Some(mut stderr)) =
+        (child.stdin.take(), child.stdout.take(), child.stderr.take())
+    else {
+        abandon_group(&mut child);
+        return Err(ProbeFailure::now(FailureReason::SpawnFailed, "the child produced no pipes"));
+    };
+
+    let init_request = initialize_request(overrides);
+    let session_request = new_session_request(&spec.cwd, overrides);
+    let answer = futures::executor::block_on(async {
+        let work = Client.builder().name("sway").connect_with(
+            ByteStreams::new(stdin, stdout),
+            async move |conn: ConnectionTo<Agent>| {
+                let init = conn.send_request(init_request).block_task().await?;
+                let opened = conn.send_request(session_request).block_task().await?;
+                // Best effort, and gated on the advertisement so an agent that
+                // does not serve it is never sent a method it would answer with
+                // `method not found`. Its failure is not the probe's failure:
+                // the catalogue is already in hand, and a session that would not
+                // close is exactly what the cwd filter covers.
+                if closes_sessions(&init) {
+                    let _ = conn
+                        .send_request(CloseSessionRequest::new(opened.session_id.clone()))
+                        .block_task()
+                        .await;
+                }
+                Ok(opened.config_options.unwrap_or_default())
+            },
+        );
+        futures::pin_mut!(work);
+        let timer = async_io::Timer::after(deadline);
+        futures::pin_mut!(timer);
+        match select(work, timer).await {
+            Either::Left((result, _)) => Some(result),
+            Either::Right(_) => None,
+        }
+    });
+
+    // Unconditional and before anything is returned, the timeout path included:
+    // that is the one where leaving it running leaks an agent per failed sweep.
+    abandon_group(&mut child);
+
+    let failed = match answer {
+        Some(Ok(options)) => return Ok(acp_catalogue(version, options)),
+        // `None` is the deadline, `Some(Err(_))` is the agent's own refusal.
+        other => other,
+    };
+
+    // Read only now, and only on the way to a failure. The child is dead, so its
+    // stderr is at EOF and this returns at once; reading it before the kill
+    // would sample a stream the agent is still writing to, which is the race the
+    // claude probe's tail joins its reader thread to avoid.
+    let mut said = String::new();
+    futures::executor::block_on(async {
+        let read = stderr.read_to_string(&mut said);
+        let timer = async_io::Timer::after(Duration::from_secs(1));
+        futures::pin_mut!(read, timer);
+        let _ = select(read, timer).await;
+    });
+    let said = tail_of(said.trim());
+
+    match failed {
+        // The protocol error is the informative one here, so it leads. The tail
+        // still rides along, because a child that died before it spoke any
+        // JSON-RPC at all leaves a generic connection error, and the one sentence
+        // worth reading (`npx: command not found`) is only on stderr.
+        Some(Err(e)) => {
+            let mut failure = acp_failure(&e);
+            if !said.is_empty() {
+                failure.detail = format!("{}\n{said}", failure.detail);
+            }
+            Err(failure)
+        }
+        _ => Err(ProbeFailure::now(FailureReason::TimedOut, said)),
+    }
+}
+
+/// Kill an ACP probe's child **and the group it leads**, then reap it.
+///
+/// The group is not optional here. The child is spawned with `process_group(0)`
+/// because agents are commonly launched behind a wrapper (`npx …`, `bun …`), and
+/// signalling only the leader leaves the real agent re-parented to pid 1, where
+/// it does not reliably exit on stdin EOF. A chat session at least has the
+/// ownership registry watching for that; a probe is fire-and-forget, so it would
+/// leak one agent per sweep with nobody to notice. Same shape as `dap.rs::stop`,
+/// shelling out for the same reason: `libc` is not a direct dependency.
+fn abandon_group(child: &mut async_process::Child) {
+    let pid = child.id();
+    let _ = std::process::Command::new("kill")
+        .arg("-KILL")
+        .arg(format!("-{pid}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+}
+
 /// Ask one harness, with the version the caller already knows.
 ///
 /// The version is a parameter rather than probed here so that it is the *same*
@@ -435,12 +695,12 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
         ));
     };
 
-    let spec = StartSpec {
+    let mut spec = StartSpec {
         session_id: String::new(),
-        // Inherited on purpose. A cwd is what a harness turns into a project,
-        // and the probe has no project: it never starts a session, so there is
-        // nothing for a directory to be attached to. Phase 3's ACP probe does
-        // create a session and therefore does need a canonical scratch dir.
+        // Inherited for a claude probe, which never opens a session and so has
+        // no project for a directory to be attached to. The ACP arm below
+        // replaces it, because a `session/new` in whatever directory Sway was
+        // launched from would file a phantom session inside a real project.
         cwd: String::new(),
         program: crate::settings::harness_override().unwrap_or_else(|| chat.program.clone()),
         args: chat.base_args.clone(),
@@ -455,10 +715,16 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
             c.models.extend(extras);
             c
         }),
-        ChatTransport::Acp => Err(ProbeFailure::now(
-            FailureReason::Unsupported,
-            "an ACP catalogue only exists on `session/new`, which this build does not probe",
-        )),
+        ChatTransport::Acp => match probe_cwd_ready() {
+            Ok(cwd) => {
+                spec.cwd = cwd;
+                probe_acp(&spec, &chat.acp, version, deadline)
+            }
+            // Nothing to blame the agent for: Sway could not make the one
+            // directory it is willing to open a phantom session in, so it does
+            // not open one anywhere else.
+            Err(e) => Err(ProbeFailure::now(FailureReason::Unsupported, e)),
+        },
     };
 
     // Only a child that started and then said nothing is worth a second
@@ -1007,13 +1273,120 @@ mod tests {
         assert_eq!(catalogue.account.unwrap().subscription_type, "Claude Max");
     }
 
-    /// ACP is not probeable in this build, and says so as a fact about Sway
-    /// rather than blaming the binary.
+    // --- the ACP probe ---
+
+    use agent_client_protocol::schema::v1::SessionConfigOptionCategory as Category;
+
+    fn select_option(id: &str, category: Option<Category>, entries: &[(&str, &str)]) -> SessionConfigOption {
+        use agent_client_protocol::schema::v1::{
+            SessionConfigId, SessionConfigKind, SessionConfigSelect, SessionConfigSelectOption,
+            SessionConfigSelectOptions, SessionConfigValueId,
+        };
+
+        let options: Vec<SessionConfigSelectOption> = entries
+            .iter()
+            .map(|(value, name)| SessionConfigSelectOption::new(SessionConfigValueId::new(*value), *name))
+            .collect();
+        let current = SessionConfigValueId::new(entries[0].0);
+        let select = SessionConfigSelect::new(current, SessionConfigSelectOptions::Ungrouped(options));
+        let mut option =
+            SessionConfigOption::new(SessionConfigId::new(id), id, SessionConfigKind::Select(select));
+        option.category = category;
+        option
+    }
+
+    fn init_response(closes: bool) -> agent_client_protocol::schema::v1::InitializeResponse {
+        use agent_client_protocol::schema::v1::{InitializeResponse, SessionCloseCapabilities};
+        use agent_client_protocol::schema::ProtocolVersion;
+
+        let mut init = InitializeResponse::new(ProtocolVersion::V1);
+        if closes {
+            init.agent_capabilities.session_capabilities.close = Some(SessionCloseCapabilities::new());
+        }
+        init
+    }
+
+    /// Both ways round, because the cost of getting it wrong differs by
+    /// direction: skipping the close on an agent that serves it leaves a session
+    /// alive for nothing, and sending it to one that does not is a request Sway
+    /// would then have to explain away.
     #[test]
-    fn an_acp_harness_reports_unsupported_rather_than_a_failure_of_its_own() {
-        let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
-        let failure = probe_with(opencode, None, PROBE_DEADLINE).expect_err("this build cannot probe ACP");
-        assert_eq!(failure.reason, FailureReason::Unsupported);
+    fn a_session_is_closed_only_when_the_agent_says_it_can_be() {
+        assert!(closes_sessions(&init_response(true)));
+        assert!(!closes_sessions(&init_response(false)));
+    }
+
+    /// A missing account is a different sentence from a broken agent, and the
+    /// surface's "Sign in" is only honest when the reason really says so.
+    #[test]
+    fn an_auth_required_answer_is_a_signed_out_probe() {
+        use agent_client_protocol::Error;
+
+        let auth = acp_failure(&Error::auth_required());
+        assert_eq!(auth.reason, FailureReason::SignedOut);
+        assert!(!auth.detail.is_empty(), "and it quotes the agent rather than paraphrasing it");
+
+        let other = acp_failure(&Error::internal_error());
+        assert_eq!(other.reason, FailureReason::NoAnswer, "not everything that fails is a login");
+    }
+
+    /// The catalogue keeps the agent's **whole** option set, not the three
+    /// categories this build has controls for. Phase 5 mirrors the rest into the
+    /// chat, and a cache that filtered here would be the place a new option gets
+    /// lost - before anything downstream could ever see it.
+    #[test]
+    fn an_option_sway_has_no_control_for_is_kept_rather_than_dropped() {
+        let options = vec![
+            select_option("model", Some(Category::Model), &[("sonnet", "Sonnet")]),
+            select_option("reasoning-depth", None, &[("shallow", "Shallow")]),
+        ];
+
+        let catalogue = acp_catalogue(Some("1.18.3".into()), options);
+
+        assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
+        assert_eq!(catalogue.models[0].info.value, "sonnet");
+        let ids: Vec<&str> = catalogue.options.iter().map(|o| o.id.0.as_ref()).collect();
+        assert_eq!(ids, ["model", "reasoning-depth"], "and the uncategorized one survives beside it");
+    }
+
+    /// And it survives the round trip to disk, which is what Phase 4's settings
+    /// preview and Phase 5's mirror both read.
+    #[test]
+    fn the_full_option_set_round_trips_through_the_cache_file() {
+        let root = temp_root("acp-options");
+        let mut written = ModelCatalog::never_probed("opencode");
+        written.absorb(Ok(acp_catalogue(
+            Some("1.18.3".into()),
+            vec![select_option("web-search", None, &[("on", "On"), ("off", "Off")])],
+        )));
+        save_to(&root, &written).expect("the file should write");
+
+        let read = load_from(&root, "opencode");
+        assert_eq!(read, written);
+        assert_eq!(read.catalogue.unwrap().options.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A child that dies before it speaks any JSON-RPC leaves the connection
+    /// with a generic error, and the one sentence worth reading is on stderr.
+    /// Losing it there would repeat the Phase 1 defect the claude tail's thread
+    /// join was written for, on the other transport.
+    #[test]
+    fn an_agent_that_never_speaks_the_protocol_is_still_quoted() {
+        let spec = StartSpec {
+            session_id: String::new(),
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), "echo 'npx: command not found' >&2; exit 127".into()],
+            env: HashMap::new(),
+        };
+        let failure = probe_acp(&spec, &acp::AcpOverrides::default(), None, Duration::from_secs(5))
+            .expect_err("a child that says nothing cannot produce a catalogue");
+        assert!(
+            failure.detail.contains("npx: command not found"),
+            "the wrapper's own words survive: {}",
+            failure.detail
+        );
     }
 
     // --- the live probe ---
@@ -1046,6 +1419,64 @@ mod tests {
             "every published row names what it resolves to"
         );
         assert_eq!(session_files(), before, "the probe wrote no transcript");
+    }
+
+    /// The ACP half of the same claim, against `opencode acp`: one `session/new`
+    /// is enough to learn the whole catalogue, and no turn is ever submitted.
+    ///
+    /// The no-turn half is proved by construction rather than by inspection:
+    /// [`probe_acp`] sends `initialize`, `session/new` and at most
+    /// `session/close`, and there is no `session/prompt` in it at all, so a turn
+    /// cannot be submitted. What only a real agent can establish is that the
+    /// catalogue is actually there on that answer, which is the claim the whole
+    /// ACP arm rests on.
+    ///
+    /// Measured on `opencode acp` 1.18.3: 15 provider-qualified models and 2
+    /// modes, out of exactly two config options, both of them categorized
+    /// (`model`, `mode`). Asserted as "more than a couple" rather than as 15,
+    /// because the number is the user's authenticated providers rather than a
+    /// property of the agent. **No uncategorized option is sent by this agent**,
+    /// so the rule that keeps the whole option set is pinned by a fixture rather
+    /// than here; see
+    /// `an_option_sway_has_no_control_for_is_kept_rather_than_dropped`.
+    #[test]
+    #[ignore = "drives the real `opencode` binary"]
+    fn the_real_opencode_answers_a_catalogue_from_one_session() {
+        let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
+
+        let catalogue =
+            probe_with(opencode, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
+
+        assert!(catalogue.models.len() > 2, "a real answer names the user's providers: {:?}", catalogue.models);
+        assert!(
+            catalogue.models.iter().all(|m| !m.info.value.is_empty()),
+            "every row carries the id a switch would have to name"
+        );
+        assert!(!catalogue.options.is_empty(), "and the agent's own option set is kept whole");
+    }
+
+    /// The hygiene claim, end to end: the probe's session exists on the agent's
+    /// side (there is no verb that would delete it), and it is nonetheless not
+    /// in the history Sway would show.
+    ///
+    /// Run with `--test-threads=1`: it redirects the locator store, which is a
+    /// process-global for the reason `acp_sessions` documents.
+    #[test]
+    #[ignore = "drives the real `opencode` binary"]
+    fn a_probe_leaves_nothing_in_the_history_sway_would_adopt() {
+        let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
+        probe_with(opencode, None, PROBE_DEADLINE).expect("opencode should answer");
+
+        let probe_dir = probe_cwd_ready().expect("the probe directory exists after a probe");
+        let listed = crate::chat::acp_sessions::ListedSession {
+            acp_session_id: "ses_probe".to_string(),
+            cwd: probe_dir,
+            title: None,
+            updated_at: None,
+        };
+        let adopted =
+            crate::chat::acp_sessions::adopt("opencode", &[listed], &[], 0, &probe_cwd_spellings());
+        assert!(adopted.is_empty(), "a row in the probe directory is never adopted as the user's history");
     }
 
     /// Every jsonl under claude's discovery dir, so the live test can prove it
