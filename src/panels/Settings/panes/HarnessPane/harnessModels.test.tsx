@@ -398,7 +398,11 @@ describe("looking at Settings never probes a harness", () => {
 // Check models is the deliberate version of the same thing: one process per
 // harness that has never answered or whose binary changed, asked in parallel so
 // one slow agent does not hold the rest empty.
-describe("asking every harness at once", () => {
+//
+// Skipped while the button that starts it is parked (see the section title in
+// `HarnessSection.tsx`). `refreshDueCatalogs` is untouched and these still
+// describe it, so they come back with the control rather than being rewritten.
+describe.skip("asking every harness at once", () => {
   let resolveSlow: (c: ModelCatalog) => void;
 
   beforeEach(() => {
