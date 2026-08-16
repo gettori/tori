@@ -93,17 +93,22 @@ export default function LspSection() {
 
   return (
     <section class={styles.section}>
-      <div class={styles.sectionTitle}>Language servers</div>
+      <div class={styles.sectionTitle}>
+        <span>Language servers</span>
+        <span class={styles.sectionRule} />
+      </div>
       <Switch>
         <Match when={health.loading}>
-          <div class={styles.hint}>Checking which language servers are installed…</div>
+          <div class={styles.note}>Checking which language servers are installed…</div>
         </Match>
         <Match when={health.error}>
-          <div class={styles.hint}>Could not check language servers: {String(health.error)}</div>
+          <div class={styles.note}>Could not check language servers: {String(health.error)}</div>
         </Match>
         <Match when={health()}>
-          <For each={health()}>{(server) => <LspCard server={server} />}</For>
-          <div class={styles.hint}>
+          <div class={styles.cardStack}>
+            <For each={health()}>{(server) => <LspCard server={server} />}</For>
+          </div>
+          <div class={styles.note}>
             A language with no server still opens and edits normally, it just has no completion or
             diagnostics. Add one with a TOML file in <code>~/.config/sway/lsp/</code>; see
             LSP-SERVERS.md.

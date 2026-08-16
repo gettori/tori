@@ -77,17 +77,22 @@ export default function DapSection() {
 
   return (
     <section class={styles.section}>
-      <div class={styles.sectionTitle}>Debuggers</div>
+      <div class={styles.sectionTitle}>
+        <span>Debuggers</span>
+        <span class={styles.sectionRule} />
+      </div>
       <Switch>
         <Match when={health.loading}>
-          <div class={styles.hint}>Checking which debuggers are installed…</div>
+          <div class={styles.note}>Checking which debuggers are installed…</div>
         </Match>
         <Match when={health.error}>
-          <div class={styles.hint}>Could not check debuggers: {String(health.error)}</div>
+          <div class={styles.note}>Could not check debuggers: {String(health.error)}</div>
         </Match>
         <Match when={health()}>
-          <For each={health()}>{(adapter) => <DapCard adapter={adapter} />}</For>
-          <div class={styles.hint}>
+          <div class={styles.cardStack}>
+            <For each={health()}>{(adapter) => <DapCard adapter={adapter} />}</For>
+          </div>
+          <div class={styles.note}>
             A language with no adapter still opens, edits and runs normally, it just cannot be
             debugged from here. The bundled adapter is fetched at build time by{" "}
             <code>pnpm dap:install</code>.

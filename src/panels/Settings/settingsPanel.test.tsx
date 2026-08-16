@@ -1,5 +1,5 @@
-// The Settings panel's shell: the tab strip, the panes under it, and the dialog
-// semantics the panel shipped without.
+// The Settings panel's shell: the category rail, the panes beside it, and the
+// dialog semantics the panel shipped without.
 //
 // Two things are being protected here. The first is coverage: eleven catalogue
 // sections were split across six panes by hand, and a setting dropped on the way
@@ -7,7 +7,7 @@
 // focus has to actually stay inside, or the attribute is a lie a screen reader
 // believes.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -35,7 +35,7 @@ beforeEach(async () => {
  *  row: their controls are built at runtime (a card per agent found, a row per
  *  server installed), so they have a section on screen and no `<label>`. */
 const CARD_ENTRIES: Record<string, string> = {
-  agents: "Agents",
+  agents: "Harnesses",
   "language-servers": "Language servers",
   debuggers: "Debuggers",
   github: "GitHub",
@@ -43,18 +43,26 @@ const CARD_ENTRIES: Record<string, string> = {
 
 const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement[];
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
-/** The selected tab's label alone: a tab's `textContent` also carries the count
- *  badge once a query is running. */
+/** The selected rail item's label alone: an item's `textContent` also carries
+ *  its standing count where it has one. */
 const activeTab = () =>
   document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
-/** Every tab's label, in strip order. */
+/** Every rail item's label, in rail order. */
 const tabLabels = () => tabs().map((t) => t.querySelector("span")?.textContent);
 const strip = () => document.querySelector('[role="tablist"]') as HTMLElement;
 const panel = () => document.querySelector('[role="dialog"]') as HTMLElement;
 const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
 
-describe("the settings tab strip", () => {
-  it("renders one tab per catalogue tab, in strip order", () => {
+/** Every pane the panel is currently showing. **A list, not one element**: one
+ *  category is on screen when nothing is typed, and all six are while a search
+ *  is running, because results are grouped across them. */
+const shownPanes = () =>
+  [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
+const shownRows = () => shownPanes().flatMap((p) => [...p.querySelectorAll("label")]);
+const shownMarks = () => shownPanes().flatMap((p) => [...p.querySelectorAll("mark")]);
+
+describe("the settings rail", () => {
+  it("renders one item per catalogue tab, in rail order", () => {
     render(() => <Settings onClose={() => {}} />);
     expect(tabLabels()).toEqual(SETTING_TABS.map((t) => t.label));
   });
@@ -97,22 +105,34 @@ describe("the settings tab strip", () => {
     expect(panes()[1].hasAttribute("hidden")).toBe(false);
   });
 
+  it("groups the items under the rail's two headings", () => {
+    // The headings group and go nowhere, so they must not be items: a heading
+    // that answered to a click or an arrow key would be a stop with no pane.
+    render(() => <Settings onClose={() => {}} />);
+    const rail = strip();
+    for (const group of ["Workbench", "Application"]) {
+      const heading = [...rail.children].find((el) => el.textContent === group);
+      expect(heading, `${group} heading missing from the rail`).toBeTruthy();
+      expect(heading!.getAttribute("role")).toBeNull();
+    }
+  });
+
   it("switches on arrow keys, wrapping, with Home and End at the ends", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
 
     fireEvent.keyDown(strip(), { key: "ArrowRight" });
     expect(activeTab()).toBe("Chat");
 
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
 
     // Wraps rather than stopping, which is what `nextSegmentIndex` does.
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
     expect(activeTab()).toBe("Integrations");
 
     fireEvent.keyDown(strip(), { key: "Home" });
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
     fireEvent.keyDown(strip(), { key: "End" });
     expect(activeTab()).toBe("Integrations");
   });
@@ -127,62 +147,80 @@ describe("the settings tab strip", () => {
   });
 });
 
-describe("the per-tab match counts", () => {
+describe("searching across every category at once", () => {
   const type = (q: string) =>
     fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
-  /** Each tab's badge, in strip order, or null where a tab has none. Selected by
-   *  the badge's own class, not by position: a tab always ends in its label
-   *  span, so `span:last-child` reads the label back when there is no badge. */
-  const badges = () => tabs().map((t) => t.querySelector(`.${styles.badge}`)?.textContent ?? null);
+  const count = () => document.querySelector(`.${styles.resultCount}`)?.textContent;
 
-  it("shows no badges until something is typed", () => {
+  it("shows one category and no count until something is typed", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(badges().every((b) => b === null || b === "")).toBe(true);
+    expect(shownPanes()).toHaveLength(1);
+    expect(count()).toBeUndefined();
   });
 
-  it("counts the matches per tab for a fixture query", () => {
+  it("opens every category's matches at once, in rail order", () => {
+    // The whole point of the change: results are not somewhere else to go to.
+    // "path" matches the harness binary override and two editor rows, so a
+    // stay-put filter would have shown one of the two and counted the other.
     render(() => <Settings onClose={() => {}} />);
-    // "font" is the three family rows, the three size rows, and Zoom - whose
-    // hint says it scales "on top of the font sizes below" - all in Appearance,
-    // and nothing anywhere else.
-    type("font");
-    const counts = Object.fromEntries(SETTING_TABS.map((t, i) => [t.label, badges()[i]]));
-    expect(counts.Appearance).toBe("7");
-    expect(counts.Editor).toBe("0");
-    expect(counts.Chat).toBe("0");
+    type("path");
+    expect(shownPanes().length).toBe(SETTING_TABS.length);
+    expect(shownRows().length).toBeGreaterThan(0);
   });
 
-  it("agrees with the number of rows the pane then shows", () => {
-    // The badge's one promise. A count the user cannot check against what they
-    // see is worse than no count.
+  it("counts what it found, and the count is the rows it drew", () => {
+    // The count's one promise. A number the user cannot check against what they
+    // see is worse than no number. Card sections stand for a whole section and
+    // draw a row of their own, so they count exactly once here too.
     render(() => <Settings onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Chat/ }));
+    // The two money ceilings; the context one is a percentage and says so.
     type("Dollars");
-
-    const pane = document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
-    const shownRows = pane.querySelectorAll("label").length;
-    expect(badges()[1]).toBe(String(shownRows));
+    expect(count()).toBe("2 settings matching");
+    expect(shownRows()).toHaveLength(2);
   });
 
-  it("keeps every tab mounted and clickable when a query matches nothing in it", () => {
-    // Dimmed, not removed: dropping a tab would move the other five out from
-    // under the pointer, and a zero-match tab is still somewhere to go.
+  it("says “1 setting”, not “1 settings”", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("minim");
+    expect(count()).toBe("1 setting matching");
+  });
+
+  it("names the category a group of results came from", () => {
+    // A heading reading "Editing" in a list drawn from six panes does not place
+    // it; the rail is no longer holding your place while you read.
+    render(() => <Settings onClose={() => {}} />);
+    type("minim");
+    const headings = shownPanes().flatMap((p) =>
+      [...p.querySelectorAll("section > div:first-child")].map((el) => el.textContent),
+    );
+    expect(headings).toEqual(["Editor · Editing"]);
+  });
+
+  it("leaves the rail selecting nothing while results are on screen", () => {
+    // Selection is a claim about what the pane is showing, and the pane is
+    // showing results from everywhere.
     render(() => <Settings onClose={() => {}} />);
     type("font");
-    expect(tabs()).toHaveLength(SETTING_TABS.length);
-
-    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
-    expect(activeTab()).toContain("Editor");
+    expect(document.querySelector('[role="tab"][aria-selected="true"]')).toBeNull();
   });
 
-  it("does not unmount a tab as the query narrows", () => {
+  it("goes back to one category when the rail is used, clearing the query", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("font");
+    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
+    expect(box().value).toBe("");
+    expect(activeTab()).toBe("Editor");
+    expect(shownPanes()).toHaveLength(1);
+  });
+
+  it("does not unmount a rail item as the query narrows", () => {
     render(() => <Settings onClose={() => {}} />);
     const before = tabs();
     type("f");
     type("fo");
     type("font");
-    // Same element identities, so nothing remounted and nothing reflowed from a
-    // tab appearing or disappearing mid-keystroke.
+    // Same element identities, so nothing remounted and nothing reflowed from an
+    // item appearing or disappearing mid-keystroke.
     expect(tabs()).toEqual(before);
   });
 });
@@ -194,40 +232,30 @@ describe("marking what matched, in the pane", () => {
 
   it("marks the matched part of a label", () => {
     render(() => <Settings onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
     type("minim");
 
-    expect([...pane().querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Minim"]);
+    expect(shownMarks().map((m) => m.textContent)).toEqual(["Minim"]);
   });
 
   it("marks the matched part of a hint when the label did not match", () => {
     render(() => <Settings onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Editor/ }));
     type("Prettier");
 
     // "Prettier" appears only in Format on save's explanation, never in a label.
-    const marked = [...pane().querySelectorAll("mark")].map((m) => m.textContent);
-    expect(marked).toEqual(["Prettier"]);
+    expect(shownMarks().map((m) => m.textContent)).toEqual(["Prettier"]);
   });
 
-  it("indicates every unit the badge counted, in the pane", () => {
-    // The promise that ties the two halves together: a badge saying N and a pane
-    // where fewer than N things are visibly indicated is a count you cannot
-    // check. Card sections count as one and are marked whole.
+  it("indicates every unit the count counted, on screen", () => {
+    // The promise that ties the two halves together: a count saying N and a pane
+    // where fewer than N things are visibly indicated is a number you cannot
+    // check. Card sections count as one and draw one row.
     render(() => <Settings onClose={() => {}} />);
-    for (const [tabName, query] of [
-      [/^Appearance/, "font"],
-      [/^Chat/, "Dollars"],
-      [/^Editor/, "wrap"],
-      [/^Languages/, "debug adapters"],
-    ] as const) {
-      fireEvent.click(screen.getByRole("tab", { name: tabName }));
+    for (const query of ["font", "Dollars", "wrap", "debug adapters"]) {
       type(query);
-      const rows = pane().querySelectorAll("label").length;
-      const cards = pane().querySelectorAll(`.${styles.cardSectionHit}`).length;
-      const marked = pane().querySelectorAll("mark").length;
+      const rows = shownRows().length;
+      const marked = shownMarks().length;
       expect(rows === 0 || marked, `${query}: rows on screen with nothing marked`).toBeTruthy();
-      expect(rows + cards, `${query}: nothing indicated`).toBeGreaterThan(0);
+      expect(rows, `${query}: nothing indicated`).toBeGreaterThan(0);
     }
   });
 
@@ -244,12 +272,26 @@ describe("marking what matched, in the pane", () => {
     for (const w of wrappers) expect(w.querySelector("section")).toBeTruthy();
   });
 
-  it("marks a card section whole, having no row to mark inside it", () => {
+  it("offers a card section as one result rather than unfolding it", () => {
+    // These four build a card per thing found at runtime. A harness grid and a
+    // 31-entry catalogue expanding into a list of matching *settings* is the
+    // wall the redesign removed, so a match says where it is and offers to go.
     render(() => <Settings onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Languages/ }));
     type("debug adapters");
 
-    expect(pane().querySelectorAll(`.${styles.cardSectionHit}`)).toHaveLength(1);
+    const hits = shownPanes().flatMap((p) => [...p.querySelectorAll(`.${styles.cardSectionHit}`)]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].querySelector("section")).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Languages" })).toBeTruthy();
+  });
+
+  it("takes you to the category a card section result names", () => {
+    render(() => <Settings onClose={() => {}} />);
+    type("debug adapters");
+    fireEvent.click(screen.getByRole("button", { name: "Open Languages" }));
+
+    expect(activeTab()).toBe("Languages");
+    expect(pane().querySelectorAll(`.${styles.cardSection}`)).toHaveLength(2);
   });
 
   it("marks nothing at all when no query is running", () => {
@@ -267,21 +309,7 @@ describe("what a screen reader is told about the search", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("puts each tab's count in its accessible name", () => {
-    // A bare number floating beside a word says nothing when read aloud.
-    render(() => <Settings onClose={() => {}} />);
-    type("font");
-    expect(screen.getByRole("tab", { name: "Appearance, 7 matches" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Editor, 0 matches" })).toBeTruthy();
-  });
-
-  it("says “1 match”, not “1 matches”", () => {
-    render(() => <Settings onClose={() => {}} />);
-    type("minim");
-    expect(screen.getByRole("tab", { name: "Editor, 1 match" })).toBeTruthy();
-  });
-
-  it("leaves the tab names alone when no query is running", () => {
+  it("leaves the rail item names alone when no query is running", () => {
     render(() => <Settings onClose={() => {}} />);
     expect(screen.getByRole("tab", { name: "Editor" })).toBeTruthy();
   });
@@ -295,7 +323,7 @@ describe("what a screen reader is told about the search", () => {
 
     vi.advanceTimersByTime(600);
 
-    expect(live().textContent).toBe("7 settings in 1 tab");
+    expect(live().textContent).toBe("7 settings match");
   });
 
   it("announces only the last total after a burst of keystrokes", () => {
@@ -308,7 +336,7 @@ describe("what a screen reader is told about the search", () => {
 
     vi.advanceTimersByTime(600);
 
-    expect(live().textContent).toBe("1 setting in 1 tab");
+    expect(live().textContent).toBe("1 setting matches");
   });
 
   it("says so when nothing matched", () => {
@@ -343,11 +371,11 @@ describe("the six panes", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
-  it("lands on the Agents tab in welcome mode", () => {
+  it("lands on the Harnesses category in welcome mode", () => {
     // First run opens here: it is the tab that answers "will this work with my
     // setup?", and the note points at the cards under it.
     render(() => <Settings onClose={() => {}} welcome />);
-    expect(activeTab()).toBe("Agents");
+    expect(activeTab()).toBe("Harnesses");
     expect(screen.getByText(/Welcome to Sway/)).toBeTruthy();
   });
 
@@ -434,6 +462,49 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
 
     expect(zoom()).toBe(3);
     expect(numberFor("Zoom").value).toBe("300");
+  });
+
+  it("puts the field back when the entry resolves to the value already stored", async () => {
+    // The gap the clamping test above leaves open. That one types a value the
+    // store *changes* to, so the signal moves and the field re-renders with it.
+    // When the entry resolves to the value already held, nothing changes,
+    // nothing re-renders, and the field is left showing text the setting never
+    // took: a row reading 900 whose "+" is disabled at 300.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+    setZoom(3);
+    expect(numberFor("Zoom").value).toBe("300");
+
+    fireEvent.change(numberFor("Zoom"), { target: { value: "900" } });
+
+    expect(zoom()).toBe(3);
+    expect(numberFor("Zoom").value).toBe("300");
+  });
+
+  it("puts the field back when it is emptied", async () => {
+    // Blank is not a value a bounded stepper can hold, so it resolves to the
+    // one already stored - which is the same no-op path, and left the field
+    // permanently empty.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+
+    fireEvent.change(numberFor("Zoom"), { target: { value: "" } });
+
+    expect(zoom()).toBe(1);
+    expect(numberFor("Zoom").value).toBe("100");
+  });
+
+  it("snaps a typed value onto the step it offers", async () => {
+    // Tool output lines moves in fives. Without snapping, a typed 12 is stored
+    // as 12, and from there the buttons walk 17, 22 while the field's own Up
+    // arrow walks 15, 20 - two controls on one row disagreeing about the same
+    // setting.
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Chat" }));
+
+    fireEvent.change(numberFor("Tool output lines"), { target: { value: "12" } });
+
+    await waitFor(() => expect(numberFor("Tool output lines").value).toBe("10"));
   });
 
   it("switches blame and side-by-side through the shared preference", () => {
