@@ -63,6 +63,8 @@
     border-radius: var(--sway-radius-xl);
     box-shadow: var(--shadow-lg);
     font-family: var(--sway-font-ui);
+    padding: calc(10px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
     overflow: hidden;
   }
 
@@ -74,23 +76,23 @@
     justify-content: space-between;
     gap: var(--sway-space-6);
     flex: none;
-    padding: var(--sway-space-5) var(--sway-space-5) var(--sway-space-4) var(--sway-space-6);
   }
 
   .title {
     font-size: var(--sway-text-3xl);
     font-weight: 600;
     flex: none;
+    padding-left: var(--sway-space-2);
   }
 
-  /* Breathing room around the raised card, on the three sides that are not the
-     rail. Matches the shell's own gap so the card floats the same way. */
+  /* The inset around the raised card is the panel's own padding now, so this
+     only has to space the rail off the card. Matches the shell's own gap, so
+     the card floats here the way a pane floats out there. */
   .body {
     display: flex;
     flex: 1;
     min-height: 0;
     gap: calc(10px * var(--ui-scale));
-    padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
   }
 
   /* --- The rail --- */
@@ -105,7 +107,6 @@
     gap: var(--sway-space-4);
     flex: none;
     min-height: 0;
-    padding: var(--sway-space-3) var(--sway-space-4) var(--sway-space-5);
     background: transparent;
   }
 
