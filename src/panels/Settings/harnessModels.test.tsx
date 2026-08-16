@@ -1,11 +1,11 @@
 // What a harness offers to pick from, on the card as a count and on its own
 // page as a list.
 //
-// The count is a claim, so it comes from the resolved adapter and nowhere else.
-// `findAgent` answers with the first bundled adapter for an id it cannot
-// resolve, which would put Claude's models under somebody else's name; these
-// tests pin that it does not happen, and that a harness declaring none says why
-// rather than showing a zero.
+// **The adapter is no longer an answer to either.** These tests used to assert
+// counts and rows read out of `[[chat.models]]`; that table is gone, because a
+// count is a claim about what the installed binary can run and a TOML cannot
+// make it. Every harness now reads the same way until the probe cache is wired
+// in, which is also exactly how a never-probed harness has to read afterwards.
 //
 // One adapter list for the whole file, varied by which harness the health sweep
 // reports: `ensureAgentsLoaded` fetches once per module and caches, so a
@@ -39,17 +39,7 @@ const health = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const model = (over: Record<string, unknown> = {}) => ({
-  id: "claude-opus-5",
-  label: "Opus 5",
-  context_window: 1_000_000,
-  effort_levels: ["low", "high"],
-  supports_thinking: true,
-  supports_images: true,
-  ...over,
-});
-
-const adapter = (id: string, models: unknown[]) => ({
+const adapter = (id: string) => ({
   id,
   label: id,
   program: id,
@@ -69,7 +59,7 @@ const adapter = (id: string, models: unknown[]) => ({
     effort_args: [],
     mode_args: [],
     add_dir_args: [],
-    models,
+    annotations: [],
     modes: [],
     effort: [],
     acp: { serve_client_fs: false },
@@ -77,11 +67,7 @@ const adapter = (id: string, models: unknown[]) => ({
   accounts: null,
 });
 
-const ADAPTERS = [
-  adapter("claude", [model(), model({ id: "claude-haiku-4-5", label: "Haiku 4.5" })]),
-  adapter("solo", [model()]),
-  adapter("overprotocol", []),
-];
+const ADAPTERS = [adapter("claude"), adapter("solo"), adapter("overprotocol")];
 
 function mount(over: Record<string, unknown> = {}) {
   invoked.mockReset();
@@ -100,49 +86,49 @@ const open = async (r: ReturnType<typeof render>, name: RegExp) => {
   return r;
 };
 
+// **No count comes from an adapter any more.** These used to assert "2 models"
+// for Claude, read straight out of `[[chat.models]]`. A count is a claim about
+// what the installed binary can run, and a TOML cannot make it: the table said
+// four models regardless of the CLI on the machine, and its windows said 200k
+// for models the harness reports 1M for.
+//
+// Nothing renders here until the probe cache is wired in (Phase 4), and a
+// never-probed harness must render exactly this way once it is: no count, rather
+// than a zero that reads as a broken install.
 describe("how many models a harness offers", () => {
   beforeEach(() => invoked.mockReset());
 
-  it("counts them on the card", async () => {
+  it("claims no count for a harness nothing has asked", async () => {
     const { container } = mount();
-    await waitFor(() => expect(container.textContent).toContain("2 models"));
-  });
-
-  it("says model, not models, when there is one", async () => {
-    const { container } = mount({ id: "solo", label: "Solo", program: "solo" });
-    await waitFor(() => expect(container.textContent).toContain("1 model"));
-    expect(container.textContent).not.toContain("1 models");
-  });
-
-  // An ACP harness names its models on the session handshake, so the adapter
-  // declares none. "0 models" would read as a broken install.
-  it("shows no count at all for a harness that declares none", async () => {
-    const { container } = mount({ id: "overprotocol", label: "Over Protocol", program: "op" });
-    await waitFor(() => expect(container.textContent).toContain("Over Protocol"));
-    expect(container.textContent).not.toContain("0 models");
+    await waitFor(() => expect(container.textContent).toContain("Claude"));
     expect(container.textContent).not.toContain("model");
   });
 
-  // The failure this guards: `findAgent` answers with the first bundled adapter
-  // for an id it does not know, which would put two models on a harness that
-  // has never declared one.
-  it("never inherits another adapter's models", async () => {
-    const { container } = mount({ id: "mystery", label: "Mystery", program: "mystery" });
-    await waitFor(() => expect(container.textContent).toContain("Mystery"));
-    expect(container.textContent).not.toContain("2 models");
+  it("says the same for every harness, whatever its adapter used to declare", async () => {
+    for (const over of [
+      { id: "solo", label: "Solo", program: "solo" },
+      { id: "overprotocol", label: "Over Protocol", program: "op" },
+      { id: "mystery", label: "Mystery", program: "mystery" },
+    ]) {
+      const { container, unmount } = mount(over);
+      await waitFor(() => expect(container.textContent).toContain(over.label));
+      expect(container.textContent).not.toContain("model");
+      unmount();
+    }
   });
 });
 
 describe("the model list on a harness page", () => {
   beforeEach(() => invoked.mockReset());
 
-  it("names each model, its id and what it can do", async () => {
+  // Claude declared four models and the page listed them with windows and
+  // effort levels. It reads like every other harness now, because it is in the
+  // same position as every other harness: nothing has asked it yet.
+  it("shows no list, for the harness that used to have one", async () => {
     const { container } = await open(mount(), /Claude/);
-    expect(container.textContent).toContain("Opus 5");
-    expect(container.textContent).toContain("claude-opus-5");
-    expect(container.textContent).toContain("1M context");
-    expect(container.textContent).toContain("low, high");
-    expect(container.textContent).toContain("thinking");
+    expect(container.textContent).toContain("names its own models when a session starts");
+    expect(container.textContent).not.toContain("Opus 5");
+    expect(container.textContent).not.toContain("1M context");
   });
 
   it("explains the absence rather than showing an empty list", async () => {
@@ -167,7 +153,7 @@ describe("looking at Settings never probes a harness", () => {
 
   it("issues no probe on open", async () => {
     const { container } = mount();
-    await waitFor(() => expect(container.textContent).toContain("2 models"));
+    await waitFor(() => expect(container.textContent).toContain("Claude"));
     expect(probes()).toEqual([]);
   });
 

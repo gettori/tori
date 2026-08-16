@@ -30,8 +30,8 @@ function machineModels(): ChatModelInfo[] {
   );
 }
 
-// The adapter's hand-maintained table, the fallback for a session that never
-// handshook.
+// The adapter, which declares no models at all now. What a session that never
+// handshook falls back to is the probe cache, below.
 const adapter: ChatConfig = {
   transport: "claude_stream_json",
   program: "claude",
@@ -42,27 +42,32 @@ const adapter: ChatConfig = {
   effort_args: [],
   mode_args: [],
   add_dir_args: [],
-  models: [
-    {
-      id: "claude-sonnet-5",
-      label: "Sonnet 5",
-      context_window: 200000,
-      effort_levels: ["low", "high"],
-      supports_thinking: true,
-      supports_images: true,
-    },
-  ],
+  annotations: [],
   modes: [],
   effort: [],
   acp: { serve_client_fs: false },
 };
+
+// What `catalog_probe` remembered the last time it asked. Same shape as a live
+// handshake row, which is what lets the picker read one where it reads the other.
+const cached = [
+  {
+    value: "sonnet",
+    resolvedModel: "claude-sonnet-5",
+    displayName: "Sonnet 5",
+    description: "",
+    supportsEffort: false,
+    supportedEffortLevels: [],
+    supportsAutoMode: false,
+  },
+];
 
 function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   const onSelectModel = vi.fn();
   const onSelectEffort = vi.fn();
   const result = render(() => (
     <ModelPicker
-      models={pickableModels(machineModels(), adapter)}
+      models={pickableModels(machineModels(), [], adapter)}
       value="sonnet"
       effort={null}
       modelPending={false}
@@ -125,17 +130,17 @@ describe("ModelPicker", () => {
     expect(ticked).toHaveLength(1);
   });
 
-  it("renders a usable picker from the adapter table when there was no handshake", () => {
+  it("renders a usable picker from the probe cache when there was no handshake", () => {
     const { pills, open, rowNames, pick, onSelectModel } = setup({
-      models: pickableModels([], adapter),
-      value: "claude-sonnet-5",
+      models: pickableModels([], cached, adapter),
+      value: "sonnet",
     });
     expect(pills()[0].disabled).toBe(false);
     const menu = open(0);
     expect(rowNames(menu)).toEqual(["Sonnet 5"]);
     // Usable means it can actually be picked, not just that it renders.
     pick(menu, "Sonnet 5");
-    expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ value: "claude-sonnet-5" }));
+    expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ value: "sonnet" }));
   });
 
   it("hides the effort control for a model declaring no levels, and shows all five for one that does", () => {
@@ -179,8 +184,20 @@ describe("ModelPicker", () => {
     );
   });
 
-  it("says when the list came from the adapter rather than the session", () => {
-    expect(setup({ models: pickableModels([], adapter), value: "claude-sonnet-5" }).getByText(/adapter's list/)).toBeTruthy();
-    expect(setup().queryByText(/adapter's list/)).toBeNull();
+  it("says when the list is remembered rather than reported by this session", () => {
+    expect(
+      setup({ models: pickableModels([], cached, adapter), value: "sonnet" }).getByText(/Last known list/),
+    ).toBeTruthy();
+    expect(setup().queryByText(/Last known list/)).toBeNull();
+  });
+
+  // Nothing cached and no handshake is a real state now that the adapter table
+  // is gone, and it used to be unreachable: the table filled this gap with
+  // models the installed CLI was never asked about. The pill still renders, so
+  // the toolbar keeps its shape, but there is nothing behind it to pick.
+  it("offers nothing to pick when neither the session nor the cache has an answer", () => {
+    const { pills, rowNames, open } = setup({ models: pickableModels([], [], adapter), value: null });
+    expect(pills()[0].disabled).toBe(true);
+    expect(rowNames(open(0))).toEqual([]);
   });
 });

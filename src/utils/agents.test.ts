@@ -5,7 +5,6 @@ import {
   applyTemplate,
   chatCapable,
   effortArgsFor,
-  effortLevelsFor,
   modeArgsFor,
   modelArgsFor,
   FALLBACK_AGENTS,
@@ -246,23 +245,18 @@ describe("the bundled chat tables", () => {
   });
 });
 
-describe("effortLevelsFor", () => {
+// `effortLevelsFor` is gone with the model table it read. A model's levels come
+// from the harness's own catalogue (`supportedEffortLevels`) and reach the
+// control through `pickableModels`; `[[chat.effort]]` now says only how to spell
+// a level as args, for whichever levels the catalogue turns out to name.
+describe("the adapter declares no models", () => {
   const claude = (bundled as unknown as Agent[]).find((a) => a.id === "claude")!;
   const chat = claude.chat as ChatConfig;
 
-  it("resolves a model's levels to real entries with args", () => {
-    const levels = effortLevelsFor(chat, "claude-opus-5");
-    expect(levels.map((l) => l.id)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(levels.every((l) => l.args.length > 0)).toBe(true);
-  });
-
-  // Empty is what hides the control, so it must not fall back to the full set.
-  it("is empty for a model declaring no levels", () => {
-    expect(effortLevelsFor(chat, "claude-haiku-4-5-20251001")).toEqual([]);
-  });
-
-  it("is empty for an unknown model rather than throwing", () => {
-    expect(effortLevelsFor(chat, "not-a-model")).toEqual([]);
+  it("annotates one model and lists none", () => {
+    expect(chat.annotations.map((a) => a.id)).toEqual(["claude-opus-5"]);
+    expect(chat.annotations.every((a) => a.fast_mode)).toBe(true);
+    expect(chat).not.toHaveProperty("models");
   });
 });
 
@@ -296,7 +290,16 @@ describe("mode/effort/model arg resolution", () => {
   it("is null for an id the adapter never declared", () => {
     expect(modeArgsFor(chat, "not_a_mode")).toBeNull();
     expect(effortArgsFor(chat, "not_a_level")).toBeNull();
-    expect(modelArgsFor(chat, "not_a_model")).toBeNull();
+  });
+
+  // Models are the exception, and deliberately: there is no declared list to be
+  // unknown to. Gating here meant a model the CLI offered but the TOML lacked
+  // produced no `--model` flag and silently ran something else.
+  it("fills the model template for any id, because the catalogue is the check", () => {
+    expect(modelArgsFor(chat, "a-model-no-toml-mentions")).toEqual([
+      "--model",
+      "a-model-no-toml-mentions",
+    ]);
   });
 
   // The frontend and backend must resolve identically, so the bundled
