@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the token layer. Eight checks:
+// Guard the token layer. Nine checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
@@ -12,6 +12,7 @@
 //   6. Every hue the generated seti mapping emits has a scale.* role.
 //   7. Every role semantic tokens paint with has a --syntax-* role.
 //   8. The Omnibox palette asks Dialog for its own shorter height bound.
+//   9. The palette's own heading still matches Dialog's title recipe.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
@@ -607,6 +608,54 @@ if (omniboxProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 9: the palette's heading still reads as a dialog title ----
+//
+// The palette's real title is `titleHidden` (the visible line names the *mode*,
+// not the surface), so the heading a reader actually sees is the Omnibox's own
+// `.title`, and it exists to look exactly like a dialog title. That makes it a
+// copy of `Dialog`'s `.title` recipe living in another file.
+//
+// It cannot be shared: a cross-module `composes` is what this cluster
+// deliberately does not do (see the header of Dialogs.module.css), and both
+// rules landing on one element would put the winner in the bundler's hands. So
+// the copy stays and the agreement is guarded instead - which is the same shape
+// as check 8 above, for the same file pair and the same reason.
+//
+// #130 is what made this necessary: moving Dialog's title from 16px to 18px
+// silently left the palette's heading two steps smaller, and nothing failed.
+// The margin is deliberately not compared: the heading sits inside the dialog's
+// *body*, which is a plain scroller, so it needs a margin the head does not.
+const valueOf = (rules, selector, property) => {
+  for (const rule of rules.filter((r) => r.selectors.includes(selector))) {
+    const m = rule.body.match(new RegExp(`(?:^|;)\\s*${property}\\s*:([^;]+)`));
+    if (m) return m[1].trim();
+  }
+  return undefined;
+};
+
+// What a dialog title *is*, as opposed to where it sits.
+const TITLE_RECIPE = ["font-size", "line-height", "font-weight", "color"];
+const titleProblems = [];
+const dialogRules = cssRules(dialogSource);
+for (const property of TITLE_RECIPE) {
+  const ours = valueOf(dialogRules, ".title", property);
+  const theirs = valueOf(omniboxRules, ".title", property);
+  if (ours === undefined) {
+    titleProblems.push(`${DIALOG_CSS} .title no longer declares ${property}, so there is nothing to match`);
+  } else if (theirs === undefined) {
+    titleProblems.push(`${OMNIBOX_CSS} .title does not declare ${property}, so the palette heading drifts from a dialog title`);
+  } else if (ours !== theirs) {
+    titleProblems.push(`${property}: ${DIALOG_CSS} says ${ours}, ${OMNIBOX_CSS} says ${theirs}`);
+  }
+}
+
+if (titleProblems.length > 0) {
+  console.error(`${titleProblems.length} disagreement(s) between the dialog title and the palette's heading:\n`);
+  for (const problem of titleProblems) console.error(`  ${problem}`);
+  console.error("\nThe palette hides its real title and draws its own, so the two recipes must stay identical.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -615,5 +664,6 @@ console.log(
     `every var() in src/ resolving, all ${termNames.length} terminal reads mapped, ` +
     `every token the workbench names resolving, all ${emitted.size} seti hues backed by scale roles, ` +
     `all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles, ` +
-    `and the command palette bounding its own height.`,
+    `the command palette bounding its own height, ` +
+    `and its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties.`,
 );

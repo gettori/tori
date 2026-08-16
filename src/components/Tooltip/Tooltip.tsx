@@ -31,6 +31,17 @@ const CLOSE_DELAY = 300;
  *  mechanism. */
 const SKIP_DELAY = 300;
 
+/** How far the tooltip sits off its trigger. Enough to clear the trigger's own
+ *  focus ring, which a flush tooltip sits on top of.
+ *
+ *  The one dimension in this component that is not a token and cannot be: the
+ *  popper takes a number, not a length, so `--ui-scale` never reaches it. It
+ *  could be computed by reading the scale back out of the settings store, but
+ *  that would import a panel-level store into a `components/` primitive to move
+ *  a tooltip by two pixels at the extremes of the zoom range. Recorded as a
+ *  deliberate keep instead (#130). */
+const GUTTER = 4;
+
 /** Generic in the trigger element so a caller's own handlers keep their element
  *  type: `onClick` on a `Button` is typed against `HTMLButtonElement`, and a
  *  props interface fixed to `HTMLElement` would reject it. `ButtonHTMLAttributes`
@@ -233,6 +244,7 @@ export default function Tooltip<
     >
       <Primitive.Root
         placement={local.placement ?? "top"}
+        gutter={GUTTER}
         openDelay={openDelay()}
         closeDelay={closeDelay()}
         skipDelayDuration={SKIP_DELAY}

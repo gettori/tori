@@ -13,6 +13,58 @@
   background: var(--scrim-default);
 }
 
+/* ---- Motion. The first animation in the component layer, so the shape here is
+   the one the remaining wrapper tickets should copy.
+
+   **Four keyframes, not two reversed.** Kobalte keeps a closing dialog mounted
+   through `solid-presence`, which decides whether an exit is even running by
+   comparing `animation-name` across the open/closed flip. One name used in both
+   directions compares equal, presence concludes nothing is animating, and the
+   panel is torn down instantly - the exit silently never plays, while the CSS
+   reads as though it should. So enter and exit are separately named, and must
+   stay that way.
+
+   The backdrop only fades. A scrim that also zooms draws attention to itself,
+   and it has no shape of its own to zoom.
+
+   Exit is faster than enter on purpose: an opening dialog is asking to be read,
+   a closing one is already answered and only owes the eye continuity. ---- */
+@keyframes dialogBackdropIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialogBackdropOut {
+  to {
+    opacity: 0;
+  }
+}
+/* Both panel keyframes restate `.panel`'s own `translate(-50%, -50%)`. They have
+   to: `transform` is one property, so a keyframe that sets only `scale()` drops
+   the centering for the length of the animation and the panel flies in from the
+   window's middle-right. The cost is that the centering is now written in three
+   places and nothing checks they agree - if `.panel`'s transform ever changes,
+   change these two with it. */
+@keyframes dialogPanelIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+}
+@keyframes dialogPanelOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+}
+
+.backdrop[data-expanded] {
+  animation: dialogBackdropIn var(--sway-duration-med) var(--sway-ease);
+}
+.backdrop[data-closed] {
+  animation: dialogBackdropOut var(--sway-duration-fast) var(--sway-ease);
+}
+
 .panel {
   position: fixed;
   z-index: 1250;
@@ -35,7 +87,13 @@
      A custom property resolves on the element instead, so a caller sets the hook
      and bundle order stops mattering. */
   max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
-  padding: calc(20px * var(--ui-scale));
+  padding: var(--sway-space-7);
+  /* One gap between head, body and actions, rather than a margin on each of
+     them. Three margins drift apart the moment one part is edited alone, and
+     the old set had already drifted off the ramp (12 / 12 / 14). Declared here
+     so a part that is not rendered - every `Show` below - costs no space at
+     all, which a margin on a sibling cannot express. */
+  gap: var(--sway-space-6);
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-xl);
@@ -46,6 +104,25 @@
      the whole surface indicates nothing, so the focus is silent (the same call
      ShortcutSheet's own `.sheet:focus` made). */
   outline: none;
+}
+.panel[data-expanded] {
+  animation: dialogPanelIn var(--sway-duration-med) var(--sway-ease);
+}
+.panel[data-closed] {
+  animation: dialogPanelOut var(--sway-duration-fast) var(--sway-ease);
+}
+
+/* Reduced motion removes the animation, not the dialog. `solid-presence` reads
+   the computed `animation-name` and treats `none` as "nothing to wait for", so
+   it unmounts on the spot rather than hanging on an `animationend` that will
+   never fire - which is what makes this safe to declare so bluntly. */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop[data-expanded],
+  .backdrop[data-closed],
+  .panel[data-expanded],
+  .panel[data-closed] {
+    animation: none;
+  }
 }
 
 /* ---- Sizes. `confirm` and `sheet` are the legacy 420px and 480px; both hold
@@ -76,12 +153,33 @@
    scrolls, so the title stays readable and the buttons stay reachable. ---- */
 .head {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* Tighter than the panel's own gap: a title and its description are one
+     block, not two. */
+  gap: var(--sway-space-3);
+}
+/* A hidden title still has to be in the document (it is the accessible name),
+   but it must not cost a row of the panel's gap. `.titleHidden` is
+   `position: absolute`, so it is already out of flow; the wrapper around it is
+   not, and an empty flex item still earns a gap on both sides. `contents`
+   removes the wrapper's own box and leaves its children where they were, so a
+   `titleHidden` dialog - the command palette is the only one - opens with its
+   body against the panel padding, exactly as it did when the spacing lived in
+   margins on an absolutely positioned element.
+
+   Applied only when there is no description. A hidden title *with* a
+   description leaves a head that still has something visible to hold, so it
+   stays an ordinary flex item and the description keeps the panel's rhythm
+   rather than being promoted to a sibling of the body. */
+.headHidden {
+  display: contents;
 }
 .title {
-  font-size: var(--sway-text-2xl);
+  font-size: var(--sway-text-3xl);
+  line-height: var(--sway-line-tight);
   font-weight: 600;
   color: var(--fg-default);
-  margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
 }
 /* Titled for a screen reader, absent from the layout. For a dialog whose
@@ -103,7 +201,6 @@
 .description {
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
-  margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
 }
 .body {
@@ -120,6 +217,5 @@
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
-  gap: calc(8px * var(--ui-scale));
-  margin-top: calc(14px * var(--ui-scale));
+  gap: var(--sway-space-4);
 }

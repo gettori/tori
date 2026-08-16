@@ -13,14 +13,22 @@
 .content {
   z-index: 1300;
   max-width: calc(280px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: var(--sway-space-3) var(--sway-space-5);
   background: var(--canvas-card);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
-  font-size: var(--sway-text-md);
+  font-size: var(--sway-text-lg);
   line-height: var(--sway-line-normal);
+  /* Kobalte writes this as an inline style on the content, pointing at whichever
+     corner the popper actually resolved to, so the zoom below grows out of the
+     trigger instead of out of thin air. The fallback is not decoration: the name
+     is Kobalte's, so it exists nowhere in src/, and `check-tokens.mjs` check 3
+     fails any var() that resolves to nothing unless it handles its own absence.
+     Tooltip's own alias, not the popover's - they are different names and only
+     one of them is ever set here. */
+  transform-origin: var(--kb-tooltip-content-transform-origin, center);
   /* A tooltip label is a phrase, but the ones naming a path or a branch are not,
      and a 280px cap with no wrapping would clip them. Wrap, and keep an author's
      own newline. */
@@ -30,6 +38,32 @@
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ---- Motion, one direction only.
+
+   Kobalte's tooltip does not run its content through `solid-presence` the way
+   the dialog does, so the content is unmounted the instant the tooltip closes
+   and there is no closing frame for an exit keyframe to land on. A
+   `[data-closed]` rule here would be a rule that matches nothing, which reads
+   in review as motion that exists and is not. The reference agrees by omission:
+   solid-ui's tooltip ships an enter animation and no exit.
+
+   Fast rather than medium: the open delay already made the user wait 500ms, and
+   the animation is confirming a pointer that has already arrived. ---- */
+@keyframes tooltipContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+.content[data-expanded] {
+  animation: tooltipContentIn var(--sway-duration-fast) var(--sway-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .content[data-expanded] {
+    animation: none;
+  }
 }
 
 /* The opt-in hover surface for a `disabled` control (see Tooltip.tsx). Laid out
