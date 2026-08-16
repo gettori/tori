@@ -23,8 +23,9 @@ use agent_client_protocol::schema::v1::{
 };
 
 use super::model::{
-    ChatCapabilities, ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Effort, FileEditKind,
-    PermissionSuggestion, PlanItem, PlanItemStatus, ToolStatus, TurnOutcome, Usage,
+    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEvent, ChatModeInfo,
+    ChatModelInfo, ContentBlock, Effort, FileEditKind, PermissionSuggestion, PlanItem,
+    PlanItemStatus, ToolStatus, TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -250,6 +251,78 @@ pub fn effort_config_id(options: &[SessionConfigOption]) -> Option<String> {
     Some(option.id.0.to_string())
 }
 
+/// The agent's category word for an option, or empty for one it left
+/// uncategorized.
+///
+/// A future variant of the spec's `#[non_exhaustive]` enum also reads as empty,
+/// which is the honest answer rather than a wrong one: an option Sway cannot
+/// categorize is an option no bespoke control claims, and the mirror renders it
+/// generically. Naming it something specific would hand it to a control written
+/// for a different lever.
+fn category_word(category: Option<&SessionConfigOptionCategory>) -> String {
+    match category {
+        Some(SessionConfigOptionCategory::Model) => "model",
+        Some(SessionConfigOptionCategory::Mode) => "mode",
+        Some(SessionConfigOptionCategory::ThoughtLevel) => "thought_level",
+        Some(SessionConfigOptionCategory::ModelConfig) => "model_config",
+        Some(SessionConfigOptionCategory::Other(word)) => word,
+        _ => "",
+    }
+    .to_string()
+}
+
+/// Every option the agent published, in the neutral shape the mirror renders.
+///
+/// **The whole set, not the three categories Sway has controls for.** This
+/// module's other readers each pick out one category and drop the rest, which
+/// was fine while the rest was nothing; it is not fine now that
+/// `session/set_config_option` is the only way to reach whatever else an agent
+/// exposes. What Sway does not recognise is carried across with the agent's own
+/// label, id and description, and the surface decides what to do with it.
+///
+/// An option whose kind this build cannot represent is **skipped and logged**,
+/// never rendered as an inert control: `SessionConfigKind` is
+/// `#[non_exhaustive]`, so a protocol revision may add a shape with no Sway
+/// control at all, and a mirror that crashed or drew a dead widget for it would
+/// be a worse answer than one row fewer.
+pub fn config_options(options: &[SessionConfigOption]) -> Vec<ChatConfigOption> {
+    options
+        .iter()
+        .filter_map(|option| {
+            let kind = match &option.kind {
+                SessionConfigKind::Select(select) => ChatConfigKind::Select {
+                    current: select.current_value.0.to_string(),
+                    choices: select_entries(select)
+                        .into_iter()
+                        .map(|entry| ChatConfigChoice {
+                            value: entry.value.0.to_string(),
+                            label: entry.name.clone(),
+                            description: entry.description.clone().unwrap_or_default(),
+                        })
+                        .collect(),
+                },
+                SessionConfigKind::Boolean(toggle) => {
+                    ChatConfigKind::Boolean { value: toggle.current_value }
+                }
+                other => {
+                    eprintln!(
+                        "sway: ignoring config option `{}`, this build has no control for {other:?}",
+                        option.id.0
+                    );
+                    return None;
+                }
+            };
+            Some(ChatConfigOption {
+                id: option.id.0.to_string(),
+                name: option.name.clone(),
+                description: option.description.clone().unwrap_or_default(),
+                category: category_word(option.category.as_ref()),
+                kind,
+            })
+        })
+        .collect()
+}
+
 /// What the agent said it can do, from its `initialize` answer.
 ///
 /// Read off the wire on every connection rather than declared in the adapter
@@ -397,11 +470,21 @@ pub fn map_update(
             extra: Default::default(),
         }],
 
-        // Modes, config options, session metadata and command catalogues all
-        // change session-level state rather than describing turn content. They
-        // reach the UI through the handshake and the session events, so they
-        // produce nothing here rather than being forced into a turn-shaped
-        // event they do not belong to.
+        // The agent moved its own configuration, unprompted. Carried across
+        // whole, because the update is the whole option set and one option can
+        // re-cut another's choices: picking a model changes which thinking
+        // levels exist, so a mirror patched per option would show levels the
+        // agent had just withdrawn.
+        SessionUpdate::ConfigOptionUpdate(update) => vec![ChatEvent::ConfigOptions {
+            session_id: session_id.to_string(),
+            options: config_options(&update.config_options),
+        }],
+
+        // Modes, session metadata and command catalogues all change
+        // session-level state rather than describing turn content. They reach
+        // the UI through the handshake and the session events, so they produce
+        // nothing here rather than being forced into a turn-shaped event they do
+        // not belong to.
         _ => Vec::new(),
     }
 }
@@ -785,6 +868,78 @@ mod tests {
                 ],
             ),
         ]
+    }
+
+    /// One boolean toggle, the shape an agent publishes for a lever Sway has no
+    /// category for.
+    fn toggle(id: &str, name: &str, description: &str, on: bool) -> SessionConfigOption {
+        use agent_client_protocol::schema::v1::SessionConfigId;
+        let mut option = SessionConfigOption::new(
+            SessionConfigId::new(id),
+            name.to_string(),
+            SessionConfigKind::Boolean(
+                agent_client_protocol::schema::v1::SessionConfigBoolean::new(on),
+            ),
+        );
+        option.description = Some(description.to_string());
+        option
+    }
+
+    /// **The mirror carries the option Sway has no control for**, which is the
+    /// whole reason it exists: the three category readers above would each drop
+    /// this row, and dropping it is how a lever the agent published becomes one
+    /// nobody can reach.
+    #[test]
+    fn an_option_with_no_category_survives_the_mirror() {
+        let mut options = opencode_options();
+        options.push(toggle("web_search", "Web search", "Let the agent search", true));
+        let mirrored = config_options(&options);
+
+        assert_eq!(mirrored.len(), 3, "{mirrored:?}");
+        let novel = mirrored.iter().find(|o| o.id == "web_search").expect("the toggle");
+        assert_eq!(novel.name, "Web search");
+        assert_eq!(novel.description, "Let the agent search");
+        // Uncategorized on the wire is uncategorized here, not guessed into a
+        // category with a control already written for it.
+        assert_eq!(novel.category, "");
+        assert_eq!(novel.kind, ChatConfigKind::Boolean { value: true });
+    }
+
+    /// The categorized ones are carried too, with the agent's own word, so a
+    /// surface can tell which rows already have a control of their own.
+    #[test]
+    fn a_categorized_option_keeps_the_agents_word_for_it() {
+        let mirrored = config_options(&codex_options());
+        let words: Vec<&str> = mirrored.iter().map(|o| o.category.as_str()).collect();
+        assert_eq!(words, vec!["model", "mode", "thought_level"]);
+
+        let effort = mirrored.iter().find(|o| o.id == "thought_level").expect("the selector");
+        let ChatConfigKind::Select { current, choices } = &effort.kind else {
+            panic!("a select is a select: {effort:?}");
+        };
+        assert_eq!(current, "medium");
+        // **All six, including `ultra`.** The mirror reports what the agent
+        // published; the narrowing to what `Effort` can send belongs to the
+        // bespoke effort control, and doing it twice would make the generic
+        // path lie about the agent.
+        assert_eq!(choices.len(), 6);
+        assert_eq!(choices[0].value, "low");
+        assert_eq!(choices[0].label, "Low");
+    }
+
+    /// An agent moving its own configuration re-publishes the whole set, and
+    /// that is what reaches the UI.
+    #[test]
+    fn a_config_update_carries_the_whole_option_set() {
+        use agent_client_protocol::schema::v1::ConfigOptionUpdate;
+        let update = SessionUpdate::ConfigOptionUpdate(ConfigOptionUpdate::new(opencode_options()));
+        let events = map_update("s1", "t1", &update, None);
+
+        let [ChatEvent::ConfigOptions { session_id, options }] = &events[..] else {
+            panic!("expected one config event: {events:?}");
+        };
+        assert_eq!(session_id, "s1");
+        assert_eq!(options.len(), 2);
     }
 
     /// **ACP does have a notion of a reasoning level**, contrary to what this

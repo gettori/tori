@@ -36,7 +36,8 @@ use serde_json::{json, Value};
 
 use super::claude::ClaudeMapper;
 use super::model::{
-    ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope, PermissionSuggestion,
+    ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope,
+    PermissionSuggestion,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -621,6 +622,17 @@ impl AgentTransport for ClaudeTransport {
     fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String> {
         self.pending_model = Some((model.to_string(), effort));
         Ok(())
+    }
+
+    /// Claude publishes no configuration options of its own: its model, effort
+    /// and permission mode are flags, and each already has a control. So there
+    /// is nothing for a mirror to show here and nothing this could forward.
+    fn set_config_option(
+        &mut self,
+        _config_id: &str,
+        _value: &ChatConfigValue,
+    ) -> Result<(), String> {
+        Err("this harness publishes no session options to switch".to_string())
     }
 
     fn close(&mut self) -> Result<(), String> {
