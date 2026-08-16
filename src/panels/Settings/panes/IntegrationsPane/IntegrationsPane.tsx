@@ -1,5 +1,5 @@
-import GithubSection from "../GithubSection";
-import { CardSection, type PaneProps } from "../paneKit";
+import GithubSection from "./GithubSection";
+import { CardSection, type PaneProps } from "../../components/paneKit";
 
 /**
  * The forge account and its kill switch.

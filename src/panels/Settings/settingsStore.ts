@@ -9,7 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
 import type { ToastEvent } from "../../utils/events";
 import { getTheme, reloadUserThemes, setTheme } from "../../theme";
-import { editorFontSizePx, terminalFontSizePx, uiScale } from "./scale";
+import { editorFontSizePx, terminalFontSizePx, uiScale } from "./utils/scale";
 import {
   editorOrigins,
   overlayFile,
@@ -18,7 +18,7 @@ import {
   withOverride,
   type EditorOverlay,
   type Layer,
-} from "./workspaceSettings";
+} from "./utils/workspaceSettings";
 
 export type Appearance = { theme: string };
 export type Typography = {

@@ -12,12 +12,12 @@ import {
   setTypography,
   withFallback,
   type PaneProps,
-} from "../paneKit";
-import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../settingsStore";
-import { listSelectableThemes, DEFAULT_THEME_ID } from "../../../theme";
-import { primaryFamily } from "../../../utils/fontLoad";
-import Select, { type SelectGroup, type SelectOption } from "../../../components/Select/Select";
-import styles from "../Settings.module.css";
+} from "../../components/paneKit";
+import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../../settingsStore";
+import { listSelectableThemes, DEFAULT_THEME_ID } from "../../../../theme";
+import { primaryFamily } from "../../../../utils/fontLoad";
+import Select, { type SelectGroup, type SelectOption } from "../../../../components/Select/Select";
+import styles from "../../Settings.module.css";
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
  *  user reads. */

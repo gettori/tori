@@ -13,25 +13,25 @@ import {
 import { Dynamic, Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
-import { matchingEntries } from "./settingsSearch";
+import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
-import AgentsPane from "./panes/AgentsPane";
-import AppearancePane from "./panes/AppearancePane";
-import ChatPane from "./panes/ChatPane";
-import EditorPane from "./panes/EditorPane";
-import IntegrationsPane from "./panes/IntegrationsPane";
-import LanguagesPane from "./panes/LanguagesPane";
+import AgentsPane from "./panes/AgentsPane/AgentsPane";
+import AppearancePane from "./panes/AppearancePane/AppearancePane";
+import ChatPane from "./panes/ChatPane/ChatPane";
+import EditorPane from "./panes/EditorPane/EditorPane";
+import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
+import LanguagesPane from "./panes/LanguagesPane/LanguagesPane";
 import { overlayRoot } from "./settingsStore";
-import { rowDomId, workspaceName, type PaneProps } from "./paneKit";
+import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
 import styles from "./Settings.module.css";
 
 /** Re-exported because the Editor rows moved to `paneKit` when the panel became
  *  six panes, and `editorSection.test.tsx` reads the list from here. */
-export { EDITOR_TOGGLES } from "./paneKit";
+export { EDITOR_TOGGLES } from "./components/paneKit";
 
 /**
  * The rail's glyphs, resolved from the catalogue's icon *names*.

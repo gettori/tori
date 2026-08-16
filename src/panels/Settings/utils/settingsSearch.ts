@@ -12,14 +12,14 @@
 // Lives here rather than in `utils/settingsCatalog.ts` because it imports
 // `fuzzyScore`, and the catalogue is reachable from the terminal's chunk (see
 // its module comment).
-import { fuzzyScore } from "../../utils/fuzzy";
+import { fuzzyScore } from "../../../utils/fuzzy";
 import {
   SETTINGS,
   SETTING_TABS,
   TAB_OF_SECTION,
   type SettingEntry,
   type SettingTab,
-} from "../../utils/settingsCatalog";
+} from "../../../utils/settingsCatalog";
 
 /**
  * Labels are matched as a subsequence, hints as a substring.

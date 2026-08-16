@@ -30,11 +30,11 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-import { setAppearance } from "./paneKit";
+import { setAppearance } from "./components/paneKit";
 import { withAcpCatalog } from "../../test/settingsInvoke";
 import { pointerClick } from "../../test/menus";
-import ChatPane from "./panes/ChatPane";
-import AppearancePane from "./panes/AppearancePane";
+import ChatPane from "./panes/ChatPane/ChatPane";
+import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings, settings } from "./settingsStore";
 
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));

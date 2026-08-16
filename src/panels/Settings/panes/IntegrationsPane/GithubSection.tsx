@@ -1,12 +1,12 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import Button from "../../components/Button/Button";
-import { copyText } from "../../utils/clipboard";
-import { settings, saveSettings } from "./settingsStore";
-import type { AuthState } from "../../utils/forgeTypes";
-import { noteForgeAuth } from "../../utils/forgeStatus";
-import styles from "./Settings.module.css";
-import Switch from "../../components/Switch/Switch";
+import Button from "../../../../components/Button/Button";
+import { copyText } from "../../../../utils/clipboard";
+import { settings, saveSettings } from "../../settingsStore";
+import type { AuthState } from "../../../../utils/forgeTypes";
+import { noteForgeAuth } from "../../../../utils/forgeStatus";
+import styles from "../../Settings.module.css";
+import Switch from "../../../../components/Switch/Switch";
 
 // The GitHub account section: sign in by device flow, see who you are signed in
 // as, sign out, and the integration's kill switch.

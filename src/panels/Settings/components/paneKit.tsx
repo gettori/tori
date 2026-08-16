@@ -6,7 +6,7 @@
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
 import { For, Show, type JSX } from "solid-js";
-import { hintRanges, labelRanges, segments, type Range } from "./searchHighlight";
+import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
 import {
   SETTINGS,
   SETTING_TABS,
@@ -15,8 +15,8 @@ import {
   type SettingSection,
   type SettingTab,
   type EditorToggleKey,
-} from "../../utils/settingsCatalog";
-import Button from "../../components/Button/Button";
+} from "../../../utils/settingsCatalog";
+import Button from "../../../components/Button/Button";
 import {
   settings,
   saveSettings,
@@ -31,10 +31,10 @@ import {
   type Checkpoints,
   type Harness,
   type Typography,
-} from "./settingsStore";
-import styles from "./Settings.module.css";
-import Tooltip from "../../components/Tooltip/Tooltip";
-import Switch from "../../components/Switch/Switch";
+} from "../settingsStore";
+import styles from "../Settings.module.css";
+import Tooltip from "../../../components/Tooltip/Tooltip";
+import Switch from "../../../components/Switch/Switch";
 
 // Font inputs show only the primary family; the app's fallback stack is kept
 // out of the field and re-attached on save, so a user types "JetBrains Mono"

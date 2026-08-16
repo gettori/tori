@@ -17,8 +17,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
-import { __resetModelCatalogsForTests } from "../../utils/modelCatalog";
-import type { CatalogModel, ModelCatalog, ProbeFailureReason } from "../../utils/modelCatalog";
+import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
+import type { CatalogModel, ModelCatalog, ProbeFailureReason } from "../../../../utils/modelCatalog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));

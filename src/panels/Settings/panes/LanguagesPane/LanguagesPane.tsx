@@ -1,6 +1,6 @@
-import LspSection from "../LspSection";
-import DapSection from "../DapSection";
-import { CardSection, type PaneProps } from "../paneKit";
+import LspSection from "./LspSection";
+import DapSection from "./DapSection";
+import { CardSection, type PaneProps } from "../../components/paneKit";
 
 /**
  * Language servers and debug adapters.

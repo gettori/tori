@@ -9,12 +9,12 @@ import {
   idsIn,
   workspaceName,
   type PaneProps,
-} from "../paneKit";
-import { overlayRoot } from "../settingsStore";
-import { blameOn, writeBlamePref } from "../../../utils/blamePref";
-import { sideBySideOn, writeSideBySide } from "../../../utils/sideBySide";
-import styles from "../Settings.module.css";
-import Switch from "../../../components/Switch/Switch";
+} from "../../components/paneKit";
+import { overlayRoot } from "../../settingsStore";
+import { blameOn, writeBlamePref } from "../../../../utils/blamePref";
+import { sideBySideOn, writeSideBySide } from "../../../../utils/sideBySide";
+import styles from "../../Settings.module.css";
+import Switch from "../../../../components/Switch/Switch";
 
 /**
  * The two Editor sections, merged into one pane.

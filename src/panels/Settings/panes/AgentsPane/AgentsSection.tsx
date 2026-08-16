@@ -1,9 +1,9 @@
 import { For, Show, Switch, Match, createMemo, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
-import Button from "../../components/Button/Button";
-import Icon from "../../components/Icon/Icon";
-import { ensureAgentsLoaded } from "../../utils/agents";
+import Button from "../../../../components/Button/Button";
+import Icon from "../../../../components/Icon/Icon";
+import { ensureAgentsLoaded } from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -11,18 +11,18 @@ import {
   ensureModelCatalogsLoaded,
   isProbing,
   refreshDueCatalogs,
-} from "../../utils/modelCatalog";
+} from "../../../../utils/modelCatalog";
 import {
   ensureAgentHealthLoaded,
   refreshAgentHealth,
   type AgentHealth,
   type BinaryStatus,
-} from "../../utils/agentHealth";
+} from "../../../../utils/agentHealth";
 import HarnessDetail from "./HarnessDetail";
-import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
-import { TOAST, emitWith, type ToastEvent } from "../../utils/events";
-import styles from "./Settings.module.css";
-import Checkbox from "../../components/Checkbox/Checkbox";
+import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
+import { TOAST, emitWith, type ToastEvent } from "../../../../utils/events";
+import styles from "../../Settings.module.css";
+import Checkbox from "../../../../components/Checkbox/Checkbox";
 
 // One row per registered adapter, grouped by whether the binary is on this
 // machine, and each one opening a page of its own. The backend (`agent_health`)
@@ -35,7 +35,7 @@ import Checkbox from "../../components/Checkbox/Checkbox";
 
 // Moved to utils/agentHealth so the chat picker reads the same answer these
 // cards render. Re-exported because the section's tests import it from here.
-export type { AgentHealth } from "../../utils/agentHealth";
+export type { AgentHealth } from "../../../../utils/agentHealth";
 
 // The dot answers one question - is this agent installed and usable? - and
 // nothing else. `versionUnknown` is therefore green, not gray: an adapter

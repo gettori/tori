@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import configSource from "../../../src-tauri/src/config.rs?raw";
-import settingsSource from "../../../src-tauri/src/settings.rs?raw";
+import configSource from "../../../../src-tauri/src/config.rs?raw";
+import settingsSource from "../../../../src-tauri/src/settings.rs?raw";
 import { editorOrigins, overlayFile, parseOverlay, resolveEditorDefaults, withOverride } from "./workspaceSettings";
-import type { ChatDefaults, EditorDefaults } from "./settingsStore";
+import type { ChatDefaults, EditorDefaults } from "../settingsStore";
 
 /** The default layer, spelled out so a test says which value it is asserting
  *  about rather than inheriting whatever the shipped defaults are today. */
