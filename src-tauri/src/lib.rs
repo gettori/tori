@@ -17,6 +17,7 @@ mod format;
 mod fs;
 mod git;
 mod catalog;
+mod catalog_probe;
 mod health;
 mod hooks;
 mod hot_exit;
@@ -183,6 +184,9 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_kill,
             chat::commands::chat_spawn,
+            catalog_probe::model_catalogs,
+            catalog_probe::refresh_model_catalog,
+            catalog_probe::refresh_model_catalogs,
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,

@@ -119,7 +119,11 @@ pub fn install_root() -> PathBuf {
 
 /// Reduce an id to a bare path segment. The id comes from a JSON Sway does not
 /// author, and it is about to be concatenated into a path.
-fn sanitize_segment(value: &str) -> String {
+///
+/// Shared with `crate::catalog_probe`, whose per-harness cache files are named
+/// from adapter ids that come out of user TOML: two directories, one rule, so
+/// neither can pick up an escape the other closed.
+pub(crate) fn sanitize_segment(value: &str) -> String {
     value
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
