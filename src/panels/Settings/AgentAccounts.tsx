@@ -256,7 +256,12 @@ export default function AgentAccounts(props: { agentId: string; agentLabel: stri
     <Show when={view()?.declared && view()}>
       {(v) => (
         <>
-          <div class={styles.sectionTitle}>Accounts</div>
+          {/* Its own heading rather than the detail page's, so a harness whose
+              adapter declares no accounts table gets no empty section. */}
+          <div class={styles.groupHead}>
+            <span class={styles.groupTitle}>Accounts</span>
+            <span class={styles.sectionRule} />
+          </div>
           <For each={v().profiles}>
             {(profile) => (
               <ProfileRow

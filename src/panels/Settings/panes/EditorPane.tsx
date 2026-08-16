@@ -60,12 +60,13 @@ export default function EditorPane(props: PaneProps) {
         <Show
           when={overlayRoot()}
           fallback={
-            <div class={styles.hint}>Select a branch to override any of these for one workspace.</div>
+            <div class={styles.note}>Select a branch to override any of these for one workspace.</div>
           }
         >
-          <div class={styles.hint}>
-            “Set here” writes to {workspaceName()}/.sway/settings.json, which stays on this machine: Sway
-            adds it to the repo's own ignore list, so it never reaches a commit or a teammate.
+          <div class={styles.note}>
+            “Set here” writes to <code>{workspaceName()}/.sway/settings.json</code>, which stays on this
+            machine: Sway adds it to the repo's own ignore list, so it never reaches a commit or a
+            teammate.
           </div>
         </Show>
       </Group>

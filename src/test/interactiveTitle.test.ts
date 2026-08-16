@@ -32,7 +32,7 @@
 // take one without going around them. What survives is listed in `KEPT`, and it
 // is three kinds of thing:
 //
-//   * **64 on a raw `span`, `div` or `code`** - the full text behind a
+//   * **A pinned count on a raw `span` or `div`** - the full text behind a
 //     truncated label, on an element no keyboard can reach. A tooltip per row of
 //     a dense list is the waste this ticket declined to add, and a `title` on
 //     something unfocusable takes nothing away from a keyboard user because
@@ -188,9 +188,13 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
   ["panels/Settings/AgentAccounts.tsx", { count: 2, reason: HEADING }],
+  ["panels/Settings/AgentsSection.tsx", { count: 1, reason: HEADING }],
   [
-    "panels/Settings/AgentsSection.tsx",
-    { count: 4, reason: `three ${TRUNCATION}, and one ${HEADING}` },
+    "panels/Settings/HarnessDetail.tsx",
+    {
+      count: 4,
+      reason: `three ${TRUNCATION}, and the explanation on a struck-through capability chip, which matches the one on the chips beside it`,
+    },
   ],
   ["panels/Settings/paneKit.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Settings/panes/AgentsPane.tsx", { count: 1, reason: GROUP_HEADING }],
@@ -228,10 +232,15 @@ const KEPT = new Map<string, Kept>([
  *  behind one.** #103 moved HistoryPanel's row from a raw `<div title=… onClick=…>`
  *  to `<ContextMenu title=… onClick=…>`, which spreads what it does not consume
  *  straight onto its trigger - so the attribute is still native at runtime and
- *  this file stopped counting it. The number below went down by one for that
- *  reason and not because anything was fixed. A wrapper is therefore the quiet
- *  way out of this guard, which is worth knowing before the next one is written. */
-const RAW_ELEMENT_TITLES = 62;
+ *  this file stopped counting it. A wrapper is therefore the quiet way out of
+ *  this guard, which is worth knowing before the next one is written.
+ *
+ *  **Net one up on the redesign**, and not in the direction this guard wants:
+ *  the harness detail page explains each capability chip with hover text on a
+ *  `span` nothing can focus. It is the established chip pattern rather than a
+ *  new idea, so it is pinned here rather than blocked, and the `code` entry
+ *  went with the card layout that carried it. */
+const RAW_ELEMENT_TITLES = 63;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -304,7 +313,7 @@ describe("the title= guard", () => {
     expect(unexplained.map(([path]) => path)).toEqual([]);
   });
 
-  it("keeps exactly the 64 the ticket set out to keep", () => {
+  it("keeps exactly the set the ticket set out to keep", () => {
     const byTag = new Map<string, number>();
     for (const [, source] of Object.entries(SOURCES)) {
       const regions = tagRegions(source);
@@ -324,10 +333,13 @@ describe("the title= guard", () => {
     // touch, now that everything else is gone. Written as the breakdown rather
     // than the total, so a `span` that turned into a `button` fails here even
     // if some other file lost one and the sum still came out right.
+    // The lone `code` is gone and `span` is up two: the harness cards' capability
+    // list became chips on a detail page, so the same explanations moved onto a
+    // different element and two more joined them. The breakdown is what makes
+    // that visible rather than a silent wash against some other file's loss.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      code: 1,
       div: 15,
-      span: 46,
+      span: 48,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

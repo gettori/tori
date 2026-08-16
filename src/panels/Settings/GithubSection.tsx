@@ -140,6 +140,12 @@ export default function GithubSection() {
 
   // Narrowed once each rather than cast at every use: the state is a tagged
   // union, and repeating the cast is what lets one of them drift to the wrong tag.
+  /** Whether the integration has an account to act as. **Suspect counts**: the
+   *  token is still stored and the setting still means something, so switching
+   *  it off is still a choice the user can make while they sort the sign-in
+   *  out. */
+  const connected = () => auth().kind === "signedIn" || auth().kind === "suspect";
+
   const signedInLogin = () => {
     const a = auth();
     return a.kind === "signedIn" ? a.login : "";
@@ -154,23 +160,37 @@ export default function GithubSection() {
 
   return (
     <section class={styles.section}>
-      <div class={styles.sectionTitle}>GitHub</div>
+      <div class={styles.sectionTitle}>
+        <span>GitHub</span>
+        <span class={styles.sectionRule} />
+      </div>
 
       <Show when={!configured()}>
-        <div class={styles.row}>
-          <div class={styles.control}>
-            Sign-in is unavailable in this build: no OAuth app is configured.
-          </div>
+        <div class={styles.note}>
+          Sign-in is unavailable in this build: no OAuth app is configured.
         </div>
       </Show>
 
-      {/* Signed out, and no flow running. */}
+      {/* Signed out, and no flow running. A card rather than a row, because
+          there is nothing here to set yet: the one thing to do is connect an
+          account, and what that buys is worth a sentence beside the button. */}
       <Show when={configured() && auth().kind === "signedOut" && !prompt()}>
-        <div class={styles.row}>
-          <label class={styles.label}>Account</label>
-          <div class={styles.control}>
-            <Button onClick={() => void signIn()}>Sign in to GitHub</Button>
+        <div class={styles.connect}>
+          {/* Two letters, not a logo: lucide dropped its brand icons, and
+              vendoring a mark to fill a 34px tile is a licence question for a
+              decoration. */}
+          <div class={styles.monogram} aria-hidden="true">
+            GH
           </div>
+          <div class={styles.connectMain}>
+            <div class={styles.connectTitle}>Not signed in</div>
+            <div class={styles.cardStatus}>
+              Pull requests, checks and review threads appear next to the branch they belong to.
+            </div>
+          </div>
+          <Button variant="primary" onClick={() => void signIn()}>
+            Sign in to GitHub
+          </Button>
         </div>
       </Show>
 
@@ -187,20 +207,18 @@ export default function GithubSection() {
                 </Button>
               </div>
             </div>
-            <div class={styles.row}>
-              <div class={styles.control}>
-                Enter it at{" "}
-                <a
-                  href={p().verificationUri}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.open(p().verificationUri, "_blank");
-                  }}
-                >
-                  {p().verificationUri}
-                </a>
-                . Waiting for you to finish.
-              </div>
+            <div class={styles.note}>
+              Enter it at{" "}
+              <a
+                href={p().verificationUri}
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.open(p().verificationUri, "_blank");
+                }}
+              >
+                {p().verificationUri}
+              </a>
+              . Waiting for you to finish.
             </div>
           </>
         )}
@@ -236,21 +254,33 @@ export default function GithubSection() {
       </Show>
 
       <Show when={error()}>
-        <div class={styles.row}>
-          <div class={styles.control} data-testid="github-error">
-            {error()}
-          </div>
+        <div class={styles.note} data-testid="github-error">
+          {error()}
         </div>
       </Show>
 
-      <div class={styles.row}>
-        <label class={styles.label}>Integration</label>
-        <div class={styles.control}>
-          <Switch
-            checked={settings.github.enabled}
-            onChange={(checked) => void setEnabled(checked)}
-            label="Show pull requests and checks"
-          />
+      {/* The one actual setting here, and it depends on the card above. Without
+          an account it stays on screen and inert rather than disappearing:
+          hidden, "where did that setting go?" has no answer, and the row is
+          also the only place that says what connecting an account is *for*. */}
+      <div classList={{ [styles.inert]: !connected() }}>
+        <div class={styles.row}>
+          {/* Chrome rather than a form label, the same way `ToggleRow`'s is: the
+              grid makes it a sibling of the control, and the shared `Switch`
+              generates its own input id, so there is nothing to point `for` at.
+              The control names itself instead. */}
+          <label class={styles.label}>Show pull requests and checks</label>
+          <div class={styles.control}>
+            <Switch
+              aria-label="Show pull requests and checks"
+              checked={settings.github.enabled}
+              disabled={!connected()}
+              onChange={(v) => void setEnabled(v)}
+            />
+          </div>
+          <Show when={!connected()}>
+            <div class={styles.hint}>Available once an account is connected.</div>
+          </Show>
         </div>
       </div>
     </section>

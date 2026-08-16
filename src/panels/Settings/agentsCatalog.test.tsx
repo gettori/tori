@@ -137,7 +137,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
     // One card, for the one adapter. A catalog row is a list item, not a card,
     // so it cannot pick up the affordances a measured harness has earned.
     const cards = container.querySelectorAll("[class*='card']");
-    const titles = [...container.querySelectorAll("[class*='cardTitle']")].map((n) => n.textContent);
+    const titles = [...container.querySelectorAll("[class*='hcardName']")].map((n) => n.textContent);
     expect(titles).toEqual(["Claude"]);
     expect(cards.length).toBeGreaterThan(0);
 
@@ -289,7 +289,7 @@ describe("installing an agent from the catalog", () => {
     expect(container.textContent).toContain("this download was never verified");
     // Still a list item rather than a card, so it cannot pick up the affordances
     // a measured harness earned.
-    const titles = [...container.querySelectorAll("[class*='cardTitle']")].map((n) => n.textContent);
+    const titles = [...container.querySelectorAll("[class*='hcardName']")].map((n) => n.textContent);
     expect(titles).toEqual(["Claude"]);
     // And the install button is gone: there is nothing left to install.
     expect(screen.queryByText("Install")).toBeNull();
@@ -347,10 +347,11 @@ describe("installing an agent from the catalog", () => {
 
     // Everything on screen came from the committed file: the only commands are
     // reads of local state, and none of them fetches anything.
+    // `agent_accounts` is absent because accounts moved behind the drill-in:
+    // the list asks nothing per harness until one is opened.
     expect([...new Set(cmds())].sort()).toEqual([
       "acp_catalog",
       "acp_catalog_source",
-      "agent_accounts",
       "agent_health",
       "installed_agents",
     ]);
@@ -400,8 +401,15 @@ describe("the action on a non-ready agent card", () => {
     });
   });
 
+  /** Opens the harness's own page, where every action now lives. */
+  const openCard = async (r: ReturnType<typeof render>) => {
+    fireEvent.click(await r.findByRole("button", { name: /Claude/ }));
+    await waitFor(() => expect(r.container.textContent).toContain("Chat capabilities"));
+    return r;
+  };
+
   it("offers a re-probe on a missing binary, and stops telling the user to restart", async () => {
-    const { container, getByText } = render(() => <AgentsSection />);
+    const { container, getByText } = await openCard(render(() => <AgentsSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     // The old copy said "reopen Sway to pick it up", which stopped being true
@@ -411,7 +419,7 @@ describe("the action on a non-ready agent card", () => {
   });
 
   it("re-probes through the refresh command rather than re-reading the cache", async () => {
-    const { container, getByText } = render(() => <AgentsSection />);
+    const { container, getByText } = await openCard(render(() => <AgentsSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     invoked.mockClear();
@@ -422,15 +430,20 @@ describe("the action on a non-ready agent card", () => {
     );
   });
 
-  it("leaves a healthy agent without an action, so the button means something", async () => {
+  // The card carries no action at all now, healthy or not: it is a summary, and
+  // a grid of buttons is the thing that made the old one unreadable.
+  it("keeps every action off the card and on the harness's own page", async () => {
     invoked.mockImplementation(async (cmd: string) => {
       if (cmd === "agent_health") return [health()];
       if (cmd === "acp_catalog") return [];
       if (cmd === "acp_catalog_source") return null;
       return undefined;
     });
-    const { container, queryByText } = render(() => <AgentsSection />);
-    await waitFor(() => expect(container.textContent).toContain("Installed, version"));
-    expect(queryByText("Check again")).toBeNull();
+    const r = render(() => <AgentsSection />);
+    await waitFor(() => expect(r.container.textContent).toContain("Claude"));
+    expect(r.queryByText("Check again")).toBeNull();
+
+    await openCard(r);
+    expect(r.getByText("Check again")).toBeTruthy();
   });
 });

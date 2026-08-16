@@ -1,7 +1,7 @@
 import {
   Group,
   Row,
-  clamp,
+  Stepper,
   optionalNumber,
   rowLabelId,
   setBudgets,
@@ -94,17 +94,13 @@ export default function ChatPane(props: PaneProps) {
           label="Tool output lines"
           hint="Lines shown before a tool's output folds. 0 shows all of it."
         >
-          <input
-            type="number"
-            min="0"
-            max="500"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="Tool output lines"
+            min={0}
+            max={500}
+            step={5}
             value={settings.chatDefaults.toolOutputLines}
-            onChange={(e) =>
-              setChatDefaults({
-                toolOutputLines: clamp(e.currentTarget.value, 0, 500, settings.chatDefaults.toolOutputLines),
-              })
-            }
+            onChange={(v) => setChatDefaults({ toolOutputLines: v })}
           />
         </Row>
 
@@ -144,20 +140,18 @@ export default function ChatPane(props: PaneProps) {
           label="Warn above"
           hint="Live chats at once before Sway says so. Each one is an agent process with its own token spend, and a chat left open in a background tab goes on costing whether or not it is being read. A warning, not a refusal: 0 turns it off."
         >
-          <input
-            type="number"
-            min="0"
-            max="50"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="Warn above"
+            min={0}
+            max={50}
             value={settings.chatDefaults.maxConcurrentChats}
-            onChange={(e) =>
-              setChatDefaults({
-                maxConcurrentChats: clamp(e.currentTarget.value, 0, 50, settings.chatDefaults.maxConcurrentChats),
-              })
-            }
+            onChange={(v) => setChatDefaults({ maxConcurrentChats: v })}
           />
         </Row>
 
+        {/* The three ceilings keep a plain field rather than a stepper: each one
+            is opt-in, and blank is a value a stepper cannot hold or return to.
+            The placeholder is what says so. */}
         <Row
           {...props}
           id="session-budget"
@@ -169,7 +163,8 @@ export default function ChatPane(props: PaneProps) {
             min="0"
             step="0.5"
             placeholder="no limit"
-            class={`${styles.input} ${styles.num}`}
+            aria-label="Stop this chat after"
+            class={`${styles.input} ${styles.numField}`}
             value={settings.budgets.sessionUsd ?? ""}
             onChange={(e) => setBudgets({ sessionUsd: optionalNumber(e.currentTarget.value, 0) })}
           />
@@ -186,7 +181,8 @@ export default function ChatPane(props: PaneProps) {
             min="0"
             step="0.5"
             placeholder="no limit"
-            class={`${styles.input} ${styles.num}`}
+            aria-label="Stop this project after"
+            class={`${styles.input} ${styles.numField}`}
             value={settings.budgets.projectUsd ?? ""}
             onChange={(e) => setBudgets({ projectUsd: optionalNumber(e.currentTarget.value, 0) })}
           />
@@ -203,7 +199,8 @@ export default function ChatPane(props: PaneProps) {
             min="1"
             max="100"
             placeholder="no limit"
-            class={`${styles.input} ${styles.num}`}
+            aria-label="Stop at context"
+            class={`${styles.input} ${styles.numField}`}
             value={settings.budgets.contextPercent ?? ""}
             onChange={(e) => setBudgets({ contextPercent: optionalNumber(e.currentTarget.value, 1) })}
           />

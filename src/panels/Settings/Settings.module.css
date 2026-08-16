@@ -1,144 +1,315 @@
-/* First component on the target architecture: scoped CSS Module reading only
-   design tokens (no hardcoded colors), sitting in the `components` layer. */
+/* Scoped CSS Module reading only design tokens (no hardcoded colors), in the
+   `components` layer. A fixed rail plus a detail pane that owns the only
+   scroll; rows are grids rather than nested columns, so the control column
+   lines up and `label.closest("div")` is still the row. */
 @layer components {
   .backdrop {
     position: fixed;
     inset: 0;
     background: var(--scrim-default);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding: var(--sway-space-8) var(--sway-space-6);
+    padding: var(--sway-space-7) var(--sway-space-6);
     z-index: 100;
     overflow: auto;
   }
 
-  /* Wider than the 560px it was as a single scrolling column: six panes each
-     hold rows whose label and control sit at opposite ends, and at the old width
-     the longer labels wrapped against their own controls. */
+  /* `min(scaled px, share of window)`: a percentage alone would ignore
+     `--ui-scale`, so a larger UI would get a tighter panel, and a pixel cap
+     alone floats a small dialog on a big display. The two axes differ because
+     height is a pure win while width stops helping once a row's label and its
+     control no longer read as one row. */
   .panel {
-    width: 100%;
-    max-width: calc(800px * var(--ui-scale));
-    background: var(--canvas-card);
+    display: flex;
+    flex-direction: column;
+    width: min(calc(1320px * var(--ui-scale)), 94vw);
+    height: min(calc(1080px * var(--ui-scale)), 90vh);
+    max-width: 100%;
+    max-height: 100%;
+    /* The app's own shell at panel scale: flat canvas plus the active space's
+       wash bled into the top-left, so a header and a rail sitting transparent
+       on it read exactly as the topbar and sidebar do. Percentages rather than
+       the shell's viewport units, so the falloff is proportional to the panel.
+
+       Two declarations, never the `background` shorthand: one unresolvable
+       layer would invalidate both and take the base colour with it. */
+    background-color: var(--canvas-default);
+    /* Both fall back to what the shell itself starts from: the space's tint is
+       an inline property on `html` that only exists once a space sets one, and
+       the strength is declared there too. Written out because the guard only
+       knows names from tokens.css and from a literal `setProperty`. */
+    background-image: radial-gradient(
+      120% 120% at -10% -10%,
+      rgb(var(--space-tint-rgb, var(--shell-glow-rgb)) / var(--shell-glow-strength, 8%)),
+      transparent 80%
+    );
     color: var(--fg-default);
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-xl);
     box-shadow: var(--shadow-lg);
     font-family: var(--sway-font-ui);
+    overflow: hidden;
   }
 
-  /* Title, search and strip in one block above the panes: everything that acts
-     on all six tabs, separated from the one tab on screen by a single rule. */
+  /* Transparent and unruled, like the topbar: it floats on the shell above the
+     raised card rather than reading as a bar of its own. */
   .header {
     display: flex;
-    flex-direction: column;
-    gap: var(--sway-space-4);
-    padding: var(--sway-space-5) var(--sway-space-6) 0;
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    align-items: center;
+    gap: var(--sway-space-6);
+    flex: none;
+    padding: var(--sway-space-5) var(--sway-space-5) var(--sway-space-4) var(--sway-space-6);
   }
 
   .titleRow {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--sway-space-4);
+    margin-left: auto;
   }
 
   .title {
-    font-size: var(--sway-text-xl);
+    font-size: var(--sway-text-lg);
     font-weight: 600;
+    flex: none;
   }
 
-  /* The tab strip. Pills sit directly on the header's bottom rule, so the strip
-     carries no border of its own and no gap under it. Horizontal scroll rather
-     than wrap: six pills fit at every supported width, and a strip that became
-     two rows would move the panes down as the window narrowed. */
-  /* Kobalte's Tabs.Root is a real element and it has to span the strip and the
-     panes, which sit in separate blocks of the panel. `contents` is what keeps
-     the panel's own layout exactly as it was. */
-  .tabsRoot {
-    display: contents;
-  }
-
-  .strip {
-    display: flex;
-    align-items: center;
-    gap: var(--sway-space-2);
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .strip::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* The per-tab match count. `min-width` holds two digits' worth of room from
-     the first keystroke, so a count going 9 → 10 does not shove the tabs beside
-     it sideways mid-search. */
-  .badge {
-    min-width: calc(18px * var(--ui-scale));
-    padding: 0 var(--sway-space-2);
-    border-radius: var(--sway-radius-sm);
-    background: var(--accent-subtle);
-    color: var(--accent-fg);
-    font-size: var(--sway-text-2xs);
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-  }
-
-  /* A tab a query found nothing in. Quieted, never removed: it is still
-     somewhere you may want to go, and dropping it from the strip would move the
-     other five out from under the pointer while you are aiming at one. */
-  .tabEmpty {
-    opacity: 0.45;
-  }
-  .tabEmpty .badge {
-    background: transparent;
-    color: var(--fg-muted);
-  }
-
-  .body {
-    padding: var(--sway-space-5) var(--sway-space-6) var(--sway-space-7);
-  }
-
-  .section {
-    margin-top: var(--sway-space-6);
-  }
-  .section:first-child {
-    margin-top: 0;
-  }
-
-  /* The search box. Full width and in the header, because it searches every tab:
-     shaped like a row inside a pane it would read as one more setting, and as
-     filtering that pane alone. */
+  /* In the header because it searches every category: inside a pane it would
+     read as one more setting. */
   .search {
-    width: 100%;
+    flex: 1;
+    max-width: calc(340px * var(--ui-scale));
   }
 
-  .sectionTitle {
-    font-size: var(--sway-text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--fg-muted);
-    margin-bottom: var(--sway-space-4);
-  }
-
-  .row {
+  /* Breathing room around the raised card, on the three sides that are not the
+     rail. Matches the shell's own gap so the card floats the same way. */
+  .body {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sway-space-5);
-    padding: var(--sway-space-3) 0;
+    flex: 1;
+    min-height: 0;
+    gap: calc(10px * var(--ui-scale));
+    padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
   }
 
-  .label {
-    font-size: var(--sway-text-md);
-    color: var(--fg-default);
+  /* --- The rail --- */
+
+  /* Transparent and unbordered, like the sidebar: it blends into the shell and
+     only the card beside it is elevated. Never scrolls with the pane, so where
+     you are stays put while what you are reading moves. */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    width: calc(206px * var(--ui-scale));
+    flex: none;
+    padding: var(--sway-space-3) var(--sway-space-4) var(--sway-space-5);
+    background: transparent;
+    overflow-y: auto;
   }
 
-  .control {
+  /* Uppercase mono, so it names a group rather than reading as pressable. */
+  .railGroup {
+    padding: var(--sway-space-5) var(--sway-space-4) var(--sway-space-3);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+  .railGroup:first-child {
+    padding-top: 0;
+  }
+
+  .railItem {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--sway-space-3);
+    width: 100%;
+    padding: var(--sway-space-4) var(--sway-space-4) var(--sway-space-4) var(--sway-space-5);
+    margin-bottom: 1px;
+    border: 0;
+    border-radius: var(--sway-radius-md);
+    background: transparent;
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: var(--sway-text-md);
+    text-align: left;
+    cursor: pointer;
   }
+  .railItem:hover {
+    background: var(--neutral-hover);
+  }
+  .railItem:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+
+  /* A bar, not a dot: the panes are full of state dots. Brand rather than
+     accent, which is already spoken for here as the search-match colour. */
+  .railItemActive {
+    background: var(--brand-wash);
+    color: var(--fg-default);
+    font-weight: 500;
+  }
+  .railItemActive::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--sway-border-thick);
+    height: calc(15px * var(--ui-scale));
+    border-radius: var(--sway-radius-sm);
+    background: var(--brand-bar);
+  }
+
+  .railLabel {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* What the category holds, not what a query found. */
+  .railBadge {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-subtle);
+  }
+
+  /* Where a change lands, which no row on screen can say. */
+  /* Raised, not recessed: on a transparent rail there is no surface to sink
+     into, and the sidebar's own floating pieces are card over shell. */
+  .railFoot {
+    margin-top: auto;
+    padding: var(--sway-space-4);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-md);
+    background: var(--canvas-card);
+  }
+  .railFootTitle {
+    font-size: var(--sway-text-xs);
+    font-weight: 500;
+    color: var(--fg-muted);
+    margin-bottom: var(--sway-space-2);
+  }
+  .railFootNote {
+    font-size: var(--sway-text-xs);
+    line-height: 1.5;
+    color: var(--fg-subtle);
+    overflow-wrap: anywhere;
+  }
+  .railFootNote code {
+    font-family: var(--sway-font-mono);
+  }
+
+  /* --- The detail pane --- */
+
+  /* The card the terminal and editor share, minus its shadow: that one lifts a
+     pane off the desk, and this one is already inside a panel with a shadow of
+     its own. Any overflow other than `visible` clips to the radius, so the
+     scroll lives here rather than needing a wrapper. */
+  .pane {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    background: var(--canvas-card);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-xl);
+    padding: var(--sway-space-6) var(--sway-space-7) var(--sway-space-8);
+  }
+
+  .section {
+    margin-bottom: var(--sway-space-7);
+  }
+  .section:last-child {
+    margin-bottom: 0;
+  }
+
+  /* The rule is a span rather than a border so it starts after the words. */
+  .sectionTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-5);
+    margin-bottom: var(--sway-space-1);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+  .sectionRule {
+    flex: 1;
+    height: 1px;
+    background: var(--border-default);
+  }
+
+  /* A grid rather than nested columns: wrapping either side in its own div
+     lays out identically and silently breaks `label.closest("div")`. */
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(196px * var(--ui-scale));
+    column-gap: var(--sway-space-6);
+    align-items: center;
+    padding: var(--sway-space-5) var(--sway-space-1);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+  .row:last-child {
+    border-bottom: 0;
+  }
+
+  .label {
+    grid-column: 1;
+    font-size: var(--sway-text-md);
+    line-height: 1.4;
+    color: var(--fg-default);
+  }
+
+  /* Narrower than the column: prose the full width of the panel is a paragraph
+     nobody finishes. */
+  .hint {
+    grid-column: 1;
+    max-width: calc(520px * var(--ui-scale));
+    margin-top: var(--sway-space-2);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+  .hint code {
+    font-family: var(--sway-font-mono);
+  }
+
+  /* One width for every control in the panel, so none of them floats at
+     whatever x its label happened to end at. */
+  .control {
+    grid-column: 2;
+    /* Not `1 / -1`, which collapses to the same thing only because there are no
+       explicit rows, and would start spanning the hint the day there are. */
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sway-space-4);
+  }
+
+  /* A note between groups, outside the row grid. */
+  .note {
+    max-width: calc(520px * var(--ui-scale));
+    margin-top: var(--sway-space-5);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+  .note code {
+    font-family: var(--sway-font-mono);
+  }
+
+  /* --- Controls --- */
 
   /* `.select` was here beside `.input` until #106 moved the pickers onto
      `components/Select`, which draws its own trigger from the same tokens. The
@@ -146,9 +317,9 @@
   .input {
     background: var(--canvas-input);
     color: var(--fg-default);
-    border: var(--sway-border-thin) solid var(--border-default);
+    border: var(--sway-border-thin) solid var(--border-strong);
     border-radius: var(--sway-radius-md);
-    padding: var(--sway-space-2) var(--sway-space-3);
+    padding: var(--sway-space-3) var(--sway-space-4);
     font: inherit;
     font-size: var(--sway-text-sm);
     transition:
@@ -161,58 +332,127 @@
     box-shadow: 0 0 0 3px var(--brand-ring);
   }
 
+  /* Mono, like every other machine-supplied value in this panel. */
   .text {
-    width: calc(240px * var(--ui-scale));
-  }
-  .num {
-    width: calc(72px * var(--ui-scale));
+    width: 100%;
+    font-family: var(--sway-font-mono);
   }
 
-  .hint {
-    font-size: var(--sway-text-xs);
+  /* Allowed to be nothing: a stepper cannot express an unset ceiling, and
+     stepping up from blank would set one nobody asked for. */
+  .numField {
+    width: calc(104px * var(--ui-scale));
+    font-family: var(--sway-font-mono);
+    text-align: right;
+  }
+
+  /* The buttons nudge; the field stays a real number input so a value forty
+     steps away can still be typed. */
+  .stepper {
+    display: flex;
+    align-items: center;
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-md);
+    background: var(--neutral-subtle);
+    overflow: hidden;
+  }
+  .stepper:focus-within {
+    border-color: var(--brand-default);
+    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+  .stepperBtn {
+    width: calc(26px * var(--ui-scale));
+    height: var(--control-height);
+    flex: none;
+    border: 0;
+    background: transparent;
     color: var(--fg-muted);
-    margin-top: var(--sway-space-2);
+    font: inherit;
+    font-size: var(--sway-text-lg);
+    line-height: 1;
+    cursor: pointer;
+  }
+  .stepperBtn:hover {
+    background: var(--neutral-hover);
+    color: var(--fg-default);
+  }
+  .stepperBtn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .stepperBtn:focus-visible {
+    outline: none;
+    color: var(--fg-default);
+    background: var(--neutral-hover);
+  }
+  /* Borderless: the frame belongs to the stepper, and a second one would read
+     as a control inside a control. The native spinners go with it. */
+  .num {
+    width: calc(52px * var(--ui-scale));
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-sm);
+    text-align: center;
+    appearance: textfield;
+  }
+  .num::-webkit-outer-spin-button,
+  .num::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  .num:focus {
+    outline: none;
+    box-shadow: none;
   }
 
-  /* A row a palette deep link just landed on. Focus alone is easy to miss on one
-     checkbox in a list of checkboxes, so the row itself says "here", then stops:
-     a permanent marker would read as a second kind of selection. */
+  /* --- Search --- */
+
+  /* How many the query found, above the results. */
+  .resultCount {
+    margin-bottom: var(--sway-space-6);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  /* Focus alone is easy to miss on one switch in a list of switches, so the row
+     says "here" and then stops. */
   .rowFlash {
     background: var(--accent-subtle);
     border-radius: var(--sway-radius-sm);
     box-shadow: 0 0 0 var(--sway-space-2) var(--accent-subtle);
   }
 
-  /* The matched part of a label or hint. Weight and colour rather than a block
-     of background: a row is already on screen *because* it matched, so this
-     answers "on what?" and should not shout over the setting itself. */
+  /* Weight and colour, not a block of background: the row is already on screen
+     because it matched, so this only answers "on what?". */
   .mark {
     background: none;
     color: var(--accent-fg);
     font-weight: 600;
   }
 
-  /* A card section's wrapper. It exists so the whole group can be marked, and it
-     inherits `.section`'s vertical rhythm because it took it away: the wrapped
-     `<section>` is `:first-child` of this div, so the rule above zeroes it. */
+  /* Exists so the whole group can be marked. */
   .cardSection {
-    margin-top: var(--sway-space-6);
+    margin-bottom: var(--sway-space-7);
   }
-  .cardSection:first-child {
-    margin-top: 0;
+  .cardSection:last-child {
+    margin-bottom: 0;
   }
 
-  /* A card section the query matched. Its controls are built at runtime, so
-     there is no label to mark inside it - the whole group is the unit the badge
-     counted, so the whole group is what gets indicated. */
+  /* Its controls are built at runtime, so there is no label to mark inside. */
   .cardSectionHit {
     border-left: calc(2px * var(--ui-scale)) solid var(--accent-fg);
-    padding-left: var(--sway-space-4);
-    margin-left: calc(-1 * var(--sway-space-4));
+    padding-left: var(--sway-space-5);
+    margin-left: calc(-1 * var(--sway-space-5));
   }
 
-  /* Announced, never drawn: the aggregate match count for a screen reader, which
-     sighted users read off the badges instead. */
+  /* Announced, never drawn: the aggregate match count for a screen reader. */
   .srOnly {
     position: absolute;
     width: 1px;
@@ -225,14 +465,11 @@
     border: 0;
   }
 
-  /* Marks a row whose value comes from this workspace's overlay rather than
-     from the global settings. `margin-left: auto` puts it against the control,
-     so it reads as a note on the value rather than on the label. Accent, not
-     brand: it is an annotation, not something you can press. */
+  /* Accent, not brand: an annotation, not something you can press. */
   .originBadge {
-    margin-left: auto;
-    flex: 0 0 auto;
+    flex: none;
     padding: 0 var(--sway-space-2);
+    font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -241,15 +478,14 @@
     border-radius: var(--sway-radius-sm);
   }
 
-  /* "Set here" / "Clear": the write-to-workspace affordance. Deliberately quiet
-     (text, not a Button) because there is one per row and nine loud buttons
-     would make the section read as a list of actions rather than of settings. */
+  /* Quiet, because nine loud buttons would make the section read as a list of
+     actions rather than of settings. */
   .originAction {
-    flex: 0 0 auto;
+    flex: none;
     padding: 0;
     background: none;
     border: none;
-    color: var(--fg-muted);
+    color: var(--fg-subtle);
     font-family: inherit;
     font-size: var(--sway-text-xs);
     cursor: pointer;
@@ -259,22 +495,121 @@
     text-decoration: underline;
   }
 
-  /* --- Agents cards --- */
+  /* --- Cards: harnesses, language servers, debuggers --- */
+
+  /* Two at most, never three: a harness card is a name and a fact, and a third
+     column would shrink the fact to an ellipsis on the widths this panel
+     actually gets. Collapses to one where two would clip. */
+  .cardGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sway-space-4);
+    margin-bottom: var(--sway-space-6);
+  }
+  @media (max-width: 900px) {
+    .cardGrid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* --- The harness card: a button, so the whole thing is one target --- */
+
+  .hcard {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: var(--sway-space-4);
+    row-gap: var(--sway-space-2);
+    width: 100%;
+    padding: var(--sway-space-5) var(--sway-space-5);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: var(--neutral-subtle);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--sway-duration-fast), background var(--sway-duration-fast);
+  }
+  .hcard:hover {
+    border-color: var(--border-strong);
+    background: var(--neutral-hover);
+  }
+  .hcard:focus-visible {
+    outline: none;
+    border-color: var(--brand-default);
+    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+  .hcard .dot {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .hcardName {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: var(--sway-text-md);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .hcardVersion {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: start;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+  /* Spans the label columns rather than sitting under the dot, so the second
+     line hangs off the name instead of the indicator. */
+  .hcardMeta {
+    grid-column: 2 / 5;
+    grid-row: 2;
+    overflow: hidden;
+    font-size: var(--sway-text-xs);
+    line-height: 1.4;
+    color: var(--fg-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hcardMeta code {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+  .hcardGo {
+    grid-column: 5;
+    grid-row: 1 / 3;
+    display: flex;
+    align-items: center;
+    color: var(--fg-subtle);
+  }
+  .hcard:hover .hcardGo {
+    color: var(--fg-muted);
+  }
+  .hcard .statePill {
+    grid-column: 4;
+    grid-row: 1;
+    margin-left: 0;
+  }
+
+  /* One column: a language server says less than a harness, so two across
+     would be a grid of mostly empty card. */
+  .cardStack {
+    display: grid;
+    gap: var(--sway-space-4);
+  }
 
   .card {
     border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
-    padding: var(--sway-space-4);
-    margin-bottom: var(--sway-space-3);
-  }
-  .card:last-child {
-    margin-bottom: 0;
+    border-radius: var(--sway-radius-lg);
+    background: var(--neutral-subtle);
+    padding: var(--sway-space-5) var(--sway-space-6);
   }
 
   .cardHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--sway-space-4);
   }
 
   .cardTitle {
@@ -287,7 +622,7 @@
   .cardStatus code {
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-xs);
-    color: var(--fg-muted);
+    color: var(--fg-subtle);
   }
 
   .dot {
@@ -298,9 +633,11 @@
   }
   .dotOk {
     background: var(--success-fg);
+    box-shadow: 0 0 0 calc(3px * var(--ui-scale)) color-mix(in srgb, var(--success-fg) 16%, transparent);
   }
   .dotWarn {
     background: var(--attention-fg);
+    box-shadow: 0 0 0 calc(3px * var(--ui-scale)) color-mix(in srgb, var(--attention-fg) 16%, transparent);
   }
   /* Not installed is absence, not failure: an outline, not a red light. */
   .dotOff {
@@ -308,52 +645,405 @@
     box-shadow: inset 0 0 0 1px var(--fg-muted);
   }
 
+  /* Tinted from the same hue as the dot beside it, so the two cannot
+     disagree. */
+  .statePill {
+    flex: none;
+    margin-left: auto;
+    padding: calc(3px * var(--ui-scale)) var(--sway-space-3);
+    border-radius: var(--sway-radius-sm);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: var(--neutral-subtle);
+    color: var(--fg-muted);
+  }
+  .statePillOk {
+    background: color-mix(in srgb, var(--success-fg) 16%, transparent);
+    color: var(--success-fg);
+  }
+  .statePillWarn {
+    background: color-mix(in srgb, var(--attention-fg) 16%, transparent);
+    color: var(--attention-fg);
+  }
+
   .cardActions {
     display: flex;
-    gap: var(--sway-space-2);
-    margin-top: var(--sway-space-3);
+    align-items: center;
+    gap: var(--sway-space-3);
+    margin-top: var(--sway-space-4);
   }
 
   .cardStatus {
-    font-size: var(--sway-text-sm);
-    color: var(--fg-default);
-    margin-top: var(--sway-space-3);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-muted);
+    margin-top: var(--sway-space-4);
+    text-wrap: pretty;
   }
 
   .cardMeta {
     font-size: var(--sway-text-xs);
-    color: var(--fg-muted);
-    margin-top: var(--sway-space-2);
+    line-height: 1.5;
+    color: var(--fg-subtle);
+    margin-top: var(--sway-space-3);
   }
 
   .chips {
     display: flex;
     flex-wrap: wrap;
     gap: var(--sway-space-2);
-    margin-top: var(--sway-space-3);
+    margin-top: var(--sway-space-4);
   }
   .chips:empty {
     display: none;
   }
 
   .chip {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-muted);
+    background: var(--neutral-subtle);
+    border-radius: var(--sway-radius-sm);
+    padding: calc(3px * var(--ui-scale)) var(--sway-space-3);
+  }
+
+  /* Unbulleted: three reasons in a card are a note, not a list you work
+     through. */
+  .gaps {
+    margin: var(--sway-space-3) 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--sway-text-xs);
+    line-height: 1.5;
+    color: var(--fg-subtle);
+  }
+  .gaps li + li {
+    margin-top: var(--sway-space-2);
+  }
+
+  /* Struck through rather than omitted, so a gap reads at a glance instead of
+     having to be inferred from the length of the list. */
+  .chipGone {
+    color: var(--fg-subtle);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--border-default);
+    text-decoration: line-through;
+  }
+
+  /* --- One harness, in full --- */
+
+  .detail {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .detailBack {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    margin: 0 0 var(--sway-space-5) calc(-1 * var(--sway-space-3));
+    padding: var(--sway-space-2) var(--sway-space-3);
+    border: 0;
+    border-radius: var(--sway-radius-sm);
+    background: transparent;
+    color: var(--fg-muted);
+    font-family: inherit;
+    font-size: var(--sway-text-sm);
+    cursor: pointer;
+  }
+  .detailBack:hover {
+    color: var(--fg-default);
+    background: var(--neutral-subtle);
+  }
+  .detailBack:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+
+  .detailHead {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    align-self: stretch;
+  }
+  .detailTitle {
+    font-size: var(--sway-text-2xl);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .detailVersion {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-sm);
+    color: var(--fg-subtle);
+  }
+  .detailProgram {
+    margin-top: var(--sway-space-2);
+  }
+  .detailProgram code {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+  /* Every block on this page is a stretched child of a column flex, so the
+     shared card classes below keep their own margins and only need width. */
+  .detail > * {
+    align-self: stretch;
+  }
+  .detail > .detailBack {
+    align-self: flex-start;
+  }
+  .detail .groupHead {
+    margin-top: var(--sway-space-7);
+  }
+
+  .modelList {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: var(--canvas-input);
+  }
+  .modelRow {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sway-space-4);
+    padding: var(--sway-space-4) var(--sway-space-5);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+  .modelRow:last-child {
+    border-bottom: 0;
+  }
+  .modelName {
+    flex: none;
+    font-size: var(--sway-text-sm);
+    font-weight: 500;
+    color: var(--fg-default);
+  }
+  .modelId {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+  /* Pushed to the far end and clipped: the effort ladder is the longest string
+     on the row and the least urgent of the three. */
+  .modelFacts {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
     font-size: var(--sway-text-xs);
     color: var(--fg-muted);
-    background: var(--canvas-input);
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* --- The launch catalogue --- */
+
+  /* Heads a list *inside* a section that already has a title, so it sits a rung
+     below `.sectionTitle`: mono, smaller, and quieter. */
+  .groupHead {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-5);
+    margin-bottom: var(--sway-space-4);
+  }
+  .groupTitle {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+  .groupCount {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+
+  .catalogFilters {
+    display: flex;
+    gap: var(--sway-space-4);
+    margin-bottom: var(--sway-space-4);
+  }
+  .catalogFilters .input {
+    flex: 1;
+  }
+
+  /* Brand fill rather than a border swap, so which one is on survives a
+     glance. */
+  .filterChip {
+    flex: none;
+    padding: var(--sway-space-3) var(--sway-space-5);
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-md);
+    background: var(--neutral-subtle);
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: var(--sway-text-xs);
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .filterChip:hover {
+    background: var(--neutral-hover);
+    color: var(--fg-default);
+  }
+  .filterChipOn {
+    background: var(--brand-subtle);
+    border-color: var(--brand-default);
+    color: var(--fg-default);
+  }
+  .filterChip:focus-visible {
+    outline: none;
+    border-color: var(--brand-default);
+    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+
+  /* Its own scroll, so a catalogue that grows to 300 costs the pane nothing. */
+  .catalogList {
+    /* Against the window as well, so the well grows with a taller panel and
+       never crowds the cards above it on a short one. */
+    max-height: min(calc(440px * var(--ui-scale)), 40vh);
+    overflow-y: auto;
     border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-sm);
-    padding: 1px var(--sway-space-2);
+    border-radius: var(--sway-radius-lg);
+    background: var(--canvas-input);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .catalogRow {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-6);
+    padding: var(--sway-space-4) var(--sway-space-5);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+  .catalogRow:last-child {
+    border-bottom: 0;
+  }
+  .catalogMain {
+    flex: 1;
+    min-width: 0;
+  }
+  .catalogName {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    font-size: var(--sway-text-sm);
+    font-weight: 500;
+    color: var(--fg-default);
+  }
+  .catalogTag {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+  /* Clipped, not wrapped: these are unbounded strings from an upstream file,
+     and wrapping turns a 31-row list into a wall. */
+  .catalogDesc,
+  .catalogCmd {
+    margin-top: var(--sway-space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+  }
+  .catalogCmd {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+  .catalogNote {
+    margin-top: var(--sway-space-2);
+    font-size: var(--sway-text-xs);
+    line-height: 1.5;
+    color: var(--fg-muted);
+    white-space: normal;
+  }
+  .catalogAction {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-3);
+  }
+  .catalogEmpty {
+    padding: var(--sway-space-8) var(--sway-space-6);
+    text-align: center;
+    font-size: var(--sway-text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+  .catalogEmpty code {
+    font-family: var(--sway-font-mono);
+    overflow-wrap: anywhere;
+  }
+  .catalogFoot {
+    margin-top: var(--sway-space-4);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-subtle);
+  }
+  .catalogFoot code {
+    font-family: var(--sway-font-mono);
+  }
+
+  /* --- Integrations --- */
+
+  .connect {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-6);
+    padding: var(--sway-space-6);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: var(--neutral-subtle);
+  }
+  .monogram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(34px * var(--ui-scale));
+    height: calc(34px * var(--ui-scale));
+    flex: none;
+    border-radius: var(--sway-radius-md);
+    background: var(--neutral-hover);
+    color: var(--fg-muted);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-md);
+    font-weight: 600;
+  }
+  .connectMain {
+    flex: 1;
+    min-width: 0;
+  }
+  .connectTitle {
+    font-size: var(--sway-text-md);
+    font-weight: 500;
+  }
+
+  /* Present but plainly unavailable: hidden, "where is that setting?" has no
+     answer and reads as Sway having lost it. */
+  .inert {
+    opacity: 0.55;
   }
 
   .welcome {
     font-size: var(--sway-text-sm);
+    line-height: 1.55;
     color: var(--fg-default);
     background: var(--canvas-input);
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
-    padding: var(--sway-space-4);
-    margin-bottom: var(--sway-space-5);
+    padding: var(--sway-space-5);
+    margin-bottom: var(--sway-space-6);
   }
-  /* No rule pairing the note with what follows it: the filter box does, and it
-     carries no top margin of its own. */
 }

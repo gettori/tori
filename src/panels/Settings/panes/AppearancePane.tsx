@@ -3,9 +3,9 @@ import {
   EDITOR_FONT_FALLBACK,
   Group,
   Row,
+  Stepper,
   TERMINAL_FONT_FALLBACK,
   UI_FONT_FALLBACK,
-  clamp,
   idsIn,
   rowLabelId,
   setAppearance,
@@ -74,18 +74,13 @@ export default function AppearancePane(props: PaneProps) {
           {/* Percent in the field, a multiplier in the store. Both the row and
               the hotkeys go through `setZoom`, which clamps and persists, so the
               number here is always the one the app is actually at. */}
-          <input
-            type="number"
+          <Stepper
+            aria-label="Zoom"
             min={ZOOM_MIN * 100}
             max={ZOOM_MAX * 100}
-            step="10"
-            class={`${styles.input} ${styles.num}`}
+            step={10}
             value={Math.round(zoom() * 100)}
-            onChange={(e) =>
-              setZoom(
-                clamp(e.currentTarget.value, ZOOM_MIN * 100, ZOOM_MAX * 100, Math.round(zoom() * 100)) / 100,
-              )
-            }
+            onChange={(v) => setZoom(v / 100)}
           />
         </Row>
       </Group>
@@ -94,6 +89,7 @@ export default function AppearancePane(props: PaneProps) {
         <Row {...props} id="ui-font-family" label="UI font family">
           <input
             class={`${styles.input} ${styles.text}`}
+            aria-label="UI font family"
             value={primaryFamily(settings.typography.uiFontFamily)}
             onChange={(e) =>
               setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })
@@ -101,20 +97,18 @@ export default function AppearancePane(props: PaneProps) {
           />
         </Row>
         <Row {...props} id="ui-font-size" label="UI font size">
-          <input
-            type="number"
-            min="9"
-            max="24"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="UI font size"
+            min={9}
+            max={24}
             value={settings.typography.uiFontSize}
-            onChange={(e) =>
-              setTypography({ uiFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.uiFontSize) })
-            }
+            onChange={(v) => setTypography({ uiFontSize: v })}
           />
         </Row>
         <Row {...props} id="editor-font-family" label="Editor font family">
           <input
             class={`${styles.input} ${styles.text}`}
+            aria-label="Editor font family"
             value={primaryFamily(settings.typography.editorFontFamily)}
             onChange={(e) =>
               setTypography({
@@ -124,17 +118,12 @@ export default function AppearancePane(props: PaneProps) {
           />
         </Row>
         <Row {...props} id="editor-font-size" label="Editor font size">
-          <input
-            type="number"
-            min="9"
-            max="24"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="Editor font size"
+            min={9}
+            max={24}
             value={settings.typography.editorFontSize}
-            onChange={(e) =>
-              setTypography({
-                editorFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.editorFontSize),
-              })
-            }
+            onChange={(v) => setTypography({ editorFontSize: v })}
           />
         </Row>
         <Row
@@ -147,6 +136,7 @@ export default function AppearancePane(props: PaneProps) {
         >
           <input
             class={`${styles.input} ${styles.text}`}
+            aria-label="Terminal font family"
             value={primaryFamily(settings.typography.terminalFontFamily)}
             onChange={(e) =>
               setTypography({
@@ -156,30 +146,22 @@ export default function AppearancePane(props: PaneProps) {
           />
         </Row>
         <Row {...props} id="terminal-font-size" label="Terminal font size">
-          <input
-            type="number"
-            min="9"
-            max="24"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="Terminal font size"
+            min={9}
+            max={24}
             value={settings.typography.terminalFontSize}
-            onChange={(e) =>
-              setTypography({
-                terminalFontSize: clamp(e.currentTarget.value, 9, 24, settings.typography.terminalFontSize),
-              })
-            }
+            onChange={(v) => setTypography({ terminalFontSize: v })}
           />
         </Row>
         <Row {...props} id="line-height" label="Line height">
-          <input
-            type="number"
-            min="1"
-            max="2.5"
-            step="0.1"
-            class={`${styles.input} ${styles.num}`}
+          <Stepper
+            aria-label="Line height"
+            min={1}
+            max={2.5}
+            step={0.1}
             value={settings.typography.lineHeight}
-            onChange={(e) =>
-              setTypography({ lineHeight: clamp(e.currentTarget.value, 1, 2.5, settings.typography.lineHeight) })
-            }
+            onChange={(v) => setTypography({ lineHeight: v })}
           />
         </Row>
       </Group>

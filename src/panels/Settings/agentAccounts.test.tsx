@@ -67,6 +67,17 @@ function mount(over: { health?: Record<string, unknown>; accounts?: Record<strin
   return render(() => <AgentsSection />);
 }
 
+/** The card is a summary now: everything these tests are about lives one click
+ *  in, on the harness's own page. */
+async function open(r: ReturnType<typeof render>, label = "Claude") {
+  const card = await r.findByRole("button", { name: new RegExp(label) });
+  fireEvent.click(card);
+  // A heading the list does not have, so this waits for the page rather than
+  // for text both views happen to share.
+  await waitFor(() => expect(r.container.textContent).toContain("Chat capabilities"));
+  return r;
+}
+
 /** Terminal tabs the component asked for, in order. */
 function openedTabs(): OpenTerminal[] {
   const seen: OpenTerminal[] = [];
@@ -82,7 +93,7 @@ describe("the sign-in state on an agent card", () => {
   // The third state Phase 1 could not render, because nothing produced it yet.
   // Installed and signed-out are two independent facts.
   it("says an installed harness is signed out, and why that matters", async () => {
-    const { container } = mount({ health: { signIn: "signedOut" } });
+    const { container } = await open(mount({ health: { signIn: "signedOut" } }));
     await waitFor(() => expect(container.textContent).toContain("Installed, version 2.1.231"));
     expect(container.textContent).toContain("Nobody is signed in");
     expect(container.textContent).toContain("not offered for a new session");
@@ -91,13 +102,13 @@ describe("the sign-in state on an agent card", () => {
   // Unknown is the default for every harness that cannot answer and every probe
   // that did not finish. It must not read as a problem.
   it("says nothing at all when the sign-in state is unknown", async () => {
-    const { container } = mount();
+    const { container } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Installed, version 2.1.231"));
     expect(container.textContent).not.toContain("Nobody is signed in");
   });
 
   it("names the account when the harness names one", async () => {
-    const { container } = mount({ health: { signIn: "signedIn", account: "a@b.c" } });
+    const { container } = await open(mount({ health: { signIn: "signedIn", account: "a@b.c" } }));
     await waitFor(() => expect(container.textContent).toContain("Signed in as a@b.c"));
   });
 
@@ -105,9 +116,9 @@ describe("the sign-in state on an agent card", () => {
   // rather than Sway reading its environment and guessing which variables
   // matter to which agent. A notice, never a block.
   it("warns when an inherited key overrides subscription billing", async () => {
-    const { container } = mount({
+    const { container } = await open(mount({
       health: { signIn: "signedIn", apiKeySource: "ANTHROPIC_API_KEY" },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("ANTHROPIC_API_KEY"));
     expect(container.textContent).toContain("rather than the subscription");
     // Still installed and still usable: the warning sits beside a working
@@ -120,7 +131,7 @@ describe("the accounts list", () => {
   beforeEach(() => invoked.mockReset());
 
   it("lists the default profile as the user's existing login", async () => {
-    const { container } = mount();
+    const { container } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(container.textContent).toContain("your existing login");
   });
@@ -128,17 +139,17 @@ describe("the accounts list", () => {
   // There is nothing stored to remove, and "removing" it could only mean
   // signing the user out of the login they had before Sway existed.
   it("offers no remove button for the default profile", async () => {
-    const { container, queryByText } = mount();
+    const { container, queryByText } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByText("Sign out and remove")).toBeNull();
   });
 
   it("offers remove for a profile Sway added", async () => {
-    const { container, getByText } = mount({
+    const { container, getByText } = await open(mount({
       accounts: {
         profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
       },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
     expect(getByText("Sign out and remove")).toBeTruthy();
   });
@@ -146,12 +157,12 @@ describe("the accounts list", () => {
   // An adapter that offers no logout has to say so at the point it matters,
   // because removing the account there does not revoke anything.
   it("labels removal plainly when the harness has no sign-out command", async () => {
-    const { container, getByText } = mount({
+    const { container, getByText } = await open(mount({
       accounts: {
         canSignOut: false,
         profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
       },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
     expect(getByText("Remove")).toBeTruthy();
   });
@@ -159,14 +170,14 @@ describe("the accounts list", () => {
   // Two profiles on one account is a thing somebody may genuinely want, so this
   // says what it sees rather than refusing.
   it("warns about a second profile signed in to the same account", async () => {
-    const { container } = mount({
+    const { container } = await open(mount({
       accounts: {
         profiles: [
           profile(),
           profile({ id: "work", label: "Work", isDefault: false, duplicateOf: "Default" }),
         ],
       },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
     expect(container.textContent).toContain("same account as Default");
   });
@@ -174,7 +185,7 @@ describe("the accounts list", () => {
   // Isolation is measured, never inferred from having a home variable, and the
   // absence of the button is explained rather than left as a gap.
   it("says why there is no add button for a harness with no measured isolation", async () => {
-    const { container, queryByText } = mount({ accounts: { canAdd: false } });
+    const { container, queryByText } = await open(mount({ accounts: { canAdd: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByText("Add account")).toBeNull();
     expect(container.textContent).toContain("two accounts at once");
@@ -183,7 +194,7 @@ describe("the accounts list", () => {
   // "Sway has nothing true to say about this harness's accounts" is not the
   // same claim as "nobody is signed in", so it renders no controls at all.
   it("renders nothing for an adapter that declares no accounts table", async () => {
-    const { container } = mount({ accounts: { declared: false, profiles: [] } });
+    const { container } = await open(mount({ accounts: { declared: false, profiles: [] } }));
     await waitFor(() => expect(container.textContent).toContain("Installed, version"));
     expect(container.textContent).not.toContain("Accounts");
   });
@@ -191,7 +202,7 @@ describe("the accounts list", () => {
   // An account list under a binary that is not there would be a set of controls
   // with nothing behind them.
   it("renders nothing for a harness that is not installed", async () => {
-    const { container } = mount({ health: { status: "notFound", path: null, version: null } });
+    const { container } = await open(mount({ health: { status: "notFound", path: null, version: null } }));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
     expect(container.textContent).not.toContain("Accounts");
   });
@@ -204,9 +215,9 @@ describe("signing in", () => {
   // honest thing the button can do is hand the user a real terminal.
   it("opens a terminal tab rather than trying to complete the login", async () => {
     const tabs = openedTabs();
-    const { container, getByText } = mount({
+    const { container, getByText } = await open(mount({
       accounts: { profiles: [profile({ signIn: "signedOut" })] },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     fireEvent.click(getByText("Sign in"));
     await waitFor(() => expect(tabs.length).toBe(1));
@@ -221,7 +232,7 @@ describe("signing in", () => {
   // "Work" signed the user into the login they already had and said it worked.
   it("signs each profile in to its own home", async () => {
     const tabs = openedTabs();
-    const { container, getAllByText } = mount({
+    const { container, getAllByText } = await open(mount({
       accounts: {
         profiles: [
           profile({ signIn: "signedOut" }),
@@ -240,7 +251,7 @@ describe("signing in", () => {
           }),
         ],
       },
-    });
+    }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
 
     const buttons = getAllByText("Sign in");
@@ -260,7 +271,7 @@ describe("signing in", () => {
   // when the watcher started, so the new account's sessions would appear only
   // when something else happened to ask for a listing.
   it("watches the new account's transcripts as soon as it exists", async () => {
-    const { container, getByText } = mount();
+    const { container, getByText } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
     fireEvent.click(getByText("Add account"));
@@ -278,7 +289,7 @@ describe("signing in", () => {
   });
 
   it("offers no sign-in button for a profile already signed in", async () => {
-    const { container, queryByText } = mount();
+    const { container, queryByText } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByText("Sign in")).toBeNull();
   });

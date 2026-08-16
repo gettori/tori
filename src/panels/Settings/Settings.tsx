@@ -15,9 +15,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
+import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { debounce } from "../../utils/debounce";
-import Tab from "../../components/Tab/Tab";
-import { Tabs } from "../../lib/tabs";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import AgentsPane from "./panes/AgentsPane";
@@ -26,7 +25,8 @@ import ChatPane from "./panes/ChatPane";
 import EditorPane from "./panes/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane";
 import LanguagesPane from "./panes/LanguagesPane";
-import { rowDomId, type PaneProps } from "./paneKit";
+import { overlayRoot } from "./settingsStore";
+import { rowDomId, workspaceName, type PaneProps } from "./paneKit";
 import styles from "./Settings.module.css";
 
 /** Re-exported because the Editor rows moved to `paneKit` when the panel became
@@ -34,7 +34,7 @@ import styles from "./Settings.module.css";
 export { EDITOR_TOGGLES } from "./paneKit";
 
 /**
- * The strip's glyphs, resolved from the catalogue's icon *names*.
+ * The rail's glyphs, resolved from the catalogue's icon *names*.
  *
  * The catalogue stores a name rather than a component on purpose - it is
  * reachable from the terminal's chunk, so six imported icons would land there
@@ -70,9 +70,14 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
 const tabId = (id: SettingTab) => `settings-tab-${id}`;
 const paneId = (id: SettingTab) => `settings-pane-${id}`;
 
+/** Where an ordinary change lands, named in the rail's footer. Written out
+ *  rather than read from the backend: the panel would have to hold a resource
+ *  for one line of text, and this path is fixed by `settings.rs`. */
+const SETTINGS_PATH = "~/.config/sway/settings.json";
+
 /** What the focus trap counts as a stop. `[hidden]` is not excluded by the
  *  selector, so the inactive panes are filtered out by ancestor below: they are
- *  in the DOM (which is what keeps a pane's scroll position across a tab
+ *  in the DOM (which is what keeps a pane's scroll position across a category
  *  switch) but must not be reachable by Tab. */
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -88,8 +93,8 @@ const FLASH_MS = 1200;
 
 // The in-app settings screen. Reads the reactive settings store and writes back
 // through saveSettings (which persists to settings.json and applies live). A
-// portaled modal: six tabs over the catalogue's sections, one header search
-// across all of them, Escape / backdrop click to close.
+// portaled modal: a category rail beside a detail pane, one header search across
+// all of them, Escape / backdrop click to close.
 export default function Settings(props: {
   onClose: () => void;
   welcome?: boolean;
@@ -100,12 +105,18 @@ export default function Settings(props: {
 }) {
   let firstControl: HTMLInputElement | undefined;
   let panelEl!: HTMLDivElement;
+  let railEl!: HTMLDivElement;
 
   /** The filter box. Seeded from the prop rather than bound to it, because a
    *  `Preferences: ...` command opens the panel *at* a setting and the user has
    *  to be able to type past it the moment it lands. */
   const [query, setQuery] = createSignal(props.query ?? "");
   const [active, setActive] = createSignal<SettingTab>("agents");
+
+  /** Typed here, which is not the same as "the box is non-empty": a
+   *  `Preferences:` command arrives carrying a query but pointing at one row, so
+   *  it lands on that row's category instead of answering across all six. */
+  const [typed, setTyped] = createSignal(false);
 
   /** Which first-run greeting applies. Fetched only in welcome mode, since it
    *  is the only mode that renders one, and a failed fetch falls back to the
@@ -129,58 +140,53 @@ export default function Settings(props: {
     const m = matches();
     return !m || m.ids.has(id);
   };
+  const searching = () => typed() && matches() !== null;
   const nothingMatched = () => matches()?.total === 0;
-  /** A tab's badge number. `-1` when nothing is typed, which no badge renders:
-   *  the strip only counts while a query is running. */
-  const countIn = (id: SettingTab) => matches()?.counts[id] ?? -1;
-  /** Matches waiting on the other five tabs, when this one has none. `0` in
-   *  every other case, including "nothing matched anywhere" - that is a
-   *  different message, because it is a query to change rather than a tab to
-   *  click. */
-  const elsewhere = () => {
-    const m = matches();
-    return m && m.total > 0 && m.counts[active()] === 0 ? m.total : 0;
+
+  /** What the category holds, not what a query found. Only where there is a
+   *  number worth a glance; the rest render nothing rather than a zero. */
+  const railBadge = (id: SettingTab) => {
+    if (id !== "agents") return undefined;
+    const all = agentHealth();
+    // Shape-checked, not truthiness: the store is filled from a backend command,
+    // and an answer the rail did not expect must cost a badge, not six panes.
+    if (!Array.isArray(all) || all.length === 0) return undefined;
+    return `${all.filter((a) => a.status !== "notFound").length}/${all.length}`;
   };
 
-  /** A tab's accessible name. The badge is a number floating beside a word,
-   *  which says nothing when read aloud, so the count joins the name instead of
-   *  being left to a screen reader to stumble into. */
+  /** A fraction floating beside a word says nothing read aloud, so it joins the
+   *  accessible name rather than being left for a reader to stumble into. */
   const tabName = (t: (typeof SETTING_TABS)[number]) => {
-    const n = countIn(t.id);
-    return n < 0 ? undefined : `${t.label}, ${n} ${n === 1 ? "match" : "matches"}`;
+    const badge = railBadge(t.id);
+    return badge ? `${t.label}, ${badge} installed` : undefined;
   };
 
-  /**
-   * Select the first tab holding a match for `q`.
-   *
-   * Only ever called for a **command-initiated** query, never for typing. A
-   * palette row is the user pointing at one setting, so landing on its tab is
-   * carrying out the instruction; a keystroke in the search box is not, and
-   * moving the panel under someone mid-word is the behaviour this panel's
-   * decisions rule out.
-   */
+  /** Command-initiated queries only, never typing: a palette row is the user
+   *  pointing at one setting, and a keystroke is not. */
   function landOn(q: string) {
+    setTyped(false);
     const m = matchingEntries(q);
     if (!m || m.total === 0) return;
     const tab = SETTING_TABS.find((t) => m.counts[t.id] > 0);
     if (tab) setActive(tab.id);
   }
 
-  /**
-   * Go to one named setting: its tab, then the row itself.
-   *
-   * The query alone only ever got you to a tab, which is as far as Phase 2 took
-   * this. A palette row names *one* setting, so the panel owes it the row: the
-   * pane scrolls to it, its control takes focus (so the next keystroke edits the
-   * thing you asked for), and it flashes, because focus alone is easy to miss on
-   * a checkbox in a list of checkboxes.
-   *
-   * Deferred to a microtask because selecting the tab is what un-hides the pane,
-   * and an element inside a `hidden` subtree cannot take focus.
-   */
+  /** Both halves are the point: the rail selects nothing while results are on
+   *  screen, so a click there is a request to leave them. */
+  function openTab(tab: SettingTab) {
+    setActive(tab);
+    setQuery("");
+    setTyped(false);
+  }
+
+  /** Focus *and* a flash, because focus alone is easy to miss on one switch in a
+   *  list of switches. Deferred, since selecting the category is what un-hides
+   *  the pane and nothing inside a `hidden` subtree can take focus. */
   function revealEntry(id: string) {
     const tab = tabOfEntry(id);
     if (!tab) return;
+    // Carrying a query, but naming one row: go there, do not search.
+    setTyped(false);
     setActive(tab);
     queueMicrotask(() => {
       const el = document.getElementById(rowDomId(id));
@@ -193,23 +199,19 @@ export default function Settings(props: {
       // whatever that section happened to render, which for GitHub is a sign-out
       // button. Landing focus on it would arm the next Space or Enter. The
       // scroll and the flash still say "here", which is all a section can offer.
+      // Fields before buttons, in two queries: a stepper puts its "−" first, so
+      // one combined selector lands focus on the button that decrements it.
       if (el.classList.contains(styles.row)) {
-        el.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
+        const field = el.querySelector<HTMLElement>("input, select, textarea");
+        (field ?? el.querySelector<HTMLElement>("button"))?.focus();
       }
       el.classList.add(styles.rowFlash);
       setTimeout(() => el.classList.remove(styles.rowFlash), FLASH_MS);
     });
   }
 
-  /**
-   * The aggregate, announced rather than drawn.
-   *
-   * Sighted users read the per-tab badges; a screen reader would have to walk
-   * the strip to learn the same thing, so the total is spoken once instead.
-   * **Throttled**, because the natural thing to announce is the result of every
-   * keystroke, and `polite` queues rather than replaces: typing "minimap" would
-   * read out seven totals in a row, six of them already stale.
-   */
+  /** Throttled, because `polite` queues rather than replaces: announcing per
+   *  keystroke reads out seven totals, six of them already stale. */
   const [announced, setAnnounced] = createSignal("");
   // Dropped on teardown rather than left to fire: closing the panel mid-search
   // would otherwise leave a timer writing to a signal nothing is listening to.
@@ -220,13 +222,12 @@ export default function Settings(props: {
     on(matches, (m) => {
       if (!m) return announce("");
       if (m.total === 0) return announce("No settings match");
-      const tabs = SETTING_TABS.filter((t) => m.counts[t.id] > 0).length;
-      const settings = `${m.total} ${m.total === 1 ? "setting" : "settings"}`;
-      announce(`${settings} in ${tabs} ${tabs === 1 ? "tab" : "tabs"}`);
+      announce(`${m.total} ${m.total === 1 ? "setting matches" : "settings match"}`);
     }),
   );
 
   onMount(() => {
+    ensureAgentHealthLoaded();
     if (props.entry) revealEntry(props.entry);
     else if (props.query) landOn(props.query);
     // The search box takes focus on an ordinary open. A deep link has already
@@ -269,14 +270,18 @@ export default function Settings(props: {
   function onPanelKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      if (query() !== "") setQuery("");
-      else props.onClose();
+      // Both, so `typed` never outlives the text it describes.
+      if (query() !== "") {
+        setQuery("");
+        setTyped(false);
+      } else props.onClose();
       return;
     }
     if (e.key !== "Tab") return;
-    // `[hidden]` excludes the inactive panes, and `tabindex="-1"` the five tabs
-    // the roving index has parked: both are still matched by the selector's
-    // `button`/`input` clauses, and neither is a stop a real browser would make.
+    // `[hidden]` excludes the inactive panes, and `tabindex="-1"` the five rail
+    // items the roving index has parked: both are still matched by the
+    // selector's `button`/`input` clauses, and neither is a stop a real browser
+    // would make.
     const items = [...panelEl.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => !el.closest("[hidden]") && el.getAttribute("tabindex") !== "-1",
     );
@@ -307,7 +312,40 @@ export default function Settings(props: {
     e.preventDefault();
     let best = SETTING_TABS[0];
     for (const t of SETTING_TABS) if (m.counts[t.id] > m.counts[best.id]) best = t;
-    if (m.counts[best.id] > 0) setActive(best.id);
+    if (m.counts[best.id] === 0) return;
+    // Not `openTab`: that clears the box, and Enter is a decision about which
+    // category to read the results in, not a request to drop them.
+    setTyped(false);
+    setActive(best.id);
+  }
+
+  /**
+   * Arrow, Home and End across the rail.
+   *
+   * Hand-rolled, and this is the one strip in Sway that is: #93 moved the tab
+   * strips onto Kobalte, but Kobalte's tabs always hold a selection, and this
+   * rail holds none while a search is running - it forces a value back and
+   * fires `onChange`, which lands here as the query being cleared under the
+   * user. Vertical, so Up and Down move it; both orientations wrap, because a
+   * six-item rail has no edge worth stopping at.
+   */
+  function onRailKeyDown(e: KeyboardEvent) {
+    const n = SETTING_TABS.length;
+    const current = SETTING_TABS.findIndex((t) => t.id === active());
+    const next =
+      e.key === "ArrowDown" || e.key === "ArrowRight"
+        ? (current + 1) % n
+        : e.key === "ArrowUp" || e.key === "ArrowLeft"
+          ? (current - 1 + n) % n
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? n - 1
+              : current;
+    if (next === current) return;
+    e.preventDefault();
+    openTab(SETTING_TABS[next].id);
+    railEl.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   }
 
   return (
@@ -322,75 +360,109 @@ export default function Settings(props: {
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={onPanelKeyDown}
         >
-          {/* Kobalte's Root is a real element and it has to span both the strip
-              and the panes, which sit in separate blocks of the panel.
-              `display: contents` is what keeps the panel's own layout as it
-              was. */}
-          <Tabs.Root
-            class={styles.tabsRoot}
-            value={active()}
-            onChange={(v) => setActive(v as SettingTab)}
-          >
-            <div class={styles.header}>
-              <div class={styles.titleRow}>
-                <div class={styles.title}>Settings</div>
-                <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
-                  ×
-                </Button>
-              </div>
-              {/* One box above the strip, not one per tab: it searches every tab,
-                  and a box inside a pane would read as filtering that pane alone. */}
-              <input
-                ref={firstControl}
-                class={`${styles.input} ${styles.search}`}
-                type="search"
-                aria-label="Search settings"
-                placeholder="Search settings"
-                value={query()}
-                onInput={(e) => setQuery(e.currentTarget.value)}
-                onKeyDown={onSearchKeyDown}
-              />
-              {/* Roving tabindex, arrow wrap and automatic activation all come
-                  from Kobalte now, so the strip carries no keyboard code of its
-                  own. */}
-              <Tabs.List class={styles.strip} aria-label="Settings sections">
-                <For each={SETTING_TABS}>
-                  {(t) => (
-                    <Tab
-                      value={t.id}
-                      id={tabId(t.id)}
-                      aria-label={tabName(t)}
-                      // Dimmed rather than disabled or hidden. A tab with no match
-                      // is still somewhere you may want to go, and removing it
-                      // would move the other five out from under the pointer.
-                      class={countIn(t.id) === 0 ? styles.tabEmpty : undefined}
-                      icon={<Icon icon={TAB_ICONS[t.icon]} />}
-                      trailing={
-                        <Show when={matches()}>
-                          <span class={styles.badge}>{countIn(t.id)}</span>
+          <div class={styles.header}>
+            <div class={styles.title}>Settings</div>
+            {/* One box for the panel, not one per category: inside a pane it
+                would read as filtering that pane alone. */}
+            <input
+              ref={firstControl}
+              class={`${styles.input} ${styles.search}`}
+              type="search"
+              aria-label="Search settings"
+              placeholder="Search all settings"
+              value={query()}
+              onInput={(e) => {
+                setQuery(e.currentTarget.value);
+                setTyped(true);
+              }}
+              onKeyDown={onSearchKeyDown}
+            />
+            <div class={styles.titleRow}>
+              <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={() => props.onClose()}>
+                ×
+              </Button>
+            </div>
+          </div>
+
+          <div class={styles.srOnly} role="status" aria-live="polite">
+            {announced()}
+          </div>
+
+          <div class={styles.body}>
+            {/* The headings are plain text, not items: they group, they do not
+                go anywhere, so neither Tab nor an arrow key stops on one.
+                Roving tabindex and arrow wrap come from Kobalte, so the rail
+                carries no keyboard code of its own; `orientation` on the Root
+                is what makes Up and Down the keys that move it. */}
+            <div
+              ref={railEl}
+              class={styles.rail}
+              role="tablist"
+              aria-orientation="vertical"
+              aria-label="Settings sections"
+              onKeyDown={onRailKeyDown}
+            >
+              <For each={SETTING_TABS}>
+                {(t, i) => {
+                  const selected = () => !searching() && active() === t.id;
+                  return (
+                    <>
+                      <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
+                        <div class={styles.railGroup}>{t.group}</div>
+                      </Show>
+                      <button
+                        type="button"
+                        role="tab"
+                        id={tabId(t.id)}
+                        class={styles.railItem}
+                        classList={{ [styles.railItemActive]: selected() }}
+                        // On the selected tab only: the attribute is what a
+                        // reader follows to jump into the panel, and while a
+                        // search is running there is no one panel to jump to.
+                        aria-controls={selected() ? paneId(t.id) : undefined}
+                        aria-selected={selected()}
+                        aria-label={tabName(t)}
+                        // Roving tabindex: one stop for the whole rail, so Tab
+                        // steps past it into the pane rather than through six.
+                        tabindex={active() === t.id ? 0 : -1}
+                        onClick={() => openTab(t.id)}
+                      >
+                        <Icon icon={TAB_ICONS[t.icon]} />
+                        <span class={styles.railLabel}>{t.label}</span>
+                        <Show when={railBadge(t.id)}>
+                          {(badge) => <span class={styles.railBadge}>{badge()}</span>}
                         </Show>
-                      }
-                    >
-                      {t.label}
-                    </Tab>
-                  )}
-                </For>
-              </Tabs.List>
+                      </button>
+                    </>
+                  );
+                }}
+              </For>
+              {/* Where a change lands, which no row on screen can say. Outside
+                  the list rather than inside it: a tablist owns tabs, and a
+                  paragraph is not one. */}
+              <div class={styles.railFoot}>
+                <div class={styles.railFootTitle}>Your settings</div>
+                <div class={styles.railFootNote}>
+                  <Show
+                    when={overlayRoot()}
+                    fallback={
+                      <>
+                        Written to <code>{SETTINGS_PATH}</code>, and applied everywhere.
+                      </>
+                    }
+                  >
+                    Written to <code>{SETTINGS_PATH}</code>. Rows marked{" "}
+                    <span class={styles.originBadge}>workspace</span> come from{" "}
+                    <code>{workspaceName()}</code> instead.
+                  </Show>
+                </div>
+              </div>
             </div>
 
-            <div class={styles.srOnly} role="status" aria-live="polite">
-              {announced()}
-            </div>
-
-            <div class={styles.body}>
-              {/* Agents leads the strip: it is the tab first-run opens onto, and
-                  the one answering "will this work with my setup?". */}
-              {/* Two greetings, because the old single one assumed a CLI was
-                  already installed. Telling somebody with none to "check which
-                  ones it found below" points them at a list of misses and reads
-                  as Sway being broken, when the real state is a step they have
-                  not taken. The backend decides which applies (it reads the same
-                  health sweep the cards below use); this only renders it. */}
+            <div class={styles.pane}>
+              {/* Two greetings: telling somebody with no CLI installed to check
+                  what was found points them at a list of misses, which reads as
+                  Sway being broken rather than as a step they have not taken. */}
               <Show when={props.welcome}>
                 <Show
                   when={onboardingContent()?.kind === "noHarness"}
@@ -409,41 +481,57 @@ export default function Settings(props: {
                   </div>
                 </Show>
               </Show>
-              {/* Two different nothings, and conflating them is what makes a
-                  stay-put search feel broken. "Nowhere" is a query to change;
-                  "not here" is a tab to click, so it has to say how many are
-                  waiting and leave you where you are to decide. */}
+
+              {/* One nothing, not two: the old "N elsewhere" note existed only
+                  because results used to stay inside the tab you were on. */}
               <Show when={nothingMatched()}>
-                <div class={styles.hint}>No setting matches “{query().trim()}”.</div>
+                <div class={styles.note}>No setting matches “{query().trim()}”.</div>
               </Show>
-              <Show when={elsewhere() > 0}>
-                <div class={styles.hint}>
-                  No matches here, {elsewhere()} elsewhere. The counts on the tabs say where.
-                </div>
+              {/* Results mode only: a cross-category total over a pane showing
+                  one category is a number nobody can check against. */}
+              <Show when={searching() && matches()?.total}>
+                {(total) => (
+                  <div class={styles.resultCount}>
+                    {total()} {total() === 1 ? "setting" : "settings"} matching
+                  </div>
+                )}
               </Show>
 
-              {/* Every pane stays mounted and the inactive ones are `hidden`: a
-                  tab switch keeps each pane's scroll position and its in-flight
-                  edits, and `hidden` is what keeps them out of the focus trap.
-                  `forceMount` is how that survives the move onto Kobalte, which
-                  otherwise unmounts every pane but the selected one; `hidden` is
-                  still ours, because Kobalte marks a forced-mounted panel with a
-                  data attribute and leaves it in the tree. */}
+              {/* All six stay mounted so a switch keeps each pane's scroll and
+                  in-flight edits, and `hidden` is what keeps the inactive ones
+                  out of the focus trap. A search un-hides every one.
+
+                  Plain containers rather than `Tabs.Content`: Kobalte writes
+                  `hidden` on every panel but the selected one and wins over
+                  the prop, so the search state - six panes open and nothing
+                  selected - cannot be expressed through it. The rail is still
+                  Kobalte's; `src/lib/tabs` documents that a list with no
+                  `Content` claiming its values simply omits `aria-controls`,
+                  so the pairing here is `aria-labelledby` on the panel. */}
               <For each={SETTING_TABS}>
                 {(t) => (
-                  <Tabs.Content
-                    value={t.id}
+                  <div
                     id={paneId(t.id)}
-                    aria-labelledby={tabId(t.id)}
-                    forceMount
-                    hidden={active() !== t.id}
+                    data-pane={t.id}
+                    // A tabpanel only while it is one: six open panels under a
+                    // tablist with nothing selected is not the tab pattern.
+                    role={searching() ? "group" : "tabpanel"}
+                    aria-label={searching() ? t.label : undefined}
+                    aria-labelledby={searching() ? undefined : tabId(t.id)}
+                    hidden={!searching() && active() !== t.id}
                   >
-                    <Dynamic component={PANES[t.id]} shown={shown} query={query()} />
-                  </Tabs.Content>
+                    <Dynamic
+                      component={PANES[t.id]}
+                      shown={shown}
+                      query={query()}
+                      prefix={searching() ? t.label : undefined}
+                      openTab={openTab}
+                    />
+                  </div>
                 )}
               </For>
             </div>
-          </Tabs.Root>
+          </div>
         </div>
       </div>
     </Portal>
