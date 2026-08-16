@@ -20,6 +20,7 @@ import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
+import { rowDomId } from "./components/paneKit";
 import styles from "./Settings.module.css";
 
 beforeEach(async () => {
@@ -33,13 +34,18 @@ beforeEach(async () => {
 
 /** The four catalogue entries that stand for a whole section rather than for a
  *  row: their controls are built at runtime (a card per agent found, a row per
- *  server installed), so they have a section on screen and no `<label>`. */
+ *  server installed), so they have a section on screen and no `<label>`.
+ *
+ *  `agents` is checked by the id its `CardSection` carries rather than by text.
+ *  Its heading is parked, and the word "Harnesses" is also the rail's own label
+ *  for the tab, so a text search would pass on the rail item while the pane
+ *  rendered nothing at all. */
 const CARD_ENTRIES: Record<string, string> = {
-  agents: "Harnesses",
   "language-servers": "Language servers",
   debuggers: "Debuggers",
   github: "GitHub",
 };
+const ANCHORED_ENTRIES = ["agents"];
 
 const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement[];
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
@@ -354,6 +360,10 @@ describe("the six panes", () => {
     render(() => <Settings onClose={() => {}} />);
     const labels = [...document.querySelectorAll("label")].map((el) => el.textContent);
     for (const s of SETTINGS) {
+      if (ANCHORED_ENTRIES.includes(s.id)) {
+        expect(document.getElementById(rowDomId(s.id)), s.id).toBeTruthy();
+        continue;
+      }
       if (s.id in CARD_ENTRIES) {
         expect(screen.getAllByText(CARD_ENTRIES[s.id]).length, s.id).toBeGreaterThan(0);
         continue;

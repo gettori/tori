@@ -7,10 +7,9 @@ import { ensureAgentsLoaded } from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
-  dueCount,
+  // dueCount and refreshDueCatalogs are parked with `checkAll` below.
   ensureModelCatalogsLoaded,
   isProbing,
-  refreshDueCatalogs,
 } from "../../../../utils/modelCatalog";
 import {
   ensureAgentHealthLoaded,
@@ -573,7 +572,7 @@ function CatalogList() {
 export default function HarnessSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   const [rechecking, setRechecking] = createSignal(false);
-  const [checkingAll, setCheckingAll] = createSignal(false);
+  // const [checkingAll, setCheckingAll] = createSignal(false);
   const [openId, setOpenId] = createSignal<string | null>(null);
 
   // Guarded rather than defaulted: `agent_health` is an IPC call, and a reply
@@ -627,7 +626,9 @@ export default function HarnessSection() {
    *
    *  Deliberate rather than automatic: this spawns one process per due harness,
    *  and a settings page that did it on open would be doing exactly what the
-   *  read/probe split exists to prevent. */
+   *  read/probe split exists to prevent.
+   *
+   *  Parked with the button that called it, see the section title below.
   const checkAll = async () => {
     setCheckingAll(true);
     try {
@@ -635,7 +636,7 @@ export default function HarnessSection() {
     } finally {
       setCheckingAll(false);
     }
-  };
+  }; */
 
   return (
     <section class={styles.section}>
@@ -643,12 +644,11 @@ export default function HarnessSection() {
         when={opened()}
         fallback={
           <>
+            {/* Parked, not deleted: the redesign in progress puts this row's job
+                somewhere else, and `checkAll` below is parked with it.
             <div class={styles.sectionTitle}>
               <span>Harnesses</span>
               <span class={styles.sectionRule} />
-              {/* Disabled when nothing is due, rather than doing nothing:
-                  `refreshDueCatalogs` skips every harness with a current
-                  answer, so on a settled machine this would flash and stop. */}
               <Button
                 size="sm"
                 onClick={() => void checkAll()}
@@ -656,7 +656,7 @@ export default function HarnessSection() {
               >
                 {checkingAll() ? "Asking…" : "Check models"}
               </Button>
-            </div>
+            </div> */}
             <Switch>
               <Match when={health.loading}>
                 <div class={styles.note}>Checking which agent CLIs are installed…</div>
