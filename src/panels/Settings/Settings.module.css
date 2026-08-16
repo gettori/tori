@@ -21,6 +21,20 @@
      height is a pure win while width stops helping once a row's label and its
      control no longer read as one row. */
   .panel {
+    /* The type scale, one rung up, for the panel and everything portalled
+       inside it. Remapped here rather than bumped declaration by declaration:
+       the shared controls (Button, Select, Switch) read the same primitives, so
+       a per-rule bump would leave a 14px label beside a 12px picker. The cost is
+       that `--sway-text-md` means 14px in this file and 13px everywhere else. */
+    --sway-text-2xs: calc(11px * var(--ui-scale));
+    --sway-text-xs: calc(12px * var(--ui-scale));
+    --sway-text-sm: calc(13px * var(--ui-scale));
+    --sway-text-md: calc(14px * var(--ui-scale));
+    --sway-text-lg: calc(15px * var(--ui-scale));
+    --sway-text-xl: calc(16px * var(--ui-scale));
+    --sway-text-2xl: calc(18px * var(--ui-scale));
+    --sway-text-3xl: calc(21px * var(--ui-scale));
+    --sway-text-4xl: calc(24px * var(--ui-scale));
     display: flex;
     flex-direction: column;
     width: min(calc(1320px * var(--ui-scale)), 94vw);
@@ -70,7 +84,7 @@
   }
 
   .title {
-    font-size: var(--sway-text-lg);
+    font-size: var(--sway-text-3xl);
     font-weight: 600;
     flex: none;
   }
