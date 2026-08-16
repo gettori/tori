@@ -134,7 +134,7 @@ export function ensureModelCatalogsLoaded(): Promise<ModelCatalog[] | null> {
   if (reading) return reading;
   reading = invoke<ModelCatalog[]>("model_catalogs")
     .then((c) => {
-      // Guarded rather than trusted, the same rule `AgentsSection` applies to
+      // Guarded rather than trusted, the same rule `HarnessSection` applies to
       // `agent_health`: this is an IPC reply, and a reply that is not a list
       // must leave the store unanswered rather than throw through every card
       // reading it.

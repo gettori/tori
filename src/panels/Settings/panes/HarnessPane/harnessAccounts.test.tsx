@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import AgentsSection from "./AgentsSection";
+import HarnessSection from "./HarnessSection";
 import { OPEN_TERMINAL, type OpenTerminal } from "../../../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -64,7 +64,7 @@ function mount(over: { health?: Record<string, unknown>; accounts?: Record<strin
     if (cmd === "acp_catalog_source") return null;
     return [];
   });
-  return render(() => <AgentsSection />);
+  return render(() => <HarnessSection />);
 }
 
 /** The card is a summary now: everything these tests are about lives one click

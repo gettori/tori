@@ -176,7 +176,7 @@ function ProfileRow(props: {
   );
 }
 
-export default function AgentAccounts(props: { agentId: string; agentLabel: string }) {
+export default function HarnessAccounts(props: { agentId: string; agentLabel: string }) {
   const [view, { refetch }] = createResource(
     () => props.agentId,
     (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }),

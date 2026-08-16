@@ -570,7 +570,7 @@ function CatalogList() {
   );
 }
 
-export default function AgentsSection() {
+export default function HarnessSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   const [rechecking, setRechecking] = createSignal(false);
   const [checkingAll, setCheckingAll] = createSignal(false);

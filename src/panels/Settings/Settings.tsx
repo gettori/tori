@@ -19,7 +19,7 @@ import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
-import AgentsPane from "./panes/AgentsPane/AgentsPane";
+import HarnessPane from "./panes/HarnessPane/HarnessPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
@@ -52,7 +52,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 };
 
 const PANES: Record<SettingTab, Component<PaneProps>> = {
-  agents: AgentsPane,
+  agents: HarnessPane,
   chat: ChatPane,
   editor: EditorPane,
   languages: LanguagesPane,
