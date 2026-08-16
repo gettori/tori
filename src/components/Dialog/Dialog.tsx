@@ -136,7 +136,16 @@ export default function Dialog(props: DialogProps) {
           onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
           <DialogSurface.Provider value={surface}>
-            <div class={styles.head}>
+            {/* `headHidden` is not "hide the head": it drops the wrapper's own
+                box while keeping its children, so a hidden title costs no gap
+                in the panel's column. See Dialog.module.css. */}
+            <div
+              class={
+                props.titleHidden && !props.description
+                  ? styles.headHidden
+                  : styles.head
+              }
+            >
               <Primitive.Title
                 class={props.titleHidden ? styles.titleHidden : styles.title}
               >

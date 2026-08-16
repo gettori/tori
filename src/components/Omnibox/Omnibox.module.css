@@ -26,11 +26,21 @@
   --dialog-max-height: min(70vh, calc(520px * var(--ui-scale)));
 }
 
+/* `Dialog`'s title recipe, on the palette's own heading. The real title is
+   `titleHidden` here, so this is the line a reader sees, and it has to match a
+   dialog title or the palette looks like a different kind of surface. Kept in
+   step with `Dialog.module.css`'s `.title` deliberately (#130 moved both).
+
+   The margin is this file's own and stays: the heading sits inside the dialog's
+   *body*, which is a plain scroller rather than the gapped column the panel is,
+   so there is no gap here to inherit. It uses the head's inner step, because
+   heading-to-content is the same one-block relationship. */
 .title {
-  font-size: var(--sway-text-2xl);
+  font-size: var(--sway-text-3xl);
+  line-height: var(--sway-line-tight);
   font-weight: 600;
   color: var(--fg-default);
-  margin-bottom: calc(12px * var(--ui-scale));
+  margin-bottom: var(--sway-space-3);
   white-space: pre-wrap;
 }
 
