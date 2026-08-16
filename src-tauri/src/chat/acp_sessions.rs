@@ -204,14 +204,25 @@ pub struct ListedSession {
 ///     clock floats every one of that agent's sessions to the top of the history
 ///     list whenever the user opens any chat at all. `now` is therefore for a row
 ///     nobody has seen before, which is the only case with nothing better to use.
+///   * **A row opened by Sway's own catalogue probe is dropped.** Probing an ACP
+///     agent means opening a session, and `session/close` frees resources rather
+///     than deleting the record, so the agent keeps listing it. It is recognised
+///     by the directory it was opened in rather than by an id, which is what
+///     makes a probe that crashed before recording anything, and a probe from a
+///     build that predates any list of ids, both still recognisable.
+///     `probe_cwds` carries every spelling of that directory (see
+///     [`crate::catalog_probe::probe_cwd_spellings`]) because resolving one is
+///     the filesystem's job and this function does not have one.
 pub fn adopt(
     agent: &str,
     listed: &[ListedSession],
     known: &[AcpSession],
     now: u64,
+    probe_cwds: &[String],
 ) -> Vec<AcpSession> {
     listed
         .iter()
+        .filter(|row| !probe_cwds.iter().any(|dir| dir == &row.cwd))
         .map(|row| {
             let existing = known
                 .iter()
@@ -367,6 +378,7 @@ mod tests {
             &[listed("ses_a", Some("hello"), None)],
             &[known("a-sway-uuid", "ses_a")],
             99,
+            &[],
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, "a-sway-uuid");
@@ -382,7 +394,7 @@ mod tests {
     fn a_row_sway_already_has_keeps_the_path_sway_files_it_under() {
         let mut row = listed("ses_a", None, None);
         row.cwd = "/private/repo".to_string();
-        let rows = adopt("opencode", &[row], &[known("a-sway-uuid", "ses_a")], 99);
+        let rows = adopt("opencode", &[row], &[known("a-sway-uuid", "ses_a")], 99, &[]);
         assert_eq!(rows[0].cwd, "/repo");
     }
 
@@ -392,7 +404,7 @@ mod tests {
     fn a_row_sway_has_never_seen_takes_the_agents_path() {
         let mut row = listed("ses_new", None, None);
         row.cwd = "/elsewhere".to_string();
-        let rows = adopt("opencode", &[row], &[], 99);
+        let rows = adopt("opencode", &[row], &[], 99, &[]);
         assert_eq!(rows[0].cwd, "/elsewhere");
     }
 
@@ -405,6 +417,7 @@ mod tests {
             &[listed("ses_a", None, None)],
             &[known("a-sway-uuid", "ses_a")],
             99,
+            &[],
         );
         assert_eq!(rows[0].id, "ses_a", "a different agent's id is a new row");
         assert_eq!(rows[0].agent, "gemini");
@@ -416,20 +429,20 @@ mod tests {
     #[test]
     fn a_raw_first_prompt_title_is_trimmed_the_way_a_transcript_title_is() {
         let raw = "fix   the\n  sidebar";
-        let rows = adopt("opencode", &[listed("ses_a", Some(raw), None)], &[], 99);
+        let rows = adopt("opencode", &[listed("ses_a", Some(raw), None)], &[], 99, &[]);
         assert_eq!(rows[0].title, "fix the sidebar");
 
         let long = "x".repeat(200);
-        let rows = adopt("opencode", &[listed("ses_b", Some(&long), None)], &[], 99);
+        let rows = adopt("opencode", &[listed("ses_b", Some(&long), None)], &[], 99, &[]);
         assert!(rows[0].title.chars().count() <= 91, "{}", rows[0].title);
         assert!(rows[0].title.ends_with('…'));
     }
 
     #[test]
     fn a_row_with_no_title_reads_as_untitled_rather_than_blank() {
-        let rows = adopt("opencode", &[listed("ses_a", None, None)], &[], 99);
+        let rows = adopt("opencode", &[listed("ses_a", None, None)], &[], 99, &[]);
         assert_eq!(rows[0].title, "(untitled session)");
-        let rows = adopt("opencode", &[listed("ses_b", Some("   "), None)], &[], 99);
+        let rows = adopt("opencode", &[listed("ses_b", Some("   "), None)], &[], 99, &[]);
         assert_eq!(rows[0].title, "(untitled session)");
     }
 
@@ -437,13 +450,14 @@ mod tests {
     /// sessions to 1970 and bury them at the bottom of the history list.
     #[test]
     fn a_row_with_no_timestamp_is_dated_now_rather_than_1970() {
-        let rows = adopt("opencode", &[listed("ses_a", None, None)], &[], 99);
+        let rows = adopt("opencode", &[listed("ses_a", None, None)], &[], 99, &[]);
         assert_eq!(rows[0].updated_at, 99);
         let rows = adopt(
             "opencode",
             &[listed("ses_b", None, Some("2026-08-14T12:00:00Z"))],
             &[],
             99,
+            &[],
         );
         assert_eq!(rows[0].updated_at, 1_786_708_800);
     }
@@ -459,6 +473,7 @@ mod tests {
             &[listed("ses_a", None, None)],
             &[known("u", "ses_a")],
             99,
+            &[],
         );
         assert_eq!(rows[0].updated_at, 1, "the recorded time, not the clock");
     }
@@ -470,8 +485,8 @@ mod tests {
     #[test]
     fn a_second_listing_of_an_unchanged_row_adopts_to_what_is_already_recorded() {
         let row = listed("ses_a", Some("fix the sidebar"), Some("2026-08-14T12:00:00Z"));
-        let first = adopt("opencode", std::slice::from_ref(&row), &[], 99);
-        let second = adopt("opencode", &[row], &first, 1_000);
+        let first = adopt("opencode", std::slice::from_ref(&row), &[], 99, &[]);
+        let second = adopt("opencode", &[row], &first, 1_000, &[]);
         assert_eq!(first, second);
     }
 
@@ -480,7 +495,40 @@ mod tests {
     /// not disturb what Sway already recorded.
     #[test]
     fn an_empty_listing_adopts_nothing_rather_than_failing() {
-        assert!(adopt("opencode", &[], &[known("u", "ses_a")], 99).is_empty());
+        assert!(adopt("opencode", &[], &[known("u", "ses_a")], 99, &[]).is_empty());
+    }
+
+    /// The phantom the catalogue probe leaves behind. Asking an ACP agent what
+    /// it can run means opening a session, and `session/close` frees resources
+    /// rather than deleting the record, so the agent keeps listing one session
+    /// per probe. Nothing about the row says it was Sway's own except where it
+    /// was opened, which is why that is what the filter reads.
+    ///
+    /// **Both spellings, because a directory has more than one name.** macOS
+    /// hands out `/var/...` and agents record `/private/var/...`, and this
+    /// function has no filesystem to resolve either with; the caller passes in
+    /// every spelling it could resolve, and each one has to drop the row.
+    #[test]
+    fn a_session_sways_own_probe_opened_is_not_adopted_as_history() {
+        let spellings = ["/var/sway/probe".to_string(), "/private/var/sway/probe".to_string()];
+        for spelling in &spellings {
+            let mut row = listed("ses_probe", None, None);
+            row.cwd = spelling.clone();
+            assert!(
+                adopt("opencode", &[row], &[], 99, &spellings).is_empty(),
+                "a row in {spelling} is Sway's own probe, whichever name it came back under"
+            );
+        }
+    }
+
+    /// And the filter is on the directory, not on anything resembling it: a real
+    /// session that merely lives near the probe dir is still the user's.
+    #[test]
+    fn a_session_that_is_not_the_probes_survives_the_filter() {
+        let probe = ["/var/sway/probe".to_string()];
+        let mut row = listed("ses_real", None, None);
+        row.cwd = "/var/sway/probe-notes".to_string();
+        assert_eq!(adopt("opencode", &[row], &[], 99, &probe).len(), 1);
     }
 
     #[test]
