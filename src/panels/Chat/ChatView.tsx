@@ -62,7 +62,12 @@ import {
   selectedModel,
   type PickableModel,
 } from "../../utils/chatModels";
-import type { CatalogModel } from "../../utils/modelCatalog";
+import {
+  cachedModels,
+  catalogFor,
+  refreshCatalogIfDue,
+  type CatalogModel,
+} from "../../utils/modelCatalog";
 import { findAgent } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
@@ -283,6 +288,13 @@ export default function ChatView(props: {
   let reconnect: (() => void) | undefined;
 
   onMount(() => {
+    // What this harness last said it can run, so the picker has something true
+    // before the handshake lands, and an ask when that answer is missing or
+    // describes a binary that has since changed. Scoped to this harness: opening
+    // a chat is already launching it, so asking costs nothing new, where a sweep
+    // would spawn every other agent on the machine over a chat nobody opened.
+    void refreshCatalogIfDue(props.agentId);
+
     // A rewound chat opens with the announcement already in the composer, so
     // the turn the user actually wanted is that plus their instruction rather
     // than a turn spent on the announcement alone. Only into an empty composer:
@@ -900,12 +912,11 @@ export default function ChatView(props: {
   // capability resolver cannot each reach for it differently. It no longer
   // carries models at all; the harness names those.
   const chatConfig = () => findAgent(props.agentId).chat ?? null;
-  // Empty until Phase 4 wires `model_catalogs` in. Passing it explicitly rather
-  // than defaulting the parameter keeps the gap visible: right now a session
-  // that has not handshaken offers nothing, which is the honest answer and not
-  // an oversight.
-  const cachedModels = (): CatalogModel[] => [];
-  const models = () => pickableModels(state.models, cachedModels(), chatConfig(), state.contextWindows);
+  // The last answer this harness gave anyone, which is what a picker has before
+  // a session exists. Live wins the moment the handshake lands, so this is the
+  // pre-session list and not a merge; see `pickableModels`.
+  const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId));
+  const models = () => pickableModels(state.models, cached(), chatConfig(), state.contextWindows);
 
   // The entry the picker shows as selected. Resolved through the catalogue
   // rather than read straight off the store, because before the first pick the

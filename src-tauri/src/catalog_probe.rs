@@ -234,28 +234,21 @@ impl ModelCatalog {
         }
     }
 
-    /// Whether what is remembered no longer describes the binary on disk.
-    ///
-    /// Version comparison and nothing else. A TTL was the obvious alternative
-    /// and is rejected: a catalogue does not decay with time, it decays when the
-    /// binary changes, and an hourly re-probe would spawn a process per harness
-    /// forever to learn nothing. The two unknown-version cases both answer "not
-    /// stale" rather than "stale", because neither one is evidence of a change,
-    /// and treating absence of evidence as staleness would re-probe a
-    /// `versionUnknown` binary on every read. Such a harness is re-checked when
-    /// the user asks, which is what the detail page's Check again is for.
-    pub fn is_stale(&self, current_version: Option<&str>) -> bool {
-        match self.catalogue.as_ref() {
-            // Never answered, so there is nothing to be stale; the caller's
-            // "probe the stale and the never-probed" reads better with this
-            // saying false, and `state` already reports the difference.
-            None => false,
-            Some(c) => match (c.version.as_deref(), current_version) {
-                (Some(recorded), Some(current)) => recorded != current,
-                _ => false,
-            },
-        }
-    }
+    // **Staleness is not decided here.** [`Catalogue::version`] records the
+    // binary that answered, and comparing it against the binary installed now is
+    // the whole rule; it lived on this type until the batch refresh command
+    // above it was removed, and left with no caller on this side. It is
+    // `isStale` in `modelCatalog.ts` now, beside the code that acts on it, and
+    // written once rather than in two languages that can drift.
+    //
+    // The rule itself is unchanged and worth restating where the field is: a
+    // version comparison and nothing else. A TTL was the obvious alternative and
+    // is rejected - a catalogue does not decay with time, it decays when the
+    // binary changes, and an hourly re-probe would spawn a process per harness
+    // forever to learn nothing. Both unknown-version cases answer "not stale",
+    // because neither is evidence of a change, and treating absence of evidence
+    // as staleness would re-probe a `versionUnknown` binary on every read. Such
+    // a harness comes back through the detail page's Ask again.
 }
 
 // --- the store: one file per harness, under the data dir ---
@@ -893,32 +886,16 @@ pub async fn refresh_model_catalog(harness_id: String) -> Result<ModelCatalog, S
     Ok(refresh_one(adapter, version))
 }
 
-/// Ask every harness that has never answered or whose binary has changed.
-///
-/// Skipping the rest is what makes this safe to call on a picker's first open:
-/// a machine whose catalogues are all current spawns nothing at all. The probes
-/// run on their own threads so one slow cold start does not hold up the rest,
-/// and each is bounded by [`PROBE_DEADLINE`], so a hung child costs one row
-/// rather than the sweep.
-#[tauri::command]
-pub async fn refresh_model_catalogs() -> Vec<ModelCatalog> {
-    let versions = versions().await;
-    let root = catalog_root();
-    let stale: Vec<(&'static AgentAdapter, Option<String>)> = probeable()
-        .into_iter()
-        .filter_map(|a| {
-            let stored = load_from(&root, &a.id);
-            let version = versions.get(&a.id).cloned().flatten();
-            let due = stored.state == CatalogState::NeverProbed || stored.is_stale(version.as_deref());
-            due.then_some((a, version))
-        })
-        .collect();
-
-    thread::scope(|scope| {
-        let handles: Vec<_> = stale.into_iter().map(|(a, v)| scope.spawn(move || refresh_one(a, v))).collect();
-        handles.into_iter().filter_map(|h| h.join().ok()).collect()
-    })
-}
+// There is deliberately **no batch refresh command.** One existed, sweeping
+// every never-probed or stale harness on its own threads and returning the lot,
+// and it was the wrong shape for the only caller there is: a batch answers when
+// its *slowest* member does, so one agent hitting [`PROBE_DEADLINE`] would hold
+// every row on the page empty for 45 seconds. The frontend asks per harness
+// instead (`refreshDueCatalogs` in `modelCatalog.ts`), so each row fills as its
+// own probe lands and a refusal is one row's error rather than everyone's wait.
+// Deciding what is due needs the cache and the versions, which that side already
+// has. Concurrency is unaffected: [`harness_lock`] is per harness, so parallel
+// calls run in parallel.
 
 #[cfg(test)]
 mod tests {
@@ -1006,36 +983,6 @@ mod tests {
         catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
         assert_eq!(catalog.state, CatalogState::Probed);
         assert!(catalog.last_failure.is_none());
-    }
-
-    // --- staleness ---
-
-    #[test]
-    fn a_version_change_flips_staleness() {
-        let mut catalog = ModelCatalog::never_probed("claude");
-        catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
-        assert!(!catalog.is_stale(Some("2.1.231")), "the same version is not stale");
-        assert!(catalog.is_stale(Some("2.2.0")), "a different version is");
-    }
-
-    /// Neither unknown-version case is evidence that anything changed, so
-    /// neither one re-probes on its own. Such a harness comes back through the
-    /// detail page's explicit Check again.
-    #[test]
-    fn an_unknown_version_is_stale_only_by_explicit_recheck() {
-        let mut recorded_unknown = ModelCatalog::never_probed("codex");
-        recorded_unknown.absorb(Ok(a_catalogue(None)));
-        assert!(!recorded_unknown.is_stale(Some("1.0.0")));
-        assert!(!recorded_unknown.is_stale(None));
-
-        let mut current_unknown = ModelCatalog::never_probed("codex");
-        current_unknown.absorb(Ok(a_catalogue(Some("1.0.0"))));
-        assert!(!current_unknown.is_stale(None));
-    }
-
-    #[test]
-    fn a_never_probed_harness_is_not_reported_stale() {
-        assert!(!ModelCatalog::never_probed("gemini").is_stale(Some("1.0.0")));
     }
 
     // --- the store ---

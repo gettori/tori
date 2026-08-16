@@ -10,6 +10,13 @@ import {
   unavailableCapabilities,
   type PublishedCapability,
 } from "../../utils/chatCapabilities";
+import {
+  catalogFor,
+  isProbing,
+  isStale,
+  refreshCatalog,
+  type ProbeFailureReason,
+} from "../../utils/modelCatalog";
 import type { AgentHealth, BinaryStatus } from "../../utils/agentHealth";
 import AgentAccounts from "./AgentAccounts";
 import styles from "./Settings.module.css";
@@ -35,6 +42,27 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
 };
 
 /**
+ * Why a probe produced no catalogue, as a sentence with a next step.
+ *
+ * `unsupported` is deliberately not phrased as the harness failing: it is a fact
+ * about this build of Sway, and blaming the binary would send the user to
+ * reinstall something that is working.
+ */
+const FAILURE_NOTE: Record<ProbeFailureReason, string> = {
+  spawnFailed: "Sway could not start it, so there was nothing to ask.",
+  timedOut: "It did not answer in time.",
+  signedOut: "Nobody is signed in, so it would not answer.",
+  noAnswer: "It started and said nothing.",
+  unsupported: "Sway cannot ask this harness yet. Its models arrive when a session starts.",
+};
+
+/** The probe's date, in the reader's own locale. The time is dropped: what
+ *  matters is how old the answer is, and a catalogue does not move by the hour. */
+function probedOn(ms: number): string {
+  return new Date(ms).toLocaleDateString();
+}
+
+/**
  * One harness, in full: everything the card had to drop to stay scannable.
  *
  * Escape is answered here and its propagation stopped, so the panel's own
@@ -57,6 +85,19 @@ export default function HarnessDetail(props: {
   const tier = () => chatTier(findAgent(a().id).chat?.transport);
   const capabilities = () => publishedCapabilities(tier());
   const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
+
+  const catalog = () => catalogFor(a().id);
+  const catalogue = () => catalog()?.catalogue ?? null;
+  const probingThis = () => isProbing(a().id);
+  const stale = () => isStale(catalog(), a().version);
+  /** The harness's own words when it gave any, after Sway's sentence naming the
+   *  kind of failure. Quoted rather than paraphrased, and omitted when empty. */
+  const failureNote = () => {
+    const failure = catalog()?.lastFailure;
+    if (!failure) return "";
+    const detail = failure.detail.trim();
+    return detail ? `${FAILURE_NOTE[failure.reason]} It said: ${detail}` : FAILURE_NOTE[failure.reason];
+  };
 
   onMount(() => backEl?.focus());
 
@@ -170,18 +211,104 @@ export default function HarnessDetail(props: {
         {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
       </Show>
 
-      <div class={styles.groupHead}>
-        <span class={styles.groupTitle}>Models</span>
-        <span class={styles.sectionRule} />
-      </div>
-      {/* No list and no count. This used to render the adapter's
-          `[[chat.models]]`, a hand-maintained table shown as what the harness
-          could run; it said 200k for two models the harness reports 1M for.
-          Every harness now reads the same way until the probe cache is wired in:
-          the models are the harness's to name. */}
-      <div class={styles.cardMeta}>
-        {a().label} names its own models when a session starts, so there is no list to show here.
-      </div>
+      {/* Only for a harness Sway can actually ask. A terminal-only adapter
+          declares no `[chat]` table, so the probe has nothing to drive and the
+          backend never returns a row for it: the section would be a heading, a
+          "nobody has asked" line and a button whose only possible outcome is
+          a failure saying Sway cannot ask. The capabilities section below says
+          "Terminal only" for the same harness, which is the honest answer. */}
+      <Show when={findAgent(a().id).chat}>
+        <div class={styles.groupHead}>
+          <span class={styles.groupTitle}>Models</span>
+          <span class={styles.sectionRule} />
+          {/* "Ask again", not "Check again": the button above re-probes the
+              binary, this one re-asks the harness what it can run, and two
+              controls with one label would be two different actions under one
+              name. */}
+          <Button size="sm" onClick={() => void refreshCatalog(a().id)} disabled={probingThis()}>
+            {probingThis() ? "Asking…" : "Ask again"}
+          </Button>
+        </div>
+        {/* Every row here is something the harness itself named, on the probe
+            this page reports below. Nothing is declared: the adapter used to carry
+            a `[[chat.models]]` table shown as what the harness could run, and it
+            said 200k for two models the harness reports 1M for. */}
+        <Switch>
+          <Match when={probingThis() && !catalogue()}>
+            <div class={styles.cardMeta}>Asking {a().label} what it can run…</div>
+          </Match>
+          <Match when={catalogue()}>
+            {(cat) => (
+              <>
+                <ul class={styles.modelList}>
+                  <For each={cat().models}>
+                    {(m) => (
+                      <li class={styles.modelRow}>
+                        <span class={styles.modelName}>{m.displayName || m.value}</span>
+                        <code class={styles.modelId}>{m.value}</code>
+                        {/* Said out loud, because its provenance differs: the
+                            user wrote this id in the harness's own settings and
+                            Sway passes it through unresolved. */}
+                        <Show when={m.userConfigured}>
+                          <span class={styles.chip}>yours</span>
+                        </Show>
+                        <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
+                          <span class={styles.modelEffort}>
+                            {m.supportedEffortLevels.join(" · ")}
+                          </span>
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                <Show when={!cat().models.length}>
+                  <div class={styles.cardMeta}>
+                    {a().label} answered, and named no models it can run.
+                  </div>
+                </Show>
+                {/* Provenance in full: who was asked, which build, and when. A
+                    list with no date is a list that can rot without saying so. */}
+                <div class={styles.hint}>
+                  Asked {a().label}
+                  <Show when={cat().version}>{(v) => <> {v()}</>}</Show>, {probedOn(cat().probedAtMs)}.
+                  {/* A catalogue can differ per account: OpenCode's depends on
+                      which providers are authenticated. So a page showing one has
+                      to say whose answer it is, and the probe runs as the default
+                      profile rather than as whichever account you were reading. */}
+                  <Show when={cat().account}>
+                    {(acct) => (
+                      <>
+                        {" "}
+                        Answered for {acct().subscriptionType || "the signed-in account"}, which is the
+                        default profile: another account can be offered different models.
+                      </>
+                    )}
+                  </Show>
+                </div>
+                <Show when={stale()}>
+                  <div class={styles.hint}>
+                    This was asked of {catalogue()?.version}, and {a().version} is installed now, so
+                    the list may have moved. Check again to re-ask.
+                  </div>
+                </Show>
+              </>
+            )}
+          </Match>
+          <Match when={catalog()?.state === "failed"}>
+            <div class={styles.cardMeta}>{failureNote()}</div>
+          </Match>
+          <Match when={true}>
+            <div class={styles.cardMeta}>
+              Nobody has asked {a().label} what it can run. Check again to ask.
+            </div>
+          </Match>
+        </Switch>
+        {/* Kept below the list rather than instead of it, because a failure never
+            clears an older answer: stale-but-real beats fresh-but-empty. */}
+        <Show when={catalogue() && catalog()?.state === "failed"}>
+          <div class={styles.hint}>The last attempt failed. {failureNote()}</div>
+        </Show>
+      </Show>
 
       <div class={styles.groupHead}>
         <span class={styles.groupTitle}>Chat capabilities</span>
