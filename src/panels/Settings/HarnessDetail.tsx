@@ -18,6 +18,7 @@ import {
   type ProbeFailureReason,
 } from "../../utils/modelCatalog";
 import type { AgentHealth, BinaryStatus } from "../../utils/agentHealth";
+import { mirroredOptions } from "../../utils/chatTypes";
 import AgentAccounts from "./AgentAccounts";
 import styles from "./Settings.module.css";
 
@@ -289,6 +290,36 @@ export default function HarnessDetail(props: {
                   <div class={styles.hint}>
                     This was asked of {catalogue()?.version}, and {a().version} is installed now, so
                     the list may have moved. Check again to re-ask.
+                  </div>
+                </Show>
+                {/* The rest of what the harness published: the levers with no
+                    control of Sway's own, previewed from the same probe rather
+                    than only appearing once a chat is open. Read-only here, on
+                    purpose - they are session state, and there is no session on
+                    this page to set them on. */}
+                <Show when={mirroredOptions(cat().options ?? []).length}>
+                  <div class={styles.groupHead}>
+                    <span class={styles.groupTitle}>Its own options</span>
+                    <span class={styles.sectionRule} />
+                  </div>
+                  <ul class={styles.modelList}>
+                    <For each={mirroredOptions(cat().options ?? [])}>
+                      {(o) => (
+                        <li class={styles.modelRow}>
+                          <span class={styles.modelName}>{o.name}</span>
+                          <code class={styles.modelId}>
+                            {o.kind === "select" ? o.current : o.value ? "on" : "off"}
+                          </code>
+                          <Show when={o.description}>
+                            <span class={styles.modelEffort}>{o.description}</span>
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                  <div class={styles.hint}>
+                    Set these in a chat with {a().label}, where they mirror the harness's own
+                    controls.
                   </div>
                 </Show>
               </>

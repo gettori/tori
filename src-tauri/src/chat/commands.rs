@@ -21,7 +21,7 @@ use super::claude_transport::ClaudeTransport;
 use super::host::{ChatState, SessionBridge, Spawned};
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
-use super::model::{ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
 use super::transport::{AgentTransport, StartSpec};
 
@@ -473,6 +473,20 @@ pub async fn chat_set_mode(
     mode: PermissionMode,
 ) -> Result<(), String> {
     state.0.set_mode(&session_id, mode)
+}
+
+/// Switch one of the harness's own configuration options, by the id it
+/// published. What the mirrored controls call, and nothing else: a model, an
+/// effort level or a mode goes through its own command, which has the pending
+/// state those need.
+#[tauri::command]
+pub async fn chat_set_config_option(
+    state: State<'_, ChatState>,
+    session_id: String,
+    config_id: String,
+    value: ChatConfigValue,
+) -> Result<(), String> {
+    state.0.set_config_option(&session_id, &config_id, value)
 }
 
 #[tauri::command]

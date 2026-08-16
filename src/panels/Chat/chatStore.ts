@@ -31,6 +31,7 @@ import type {
   ChatAccount,
   ChatCapabilities,
   ChatEvent,
+  ChatConfigOption,
   ChatModeInfo,
   ChatModelInfo,
   ContentBlock,
@@ -252,6 +253,12 @@ export type ChatState = {
    *  only source: its adapter declares no `[[chat.modes]]` because a mode there
    *  is a request rather than a flag. */
   modes: ChatModeInfo[];
+  /** Every configuration lever the agent published, model and mode included.
+   *  The mirror renders the ones with no bespoke control of their own; the
+   *  three that have one are here too, so nothing has to be told twice which
+   *  categories those are. Empty for a harness that publishes none, which is
+   *  claude. */
+  configOptions: ChatConfigOption[];
   /** `system/init`'s fast-mode state, and the harness's reason when it is
    *  unavailable. */
   fastModeState: string | null;
@@ -354,6 +361,7 @@ export function initialChat(sessionId: string): ChatState {
     pendingEffort: null,
     models: [],
     modes: [],
+    configOptions: [],
     fastModeState: null,
     fastModeDisabledReason: null,
     account: null,
@@ -604,6 +612,12 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       if (ev.modes.length) s.modes = ev.modes;
       if (ev.account) s.account = ev.account;
       if (ev.capabilities) s.capabilities = ev.capabilities;
+      return;
+    }
+    case "configOptions": {
+      // Replaced wholesale, never merged: the agent republishes its whole set
+      // on every change, and merging would keep a lever it had just withdrawn.
+      s.configOptions = ev.options;
       return;
     }
     case "turnStarted": {
