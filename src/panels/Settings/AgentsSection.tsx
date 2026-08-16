@@ -5,6 +5,14 @@ import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import { ensureAgentsLoaded } from "../../utils/agents";
 import {
+  catalogFor,
+  distinctModelCount,
+  dueCount,
+  ensureModelCatalogsLoaded,
+  isProbing,
+  refreshDueCatalogs,
+} from "../../utils/modelCatalog";
+import {
   ensureAgentHealthLoaded,
   refreshAgentHealth,
   type AgentHealth,
@@ -69,6 +77,7 @@ const STATE_PILL: Record<BinaryStatus, string> = {
  */
 function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
   const a = () => props.agent;
+  const catalog = () => catalogFor(a().id);
   // The pill is for the states that need acting on. Painting "READY" on every
   // healthy card spends the reader's attention on the answer they expected.
   const settled = () => a().status === "versionMatch" || a().status === "versionUnknown";
@@ -105,10 +114,27 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
             <code>{a().program}</code>
           </Match>
         </Switch>
-        {/* No model count. It used to come from the adapter's `[[chat.models]]`,
-            which meant the card claimed "4 models" for Claude no matter what the
-            installed CLI could run. A count is a claim, so it waits for the
-            probe cache to have something the harness actually said. */}
+        {/* The count is a claim about what the installed binary can run, so it
+            comes from the probe cache and nowhere else. Three states, and the
+            first is why the count is not simply a number: a harness nobody has
+            asked shows *nothing* here, because "0 models" would read as a broken
+            install rather than as an unasked question. */}
+        <Switch>
+          <Match when={isProbing(a().id)}>
+            <span class={styles.hcardModels}>· checking…</span>
+          </Match>
+          <Match when={catalog()?.state === "failed" && !catalog()?.catalogue}>
+            <span class={`${styles.hcardModels} ${styles.hcardModelsBad}`}>· Error</span>
+          </Match>
+          {/* A failed probe that still has an older answer shows the answer, not
+              the error: stale-but-real beats fresh-but-empty, and the detail page
+              is where the failure is explained. */}
+          <Match when={catalog()?.catalogue}>
+            <span class={styles.hcardModels}>
+              · {distinctModelCount(catalog())} model{distinctModelCount(catalog()) === 1 ? "" : "s"}
+            </span>
+          </Match>
+        </Switch>
       </span>
       <span class={styles.hcardGo} aria-hidden="true">
         <Icon icon={ChevronRight} size={14} />
@@ -547,6 +573,7 @@ function CatalogList() {
 export default function AgentsSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   const [rechecking, setRechecking] = createSignal(false);
+  const [checkingAll, setCheckingAll] = createSignal(false);
   const [openId, setOpenId] = createSignal<string | null>(null);
 
   // Guarded rather than defaulted: `agent_health` is an IPC call, and a reply
@@ -590,7 +617,25 @@ export default function AgentsSection() {
     // claim above ("the picker reads the same answer") only becomes true after
     // a re-check, and until then the picker is running on "unknown".
     ensureAgentHealthLoaded();
+    // The cache, never a probe. `model_catalogs` reads files; opening Settings
+    // must not launch every agent binary on the machine, which is why the read
+    // and the refreshes are separate commands at all.
+    ensureModelCatalogsLoaded();
   });
+
+  /** Ask every harness that has never answered or whose binary changed.
+   *
+   *  Deliberate rather than automatic: this spawns one process per due harness,
+   *  and a settings page that did it on open would be doing exactly what the
+   *  read/probe split exists to prevent. */
+  const checkAll = async () => {
+    setCheckingAll(true);
+    try {
+      await refreshDueCatalogs();
+    } finally {
+      setCheckingAll(false);
+    }
+  };
 
   return (
     <section class={styles.section}>
@@ -601,6 +646,16 @@ export default function AgentsSection() {
             <div class={styles.sectionTitle}>
               <span>Harnesses</span>
               <span class={styles.sectionRule} />
+              {/* Disabled when nothing is due, rather than doing nothing:
+                  `refreshDueCatalogs` skips every harness with a current
+                  answer, so on a settled machine this would flash and stop. */}
+              <Button
+                size="sm"
+                onClick={() => void checkAll()}
+                disabled={checkingAll() || dueCount() === 0}
+              >
+                {checkingAll() ? "Asking…" : "Check models"}
+              </Button>
             </div>
             <Switch>
               <Match when={health.loading}>
