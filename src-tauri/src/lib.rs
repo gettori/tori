@@ -186,7 +186,6 @@ pub fn run() {
             chat::commands::chat_spawn,
             catalog_probe::model_catalogs,
             catalog_probe::refresh_model_catalog,
-            catalog_probe::refresh_model_catalogs,
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,
