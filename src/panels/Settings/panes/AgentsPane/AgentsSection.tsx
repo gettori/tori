@@ -1,9 +1,16 @@
 import { For, Show, Switch, Match, createMemo, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight } from "lucide-solid";
+import { RefreshCw } from "lucide-solid";
 import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
-import { agents, ensureAdaptersLoaded, type Adapter } from "../../../../utils/agents";
+import {
+  agents,
+  ensureAdaptersLoaded,
+  findAdapter,
+  type Adapter,
+  type ChatTransport,
+} from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -78,100 +85,126 @@ const STATE_PILL: Record<BinaryStatus, string> = {
   notFound: "",
 };
 
+/** Who ships the agent, as the row's quiet fact. Frontend-owned branding, the
+ *  same trade `agentMarks` makes: adding it to the TOML schema would buy
+ *  nothing but churn for a string only this row reads. An id Sway has never
+ *  heard of has no entry and falls back below. */
+const PROVIDER: Record<string, string> = {
+  claude: "Anthropic",
+  codex: "OpenAI",
+  copilot: "GitHub",
+  gemini: "Google",
+  kimi: "Moonshot AI",
+  opencode: "SST",
+  pi: "Mario Zechner",
+};
+
+/** How Sway drives the agent. "Native" is the first-class adapter with a
+ *  transport of its own; protocol agents say the protocol's name. */
+const TRANSPORT_LABEL: Record<ChatTransport, string> = {
+  claude_stream_json: "Native",
+  acp: "ACP",
+};
+
+/** "GitHub · ACP": provider, then transport. Read off the resolved adapter,
+ *  so before `list_agents` lands (the fallback carries no chat table) the note
+ *  is the provider alone rather than a wrong claim; an adapter Sway knows
+ *  neither fact about shows its program, the one fact the adapter itself
+ *  states. */
+function rowNote(id: string, program: string): string {
+  const transport = findAdapter(id).chat?.transport;
+  const parts = [PROVIDER[id], transport && TRANSPORT_LABEL[transport]].filter(Boolean);
+  return parts.length ? parts.join(" · ") : program;
+}
+
 /**
- * One agent at a glance: is it here, which build, and who is signed in.
+ * What the STATE column says. One verdict per row, most actionable first:
+ * a signed-out agent says "Sign in" even when its version also drifted,
+ * because signing in is the thing the reader can do from here and the drift
+ * is explained on the detail page. "Ready" is painted (unlike the old cards,
+ * which suppressed it) because an empty cell in a filled column reads as a
+ * rendering bug, not as calm.
+ */
+function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
+  if (!h) return { label: "Checking", cls: "" };
+  if (h.status === "notFound") return { label: "Not installed", cls: "" };
+  if (h.signIn === "signedOut") return { label: "Sign in", cls: styles.statePillWarn };
+  if (h.status === "versionDrift") return { label: "Version drift", cls: styles.statePillWarn };
+  return { label: "Ready", cls: styles.statePillOk };
+}
+
+/**
+ * One agent as a table row: name, build, model count, verdict.
  *
  * A button rather than a div with a handler, so it is reachable and announced
  * without inventing a role. Everything it used to carry (capabilities, gaps,
- * accounts, the sessions directory) moved to `AgentDetail`, which is what
+ * accounts, the sessions directory) lives on `AgentDetail`, which is what
  * lets seven of these be read in one look.
  *
- * `health` is optional because the card renders before the sweep answers.
- * Until it does, the card names the agent and claims nothing else. It stays
+ * `health` is optional because the row renders before the sweep answers.
+ * Until it does, the row names the agent and claims nothing else. It stays
  * clickable: the detail page is made of health facts and waits for the row,
  * so an early click is remembered rather than swallowed - a click that does
- * nothing reads as a broken card, not as a pending one.
+ * nothing reads as a broken row, not as a pending one.
  */
-function AgentCard(props: { adapter: CardAgent; health: AgentHealth | undefined; onOpen: () => void }) {
+function AgentRow(props: {
+  adapter: CardAgent;
+  health: AgentHealth | undefined;
+  accounts: number | undefined;
+  onOpen: () => void;
+}) {
   const a = () => props.adapter;
   const h = () => props.health;
   const catalog = () => catalogFor(a().id);
-  // The pill is for the states that need acting on. Painting "READY" on every
-  // healthy card spends the reader's attention on the answer they expected.
-  const settled = () => h()?.status === "versionMatch" || h()?.status === "versionUnknown";
+  const state = () => rowState(h());
   return (
     <button
       type="button"
-      class={styles.hcard}
+      class={styles.agentRow}
       data-agent={a().id}
       aria-busy={!h()}
       onClick={() => props.onOpen()}
     >
-      {/* The logo takes the leading slot the bare dot used to hold, and the
-          dot rides its corner: the mark says which agent, the dot says whether
-          it is usable, and stacking them keeps both without spending two
-          columns on one subject. No dot before the sweep answers: an unlit one
-          would read as a verdict. */}
-      <span class={styles.hcardGlyph}>
-        <AgentGlyph id={a().id} label={a().label} size={22} />
-        <Show when={h()}>{(row) => <span class={`${styles.dot} ${TONE[row().status]}`} />}</Show>
+      <span class={styles.agentCell}>
+        {/* The logo keeps the leading slot, with the status dot on its corner:
+            the mark says which agent, the dot says whether it is usable. No dot
+            before the sweep answers - an unlit one would read as a verdict. */}
+        <span class={styles.hcardGlyph}>
+          <AgentGlyph id={a().id} label={a().label} size={20} />
+          <Show when={h()}>{(row) => <span class={`${styles.dot} ${TONE[row().status]}`} />}</Show>
+        </span>
+        <span class={styles.agentName}>{a().label}</span>
+        {/* Standing facts, not status: who ships it and how Sway drives it.
+            Who is signed in, what to install, which key bills - all of that
+            lives on the agent's page, where there is room to say it in words;
+            here the state cell already carries the verdict. */}
+        <span class={styles.agentNote}>{rowNote(a().id, a().program)}</span>
       </span>
-      <span class={styles.hcardName}>{a().label}</span>
-      <Show when={h()?.version}>{(v) => <span class={styles.hcardVersion}>{v()}</span>}</Show>
-      <Show when={h() && !settled()}>
-        {(_) => (
-          <span class={`${styles.statePill} ${STATE_PILL[h()!.status]}`}>
-            {STATE_LABEL[h()!.status]}
-          </span>
-        )}
-      </Show>
-      <Show when={!h()}>
-        <span class={styles.statePill}>Checking</span>
-      </Show>
-      {/* One line, and the fact it carries differs by group: an installed
-          agent is asked who it is signed in as, a missing one what it would
-          take to get it. Neither question is interesting for the other. An
-          unswept card shows the program alone, which is the one fact the
-          adapter already knows. */}
-      <span class={styles.hcardMeta}>
+      <span class={styles.agentVersion}>{h()?.version ?? "-"}</span>
+      {/* The count is a claim about what the installed binary can run, so it
+          comes from the probe cache and nowhere else. A row nobody has asked
+          shows "-" rather than 0, because "0 models" reads as a broken install
+          rather than as an unasked question. A failed probe that still holds
+          an older answer shows the answer, not the error: stale-but-real beats
+          fresh-but-empty, and the detail page is where the failure is
+          explained. */}
+      <span class={styles.agentModels}>
         <Switch>
-          <Match when={h()?.status === "notFound"}>
-            Install <code>{a().program}</code> to use it
+          <Match when={isProbing(a().id)}>…</Match>
+          <Match when={catalog()?.catalogue}>{distinctModelCount(catalog())}</Match>
+          <Match when={catalog()?.state === "failed"}>
+            <span class={styles.agentModelsBad}>Error</span>
           </Match>
-          <Match when={h()?.apiKeySource}>
-            {(source) => <>Billing against {source()}</>}
-          </Match>
-          <Match when={h()?.signIn === "signedOut"}>Signed out</Match>
-          <Match when={h()?.account}>{(account) => <>Signed in as {account()}</>}</Match>
-          <Match when={h()?.signIn === "signedIn"}>Signed in</Match>
-          <Match when={true}>
-            <code>{a().program}</code>
-          </Match>
-        </Switch>
-        {/* The count is a claim about what the installed binary can run, so it
-            comes from the probe cache and nowhere else. Three states, and the
-            first is why the count is not simply a number: a agent nobody has
-            asked shows *nothing* here, because "0 models" would read as a broken
-            install rather than as an unasked question. */}
-        <Switch>
-          <Match when={isProbing(a().id)}>
-            <span class={styles.hcardModels}>· checking…</span>
-          </Match>
-          <Match when={catalog()?.state === "failed" && !catalog()?.catalogue}>
-            <span class={`${styles.hcardModels} ${styles.hcardModelsBad}`}>· Error</span>
-          </Match>
-          {/* A failed probe that still has an older answer shows the answer, not
-              the error: stale-but-real beats fresh-but-empty, and the detail page
-              is where the failure is explained. */}
-          <Match when={catalog()?.catalogue}>
-            <span class={styles.hcardModels}>
-              · {distinctModelCount(catalog())} model{distinctModelCount(catalog()) === 1 ? "" : "s"}
-            </span>
-          </Match>
+          <Match when={true}>-</Match>
         </Switch>
       </span>
-      <span class={styles.hcardGo} aria-hidden="true">
-        <Icon icon={ChevronRight} size={14} />
+      {/* Stored profiles, counted off the accounts file with no probe: how
+          many logins Sway holds, not whether any of them works. "-" for an
+          adapter that declares no [accounts], because a default "1" would
+          claim an account Sway has nothing true to say about. */}
+      <span class={styles.agentCount}>{props.accounts ?? "-"}</span>
+      <span class={styles.agentState}>
+        <span class={`${styles.statePill} ${state().cls}`}>{state().label}</span>
       </span>
     </button>
   );
@@ -197,6 +230,13 @@ function orderRows(rows: CardRow[]): CardRow[] {
 
 export default function AgentsSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  // Counts come from the stored accounts file, no subprocess behind them, so
+  // fetching on every open is as cheap as the read it is.
+  const [accountCounts, { refetch: refetchCounts }] = createResource(() =>
+    invoke<Record<string, number>>("agent_account_counts").catch(
+      () => ({}) as Record<string, number>,
+    ),
+  );
   const [rechecking, setRechecking] = createSignal(false);
   // const [checkingAll, setCheckingAll] = createSignal(false);
   const [openId, setOpenId] = createSignal<string | null>(null);
@@ -238,11 +278,28 @@ export default function AgentsSection() {
   });
   const rowById = createMemo(() => new Map(ordered().map((r) => [r.adapter.id, r] as const)));
   // Ids, not row objects: `For` keys by reference, and the join builds fresh
-  // objects every recompute, so iterating rows would tear every card down each
-  // time health or the adapters landed. A card keyed by its id keeps its DOM
+  // objects every recompute, so iterating rows would tear every row down each
+  // time health or the adapters landed. A row keyed by its id keeps its DOM
   // and updates in place, which is also what keeps a click from landing on a
   // node the join just replaced.
   const orderedIds = createMemo(() => ordered().map((r) => r.adapter.id));
+  // The little filter beside the title. Matched against what the row actually
+  // shows (name, program, the provider note), so typing what you can read
+  // always works, and against nothing invisible, so a match is never
+  // inexplicable. "github" finding Copilot is the note earning its keep.
+  const [query, setQuery] = createSignal("");
+  const visibleIds = createMemo(() => {
+    const q = query().trim().toLowerCase();
+    if (!q) return orderedIds();
+    return ordered()
+      .filter((r) =>
+        [r.adapter.label, r.adapter.program, rowNote(r.adapter.id, r.adapter.program)]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
+      .map((r) => r.adapter.id);
+  });
   const opened = createMemo(() => all().find((a) => a.id === openId()));
 
   /** Back to the card that opened the page, not to the top of the list: a
@@ -250,6 +307,9 @@ export default function AgentsSection() {
   const close = () => {
     const id = openId();
     setOpenId(null);
+    // The page is where accounts get added and removed, so the count a reader
+    // returns to has to be the count they just changed.
+    void refetchCounts();
     requestAnimationFrame(() =>
       document.querySelector<HTMLButtonElement>(`[data-agent="${id}"]`)?.focus(),
     );
@@ -304,36 +364,60 @@ export default function AgentsSection() {
         when={opened()}
         fallback={
           <>
-            {/* Parked, not deleted: the redesign in progress puts this row's job
-                somewhere else, and `checkAll` below is parked with it.
+            {/* One row does all the chrome: the title, the rule, the re-probe,
+                and the filter. The filter is this section's own rather than the
+                panel-wide search above, which shows and hides whole panes; this
+                one narrows rows inside a list that is already on screen. */}
             <div class={styles.sectionTitle}>
               <span>Agents</span>
               <span class={styles.sectionRule} />
-              <Button
+              <IconButton
                 size="sm"
-                onClick={() => void checkAll()}
-                disabled={checkingAll() || dueCount() === 0}
-              >
-                {checkingAll() ? "Asking…" : "Check models"}
-              </Button>
-            </div> */}
-            {/* The failure is a note above the cards rather than a screen of
-                its own: the list is real either way, and the cards degrade to
+                icon={<Icon icon={RefreshCw} />}
+                tooltip="Check again"
+                onClick={() => void recheck()}
+                disabled={rechecking()}
+              />
+              <input
+                type="text"
+                class={styles.tableFilter}
+                placeholder="Search"
+                aria-label="Search agents"
+                value={query()}
+                onInput={(e) => setQuery(e.currentTarget.value)}
+              />
+            </div>
+            {/* The failure is a note above the rows rather than a screen of
+                its own: the list is real either way, and the rows degrade to
                 their unswept state, which already claims nothing. */}
             <Show when={health.error}>
               <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
             </Show>
-            <div class={styles.cardGrid}>
-              <For each={orderedIds()}>
+            <div class={styles.agentTable}>
+              <div class={styles.agentTableHead}>
+                {/* Empty on purpose: every row opens with the agent's own
+                    name, so a column label would restate what the column is
+                    made of. The span stays so the grid keeps its shape. */}
+                <span />
+                <span>Version</span>
+                <span class={styles.agentColEnd}>Models</span>
+                <span class={styles.agentColEnd}>Accounts</span>
+                <span class={styles.agentColEnd}>State</span>
+              </div>
+              <For each={visibleIds()}>
                 {(id) => (
-                  <AgentCard
+                  <AgentRow
                     adapter={rowById().get(id)!.adapter}
                     health={rowById().get(id)?.health}
+                    accounts={accountCounts()?.[id]}
                     onOpen={() => setOpenId(id)}
                   />
                 )}
               </For>
             </div>
+            <Show when={query().trim() && visibleIds().length === 0}>
+              <div class={styles.cardMeta}>No agent matches "{query().trim()}".</div>
+            </Show>
           </>
         }
       >

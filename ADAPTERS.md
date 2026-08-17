@@ -86,7 +86,11 @@ tested.
 **copilot** and **kimi** ship bundled and untested, on the gemini pattern: ACP
 is a first-party mode of each CLI (`copilot --acp`, `kimi acp`), so the adapter
 is launch instructions and nothing else until someone probes a real install and
-pins `verified_against`.
+pins `verified_against`. Copilot additionally declares the two commands its CLI
+reference documents: `[install]` (`npm install -g @github/copilot`) and a
+`[accounts]` login (`copilot login`, first-party OAuth). No whoami and no
+logout, because the reference documents neither non-interactively, so its
+sign-in state stays honestly unknown.
 
 **pi** ships bundled and untested, on the codex pattern: `pi` has no ACP mode
 of its own, so chat goes through the `pi-acp` bridge over `npx`. Unlike the
@@ -194,6 +198,11 @@ logout_args = []            # optional; args that sign the profile out
 whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
 whoami_kind = "..."         # required with whoami_args; claude_json | exit_code | opencode_credentials
 supports_isolation = false  # optional, default false; whether two accounts can coexist - see below
+
+# --- optional; omit for an agent whose install path nobody has verified ---
+[install]
+program = "npm"             # the vendor's own documented install command...
+args = []                   # ...run in a visible PTY tab, never captured
 ```
 
 ### The `[chat]` table
@@ -318,6 +327,20 @@ table without it is rejected, because the second account would sign in
 successfully and then show an empty history forever. An agent whose sessions
 only its protocol reaches declares no `[discovery]` table and so is never asked
 for one.
+
+### The `[install]` table
+
+The vendor's own documented install command, exactly as documented. When an
+agent's binary is not on PATH, the Install button on its Settings page runs
+this in a visible terminal tab (spawned directly, no shell) and re-probes
+health when the process exits: Sway opens the door and never installs anything
+itself, the same posture as sign-in. Omit the whole table when nobody has
+verified an install end to end on a real machine, and the page falls back to
+"install `program` yourself" instructions: an unverified one-liner would be a
+button claiming a measurement that never happened. The command is only as
+portable as the tool it names (`npm` assumes Node), which the visible tab makes
+an acceptable trade: "npm: command not found" is a readable failure, not a
+mystery.
 
 ### `capabilities.hooks`
 
