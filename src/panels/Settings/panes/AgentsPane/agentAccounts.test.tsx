@@ -60,6 +60,10 @@ function mount(over: { health?: Record<string, unknown>; accounts?: Record<strin
   invoked.mockImplementation(async (cmd: string) => {
     if (cmd === "agent_health") return [health(over.health)];
     if (cmd === "agent_accounts") return view(over.accounts);
+    // The setup page's sign-in step, for the default profile: no home
+    // variable, which is what resolves the login the user already had.
+    if (cmd === "agent_login_route")
+      return { type: "terminal", program: "claude", args: ["auth", "login"], home: null };
     return [];
   });
   return render(() => <AgentsSection />);
@@ -85,29 +89,44 @@ function openedTabs(): OpenTerminal[] {
   return seen;
 }
 
-describe("the sign-in state on an agent card", () => {
+describe("the sign-in state on an agent page", () => {
   beforeEach(() => invoked.mockReset());
 
-  // The third state Phase 1 could not render, because nothing produced it yet.
-  // Installed and signed-out are two independent facts.
-  it("says an installed agent is signed out, and why that matters", async () => {
-    const { container } = await open(mount({ health: { signIn: "signedOut" } }));
-    await waitFor(() => expect(container.textContent).toContain("Installed, version 2.1.231"));
-    expect(container.textContent).toContain("Nobody is signed in");
-    expect(container.textContent).toContain("not offered for a new session");
+  // Installed and signed-out are two independent facts, and this is the state
+  // the setup steps exist for: the page swaps its accounts list for the plan,
+  // with the install step already done.
+  it("walks a signed-out agent through setup instead of listing accounts", async () => {
+    const { container, getByRole } = await open(mount({ health: { signIn: "signedOut" } }));
+    await waitFor(() => expect(container.textContent).toContain("Setup"));
+    expect(container.textContent).toContain("1 of 3");
+    expect(container.textContent).toContain("Installed");
+    expect(container.textContent).toContain("Ready for chat");
+    expect(getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(container.textContent).not.toContain("your existing login");
+  });
+
+  // The setup sign-in signs in the *default* profile: no home variable set is
+  // what resolves the login the user already had.
+  it("signs the default profile in from the setup step", async () => {
+    const tabs = openedTabs();
+    const { container, getByRole } = await open(mount({ health: { signIn: "signedOut" } }));
+    await waitFor(() => expect(container.textContent).toContain("claude auth login"));
+    fireEvent.click(getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(tabs.length).toBe(1));
+    expect(tabs[0].id).toBe("signin:claude:default");
+    expect(tabs[0].program).toBe("claude");
+    expect(tabs[0].env).toBeUndefined();
+    expect(tabs[0].recheckAgentsOnExit).toBe(true);
   });
 
   // Unknown is the default for every agent that cannot answer and every probe
-  // that did not finish. It must not read as a problem.
-  it("says nothing at all when the sign-in state is unknown", async () => {
+  // that did not finish. It must not read as a problem, so no setup plan: the
+  // page goes straight to the accounts it has.
+  it("shows no setup steps when the sign-in state is unknown", async () => {
     const { container } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("Installed, version 2.1.231"));
-    expect(container.textContent).not.toContain("Nobody is signed in");
-  });
-
-  it("names the account when the agent names one", async () => {
-    const { container } = await open(mount({ health: { signIn: "signedIn", account: "a@b.c" } }));
-    await waitFor(() => expect(container.textContent).toContain("Signed in as a@b.c"));
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+    expect(container.textContent).not.toContain("Setup");
+    expect(container.textContent).not.toContain("Ready for chat");
   });
 
   // The agent's own statement about which credential it will bill against,
@@ -119,9 +138,9 @@ describe("the sign-in state on an agent card", () => {
     }));
     await waitFor(() => expect(container.textContent).toContain("ANTHROPIC_API_KEY"));
     expect(container.textContent).toContain("rather than the subscription");
-    // Still installed and still usable: the warning sits beside a working
-    // agent rather than in place of one.
-    expect(container.textContent).toContain("Installed, version 2.1.231");
+    // Still usable: the warning sits beside a working agent rather than in
+    // place of one, and the verdict pill keeps saying so.
+    expect(container.textContent).toContain("Ready");
   });
 });
 
@@ -132,6 +151,11 @@ describe("the accounts list", () => {
     const { container } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(container.textContent).toContain("your existing login");
+  });
+
+  it("shows the account the agent named for a profile", async () => {
+    const { container } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("a@b.c"));
   });
 
   // There is nothing stored to remove, and "removing" it could only mean
@@ -180,12 +204,14 @@ describe("the accounts list", () => {
     expect(container.textContent).toContain("same account as Default");
   });
 
-  // Isolation is measured, never inferred from having a home variable, and the
-  // absence of the button is explained rather than left as a gap.
-  it("says why there is no add button for a agent with no measured isolation", async () => {
-    const { container, queryByText } = await open(mount({ accounts: { canAdd: false } }));
+  // Isolation is measured, never inferred from having a home variable. The
+  // button stays on screen, disabled beside the reason, so "why can I not add
+  // a second account here" has an answer where the answer matters.
+  it("says why adding is off for a agent with no measured isolation", async () => {
+    const { container, getByText } = await open(mount({ accounts: { canAdd: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(queryByText("Add account")).toBeNull();
+    const button = getByText("Add account").closest("button")!;
+    expect(button.disabled).toBe(true);
     expect(container.textContent).toContain("two accounts at once");
   });
 
@@ -193,7 +219,6 @@ describe("the accounts list", () => {
   // same claim as "nobody is signed in", so it renders no controls at all.
   it("renders nothing for an adapter that declares no accounts table", async () => {
     const { container } = await open(mount({ accounts: { declared: false, profiles: [] } }));
-    await waitFor(() => expect(container.textContent).toContain("Installed, version"));
     expect(container.textContent).not.toContain("Accounts");
   });
 
@@ -290,5 +315,36 @@ describe("signing in", () => {
     const { container, queryByText } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByText("Sign in")).toBeNull();
+  });
+});
+
+describe("signing out", () => {
+  beforeEach(() => invoked.mockReset());
+
+  // Recoverable, so a plain button and no dialog: the agent's own logout
+  // revokes the credential and the profile stays, ready to sign back in.
+  it("signs a profile out through the agent's own logout command", async () => {
+    const { container, getByRole } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+
+    fireEvent.click(getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(
+        invoked.mock.calls.some(
+          ([cmd, args]) =>
+            cmd === "sign_out_agent_account" &&
+            (args as { profileId?: string })?.profileId === "default",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // `canSignOut` is the backend saying a logout command exists; without one
+  // the button could only pretend, so it is not there at all.
+  it("offers no sign-out where the adapter declares no logout command", async () => {
+    const { container, queryByRole } = await open(mount({ accounts: { canSignOut: false } }));
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+    expect(queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });

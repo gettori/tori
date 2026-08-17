@@ -1,6 +1,9 @@
 import { For, Show, createResource, createSignal } from "solid-js";
+import { Plus, RefreshCw } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
+import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
 import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
@@ -59,7 +62,7 @@ export type AccountsView = {
 
 const SIGN_IN_LABEL: Record<SignIn, string> = {
   signedIn: "Signed in",
-  signedOut: "Signed out",
+  signedOut: "Not signed in",
   // Not a failure and not a warning: plenty of agents have no way to say.
   unknown: "Sign-in state unknown",
 };
@@ -109,6 +112,25 @@ function ProfileRow(props: {
       confirmedWithoutLogout,
     });
 
+  // Recoverable, so no confirmation step: the agent's own logout revokes the
+  // credential and the profile stays, ready to be signed back in to. Removal
+  // below is the destructive sibling and keeps its dialog.
+  const signOut = async () => {
+    setBusy(true);
+    try {
+      await invoke("sign_out_agent_account", {
+        adapterId: props.agentId,
+        profileId: p().id,
+      });
+      toast(`Signed ${p().label} out.`, "info");
+      props.onChanged();
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     setBusy(true);
     try {
@@ -135,10 +157,38 @@ function ProfileRow(props: {
   };
 
   return (
-    <div class={styles.cardMeta}>
-      <strong>{p().label}</strong>
-      {p().isDefault ? " (your existing login)" : ""} · {SIGN_IN_LABEL[p().signIn]}
-      <Show when={p().account}>{(account) => <> · {account()}</>}</Show>
+    <div class={styles.accountRow}>
+      <div class={styles.accountMain}>
+        {/* Green only for the agent's own "yes": unknown is dim, because most
+            agents have no way to answer and dim must not read as broken. */}
+        <span class={`${styles.dot} ${p().signIn === "signedIn" ? styles.dotOk : styles.dotOff}`} />
+        <span class={styles.accountName}>{p().label}</span>
+        <Show when={p().isDefault}>
+          <span class={styles.accountAside}>(your existing login)</span>
+        </Show>
+        {/* The account the agent named where it named one; its sign-in state
+            where it did not. One fact, never both: the email already implies
+            signed in. */}
+        <span class={styles.accountFact}>{p().account ?? SIGN_IN_LABEL[p().signIn]}</span>
+        <Show when={p().signIn !== "signedIn"}>
+          <Button size="sm" onClick={signIn}>
+            Sign in
+          </Button>
+        </Show>
+        {/* Only where the adapter declares a logout command: `canSignOut` is
+            the backend saying one exists, and a button without one could only
+            pretend. */}
+        <Show when={p().signIn === "signedIn" && props.view.canSignOut}>
+          <Button size="sm" onClick={() => void signOut()} disabled={busy()}>
+            Sign out
+          </Button>
+        </Show>
+        <Show when={!p().isDefault}>
+          <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy()}>
+            {props.view.canSignOut ? "Sign out and remove" : "Remove"}
+          </Button>
+        </Show>
+      </div>
       {/* The agent's own answer about which credential it will bill against,
           not Sway reading its environment and guessing which variables matter
           to which agent. A notice, never a block: the session still runs. */}
@@ -160,23 +210,17 @@ function ProfileRow(props: {
           </div>
         )}
       </Show>
-      <div class={styles.cardActions}>
-        <Show when={p().signIn !== "signedIn"}>
-          <Button size="sm" onClick={signIn}>
-            Sign in
-          </Button>
-        </Show>
-        <Show when={!p().isDefault}>
-          <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy()}>
-            {props.view.canSignOut ? "Sign out and remove" : "Remove"}
-          </Button>
-        </Show>
-      </div>
     </div>
   );
 }
 
-export default function AgentAccounts(props: { agentId: string; agentLabel: string }) {
+export default function AgentAccounts(props: {
+  agentId: string;
+  agentLabel: string;
+  /** The page-level health re-probe, run before this list's own refetch so the
+   *  verdict pill above and the rows below move together. */
+  onRecheck?: () => Promise<unknown>;
+}) {
   const [view, { refetch }] = createResource(
     () => props.agentId,
     (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }),
@@ -225,6 +269,19 @@ export default function AgentAccounts(props: { agentId: string; agentLabel: stri
     void refreshAgentHealth().then(() => refetch());
   };
 
+  // The heading's "Check again": the same refresh order as `changed` (probe,
+  // then read), without the watcher restart nothing changed on disk needs.
+  const [checking, setChecking] = createSignal(false);
+  const recheck = async () => {
+    setChecking(true);
+    try {
+      await (props.onRecheck ? props.onRecheck() : refreshAgentHealth());
+      await refetch();
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const add = async () => {
     const label = (await askName())?.trim();
     if (!label) return;
@@ -257,39 +314,54 @@ export default function AgentAccounts(props: { agentId: string; agentLabel: stri
       {(v) => (
         <>
           {/* Its own heading rather than the detail page's, so a agent whose
-              adapter declares no accounts table gets no empty section. */}
+              adapter declares no accounts table gets no empty section. "Check
+              again" here re-runs the per-profile whoami probes, which the
+              page-level re-check deliberately does not: that one is a cached
+              sweep, this list is the screen that pays for fresh answers. */}
           <div class={styles.groupHead}>
             <span class={styles.groupTitle}>Accounts</span>
             <span class={styles.sectionRule} />
+            <IconButton
+              size="sm"
+              icon={<Icon icon={RefreshCw} />}
+              tooltip="Check again"
+              onClick={() => void recheck()}
+              disabled={checking()}
+            />
           </div>
-          <For each={v().profiles}>
-            {(profile) => (
-              <ProfileRow
-                agentId={props.agentId}
-                agentLabel={props.agentLabel}
-                view={v()}
-                profile={profile}
-                cwd={cwd() ?? "/"}
-                onChanged={changed}
-                confirm={askConfirm}
-              />
-            )}
-          </For>
-          <Show when={v().canAdd}>
-            <div class={styles.cardActions}>
-              <Button size="sm" onClick={() => void add()} disabled={adding()}>
-                Add account
-              </Button>
-            </div>
-          </Show>
-          {/* Said rather than left as a missing button, so "why can I not add a
-              second account here" has an answer on screen. */}
-          <Show when={!v().canAdd}>
-            <div class={styles.hint}>
-              Nobody has measured {props.agentLabel} holding two accounts at once, so Sway offers
-              one. A second would risk sharing the first one's credentials.
-            </div>
-          </Show>
+          <div class={styles.accountsCard}>
+            <For each={v().profiles}>
+              {(profile) => (
+                <ProfileRow
+                  agentId={props.agentId}
+                  agentLabel={props.agentLabel}
+                  view={v()}
+                  profile={profile}
+                  cwd={cwd() ?? "/"}
+                  onChanged={changed}
+                  confirm={askConfirm}
+                />
+              )}
+            </For>
+          </div>
+          {/* The button stays visible when adding is off, disabled beside the
+              reason: a missing button leaves "why can I not add a second
+              account here" with no answer on screen. */}
+          <div class={styles.cardActions}>
+            <Button
+              size="sm"
+              icon={<Icon icon={Plus} />}
+              onClick={() => void add()}
+              disabled={adding() || !v().canAdd}
+            >
+              Add account
+            </Button>
+            <span class={styles.actionNote}>
+              {v().canAdd
+                ? "Each account keeps its own session and model list. Pick one per chat."
+                : `Nobody has measured ${props.agentLabel} holding two accounts at once, so Sway offers one.`}
+            </span>
+          </div>
           <Show when={nameReq()}>
             <PromptModal
               title={`Name for the new ${props.agentLabel} account`}
