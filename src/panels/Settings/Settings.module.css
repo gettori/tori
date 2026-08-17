@@ -801,7 +801,7 @@
     line-height: 1.4;
   }
   .modelRow + .modelRow {
-    border-top: 1px solid var(--border-subtle);
+    border-top: var(--sway-border-thin) solid var(--border-default);
   }
   .modelName {
     color: var(--fg-default);
