@@ -2,6 +2,7 @@
   {
     "id": "claude",
     "label": "Claude",
+    "icon": "claude",
     "program": "claude",
     "base_args": [],
     "yolo_args": [
@@ -211,6 +212,7 @@
   {
     "id": "codex",
     "label": "Codex",
+    "icon": "codex",
     "program": "codex",
     "base_args": [],
     "yolo_args": [
@@ -264,6 +266,7 @@
   {
     "id": "gemini",
     "label": "Gemini",
+    "icon": "gemini",
     "program": "gemini",
     "base_args": [],
     "yolo_args": [
@@ -302,6 +305,7 @@
   {
     "id": "opencode",
     "label": "OpenCode",
+    "icon": "opencode",
     "program": "opencode",
     "base_args": [],
     "yolo_args": [
