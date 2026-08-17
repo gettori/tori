@@ -1,62 +1,36 @@
-import { splitProps, type Component, type JSX } from "solid-js";
+import { type Component } from "solid-js";
 import { Brain } from "lucide-solid";
+import { agentMark, type MarkProps } from "./agentMarks";
 
 /**
- * The mark of whoever is actually answering, for the two places that name a
- * model: the composer's model pill and the status strip's stats row.
+ * The mark of whoever is actually answering, for the places that name a model:
+ * the composer's model pill, the status strip's stats row, and a session's tab.
  *
- * A generic "brain" glyph sat in both before, and it said nothing the row does
- * not already say - every model is a model. The provider is the fact worth a
- * glyph, because it is the one thing about a session you cannot read off the
+ * A generic "brain" glyph sat in all of them before, and it said nothing the row
+ * does not already say - every model is a model. The provider is the fact worth
+ * a glyph, because it is the one thing about a session you cannot read off the
  * label: "opus-4.6" is Anthropic's, "gpt-5" is not, and Sway drives more than
  * one agent.
  *
- * **Only marks we actually have.** Anything we cannot name a provider for keeps
- * the brain rather than borrowing a neighbour's logo: a mark is a claim about
- * who is running the turn, and a wrong one is worse than a generic one.
+ * The marks themselves live in `agentMarks.tsx`, which is also where the
+ * settings cards and anything else wanting a agent logo reads them from. This
+ * file is only the *resolution*: which mark, given a model id and an adapter.
  */
 
-type MarkProps = JSX.SvgSVGAttributes<SVGSVGElement> & {
-  size?: number | string;
-  /** Taken and dropped: `Icon` passes one to every glyph, and a filled mark
-   *  that let it through would inherit a stroke it does not draw with. */
-  strokeWidth?: number | string;
-};
-
-/** Wraps a brand path as something `<Icon>` can render. `Icon` renders through
- *  `Dynamic` with `size`, `strokeWidth` and `class`, and a *filled* mark has to
- *  take `size` as its box and drop the stroke width rather than inherit it. */
-function brandMark(path: string): Component<MarkProps> {
-  return (props) => {
-    const [local, rest] = splitProps(props, ["size", "strokeWidth"]);
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width={local.size ?? 16}
-        height={local.size ?? 16}
-        fill="currentColor"
-        aria-hidden="true"
-        {...rest}
-      >
-        <path d={path} />
-      </svg>
-    );
-  };
-}
-
-/** Anthropic's Claude mark, as Simple Icons publishes it (24x24, one filled
- *  path). Inlined rather than pulled in as a dependency: one glyph does not pay
- *  for a package, and it tints from `currentColor` like every other icon here
- *  instead of carrying the brand orange into a muted row. */
-const ClaudeMark = brandMark(
-  "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z",
-);
+export type { MarkProps };
 
 /** Model families that are certainly *not* Anthropic's. Only needed to stop a
  *  Claude-adapter session that is pointed at a router from wearing the Claude
  *  mark over someone else's model; an id this misses just falls back to the
  *  brain, which claims nothing. */
 const OTHER_VENDOR = /gpt|openai|^o\d|gemini|llama|mistral|qwen|deepseek|grok|kimi|glm|command-r/;
+
+/** Which mark a model id names, for the ids that name one at all. Separate from
+ *  the adapter's own icon: this is the witness on the wire. */
+function markForModel(id: string): Component<MarkProps> | undefined {
+  if (/claude|anthropic/.test(id)) return agentMark("claude");
+  return undefined;
+}
 
 /**
  * The mark for the provider behind a session, for `<Icon icon={...}>`.
@@ -68,13 +42,22 @@ const OTHER_VENDOR = /gpt|openai|^o\d|gemini|llama|mistral|qwen|deepseek|grok|ki
  * two cases the id cannot: a session before its first `system/init`, where the
  * pill says "Default" and the adapter is all we know, and a short alias like
  * "opus" or "sonnet-4.6" that names the model without naming the vendor.
+ *
+ * The agent id is used as the mark key directly. That is right for every
+ * bundled adapter, whose `icon` matches its id, and a user adapter that names a
+ * different icon simply falls through to the brain here - the settings cards,
+ * which have the adapter itself rather than only its id, honour the field.
  */
 export function providerIcon(
   model: string | null | undefined,
   agentId?: string | null,
 ): Component<MarkProps> {
   const id = (model ?? "").toLowerCase();
-  if (/claude|anthropic/.test(id)) return ClaudeMark;
+  const byModel = markForModel(id);
+  if (byModel) return byModel;
+  // A model that names a vendor we have no mark for keeps the brain, and must
+  // not fall through to the adapter's: a Claude session on a GPT router would
+  // otherwise wear Anthropic's logo over OpenAI's model.
   if (OTHER_VENDOR.test(id)) return Brain;
-  return agentId === "claude" ? ClaudeMark : Brain;
+  return agentMark(agentId) ?? Brain;
 }

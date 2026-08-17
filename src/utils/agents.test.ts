@@ -81,6 +81,9 @@ describe("FALLBACK_ADAPTERS agrees with the bundled adapters", () => {
       expect(got, `no fallback entry for ${want.id}`).toBeDefined();
       if (!got) continue;
       expect(got.label, `${want.id}.label`).toBe(want.label);
+      // A first-paint field like the rest: the tab and sidebar glyphs resolve
+      // through it before `list_agents` lands.
+      expect(got.icon, `${want.id}.icon`).toBe(want.icon);
       expect(got.program, `${want.id}.program`).toBe(want.program);
       expect(got.base_args, `${want.id}.base_args`).toEqual(want.base_args);
       expect(got.yolo_args, `${want.id}.yolo_args`).toEqual(want.yolo_args);

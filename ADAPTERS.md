@@ -191,6 +191,7 @@ installed yourself is not reachable from here.
 schema_version = 3   # required; 1, 2 or 3. v2 adds [chat], v3 adds [accounts] - both optional, both below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
+icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "gemini", "opencode". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
 
 [launch]
