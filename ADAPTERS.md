@@ -6,9 +6,9 @@ transcripts live, how to tell a live process apart from a stray `less` on the
 same file, and which built-in parser turns its transcript into Sway's session
 model.
 
-Three adapters ship bundled (`claude`, `opencode`, `gemini`). You add your own,
-or whole-replace a bundled one, by dropping a TOML file into
-`~/.config/sway/agents/`.
+Seven adapters ship bundled: `claude`, `codex`, `copilot`, `gemini`, `kimi`,
+`opencode` and `pi`. You add your own, or whole-replace a bundled one, by
+dropping a TOML file into `~/.config/sway/agents/`.
 
 ## Agent, adapter, provider
 
@@ -30,11 +30,6 @@ different axis: it varies independently of the agent. A Claude adapter pointed a
 a router is running a model Anthropic did not make, so "the provider" and "the
 agent" give different answers about the same turn.
 
-The one place the single word is doing double duty is the launch catalogue,
-whose rows are agents Sway cannot drive yet. They are called catalog entries
-rather than agents wherever the difference matters, and installing one is
-precisely what turns it into a drivable agent.
-
 **Two on-disk names outlived the rename.** The `harness` block in
 `settings.json` and the `harnessId` in each cached model catalogue are still
 read, via serde aliases, because a missed key there is not an error - it reads as
@@ -51,6 +46,19 @@ a default and quietly discards a user's binary override or a real probe result.
 
 ## Supported agents
 
+The bundled set *is* Sway's support list - there is no separate catalogue of
+agents Sway has heard of but cannot drive. There used to be one (a trimmed
+copy of the [ACP Registry](https://github.com/agentclientprotocol/registry),
+with an install path for its binary entries); it was removed when the last
+uncovered entries got adapters, because a list whose every row is already a
+card is two claims about one thing.
+
+The line that matters survives the catalogue: **bundled is not measured.** An
+adapter with a `verified_against` was run, probed and captured at that version;
+one without was written from documentation and ships as a starting point. The
+Agents settings surface reads exactly that key to tell the two apart, so the
+honest state of a new adapter is visible rather than implied.
+
 **claude** ships bundled and is fully wired: list, launch, resume, the
 working/needs-you dot, touched files, the History dropdown, and the native
 chat surface.
@@ -63,11 +71,29 @@ exact before-state diffs and hunk revert - or a spend ceiling, since ACP reports
 context occupancy and no cost. Settings > Agents publishes the
 list per agent, and a chat session publishes its own under Session.
 
+**codex** ships bundled over ACP, measured against `codex-cli 0.147.0` with the
+`@agentclientprotocol/codex-acp` wrapper. It is the one adapter whose chat
+binary is not its launch binary: the PTY tab runs the `codex` a user installed,
+and chat runs the first-party wrapper over `npx`, which drives that same
+`codex` underneath. `codex.toml` carries the full reasoning.
+
 **gemini** ships bundled and **untested**: nothing has measured it, which is why
 it declares no `verified_against` and why Settings labels it as a starting point
 rather than a supported agent. An ACP adapter is mostly launch instructions,
 which is what makes shipping one unmeasured reasonable - not what makes it
 tested.
+
+**copilot** and **kimi** ship bundled and untested, on the gemini pattern: ACP
+is a first-party mode of each CLI (`copilot --acp`, `kimi acp`), so the adapter
+is launch instructions and nothing else until someone probes a real install and
+pins `verified_against`.
+
+**pi** ships bundled and untested, on the codex pattern: `pi` has no ACP mode
+of its own, so chat goes through the `pi-acp` bridge over `npx`. Unlike the
+Claude SDK wrappers it vendors no second agent - it spawns the *installed*
+`pi --mode rpc` and reuses pi's own sessions. The bridge is third-party, which
+is a reason to pin its version (the TOML does) and re-measure, not a reason to
+avoid it.
 
 Adding another is a file drop plus a restart, and for an agent that speaks ACP
 first-party it is *only* a file drop: no Rust at all. The things a TOML cannot
@@ -77,98 +103,6 @@ agent whose transcript shape differs from claude's (see
 [Parser kinds](#parser-kinds)). One more lesson from the two adapters Sway once
 bundled and dropped: an agent whose tools never block on a permission prompt
 wants `needs_you = false`.
-
-## The ACP launch catalog
-
-Settings > Agents ends with **the other agents that speak ACP** - around forty of
-them - read from the official
-[ACP Registry](https://github.com/agentclientprotocol/registry) with the command
-that launches each.
-
-**A catalog entry is not a supported agent**, and the two are kept visibly
-apart because conflating them is how a listing ends up promising what nobody
-tested:
-
-| | Supported agent | Catalog entry |
-| --- | --- | --- |
-| What it is | An adapter TOML | A launch command from the registry |
-| Measured | Yes, `verified_against` names the version | No, nothing has run it |
-| Has a capability tier | Yes | No |
-| Can start a chat | Yes | No - write its adapter first |
-
-So a catalog entry is a suggestion. It carries no tier, appears in no launch
-picker, and turning one into a agent means writing the four-line TOML above -
-which is also the moment somebody decides the entry is worth trusting.
-
-**Provenance and refresh**, so the list cannot rot quietly: the committed file
-(`src-tauri/catalog/acp-agents.json`) records the upstream commit it was
-generated from and the date, and Settings shows both. `node dev/acp-catalog.mjs`
-regenerates it; `node dev/acp-catalog.mjs --check` exits non-zero when the
-registry has moved since. Nothing auto-updates - a new launch command reaching
-users without anyone looking at it is the failure a list of *unmeasured* entries
-most needs to avoid.
-
-**Agents the registry itself reports broken are not offered.** It publishes a
-`quarantine.json` (ACP initialize failing, a package `npx` cannot run, a
-postinstall script), and those eight are excluded with the upstream's reasons
-committed alongside them. A catalog entry claims only "untested by Sway"; a
-quarantined agent is known broken by the people who curate it, and putting one in
-the same list would launder the stronger claim into the weaker one.
-
-The catalogue is data in the binary rather than a runtime fetch. Sway adds no
-endpoint of its own, and a list that needed the network would be empty exactly
-when a user is offline and wondering what their options are.
-
-## Installing a catalog agent, and what you are trusting
-
-Some registry entries ship a binary per platform rather than an `npx` command.
-Sway can download and unpack one of those into
-`~/Library/Application Support/sway/installed-agents/<id>/`. **Read this
-first**, because the install is short and what it commits you to is not.
-
-**Installing an agent is trusting the registry.** The registry publishes, per
-agent and per platform, an archive URL and sometimes a `sha256`. Both sit in the
-same `agent.json`. So the checksum is a **transport control**: it proves the
-bytes that arrived are the bytes the registry named, and it proves nothing about
-who named them. Anyone able to change that file can change the URL and the
-checksum in one commit, and every check below still passes. There are no
-publisher signatures to check instead. That is the property of this registry, and
-the only honest response is to say so rather than let a green tick imply
-otherwise.
-
-**Over half of these downloads have no checksum at all.** Measured 2026-08-14: of
-the 17 agents shipping binaries, 9 publish a `sha256` for macOS and 8 publish
-none. Sway carries the difference all the way to the button, so "verified against
-the registry's hash" and "nothing was published to check this against" never read
-the same.
-
-What the other checks buy, each stated as the one thing it stops:
-
-| Check | What it stops | What it does not stop |
-| --- | --- | --- |
-| HTTPS-only redirects | A hop moving the download onto plain HTTP | Anything at the far end |
-| `sha256`, when there is one | The bytes being swapped in flight | A compromised registry |
-| Containment | An archive entry writing outside the agent's directory | Bad code inside a legitimate file |
-| Refusing symlinks | An archive planting a link that redirects a later write | The same |
-| Gatekeeper consent | The quarantine flag coming off without you saying so | macOS trusting the binary afterwards |
-
-**Clearing the quarantine flag is offered, never silent.** macOS marks anything
-downloaded, and refuses to run an unnotarized binary carrying that mark. Sway
-asks before clearing it and records that you were asked; a binary that is
-notarized is left alone, because stripping it would disable a check that was
-about to pass. Decline and the install still happens: the refusal is then macOS's,
-visible, and reversible.
-
-**Nothing installed is put on your PATH, and nothing installed becomes a
-supported agent.** An installed agent is a path on disk and a manifest saying
-where it came from. Sway shows you the absolute path, the args and any env the
-registry named, and running it means writing the adapter TOML above with that
-path as `program`. Downloading a binary and deciding to run it are two acts, and
-they stay two acts.
-
-**Removal deletes only what Sway installed.** The manifest inside the directory
-is the record of that, and a directory without one is refused, so a binary you
-installed yourself is not reachable from here.
 
 ## File location and loading
 
@@ -191,7 +125,7 @@ installed yourself is not reachable from here.
 schema_version = 3   # required; 1, 2 or 3. v2 adds [chat], v3 adds [accounts] - both optional, both below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
-icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "gemini", "opencode". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
+icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
 
 [launch]

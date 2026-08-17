@@ -13,7 +13,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-import { withAcpCatalog } from "../../test/settingsInvoke";
 
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
@@ -26,8 +25,8 @@ import styles from "./Settings.module.css";
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
-    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS),
+    async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
   );
   await loadWorkspaceSettings(null);
 });
@@ -393,10 +392,10 @@ describe("the six panes", () => {
   // no CLI to "check which ones it found below" points them at a list of misses
   // and reads as Sway being broken rather than as a step they have not taken.
   const withOnboarding = (content: unknown) =>
-    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
+    async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "onboarding_content") return content;
       return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
-    });
+    };
 
   it("tells a machine with no agent what to install, naming them", async () => {
     invoke.mockImplementation(
@@ -419,10 +418,10 @@ describe("the six panes", () => {
   // greeting at all.
   it("falls back to the ordinary greeting when the check fails", async () => {
     invoke.mockImplementation(
-      withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
+      async (cmd: string, args: Record<string, unknown>) => {
         if (cmd === "onboarding_content") throw new Error("nope");
         return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
-      }),
+      },
     );
     render(() => <Settings onClose={() => {}} welcome />);
     expect(await screen.findByText(/checking which ones it found below/)).toBeTruthy();

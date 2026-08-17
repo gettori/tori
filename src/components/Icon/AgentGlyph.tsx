@@ -18,7 +18,7 @@ import styles from "./AgentGlyph.module.css";
  * agent. This looks the adapter up itself and takes the miss.
  */
 export default function AgentGlyph(props: {
-  /** Adapter id, or an ACP catalogue row's id. */
+  /** Adapter id. */
   id: string;
   /** Supplies the initial when there is no mark, so it must be the name the
    *  reader sees rather than the id. */
@@ -27,8 +27,8 @@ export default function AgentGlyph(props: {
   size?: number;
 }) {
   const size = () => props.size ?? 20;
-  /** The adapter's declared `icon` first, then the id, which is what a
-   *  catalogue row has instead of an adapter. */
+  /** The adapter's declared `icon` first, then the id, for a caller whose
+   *  adapter has not resolved yet. */
   const mark = () => {
     const declared = agents().find((a) => a.id === props.id)?.icon;
     return agentMark(declared) ?? agentMark(props.id);

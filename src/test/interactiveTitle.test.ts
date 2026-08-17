@@ -188,7 +188,6 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
   ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 2, reason: HEADING }],
-  ["panels/Settings/panes/AgentsPane/AgentsSection.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Settings/panes/AgentsPane/AgentDetail.tsx",
     {
