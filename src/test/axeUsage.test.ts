@@ -3,7 +3,7 @@
 // `expectNoAxeViolations` is async and reports by throwing, so a call site that
 // forgets `await` schedules the check, returns nothing, and lets the test end
 // green. The assertion is still written in the file, still reads as coverage in
-// review, and enforces nothing. That is the same false-green this whole harness
+// review, and enforces nothing. That is the same false-green this whole agent
 // exists to prevent, one level up at the call site.
 //
 // There is no linter in this project, so nothing else would catch it. This is a

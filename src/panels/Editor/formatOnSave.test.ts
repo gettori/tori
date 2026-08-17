@@ -10,7 +10,7 @@ import { formatForSave, type FormatDeps, type FormatResult, type Snapshot } from
  *  document; these stand in for it without CodeMirror. */
 const doc = (text: string): Snapshot => ({ text, id: { text } });
 
-type Harness = {
+type Agent = {
   deps: FormatDeps;
   reported: string[];
   asked: { path: string; text: string }[];
@@ -18,14 +18,14 @@ type Harness = {
   release: () => void;
 };
 
-function harness(opts: {
+function agent(opts: {
   reply?: Partial<FormatResult>;
   throws?: string;
   /** What `current()` answers for the path it is asked about. A function so a
    *  test can move the document while the formatter is in flight. */
   current: (path: string) => Snapshot | null;
   hold?: boolean;
-}): Harness {
+}): Agent {
   const reported: string[] = [];
   const asked: { path: string; text: string }[] = [];
   let release = () => {};
@@ -51,7 +51,7 @@ function harness(opts: {
 describe("formatForSave", () => {
   it("returns the formatter's output for the buffer to adopt", async () => {
     const before = doc("const  x=1\n");
-    const h = harness({
+    const h = agent({
       reply: { text: "const x = 1;\n", formatter: "prettier" },
       current: () => before,
     });
@@ -64,7 +64,7 @@ describe("formatForSave", () => {
 
   it("sends the buffer's text, not the file's path alone", async () => {
     const before = doc("unsaved\n");
-    const h = harness({ current: () => before });
+    const h = agent({ current: () => before });
     await formatForSave(h.deps, "/p/a.ts", before);
     // The point of formatting on save: what is being formatted is not on disk
     // yet, so a formatter pointed at the file would format the old version.
@@ -73,7 +73,7 @@ describe("formatForSave", () => {
 
   it("says nothing changed when the file was already formatted", async () => {
     const before = doc("const x = 1;\n");
-    const h = harness({
+    const h = agent({
       reply: { text: "const x = 1;\n", formatter: "biome" },
       current: () => before,
     });
@@ -90,7 +90,7 @@ describe("formatForSave", () => {
     const before = doc("const x = 1\n");
     const after = doc("const x = 12\n");
     let now = before;
-    const h = harness({
+    const h = agent({
       reply: { text: "const x = 1;\n", formatter: "prettier" },
       current: () => now,
       hold: true,
@@ -112,7 +112,7 @@ describe("formatForSave", () => {
     const before = doc("const x = 1\n");
     const sameLength = doc("const x = 2\n");
     let now = before;
-    const h = harness({
+    const h = agent({
       reply: { text: "const x = 1;\n", formatter: "biome" },
       current: () => now,
       hold: true,
@@ -130,7 +130,7 @@ describe("formatForSave", () => {
     // but the transaction history moved, so the conservative answer is right.
     const before = doc("const x = 1\n");
     let now = before;
-    const h = harness({
+    const h = agent({
       reply: { text: "formatted\n", formatter: "biome" },
       current: () => now,
       hold: true,
@@ -150,7 +150,7 @@ describe("formatForSave", () => {
     const b = doc("b's text\n");
     const buffers: Record<string, Snapshot> = { "/p/a.ts": a, "/p/b.ts": b };
     const asked: string[] = [];
-    const h = harness({
+    const h = agent({
       reply: { text: "formatted a\n", formatter: "biome" },
       current: (path) => {
         asked.push(path);
@@ -169,7 +169,7 @@ describe("formatForSave", () => {
     // Switching tabs is not closing the tab. The buffer is still open, its text
     // is still the user's, and the save they asked for still has to land.
     const a = doc("a's text\n");
-    const h = harness({
+    const h = agent({
       reply: { text: "formatted a\n", formatter: "prettier" },
       // A background buffer: viewless, but its stashed state still answers.
       current: (path) => (path === "/p/a.ts" ? a : null),
@@ -183,7 +183,7 @@ describe("formatForSave", () => {
   it("writes nothing when the buffer went away mid-format", async () => {
     const before = doc("x\n");
     let now: Snapshot | null = before;
-    const h = harness({
+    const h = agent({
       reply: { text: "y\n", formatter: "biome" },
       current: () => now,
       hold: true,
@@ -198,7 +198,7 @@ describe("formatForSave", () => {
     // A syntax error mid-edit is the common case. Writing anything but the
     // original here means a save produced a file the user did not type.
     const before = doc("const x = {\n");
-    const h = harness({
+    const h = agent({
       reply: { text: "const x = {\n", formatter: "prettier", error: "a.ts:1:12 expected }" },
       current: () => before,
     });
@@ -208,7 +208,7 @@ describe("formatForSave", () => {
 
   it("shows what the formatter said rather than swallowing it", async () => {
     const before = doc("const x = {\n");
-    const h = harness({
+    const h = agent({
       reply: { text: before.text, formatter: "prettier", error: "a.ts:1:12 expected }" },
       current: () => before,
     });
@@ -221,7 +221,7 @@ describe("formatForSave", () => {
     // complaint is a line number in their file and is the useful half.
     const before = doc("const x = {\n");
     let now = before;
-    const h = harness({
+    const h = agent({
       reply: { text: before.text, formatter: "biome", error: "expected }" },
       current: () => now,
       hold: true,
@@ -235,7 +235,7 @@ describe("formatForSave", () => {
 
   it("saves normally when the project has no formatter", async () => {
     const before = doc("whatever\n");
-    const h = harness({ current: () => before });
+    const h = agent({ current: () => before });
     const out = await formatForSave(h.deps, "/p/a.txt", before);
     // A null formatter is also what tells the manual command to fall back to
     // the language server.
@@ -247,7 +247,7 @@ describe("formatForSave", () => {
     // The backend rejected the call outright - not a formatter refusing, so
     // there is no formatter output to quote. The save must still happen.
     const before = doc("x\n");
-    const h = harness({ throws: "no such command", current: () => before });
+    const h = agent({ throws: "no such command", current: () => before });
     const out = await formatForSave(h.deps, "/p/a.ts", before);
     expect(out).toEqual({ kind: "unchanged", text: "x\n", formatter: null });
     expect(h.reported[0]).toContain("no such command");
@@ -255,7 +255,7 @@ describe("formatForSave", () => {
 
   it("reports a failed command once, not twice", async () => {
     const before = doc("x\n");
-    const h = harness({ throws: "boom", current: () => before });
+    const h = agent({ throws: "boom", current: () => before });
     await formatForSave(h.deps, "/p/a.ts", before);
     expect(h.reported).toHaveLength(1);
   });

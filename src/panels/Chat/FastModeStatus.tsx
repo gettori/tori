@@ -23,7 +23,7 @@ import styles from "./Chat.module.css";
  *
  * Neither route moves it, so a toggle would be a control that cannot move -
  * which reads as broken rather than as unavailable. The reason is the honest
- * thing to ship, and it is the harness's own words.
+ * thing to ship, and it is the agent's own words.
  *
  * Written to render a state it has never been able to observe (`on`) rather
  * than hardcoding the measurement: if a later CLI opts the SDK in, this reports

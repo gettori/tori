@@ -63,7 +63,7 @@ export type ChatDefaults = {
    *  machine and the bill rather than of Sway. */
   maxConcurrentChats: number;
 };
-export type Harness = { path?: string | null };
+export type Agent = { path?: string | null };
 /** Editor behaviour that is a preference rather than a project fact.
  *
  *  `formatOnSave` defaults **off**, even though the project's config is what
@@ -182,7 +182,7 @@ export type Settings = {
   chatDefaults: ChatDefaults;
   budgets: Budgets;
   editorDefaults: EditorDefaults;
-  harness: Harness;
+  agent: Agent;
   /** Keyed by project path. A project with no entry has never had a pick. */
   chat: Record<string, ChatPrefs>;
   /** Keyed by project path, same shape and same reason as `chat`. */
@@ -238,7 +238,7 @@ export const DEFAULT_SETTINGS: Settings = {
     compactFolders: true,
     todoPatterns: "TODO,FIXME,HACK,XXX",
   },
-  harness: {},
+  agent: {},
   chat: {},
   editor: {},
 };

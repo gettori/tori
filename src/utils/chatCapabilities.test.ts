@@ -90,10 +90,10 @@ describe("the chat tier", () => {
     expect(tier.rewind).toBe("fork");
     expect(tier.steer).toBe("consumed-before-next-tool");
     // These three were one `hooks: true` while they rode one mechanism. They no
-    // longer do, and the split is the point: the harness asks, the hook does
+    // longer do, and the split is the point: the agent asks, the hook does
     // nothing but capture, and the ceiling needs no hook at all. A fourth,
     // `swayRules`, went with the gate: there is no Sway-owned rule store left
-    // for any harness to publish.
+    // for any agent to publish.
     expect(tier.approvals).toBe("in-protocol");
     expect(tier).not.toHaveProperty("swayRules");
     expect(tier.diffs).toBe("before-state");
@@ -132,7 +132,7 @@ describe("the chat tier", () => {
     ).toEqual(["approvals: in-protocol"]);
   });
 
-  // The one that would have been hidden by the old single flag: a harness whose
+  // The one that would have been hidden by the old single flag: a agent whose
   // permission question Sway renders, but which Sway cannot gate itself and
   // whose writes it cannot diff. Under `hooks: boolean` that had to be answered
   // yes or no for all four.
@@ -272,7 +272,7 @@ describe("the ACP tier", () => {
     expect(by("budgets")).not.toContain("hook");
     // And what the user still has instead, where there is something.
     expect(by("rewind")).toContain("Changes panel");
-    // There is no `rules` gap to explain any more: no harness has a Sway-owned
+    // There is no `rules` gap to explain any more: no agent has a Sway-owned
     // rule store, so its absence is not a thing this transport lacks.
     expect(by("rules")).toBe("");
   });
@@ -297,7 +297,7 @@ describe("the ACP tier", () => {
     expect(rich.find((c) => c.key === "history")?.label).toBe("history: session/load");
 
     // An agent that advertises nothing publishes nothing extra, and null (a
-    // harness whose capabilities are measured rather than asked for) is the
+    // agent whose capabilities are measured rather than asked for) is the
     // same as absent.
     const bare = { loadSession: false, listSessions: false };
     expect(publishedCapabilities(tier, bare).map((c) => c.key)).toEqual(floor);

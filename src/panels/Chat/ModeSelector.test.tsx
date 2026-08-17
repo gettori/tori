@@ -6,7 +6,7 @@ import { capabilitiesFor, pickableModels } from "../../utils/chatModels";
 import type { ChatConfig, ChatMode } from "../../utils/agents";
 import type { ChatModelInfo } from "../../utils/chatTypes";
 
-// A harness whose modes are named nothing like Claude's. These are Gemini's
+// A agent whose modes are named nothing like Claude's. These are Gemini's
 // real `--approval-mode` values, and the point of using them is that none is
 // the literal "default" the pill used to fall back to, and none is
 // "bypassPermissions" - so a component still keyed on either string fails here.
@@ -113,8 +113,8 @@ describe("a permissive mode", () => {
   // named after bypassing permissions did not bypass them. The hook stopped
   // deciding, so the sentence stopped being true and was removed rather than
   // reworded. What the control shows now is the mode's own hint, which is the
-  // harness's description of what it really does.
-  it("shows the harness's own description and adds nothing to it", () => {
+  // agent's description of what it really does.
+  it("shows the agent's own description and adds nothing to it", () => {
     const chat = foreign(GEMINI_MODES);
     const { getByLabelText } = render(() => (
       <ModeSelector mode="yolo" modes={chat.modes} pending={false} disabled={false} onSelect={vi.fn()} />
@@ -138,7 +138,7 @@ describe("a permissive mode", () => {
       return cls;
     };
     // Keyed on the adapter's declaration, not on a mode named bypassPermissions:
-    // this harness calls its permissive mode `yolo`.
+    // this agent calls its permissive mode `yolo`.
     expect(marked("yolo")).not.toBe(marked("auto_edit"));
   });
 });

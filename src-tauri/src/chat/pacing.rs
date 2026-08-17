@@ -1,6 +1,6 @@
 //! What a session off screen is allowed to cost.
 //!
-//! A streaming harness emits one event per token, three streams deep: assistant
+//! A streaming agent emits one event per token, three streams deep: assistant
 //! text, thinking, and a tool call's arguments as they assemble. Each one
 //! crosses the Tauri channel, is parsed in the webview and re-renders a
 //! transcript. That is the right price for the chat somebody is reading. It is

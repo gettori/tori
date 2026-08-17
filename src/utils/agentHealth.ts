@@ -4,7 +4,7 @@
 // Mirrors `AgentHealth` in src-tauri/src/health.rs. The backend resolves each
 // launch binary against the login-shell PATH and caches the sweep, so asking
 // twice is cheap; the store exists so the answer is *the same* in both places,
-// not to save the call. A picker that offered a harness the Agents panel was
+// not to save the call. A picker that offered a agent the Agents panel was
 // simultaneously calling "not installed" would be Sway disagreeing with itself.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
@@ -25,10 +25,10 @@ export type AgentHealth = {
   // For the **default** profile: what a session started without choosing an
   // account runs as. Per-profile answers come from `agent_accounts`.
   signIn: SignIn;
-  // The account the harness named, when it names one. Only Claude does, of the
+  // The account the agent named, when it names one. Only Claude does, of the
   // three measured.
   account: string | null;
-  // The environment variable the harness says it is taking an API key from.
+  // The environment variable the agent says it is taking an API key from.
   // Non-null means a subscription login is being overridden by an inherited
   // key, which is a notice and never a block.
   apiKeySource: string | null;
@@ -81,20 +81,20 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
 }
 
 /**
- * Is this harness usable enough to start a session with?
+ * Is this agent usable enough to start a session with?
  *
  * **Unknown counts as ready.** Before the sweep lands, and if it fails, this
- * says yes. Hiding every harness until a subprocess probe returns would empty
+ * says yes. Hiding every agent until a subprocess probe returns would empty
  * the picker on exactly the machines where probing is slowest, and a wrong yes
- * costs one clear spawn failure while a wrong no makes a working harness
+ * costs one clear spawn failure while a wrong no makes a working agent
  * unreachable with nothing on screen explaining why.
  *
  * Drift is ready on purpose: a version Sway has not measured against usually
  * works, so it is a notice, never a gate. See `keepsDriftAWarning` below.
  *
- * A harness the CLI itself says nobody is signed in to is **not** ready. That is
+ * A agent the CLI itself says nobody is signed in to is **not** ready. That is
  * the one place the rule above is stricter, and it earns it: `signedOut` is the
- * harness's own answer rather than Sway's inference, and starting the session
+ * agent's own answer rather than Sway's inference, and starting the session
  * anyway produces a tab that asks for a login the chat surface cannot give. Only
  * a definite `signedOut` counts; `unknown` stays ready like everything else.
  */

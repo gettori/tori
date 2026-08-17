@@ -48,9 +48,9 @@ const clickTab = (label: string) =>
   fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${label}`) }));
 
 describe("the settings search box", () => {
-  it("opens on Harnesses with every row of that category and no query", () => {
+  it("opens on Agents with every row of that category and no query", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
     expect(box().value).toBe("");
     expect(rows()).toContain("Binary path");
   });
@@ -133,7 +133,7 @@ describe("Enter, the one keystroke that does navigate", () => {
   });
 
   it("resolves a tie to the earliest category in rail order", () => {
-    // "path" ties Harnesses and Editor at two matches each. The rule falls out
+    // "path" ties Agents and Editor at two matches each. The rule falls out
     // of a `>` scan keeping the first maximum; a `>=` would silently turn it
     // into "whichever category happened to be scanned last", which is Editor
     // here - so the fixture has to be a tie the two rules disagree about.
@@ -145,7 +145,7 @@ describe("Enter, the one keystroke that does navigate", () => {
 
     enter();
 
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
   });
 
   it("does nothing when the query matches nothing anywhere", () => {
@@ -240,7 +240,7 @@ describe("a command that opens the panel at one setting", () => {
     // Better than landing on the first tab and showing it empty: nothing was
     // pointed at, so nothing should move.
     render(() => <Settings onClose={() => {}} query="zzzqqq" />);
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
   });
 });
 

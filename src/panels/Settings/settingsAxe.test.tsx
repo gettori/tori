@@ -72,10 +72,10 @@ describe("the Settings panel's accessibility", () => {
   });
 
   // The default fixture's `agent_health` falls through to a settings object, so
-  // the guard empties the groups and the first case audits a Harnesses pane with
-  // no harnesses in it. This is the one that actually renders a card, and then
+  // the guard empties the groups and the first case audits a Agents pane with
+  // no agents in it. This is the one that actually renders a card, and then
   // the page behind it.
-  it("passes on a harness card and the page it opens", async () => {
+  it("passes on a agent card and the page it opens", async () => {
     invoke.mockImplementation(
       withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
         if (cmd === "agent_health")

@@ -73,7 +73,7 @@ documented and stable at v2, and v1 files still load: see
 
 **Settings > Agents also lists the ~40 other agents that speak ACP**, read from
 the official [ACP Registry](https://github.com/agentclientprotocol/registry) with
-the command to launch each. Those are suggestions, not supported harnesses: Sway
+the command to launch each. Those are suggestions, not supported agents: Sway
 has run none of them, each is labelled untested, and none can be started until
 somebody writes its adapter - which is also the moment somebody decides it is
 worth trusting.

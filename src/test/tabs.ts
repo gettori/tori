@@ -13,7 +13,7 @@ import { screen } from "@solidjs/testing-library";
  * **Needs the measurement frame to have landed.** The bar seeds its visible
  * count from the item list it was created with (empty, in a panel that opens
  * tabs later) and corrects it in a `requestAnimationFrame`. Either call
- * `installAnimationFrame()` from the editor harness, or wrap the lookup in
+ * `installAnimationFrame()` from the editor agent, or wrap the lookup in
  * `waitFor`/`findBy`.
  */
 export function tab(name: string | RegExp): HTMLElement {

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
-import { ensureAgentsLoaded } from "../../../../utils/agents";
+import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -17,20 +17,25 @@ import {
   type AgentHealth,
   type BinaryStatus,
 } from "../../../../utils/agentHealth";
-import HarnessDetail from "./HarnessDetail";
+import AgentDetail from "./AgentDetail";
 import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
 import { TOAST, emitWith, type ToastEvent } from "../../../../utils/events";
 import styles from "../../Settings.module.css";
 import Checkbox from "../../../../components/Checkbox/Checkbox";
 
-// One row per registered adapter, grouped by whether the binary is on this
-// machine, and each one opening a page of its own. The backend (`agent_health`)
-// resolves each launch binary against the login-shell PATH, so an agent
-// installed via nvm/asdf shows as found rather than missing.
+// One card per agent, grouped by whether the binary is on this machine, and
+// each one opening a page of its own. The backend (`agent_health`, which keeps
+// the ecosystem's word on the wire) resolves each launch binary against the
+// login-shell PATH, so a agent installed via nvm/asdf shows as found rather
+// than missing.
 //
 // Tone matters here: a missing agent is not an error. Nobody has all four
 // installed, so an uninstalled one gets an install hint, and an unparseable
 // version gets neutral text - never red, never a warning icon.
+//
+// The catalogue below the cards is the one place on this screen where the
+// agent/agent line is load-bearing: those rows are agents Sway cannot drive
+// yet, and installing one is what turns it into a agent. See ADAPTERS.md.
 
 // Moved to utils/agentHealth so the chat picker reads the same answer these
 // cards render. Re-exported because the section's tests import it from here.
@@ -67,14 +72,14 @@ const STATE_PILL: Record<BinaryStatus, string> = {
 };
 
 /**
- * One harness at a glance: is it here, which build, and who is signed in.
+ * One agent at a glance: is it here, which build, and who is signed in.
  *
  * A button rather than a div with a handler, so it is reachable and announced
  * without inventing a role. Everything it used to carry (capabilities, gaps,
- * accounts, the sessions directory) moved to `HarnessDetail`, which is what
+ * accounts, the sessions directory) moved to `AgentDetail`, which is what
  * lets four of these be read in one look.
  */
-function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
+function AgentCard(props: { agent: AgentHealth; onOpen: () => void }) {
   const a = () => props.agent;
   const catalog = () => catalogFor(a().id);
   // The pill is for the states that need acting on. Painting "READY" on every
@@ -84,7 +89,7 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
     <button
       type="button"
       class={styles.hcard}
-      data-harness={a().id}
+      data-agent={a().id}
       onClick={() => props.onOpen()}
     >
       <span class={`${styles.dot} ${TONE[a().status]}`} />
@@ -96,7 +101,7 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
         </span>
       </Show>
       {/* One line, and the fact it carries differs by group: an installed
-          harness is asked who it is signed in as, a missing one what it would
+          agent is asked who it is signed in as, a missing one what it would
           take to get it. Neither question is interesting for the other. */}
       <span class={styles.hcardMeta}>
         <Switch>
@@ -115,7 +120,7 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
         </Switch>
         {/* The count is a claim about what the installed binary can run, so it
             comes from the probe cache and nowhere else. Three states, and the
-            first is why the count is not simply a number: a harness nobody has
+            first is why the count is not simply a number: a agent nobody has
             asked shows *nothing* here, because "0 models" would read as a broken
             install rather than as an unasked question. */}
         <Switch>
@@ -143,12 +148,12 @@ function HarnessCard(props: { agent: AgentHealth; onOpen: () => void }) {
 }
 
 /** Installed first, then the rest, alphabetical inside each so the order does
- *  not shuffle when a re-check changes one harness's state. */
+ *  not shuffle when a re-check changes one agent's state. */
 function byLabel(list: AgentHealth[]) {
   return [...list].sort((x, y) => x.label.localeCompare(y.label));
 }
 
-function HarnessGroup(props: { heading: string; agents: AgentHealth[]; onOpen: (id: string) => void }) {
+function AgentGroup(props: { heading: string; agents: AgentHealth[]; onOpen: (id: string) => void }) {
   return (
     <Show when={props.agents.length}>
       <div class={styles.groupHead}>
@@ -158,7 +163,7 @@ function HarnessGroup(props: { heading: string; agents: AgentHealth[]; onOpen: (
       </div>
       <div class={styles.cardGrid}>
         <For each={props.agents}>
-          {(agent) => <HarnessCard agent={agent} onOpen={() => props.onOpen(agent.id)} />}
+          {(h) => <AgentCard agent={h} onOpen={() => props.onOpen(h.id)} />}
         </For>
       </div>
     </Show>
@@ -290,12 +295,12 @@ function installConsent(
  * Everything else that speaks this protocol.
  *
  * Kept visibly apart from the cards above, because the two lists make different
- * promises. A card is a harness Sway measured; a row here is a launch command
+ * promises. A card is a agent Sway measured; a row here is a launch command
  * read off the registry and **run by nobody**. Conflating them is exactly how a
  * listing ends up promising what nobody tested, so these rows get no status dot,
  * no capability list and no version of Sway's own - and they are not offered
  * anywhere a chat can be started from, since starting one means writing the
- * adapter that makes it a measured harness.
+ * adapter that makes it a measured agent.
  */
 function CatalogRowItem(props: {
   row: CatalogRow;
@@ -458,13 +463,13 @@ function CatalogList() {
       </div>
       <div class={styles.note}>
         Sway can drive any of these over the same protocol as OpenCode, but has run none of them,
-        so none is a supported harness. Add one by dropping a four-line TOML into{" "}
+        so none is a supported agent. Add one by dropping a four-line TOML into{" "}
         <code>~/.config/sway/agents/</code> with its command below (see ADAPTERS.md), and it becomes
         an agent you have tested. Installing one downloads a binary and nothing more: it stays
         untested, and it goes nowhere near your PATH.
       </div>
       {/* This list's own filter box, not the panel's: the panel's searches
-          settings, and 31 rows that are neither settings nor harnesses would
+          settings, and 31 rows that are neither settings nor agents would
           have to be excluded from it or explained inside it. */}
       <div class={styles.catalogFilters}>
         <input
@@ -569,7 +574,7 @@ function CatalogList() {
   );
 }
 
-export default function HarnessSection() {
+export default function AgentsSection() {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   const [rechecking, setRechecking] = createSignal(false);
   // const [checkingAll, setCheckingAll] = createSignal(false);
@@ -591,7 +596,7 @@ export default function HarnessSection() {
     const id = openId();
     setOpenId(null);
     requestAnimationFrame(() =>
-      document.querySelector<HTMLButtonElement>(`[data-harness="${id}"]`)?.focus(),
+      document.querySelector<HTMLButtonElement>(`[data-agent="${id}"]`)?.focus(),
     );
   };
 
@@ -611,7 +616,7 @@ export default function HarnessSection() {
   // already asked for. Asking again is a no-op after the first call, and it is
   // what makes this section correct when Settings is the first thing opened.
   onMount(() => {
-    ensureAgentsLoaded();
+    ensureAdaptersLoaded();
     // Populate the shared store too, not just this resource. Otherwise the
     // claim above ("the picker reads the same answer") only becomes true after
     // a re-check, and until then the picker is running on "unknown".
@@ -622,9 +627,9 @@ export default function HarnessSection() {
     ensureModelCatalogsLoaded();
   });
 
-  /** Ask every harness that has never answered or whose binary changed.
+  /** Ask every agent that has never answered or whose binary changed.
    *
-   *  Deliberate rather than automatic: this spawns one process per due harness,
+   *  Deliberate rather than automatic: this spawns one process per due agent,
    *  and a settings page that did it on open would be doing exactly what the
    *  read/probe split exists to prevent.
    *
@@ -647,7 +652,7 @@ export default function HarnessSection() {
             {/* Parked, not deleted: the redesign in progress puts this row's job
                 somewhere else, and `checkAll` below is parked with it.
             <div class={styles.sectionTitle}>
-              <span>Harnesses</span>
+              <span>Agents</span>
               <span class={styles.sectionRule} />
               <Button
                 size="sm"
@@ -665,11 +670,11 @@ export default function HarnessSection() {
                 <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
               </Match>
               <Match when={health()}>
-                {/* Split on the one question a reader arrives with. A harness
+                {/* Split on the one question a reader arrives with. A agent
                     Sway supports but this machine does not have is not a
                     failure, so it gets a group rather than a warning. */}
-                <HarnessGroup heading="Installed" agents={installed()} onOpen={setOpenId} />
-                <HarnessGroup heading="Supported" agents={supported()} onOpen={setOpenId} />
+                <AgentGroup heading="Installed" agents={installed()} onOpen={setOpenId} />
+                <AgentGroup heading="Supported" agents={supported()} onOpen={setOpenId} />
               </Match>
             </Switch>
             <CatalogList />
@@ -677,7 +682,7 @@ export default function HarnessSection() {
         }
       >
         {(agent) => (
-          <HarnessDetail
+          <AgentDetail
             agent={agent()}
             tone={TONE}
             stateLabel={STATE_LABEL}

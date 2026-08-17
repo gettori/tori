@@ -16,7 +16,7 @@ type McpEntry = {
 };
 
 /** A server's status as `system/init` words it, mapped to whether it is a
- *  problem. The harness's own vocabulary is passed through to the user rather
+ *  problem. The agent's own vocabulary is passed through to the user rather
  *  than translated: "failed" and "needs-auth" mean different things to act on. */
 function isBroken(status: string): boolean {
   return status !== "connected";
@@ -142,7 +142,7 @@ export default function SessionInfo(props: {
                 handshook shows no Account section at all rather than a blank
                 one or a guessed tier: "we were never told" is not a plan. Each
                 line is guarded separately for the same reason, since the
-                harness can name an account without naming an organization. */}
+                agent can name an account without naming an organization. */}
             <Show when={props.account}>
               {(a) => (
                 <section>
@@ -167,7 +167,7 @@ export default function SessionInfo(props: {
             {/* What this chat can do, in the same panel as what it loaded,
                 because both answer "what am I working with". Each entry is the
                 *qualified* value: a row reading "rewind" would promise the
-                unqualified capability, and an affordance this harness lacks is
+                unqualified capability, and an affordance this agent lacks is
                 absent rather than listed as `none`. */}
             <Show when={props.capabilities.length}>
               <section>
@@ -192,7 +192,7 @@ export default function SessionInfo(props: {
                     {(s) => (
                       <li class={isBroken(s.status) ? styles.sessionInfoBad : undefined}>
                         <strong>{s.name}</strong> · {s.status}
-                        {/* Only when the harness reported one: a server that
+                        {/* Only when the agent reported one: a server that
                             declares no tool count must not read as zero tools.
                             The count is read from `s`, not from the `Show`
                             callback, which carries the boolean rather than the

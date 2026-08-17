@@ -102,7 +102,7 @@ import {
 } from "./selectionCommands";
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import { settings, zoom, editorDefaults, formatOnSaveFor, organizeImportsOnSaveFor, vimModeOn } from "../Settings/settingsStore";
 import { vimExtension } from "./vimMode";
 import {
@@ -838,7 +838,7 @@ export default function CodeEditor(props: {
   function disabledReason(): string | null {
     const sel = props.selected;
     if (!sel?.sessionId) return "Select a session first";
-    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    if (findAdapter(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
     return null;
   }
 

@@ -75,7 +75,7 @@ import {
   refreshCatalogIfDue,
   type CatalogModel,
 } from "../../utils/modelCatalog";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { settings } from "../Settings/settingsStore";
@@ -295,9 +295,9 @@ export default function ChatView(props: {
   let reconnect: (() => void) | undefined;
 
   onMount(() => {
-    // What this harness last said it can run, so the picker has something true
+    // What this agent last said it can run, so the picker has something true
     // before the handshake lands, and an ask when that answer is missing or
-    // describes a binary that has since changed. Scoped to this harness: opening
+    // describes a binary that has since changed. Scoped to this agent: opening
     // a chat is already launching it, so asking costs nothing new, where a sweep
     // would spawn every other agent on the machine over a chat nobody opened.
     void refreshCatalogIfDue(props.agentId);
@@ -340,7 +340,7 @@ export default function ChatView(props: {
     // turn containing one can only ever be a lower bound on what it wrote.
     const toolNames = new Map<string, string>();
 
-    // Backfill from the transcript the harness itself wrote, which is the same
+    // Backfill from the transcript the agent itself wrote, which is the same
     // file whether the earlier turns happened in this panel, in a PTY agent tab
     // or in an outside terminal. A session with none yet replays nothing.
     //
@@ -633,11 +633,11 @@ export default function ChatView(props: {
     );
   const capSaid = () => capNotice(liveChats().length, settings.chatDefaults.maxConcurrentChats);
 
-  // What the harness behind this session actually supports, from the adapter's
+  // What the agent behind this session actually supports, from the adapter's
   // declared transport. Every gate below asks this rather than asking whether
   // the code exists in this build: the code is here for every session, and a
-  // second harness would otherwise inherit Claude's measurements by silence.
-  const tier = () => chatTier(findAgent(props.agentId).chat?.transport);
+  // second agent would otherwise inherit Claude's measurements by silence.
+  const tier = () => chatTier(findAdapter(props.agentId).chat?.transport);
 
 
   async function sendBlocks(blocks: ContentBlock[]) {
@@ -694,7 +694,7 @@ export default function ChatView(props: {
    * Both halves of "this message can go into the running turn".
    *
    * `steerable` knows only that a turn is under way; it cannot know whether
-   * *this* harness reads stdin mid-turn. A harness that buffers to turn end
+   * *this* agent reads stdin mid-turn. A agent that buffers to turn end
    * would take the write and deliver it as the next turn, which the user could
    * not tell apart from a steer that landed, so the declared tier decides and
    * anything short of `consumed-before-next-tool` queues instead.
@@ -782,8 +782,8 @@ export default function ChatView(props: {
     // the user answers, and the tool's real outcome still comes from
     // `toolCallCompleted`.
     edit((s) => resolveApproval(s, card.toolUseId));
-    // The scope travels with the answer and is recorded by the harness, in the
-    // harness's own grammar. Sway keeps no rule store of its own to update.
+    // The scope travels with the answer and is recorded by the agent, in the
+    // agent's own grammar. Sway keeps no rule store of its own to update.
     void invoke("chat_respond_permission", {
       sessionId: props.sessionId,
       requestId: approval.requestId,
@@ -843,7 +843,7 @@ export default function ChatView(props: {
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
     // The tier still gates this, but on a different thing than it used to: not
-    // "does this harness have a hook Sway can refuse a call from", which is no
+    // "does this agent have a hook Sway can refuse a call from", which is no
     // longer how the ceiling works, but "are this chat's turns Sway's to open".
     // A PTY-only agent's are not. Reporting a ceiling as armed where it is not
     // is the one failure a spend ceiling must not have.
@@ -917,9 +917,9 @@ export default function ChatView(props: {
   // and the meter cannot each decide it differently.
   // One accessor for the adapter's chat table, so the mode fallback and the
   // capability resolver cannot each reach for it differently. It no longer
-  // carries models at all; the harness names those.
-  const chatConfig = () => findAgent(props.agentId).chat ?? null;
-  // The last answer this harness gave anyone, which is what a picker has before
+  // carries models at all; the agent names those.
+  const chatConfig = () => findAdapter(props.agentId).chat ?? null;
+  // The last answer this agent gave anyone, which is what a picker has before
   // a session exists. Live wins the moment the handshake lands, so this is the
   // pre-session list and not a merge; see `pickableModels`.
   const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId));
@@ -995,10 +995,10 @@ export default function ChatView(props: {
 
   // The mode the pill shows: the session's own, else the mode the *adapter*
   // nominates. Never the literal "default", which is Claude's spelling and
-  // names nothing on a harness whose modes are `auto_edit|yolo`.
+  // names nothing on a agent whose modes are `auto_edit|yolo`.
   const shownModeValue = () => shownMode(state, defaultMode(chatConfig())?.id ?? null);
 
-  // What this model, on this harness, can actually be asked for. One resolver
+  // What this model, on this agent, can actually be asked for. One resolver
   // feeds all three pills, so they cannot disagree about what is on offer.
   // One accessor for the modes on offer, beside `chatConfig` and for the same
   // reason: the selector and the model-switch guard must not each decide
@@ -1441,7 +1441,7 @@ export default function ChatView(props: {
         onAnswer={onAnswer}
         onSetMode={onSelectMode}
         onRevertHunk={onRevertHunk}
-        // Gated on the declaration, not on the checkpoint alone: a harness that
+        // Gated on the declaration, not on the checkpoint alone: a agent that
         // cannot fork has no way to carry the conversation across, and offering
         // "rewind to here" there would promise the tree *and* the conversation
         // and deliver only the tree.

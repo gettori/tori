@@ -44,7 +44,7 @@ export default function ModelPicker(props: {
   const [showAll, setShowAll] = createSignal(false);
   const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
-  // A cached list is the harness's own answer from the last time anything asked,
+  // A cached list is the agent's own answer from the last time anything asked,
   // which is a different claim from what this session reports right now. Worth
   // saying so rather than presenting a remembered answer as a current one.
   const stale = () => props.models.length > 0 && !props.models[0].live;

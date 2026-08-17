@@ -1,22 +1,22 @@
-// What a harness offers to pick from, on the card as a count and on its own
+// What a agent offers to pick from, on the card as a count and on its own
 // page as a list.
 //
-// **Every number and every row here came from the harness itself**, on a probe
+// **Every number and every row here came from the agent itself**, on a probe
 // `catalog_probe` ran and cached. Nothing is declared: these tests used to
 // assert counts read out of `[[chat.models]]`, a TOML that said four models
-// regardless of the CLI on the machine and 200k for models the harness reports
+// regardless of the CLI on the machine and 200k for models the agent reports
 // 1M for. The interesting cases are therefore the ones a table could not have:
-// a harness nobody has asked, one whose probe failed, and one whose answer
+// a agent nobody has asked, one whose probe failed, and one whose answer
 // describes a binary that has since been upgraded.
 //
-// One adapter list for the whole file, varied by which harness the health sweep
-// reports: `ensureAgentsLoaded` fetches once per module and caches, so a
+// One adapter list for the whole file, varied by which agent the health sweep
+// reports: `ensureAdaptersLoaded` fetches once per module and caches, so a
 // per-test `list_agents` would answer only the first test and silently reuse it
 // for the rest.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import HarnessSection from "./HarnessSection";
+import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
 import type { CatalogModel, ModelCatalog, ProbeFailureReason } from "../../../../utils/modelCatalog";
 
@@ -84,13 +84,13 @@ const model = (value: string, resolved: string, over: Partial<CatalogModel> = {}
   ...over,
 });
 
-/** A harness that answered, with whatever models the caller names. */
+/** A agent that answered, with whatever models the caller names. */
 const probed = (
-  harnessId: string,
+  agentId: string,
   models: CatalogModel[],
   over: Partial<ModelCatalog["catalogue"] & object> = {},
 ): ModelCatalog => ({
-  harnessId,
+  agentId,
   state: "probed",
   catalogue: {
     version: "2.1.231",
@@ -103,22 +103,22 @@ const probed = (
   lastFailure: null,
 });
 
-/** A harness whose most recent attempt failed. `keeping` is a catalogue an
+/** A agent whose most recent attempt failed. `keeping` is a catalogue an
  *  earlier probe left behind, which a failure never clears. */
 const failed = (
-  harnessId: string,
+  agentId: string,
   reason: ProbeFailureReason,
   detail = "",
   keeping: ModelCatalog["catalogue"] = null,
 ): ModelCatalog => ({
-  harnessId,
+  agentId,
   state: "failed",
   catalogue: keeping,
   lastFailure: { reason, detail, atMs: Date.parse("2026-08-15T12:00:00Z") },
 });
 
-const neverProbed = (harnessId: string): ModelCatalog => ({
-  harnessId,
+const neverProbed = (agentId: string): ModelCatalog => ({
+  agentId,
   state: "neverProbed",
   catalogue: null,
   lastFailure: null,
@@ -134,7 +134,7 @@ function mount(over: Record<string, unknown> = {}, catalogs: ModelCatalog[] = []
     if (cmd === "model_catalogs") return catalogs;
     return [];
   });
-  return render(() => <HarnessSection />);
+  return render(() => <AgentsSection />);
 }
 
 const open = async (r: ReturnType<typeof render>, name: RegExp) => {
@@ -146,20 +146,20 @@ const open = async (r: ReturnType<typeof render>, name: RegExp) => {
 // **A count is a claim about what the installed binary can run.** So it exists
 // only where a probe answered, and the three states below are rendered
 // differently on purpose: the one that matters most is the first, because "0
-// models" for a harness nobody asked reads as a broken install.
-describe("how many models a harness offers", () => {
+// models" for a agent nobody asked reads as a broken install.
+describe("how many models a agent offers", () => {
   // Read off the card itself, not the section: the page's own "Check models"
   // button is the thing that would ask for one.
   const card = (container: HTMLElement) =>
-    container.querySelector('[data-harness="claude"]')?.textContent ?? "";
+    container.querySelector('[data-agent="claude"]')?.textContent ?? "";
 
-  it("claims no count for a harness nothing has asked", async () => {
+  it("claims no count for a agent nothing has asked", async () => {
     const { container } = mount({}, [neverProbed("claude")]);
     await waitFor(() => expect(container.textContent).toContain("Claude"));
     expect(card(container)).not.toContain("model");
   });
 
-  it("counts what the harness named", async () => {
+  it("counts what the agent named", async () => {
     const { container } = mount({}, [
       probed("claude", [model("sonnet", "claude-sonnet-5"), model("haiku", "claude-haiku-4-5")]),
     ]);
@@ -195,17 +195,17 @@ describe("how many models a harness offers", () => {
     await waitFor(() => expect(container.textContent).toContain("2 models"));
   });
 
-  /** The harness nobody here can measure. No machine in this project has
+  /** The agent nobody here can measure. No machine in this project has
    *  `gemini` installed, so its catalogue is the never-probed state for real
    *  rather than as a fixture, and the surface has to read as "we have not
    *  asked" rather than as a broken install or an empty list. */
-  it("shows a harness nobody can ask as unasked, not as broken", async () => {
+  it("shows a agent nobody can ask as unasked, not as broken", async () => {
     const r = mount(
       { id: "gemini", label: "Gemini", program: "gemini", status: "notFound", version: null, path: null },
       [neverProbed("gemini")],
     );
     await waitFor(() => expect(r.container.textContent).toContain("Gemini"));
-    const gemini = () => r.container.querySelector('[data-harness="gemini"]')?.textContent ?? "";
+    const gemini = () => r.container.querySelector('[data-agent="gemini"]')?.textContent ?? "";
     expect(gemini()).not.toContain("model");
     expect(gemini()).not.toContain("Error");
 
@@ -231,8 +231,8 @@ describe("how many models a harness offers", () => {
   });
 });
 
-describe("the model list on a harness page", () => {
-  it("lists what the harness named, with the id a switch would have to send", async () => {
+describe("the model list on a agent page", () => {
+  it("lists what the agent named, with the id a switch would have to send", async () => {
     const r = mount({}, [
       probed("claude", [
         model("sonnet", "claude-sonnet-5", {
@@ -262,7 +262,7 @@ describe("the model list on a harness page", () => {
    *  same probe rather than only appearing once a chat is open. The three with
    *  bespoke controls are not repeated here - the model list above is already
    *  the model option, rendered properly. */
-  it("previews the harness's own options, minus the ones it renders properly", async () => {
+  it("previews the agent's own options, minus the ones it renders properly", async () => {
     const r = mount({}, [
       probed("claude", [model("sonnet", "claude-sonnet-5")], {
         options: [
@@ -316,14 +316,14 @@ describe("the model list on a harness page", () => {
     expect(container.textContent).not.toContain("the list may have moved");
   });
 
-  it("explains an unasked harness rather than showing an empty list", async () => {
+  it("explains an unasked agent rather than showing an empty list", async () => {
     const { container } = await open(mount({}, [neverProbed("claude")]), /Claude/);
     expect(container.textContent).toContain("Nobody has asked Claude");
   });
 
-  // Sway's sentence names the kind of failure; the harness's own words are
+  // Sway's sentence names the kind of failure; the agent's own words are
   // quoted after it rather than paraphrased.
-  it("names the failure and quotes the harness", async () => {
+  it("names the failure and quotes the agent", async () => {
     const { container } = await open(
       mount({}, [failed("claude", "signedOut", "run `claude /login`")]),
       /Claude/,
@@ -333,17 +333,17 @@ describe("the model list on a harness page", () => {
   });
 
   // `unsupported` is a fact about this build of Sway, so it must not read as the
-  // harness being broken: that would send the user to reinstall something that
+  // agent being broken: that would send the user to reinstall something that
   // works.
   it("blames Sway rather than the binary for a transport it cannot probe", async () => {
     const { container } = await open(mount({}, [failed("claude", "unsupported")]), /Claude/);
-    expect(container.textContent).toContain("Sway cannot ask this harness yet");
+    expect(container.textContent).toContain("Sway cannot ask this agent yet");
   });
 
   // A catalogue can differ per account (OpenCode's depends on which providers
   // are authenticated), and the probe runs as the default profile. A page
   // showing one list has to say whose answer it is.
-  it("says whose answer it is when the harness named an account", async () => {
+  it("says whose answer it is when the agent named an account", async () => {
     const withAccount = probed("claude", [model("sonnet", "claude-sonnet-5")], {
       account: { subscriptionType: "Claude Max", apiProvider: "firstParty", organization: "" },
     });
@@ -352,7 +352,7 @@ describe("the model list on a harness page", () => {
     expect(container.textContent).toContain("default profile");
   });
 
-  it("makes no such claim when the harness named none", async () => {
+  it("makes no such claim when the agent named none", async () => {
     const { container } = await open(
       mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]),
       /Claude/,
@@ -361,9 +361,9 @@ describe("the model list on a harness page", () => {
   });
 
   // Ask again re-probes. Reading the cache would leave the button doing nothing
-  // for a harness whose binary reports no version, which is the one case with no
+  // for a agent whose binary reports no version, which is the one case with no
   // other route back to a fresh answer.
-  it("re-asks the harness rather than re-reading the cache", async () => {
+  it("re-asks the agent rather than re-reading the cache", async () => {
     const r = await open(mount({}, [neverProbed("claude")]), /Claude/);
     invoked.mockClear();
     fireEvent.click(r.getByRole("button", { name: /Ask again/ }));
@@ -373,11 +373,11 @@ describe("the model list on a harness page", () => {
   });
 });
 
-// A catalogue probe spawns the harness's binary. `model_catalogs` reads the
+// A catalogue probe spawns the agent's binary. `model_catalogs` reads the
 // cache and is free; the two `refresh_*` commands are not, and nothing a user
 // merely *looks at* may call them. The split exists so a read cannot become a
 // probe by accident.
-describe("looking at Settings never probes a harness", () => {
+describe("looking at Settings never probes a agent", () => {
   const probes = () =>
     invoked.mock.calls
       .map(([cmd]) => cmd as string)
@@ -389,20 +389,20 @@ describe("looking at Settings never probes a harness", () => {
     expect(probes()).toEqual([]);
   });
 
-  it("issues no probe on opening a harness page either", async () => {
+  it("issues no probe on opening a agent page either", async () => {
     await open(mount({}, [neverProbed("claude")]), /Claude/);
     expect(probes()).toEqual([]);
   });
 });
 
 // Check models is the deliberate version of the same thing: one process per
-// harness that has never answered or whose binary changed, asked in parallel so
+// agent that has never answered or whose binary changed, asked in parallel so
 // one slow agent does not hold the rest empty.
 //
 // Skipped while the button that starts it is parked (see the section title in
-// `HarnessSection.tsx`). `refreshDueCatalogs` is untouched and these still
+// `AgentsSection.tsx`). `refreshDueCatalogs` is untouched and these still
 // describe it, so they come back with the control rather than being rewritten.
-describe.skip("asking every harness at once", () => {
+describe.skip("asking every agent at once", () => {
   let resolveSlow: (c: ModelCatalog) => void;
 
   beforeEach(() => {
@@ -422,9 +422,9 @@ describe.skip("asking every harness at once", () => {
         return [neverProbed("claude"), neverProbed("solo"), neverProbed("overprotocol")];
       }
       if (cmd === "refresh_model_catalog") {
-        const id = (args as { harnessId?: string })?.harnessId;
+        const id = (args as { agentId?: string })?.agentId;
         // Claude answers at once, Solo hangs until the test lets it go, and Over
-        // Protocol refuses. Three harnesses, three fates, one click.
+        // Protocol refuses. Three agents, three fates, one click.
         if (id === "claude") return probed("claude", [model("sonnet", "claude-sonnet-5")]);
         if (id === "overprotocol") return failed("overprotocol", "spawnFailed");
         return new Promise<ModelCatalog>((resolve) => (resolveSlow = resolve));
@@ -438,7 +438,7 @@ describe.skip("asking every harness at once", () => {
   };
 
   it("fills each row as its own answer lands rather than waiting for the slowest", async () => {
-    const r = render(() => <HarnessSection />);
+    const r = render(() => <AgentsSection />);
     await r.findByRole("button", { name: /Claude/ });
     await clickCheckAll(r);
 
@@ -452,8 +452,8 @@ describe.skip("asking every harness at once", () => {
     await waitFor(() => expect(r.container.textContent).toContain("2 models"));
   });
 
-  it("does not ask again for a harness that has already answered", async () => {
-    const r = render(() => <HarnessSection />);
+  it("does not ask again for a agent that has already answered", async () => {
+    const r = render(() => <AgentsSection />);
     await r.findByRole("button", { name: /Claude/ });
     await clickCheckAll(r);
     await waitFor(() => expect(r.container.textContent).toContain("1 model"));
@@ -461,7 +461,7 @@ describe.skip("asking every harness at once", () => {
     await waitFor(() => expect(r.container.textContent).not.toContain("checking…"));
 
     const asked = () =>
-      invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog").map(([, a]) => (a as { harnessId?: string })?.harnessId);
+      invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog").map(([, a]) => (a as { agentId?: string })?.agentId);
     expect(asked()).toEqual(["claude", "solo", "overprotocol"]);
 
     await clickCheckAll(r);

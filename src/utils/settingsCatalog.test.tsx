@@ -103,7 +103,7 @@ describe("the tab grouping", () => {
       "integrations",
     ]);
     expect(SETTING_TABS.map((t) => t.sections)).toEqual([
-      ["agents", "harness"],
+      ["agents", "agent"],
       ["chat", "checkpoints"],
       ["editor", "editing"],
       ["lsp", "dap"],

@@ -210,7 +210,7 @@ import {
 import { folderActors } from "../../utils/folderActors";
 import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import { askAgentToResolve } from "../../utils/conflictAsk";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import type { SessionTarget } from "../../utils/safeSend";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
@@ -711,7 +711,7 @@ export default function Editor(props: {
   function sendDisabledReason(): string | null {
     const sel = props.selected;
     if (!sel?.sessionId) return "Select a session first";
-    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    if (findAdapter(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
     return null;
   }
 

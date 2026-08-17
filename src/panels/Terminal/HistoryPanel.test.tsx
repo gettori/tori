@@ -455,7 +455,7 @@ describe("how the panel opens, closes, and hands focus", () => {
   });
 });
 
-// Two accounts of one harness put two sessions in one folder, and the only
+// Two accounts of one agent put two sessions in one folder, and the only
 // thing telling them apart is which account produced them. The backend sends a
 // label only when there is a second account to be confused with, so the
 // question here is whether the row shows what it was sent and nothing else.

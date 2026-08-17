@@ -3,7 +3,7 @@
 //
 //   * **What a session loaded** - its skills, subagents and plugins, read off
 //     `system/init`. Per session, and it changes with the user's install.
-//   * **What the harness behind it supports** - the chat tier below. Per
+//   * **What the agent behind it supports** - the chat tier below. Per
 //     *transport*, fixed at build time, and the thing the UI gates on.
 //
 // The tier's rule is that **a value names what shipped, never what the feature
@@ -40,9 +40,9 @@ export type ChatPlugin = {
 export type RewindTier = "none" | "files-only" | "replay" | "fork";
 
 /**
- * What a harness does with a message written mid-turn.
+ * What a agent does with a message written mid-turn.
  *
- * `consumed-before-next-tool` is the measured outcome, not a promise. A harness
+ * `consumed-before-next-tool` is the measured outcome, not a promise. A agent
  * that reads stdin only at turn end is `buffered-to-turn-end`, which is a
  * *queue*, and calling that a steer would tell the user their interjection
  * changed a turn it could not reach.
@@ -62,10 +62,10 @@ export type SteerCost = {
 /**
  * Who asks the user before a tool runs.
  *
- * `in-protocol` means the harness asks in its own protocol and Sway renders the
+ * `in-protocol` means the agent asks in its own protocol and Sway renders the
  * question; `sway-hook` means Sway asked instead, from a hook that ran ahead of
- * the harness's own permission chain. The distinction is not cosmetic: under
- * `in-protocol` the harness's permission modes are the ones in force, so a mode
+ * the agent's own permission chain. The distinction is not cosmetic: under
+ * `in-protocol` the agent's permission modes are the ones in force, so a mode
  * named after bypassing permissions really does bypass them.
  */
 export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
@@ -74,7 +74,7 @@ export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
  * Where a tool card's before-and-after comes from.
  *
  * `before-state` is Sway reading the file just ahead of the write, from the
- * capture hook: it happens for every write on that harness, so the card can
+ * capture hook: it happens for every write on that agent, so the card can
  * always show one. `agent-supplied` is the agent sending the prior text with the
  * call, which is exact when it happens and happens only for agents that do it.
  *
@@ -100,22 +100,22 @@ export type ChatTier = {
   /**
    * These three used to be one flag, `hooks`, on the honest grounds that they
    * rode one mechanism: the `PreToolUse` bridge. They no longer do. The hook
-   * stopped deciding and now only captures, the harness took over asking, and
+   * stopped deciding and now only captures, the agent took over asking, and
    * the ceiling moved to a boundary that needs no hook at all - so a single flag
    * would have to answer three questions with different answers.
    *
-   * A fourth, `swayRules`, went with the gate itself: no harness has a
+   * A fourth, `swayRules`, went with the gate itself: no agent has a
    * Sway-owned rule store to publish, so there is no longer a question to ask.
    */
   approvals: ApprovalTier;
   /** Where a tool card's before-and-after comes from, or `none` when it has
    *  nowhere to come from. See [`DiffTier`] for why this is not a boolean. */
   diffs: DiffTier;
-  /** A spend ceiling can stop this chat. Needs nothing from the harness: it is
+  /** A spend ceiling can stop this chat. Needs nothing from the agent: it is
    *  Sway declining to open the next turn. */
   spendCeilings: boolean;
   /**
-   * Why each affordance this harness lacks is missing, in the words a user
+   * Why each affordance this agent lacks is missing, in the words a user
    * reads.
    *
    * The published list omits what did not ship, because a listing is a promise
@@ -140,7 +140,7 @@ export type ChatTier = {
  *
  * `Record<ChatTransport, ChatTier>` on purpose: a new transport fails to
  * compile until someone states its tier, which is the only thing that stops a
- * second harness inheriting Claude's measurements by silence.
+ * second agent inheriting Claude's measurements by silence.
  */
 const TIERS: Record<ChatTransport, ChatTier> = {
   claude_stream_json: {
@@ -190,7 +190,7 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // session gets an exact diff exactly when its agent supplies one.
     diffs: "agent-supplied",
     // **Not because it rides the hook** - Phase 2 moved ceilings to the turn
-    // boundary, where they need nothing from the harness. Because ACP reports no
+    // boundary, where they need nothing from the agent. Because ACP reports no
     // *cost*: `session/update`'s usage carries context occupancy (`used` of
     // `size`) and no money, so a ceiling in dollars would never fire. Publishing
     // it as armed is the one failure a spend ceiling must not have.
@@ -201,7 +201,7 @@ const TIERS: Record<ChatTransport, ChatTier> = {
       steer:
         "A message typed during a turn waits for the next one: this protocol has no way to deliver it mid-turn, so Sway holds it rather than claiming it landed.",
       budgets:
-        "A spend ceiling needs the harness to report what a turn cost, and this one reports how full the context is instead. Nothing would ever trip the limit, so it is not offered.",
+        "A spend ceiling needs the agent to report what a turn cost, and this one reports how full the context is instead. Nothing would ever trip the limit, so it is not offered.",
     },
   },
 };
@@ -223,7 +223,7 @@ export const NO_CHAT_TIER: ChatTier = {
   gaps: {},
 };
 
-/** What the harness behind this chat config supports. */
+/** What the agent behind this chat config supports. */
 export function chatTier(transport: ChatTransport | null | undefined): ChatTier {
   return transport ? TIERS[transport] : NO_CHAT_TIER;
 }
@@ -246,7 +246,7 @@ export type PublishedCapability = {
  */
 export function publishedCapabilities(
   tier: ChatTier,
-  /** What the running agent advertised, for a harness that advertises. Absent
+  /** What the running agent advertised, for a agent that advertises. Absent
    *  before a session handshakes and null for one whose capabilities are
    *  measured instead, and in both cases the tier alone is published. */
   live?: ChatCapabilities | null,
@@ -276,21 +276,21 @@ export function publishedCapabilities(
   return out;
 }
 
-/** One affordance this harness does not have, and why. */
+/** One affordance this agent does not have, and why. */
 export type MissingCapability = {
   key: PublishedCapability["key"];
   why: string;
 };
 
 /**
- * What this harness cannot do, in the order the published list would have shown
+ * What this agent cannot do, in the order the published list would have shown
  * them.
  *
  * The counterpart to `publishedCapabilities`, and separate from it on purpose:
  * one is a promise and the other is an explanation, and folding them into one
  * list is what produces an entry like `rewind: none` that reads as a feature.
  *
- * Empty for a harness with no chat surface at all, whose absences are one fact
+ * Empty for a agent with no chat surface at all, whose absences are one fact
  * rather than five.
  */
 export function unavailableCapabilities(tier: ChatTier): MissingCapability[] {

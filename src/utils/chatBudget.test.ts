@@ -33,7 +33,7 @@ describe("breach", () => {
     expect(breach(spend({ sessionUsd: 1, projectUsd: 11 }), budgets)?.kind).toBe("project");
   });
 
-  // A ceiling set against a figure nothing has reported cannot fire: a harness
+  // A ceiling set against a figure nothing has reported cannot fire: a agent
   // that reports no cost must not read as having spent nothing and be stopped
   // by a limit of 0.
   it("cannot fire on a figure that was never reported", () => {

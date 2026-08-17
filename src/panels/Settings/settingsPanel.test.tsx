@@ -37,7 +37,7 @@ beforeEach(async () => {
  *  server installed), so they have a section on screen and no `<label>`.
  *
  *  `agents` is checked by the id its `CardSection` carries rather than by text.
- *  Its heading is parked, and the word "Harnesses" is also the rail's own label
+ *  Its heading is parked, and the word "Agents" is also the rail's own label
  *  for the tab, so a text search would pass on the rail item while the pane
  *  rendered nothing at all. */
 const CARD_ENTRIES: Record<string, string> = {
@@ -125,20 +125,20 @@ describe("the settings rail", () => {
 
   it("switches on arrow keys, wrapping, with Home and End at the ends", () => {
     render(() => <Settings onClose={() => {}} />);
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
 
     fireEvent.keyDown(strip(), { key: "ArrowRight" });
     expect(activeTab()).toBe("Chat");
 
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
 
     // Wraps rather than stopping, which is what `nextSegmentIndex` does.
     fireEvent.keyDown(strip(), { key: "ArrowLeft" });
     expect(activeTab()).toBe("Integrations");
 
     fireEvent.keyDown(strip(), { key: "Home" });
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
     fireEvent.keyDown(strip(), { key: "End" });
     expect(activeTab()).toBe("Integrations");
   });
@@ -166,7 +166,7 @@ describe("searching across every category at once", () => {
 
   it("opens every category's matches at once, in rail order", () => {
     // The whole point of the change: results are not somewhere else to go to.
-    // "path" matches the harness binary override and two editor rows, so a
+    // "path" matches the agent binary override and two editor rows, so a
     // stay-put filter would have shown one of the two and counted the other.
     render(() => <Settings onClose={() => {}} />);
     type("path");
@@ -279,7 +279,7 @@ describe("marking what matched, in the pane", () => {
   });
 
   it("offers a card section as one result rather than unfolding it", () => {
-    // These four build a card per thing found at runtime. A harness grid and a
+    // These four build a card per thing found at runtime. A agent grid and a
     // 31-entry catalogue expanding into a list of matching *settings* is the
     // wall the redesign removed, so a match says where it is and offers to go.
     render(() => <Settings onClose={() => {}} />);
@@ -381,11 +381,11 @@ describe("the six panes", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
-  it("lands on the Harnesses category in welcome mode", () => {
+  it("lands on the Agents category in welcome mode", () => {
     // First run opens here: it is the tab that answers "will this work with my
     // setup?", and the note points at the cards under it.
     render(() => <Settings onClose={() => {}} welcome />);
-    expect(activeTab()).toBe("Harnesses");
+    expect(activeTab()).toBe("Agents");
     expect(screen.getByText(/Welcome to Sway/)).toBeTruthy();
   });
 
@@ -398,9 +398,9 @@ describe("the six panes", () => {
       return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
     });
 
-  it("tells a machine with no harness what to install, naming them", async () => {
+  it("tells a machine with no agent what to install, naming them", async () => {
     invoke.mockImplementation(
-      withOnboarding({ kind: "noHarness", supported: ["Claude", "Codex", "OpenCode"] }),
+      withOnboarding({ kind: "noAgent", supported: ["Claude", "Codex", "OpenCode"] }),
     );
     render(() => <Settings onClose={() => {}} welcome />);
     const note = await screen.findByText(/could not find one yet/);
@@ -408,7 +408,7 @@ describe("the six panes", () => {
     expect(screen.queryByText(/checking which ones it found below/)).toBeNull();
   });
 
-  it("gives the ordinary greeting once one harness resolves", async () => {
+  it("gives the ordinary greeting once one agent resolves", async () => {
     invoke.mockImplementation(withOnboarding({ kind: "firstRun" }));
     render(() => <Settings onClose={() => {}} welcome />);
     expect(await screen.findByText(/checking which ones it found below/)).toBeTruthy();

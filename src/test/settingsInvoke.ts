@@ -1,6 +1,6 @@
 // Shared `invoke` stubs for suites that render the Settings panel.
 //
-// Settings renders `HarnessSection`, which reads the ACP launch catalogue from
+// Settings renders `AgentsSection`, which reads the ACP launch catalogue from
 // two `createResource`s. Every Settings suite mocks `invoke` with a catch-all
 // returning `DEFAULT_SETTINGS`, and a settings object is not an array, so
 // `(rows() ?? []).filter(...)` threw *inside the resource* - surfacing as an
@@ -30,7 +30,7 @@ type InvokeHandler = (cmd: string, args: Record<string, unknown>) => Promise<unk
  * empty catalogue instead of falling through to its catch-all.
  *
  * A suite that asserts *about* the catalogue names the commands itself and does
- * not use this - see `harnessCatalog.test.tsx`.
+ * not use this - see `agentCatalog.test.tsx`.
  */
 export function withAcpCatalog(handler: InvokeHandler): InvokeHandler {
   return async (cmd, args) => (cmd in CATALOG ? CATALOG[cmd] : handler(cmd, args));

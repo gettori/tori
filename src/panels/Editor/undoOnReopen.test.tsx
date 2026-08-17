@@ -75,7 +75,7 @@ let mounted: ReturnType<typeof render> | null = null;
  * Mount one editor whose tab set the test drives.
  *
  * `openPaths` and `activePath` are separate props for a reason worth keeping in
- * the harness: closing a tab moves both, and the pane relies on the active swap
+ * the agent: closing a tab moves both, and the pane relies on the active swap
  * (which stashes the live view state) running before the eviction sweep sees it.
  */
 async function mountEditor(first: string) {

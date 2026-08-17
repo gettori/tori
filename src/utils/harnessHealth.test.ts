@@ -1,6 +1,6 @@
 // What "ready" means, and the two ways getting it wrong hurts.
 //
-// A wrong yes costs one clear spawn failure. A wrong no makes a working harness
+// A wrong yes costs one clear spawn failure. A wrong no makes a working agent
 // unreachable with nothing on screen saying why, so every unknown case leans
 // toward yes.
 //
@@ -56,19 +56,19 @@ describe("agentReady once the sweep has landed", () => {
     await vi.waitFor(() => expect(agentHealth()).not.toBeNull());
   });
 
-  it("hides only the harness whose binary does not resolve", () => {
+  it("hides only the agent whose binary does not resolve", () => {
     expect(agentReady("missing")).toBe(false);
     expect(agentReady("matched")).toBe(true);
   });
 
   // Drift means Sway has not measured this version, not that it is broken, so
   // it stays startable and says so elsewhere.
-  it("keeps a drifted harness available", () => {
+  it("keeps a drifted agent available", () => {
     expect(agentReady("drifted")).toBe(true);
   });
 
   // An adapter carrying no `verified_against` says nothing about the install.
-  it("keeps a harness with an unparseable version available", () => {
+  it("keeps a agent with an unparseable version available", () => {
     expect(agentReady("unknown-version")).toBe(true);
   });
 
@@ -77,17 +77,17 @@ describe("agentReady once the sweep has landed", () => {
     expect(agentReady("never-swept")).toBe(true);
   });
 
-  // Installed and signed in are two facts. This one is the harness's own answer
+  // Installed and signed in are two facts. This one is the agent's own answer
   // about itself, not a Sway inference, and starting the session anyway would
   // produce a tab asking for a login the chat surface cannot give.
-  it("hides an installed harness nobody is signed in to", () => {
+  it("hides an installed agent nobody is signed in to", () => {
     expect(agentReady("signed-out")).toBe(false);
     expect(agentReady("signed-in")).toBe(true);
   });
 
   // The default for every adapter that cannot answer, and for every probe that
   // did not finish. It must not read as signed out.
-  it("keeps a harness whose sign-in state is unknown available", () => {
+  it("keeps a agent whose sign-in state is unknown available", () => {
     expect(agentReady("matched")).toBe(true);
   });
 });

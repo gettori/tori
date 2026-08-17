@@ -113,7 +113,7 @@ pub fn capture(repo: &Path, path: &str) -> BeforeState {
 
 /// Store a before-state that arrived as **text** rather than as a file.
 ///
-/// The counterpart to [`capture`], for a harness that hands Sway the prior
+/// The counterpart to [`capture`], for a agent that hands Sway the prior
 /// content instead of leaving Sway to read it off disk first. An ACP agent does
 /// exactly that: `codex-acp` 1.2.0 sends a `tool_call` diff block carrying
 /// `oldText` and `newText`, so the before-state is already in hand by the time
@@ -552,7 +552,7 @@ mod tests {
 
     /// With no object store the write is still reported and the diff is not.
     /// The same degradation `capture` makes for a non-repo folder, so a chat in
-    /// one behaves the same whichever harness is behind it.
+    /// one behaves the same whichever agent is behind it.
     #[test]
     fn text_with_nowhere_to_go_degrades_rather_than_failing() {
         let dir = std::env::temp_dir().join(format!("sway-snap-{}-norepo", std::process::id()));

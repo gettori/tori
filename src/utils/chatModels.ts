@@ -5,7 +5,7 @@
 // is; four readers reaching into two differently-shaped sources is how they end
 // up offering a model one of them cannot resolve.
 //
-// Both sources are the harness's own answer, and the difference between them is
+// Both sources are the agent's own answer, and the difference between them is
 // only how fresh it is:
 //
 //   - The **live catalogue** rides the `initialize` control response and is the
@@ -13,15 +13,15 @@
 //     (what `--model` takes) and `resolvedModel` (what `system/init` reports
 //     back) as separate fields, because several values resolve to one id.
 //   - The **cache** is the same answer, from the last time `catalog_probe` asked
-//     this harness. It exists so a picker opened before any session does can
+//     this agent. It exists so a picker opened before any session does can
 //     offer something true rather than nothing.
-//   - **Nothing.** A harness that has neither has no models, and says so.
+//   - **Nothing.** A agent that has neither has no models, and says so.
 //
 // What is *not* a source any more: the adapter's `[[chat.models]]`. That was
 // hand-maintained TOML, and it was wrong in both jobs it had. It offered four
 // models to a session that never handshook regardless of what the installed CLI
-// could run, and its windows said 200k for models the harness reports 1M for.
-// Sway names no model the harness did not name first.
+// could run, and its windows said 200k for models the agent reports 1M for.
+// Sway names no model the agent did not name first.
 //
 // A completed turn reports the real context window, per model and per provider,
 // in `modelUsage`. It is the authority and it cannot drift, being the running
@@ -51,8 +51,8 @@ export type PickableModel = {
   /** False for a model that came from the cache because this session has not
    *  handshaken yet. Surfaced so the picker can say the list may be stale. */
   live: boolean;
-  /** This row is a model the user configured in the harness's own settings, not
-   *  one the harness published. It carries an empty `resolvedModel`, since Sway
+  /** This row is a model the user configured in the agent's own settings, not
+   *  one the agent published. It carries an empty `resolvedModel`, since Sway
    *  passes the configured string to the CLI unresolved. */
   userConfigured: boolean;
   /** Whether this model has a fast mode to toggle. Sway's own annotation,
@@ -86,7 +86,7 @@ export function contextTokens(usage: Usage | null): number | null {
 }
 
 /**
- * The windows the **harness itself reported**, keyed by every id it named them
+ * The windows the **agent itself reported**, keyed by every id it named them
  * under, from a completed turn's `modelUsage`.
  *
  * Measured: every `result` frame carries
@@ -126,7 +126,7 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
  * The order is the point:
  *
  *   1. **What the session reported** (`reported`). Measured per model and per
- *      provider by the harness that is running the turn, so it beats anything
+ *      provider by the agent that is running the turn, so it beats anything
  *      written down anywhere. It only exists once a turn has completed.
  *   2. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
  *      Claude id never reaches it: step 1 is closer to the truth than a third
@@ -211,7 +211,7 @@ export function fastModeFor(chat: ChatConfig | null, resolvedModel: string): boo
  * that retired the adapter table applies to the cache the moment something
  * fresher exists.
  *
- * Nothing is the third answer and a real one. A harness whose cache is empty and
+ * Nothing is the third answer and a real one. A agent whose cache is empty and
  * whose session never handshook offers no models, rather than four the CLI was
  * never asked about.
  */
@@ -295,8 +295,8 @@ export function selectedModel(
  * **Mode is dropped on the same rule**, and it is the one that has actually
  * moved: modes used to be four hardcoded strings that no catalogue could
  * contradict, so a stored one was always "valid". Now that they come from the
- * adapter, a settings file can name a mode this harness does not declare - a
- * project pinned to `bypassPermissions` opened against a harness whose modes are
+ * adapter, a settings file can name a mode this agent does not declare - a
+ * project pinned to `bypassPermissions` opened against a agent whose modes are
  * `auto_edit|yolo`. Dropping it here is what makes the picker show what the
  * session is really running; the backend downgrade (`ChatConfig::resolve_mode`)
  * is the same decision made again where the args are built, for a stored mode
@@ -325,17 +325,17 @@ export type Capabilities = {
 };
 
 /**
- * What this model, on this harness, can actually be asked for.
+ * What this model, on this agent, can actually be asked for.
  *
  * **The intersection of two sources, because neither alone is sufficient.** The
- * adapter says what the *harness* supports (Claude has permission modes at all;
+ * adapter says what the *agent* supports (Claude has permission modes at all;
  * Codex names its own at runtime). The live catalogue says what *this model*
  * supports, and the two genuinely disagree: every Claude model reports
  * `supportsEffort` and `supportsAdaptiveThinking` except Haiku, which declares
  * none of them. A control offered from the adapter alone would render inert for
  * Haiku; one offered from the model alone could not exist before a handshake.
  *
- * `model` is null before anything is known, which yields the harness's own
+ * `model` is null before anything is known, which yields the agent's own
  * capabilities minus everything model-scoped - the honest answer for a session
  * whose model has not been reported yet.
  */
@@ -343,7 +343,7 @@ export function capabilitiesFor(
   model: PickableModel | null,
   chat: ChatConfig | null,
   /** Modes the running agent published, from `pickableModes`. Empty for a
-   *  harness whose modes are declared rather than advertised, which is what
+   *  agent whose modes are declared rather than advertised, which is what
    *  leaves the adapter table in charge. */
   live: readonly ChatMode[] = [],
 ): Capabilities {
@@ -381,7 +381,7 @@ export function capabilitiesFor(
  *
  * `args` is empty because an ACP mode is a request rather than a flag, and
  * `permissive` is left undefined rather than false. Undefined means "this
- * harness did not say", which is the truth: Codex's `agent-full-access` really
+ * agent did not say", which is the truth: Codex's `agent-full-access` really
  * does run tools unattended and nothing on the wire says so, so the row renders
  * without the caution instead of with a claim nobody measured.
  */
@@ -397,7 +397,7 @@ export function pickableModes(
 
 /**
  * The capabilities a model has, keyed by the name the live catalogue uses, so
- * an adapter's `requires` can be written in the harness's own terms.
+ * an adapter's `requires` can be written in the agent's own terms.
  *
  * `supportsEffort` is derived from the level list rather than read from a flag
  * of that name, because `pickableModels` has already folded the two together:

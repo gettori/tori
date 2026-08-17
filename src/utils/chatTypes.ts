@@ -6,22 +6,22 @@
 // field on either side fails there instead of surviving as two internally
 // consistent halves that disagree on the wire.
 //
-// Harness-specific payload lives in `extra`, never in a new field - see the
+// Agent-specific payload lives in `extra`, never in a new field - see the
 // Rust module docs for why. `extra` is optional here because serde omits it
 // when empty.
 
-/// A permission mode, as the id its own harness names it.
+/// A permission mode, as the id its own agent names it.
 ///
 /// **Deliberately `string` and not a union**, mirroring the Rust newtype. The
 /// union used to list Claude's four, which made a shared type carry one
-/// harness's vocabulary: Gemini's `--approval-mode` speaks `auto_edit|yolo`,
+/// agent's vocabulary: Gemini's `--approval-mode` speaks `auto_edit|yolo`,
 /// and Codex has no fixed set at all - it lists its profiles at runtime. What a
 /// mode is checked against is the adapter's `[[chat.modes]]` declaration, and
 /// beneath that the real CLI; see `capabilitiesFor` in `utils/chatModels.ts`.
 ///
-/// A mode means what the harness says it means. Sway's own hook used to run
+/// A mode means what the agent says it means. Sway's own hook used to run
 /// ahead of every one of them, so a permissive mode was not really permissive;
-/// the hook stopped deciding, so the harness's answer is now the answer.
+/// the hook stopped deciding, so the agent's answer is now the answer.
 export type PermissionMode = string;
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -41,11 +41,11 @@ export type PermissionDecision = "allow" | "deny";
 
 export type PermissionScope = "once" | "session" | "project";
 
-/// One rule the harness proposed, in its own grammar. `ruleContent` is optional
+/// One rule the agent proposed, in its own grammar. `ruleContent` is optional
 /// because a rule can name a whole tool with no argument pattern.
 export type SuggestedRule = { toolName: string; ruleContent?: string };
 
-/// An action the harness offered alongside a permission question.
+/// An action the agent offered alongside a permission question.
 ///
 /// Mirrors Rust's `PermissionSuggestion`. The mapper drops any type it does not
 /// know, so this union is closed on purpose: an unrecognised offer never
@@ -57,7 +57,7 @@ export type PermissionSuggestion =
 
 export type PlanItemStatus = "pending" | "inProgress" | "completed";
 
-/// Free-form harness-specific data. Deliberately unknown-valued: a renderer
+/// Free-form agent-specific data. Deliberately unknown-valued: a renderer
 /// that wants a field opts in and narrows it itself.
 export type Extra = Record<string, unknown>;
 
@@ -78,7 +78,7 @@ export type McpServer = {
 /// Which half of a hook execution a `hookFired` event carries.
 export type HookPhase = "started" | "finished";
 
-/// One model the live harness says it can run.
+/// One model the live agent says it can run.
 ///
 /// `value` is what `--model` takes and what the picker keeps as the authority
 /// for its own selection; `resolvedModel` is what `system/init.model` reports
@@ -100,7 +100,7 @@ export type ChatModelInfo = {
   supportsAutoMode: boolean;
 };
 
-/// One mode the live harness says it can run.
+/// One mode the live agent says it can run.
 ///
 /// Thinner than the adapter's `ChatMode` on purpose, and the missing fields are
 /// the point. No `args`, because an ACP mode is a request rather than a flag.
@@ -140,10 +140,10 @@ export type ChatConfigChoice = { value: string; label: string; description: stri
 /// What a switch sends back: a select's value id, or a toggle's state.
 export type ChatConfigValue = string | boolean;
 
-/// What a harness said it can do, read off its own handshake.
+/// What a agent said it can do, read off its own handshake.
 ///
 /// **Advertised, not measured.** Sway's per-transport tier records what shipped
-/// against a harness somebody sat down and measured; this records what *this*
+/// against a agent somebody sat down and measured; this records what *this*
 /// agent, at this version, on this machine, claims about itself. One generic
 /// transport carries agents that genuinely differ, so a tier that knew only the
 /// transport would publish the same answer for an agent that can reopen a
@@ -164,7 +164,7 @@ export type ChatCapabilities = {
 /// No `email`: the response carries one and nothing here reads it, so it is
 /// dropped at the Rust boundary rather than carried into the UI.
 export type ChatAccount = {
-  /// The harness's own wording, e.g. `Claude Pro`. Rendered as-is; a plan Sway
+  /// The agent's own wording, e.g. `Claude Pro`. Rendered as-is; a plan Sway
   /// has never seen should read as itself rather than as "unknown".
   subscriptionType: string;
   organization: string;
@@ -233,7 +233,7 @@ export type ChatEvent =
       /// which for some agents is the only lever on whether it asks before
       /// writing.
       modes: ChatModeInfo[];
-      /// From `system/init`. A disabled fast mode carries the harness's own
+      /// From `system/init`. A disabled fast mode carries the agent's own
       /// reason, which the toggle renders instead of an inert control.
       fastModeState: string | null;
       fastModeDisabledReason: string | null;
@@ -254,7 +254,7 @@ export type ChatEvent =
       /// Carried here as well as on `sessionStarted` because this event can
       /// arrive a whole turn earlier, and the handshake is the only source.
       account: ChatAccount | null;
-      /// What this agent advertised about itself. Null for a harness whose
+      /// What this agent advertised about itself. Null for a agent whose
       /// capabilities are measured and pinned in Sway's tier rather than asked
       /// for on the wire, which reads as "the tier is all there is".
       capabilities: ChatCapabilities | null;
@@ -273,7 +273,7 @@ export type ChatEvent =
       /// Pairs `started` with its `finished`, and is what lets a `started` be
       /// attributed to Sway retroactively.
       hookId: string;
-      /// As the harness names it, e.g. `PreToolUse:Bash`. **Reports the tool,
+      /// As the agent names it, e.g. `PreToolUse:Bash`. **Reports the tool,
       /// not the configured matcher** (measured, claude 2.1.220), which is why
       /// it cannot identify whose hook this is.
       name: string;
@@ -371,7 +371,7 @@ export type ChatEvent =
       /// The subagent that made the call, or null for the main agent. Only the
       /// in-protocol path can know this; the hook bridge always reports null.
       agentId: string | null;
-      /// Actions the harness itself offered. Absent when it offered none.
+      /// Actions the agent itself offered. Absent when it offered none.
       suggestions?: PermissionSuggestion[];
     }
   | { type: "planUpdate"; sessionId: string; turnId: string; items: PlanItem[] }
@@ -448,9 +448,9 @@ export type ChatCommand =
   /// Applies from the *next* turn, not the running one.
   | { type: "setMode"; sessionId: string; mode: PermissionMode }
   | { type: "setModel"; sessionId: string; model: string; effort: Effort | null }
-  /// Set one of the harness's own options, by the id it published. Sway knows
+  /// Set one of the agent's own options, by the id it published. Sway knows
   /// nothing about what the option governs, so it forwards the switch and
-  /// renders whatever the harness reports afterwards.
+  /// renders whatever the agent reports afterwards.
   | { type: "setConfigOption"; sessionId: string; configId: string; value: ChatConfigValue }
   | { type: "close"; sessionId: string };
 
@@ -529,7 +529,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   },
   permissionRequest: {
     required: ["sessionId", "toolUseId", "toolName", "input", "requestId", "autoDenyAtMs", "agentId"],
-    // Absent when the harness offered nothing, and absent on every request the
+    // Absent when the agent offered nothing, and absent on every request the
     // `PreToolUse` bridge raises, which has no suggestions to offer.
     optional: ["suggestions"],
   },

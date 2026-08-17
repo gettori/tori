@@ -9,7 +9,7 @@ import { Brain } from "lucide-solid";
  * not already say - every model is a model. The provider is the fact worth a
  * glyph, because it is the one thing about a session you cannot read off the
  * label: "opus-4.6" is Anthropic's, "gpt-5" is not, and Sway drives more than
- * one harness.
+ * one agent.
  *
  * **Only marks we actually have.** Anything we cannot name a provider for keeps
  * the brain rather than borrowing a neighbour's logo: a mark is a claim about
@@ -62,8 +62,8 @@ const OTHER_VENDOR = /gpt|openai|^o\d|gemini|llama|mistral|qwen|deepseek|grok|ki
  * The mark for the provider behind a session, for `<Icon icon={...}>`.
  *
  * The model id is asked first and the agent second, because they answer
- * different questions: a harness can run a model that is not its vendor's
- * (a harness driving Claude, a Claude session pointed at a router), so the id on
+ * different questions: a agent can run a model that is not its vendor's
+ * (a agent driving Claude, a Claude session pointed at a router), so the id on
  * the wire is the better witness whenever there is one. The agent id covers the
  * two cases the id cannot: a session before its first `system/init`, where the
  * pill says "Default" and the adapter is all we know, and a short alias like

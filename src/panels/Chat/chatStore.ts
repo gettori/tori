@@ -18,7 +18,7 @@
 //     written when the approval prompt arrived over a Unix socket from a forked
 //     hook helper while the `assistant` frame declaring the same call arrived on
 //     the child's stdout, with nothing ordering the two. That socket is gone -
-//     the harness asks in-protocol now - but the property is kept rather than
+//     the agent asks in-protocol now - but the property is kept rather than
 //     leaned on: a tool card is materialized on first reference to a
 //     `toolUseId` from whichever frame lands first, and the later one fills in
 //     what it knows without resetting what is already there. Two transports
@@ -58,7 +58,7 @@ export type ToolCardState = "awaitingApproval" | "running" | "ok" | "error" | "d
 export type PendingApproval = {
   requestId: string;
   autoDenyAtMs: number | null;
-  /** Actions the harness itself offered for this call. Empty for a harness that
+  /** Actions the agent itself offered for this call. Empty for a agent that
    *  offers none rather than meaning it offered nothing. */
   suggestions: PermissionSuggestion[];
   /** The subagent that made the call, or null for the main agent. */
@@ -181,7 +181,7 @@ export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean):
   return items.filter((it) => it.kind !== "hook" || hookFailed(it));
 }
 
-/** The one outcome worth a transcript row: the harness reported a non-zero
+/** The one outcome worth a transcript row: the agent reported a non-zero
  *  exit. A `started` frame (exit still null) is never a failure yet. */
 export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
   return it.exitCode !== null && it.exitCode !== 0;
@@ -256,10 +256,10 @@ export type ChatState = {
   /** Every configuration lever the agent published, model and mode included.
    *  The mirror renders the ones with no bespoke control of their own; the
    *  three that have one are here too, so nothing has to be told twice which
-   *  categories those are. Empty for a harness that publishes none, which is
+   *  categories those are. Empty for a agent that publishes none, which is
    *  claude. */
   configOptions: ChatConfigOption[];
-  /** `system/init`'s fast-mode state, and the harness's reason when it is
+  /** `system/init`'s fast-mode state, and the agent's reason when it is
    *  unavailable. */
   fastModeState: string | null;
   fastModeDisabledReason: string | null;
@@ -270,7 +270,7 @@ export type ChatState = {
    *  history carries no frames for. */
   compactions: number;
   compactionReclaimed: number;
-  /** Context windows the harness reported, keyed by every id it named them
+  /** Context windows the agent reported, keyed by every id it named them
    *  under, accumulated across turns. The authoritative source: it is measured
    *  per model and per provider by the session itself. Empty until the first
    *  turn completes, which is what the adapter's declared figure covers. */
@@ -280,7 +280,7 @@ export type ChatState = {
    *  rather than as a guessed tier. */
   account: ChatAccount | null;
   /** What the running agent advertised about itself at `initialize`, or null for
-   *  a harness that advertises nothing because its capabilities are measured and
+   *  a agent that advertises nothing because its capabilities are measured and
    *  pinned instead. Never overwritten by a later frame that did not carry one:
    *  the handshake is the only source. */
   capabilities: ChatCapabilities | null;
@@ -675,7 +675,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       return;
     case "compacted": {
       s.compactions += 1;
-      // Only when the harness reported both ends. A compaction that named
+      // Only when the agent reported both ends. A compaction that named
       // neither reclaimed an unknown amount, not zero, and adding zero would
       // quietly understate the total.
       if (ev.preTokens !== null && ev.postTokens !== null) {
@@ -695,7 +695,7 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
         id: nextId(s, "notice"),
         text: `Compacted ${how}${reclaimed}.`,
         level: "info",
-        // Kept, but folded away. It is the harness's own text and the only
+        // Kept, but folded away. It is the agent's own text and the only
         // record of what the model still remembers past the boundary, so
         // dropping it would lose the one thing a reader might come back for -
         // and it is several hundred words, which inline is a wall the
@@ -1003,7 +1003,7 @@ export function selectMode(s: ChatState, mode: PermissionMode) {
  *
  * `fallback` is the adapter's declared default, used only before a session has
  * reported a mode. It is a parameter rather than the literal `"default"` this
- * used to return, because that string is *Claude's* spelling: on a harness
+ * used to return, because that string is *Claude's* spelling: on a agent
  * whose modes are `auto_edit|yolo` it names no mode at all, so the pill would
  * show a value absent from its own menu. A caller with no adapter yet passes
  * null and gets null, which renders as "no mode known" rather than as a guess.

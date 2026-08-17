@@ -44,7 +44,7 @@ import {
 import { homeDir } from "@tauri-apps/api/path";
 import { refreshAgentHealth } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { agents, ensureAgentsLoaded, findAgent, agentIdForProgram, applyTemplate } from "../../utils/agents";
+import { agents, ensureAdaptersLoaded, findAdapter, agentIdForProgram, applyTemplate } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
@@ -94,7 +94,7 @@ type OpenTerm = {
   // Exiting the agent, or a task finishing, drops back to the live shell rather
   // than closing the tab.
   init?: string;
-  // Sign-in tabs: the profile's home variable, so the harness writes that
+  // Sign-in tabs: the profile's home variable, so the agent writes that
   // account's credentials rather than the default account's.
   env?: Record<string, string>;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
@@ -163,7 +163,7 @@ export default function Terminal(props: {
   // First-run onboarding is open: suppress the restore offer until it closes.
   onboarding?: boolean;
 }) {
-  ensureAgentsLoaded();
+  ensureAdaptersLoaded();
   const [open, setOpen] = createSignal<OpenTerm[]>([]);
   // Live tab labels that can change after a tab is created (a session rename),
   // keyed by tab id and overriding OpenTerm.title when present. Kept in a signal
@@ -608,7 +608,7 @@ export default function Terminal(props: {
       // Before the early return below, because a sign-in tab is a command tab
       // today but the reason to re-probe is that the process ended, not how the
       // tab happened to be hosted. Abandoning the tab lands here too, and that
-      // is correct: the probe re-reads the harness and finds it unchanged.
+      // is correct: the probe re-reads the agent and finds it unchanged.
       if (recheckAgentsOnExit.delete(id)) void refreshAgentHealth();
       const t = open().find((o) => o.id === id);
       if (t && t.kind !== "command") {
@@ -799,7 +799,7 @@ export default function Terminal(props: {
   async function focusOrResume(sel: ResumeTarget) {
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
-    const a = findAgent(agentId);
+    const a = findAdapter(agentId);
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
       focusTab(existing.workspace, existing.id);
@@ -912,7 +912,7 @@ export default function Terminal(props: {
   // (claude's skip permission prompts; an adapter may declare none),
   // plus any Sway-launched-only hook args (Phase 3).
   async function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
-    const a = findAgent(agentId);
+    const a = findAdapter(agentId);
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
     openOrActivate({
       id: shellId(),
@@ -1005,7 +1005,7 @@ export default function Terminal(props: {
    * rather than created, at the session's own recorded cwd.
    *
    * The session need not have come from a chat tab. A PTY agent tab and an
-   * outside `claude` write the same transcript the harness reads back on
+   * outside `claude` write the same transcript the agent reads back on
    * `--resume`, and Sway backfills from that same file, so a conversation
    * started in a terminal continues here with its history intact.
    *
@@ -1215,12 +1215,12 @@ export default function Terminal(props: {
                   // other route stays a single click from this menu.
                   ...(settings.chatDefaults.defaultSurface === "agent"
                     ? [
-                        { label: findAgent("claude").label, onClick: () => newSession("claude") },
-                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
+                        { label: findAdapter("claude").label, onClick: () => newSession("claude") },
+                        { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
                       ]
                     : [
-                        { label: `${findAgent("claude").label} chat`, onClick: () => newChat("claude") },
-                        { label: `${findAgent("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                        { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                        { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
                       ]),
                   // Only for a session selection, since there is nothing to
                   // continue from a bare branch. The session need not have been
@@ -1241,7 +1241,7 @@ export default function Terminal(props: {
                         },
                       ]
                     : []),
-                  { label: `${findAgent("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+                  { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
                 ]}
               >
                 <Tooltip

@@ -58,7 +58,7 @@ describe("SessionInfo", () => {
     expect(container.textContent).not.toContain("Account");
   });
 
-  // The harness can name an account without naming an organization, and an
+  // The agent can name an account without naming an organization, and an
   // empty string next to a separator reads as a rendering bug.
   it("omits the organization line when the account carries none", () => {
     const { container } = render(() => (
@@ -113,7 +113,7 @@ describe("SessionInfo", () => {
     expect(container.textContent).toContain("0 tools");
   });
 
-  it("omits the tool count when the harness reported none", () => {
+  it("omits the tool count when the agent reported none", () => {
     // A server declaring no count must not read as having zero tools.
     const { container } = render(() => <SessionInfo {...props({ mcpServers: [server({ toolCount: null })] })} />);
     open(container);
@@ -231,7 +231,7 @@ describe("SessionInfo", () => {
     expect(container.textContent).not.toContain("approvals,");
   });
 
-  it("renders no capability section for a harness that publishes none", () => {
+  it("renders no capability section for a agent that publishes none", () => {
     const { container } = render(() => <SessionInfo {...props({ mcpServers: [server()] })} />);
     open(container);
     expect(container.textContent).not.toContain("Chat capabilities");
