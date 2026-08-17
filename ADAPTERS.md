@@ -203,6 +203,8 @@ supports_isolation = false  # optional, default false; whether two accounts can 
 [install]
 program = "npm"             # the vendor's own documented install command...
 args = []                   # ...run in a visible PTY tab, never captured
+update_args = []            # optional; the same program's update verb
+uninstall_args = []         # optional; its removal verb
 ```
 
 ### The `[chat]` table
@@ -341,6 +343,14 @@ button claiming a measurement that never happened. The command is only as
 portable as the tool it names (`npm` assumes Node), which the visible tab makes
 an acceptable trade: "npm: command not found" is a readable failure, not a
 mystery.
+
+The table can also carry `update_args` and `uninstall_args`, sharing the same
+`program`: every package manager worth declaring spells all three verbs as
+arguments to one binary (`npm install -g` is also npm's update; `brew` would
+use `upgrade`/`uninstall`). The update runs from the version-drift banner and
+the uninstall from the Agent group on the same page, each in the same kind of
+visible tab. Either list left empty means that verb is undeclared and gets no
+button - the install verb does not lend its args to the others.
 
 ### `capabilities.hooks`
 

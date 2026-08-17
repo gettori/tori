@@ -1,11 +1,13 @@
-import { For, Show, Switch, Match, createSignal, onMount } from "solid-js";
-import { ChevronLeft } from "lucide-solid";
+import { For, Show, Switch, Match, createResource, createSignal, onMount } from "solid-js";
+import { Check, ChevronLeft, RefreshCw } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import { findAdapter } from "../../../../utils/agents";
+import { copyText } from "../../../../utils/clipboard";
 import {
   chatTier,
   publishedCapabilities,
@@ -20,16 +22,13 @@ import {
   refreshCatalog,
   type ProbeFailureReason,
 } from "../../../../utils/modelCatalog";
-import type { AgentHealth, BinaryStatus } from "../../../../utils/agentHealth";
-import { installTab, installNote, type InstallRoute } from "../../../../utils/install";
-import {
-  OPEN_TERMINAL,
-  TOAST,
-  emitWith,
-  type OpenTerminal,
-  type ToastEvent,
-} from "../../../../utils/events";
+import type { AgentHealth } from "../../../../utils/agentHealth";
+import { setupTab, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
+import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
+import { OPEN_TERMINAL, emitWith, type OpenTerminal } from "../../../../utils/events";
 import { mirroredOptions } from "../../../../utils/chatTypes";
+import { settings, saveSettings } from "../../settingsStore";
+import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import AgentAccounts from "./AgentAccounts";
 import styles from "../../Settings.module.css";
 
@@ -74,8 +73,29 @@ function probedOn(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/** A command the user could run themselves, with the one control that keeps
+ *  the promise honest: copy, exactly as shown. */
+function CmdLine(props: { program: string; args: string[] }) {
+  const [copied, setCopied] = createSignal(false);
+  const text = () => [props.program, ...props.args].join(" ");
+  const copy = async () => {
+    if (!(await copyText(text()))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div class={styles.cmd}>
+      <span class={styles.cmdPrompt}>$</span>
+      <code class={styles.cmdText}>{text()}</code>
+      <button type="button" class={styles.cmdCopy} onClick={() => void copy()}>
+        {copied() ? "copied" : "copy"}
+      </button>
+    </div>
+  );
+}
+
 /**
- * One agent, in full: everything the card had to drop to stay scannable.
+ * One agent, in full: everything the table row had to drop to stay scannable.
  *
  * Escape is answered here and its propagation stopped, so the panel's own
  * handler never sees it: inside this page Escape means "back to the list", and
@@ -83,15 +103,19 @@ function probedOn(ms: number): string {
  */
 export default function AgentDetail(props: {
   agent: AgentHealth;
-  tone: Record<BinaryStatus, string>;
-  stateLabel: Record<BinaryStatus, string>;
-  statePill: Record<BinaryStatus, string>;
   onBack: () => void;
   onRecheck: () => Promise<unknown>;
   rechecking: boolean;
 }) {
   let backEl: HTMLButtonElement | undefined;
   const a = () => props.agent;
+  const installed = () => a().status !== "notFound";
+  // The page has two shapes. An agent that is not usable yet gets the setup
+  // steps; one that is gets its accounts. Never both: the setup page's sign-in
+  // step signs in the default profile, which is the account that decides
+  // whether the agent is offered at all.
+  const setupMode = () => !installed() || a().signIn === "signedOut";
+
   // From the resolved adapter rather than from `agent_health`, which answers
   // about the binary on disk and knows nothing about the chat transport.
   const tier = () => chatTier(findAdapter(a().id).chat?.transport);
@@ -111,31 +135,89 @@ export default function AgentDetail(props: {
     return detail ? `${FAILURE_NOTE[failure.reason]} It said: ${detail}` : FAILURE_NOTE[failure.reason];
   };
 
+  // The model list with its own little filter, because one agent answers with
+  // fifteen rows. The counter reads "visible of total" so a running filter is
+  // visibly a filter and not a shorter answer.
+  const models = () => catalogue()?.models ?? [];
+  const [modelQuery, setModelQuery] = createSignal("");
+  const visibleModels = () => {
+    const q = modelQuery().trim().toLowerCase();
+    if (!q) return models();
+    return models().filter((m) =>
+      `${m.displayName} ${m.value} ${m.resolvedModel}`.toLowerCase().includes(q),
+    );
+  };
+  const modelCount = () => (catalogue() ? `${visibleModels().length} of ${models().length}` : "unknown");
+
+  // All of these are reads of the adapter file, no probe behind any, which is
+  // what allows fetching them on every page open. Errors collapse to null: a
+  // route Sway cannot resolve renders as "nothing declared" rather than a
+  // broken step.
+  const [installRoute] = createResource(
+    () => a().id,
+    (id) => invoke<InstallRoute>("agent_install_route", { adapterId: id }).catch(() => null),
+  );
+  const [updateRoute] = createResource(
+    () => a().id,
+    (id) => invoke<InstallRoute>("agent_update_route", { adapterId: id }).catch(() => null),
+  );
+  const [uninstallRoute] = createResource(
+    () => a().id,
+    (id) => invoke<InstallRoute>("agent_uninstall_route", { adapterId: id }).catch(() => null),
+  );
+  const [loginRoute] = createResource(
+    () => a().id,
+    (id) => invoke<LoginRoute>("agent_login_route", { adapterId: id }).catch(() => null),
+  );
+  const terminal = (r: InstallRoute | null | undefined) =>
+    r && r.type === "terminal" ? r : null;
+  const installCmd = () => terminal(installRoute());
+  const updateCmd = () => terminal(updateRoute());
+  const uninstallCmd = () => terminal(uninstallRoute());
+  const loginCmd = () => {
+    const r = loginRoute();
+    return r && r.type === "terminal" ? r : null;
+  };
+
   onMount(() => backEl?.focus());
 
-  // Sway never installs anything itself: the button opens a real terminal tab
-  // running the vendor's own documented command (from the adapter's [install]
-  // table) and gets out of the way, the same posture as signing in. When the
-  // process exits the tab re-probes health, so a finished install flips this
-  // very page to Ready without a restart.
-  const [installing, setInstalling] = createSignal(false);
-  const install = async () => {
-    setInstalling(true);
-    try {
-      const route = await invoke<InstallRoute>("agent_install_route", { adapterId: a().id });
-      const cwd = await homeDir().catch(() => "/");
-      const tab = installTab(a().id, a().label, route, cwd);
-      if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
-      else
-        emitWith<ToastEvent>(TOAST, {
-          message: installNote(a().label, a().program, route) ?? "",
-          kind: "info",
-        });
-    } catch (e) {
-      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
-    } finally {
-      setInstalling(false);
-    }
+  // Sway never installs, updates, or removes anything itself: each button
+  // opens a real terminal tab running the vendor's own documented command
+  // (from the adapter's [install] table) and gets out of the way, the same
+  // posture as signing in. When the process exits the tab re-probes health, so
+  // a finished run flips this very page forward without a restart.
+  const runVerb = async (verb: SetupVerb, route: InstallRoute | null) => {
+    if (!route) return;
+    const cwd = await homeDir().catch(() => "/");
+    const tab = setupTab(verb, a().id, a().label, route, cwd);
+    if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+  };
+
+  // The default profile, by name: this step exists to make the agent usable at
+  // all, and the default account is the one that decides that. Other accounts
+  // are signed in from the accounts list, which owns their home variables.
+  const signIn = async () => {
+    const route = loginCmd();
+    if (!route) return;
+    const cwd = await homeDir().catch(() => "/");
+    const tab = loginTab(a().id, a().label, "default", "Default", route, cwd);
+    if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+  };
+
+  /** The verdict pill, same ladder as the table's state column except drift,
+   *  which gets a banner with room to name both versions instead of a pill. */
+  const verdict = () => {
+    if (!installed()) return { label: "Not installed", cls: "" };
+    if (a().signIn === "signedOut") return { label: "Sign in", cls: styles.statePillWarn };
+    return { label: "Ready", cls: styles.statePillOk };
+  };
+
+  const savePath = (raw: string) => {
+    const paths = { ...(settings.agent.paths ?? {}) };
+    const trimmed = raw.trim();
+    if (trimmed) paths[a().id] = trimmed;
+    else delete paths[a().id];
+    void saveSettings({ ...settings, agent: { ...settings.agent, paths } }).catch(() => {});
   };
 
   return (
@@ -153,55 +235,72 @@ export default function AgentDetail(props: {
       </button>
 
       <div class={styles.detailHead}>
-        {/* Same pairing as the card it was opened from, one size up: the mark
-            names the agent, the dot beside it says whether it runs. */}
-        <span class={styles.hcardGlyph}>
+        {/* On a plate of its own, unlike the table rows: the page is this
+            agent's, so the mark is an identity rather than a bullet. No status
+            dot either - the verdict pill on this same line already answers. */}
+        <span class={styles.detailGlyph}>
           <AgentGlyph id={a().id} label={a().label} size={28} />
-          <span class={`${styles.dot} ${props.tone[a().status]}`} />
         </span>
-        <span class={styles.detailTitle}>{a().label}</span>
-        <Show when={a().version}>{(v) => <span class={styles.detailVersion}>{v()}</span>}</Show>
-        <span class={`${styles.statePill} ${props.statePill[a().status]}`}>
-          {props.stateLabel[a().status]}
-        </span>
-      </div>
-      <div class={styles.detailProgram}>
-        <code>{a().path ?? a().program}</code>
+        {/* Two lines beside the mark, like a letterhead: who this is, then
+            where it was found. The path is part of the identity - it says
+            *which* claude - so it sits here rather than floating below. */}
+        <div class={styles.detailIdentity}>
+          <div class={styles.detailTitleRow}>
+            <span class={styles.detailTitle}>{a().label}</span>
+            <Show when={a().version}>{(v) => <span class={styles.detailVersion}>{v()}</span>}</Show>
+          </div>
+          <div class={styles.detailProgram}>
+            <code>
+              {installed() ? (a().path ?? a().program) : "not found on your login shell"}
+            </code>
+          </div>
+        </div>
+        <span class={`${styles.statePill} ${verdict().cls}`}>{verdict().label}</span>
       </div>
 
-      <div class={styles.cardStatus}>
-        <Switch>
-          <Match when={a().status === "notFound"}>
-            Not installed. Install <code>{a().program}</code>, then check again.
-          </Match>
-          <Match when={a().status === "versionMatch"}>Installed, version {a().version}.</Match>
-          {/* Installed, but **this adapter** was never measured against it: the
-              adapter declares no `verified_against` at all. */}
-          <Match when={a().status === "versionUnknown" && a().version && !a().verifiedAgainst}>
-            Installed, version {a().version}. Untested: nobody has measured Sway against this
-            agent, so treat it as a starting point rather than a supported agent.
-          </Match>
-          <Match when={a().status === "versionUnknown" && a().version}>
-            Installed, version {a().version}.
-          </Match>
-          <Match when={a().status === "versionUnknown"}>
-            Installed. It does not report a version, so Sway cannot check it.
-          </Match>
-          <Match when={a().status === "versionDrift"}>
-            Installed, version {a().version}. Sway's adapter was built against{" "}
-            {a().verifiedAgainst}, so some behaviour may differ.
-          </Match>
-        </Switch>
-        {/* Installed and signed-out are two independent facts, and this one is
-            the agent's own answer rather than Sway's inference. */}
-        <Show when={a().status !== "notFound" && a().signIn === "signedOut"}>
-          {" "}
-          Nobody is signed in, so it is not offered for a new session.
-        </Show>
-        <Show when={a().signIn === "signedIn" && a().account}>
-          {(account) => <> Signed in as {account()}.</>}
-        </Show>
-      </div>
+      {/* Drift gets a banner rather than the pill: the pill has no room for the
+          two versions, and without them "drift" is a worry with no next step.
+          Where the adapter declares an update command, the next step is right
+          here - honestly worded, because moving to the vendor's latest is not
+          guaranteed to land on the version Sway measured. */}
+      <Show when={a().status === "versionDrift"}>
+        <div class={styles.detailBanner}>
+          <span class={styles.bannerMark}>!</span>
+          <div class={styles.bannerBody}>
+            <div class={styles.bannerTitle}>Version drift</div>
+            <div class={styles.bannerText}>
+              Sway's adapter was built against {a().verifiedAgainst} and you are running{" "}
+              {a().version}, so some behaviour may differ.
+            </div>
+            <Show when={updateCmd()}>
+              {(cmd) => (
+                <>
+                  <CmdLine program={cmd().program} args={cmd().args} />
+                  <div class={styles.stepActions}>
+                    <Button size="sm" onClick={() => void runVerb("update", cmd())}>
+                      Update
+                    </Button>
+                    <span class={styles.stepActionNote}>
+                      Opens a terminal running the vendor's update
+                    </span>
+                  </div>
+                </>
+              )}
+            </Show>
+          </div>
+        </div>
+      </Show>
+      {/* Installed, but **this adapter** was never measured against it: the
+          adapter declares no `verified_against` at all. */}
+      <Show when={a().status === "versionUnknown" && a().version && !a().verifiedAgainst}>
+        <div class={styles.hint}>
+          Untested: nobody has measured Sway against this agent, so treat it as a starting point
+          rather than a supported agent.
+        </div>
+      </Show>
+      <Show when={installed() && a().status === "versionUnknown" && !a().version}>
+        <div class={styles.hint}>It does not report a version, so Sway cannot check it.</div>
+      </Show>
 
       {/* The agent's own statement about which credential it will bill
           against, not Sway reading its environment and guessing. */}
@@ -214,67 +313,164 @@ export default function AgentDetail(props: {
         )}
       </Show>
 
-      <div class={styles.cardActions}>
-        <Show when={a().status === "notFound"}>
-          <Button size="sm" onClick={() => void install()} disabled={installing()}>
-            Install
-          </Button>
-        </Show>
-        <Button size="sm" onClick={() => void props.onRecheck()} disabled={props.rechecking}>
-          {props.rechecking ? "Checking…" : "Check again"}
-        </Button>
-      </div>
+      <Show when={setupMode()}>
+        <div class={styles.groupHead}>
+          <span class={styles.groupTitle}>Setup</span>
+          <span class={styles.sectionRule} />
+          <span class={styles.groupFact}>{installed() ? "1" : "0"} of 3</span>
+          {/* For an install or login finished outside Sway: the tabs re-probe
+              on exit, but a user's own terminal cannot. */}
+          <IconButton
+            size="sm"
+            icon={<Icon icon={RefreshCw} />}
+            tooltip="Check again"
+            onClick={() => void props.onRecheck()}
+            disabled={props.rechecking}
+          />
+        </div>
+        <div class={styles.setupSteps}>
+          {/* Step 1: the binary. */}
+          <div class={styles.setupStep} classList={{ [styles.stepDone]: installed() }}>
+            <span class={styles.stepBadge}>
+              {installed() ? <Icon icon={Check} size={12} /> : "1"}
+            </span>
+            <div class={styles.stepBody}>
+              <div class={styles.stepHead}>
+                <span class={styles.stepTitle}>
+                  {installed() ? "Installed" : `Install the ${a().program} binary`}
+                </span>
+                <Show when={installed()}>
+                  <span class={styles.stepState}>done</span>
+                </Show>
+              </div>
+              <Switch>
+                <Match when={installed()}>
+                  <div class={styles.stepMeta}>
+                    {a().version ? `${a().program} ${a().version} · ` : ""}
+                    {a().path ?? a().program}
+                  </div>
+                </Match>
+                <Match when={installCmd()}>
+                  <div class={styles.stepDesc}>
+                    Sway opens a terminal and runs the install for you. Come back here when it
+                    finishes.
+                  </div>
+                </Match>
+                {/* No [install] table means instructions, never a guessed
+                    package manager. */}
+                <Match when={installRoute()}>
+                  {(route) => (
+                    <div class={styles.stepDesc}>{installNote(a().label, a().program, route())}</div>
+                  )}
+                </Match>
+              </Switch>
+              <Show when={installCmd()}>
+                {(cmd) => <CmdLine program={cmd().program} args={cmd().args} />}
+              </Show>
+              <Show when={!installed() && installCmd()}>
+                <div class={styles.stepActions}>
+                  <Button size="sm" onClick={() => void runVerb("install", installCmd())}>
+                    Install
+                  </Button>
+                  <span class={styles.stepActionNote}>Opens a terminal</span>
+                </div>
+              </Show>
+            </div>
+          </div>
 
-      <div class={styles.groupHead}>
-        <span class={styles.groupTitle}>Sessions</span>
-        <span class={styles.sectionRule} />
-      </div>
-      <div class={styles.cardMeta}>
-        <Switch>
-          {/* No directory at all, because this agent keeps its sessions
-              somewhere only its protocol reaches. */}
-          <Match when={!a().sessionsDir}>Sessions come over the agent's own protocol.</Match>
-          <Match when={a().sessionsDirExists}>
-            Sessions read from <code>{a().sessionsDir}</code>
-          </Match>
-          <Match when={true}>
-            No sessions yet at <code>{a().sessionsDir}</code>
-          </Match>
-        </Switch>
-      </div>
-      <div class={styles.chips}>
-        <Show when={a().hooks}>
-          <span class={styles.chip} title="Status comes from the agent's own hooks">
-            live status
-          </span>
-        </Show>
-        <Show when={a().needsYou}>
-          <span class={styles.chip} title="Sway can detect when this agent is waiting on you">
-            needs-you
-          </span>
-        </Show>
-      </div>
-      <Show when={a().overridePath}>
-        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
+          {/* Step 2: the login. Inert until there is a binary to run it. */}
+          <div class={styles.setupStep} classList={{ [styles.stepInert]: !installed() }}>
+            <span class={styles.stepBadge}>2</span>
+            <div class={styles.stepBody}>
+              <div class={styles.stepHead}>
+                <span class={styles.stepTitle}>Sign in</span>
+              </div>
+              <Switch>
+                <Match when={!installed()}>
+                  <div class={styles.stepDesc}>Available once the binary is installed.</div>
+                </Match>
+                <Match when={loginCmd()}>
+                  <div class={styles.stepDesc}>
+                    A terminal runs the agent's own login. Sway checks again when it closes.
+                  </div>
+                </Match>
+                {/* No login command declared. The ladder's other rungs are
+                    sentences, so the step says the sentence. */}
+                <Match when={loginRoute()}>
+                  {(route) => <div class={styles.stepDesc}>{loginNote(a().label, route())}</div>}
+                </Match>
+              </Switch>
+              <Show when={installed() && loginCmd()}>
+                {(cmd) => (
+                  <>
+                    <CmdLine program={cmd().program} args={cmd().args} />
+                    <div class={styles.stepActions}>
+                      <Button size="sm" onClick={() => void signIn()}>
+                        Sign in
+                      </Button>
+                      <span class={styles.stepActionNote}>Opens a terminal</span>
+                    </div>
+                  </>
+                )}
+              </Show>
+            </div>
+          </div>
+
+          {/* Step 3 never renders as done: the page swaps to the accounts view
+              the moment the agent is usable, so this is always the horizon. */}
+          <div class={`${styles.setupStep} ${styles.stepInert}`}>
+            <span class={styles.stepBadge}>3</span>
+            <div class={styles.stepBody}>
+              <div class={styles.stepHead}>
+                <span class={styles.stepTitle}>Ready for chat</span>
+              </div>
+              <div class={styles.stepDesc}>Sway asks the agent what models it can run.</div>
+            </div>
+          </div>
+        </div>
       </Show>
 
-      {/* Only for a agent Sway can actually ask. A terminal-only adapter
-          declares no `[chat]` table, so the probe has nothing to drive and the
-          backend never returns a row for it: the section would be a heading, a
-          "nobody has asked" line and a button whose only possible outcome is
-          a failure saying Sway cannot ask. The capabilities section below says
-          "Terminal only" for the same agent, which is the honest answer. */}
-      <Show when={findAdapter(a().id).chat}>
+      {/* Only for an agent that is set up: an account list for a binary that
+          is missing or signed out would repeat what the steps above say. It
+          renders itself away for an adapter that declares no `[accounts]`. */}
+      <Show when={!setupMode()}>
+        <AgentAccounts agentId={a().id} agentLabel={a().label} onRecheck={props.onRecheck} />
+      </Show>
+
+      {/* Only for an agent Sway can actually ask, and only once it is set up.
+          A terminal-only adapter declares no `[chat]` table, so the probe has
+          nothing to drive and the backend never returns a row for it. During
+          setup the section is dropped whole rather than shown saying
+          "unknown": the steps already name asking for models as what happens
+          when setup finishes, and a section whose every state is a shrug is
+          not information. */}
+      <Show when={!setupMode() && findAdapter(a().id).chat}>
         <div class={styles.groupHead}>
           <span class={styles.groupTitle}>Models</span>
           <span class={styles.sectionRule} />
-          {/* "Ask again", not "Check again": the button above re-probes the
-              binary, this one re-asks the agent what it can run, and two
+          <span class={styles.groupFact}>{modelCount()}</span>
+          {/* The same chrome recipe as the Agents list title: count, filter,
+              re-ask, all on the heading so the card below is nothing but
+              rows. */}
+          <input
+            type="text"
+            class={styles.tableFilter}
+            placeholder="Search"
+            aria-label="Filter models"
+            value={modelQuery()}
+            onInput={(e) => setModelQuery(e.currentTarget.value)}
+          />
+          {/* "Ask again", not "Check again": the setup head's button re-probes
+              the binary, this one re-asks the agent what it can run, and two
               controls with one label would be two different actions under one
               name. */}
-          <Button size="sm" onClick={() => void refreshCatalog(a().id)} disabled={probingThis()}>
-            {probingThis() ? "Asking…" : "Ask again"}
-          </Button>
+          <IconButton
+            size="sm"
+            icon={<Icon icon={RefreshCw} />}
+            tooltip="Ask again"
+            onClick={() => void refreshCatalog(a().id)}
+            disabled={probingThis()}
+          />
         </div>
         {/* Every row here is something the agent itself named, on the probe
             this page reports below. Nothing is declared: the adapter used to carry
@@ -287,27 +483,36 @@ export default function AgentDetail(props: {
           <Match when={catalogue()}>
             {(cat) => (
               <>
-                <ul class={styles.modelList}>
-                  <For each={cat().models}>
-                    {(m) => (
-                      <li class={styles.modelRow}>
-                        <span class={styles.modelName}>{m.displayName || m.value}</span>
-                        <code class={styles.modelId}>{m.value}</code>
-                        {/* Said out loud, because its provenance differs: the
-                            user wrote this id in the agent's own settings and
-                            Sway passes it through unresolved. */}
-                        <Show when={m.userConfigured}>
-                          <span class={styles.chip}>yours</span>
-                        </Show>
-                        <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
-                          <span class={styles.modelEffort}>
-                            {m.supportedEffortLevels.join(" · ")}
-                          </span>
-                        </Show>
-                      </li>
-                    )}
-                  </For>
-                </ul>
+                <div class={styles.modelsCard}>
+                  {/* The scrollbar is drawn over the rows rather than beside
+                      them, so the effort ladders keep the full width. */}
+                  <OverlayScroll class={styles.modelScroll}>
+                    <ul class={styles.modelList}>
+                    <For each={visibleModels()}>
+                      {(m) => (
+                        <li class={styles.modelRow}>
+                          <span class={styles.modelName}>{m.displayName || m.value}</span>
+                          <code class={styles.modelId}>{m.value}</code>
+                          {/* Said out loud, because its provenance differs: the
+                              user wrote this id in the agent's own settings and
+                              Sway passes it through unresolved. */}
+                          <Show when={m.userConfigured}>
+                            <span class={styles.chip}>yours</span>
+                          </Show>
+                          <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
+                            <span class={styles.modelEffort}>
+                              {m.supportedEffortLevels.join(" · ")}
+                            </span>
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                    <Show when={models().length && !visibleModels().length}>
+                      <div class={styles.modelsNone}>No model matches "{modelQuery().trim()}".</div>
+                    </Show>
+                  </OverlayScroll>
+                </div>
                 <Show when={!cat().models.length}>
                   <div class={styles.cardMeta}>
                     {a().label} answered, and named no models it can run.
@@ -376,7 +581,7 @@ export default function AgentDetail(props: {
           </Match>
           <Match when={true}>
             <div class={styles.cardMeta}>
-              Nobody has asked {a().label} what it can run. Check again to ask.
+              Nobody has asked {a().label} what it can run. Ask again and Sway will.
             </div>
           </Match>
         </Switch>
@@ -428,11 +633,79 @@ export default function AgentDetail(props: {
         {(detail) => <div class={styles.hint}>{detail()}</div>}
       </Show>
 
-      {/* Only for an installed agent: an account list for a binary that is
-          not there would be a set of controls with nothing behind them. It
-          renders itself away for an adapter that declares no `[accounts]`. */}
-      <Show when={a().status !== "notFound"}>
-        <AgentAccounts agentId={a().id} agentLabel={a().label} />
+      <div class={styles.groupHead}>
+        <span class={styles.groupTitle}>Sessions</span>
+        <span class={styles.sectionRule} />
+      </div>
+      <div class={styles.cardMeta}>
+        <Switch>
+          {/* No directory at all, because this agent keeps its sessions
+              somewhere only its protocol reaches. */}
+          <Match when={!a().sessionsDir}>Sessions come over the agent's own protocol.</Match>
+          <Match when={a().sessionsDirExists}>
+            Sessions read from <code>{a().sessionsDir}</code>
+          </Match>
+          <Match when={true}>
+            No sessions yet at <code>{a().sessionsDir}</code>
+          </Match>
+        </Switch>
+      </div>
+      <div class={styles.chips}>
+        <Show when={a().hooks}>
+          <span class={styles.chip} title="Status comes from the agent's own hooks">
+            live status
+          </span>
+        </Show>
+        <Show when={a().needsYou}>
+          <span class={styles.chip} title="Sway can detect when this agent is waiting on you">
+            needs-you
+          </span>
+        </Show>
+      </div>
+
+      <div class={styles.groupHead}>
+        <span class={styles.groupTitle}>Agent</span>
+        <span class={styles.sectionRule} />
+      </div>
+      <div class={styles.row}>
+        <div class={styles.label}>Binary path</div>
+        <div class={styles.hint}>
+          Overrides the discovered binary for new chat sessions. Leave it empty to use the one
+          found above.
+        </div>
+        <div class={styles.control}>
+          <input
+            type="text"
+            class={`${styles.input} ${styles.text}`}
+            aria-label="Binary path"
+            value={settings.agent.paths?.[a().id] ?? ""}
+            placeholder={installed() ? "found on your login shell" : "nothing found yet"}
+            onChange={(e) => savePath(e.currentTarget.value)}
+          />
+        </div>
+      </div>
+      {/* Only when there is a binary to remove and a declared command to do it
+          with: an uninstall row for an agent that is not installed, or with no
+          verified command, would be a button that can only guess. Danger
+          styling because the tab it opens really removes the binary. */}
+      <Show when={installed() && uninstallCmd()}>
+        {(cmd) => (
+          <div class={styles.row}>
+            <div class={styles.label}>Uninstall</div>
+            <div class={styles.hint}>
+              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the
+              vendor's own removal. Your sign-in and settings stay wherever the agent keeps them.
+            </div>
+            <div class={styles.control}>
+              <Button size="sm" variant="danger" onClick={() => void runVerb("uninstall", cmd())}>
+                Uninstall
+              </Button>
+            </div>
+          </div>
+        )}
+      </Show>
+      <Show when={a().overridePath}>
+        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
       </Show>
     </div>
   );

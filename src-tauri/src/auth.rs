@@ -319,6 +319,22 @@ pub fn login_route(
     LoginRoute::Docs { url: ADAPTER_DOCS.to_string() }
 }
 
+/// The default profile's login route, for the setup steps on an agent's page.
+///
+/// `agent_accounts` answers this too, but only for an adapter that declares
+/// `[accounts]` and at the price of one `whoami` probe per profile. The setup
+/// page needs the route for *any* signed-out agent - the ladder degrades
+/// rather than failing - and needs no probe to get it, so this is a plain read
+/// of the adapter. Home is `None` because the default profile is the login the
+/// user already has: no variable set is what resolves it.
+#[tauri::command]
+pub fn agent_login_route(adapter_id: String) -> Result<LoginRoute, String> {
+    let adapter = crate::agents::find(&adapter_id)
+        .cloned()
+        .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
+    Ok(login_route(&adapter, None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

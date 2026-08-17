@@ -234,7 +234,15 @@
 
    The thumb is hidden at rest and only appears while its scroll area is hovered:
    styling ::-webkit-scrollbar opts out of macOS's auto-hiding overlay bar, so we
-   recreate the reveal-on-hover behaviour ourselves. */
+   recreate the reveal-on-hover behaviour ourselves.
+
+   What this recipe cannot give is a bar that takes no layout space: a styled
+   ::-webkit-scrollbar always reserves its width from the content box. The bar
+   that truly floats over the content is `components/Scrollbar/OverlayScroll`,
+   which hides the native one and draws its own; surfaces migrate to it as
+   they are touched. This layer is the floor every unconverted surface stands
+   on, and the track margin below gives those the same stay-off-the-ends
+   behaviour the drawn bar has. */
 * {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -249,6 +257,12 @@
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+/* The thumb's travel stops short of both ends of the rail, so the pill floats
+   inside the box instead of touching its corners. The margin applies along
+   each bar's own axis (top/bottom for vertical, left/right for horizontal). */
+::-webkit-scrollbar-track {
+  margin: calc(6px * var(--ui-scale));
 }
 ::-webkit-scrollbar-thumb {
   /* The transparent border + padding-box clip insets the thumb, so it reads as a

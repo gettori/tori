@@ -46,11 +46,48 @@ pub fn install_route(adapter: &agents::AgentAdapter) -> InstallRoute {
     }
 }
 
+/// The other two verbs the `[install]` table can carry, on the same rungs.
+/// An empty arg list is undeclared even when the table exists: nothing was
+/// verified for that verb, so nothing is offered.
+pub fn update_route(adapter: &agents::AgentAdapter) -> InstallRoute {
+    verb_route(adapter, |spec| &spec.update_args)
+}
+
+pub fn uninstall_route(adapter: &agents::AgentAdapter) -> InstallRoute {
+    verb_route(adapter, |spec| &spec.uninstall_args)
+}
+
+fn verb_route(
+    adapter: &agents::AgentAdapter,
+    args_of: fn(&agents::InstallSpec) -> &Vec<String>,
+) -> InstallRoute {
+    match &adapter.install {
+        Some(spec) if !args_of(spec).is_empty() => {
+            InstallRoute::Terminal { program: spec.program.clone(), args: args_of(spec).clone() }
+        }
+        _ => InstallRoute::Undeclared,
+    }
+}
+
 #[tauri::command]
 pub fn agent_install_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter =
         agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(install_route(adapter))
+}
+
+#[tauri::command]
+pub fn agent_update_route(adapter_id: String) -> Result<InstallRoute, String> {
+    let adapter =
+        agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
+    Ok(update_route(adapter))
+}
+
+#[tauri::command]
+pub fn agent_uninstall_route(adapter_id: String) -> Result<InstallRoute, String> {
+    let adapter =
+        agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
+    Ok(uninstall_route(adapter))
 }
 
 #[cfg(test)]
@@ -79,6 +116,40 @@ mod tests {
     fn an_adapter_without_the_table_stays_on_instructions() {
         assert!(bundled("claude").install.is_none(), "claude declares no [install] yet");
         assert_eq!(install_route(&bundled("claude")), InstallRoute::Undeclared);
+    }
+
+    /// `npm install -g` is also npm's documented update, and `npm uninstall -g`
+    /// its removal: three verbs, one table, all through the vendor's binary.
+    #[test]
+    fn copilot_updates_and_uninstalls_through_the_same_vendor_binary() {
+        match update_route(&bundled("copilot")) {
+            InstallRoute::Terminal { program, args } => {
+                assert_eq!(program, "npm");
+                assert_eq!(args, ["install", "-g", "@github/copilot"]);
+            }
+            other => panic!("copilot should update in a terminal, got {other:?}"),
+        }
+        match uninstall_route(&bundled("copilot")) {
+            InstallRoute::Terminal { program, args } => {
+                assert_eq!(program, "npm");
+                assert_eq!(args, ["uninstall", "-g", "@github/copilot"]);
+            }
+            other => panic!("copilot should uninstall in a terminal, got {other:?}"),
+        }
+    }
+
+    /// A table can declare fewer than all three verbs; the missing ones stay on
+    /// instructions rather than borrowing the install args.
+    #[test]
+    fn a_verb_the_table_does_not_declare_stays_undeclared() {
+        let mut adapter = bundled("copilot");
+        let spec = adapter.install.as_mut().expect("copilot declares [install]");
+        spec.update_args.clear();
+        spec.uninstall_args.clear();
+        assert_eq!(update_route(&adapter), InstallRoute::Undeclared);
+        assert_eq!(uninstall_route(&adapter), InstallRoute::Undeclared);
+        // The install verb is untouched by the other two being absent.
+        assert!(matches!(install_route(&adapter), InstallRoute::Terminal { .. }));
     }
 
     /// Every bundled adapter reaches a rung, so no detail page dead-ends.

@@ -63,7 +63,9 @@ export type ChatDefaults = {
    *  machine and the bill rather than of Sway. */
   maxConcurrentChats: number;
 };
-export type Agent = { path?: string | null };
+/** Binary overrides. `paths` is per adapter id; `path` is the older global
+ *  shape, still honoured by the backend as a fallback. */
+export type Agent = { path?: string | null; paths?: Record<string, string> };
 /** Editor behaviour that is a preference rather than a project fact.
  *
  *  `formatOnSave` defaults **off**, even though the project's config is what

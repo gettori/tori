@@ -709,7 +709,7 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
         // replaces it, because a `session/new` in whatever directory Sway was
         // launched from would file a phantom session inside a real project.
         cwd: String::new(),
-        program: crate::settings::agent_override().unwrap_or_else(|| chat.program.clone()),
+        program: crate::settings::agent_override(&adapter.id).unwrap_or_else(|| chat.program.clone()),
         args: chat.base_args.clone(),
         env: HashMap::new(),
     };

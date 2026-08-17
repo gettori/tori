@@ -1,0 +1,61 @@
+/* The overlay scrollbar: a hidden native scroller with a drawn thumb floating
+   over the content. See OverlayScroll.tsx for why the global scrollbar recipe
+   cannot deliver "takes no space" on its own. */
+@layer components {
+  .frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .viewport {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Inset from both ends, so the pill floats inside the box rather than
+     running rail to rail, and off the right edge by a hair. */
+  .track {
+    position: absolute;
+    top: calc(6px * var(--ui-scale));
+    bottom: calc(6px * var(--ui-scale));
+    right: calc(3px * var(--ui-scale));
+    width: calc(6px * var(--ui-scale));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sway-duration-med) ease;
+  }
+  .shown {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .thumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+  }
+  .thumb:hover,
+  .dragging {
+    background: var(--scrollbar-thumb-hover);
+  }
+}
+
+/* Outside the @layer on purpose, like the base.css rules it overrides:
+   unlayered declarations always beat layered ones, so the app-wide
+   `* { scrollbar-width: thin }` would win over a layered `none` here and the
+   native bar would draw under the thumb - two scrollbars. Unlayered against
+   unlayered, the class's specificity settles it. Both engines' spellings of
+   "no native bar at all": the drawn thumb is the only picture, so the content
+   keeps the full width. */
+.viewport {
+  scrollbar-width: none;
+}
+.viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

@@ -835,17 +835,18 @@
   }
 
   /* Unbulleted: three reasons in a card are a note, not a list you work
-     through. */
+     through. Roomier than a note, though - each reason is its own paragraph
+     and reads as one. */
   .gaps {
-    margin: var(--sway-space-3) 0 0;
+    margin: var(--sway-space-4) 0 0;
     padding: 0;
     list-style: none;
     font-size: var(--sway-text-xs);
-    line-height: 1.5;
+    line-height: 1.55;
     color: var(--fg-subtle);
   }
   .gaps li + li {
-    margin-top: var(--sway-space-2);
+    margin-top: var(--sway-space-3);
   }
 
   /* One row per model the agent named. A list rather than chips: each row
@@ -927,8 +928,20 @@
   .detailHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
+    gap: var(--sway-space-5);
     align-self: stretch;
+    margin-bottom: var(--sway-space-4);
+  }
+  /* The two-line letterhead beside the mark: name and version, then the path.
+     Its own column so the glyph sits against both lines. */
+  .detailIdentity {
+    flex: 1;
+    min-width: 0;
+  }
+  .detailTitleRow {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sway-space-4);
   }
   .detailTitle {
     font-size: var(--sway-text-2xl);
@@ -941,7 +954,10 @@
     color: var(--fg-subtle);
   }
   .detailProgram {
-    margin-top: var(--sway-space-2);
+    margin-top: var(--sway-space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .detailProgram code {
     font-family: var(--sway-font-mono);
@@ -958,6 +974,281 @@
   }
   .detail .groupHead {
     margin-top: var(--sway-space-7);
+    margin-bottom: var(--sway-space-5);
+  }
+  /* The air lives between the texts, not between the sections: a card's
+     footnote, a provenance line, a warning - each sits off the block above it
+     rather than hugging it. Only the page's own hints: the ones nested inside
+     a `.row` still sit tight under their label. */
+  .detail > .hint {
+    margin-top: var(--sway-space-4);
+  }
+
+  /* The page's own mark: on a plate, unlike the table rows, because here it is
+     an identity rather than a bullet. Same recipe as `.monogram`. */
+  .detailGlyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(44px * var(--ui-scale));
+    height: calc(44px * var(--ui-scale));
+    flex: none;
+    border-radius: var(--sway-radius-md);
+    background: var(--neutral-subtle);
+  }
+
+  /* One warning with room for two version numbers, which is what the pill
+     cannot hold. Attention-tinted like the pill it replaced, so the hue still
+     says "notice" rather than "broken". */
+  .detailBanner {
+    display: flex;
+    gap: var(--sway-space-5);
+    margin-top: var(--sway-space-6);
+    padding: var(--sway-space-6) var(--sway-space-7);
+    border: var(--sway-border-thin) solid color-mix(in srgb, var(--attention-fg) 45%, transparent);
+    border-radius: var(--sway-radius-lg);
+  }
+  .bannerMark {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-weight: 600;
+    color: var(--attention-fg);
+  }
+  .bannerBody {
+    flex: 1;
+    min-width: 0;
+  }
+  .bannerTitle {
+    font-size: var(--sway-text-sm);
+    font-weight: 600;
+    color: var(--attention-fg);
+  }
+  .bannerText {
+    margin-top: var(--sway-space-2);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+
+  /* A quiet number at the head's far end: "1 of 3", "15 of 15", "unknown".
+     Mono like the title beside it, but not shouted. */
+  .groupFact {
+    flex: none;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    letter-spacing: 0.06em;
+    color: var(--fg-subtle);
+  }
+
+  /* --- The setup steps: install, sign in, ready --- */
+
+  /* Transparent like the table rows: the border draws the box, and the page's
+     own canvas stays the one surface behind everything. */
+  .setupSteps {
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: transparent;
+  }
+  .setupStep {
+    display: flex;
+    gap: var(--sway-space-6);
+    padding: var(--sway-space-7);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+  .setupStep:last-child {
+    border-bottom: 0;
+  }
+  /* Dimmed as a whole, not hidden: a step that vanished would make the plan
+     look shorter than it is. */
+  .stepInert {
+    opacity: 0.55;
+  }
+  .stepBadge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: calc(22px * var(--ui-scale));
+    height: calc(22px * var(--ui-scale));
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: 50%;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-muted);
+  }
+  .stepDone .stepBadge {
+    border-color: color-mix(in srgb, var(--success-fg) 55%, transparent);
+    color: var(--success-fg);
+  }
+  .stepBody {
+    flex: 1;
+    min-width: 0;
+  }
+  .stepHead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sway-space-4);
+  }
+  .stepTitle {
+    font-size: var(--sway-text-md);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .stepState {
+    margin-left: auto;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--success-fg);
+  }
+  .stepDesc {
+    margin-top: var(--sway-space-3);
+    font-size: var(--sway-text-xs);
+    line-height: 1.55;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+  .stepMeta {
+    margin-top: var(--sway-space-3);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+  .stepActions {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    margin-top: var(--sway-space-5);
+  }
+  .stepActionNote {
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+
+  /* A command the user could run themselves. Shown, not described, and the
+     copy button is what keeps "exactly this" honest. */
+  .cmd {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    margin-top: var(--sway-space-5);
+    padding: var(--sway-space-4) var(--sway-space-5);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-md);
+    background: var(--canvas-default);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+  }
+  .cmdPrompt {
+    flex: none;
+    color: var(--fg-subtle);
+    user-select: none;
+  }
+  .cmdText {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    color: var(--fg-default);
+  }
+  .cmdCopy {
+    flex: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+    cursor: pointer;
+  }
+  .cmdCopy:hover {
+    color: var(--fg-default);
+  }
+  .cmdCopy:focus-visible {
+    outline: none;
+    border-radius: var(--sway-radius-sm);
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+
+  /* --- The accounts list --- */
+
+  .accountsCard {
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: transparent;
+  }
+  .accountRow {
+    padding: var(--sway-space-6) var(--sway-space-7);
+    border-bottom: var(--sway-border-thin) solid var(--border-default);
+  }
+  .accountRow:last-child {
+    border-bottom: 0;
+  }
+  .accountMain {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+  }
+  .accountName {
+    font-size: var(--sway-text-sm);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .accountAside {
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+  }
+  /* Pushed to the end, before the row's one button: the email when the agent
+     named one, its sign-in state when it did not. */
+  .accountFact {
+    margin-left: auto;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+  /* The sentence beside an action button, explaining it or its absence. */
+  .actionNote {
+    font-size: var(--sway-text-xs);
+    line-height: 1.5;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+
+  /* --- The models catalogue, boxed with its own filter --- */
+
+  /* Nothing but rows: the filter lives on the heading, so the card carries no
+     padding and the rows run border to border. `overflow: hidden` is what
+     keeps the zebra stripes inside the rounded corners. */
+  .modelsCard {
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+    background: transparent;
+    overflow: hidden;
+  }
+  /* Capped so a fifteen-row answer scrolls instead of pushing the page's
+     other sections below the fold; the overlay scrollbar floats over the
+     rows, so scrolling costs no width. */
+  .modelScroll {
+    max-height: calc(320px * var(--ui-scale));
+  }
+  /* Inside the card the list loses its own box; the card is the box. Zebra
+     instead of rules between rows - barely there, just enough for the eye to
+     track a row across to its effort ladder. */
+  .modelsCard .modelList {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .modelsCard .modelRow {
+    border-bottom: 0;
+  }
+  .modelsCard .modelRow:nth-child(even) {
+    background: color-mix(in srgb, var(--fg-default) 3%, transparent);
+  }
+  .modelsNone {
+    padding: var(--sway-space-4) var(--sway-space-5);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
   }
 
   .modelList {
@@ -966,13 +1257,13 @@
     list-style: none;
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-lg);
-    background: var(--canvas-input);
+    background: transparent;
   }
   .modelRow {
     display: flex;
     align-items: baseline;
     gap: var(--sway-space-4);
-    padding: var(--sway-space-4) var(--sway-space-5);
+    padding: var(--sway-space-5) var(--sway-space-6);
     border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
   .modelRow:last-child {

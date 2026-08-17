@@ -778,6 +778,33 @@ pub async fn remove_agent_account(
     Ok(RemovalOutcome::Removed)
 }
 
+/// Sign one profile out without forgetting it.
+///
+/// The recoverable sibling of `remove_agent_account`: the profile and its home
+/// stay stored, only the credential is revoked, through the agent's own logout
+/// command with this profile's home in the environment. No confirmation step
+/// here because nothing is destroyed - signing back in restores everything -
+/// and no fallback for an adapter with no `logout_args`: `can_sign_out` is
+/// what gates the button, and reaching this without one is an error worth
+/// hearing about rather than a silent no-op.
+#[tauri::command]
+pub async fn sign_out_agent_account(adapter_id: String, profile_id: String) -> Result<(), String> {
+    let adapter = adapter(&adapter_id)?;
+    let accounts = adapter
+        .accounts
+        .clone()
+        .ok_or_else(|| format!("`{adapter_id}` declares no accounts"))?;
+    let file = load();
+    let profile = profile(&file, &adapter_id, &profile_id)
+        .ok_or_else(|| format!("no profile `{profile_id}` for `{adapter_id}`"))?;
+    let path = crate::env::resolve_binary(&adapter.program).ok_or_else(|| {
+        format!("`{}` is not installed, so it cannot sign out", adapter.program)
+    })?;
+    let home = spawn_env(&accounts, &profile)?;
+    crate::auth::logout(&path, &accounts, home.as_ref())
+        .map_err(|e| format!("{} would not sign out: {e}", adapter.label))
+}
+
 /// Relabel a profile. The label is the only thing the user chose, so it is the
 /// only thing renaming touches.
 #[tauri::command]
