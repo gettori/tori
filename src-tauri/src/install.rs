@@ -40,7 +40,7 @@
 // only way it reaches a session is a user writing the adapter TOML that names
 // it. Downloading a binary is not the same act as deciding to run it, and
 // keeping them apart is what stops an install from quietly becoming a supported
-// harness. `crate::catalog`'s header is the other half of that boundary.
+// agent. `crate::catalog`'s header is the other half of that boundary.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -120,7 +120,7 @@ pub fn install_root() -> PathBuf {
 /// Reduce an id to a bare path segment. The id comes from a JSON Sway does not
 /// author, and it is about to be concatenated into a path.
 ///
-/// Shared with `crate::catalog_probe`, whose per-harness cache files are named
+/// Shared with `crate::catalog_probe`, whose per-agent cache files are named
 /// from adapter ids that come out of user TOML: two directories, one rule, so
 /// neither can pick up an escape the other closed.
 pub(crate) fn sanitize_segment(value: &str) -> String {
@@ -722,7 +722,7 @@ mod tests {
             "proves nothing about who named them",
             "Installing an agent is trusting the registry",
             "over half of these downloads have no checksum at all",
-            "nothing installed becomes a supported harness",
+            "nothing installed becomes a supported agent",
             "Removal deletes only what Sway installed",
         ] {
             let doc = doc.to_lowercase();

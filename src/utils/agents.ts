@@ -20,14 +20,14 @@ export type AgentId = string;
 // implementing a wire protocol, so a TOML can only select one that exists.
 export type ChatTransport = "claude_stream_json" | "acp";
 
-// Something Sway knows about a model, keyed by the id the harness names it by.
+// Something Sway knows about a model, keyed by the id the agent names it by.
 //
-// **Not a model list.** An annotation only ever decorates a model the harness
+// **Not a model list.** An annotation only ever decorates a model the agent
 // itself named; an id here that no catalogue mentions renders nothing at all,
 // and nothing turns one of these into a picker row. Its predecessor
 // `[[chat.models]]` was a list, and was wrong twice over: it offered four models
 // to a session that never handshook, and its windows said 200k for models the
-// harness reported 1M for.
+// agent reported 1M for.
 export type ChatAnnotation = {
   id: string;
   // Whether this model has a fast mode to toggle. Sway's own claim, and the one
@@ -46,13 +46,13 @@ export type ChatMode = {
   // it (`supportsAutoMode`). Declared rather than keyed on the mode's id: the
   // gate is not a property of the word "auto".
   requires?: string | null;
-  // This mode runs tools without asking anybody. A fact about the harness's
+  // This mode runs tools without asking anybody. A fact about the agent's
   // mode, unlike the retired `permissive_caveat` which was a fact about Sway's
   // gate, so it stays true now that the gate is gone.
   permissive?: boolean;
   // The mode a session runs when nothing is chosen, and what an unresolvable
   // one downgrades to. Declared rather than assumed: "default" is Claude's
-  // spelling, and a resolver carrying it picks nothing on a harness that names
+  // spelling, and a resolver carrying it picks nothing on a agent that names
   // its modes otherwise.
   default?: boolean;
 };
@@ -65,7 +65,7 @@ export type ChatEffort = {
 
 // Schema v2's `[chat]` table: how to drive this agent as a structured chat
 // session instead of a PTY. Arg templates rather than hardcoded flags, so a
-// second harness is a TOML table rather than a frontend branch.
+// second agent is a TOML table rather than a frontend branch.
 export type ChatConfig = {
   transport: ChatTransport;
   // Defaults to `program` on the backend; the chat binary need not be the one
@@ -96,7 +96,7 @@ export type AcpOverrides = {
 
 // Mirrors `AccountsConfig` in src-tauri/src/agents.rs, schema v3's [accounts].
 //
-// `home_env` is the variable that points the harness at an isolated profile
+// `home_env` is the variable that points the agent at an isolated profile
 // home; the *default* profile is that variable left unset, which is what makes
 // it resolve the login the user already had. `supports_isolation` is a measured
 // claim, never an inference from having a `home_env`: an adapter can have a
@@ -108,14 +108,14 @@ export type AccountsConfig = {
   logout_args: string[];
   whoami_args: string[];
   // How to read what `whoami_args` prints. Null exactly when there are no args
-  // to read. Three kinds because the three measured harnesses agree on nothing:
+  // to read. Three kinds because the three measured agents agree on nothing:
   // Claude answers in JSON, Codex says everything in its exit code, and
   // OpenCode exits 0 either way and puts the answer in a table.
   whoami_kind: "claude_json" | "exit_code" | "opencode_credentials" | null;
   supports_isolation: boolean;
 };
 
-export type Agent = {
+export type Adapter = {
   id: string;
   label: string;
   program: string;
@@ -147,7 +147,7 @@ export type Agent = {
 // checks it against the resolved adapters the backend actually produces
 // (dev/fixtures/agents/bundled.json, written by the Rust test) rather than
 // against nothing.
-export const FALLBACK_AGENTS: Agent[] = [
+export const FALLBACK_ADAPTERS: Adapter[] = [
   {
     id: "claude",
     label: "Claude",
@@ -221,20 +221,20 @@ export const FALLBACK_AGENTS: Agent[] = [
   },
 ];
 
-const [agents, setAgents] = createSignal<Agent[]>(FALLBACK_AGENTS);
+const [agents, setAgents] = createSignal<Adapter[]>(FALLBACK_ADAPTERS);
 export { agents };
 
 let requested = false;
-export function ensureAgentsLoaded() {
+export function ensureAdaptersLoaded() {
   if (requested) return;
   requested = true;
-  invoke<Agent[]>("list_agents")
-    .then((list) => setAgents(list.length ? list : FALLBACK_AGENTS))
+  invoke<Adapter[]>("list_agents")
+    .then((list) => setAgents(list.length ? list : FALLBACK_ADAPTERS))
     .catch(() => {});
 }
 
-export function findAgent(id: string): Agent {
-  return agents().find((a) => a.id === id) ?? FALLBACK_AGENTS[0];
+export function findAdapter(id: string): Adapter {
+  return agents().find((a) => a.id === id) ?? FALLBACK_ADAPTERS[0];
 }
 
 /** The adapter id behind a launch binary.
@@ -258,7 +258,7 @@ export function agentIdForProgram(program: string): AgentId {
 // PTY tab. False for a PTY-only adapter, and false for the pre-resolve
 // fallback, so a chat surface is only ever offered once the real adapter has
 // been read - never on a guess about what the backend will report.
-export function chatCapable(agent: Agent): boolean {
+export function chatCapable(agent: Adapter): boolean {
   return agent.chat != null;
 }
 
@@ -313,7 +313,7 @@ const shQuote = (a: string) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : `'${a.r
 // The shell command that resumes a session outside Sway: the adapter's launch
 // binary plus its resume template, filled and quoted. Null for a resume-less
 // adapter (empty `resume_args`), whose sessions cannot be resumed at all.
-export function resumeCommand(agent: Agent, vars: { id: string; file: string }): string | null {
+export function resumeCommand(agent: Adapter, vars: { id: string; file: string }): string | null {
   if (agent.resume_args.length === 0) return null;
   return [agent.program, ...applyTemplate(agent.resume_args, vars)].map(shQuote).join(" ");
 }

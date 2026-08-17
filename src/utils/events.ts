@@ -364,7 +364,7 @@ export type OpenTerminal = {
   init?: string;
   /** Extra environment for the tab's process. A sign-in tab carries the
    *  profile's home variable, which is the whole mechanism of signing in to a
-   *  second account: the harness writes its credentials wherever this points. */
+   *  second account: the agent writes its credentials wherever this points. */
   env?: Record<string, string>;
   /** Re-probe agent health when the process exits. Set by a sign-in tab, whose
    *  whole purpose is to change the answer: without it a completed login would
@@ -405,7 +405,7 @@ export const RUN_LAST_TASK = "sway:run-last-task";
 // spawn (id/title/yolo conventions), so the sidebar only names the target.
 export const NEW_SESSION = "sway:new-session";
 // `agent` is any registered adapter id (Terminal.tsx's spawnSession treats it
-// as opaque, looking it up via findAgent), not just the bundled
+// as opaque, looking it up via findAdapter), not just the bundled
 // pair - the command palette's "new session per registered agent" needs the
 // full registry, e.g. a user-added adapter.
 export type NewSession = { folderPath: string; projectName: string; agent?: string };

@@ -114,10 +114,10 @@ fn should_show_with(state: &State, adapters: &[AgentAdapter]) -> bool {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum OnboardingContent {
-    /// No adapter's binary resolves. Carries the harness names so the greeting
+    /// No adapter's binary resolves. Carries the agent names so the greeting
     /// can say what to install rather than only that something is missing.
-    NoHarness { supported: Vec<String> },
-    /// At least one harness resolves, so Sway has something to drive and the
+    NoAgent { supported: Vec<String> },
+    /// At least one agent resolves, so Sway has something to drive and the
     /// first-run copy is about Sway rather than about installing anything.
     FirstRun,
 }
@@ -128,7 +128,7 @@ fn content_with(adapters: &[AgentAdapter], installed: impl Fn(&str) -> bool) -> 
     if adapters.iter().any(|a| installed(&a.id)) {
         return OnboardingContent::FirstRun;
     }
-    OnboardingContent::NoHarness {
+    OnboardingContent::NoAgent {
         supported: adapters.iter().map(|a| a.label.clone()).collect(),
     }
 }
@@ -236,22 +236,22 @@ mod tests {
     /// CLIs Sway found, when it found none, points them at four rows of "not
     /// found" and reads as Sway being broken.
     #[test]
-    fn a_machine_with_no_harness_is_told_what_to_install() {
+    fn a_machine_with_no_agent_is_told_what_to_install() {
         let dir = tmp_dir("content-none");
         let adapters = [adapter_at(&dir)];
         let content = content_with(&adapters, |_| false);
         match content {
-            OnboardingContent::NoHarness { supported } => {
-                assert!(!supported.is_empty(), "the guidance has to name the harnesses");
+            OnboardingContent::NoAgent { supported } => {
+                assert!(!supported.is_empty(), "the guidance has to name the agents");
                 assert_eq!(supported, adapters.iter().map(|a| a.label.clone()).collect::<Vec<_>>());
             }
-            other => panic!("expected NoHarness, got {other:?}"),
+            other => panic!("expected NoAgent, got {other:?}"),
         }
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
-    fn one_installed_harness_is_enough_for_the_ordinary_greeting() {
+    fn one_installed_agent_is_enough_for_the_ordinary_greeting() {
         let dir = tmp_dir("content-some");
         let adapters = [adapter_at(&dir)];
         let installed_id = adapters[0].id.clone();
@@ -263,7 +263,7 @@ mod tests {
     }
 
     /// The content branch must not become a second show/hide gate. A user with
-    /// no harness installed still sees onboarding; they just see different
+    /// no agent installed still sees onboarding; they just see different
     /// words in it.
     #[test]
     fn the_content_branch_does_not_change_who_sees_onboarding() {
@@ -275,7 +275,7 @@ mod tests {
         );
         assert!(matches!(
             content_with(&adapters, |_| false),
-            OnboardingContent::NoHarness { .. }
+            OnboardingContent::NoAgent { .. }
         ));
         std::fs::remove_dir_all(&dir).ok();
     }

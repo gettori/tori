@@ -21,7 +21,7 @@ function at(line: number, character: number): LspPosition {
   return { line, character };
 }
 
-function harness(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
+function agent(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
   const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
@@ -66,7 +66,7 @@ afterEach(() => {
 
 describe("answerApplyEdit", () => {
   it("applies an edit over clean files and says so", async () => {
-    const h = harness();
+    const h = agent();
 
     const res = await answerApplyEdit(params(), h.deps, h.notify);
 
@@ -78,7 +78,7 @@ describe("answerApplyEdit", () => {
   it("refuses rather than saving a dirty background buffer, and never asks", async () => {
     // The interactive path opens a modal here. On this path the server is
     // blocked on the answer, so a modal would park it until its own timeout.
-    const h = harness({ dirtyBuffers: (paths) => paths });
+    const h = agent({ dirtyBuffers: (paths) => paths });
 
     const res = await answerApplyEdit(params(), h.deps, h.notify);
 
@@ -91,7 +91,7 @@ describe("answerApplyEdit", () => {
   });
 
   it("answers a resource operation with a reason instead of applying half of it", async () => {
-    const h = harness();
+    const h = agent();
 
     const res = await answerApplyEdit(
       { edit: { documentChanges: [{ kind: "create", uri: pathToUri("/repo/new.ts") }] } },
@@ -105,7 +105,7 @@ describe("answerApplyEdit", () => {
   });
 
   it("treats an edit with nothing in it as applied, not as a failure", async () => {
-    const h = harness();
+    const h = agent();
     expect(await answerApplyEdit({ edit: {} }, h.deps, h.notify)).toEqual({ applied: true });
     expect(h.notices).toEqual([]);
   });
@@ -113,7 +113,7 @@ describe("answerApplyEdit", () => {
   it("answers even when no session can serve the edit", async () => {
     // A project switch while the server was mid-command. An unanswered request
     // leaves it parked on its own timeout.
-    const h = harness();
+    const h = agent();
 
     const res = await answerApplyEdit(params(), null, h.notify);
 
@@ -123,7 +123,7 @@ describe("answerApplyEdit", () => {
   });
 
   it("turns a thrown apply into an answer rather than a rejection", async () => {
-    const h = harness({
+    const h = agent({
       requestFile: () => Promise.reject(new Error("workspace is gone")),
     });
 
@@ -138,7 +138,7 @@ describe("answerApplyEdit does not let a wedged apply hold the server open", () 
   it("answers within two seconds, on a fake clock", async () => {
     vi.useFakeTimers();
     // Never settles, which is what a wedged workspace looks like from here.
-    const h = harness({ requestFile: () => new Promise<MaterialisedFile | null>(() => {}) });
+    const h = agent({ requestFile: () => new Promise<MaterialisedFile | null>(() => {}) });
 
     const pending = answerApplyEdit(params(), h.deps, h.notify);
     await vi.advanceTimersByTimeAsync(APPLY_EDIT_TIMEOUT_MS);
@@ -153,7 +153,7 @@ describe("answerApplyEdit does not let a wedged apply hold the server open", () 
     vi.useFakeTimers();
     let release: (f: MaterialisedFile | null) => void = () => {};
     const files = [file(pathToUri(A), "const before = 1")];
-    const h = harness({
+    const h = agent({
       files,
       requestFile: () => new Promise<MaterialisedFile | null>((r) => (release = r)),
     });
@@ -178,7 +178,7 @@ describe("answerApplyEdit does not let a wedged apply hold the server open", () 
     vi.useFakeTimers();
     let release: (f: MaterialisedFile | null) => void = () => {};
     const files = [file(pathToUri(A), "const before = 1")];
-    const h = harness({ files, requestFile: () => new Promise<MaterialisedFile | null>((r) => (release = r)) });
+    const h = agent({ files, requestFile: () => new Promise<MaterialisedFile | null>((r) => (release = r)) });
 
     const pending = answerApplyEdit(
       { edit: { changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] } } },

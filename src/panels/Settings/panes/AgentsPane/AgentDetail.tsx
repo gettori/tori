@@ -2,7 +2,7 @@ import { For, Show, Switch, Match, onMount } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
-import { findAgent } from "../../../../utils/agents";
+import { findAdapter } from "../../../../utils/agents";
 import {
   chatTier,
   publishedCapabilities,
@@ -19,7 +19,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import type { AgentHealth, BinaryStatus } from "../../../../utils/agentHealth";
 import { mirroredOptions } from "../../../../utils/chatTypes";
-import HarnessAccounts from "./HarnessAccounts";
+import AgentAccounts from "./AgentAccounts";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -34,7 +34,7 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   // Two sources now, which is why the note names both rather than the one Sway
   // happens to use for Claude: `before-state` is Sway reading the file ahead of
   // the write, `agent-supplied` is the agent sending it, and a reader on an ACP
-  // harness needs to know theirs depends on which agent they picked.
+  // agent needs to know theirs depends on which agent they picked.
   diffs: "A tool card can show what a write changed, either because Sway recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
   budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
   history:
@@ -45,7 +45,7 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
 /**
  * Why a probe produced no catalogue, as a sentence with a next step.
  *
- * `unsupported` is deliberately not phrased as the harness failing: it is a fact
+ * `unsupported` is deliberately not phrased as the agent failing: it is a fact
  * about this build of Sway, and blaming the binary would send the user to
  * reinstall something that is working.
  */
@@ -54,7 +54,7 @@ const FAILURE_NOTE: Record<ProbeFailureReason, string> = {
   timedOut: "It did not answer in time.",
   signedOut: "Nobody is signed in, so it would not answer.",
   noAnswer: "It started and said nothing.",
-  unsupported: "Sway cannot ask this harness yet. Its models arrive when a session starts.",
+  unsupported: "Sway cannot ask this agent yet. Its models arrive when a session starts.",
 };
 
 /** The probe's date, in the reader's own locale. The time is dropped: what
@@ -64,13 +64,13 @@ function probedOn(ms: number): string {
 }
 
 /**
- * One harness, in full: everything the card had to drop to stay scannable.
+ * One agent, in full: everything the card had to drop to stay scannable.
  *
  * Escape is answered here and its propagation stopped, so the panel's own
  * handler never sees it: inside this page Escape means "back to the list", and
  * letting it bubble would close the whole settings panel instead.
  */
-export default function HarnessDetail(props: {
+export default function AgentDetail(props: {
   agent: AgentHealth;
   tone: Record<BinaryStatus, string>;
   stateLabel: Record<BinaryStatus, string>;
@@ -83,7 +83,7 @@ export default function HarnessDetail(props: {
   const a = () => props.agent;
   // From the resolved adapter rather than from `agent_health`, which answers
   // about the binary on disk and knows nothing about the chat transport.
-  const tier = () => chatTier(findAgent(a().id).chat?.transport);
+  const tier = () => chatTier(findAdapter(a().id).chat?.transport);
   const capabilities = () => publishedCapabilities(tier());
   const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
 
@@ -91,7 +91,7 @@ export default function HarnessDetail(props: {
   const catalogue = () => catalog()?.catalogue ?? null;
   const probingThis = () => isProbing(a().id);
   const stale = () => isStale(catalog(), a().version);
-  /** The harness's own words when it gave any, after Sway's sentence naming the
+  /** The agent's own words when it gave any, after Sway's sentence naming the
    *  kind of failure. Quoted rather than paraphrased, and omitted when empty. */
   const failureNote = () => {
     const failure = catalog()?.lastFailure;
@@ -113,7 +113,7 @@ export default function HarnessDetail(props: {
     >
       <button ref={backEl} type="button" class={styles.detailBack} onClick={() => props.onBack()}>
         <Icon icon={ChevronLeft} size={14} />
-        Harnesses
+        Agents
       </button>
 
       <div class={styles.detailHead}>
@@ -138,7 +138,7 @@ export default function HarnessDetail(props: {
               adapter declares no `verified_against` at all. */}
           <Match when={a().status === "versionUnknown" && a().version && !a().verifiedAgainst}>
             Installed, version {a().version}. Untested: nobody has measured Sway against this
-            agent, so treat it as a starting point rather than a supported harness.
+            agent, so treat it as a starting point rather than a supported agent.
           </Match>
           <Match when={a().status === "versionUnknown" && a().version}>
             Installed, version {a().version}.
@@ -152,7 +152,7 @@ export default function HarnessDetail(props: {
           </Match>
         </Switch>
         {/* Installed and signed-out are two independent facts, and this one is
-            the harness's own answer rather than Sway's inference. */}
+            the agent's own answer rather than Sway's inference. */}
         <Show when={a().status !== "notFound" && a().signIn === "signedOut"}>
           {" "}
           Nobody is signed in, so it is not offered for a new session.
@@ -162,7 +162,7 @@ export default function HarnessDetail(props: {
         </Show>
       </div>
 
-      {/* The harness's own statement about which credential it will bill
+      {/* The agent's own statement about which credential it will bill
           against, not Sway reading its environment and guessing. */}
       <Show when={a().apiKeySource}>
         {(source) => (
@@ -212,28 +212,28 @@ export default function HarnessDetail(props: {
         {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
       </Show>
 
-      {/* Only for a harness Sway can actually ask. A terminal-only adapter
+      {/* Only for a agent Sway can actually ask. A terminal-only adapter
           declares no `[chat]` table, so the probe has nothing to drive and the
           backend never returns a row for it: the section would be a heading, a
           "nobody has asked" line and a button whose only possible outcome is
           a failure saying Sway cannot ask. The capabilities section below says
-          "Terminal only" for the same harness, which is the honest answer. */}
-      <Show when={findAgent(a().id).chat}>
+          "Terminal only" for the same agent, which is the honest answer. */}
+      <Show when={findAdapter(a().id).chat}>
         <div class={styles.groupHead}>
           <span class={styles.groupTitle}>Models</span>
           <span class={styles.sectionRule} />
           {/* "Ask again", not "Check again": the button above re-probes the
-              binary, this one re-asks the harness what it can run, and two
+              binary, this one re-asks the agent what it can run, and two
               controls with one label would be two different actions under one
               name. */}
           <Button size="sm" onClick={() => void refreshCatalog(a().id)} disabled={probingThis()}>
             {probingThis() ? "Asking…" : "Ask again"}
           </Button>
         </div>
-        {/* Every row here is something the harness itself named, on the probe
+        {/* Every row here is something the agent itself named, on the probe
             this page reports below. Nothing is declared: the adapter used to carry
-            a `[[chat.models]]` table shown as what the harness could run, and it
-            said 200k for two models the harness reports 1M for. */}
+            a `[[chat.models]]` table shown as what the agent could run, and it
+            said 200k for two models the agent reports 1M for. */}
         <Switch>
           <Match when={probingThis() && !catalogue()}>
             <div class={styles.cardMeta}>Asking {a().label} what it can run…</div>
@@ -248,7 +248,7 @@ export default function HarnessDetail(props: {
                         <span class={styles.modelName}>{m.displayName || m.value}</span>
                         <code class={styles.modelId}>{m.value}</code>
                         {/* Said out loud, because its provenance differs: the
-                            user wrote this id in the harness's own settings and
+                            user wrote this id in the agent's own settings and
                             Sway passes it through unresolved. */}
                         <Show when={m.userConfigured}>
                           <span class={styles.chip}>yours</span>
@@ -292,7 +292,7 @@ export default function HarnessDetail(props: {
                     the list may have moved. Check again to re-ask.
                   </div>
                 </Show>
-                {/* The rest of what the harness published: the levers with no
+                {/* The rest of what the agent published: the levers with no
                     control of Sway's own, previewed from the same probe rather
                     than only appearing once a chat is open. Read-only here, on
                     purpose - they are session state, and there is no session on
@@ -318,7 +318,7 @@ export default function HarnessDetail(props: {
                     </For>
                   </ul>
                   <div class={styles.hint}>
-                    Set these in a chat with {a().label}, where they mirror the harness's own
+                    Set these in a chat with {a().label}, where they mirror the agent's own
                     controls.
                   </div>
                 </Show>
@@ -382,11 +382,11 @@ export default function HarnessDetail(props: {
         {(detail) => <div class={styles.hint}>{detail()}</div>}
       </Show>
 
-      {/* Only for an installed harness: an account list for a binary that is
+      {/* Only for an installed agent: an account list for a binary that is
           not there would be a set of controls with nothing behind them. It
           renders itself away for an adapter that declares no `[accounts]`. */}
       <Show when={a().status !== "notFound"}>
-        <HarnessAccounts agentId={a().id} agentLabel={a().label} />
+        <AgentAccounts agentId={a().id} agentLabel={a().label} />
       </Show>
     </div>
   );

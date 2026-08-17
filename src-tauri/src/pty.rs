@@ -155,7 +155,7 @@ pub fn pty_spawn(
     // Extra environment for this tab's process, on top of whatever it inherits.
     // Empty for every ordinary tab; a sign-in tab carries the profile's home
     // variable, which is the whole mechanism of signing in to a second account:
-    // the harness writes its credentials wherever this points, so a login tab
+    // the agent writes its credentials wherever this points, so a login tab
     // spawned without it would sign the user in to the account they already had.
     env: Option<Vec<(String, String)>>,
     // The agent session this tab is resuming, and which adapter it belongs to.
@@ -244,7 +244,7 @@ pub fn pty_spawn(
         cmd
     };
 
-    // Applied to both kinds, and last, so a caller that means to point a harness
+    // Applied to both kinds, and last, so a caller that means to point a agent
     // at a different home wins over anything set above. A shell-hosted tab
     // inherits it through the login shell, which is what a login tab needs: the
     // agent it runs is a grandchild of this process.

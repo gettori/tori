@@ -7,7 +7,7 @@
 //! emits, and the panel cannot tell the difference beyond the flag it is handed.
 //!
 //! **Why it works for sessions Sway never ran.** `parse_transcript_turns` reads
-//! the jsonl the harness itself writes, and a PTY agent tab, an outside
+//! the jsonl the agent itself writes, and a PTY agent tab, an outside
 //! terminal, and a chat tab all write the same file. So a session started
 //! anywhere backfills here without a second parser.
 //!
@@ -37,7 +37,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
     // Calls awaiting their result, oldest first. Claude records an id on both
     // halves so the match is exact; a transcript recording none falls back to
     // order - a result pairs with the oldest call still open, which is the
-    // order a single-threaded harness produces them in.
+    // order a single-threaded agent produces them in.
     let mut open_calls: Vec<(String, String)> = Vec::new();
     let mut seq = 0usize;
 
@@ -48,7 +48,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
 
         // The summary of a compaction is the *user* turn straight after it, not
         // a field on the boundary. Rendering it as an ordinary user message
-        // would put words in the user's mouth that the harness wrote, so it is
+        // would put words in the user's mouth that the agent wrote, so it is
         // consumed here and attached to the compaction instead.
         if turns.get(at.wrapping_sub(1)).is_some_and(is_compaction) && turn.role == "user" && at > 0 {
             continue;
@@ -145,7 +145,7 @@ fn is_compaction(turn: &TranscriptTurn) -> bool {
     turn.blocks.iter().any(|b| b.kind == "compaction")
 }
 
-/// The summary the harness wrote for the compaction at `at`: the text of the
+/// The summary the agent wrote for the compaction at `at`: the text of the
 /// user turn immediately following it, with the framing around it removed.
 /// `None` when the transcript ends at the boundary, which happens for a session
 /// compacted and then closed.
@@ -165,7 +165,7 @@ fn summary_after(turns: &[TranscriptTurn], at: usize) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Openings and closings of the continuation *prompt* the harness wraps its
+/// Openings and closings of the continuation *prompt* the agent wraps its
 /// summary in. The summary itself is worth showing - it is the only record of
 /// what the model still remembers across the boundary - but it arrives inside
 /// instructions written to the model ("Resume directly", "do not acknowledge
@@ -173,7 +173,7 @@ fn summary_after(turns: &[TranscriptTurn], at: usize) -> Option<String> {
 /// to another, and rendering it in a conversation reads as though someone said
 /// it.
 ///
-/// Matched on the harness's own sentences rather than on structure, because
+/// Matched on the agent's own sentences rather than on structure, because
 /// there is no structure: it is one prose blob. A wording we do not know stays
 /// whole, which is the safe direction - a summary with its framing still on is
 /// noisy, a summary cut in the wrong place has lost content.
@@ -206,14 +206,14 @@ fn strip_continuation_framing(text: &str) -> String {
 ///
 /// **Snapped to the nearest human prompt rather than cut at `ts < prompt_ts`.**
 /// A chat checkpoint is stamped with Sway's own clock at `turnStarted`
-/// (`checkpoints.ts:71`) while the transcript is stamped with the harness's, so
+/// (`checkpoints.ts:71`) while the transcript is stamped with the agent's, so
 /// one prompt carries two timestamps a second or two apart and a bare
 /// comparison lands on either side of it depending on which way they drifted.
 /// Snapping puts the cut on the boundary the user pointed at, and it can only
 /// ever fall *between* turns rather than inside one - a replay severed
 /// mid-turn would show a call with no result.
 ///
-/// The summary the harness writes after a compaction is a `user` turn that the
+/// The summary the agent writes after a compaction is a `user` turn that the
 /// user never typed, so it is not a boundary anyone can mean; `events_from_turns`
 /// declines to render it as one for the same reason.
 ///
@@ -230,7 +230,7 @@ pub fn prompt_boundary(turns: &[TranscriptTurn], prompt_ts: u64) -> Option<usize
         .map(|(at, _)| at)
 }
 
-/// The id to replay a call under: the harness's own when the transcript has one,
+/// The id to replay a call under: the agent's own when the transcript has one,
 /// otherwise a synthetic one that at least stays unique within this replay.
 fn replay_id(block: &TranscriptBlock, seq: &mut usize) -> String {
     match &block.tool_use_id {
@@ -385,7 +385,7 @@ mod tests {
     ///
     /// This is the raw jsonl `claude` writes when it is run from a terminal (or
     /// from a PTY agent tab, which is the same binary in a shell). It goes
-    /// through the harness's own parser and out as replay events, which is what
+    /// through the agent's own parser and out as replay events, which is what
     /// makes "started in the terminal, continued in chat" work without a second
     /// reader for each surface.
     #[test]
@@ -418,7 +418,7 @@ mod tests {
             }
             other => panic!("expected a user message, got {other:?}"),
         }
-        // The terminal-era call kept the harness's own id, so a later chat turn
+        // The terminal-era call kept the agent's own id, so a later chat turn
         // referring to the same call lines up rather than forking a second card.
         match &events[2] {
             ChatEvent::ToolCallStarted { tool_use_id, name, .. } => {
@@ -430,13 +430,13 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// The summary arrives wrapped in a prompt the harness wrote *to the
+    /// The summary arrives wrapped in a prompt the agent wrote *to the
     /// model*: a preamble explaining what a compaction is, and a closing that
     /// tells it to resume without acknowledging any of this, with a path to a
     /// jsonl on disk. Rendering that in a conversation reads as though someone
     /// said it. Wording taken from a real compacted transcript.
     #[test]
-    fn a_compaction_summary_arrives_without_the_harnesss_instructions() {
+    fn a_compaction_summary_arrives_without_the_agents_instructions() {
         let raw = concat!(
             "This session is being continued from a previous conversation that ran out of context. ",
             "The summary below covers the earlier portion of the conversation. Summary: ",
@@ -464,7 +464,7 @@ mod tests {
     /// Measured against a real transcript: running `/model haiku` writes three
     /// user-role records (the caveat, the command envelope, the command's own
     /// stdout) and none of them is something the person typed. Replaying them
-    /// showed the harness's markup as the user's own messages, and counted each
+    /// showed the agent's markup as the user's own messages, and counted each
     /// one as a prompt - a session with two real prompts reporting five.
     #[test]
     fn a_slash_command_is_not_replayed_as_something_the_user_typed() {
@@ -534,7 +534,7 @@ mod tests {
     /// straight after it, which is why that message is consumed rather than
     /// rendered as something the user typed.
     #[test]
-    fn a_compaction_replays_inline_with_the_harnesss_own_summary() {
+    fn a_compaction_replays_inline_with_the_agents_own_summary() {
         let dir = std::env::temp_dir().join(format!("sway-compact-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("compacted.jsonl");
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn a_rewind_cuts_at_the_prompt_even_when_the_two_clocks_disagree() {
         // The checkpoint says 1200; the transcript stamped the same prompt 1198,
-        // because Sway's `turnStarted` and the harness's write are two clocks.
+        // because Sway's `turnStarted` and the agent's write are two clocks.
         // A `ts < prompt_ts` cut would keep that prompt and sever its turn.
         let turns = vec![
             stamped("user", 1000, "first"),
@@ -646,7 +646,7 @@ mod tests {
         let turns = vec![
             stamped("user", 1000, "go"),
             turn("assistant", vec![compaction_block(None, None, None)]),
-            stamped("user", 1200, "the summary the harness wrote"),
+            stamped("user", 1200, "the summary the agent wrote"),
             stamped("user", 1600, "carry on"),
         ];
         assert_eq!(prompt_boundary(&turns, 1200), Some(0));

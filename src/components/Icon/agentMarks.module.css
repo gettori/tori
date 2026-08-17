@@ -1,0 +1,44 @@
+/* The animated half of a agent mark: worn while that agent is mid-turn, so
+   the glyph the chat already shows becomes the activity indicator instead of a
+   spinner appearing beside it.
+
+   Opacity and scale, never rotation: these are logos, and a spinning wordmark
+   reads as broken rather than busy. */
+@layer components {
+  .thinking {
+    /* Not a duration token: the two we have are 80ms and 160ms, both sized for
+       a state change the eye should not notice, and a breath at either reads as
+       a flicker. */
+    animation: agent-breathe 1600ms ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  @keyframes agent-breathe {
+    0%,
+    100% {
+      opacity: 0.45;
+      transform: scale(0.92);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Reduced motion still needs to say "running", so the pulse stays and only
+     the movement goes. */
+  @media (prefers-reduced-motion: reduce) {
+    .thinking {
+      animation-name: agent-fade;
+    }
+    @keyframes agent-fade {
+      0%,
+      100% {
+        opacity: 0.5;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+  }
+}

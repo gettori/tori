@@ -129,7 +129,7 @@ base_args = [
   # Permission questions come back in-protocol as a `can_use_tool`
   # control_request that Sway answers with a `control_response`, instead of
   # Sway deciding for itself in a `PreToolUse` hook. This is what makes the
-  # harness's own permission modes real: `default` asks, `acceptEdits` and
+  # agent's own permission modes real: `default` asks, `acceptEdits` and
   # `bypassPermissions` do not, and Sway renders whatever the CLI decided to
   # ask rather than overriding it.
   #
@@ -159,20 +159,20 @@ add_dir_args = ["--add-dir", "{dir}"]
 # There used to be a table of four here, carrying labels, context windows and
 # effort levels. It was the picker's fallback and the meter's pre-first-turn
 # denominator, and it was wrong at both. Sonnet 5 and Opus 5 both said 200000
-# while the harness reported 1000000 for each (dev/fixtures/claude/plain-turn.jsonl
+# while the agent reported 1000000 for each (dev/fixtures/claude/plain-turn.jsonl
 # and fast-mode.jsonl, provider `firstParty`), and Fable's figure was inferred
 # from the `[1m]` suffix on a catalogue value by a build that had never run a
 # Fable turn. A session that never handshook offered all four regardless of what
 # the installed CLI could actually run.
 #
-# All of it comes from the harness now: the model list and the effort levels from
+# All of it comes from the agent now: the model list and the effort levels from
 # the `initialize` control response (live, or cached by `catalog_probe`), the
 # context window from a completed turn's `result.modelUsage`. Nothing renders
 # before one of those has spoken, which is the point.
 #
 # What survives is below, and it is a different kind of thing.
 
-# Annotations decorate a model the harness named. They never add one.
+# Annotations decorate a model the agent named. They never add one.
 #
 # An id here that no catalogue mentions renders nothing at all. This is the one
 # category of thing Sway knows and the CLI does not say, so it is Sway's claim
@@ -208,7 +208,7 @@ hint = "Standard behavior, prompts for dangerous operations."
 args = ["--permission-mode", "default"]
 # What a session runs when nothing is chosen, and what an unresolvable mode
 # downgrades to. Marked rather than assumed: "default" is Claude's spelling,
-# and the resolver that reads this must not carry it to another harness.
+# and the resolver that reads this must not carry it to another agent.
 default = true
 
 [[chat.modes]]

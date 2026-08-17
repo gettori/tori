@@ -455,7 +455,7 @@
   cursor: default;
 }
 
-/* Why there are no rules to show, for a harness with no approval hook. Prose,
+/* Why there are no rules to show, for a agent with no approval hook. Prose,
    not a dimmed control: the whole point is that there is nothing to operate. */
 .rulesUnsupported {
   color: var(--fg-subtle);

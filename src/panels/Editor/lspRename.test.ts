@@ -54,7 +54,7 @@ function mappingOver(files: MaterialisedFile[]) {
   };
 }
 
-type Harness = {
+type Agent = {
   deps: RenameDeps;
   written: { path: string; contents: string }[];
   dispatched: string[];
@@ -67,7 +67,7 @@ type Harness = {
   released: () => number;
 };
 
-function harness(over: Partial<RenameDeps> & { files?: MaterialisedFile[] } = {}): Harness {
+function agent(over: Partial<RenameDeps> & { files?: MaterialisedFile[] } = {}): Agent {
   const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
@@ -183,7 +183,7 @@ describe("renameAcross", () => {
     // The whole point. The library's `doRename` skips any file the workspace
     // does not already hold, and it holds only files with a live view, so this
     // set produces zero writes there.
-    const h = harness();
+    const h = agent();
     const out = await renameAcross(h.deps, "after");
 
     expect(out).toMatchObject({ kind: "applied" });
@@ -197,7 +197,7 @@ describe("renameAcross", () => {
     // the open files in its constructor and `mapPosition` throws for anything
     // absent, so a mapping taken first cannot answer for the files this rename
     // is about.
-    const h = harness();
+    const h = agent();
     await renameAcross(h.deps, "after");
 
     const mappingAt = h.order.indexOf("makeMapping");
@@ -209,7 +209,7 @@ describe("renameAcross", () => {
     // Its undo history is the one the user can actually reach, so the rename
     // joins it rather than going around it.
     const view = {} as EditorView;
-    const h = harness({
+    const h = agent({
       files: [file(pathToUri(A), "const before = 1", view), file(pathToUri(B), "import { before } from './a'")],
     });
     const out = await renameAcross(h.deps, "after");
@@ -219,12 +219,12 @@ describe("renameAcross", () => {
   });
 
   it("holds the workspace open, and lets go even when the rename fails", async () => {
-    const ok = harness();
+    const ok = agent();
     await renameAcross(ok.deps, "after");
     expect(ok.retained()).toBe(1);
     expect(ok.released()).toBe(1);
 
-    const failing = harness({ writeFiles: () => Promise.reject(new Error("disk full.")) });
+    const failing = agent({ writeFiles: () => Promise.reject(new Error("disk full.")) });
     const out = await renameAcross(failing.deps, "after");
     expect(out).toMatchObject({ kind: "aborted" });
     expect(failing.retained()).toBe(1);
@@ -236,7 +236,7 @@ describe("renameAcross", () => {
     // watcher would eventually notice, but it is debounced and it skips whole
     // directories (`node_modules`, `dist`, `target`), so a target inside one
     // would never be corrected at all.
-    const h = harness();
+    const h = agent();
     await renameAcross(h.deps, "after");
 
     expect(h.notified).toEqual([[A, B]]);
@@ -246,13 +246,13 @@ describe("renameAcross", () => {
   });
 
   it("tells it nothing when the write never happened", async () => {
-    const h = harness({ writeFiles: () => Promise.reject(new Error("disk full.")) });
+    const h = agent({ writeFiles: () => Promise.reject(new Error("disk full.")) });
     await renameAcross(h.deps, "after");
     expect(h.notified).toEqual([]);
   });
 
   it("takes a backstop before the first write", async () => {
-    const h = harness();
+    const h = agent();
     await renameAcross(h.deps, "after");
 
     expect(h.backstops).toEqual(['Rename to "after" in 2 files']);
@@ -260,7 +260,7 @@ describe("renameAcross", () => {
   });
 
   it("does not take a backstop for a rename inside one file", async () => {
-    const h = harness({ files: [file(pathToUri(A), "const before = 1")] });
+    const h = agent({ files: [file(pathToUri(A), "const before = 1")] });
     h.deps.requestRename = () =>
       Promise.resolve({ changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] } });
 
@@ -272,7 +272,7 @@ describe("renameAcross", () => {
 
 describe("renameAcross refuses rather than half-applying", () => {
   it("stops when a target file cannot be read, before writing anything", async () => {
-    const h = harness({ requestFile: (uri) => Promise.resolve(uri.endsWith("b.ts") ? null : file(uri, "x")) });
+    const h = agent({ requestFile: (uri) => Promise.resolve(uri.endsWith("b.ts") ? null : file(uri, "x")) });
     const out = await renameAcross(h.deps, "after");
 
     expect(out).toMatchObject({ kind: "aborted" });
@@ -286,7 +286,7 @@ describe("renameAcross refuses rather than half-applying", () => {
     // alone. Dispatching anyway would leave the editor showing a rename that
     // exists nowhere else.
     const view = {} as EditorView;
-    const h = harness({
+    const h = agent({
       files: [file(pathToUri(A), "const before = 1", view), file(pathToUri(B), "import { before } from './a'")],
       writeFiles: () => Promise.reject(new Error("b.ts is read-only, so nothing was changed.")),
     });
@@ -299,7 +299,7 @@ describe("renameAcross refuses rather than half-applying", () => {
   });
 
   it("stops when a position cannot be placed rather than writing a mangled file", async () => {
-    const h = harness();
+    const h = agent();
     h.deps.makeMapping = () => ({
       mapPosition: () => {
         throw new Error("Cannot map from a file that's not in the workspace");
@@ -315,7 +315,7 @@ describe("renameAcross refuses rather than half-applying", () => {
   it("refuses a multi-file rename in a folder with no undo path", async () => {
     // Sway opens plain folders. Rewriting several files there with nothing to
     // restore from is not something to do quietly.
-    const h = harness({ backstopAvailable: () => Promise.resolve(false) });
+    const h = agent({ backstopAvailable: () => Promise.resolve(false) });
     const out = await renameAcross(h.deps, "after");
 
     expect(out).toMatchObject({ kind: "aborted" });
@@ -324,7 +324,7 @@ describe("renameAcross refuses rather than half-applying", () => {
   });
 
   it("still renames inside a single file with no undo path", async () => {
-    const h = harness({
+    const h = agent({
       files: [file(pathToUri(A), "const before = 1")],
       backstopAvailable: () => Promise.resolve(false),
     });
@@ -337,13 +337,13 @@ describe("renameAcross refuses rather than half-applying", () => {
   });
 
   it("says nothing changed when the server has nothing to rename", async () => {
-    const h = harness({ requestRename: () => Promise.resolve({ changes: {} }) });
+    const h = agent({ requestRename: () => Promise.resolve({ changes: {} }) });
     expect(await renameAcross(h.deps, "after")).toEqual({ kind: "empty" });
     expect(h.written).toEqual([]);
   });
 
   it("reports a failed rename request instead of throwing", async () => {
-    const h = harness({ requestRename: () => Promise.reject(new Error("timed out")) });
+    const h = agent({ requestRename: () => Promise.reject(new Error("timed out")) });
     const out = await renameAcross(h.deps, "after");
     expect(out).toMatchObject({ kind: "aborted" });
     expect((out as { reason: string }).reason).toContain("timed out");
@@ -355,7 +355,7 @@ describe("renameAcross and unsaved background edits", () => {
     // A background buffer is viewless, so the only way a rename reaches it is
     // by writing its file - which saves whatever else the user had typed there.
     // Nothing is lost either way; being asked is the point.
-    const h = harness({ dirtyBuffers: (paths) => paths.filter((p) => p === B) });
+    const h = agent({ dirtyBuffers: (paths) => paths.filter((p) => p === B) });
     const out = await renameAcross(h.deps, "after");
 
     expect(h.confirms).toHaveLength(1);
@@ -365,7 +365,7 @@ describe("renameAcross and unsaved background edits", () => {
   });
 
   it("writes nothing when that answer is no", async () => {
-    const h = harness({
+    const h = agent({
       dirtyBuffers: (paths) => paths.filter((p) => p === B),
       confirm: () => Promise.resolve(false),
     });
@@ -380,7 +380,7 @@ describe("renameAcross and unsaved background edits", () => {
     // It is dispatched into, not written, so its unsaved state is exactly as it
     // was. Asking would be a question about nothing.
     const view = {} as EditorView;
-    const h = harness({
+    const h = agent({
       files: [file(pathToUri(A), "const before = 1", view), file(pathToUri(B), "import { before } from './a'")],
       dirtyBuffers: (paths) => paths,
     });
@@ -393,7 +393,7 @@ describe("renameAcross and unsaved background edits", () => {
   it("leaves an open background buffer agreeing with the file it just wrote", async () => {
     // Otherwise the tab still holds the pre-rename text, reads as dirty against
     // a file that moved, and a later save quietly puts the old name back.
-    const h = harness();
+    const h = agent();
     await renameAcross(h.deps, "after");
 
     expect(h.adopted).toEqual([
@@ -454,7 +454,7 @@ describe("renameAcross across many files", () => {
     // it and the tail would read as somebody else's edits.
     const many = Array.from({ length: 150 }, (_, i) => file(pathToUri(`/repo/f${i}.ts`), "const before = 1"));
     let calls = 0;
-    const h = harness({
+    const h = agent({
       files: many,
       writeFiles: (fs) => {
         calls += 1;

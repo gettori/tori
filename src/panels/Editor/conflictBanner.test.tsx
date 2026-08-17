@@ -12,7 +12,7 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // Changes panel, so it is the one place that can watch both offer "ask the
 // agent to resolve" and check they ask for the same thing.
 
-import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 
 installResizeObserver();
 

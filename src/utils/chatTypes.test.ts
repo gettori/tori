@@ -133,7 +133,7 @@ describe("chatTypes mirrors the Rust chat model", () => {
           break;
         case "compacted":
           // The figures are what make "it reclaimed context" checkable rather
-          // than a claim; the summary is the harness's own words.
+          // than a claim; the summary is the agent's own words.
           expect(ev.preTokens).toBeGreaterThan(ev.postTokens!);
           expect(ev.trigger).toBe("manual");
           expect(ev.summary).toContain("continued from a previous conversation");
@@ -242,9 +242,9 @@ describe("chatTypes mirrors the Rust chat model", () => {
     }
   });
 
-  // `extra` is how harness-specific data stays out of the neutral model, so it
+  // `extra` is how agent-specific data stays out of the neutral model, so it
   // has to survive the crossing intact rather than being flattened away.
-  it("carries harness-specific data through extra", () => {
+  it("carries agent-specific data through extra", () => {
     const started = (goldenEvents as ChatEvent[]).find((e) => e.type === "sessionStarted");
     expect(started?.type === "sessionStarted" && started.extra?.ttftMs).toBe(1575);
   });

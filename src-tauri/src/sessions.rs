@@ -4,7 +4,7 @@
 // them is the point of `adr_three_session_stores`, because folding any two
 // together loses something:
 //
-//   1. **The harness's own transcripts are the truth.** Sway reads them and
+//   1. **The agent's own transcripts are the truth.** Sway reads them and
 //      never writes them. Delete Sway entirely and they are still there.
 //   2. **The rename overlay is Sway-authored** (`set_session_name`,
 //      `load_overlay`/`save_overlay`, below). It holds what the user typed,
@@ -80,7 +80,7 @@ pub struct SessionMeta {
     /// `list_sessions` and never held in the index: a label is user-authored,
     /// and the index holds no user-authored field.
     ///
-    /// `None` while the harness has only the one account, so a machine that
+    /// `None` while the agent has only the one account, so a machine that
     /// never added a second sees exactly what it saw before: naming an account
     /// that nothing is being distinguished from is noise.
     pub profile_label: Option<String>,
@@ -136,12 +136,12 @@ pub(crate) fn is_human_prompt(content: &serde_json::Value) -> bool {
     }
 }
 
-/// True for the markup a harness files under the user's own role when a slash
+/// True for the markup a agent files under the user's own role when a slash
 /// command runs: the command envelope (`<command-name>/model</command-name>`
 /// and its `-message`/`-args` siblings), the command's own output
 /// (`<local-command-stdout>`), and the caveat that introduces both.
 ///
-/// **The person typed `/model haiku`, not this.** The harness wrote the markup
+/// **The person typed `/model haiku`, not this.** The agent wrote the markup
 /// for its own consumption and never showed it to them, so replaying it puts
 /// words in their mouth - and a transcript that does that also counts them,
 /// which is how a session with three prompts came to report seven. Excluded
@@ -177,20 +177,20 @@ fn tag_body<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
 /// Two different things land under the user's role wearing the same `<command-*>`
 /// markup, and only one of them is a prompt:
 ///
-/// - a **client-side command** (`/clear`, `/model`, `/login`) - the harness runs
+/// - a **client-side command** (`/clear`, `/model`, `/login`) - the agent runs
 ///   it locally, prefixes it with `<local-command-caveat>` ("DO NOT respond to
 ///   these messages") and files its result as `<local-command-stdout>`;
 /// - a **skill invocation** (`/plan …`, `/gg`) - no caveat, and the text the
 ///   person typed after the command name sits in `<command-args>`.
 ///
 /// The caveat is what separates them, so it is tracked rather than the tag order
-/// (which the harness varies). Without the split, a session opened with
+/// (which the agent varies). Without the split, a session opened with
 /// `/model haiku` would take that as its title over the `hello` typed next.
 fn is_local_command_caveat(text: &str) -> bool {
     text.trim_start().starts_with("<local-command-caveat>")
 }
 
-/// A client-side command's own output: the harness talking to itself.
+/// A client-side command's own output: the agent talking to itself.
 fn is_local_command_output(text: &str) -> bool {
     let t = text.trim_start();
     t.starts_with("<local-command-stdout>") || t.starts_with("<local-command-stderr>")
@@ -238,7 +238,7 @@ pub(crate) fn clean_title(raw: &str) -> String {
 
 /// One directory to scan, and the account whose sessions are in it.
 ///
-/// The pair, not the directory alone, is what discovery walks now. A harness
+/// The pair, not the directory alone, is what discovery walks now. A agent
 /// with two accounts has two roots, and the row a root produces carries that
 /// root's profile, which is the whole of profile attribution.
 struct Root<'a> {
@@ -248,7 +248,7 @@ struct Root<'a> {
 }
 
 /// A profile's own transcript root: the adapter's declared discovery dir with
-/// the harness's default home swapped for this profile's home.
+/// the agent's default home swapped for this profile's home.
 ///
 /// `None` when the declared dir does not sit under the declared default home,
 /// which is a misdeclared adapter rather than a case to guess at: appending the
@@ -347,7 +347,7 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
                         }
                     } else if !is_meta && !trimmed.is_empty() && !trimmed.starts_with('<') {
                         // Something a person typed. Other markup (a pasted
-                        // snippet, a harness `<system_instruction>`) is not a
+                        // snippet, a agent `<system_instruction>`) is not a
                         // title, and tool-result turns carry no text at all.
                         title = Some(clean_title(trimmed));
                     }
@@ -809,7 +809,7 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     Ok(())
 }
 
-/// Delete a session's transcript. Destructive (removes the harness's own
+/// Delete a session's transcript. Destructive (removes the agent's own
 /// history); the frontend confirms first.
 ///
 /// A session with **no transcript at all** is a different act wearing the same
@@ -845,14 +845,14 @@ fn session_pattern(agent: &str, id: &str) -> Option<String> {
 
 /// Can a live session of `agent` be recognised from the process table?
 ///
-/// True for a harness that puts the session id on its command line, which is
+/// True for a agent that puts the session id on its command line, which is
 /// what `session_pattern` matches against. **False for ACP**, whose agents are
 /// launched as a plain `opencode acp` and mint the session id inside the
 /// protocol: two sessions of one ACP agent are two identical command lines, so
 /// a pattern match would report all of them running whenever any one was.
 ///
 /// Read off the adapter's declared transport rather than its id, so a
-/// user-added ACP harness answers correctly without being named here.
+/// user-added ACP agent answers correctly without being named here.
 fn found_by_pattern(agent: &str) -> bool {
     !matches!(
         agents::find(agent).and_then(|a| a.chat.as_ref()).map(|c| c.transport),
@@ -1618,7 +1618,7 @@ pub struct TranscriptBlock {
     pub tool_name: Option<String>,
     pub tool_input: Option<serde_json::Value>,
     pub is_error: Option<bool>,
-    /// The harness's own id for the call, when the transcript records one.
+    /// The agent's own id for the call, when the transcript records one.
     ///
     /// Claude writes it on both halves (`tool_use.id` and
     /// `tool_result.tool_use_id`), which is what lets a replayed transcript pair
@@ -1693,17 +1693,17 @@ pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
 ///
 /// Found by scanning the adapter's own discovery dir rather than by rebuilding
 /// the path from the cwd. The encoding of a cwd into a directory name is the
-/// harness's business and has changed before; the file that is *there* is not a
+/// agent's business and has changed before; the file that is *there* is not a
 /// guess. It also means a session moved between projects still resolves.
 ///
-/// Two filename shapes are accepted because two harnesses write two: claude's
+/// Two filename shapes are accepted because two agents write two: claude's
 /// `<id>.jsonl`.
 pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
     let adapter = agents::find(agent)?;
     // The case this comment used to predict has arrived. It read: "when a
-    // SQLite-backed harness is added (no per-session file, read through its own
+    // SQLite-backed agent is added (no per-session file, read through its own
     // locator instead of a path on disk), this line stops compiling and says
-    // so". An ACP harness is that case in a different disguise - the store is
+    // so". An ACP agent is that case in a different disguise - the store is
     // the agent's own and the locator is Sway's - and the answer is that such a
     // session has no transcript path at all. `chat_history` already returns
     // empty for one, so `None` here is the same fact reaching a second caller.
@@ -2037,7 +2037,7 @@ mod tests {
         dir
     }
 
-    /// One transcript where a harness would write it: a per-cwd directory under
+    /// One transcript where a agent would write it: a per-cwd directory under
     /// the root, holding `<id>.jsonl`.
     fn write_transcript(root: &Path, cwd: &str, id: &str) -> PathBuf {
         let dir = root.join(cwd.replace('/', "-"));
@@ -2097,7 +2097,7 @@ mod tests {
         std::fs::remove_dir_all(&m).ok();
     }
 
-    /// A harness Sway does not sign in still has the one root it always had, so
+    /// A agent Sway does not sign in still has the one root it always had, so
     /// widening discovery to a set did not make an accounts table load-bearing
     /// for finding anything.
     #[test]
@@ -2238,7 +2238,7 @@ mod tests {
 
     /// First run rebuilds rather than migrating. The sources stay the truth, so
     /// history that predates Sway appears on the first scan and nothing is
-    /// written into the harness's own directories to make it appear.
+    /// written into the agent's own directories to make it appear.
     #[test]
     fn existing_history_appears_with_no_migration_step() {
         let m = tmp_machine("firstrun");
@@ -2254,7 +2254,7 @@ mod tests {
         assert_eq!(
             std::fs::read_dir(&root).unwrap().count(),
             before,
-            "scanning wrote nothing into the harness's own directory"
+            "scanning wrote nothing into the agent's own directory"
         );
 
         std::fs::remove_dir_all(&m).ok();
@@ -2774,7 +2774,7 @@ mod tests {
     /// **Opening a folder must not start a single agent.** Every ACP row in the
     /// sidebar comes out of a locator Sway wrote during a session the user
     /// opened by hand, so listing is a directory read. The alternative anyone
-    /// would reach for, asking each installed harness what it has, would spawn
+    /// would reach for, asking each installed agent what it has, would spawn
     /// every ACP agent on the machine to render a list, on every folder open.
     ///
     /// Structural, because the failure is a call that should not be there rather
@@ -2812,7 +2812,7 @@ mod tests {
             let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
             panic!("the recorded session should list, got {ids:?}")
         });
-        assert_eq!(row.agent, "codex", "a listed row names the harness that produced it");
+        assert_eq!(row.agent, "codex", "a listed row names the agent that produced it");
     }
 
     #[test]

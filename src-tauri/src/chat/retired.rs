@@ -4,7 +4,7 @@
 //! **Why a sweep and not a silent leftover.** `~/.config/sway/chat-rules` held
 //! three things: a compiled file per session, a durable file per project, and a
 //! tally of hand-approvals per project. All three were read by the `PreToolUse`
-//! gate. Nothing reads them now - the harness decides its own tool calls and
+//! gate. Nothing reads them now - the agent decides its own tool calls and
 //! records its own grants - so leaving them is leaving a directory of files that
 //! look like settings and are not: a user who found them would reasonably
 //! believe editing one changed something.

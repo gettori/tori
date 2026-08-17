@@ -1,7 +1,7 @@
 // Which renderer a tool call gets, and the one-line digest it collapses to.
 //
 // Pure and separate from the card, because "does an unknown tool still render"
-// is the question worth testing and it needs no DOM to answer. A harness we do
+// is the question worth testing and it needs no DOM to answer. A agent we do
 // not control decides what tool names exist - a plugin, an MCP server, a future
 // Claude release - so the fallback is the common case, not the error case.
 

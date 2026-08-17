@@ -40,7 +40,7 @@ function adapter(): ChatConfig {
   };
 }
 
-// What `catalog_probe` cached the last time it asked this harness. Same shape as
+// What `catalog_probe` cached the last time it asked this agent. Same shape as
 // a live row, which is the point: a picker reads one where it reads the other.
 function cached(): CatalogModel[] {
   return [
@@ -157,7 +157,7 @@ describe("pickableModels", () => {
 
   // Fast mode is Sway's own claim and the one thing still read from the adapter.
   // It decorates a model a catalogue named; it never adds one.
-  it("annotates fast mode onto a harness-named model and nothing else", () => {
+  it("annotates fast mode onto a agent-named model and nothing else", () => {
     const models = pickableModels(live(), [], adapter());
     expect(models.filter((m) => m.fastMode).map((m) => m.value)).toEqual(["default", "sonnet"]);
   });
@@ -287,7 +287,7 @@ describe("restoredPicks", () => {
 
   // The case a settings file produces once modes come from the adapter rather
   // than from four hardcoded strings: a project pinned to a Claude mode, opened
-  // against a harness whose modes are Gemini's. The stored mode is dropped and
+  // against a agent whose modes are Gemini's. The stored mode is dropped and
   // the session still starts.
   it("drops a mode the adapter does not declare", () => {
     const chat = adapter();
@@ -377,7 +377,7 @@ describe("capabilitiesFor", () => {
     const caps = capabilitiesFor(haiku, chat);
     expect(caps.effortLevels).toEqual([]);
     expect(caps.fastMode).toBe(false);
-    // Modes are a property of the harness, not of the model, so they survive.
+    // Modes are a property of the agent, not of the model, so they survive.
     expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
   });
 
@@ -455,7 +455,7 @@ describe("modeAfterModelSwitch", () => {
 
 describe("defaultMode", () => {
   // The fallback must never be the literal "default": that is Claude's spelling
-  // of the idea, and a resolver carrying it picks nothing at all on a harness
+  // of the idea, and a resolver carrying it picks nothing at all on a agent
   // whose modes are named otherwise.
   it("is the mode the adapter marks, whatever it is called", () => {
     const chat = adapter();
@@ -517,7 +517,7 @@ describe("contextWindowFor", () => {
   // **The accepted cost of the phase.** A Claude session has no denominator
   // until its first turn completes. What used to sit here was the adapter's
   // declared figure, and it was measurably wrong: 200k written down for models
-  // the harness runs at 1M. Showing nothing beats showing that.
+  // the agent runs at 1M. Showing nothing beats showing that.
   it("is null before a turn has measured one, so the meter stays hidden", () => {
     expect(contextWindowFor("claude-sonnet-5")).toBeNull();
     expect(contextWindowFor("claude-opus-5", {})).toBeNull();
@@ -541,7 +541,7 @@ describe("reportedWindows", () => {
     },
   };
 
-  it("reads the window the harness reported for each model", () => {
+  it("reads the window the agent reported for each model", () => {
     expect(reportedWindows(usage)["claude-sonnet-5"]).toBe(1_000_000);
   });
 

@@ -8,7 +8,7 @@
 //
 // It answers with either the target or the reason, so a caller cannot build a
 // target without having passed the gate ([[concept_safe_send]]).
-import { findAgent } from "./agents";
+import { findAdapter } from "./agents";
 import type { SessionTarget } from "./safeSend";
 
 /** The fields of a sidebar `Selection` this needs. Structural rather than the
@@ -28,7 +28,7 @@ export type SendGate = { target: SessionTarget } | { reason: string };
 /** Whether this selection can be sent to, and what to say when it cannot. */
 export function sendTargetFor(selection: SendCandidate | null): SendGate {
   if (!selection?.sessionId) return { reason: "Select a session first" };
-  if (findAgent(selection.agent ?? "claude").resume_args.length === 0) {
+  if (findAdapter(selection.agent ?? "claude").resume_args.length === 0) {
     return { reason: "This agent's sessions can't be resumed" };
   }
   return {

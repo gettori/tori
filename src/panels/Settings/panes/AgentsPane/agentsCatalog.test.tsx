@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import HarnessSection from "./HarnessSection";
+import AgentsSection from "./AgentsSection";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invoked = vi.mocked(invoke);
@@ -88,7 +88,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("labels every entry untested and shows the command that would start it", async () => {
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     expect(container.textContent).toContain("untested");
@@ -99,7 +99,7 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("names where the list came from and how to refresh it", async () => {
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("ACP Registry"));
 
     // Provenance: a list of unmeasured launch commands with no origin and no
@@ -120,10 +120,10 @@ describe("the ACP launch catalog in Settings > Agents", () => {
       return [];
     });
 
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("Claude"));
 
-    // The whole section is gone when every row is covered: a measured harness
+    // The whole section is gone when every row is covered: a measured agent
     // and an unmeasured launch of the same agent is a downgrade dressed as a
     // choice.
     expect(container.textContent).not.toContain("Other agents that speak ACP");
@@ -131,11 +131,11 @@ describe("the ACP launch catalog in Settings > Agents", () => {
   });
 
   it("gives a catalog entry no status dot, no version and no capability list", async () => {
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     // One card, for the one adapter. A catalog row is a list item, not a card,
-    // so it cannot pick up the affordances a measured harness has earned.
+    // so it cannot pick up the affordances a measured agent has earned.
     const cards = container.querySelectorAll("[class*='card']");
     const titles = [...container.querySelectorAll("[class*='hcardName']")].map((n) => n.textContent);
     expect(titles).toEqual(["Claude"]);
@@ -162,7 +162,7 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "installed_agents") return over.installed ?? [];
       return [];
     });
-    return render(() => <HarnessSection />);
+    return render(() => <AgentsSection />);
   };
 
   const cmds = () => invoked.mock.calls.map(([c]) => c);
@@ -259,7 +259,7 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "acp_catalog_source") return source({ hostPlatform: "linux-x86_64" });
       return [];
     });
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("Cursor"));
 
     expect(screen.queryByRole("checkbox")).toBeNull();
@@ -288,7 +288,7 @@ describe("installing an agent from the catalog", () => {
     expect(container.textContent).toContain("Sway has still run nothing");
     expect(container.textContent).toContain("this download was never verified");
     // Still a list item rather than a card, so it cannot pick up the affordances
-    // a measured harness earned.
+    // a measured agent earned.
     const titles = [...container.querySelectorAll("[class*='hcardName']")].map((n) => n.textContent);
     expect(titles).toEqual(["Claude"]);
     // And the install button is gone: there is nothing left to install.
@@ -342,13 +342,13 @@ describe("installing an agent from the catalog", () => {
       if (cmd === "acp_catalog_source") return source({ generatedOn: twelveDaysAgo });
       return [];
     });
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("12 days old"));
 
     // Everything on screen came from the committed file: the only commands are
     // reads of local state, and none of them fetches anything.
     // `agent_accounts` is absent because accounts moved behind the drill-in:
-    // the list asks nothing per harness until one is opened.
+    // the list asks nothing per agent until one is opened.
     expect([...new Set(cmds())].sort()).toEqual([
       "acp_catalog",
       "acp_catalog_source",
@@ -375,7 +375,7 @@ describe("installing an agent from the catalog", () => {
         });
       return [];
     });
-    const { container } = render(() => <HarnessSection />);
+    const { container } = render(() => <AgentsSection />);
     await waitFor(() => expect(container.textContent).toContain("the registry's own probe"));
     expect(container.textContent).toContain("31 agents");
     expect(container.textContent).toContain("not from anything Sway measured");
@@ -401,7 +401,7 @@ describe("the action on a non-ready agent card", () => {
     });
   });
 
-  /** Opens the harness's own page, where every action now lives. */
+  /** Opens the agent's own page, where every action now lives. */
   const openCard = async (r: ReturnType<typeof render>) => {
     fireEvent.click(await r.findByRole("button", { name: /Claude/ }));
     await waitFor(() => expect(r.container.textContent).toContain("Chat capabilities"));
@@ -409,7 +409,7 @@ describe("the action on a non-ready agent card", () => {
   };
 
   it("offers a re-probe on a missing binary, and stops telling the user to restart", async () => {
-    const { container, getByText } = await openCard(render(() => <HarnessSection />));
+    const { container, getByText } = await openCard(render(() => <AgentsSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     // The old copy said "reopen Sway to pick it up", which stopped being true
@@ -419,7 +419,7 @@ describe("the action on a non-ready agent card", () => {
   });
 
   it("re-probes through the refresh command rather than re-reading the cache", async () => {
-    const { container, getByText } = await openCard(render(() => <HarnessSection />));
+    const { container, getByText } = await openCard(render(() => <AgentsSection />));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
 
     invoked.mockClear();
@@ -432,14 +432,14 @@ describe("the action on a non-ready agent card", () => {
 
   // The card carries no action at all now, healthy or not: it is a summary, and
   // a grid of buttons is the thing that made the old one unreadable.
-  it("keeps every action off the card and on the harness's own page", async () => {
+  it("keeps every action off the card and on the agent's own page", async () => {
     invoked.mockImplementation(async (cmd: string) => {
       if (cmd === "agent_health") return [health()];
       if (cmd === "acp_catalog") return [];
       if (cmd === "acp_catalog_source") return null;
       return undefined;
     });
-    const r = render(() => <HarnessSection />);
+    const r = render(() => <AgentsSection />);
     await waitFor(() => expect(r.container.textContent).toContain("Claude"));
     expect(r.queryByText("Check again")).toBeNull();
 

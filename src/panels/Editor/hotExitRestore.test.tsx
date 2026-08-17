@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 
-import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";
 import { closeOf } from "../../test/tabs";
 

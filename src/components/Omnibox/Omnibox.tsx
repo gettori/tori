@@ -192,7 +192,7 @@ export default function Omnibox(props: {
     // Focus is `Dialog`'s (`initialFocus` below), which fires from Kobalte's
     // own open-auto-focus event rather than from a frame this component asks
     // for. What is left here is the data the box needs to have anything to show.
-    // Which harnesses exist, so the "New ... session" rows offer only the ones
+    // Which agents exist, so the "New ... session" rows offer only the ones
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
     ensureAgentHealthLoaded();
@@ -365,7 +365,7 @@ export default function Omnibox(props: {
   const commandRows = createMemo((): Row[] => {
     const out: Row[] = [];
     const sel = props.selected;
-    // Only harnesses this machine can actually start. An unavailable one is
+    // Only agents this machine can actually start. An unavailable one is
     // absent rather than offered-and-failing: a row that spawns a missing
     // binary reports the failure after the user has already committed to a
     // session, which is a worse place to learn it than the Agents panel.

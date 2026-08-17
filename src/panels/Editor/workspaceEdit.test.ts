@@ -50,7 +50,7 @@ function mappingOver(files: MaterialisedFile[]) {
  *  about it. */
 const allow: ApplyPolicy = { onDirty: () => Promise.resolve(null) };
 
-function harness(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
+function agent(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
   const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
@@ -84,7 +84,7 @@ function harness(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {})
   return { deps, written, dispatched, order };
 }
 
-/** The two-file edit the default harness is built for. */
+/** The two-file edit the default agent is built for. */
 function twoFileEdit() {
   return {
     changes: {
@@ -98,7 +98,7 @@ describe("applyWorkspaceEdit", () => {
   it("writes a file no tab holds", async () => {
     // The whole reason this module exists: the library's own applier skips any
     // file it cannot already see, which is every file worth reaching.
-    const h = harness();
+    const h = agent();
 
     const out = await applyWorkspaceEdit(twoFileEdit(), h.deps, allow);
 
@@ -111,7 +111,7 @@ describe("applyWorkspaceEdit", () => {
   it("materialises every file before it builds the mapping", async () => {
     // `WorkspaceMapping` snapshots the open documents in its constructor, so a
     // file materialised afterwards is one it throws for.
-    const h = harness();
+    const h = agent();
 
     await applyWorkspaceEdit(twoFileEdit(), h.deps, allow);
 
@@ -123,7 +123,7 @@ describe("applyWorkspaceEdit", () => {
   it("dispatches into the file on screen instead of writing it", async () => {
     const view = {} as EditorView;
     const files = [file(pathToUri(A), "const before = 1", view)];
-    const h = harness({ files });
+    const h = agent({ files });
 
     const out = await applyWorkspaceEdit(
       { changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] } },
@@ -136,7 +136,7 @@ describe("applyWorkspaceEdit", () => {
   });
 
   it("says nothing to do when the edit names no file", async () => {
-    const h = harness();
+    const h = agent();
     expect(await applyWorkspaceEdit({}, h.deps, allow)).toEqual({ kind: "empty" });
     expect(await applyWorkspaceEdit(null, h.deps, allow)).toEqual({ kind: "empty" });
   });
@@ -144,7 +144,7 @@ describe("applyWorkspaceEdit", () => {
 
 describe("applyWorkspaceEdit refuses resource operations", () => {
   it("names both the file and the operation, so the refusal does not read as a bug", async () => {
-    const h = harness();
+    const h = agent();
 
     const out = await applyWorkspaceEdit(
       { documentChanges: [{ kind: "create", uri: pathToUri(C) }] },
@@ -159,7 +159,7 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
   });
 
   it("names the file a rename would move, not the one it would become", async () => {
-    const h = harness();
+    const h = agent();
 
     const out = await applyWorkspaceEdit(
       { documentChanges: [{ kind: "rename", oldUri: pathToUri(A), newUri: pathToUri(C) }] },
@@ -175,7 +175,7 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
     // The half-applied case is the dangerous one: the text edits assume the
     // file the operation was going to create, so landing them alone leaves the
     // tree describing something that never happened.
-    const h = harness();
+    const h = agent();
 
     const out = await applyWorkspaceEdit(
       {
@@ -195,7 +195,7 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
   });
 
   it("still applies an ordinary documentChanges edit, so the guard is not too wide", async () => {
-    const h = harness();
+    const h = agent();
 
     const out = await applyWorkspaceEdit(
       {
@@ -230,7 +230,7 @@ describe("the dirty-buffer policy", () => {
     const view = {} as EditorView;
     const files = [file(pathToUri(A), "const before = 1", view), file(pathToUri(B), "import { before } from './a'")];
     const asked: string[][] = [];
-    const h = harness({ files, dirtyBuffers: (paths) => paths });
+    const h = agent({ files, dirtyBuffers: (paths) => paths });
 
     await applyWorkspaceEdit(twoFileEdit(), h.deps, {
       onDirty: (dirty) => {
@@ -244,7 +244,7 @@ describe("the dirty-buffer policy", () => {
 
   it("aborts with the policy's own reason, writing nothing", async () => {
     // What a server-initiated edit does instead of opening a modal.
-    const h = harness({ dirtyBuffers: (paths) => paths });
+    const h = agent({ dirtyBuffers: (paths) => paths });
 
     const out = await applyWorkspaceEdit(twoFileEdit(), h.deps, {
       onDirty: () => Promise.resolve("b.ts has unsaved changes, so nothing was changed."),
@@ -255,7 +255,7 @@ describe("the dirty-buffer policy", () => {
   });
 
   it("runs precheck before it asks anyone anything", async () => {
-    const h = harness({ dirtyBuffers: (paths) => paths });
+    const h = agent({ dirtyBuffers: (paths) => paths });
     let asked = 0;
 
     const out = await applyWorkspaceEdit(twoFileEdit(), h.deps, {

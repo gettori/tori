@@ -1,7 +1,7 @@
-//! Asking a harness what it can run, and remembering the answer.
+//! Asking a agent what it can run, and remembering the answer.
 //!
 //! Sway ships no model list. Every model, mode and option a picker offers is
-//! something the harness itself named, either on a live session's handshake or
+//! something the agent itself named, either on a live session's handshake or
 //! on the cached answer this module produces. The two are the same shape on
 //! purpose: a picker opened before any session exists reads the cache, and the
 //! live handshake replaces it the moment a session starts.
@@ -9,7 +9,7 @@
 //! **A probe submits no turn.** For `claude_stream_json` that costs nothing at
 //! all: the `initialize` control response carries the whole catalogue and
 //! arrives before any session exists, so the probe is spawn, handshake, kill,
-//! with nothing written on the harness's side and nothing to clean up.
+//! with nothing written on the agent's side and nothing to clean up.
 //!
 //! **ACP cannot be that clean, and the difference is stated rather than hidden.**
 //! An ACP catalogue exists only as part of `session/new`, so asking means opening
@@ -21,7 +21,7 @@
 //!
 //! Three facts are kept apart because the UI renders them differently:
 //!
-//!   * **Never probed** is not an error. It is the honest state of a harness
+//!   * **Never probed** is not an error. It is the honest state of a agent
 //!     nobody has asked yet, and it renders as no count rather than as zero.
 //!   * **A failure carries its reason.** "Signed out" and "the binary is not
 //!     there" are different sentences, and a probe that timed out has said
@@ -50,14 +50,14 @@ use crate::chat::claude::ClaudeMapper;
 use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo};
 use crate::chat::transport::{build_command, StartSpec};
 
-/// How long one harness gets to answer before the probe gives up on it.
+/// How long one agent gets to answer before the probe gives up on it.
 ///
 /// **A ceiling, not an expectation.** Measured on claude 2.1.231, a full probe
 /// (spawn, handshake, answer, kill) takes ~1.6s, so this is not a number
-/// anything healthy comes near. It is sized for the harnesses that are not
+/// anything healthy comes near. It is sized for the agents that are not
 /// measured yet: Paseo's notes report cold starts on the slow side, and Phase
 /// 3's ACP probe has to spawn an agent and open a session before it can read
-/// anything. Overrunning it is not fatal to anything: the harness lands in
+/// anything. Overrunning it is not fatal to anything: the agent lands in
 /// [`FailureReason::TimedOut`] and keeps whatever catalogue it had.
 const PROBE_DEADLINE: Duration = Duration::from_secs(45);
 
@@ -69,7 +69,7 @@ const STDERR_TAIL: usize = 4096;
 /// The last [`STDERR_TAIL`] bytes of what a child said, cut on a character
 /// boundary.
 ///
-/// The boundary search is not pedantry: a harness that writes a box-drawing
+/// The boundary search is not pedantry: a agent that writes a box-drawing
 /// banner puts multi-byte characters in the buffer, and slicing a `String` mid
 /// character is a panic, on the thread that was collecting the explanation for a
 /// failure.
@@ -81,7 +81,7 @@ fn tail_of(text: &str) -> &str {
 
 // --- the stored shape ---
 
-/// Which of the three things a harness's catalogue currently is.
+/// Which of the three things a agent's catalogue currently is.
 ///
 /// Derived from the two fields below rather than stored as a third independent
 /// one, so it cannot disagree with them. It is serialized because the surfaces
@@ -90,7 +90,7 @@ fn tail_of(text: &str) -> &str {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum CatalogState {
-    /// Nobody has asked this harness yet. Renders as no answer, never as zero.
+    /// Nobody has asked this agent yet. Renders as no answer, never as zero.
     #[default]
     NeverProbed,
     /// The most recent attempt failed. A previous good catalogue may still be
@@ -108,17 +108,17 @@ pub enum FailureReason {
     /// The binary did not resolve, or the process would not start.
     SpawnFailed,
     /// The child was alive and said nothing in time. Says nothing about the
-    /// harness's sign-in state, which is why it is not folded into the next one.
+    /// agent's sign-in state, which is why it is not folded into the next one.
     TimedOut,
-    /// The harness's own sign-in probe says nobody is signed in. Measured
+    /// The agent's own sign-in probe says nobody is signed in. Measured
     /// through the adapter's `[accounts]` table rather than guessed from the
     /// words in a stderr tail.
     SignedOut,
     /// The child exited or closed its stdout without answering the handshake,
-    /// and the harness does not report being signed out.
+    /// and the agent does not report being signed out.
     NoAnswer,
     /// This build cannot probe this transport yet. Distinct from every other
-    /// reason because it is a fact about Sway, not about the harness, and the
+    /// reason because it is a fact about Sway, not about the agent, and the
     /// surface should not blame the binary for it.
     Unsupported,
 }
@@ -128,7 +128,7 @@ pub enum FailureReason {
 #[serde(rename_all = "camelCase")]
 pub struct ProbeFailure {
     pub reason: FailureReason,
-    /// The harness's own words where there are any (a stderr tail, a spawn
+    /// The agent's own words where there are any (a stderr tail, a spawn
     /// error). Empty rather than invented when there are none.
     #[serde(default)]
     pub detail: String,
@@ -151,8 +151,8 @@ impl ProbeFailure {
 pub struct CatalogModel {
     #[serde(flatten)]
     pub info: ChatModelInfo,
-    /// This row came from the user's own harness configuration, not from the
-    /// harness's catalogue.
+    /// This row came from the user's own agent configuration, not from the
+    /// agent's catalogue.
     ///
     /// Still not something Sway invented - the user wrote the id - but Sway
     /// cannot confirm it: a configured string is passed to `--model` unresolved,
@@ -163,7 +163,7 @@ pub struct CatalogModel {
     pub user_configured: bool,
 }
 
-/// What one harness said when it was asked.
+/// What one agent said when it was asked.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Catalogue {
@@ -174,7 +174,7 @@ pub struct Catalogue {
     pub version: Option<String>,
     pub probed_at_ms: u64,
     pub models: Vec<CatalogModel>,
-    /// Empty for a harness whose modes are declared in its adapter TOML rather
+    /// Empty for a agent whose modes are declared in its adapter TOML rather
     /// than published on the wire, which is claude today.
     #[serde(default)]
     pub modes: Vec<ChatModeInfo>,
@@ -186,17 +186,20 @@ pub struct Catalogue {
     /// a cache in a different shape would mean two renderers for one list.
     #[serde(default)]
     pub options: Vec<ChatConfigOption>,
-    /// The account the harness named, when it named one. Load-bearing for the
+    /// The account the agent named, when it named one. Load-bearing for the
     /// surface's honesty: a catalogue can differ per account, so a page showing
     /// one has to be able to say whose answer it is.
     pub account: Option<ChatAccount>,
 }
 
-/// Everything Sway remembers about one harness's catalogue.
+/// Everything Sway remembers about one agent's catalogue.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
-    pub harness_id: String,
+    /// Aliased for the cache files written before the rename: a miss here reads
+    /// as a never-probed agent, quietly throwing away a real answer.
+    #[serde(alias = "harnessId")]
+    pub agent_id: String,
     #[serde(skip_deserializing)]
     pub state: CatalogState,
     /// The last probe that answered, which outlives every failure after it.
@@ -208,17 +211,17 @@ pub struct ModelCatalog {
 impl ModelCatalog {
     /// The single funnel that computes [`Self::state`], so the three fields
     /// cannot drift. Everything that builds a record goes through here.
-    fn settled(harness_id: String, catalogue: Option<Catalogue>, last_failure: Option<ProbeFailure>) -> Self {
+    fn settled(agent_id: String, catalogue: Option<Catalogue>, last_failure: Option<ProbeFailure>) -> Self {
         let state = match (&last_failure, &catalogue) {
             (Some(_), _) => CatalogState::Failed,
             (None, Some(_)) => CatalogState::Probed,
             (None, None) => CatalogState::NeverProbed,
         };
-        Self { harness_id, state, catalogue, last_failure }
+        Self { agent_id, state, catalogue, last_failure }
     }
 
-    pub fn never_probed(harness_id: impl Into<String>) -> Self {
-        Self::settled(harness_id.into(), None, None)
+    pub fn never_probed(agent_id: impl Into<String>) -> Self {
+        Self::settled(agent_id.into(), None, None)
     }
 
     /// Fold a probe's outcome into this record.
@@ -226,12 +229,12 @@ impl ModelCatalog {
     /// **A failure keeps the catalogue.** That is the whole reason this is a
     /// method rather than a fresh record per probe: replacing the record on
     /// failure would turn a signed-out moment, or one slow cold start, into a
-    /// harness that suddenly offers no models at all.
+    /// agent that suddenly offers no models at all.
     fn absorb(&mut self, outcome: Result<Catalogue, ProbeFailure>) {
         match outcome {
-            Ok(catalogue) => *self = Self::settled(self.harness_id.clone(), Some(catalogue), None),
+            Ok(catalogue) => *self = Self::settled(self.agent_id.clone(), Some(catalogue), None),
             Err(failure) => {
-                *self = Self::settled(self.harness_id.clone(), self.catalogue.take(), Some(failure))
+                *self = Self::settled(self.agent_id.clone(), self.catalogue.take(), Some(failure))
             }
         }
     }
@@ -246,49 +249,49 @@ impl ModelCatalog {
     // The rule itself is unchanged and worth restating where the field is: a
     // version comparison and nothing else. A TTL was the obvious alternative and
     // is rejected - a catalogue does not decay with time, it decays when the
-    // binary changes, and an hourly re-probe would spawn a process per harness
+    // binary changes, and an hourly re-probe would spawn a process per agent
     // forever to learn nothing. Both unknown-version cases answer "not stale",
     // because neither is evidence of a change, and treating absence of evidence
     // as staleness would re-probe a `versionUnknown` binary on every read. Such
-    // a harness comes back through the detail page's Ask again.
+    // a agent comes back through the detail page's Ask again.
 }
 
-// --- the store: one file per harness, under the data dir ---
+// --- the store: one file per agent, under the data dir ---
 
 /// `~/Library/Application Support/sway/model-catalogs` on macOS.
 ///
 /// The data dir rather than `~/.config/sway`, for the reason `install.rs` and
 /// `accounts.rs` both chose it: this is state Sway derived, not configuration a
 /// user edits, and `~/.config` commonly lives in a dotfile repo. One file per
-/// harness rather than one map, so deleting a single harness's answer is a `rm`
-/// and a corrupt file costs one harness rather than all of them.
+/// agent rather than one map, so deleting a single agent's answer is a `rm`
+/// and a corrupt file costs one agent rather than all of them.
 pub fn catalog_root() -> PathBuf {
     dirs::data_dir().unwrap_or_default().join("sway/model-catalogs")
 }
 
-fn catalog_path(root: &Path, harness_id: &str) -> PathBuf {
-    root.join(format!("{}.json", crate::install::sanitize_segment(harness_id)))
+fn catalog_path(root: &Path, agent_id: &str) -> PathBuf {
+    root.join(format!("{}.json", crate::install::sanitize_segment(agent_id)))
 }
 
-/// Read one harness's remembered catalogue.
+/// Read one agent's remembered catalogue.
 ///
 /// **Every failure is "never probed".** A missing file is the ordinary state of
-/// a harness nobody has asked, and a corrupt one is derived state Sway can
+/// a agent nobody has asked, and a corrupt one is derived state Sway can
 /// simply ask for again; neither is worth an error the caller would have to
 /// render. That is what makes the file safe to delete by hand.
-pub fn load_from(root: &Path, harness_id: &str) -> ModelCatalog {
-    let Ok(text) = std::fs::read_to_string(catalog_path(root, harness_id)) else {
-        return ModelCatalog::never_probed(harness_id);
+pub fn load_from(root: &Path, agent_id: &str) -> ModelCatalog {
+    let Ok(text) = std::fs::read_to_string(catalog_path(root, agent_id)) else {
+        return ModelCatalog::never_probed(agent_id);
     };
     match serde_json::from_str::<ModelCatalog>(&text) {
-        Ok(stored) => ModelCatalog::settled(stored.harness_id, stored.catalogue, stored.last_failure),
-        Err(_) => ModelCatalog::never_probed(harness_id),
+        Ok(stored) => ModelCatalog::settled(stored.agent_id, stored.catalogue, stored.last_failure),
+        Err(_) => ModelCatalog::never_probed(agent_id),
     }
 }
 
 pub fn save_to(root: &Path, catalog: &ModelCatalog) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|e| format!("could not create {}: {e}", root.display()))?;
-    let path = catalog_path(root, &catalog.harness_id);
+    let path = catalog_path(root, &catalog.agent_id);
     let text = serde_json::to_string_pretty(catalog).map_err(|e| e.to_string())?;
     std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))
 }
@@ -312,7 +315,7 @@ fn abandon(child: &mut Child) {
 }
 
 /// A child's stderr, collected on its own thread into a bounded tail so a
-/// failure can quote the harness rather than guess at it.
+/// failure can quote the agent rather than guess at it.
 struct StderrTail {
     text: Arc<Mutex<String>>,
     reader: thread::JoinHandle<()>,
@@ -346,7 +349,7 @@ impl StderrTail {
     /// **The join is the point.** Reading the buffer directly races the thread
     /// filling it: the child dying is what ends the probe, and the last write
     /// lands after that. Skipping the join made a failure quote nothing
-    /// precisely when the harness had explained itself, which is the one case
+    /// precisely when the agent had explained itself, which is the one case
     /// the tail exists for. Bounded rather than open-ended, because every caller
     /// has already killed and reaped the child, so stderr is at EOF.
     fn take(self) -> String {
@@ -458,7 +461,7 @@ pub fn probe_cwd() -> PathBuf {
 /// will be handed.
 ///
 /// Canonicalized through the same helper `accounts.rs` uses, and for a related
-/// reason: a harness told about `/var/...` records `/private/var/...`, so
+/// reason: a agent told about `/var/...` records `/private/var/...`, so
 /// handing over the resolved form is what makes the recorded path and the one
 /// Sway filters on the same string.
 fn probe_cwd_ready() -> Result<String, String> {
@@ -507,7 +510,7 @@ fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> 
         options: acp::config_options(&options),
         // ACP publishes no account on the handshake. Empty rather than guessed,
         // which also means the surface's "whose answer is this" line correctly
-        // says nothing for an ACP harness.
+        // says nothing for an ACP agent.
         account: None,
     }
 }
@@ -674,7 +677,7 @@ fn abandon_group(child: &mut async_process::Child) {
     let _ = child.kill();
 }
 
-/// Ask one harness, with the version the caller already knows.
+/// Ask one agent, with the version the caller already knows.
 ///
 /// The version is a parameter rather than probed here so that it is the *same*
 /// number the staleness check compares against. Deriving it independently would
@@ -695,13 +698,13 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
         // replaces it, because a `session/new` in whatever directory Sway was
         // launched from would file a phantom session inside a real project.
         cwd: String::new(),
-        program: crate::settings::harness_override().unwrap_or_else(|| chat.program.clone()),
+        program: crate::settings::agent_override().unwrap_or_else(|| chat.program.clone()),
         args: chat.base_args.clone(),
         env: HashMap::new(),
     };
 
     // Exhaustive, so a new transport is a compile error here rather than a
-    // harness that silently never gets a catalogue.
+    // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
         ChatTransport::ClaudeStreamJson => probe_claude(&spec, version, deadline).map(|mut c| {
             let extras = user_configured_models(&claude_settings_path(), &c.models);
@@ -729,12 +732,12 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
     }
 }
 
-/// Upgrade a silent failure to [`FailureReason::SignedOut`] when the harness's
+/// Upgrade a silent failure to [`FailureReason::SignedOut`] when the agent's
 /// own probe says so.
 ///
 /// Measured rather than inferred: the adapter's `[accounts]` table names a real
 /// command whose exit code answers the question, so nothing here reads the
-/// stderr tail for auth-shaped words. A harness that declares no such probe
+/// stderr tail for auth-shaped words. A agent that declares no such probe
 /// keeps the original reason, because "we cannot tell" must not render as an
 /// accusation.
 fn refine_signed_out(adapter: &AgentAdapter, failure: ProbeFailure) -> ProbeFailure {
@@ -748,7 +751,7 @@ fn refine_signed_out(adapter: &AgentAdapter, failure: ProbeFailure) -> ProbeFail
     failure
 }
 
-// --- models the user configured rather than the harness published ---
+// --- models the user configured rather than the agent published ---
 
 /// `$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json`.
 fn claude_settings_path() -> PathBuf {
@@ -820,30 +823,30 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
 
 // --- the Tauri surface ---
 
-/// One lock per harness id, so probes are concurrent across harnesses and
+/// One lock per agent id, so probes are concurrent across agents and
 /// sequential within one.
 ///
-/// Two sweeps overlapping on the same harness would spawn two of its binaries
-/// and race to write one file; two different harnesses have nothing to share and
+/// Two sweeps overlapping on the same agent would spawn two of its binaries
+/// and race to write one file; two different agents have nothing to share and
 /// should not queue behind each other. The map only ever grows by the number of
 /// adapters, so nothing prunes it.
-fn harness_lock(harness_id: &str) -> Arc<Mutex<()>> {
+fn agent_lock(agent_id: &str) -> Arc<Mutex<()>> {
     static LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
     let mut map = LOCKS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    map.entry(harness_id.to_string()).or_default().clone()
+    map.entry(agent_id.to_string()).or_default().clone()
 }
 
-/// Every harness that could have a catalogue, in adapter order.
+/// Every agent that could have a catalogue, in adapter order.
 fn probeable() -> Vec<&'static AgentAdapter> {
     crate::agents::registry().iter().filter(|a| a.chat.is_some()).collect()
 }
 
-/// Probe one harness and write the result, keeping any previous good catalogue.
+/// Probe one agent and write the result, keeping any previous good catalogue.
 fn refresh_one(adapter: &AgentAdapter, version: Option<String>) -> ModelCatalog {
-    let lock = harness_lock(&adapter.id);
+    let lock = agent_lock(&adapter.id);
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let root = catalog_root();
     let mut catalog = load_from(&root, &adapter.id);
@@ -862,7 +865,7 @@ async fn versions() -> HashMap<String, Option<String>> {
     crate::health::agent_health().await.into_iter().map(|h| (h.id, h.version)).collect::<HashMap<_, _>>()
 }
 
-/// What Sway remembers, for every harness with a chat transport.
+/// What Sway remembers, for every agent with a chat transport.
 ///
 /// **Reads only.** No spawn, no subprocess, nothing that could take a second:
 /// this is what a settings page or a picker calls on open, and a read that
@@ -875,26 +878,26 @@ pub async fn model_catalogs() -> Vec<ModelCatalog> {
     probeable().into_iter().map(|a| load_from(&root, &a.id)).collect()
 }
 
-/// Re-ask one harness, whatever its current state.
+/// Re-ask one agent, whatever its current state.
 ///
 /// Unconditional on purpose: this is the detail page's Check again, and a
 /// `versionUnknown` binary has no other route back to a fresh answer.
 #[tauri::command]
-pub async fn refresh_model_catalog(harness_id: String) -> Result<ModelCatalog, String> {
-    let adapter = crate::agents::find(&harness_id).ok_or_else(|| format!("unknown agent {harness_id}"))?;
-    let version = versions().await.get(&harness_id).cloned().flatten();
+pub async fn refresh_model_catalog(agent_id: String) -> Result<ModelCatalog, String> {
+    let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
+    let version = versions().await.get(&agent_id).cloned().flatten();
     Ok(refresh_one(adapter, version))
 }
 
 // There is deliberately **no batch refresh command.** One existed, sweeping
-// every never-probed or stale harness on its own threads and returning the lot,
+// every never-probed or stale agent on its own threads and returning the lot,
 // and it was the wrong shape for the only caller there is: a batch answers when
 // its *slowest* member does, so one agent hitting [`PROBE_DEADLINE`] would hold
-// every row on the page empty for 45 seconds. The frontend asks per harness
+// every row on the page empty for 45 seconds. The frontend asks per agent
 // instead (`refreshDueCatalogs` in `modelCatalog.ts`), so each row fills as its
 // own probe lands and a refusal is one row's error rather than everyone's wait.
 // Deciding what is due needs the cache and the versions, which that side already
-// has. Concurrency is unaffected: [`harness_lock`] is per harness, so parallel
+// has. Concurrency is unaffected: [`agent_lock`] is per agent, so parallel
 // calls run in parallel.
 
 #[cfg(test)]
@@ -931,11 +934,11 @@ mod tests {
 
     // --- the three states ---
 
-    /// A harness nobody asked is not an error and not an empty catalogue. The
+    /// A agent nobody asked is not an error and not an empty catalogue. The
     /// distinction is the whole reason `state` exists: the surface renders no
     /// count here, where it would render "0 models" for a probed-but-empty one.
     #[test]
-    fn a_harness_nobody_asked_is_never_probed() {
+    fn a_agent_nobody_asked_is_never_probed() {
         let catalog = ModelCatalog::never_probed("claude");
         assert_eq!(catalog.state, CatalogState::NeverProbed);
         assert!(catalog.catalogue.is_none());
@@ -1027,7 +1030,7 @@ mod tests {
 
         let read = load_from(&root, "claude");
         assert_eq!(read.state, CatalogState::NeverProbed);
-        assert_eq!(read.harness_id, "claude");
+        assert_eq!(read.agent_id, "claude");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1040,9 +1043,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A harness id reaches the filesystem, and adapter ids come from user TOML.
+    /// A agent id reaches the filesystem, and adapter ids come from user TOML.
     #[test]
-    fn a_harness_id_cannot_escape_the_catalog_directory() {
+    fn a_agent_id_cannot_escape_the_catalog_directory() {
         let root = Path::new("/tmp/sway-catalogs");
         assert_eq!(catalog_path(root, "../../etc/passwd"), root.join("______etc_passwd.json"));
     }
@@ -1084,10 +1087,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
-    /// The catalogue is the authority. A configured id the harness already
+    /// The catalogue is the authority. A configured id the agent already
     /// published must not appear twice in a picker, under two provenances.
     #[test]
-    fn a_configured_id_the_harness_already_published_is_not_added_again() {
+    fn a_configured_id_the_agent_already_published_is_not_added_again() {
         let path = write_settings("settings-dupe", r#"{"model": "sonnet", "env": {"ANTHROPIC_MODEL": "claude-sonnet-5"}}"#);
         let extras = user_configured_models(&path, &a_catalogue(None).models);
         assert!(extras.is_empty(), "`sonnet` is a published value and `claude-sonnet-5` its resolution");
@@ -1123,7 +1126,7 @@ mod tests {
         }
     }
 
-    /// The deadline is what stops a hung harness from wedging the sweep, so it
+    /// The deadline is what stops a hung agent from wedging the sweep, so it
     /// is driven here rather than trusted. The child holds its stdout open and
     /// answers nothing, which is exactly the hang shape; the probe ends on its
     /// own, with a reason, and kills the child on the way out.
@@ -1148,9 +1151,9 @@ mod tests {
         assert_eq!(failure.reason, FailureReason::NoAnswer);
     }
 
-    /// And it quotes the harness rather than paraphrasing it.
+    /// And it quotes the agent rather than paraphrasing it.
     #[test]
-    fn a_failure_carries_the_harnesss_own_stderr() {
+    fn a_failure_carries_the_agents_own_stderr() {
         let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE)
             .expect_err("nothing was answered");
         assert_eq!(failure.detail, "credit balance too low");
@@ -1161,11 +1164,11 @@ mod tests {
     /// bytes, and it is complete, because the probe joins the reader thread
     /// rather than sampling a buffer another thread is still filling. Without
     /// that join this truncates somewhere arbitrary, which is the failure mode
-    /// that loses a harness's explanation exactly when it gave one.
+    /// that loses a agent's explanation exactly when it gave one.
     #[test]
     fn a_long_stderr_is_kept_whole_at_its_end_and_bounded() {
         let noise = STDERR_TAIL * 2 / 40;
-        let script = format!("for i in $(seq {noise}); do echo 'noisy line of harness output' >&2; done; echo LAST >&2");
+        let script = format!("for i in $(seq {noise}); do echo 'noisy line of agent output' >&2; done; echo LAST >&2");
 
         let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE).expect_err("nothing was answered");
 
@@ -1178,7 +1181,7 @@ mod tests {
         let spec = StartSpec {
             session_id: String::new(),
             cwd: String::new(),
-            program: "/nonexistent/harness-binary".into(),
+            program: "/nonexistent/agent-binary".into(),
             args: Vec::new(),
             env: HashMap::new(),
         };
@@ -1359,7 +1362,7 @@ mod tests {
         assert!(!catalogue.models.is_empty(), "an empty answer from a real binary is a bug");
         assert!(
             catalogue.models.iter().any(|m| !m.user_configured),
-            "at least one row came from the harness itself"
+            "at least one row came from the agent itself"
         );
         assert!(
             catalogue.models.iter().filter(|m| !m.user_configured).all(|m| !m.info.resolved_model.is_empty()),

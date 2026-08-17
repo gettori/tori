@@ -42,7 +42,7 @@ import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
 import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
@@ -255,7 +255,7 @@ export default function ReviewPanel(props: {
   function disabledReason(): string | null {
     const sel = props.selected;
     if (!sel?.sessionId) return "Select a session first";
-    if (findAgent(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
+    if (findAdapter(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
     return null;
   }
 

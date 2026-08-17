@@ -34,7 +34,7 @@ use super::snapshot;
 /// Two fields rather than a general escape hatch, because
 /// [[concept_acp_agent_quirks]] found exactly two places where a *correct*
 /// client is still wrong for a *particular* agent. Keeping the list closed is
-/// what keeps [[adr_harness_breadth]]'s "a new harness is a TOML file" claim
+/// what keeps [[adr_agent_breadth]]'s "a new agent is a TOML file" claim
 /// honest: a third quirk has to be argued for and named here, not smuggled in as
 /// free-form JSON.
 ///
@@ -126,7 +126,7 @@ fn select_entries(select: &SessionConfigSelect) -> Vec<&SessionConfigSelectOptio
 /// ACP publishes one `thought_level` selector for the whole session, so every
 /// model gets the same list. Attaching them to each row rather than reshaping
 /// the type keeps the control's one source of truth: it renders what the model
-/// it is showing declares, whichever harness filled that in.
+/// it is showing declares, whichever agent filled that in.
 pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::Model) else {
         return Vec::new();
@@ -224,7 +224,7 @@ pub fn mode_config_id(options: &[SessionConfigOption]) -> Option<String> {
 /// control that `set_model` cannot carry, which is a picker that appears to
 /// switch and does not - the exact failure the model switch is built to refuse.
 /// Widening `Effort` for it would move one agent's vocabulary into a type two
-/// harnesses share; see the note on `Effort` for when that trade flips.
+/// agents share; see the note on `Effort` for when that trade flips.
 pub fn effort_levels(options: &[SessionConfigOption]) -> Vec<String> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::ThoughtLevel) else {
         return Vec::new();
@@ -517,7 +517,7 @@ fn plan_item(entry: &agent_client_protocol::schema::v1::PlanEntry) -> Option<Pla
 ///
 /// The text is stored in the same object store the hook capture writes to, so a
 /// card built from either is the same card and nothing downstream learns which
-/// harness it came from. That is also why no `ChatEvent` variant was added:
+/// agent it came from. That is also why no `ChatEvent` variant was added:
 /// `FileEdit` already means "a file was written, here is its before-state by
 /// content hash", which is exactly this.
 ///

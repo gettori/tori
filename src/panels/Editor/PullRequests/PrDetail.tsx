@@ -38,7 +38,7 @@ import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../../utils/
 import { branchOwner, projectUnitFor, sessionStatus } from "../../../utils/sessionActivity";
 import { emitWith, REMOVE_BRANCH_UNIT, type RemoveBranchUnit } from "../../../utils/events";
 import { STATUS_LABEL } from "../../../utils/sessionStatus";
-import { findAgent } from "../../../utils/agents";
+import { findAdapter } from "../../../utils/agents";
 import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
   forgeErrorMessage,
@@ -527,7 +527,7 @@ export default function PrDetail(props: {
       return { label, name: "", ready: false };
     }
     const name = o.session.name || o.session.title || o.session.id;
-    if (findAgent(o.session.agent ?? "claude").resume_args.length === 0) {
+    if (findAdapter(o.session.agent ?? "claude").resume_args.length === 0) {
       return { label: "This agent's sessions can't be resumed", name, ready: false };
     }
     const status = sessionStatus(o.session.id);

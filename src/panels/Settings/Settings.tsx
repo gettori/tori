@@ -19,7 +19,7 @@ import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
-import HarnessPane from "./panes/HarnessPane/HarnessPane";
+import AgentsPane from "./panes/AgentsPane/AgentsPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
@@ -52,7 +52,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 };
 
 const PANES: Record<SettingTab, Component<PaneProps>> = {
-  agents: HarnessPane,
+  agents: AgentsPane,
   chat: ChatPane,
   editor: EditorPane,
   languages: LanguagesPane,
@@ -475,7 +475,7 @@ export default function Settings(props: {
                   Sway being broken rather than as a step they have not taken. */}
               <Show when={props.welcome}>
                 <Show
-                  when={onboardingContent()?.kind === "noHarness"}
+                  when={onboardingContent()?.kind === "noAgent"}
                   fallback={
                     <div class={styles.welcome}>
                       Welcome to Sway. It drives the agent CLIs you already have, so start by

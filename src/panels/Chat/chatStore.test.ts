@@ -377,7 +377,7 @@ describe("the composer queue", () => {
     expect(s.queueHeld).toBe(false);
   });
 
-  // The ceiling used to be a tool-call denial the harness's own hook enforced.
+  // The ceiling used to be a tool-call denial the agent's own hook enforced.
   // It is a turn-boundary refusal now, which means the queue is the whole
   // enforcement surface: a flush that went ahead would open exactly the turn the
   // limit exists to prevent.
@@ -604,7 +604,7 @@ describe("the permission mode control", () => {
 
   // The fallback is the caller's to supply, because it is the *adapter's*
   // declared default. Returning the literal "default" here, as this once did,
-  // named a mode that exists only in Claude's vocabulary: on a harness whose
+  // named a mode that exists only in Claude's vocabulary: on a agent whose
   // modes are `auto_edit|yolo` the pill would show a value absent from its own
   // menu.
   it("falls back to the adapter's declared default before the session has said anything", () => {
@@ -1116,7 +1116,7 @@ describe("compactions", () => {
     expect(s.compactionReclaimed).toBe(0);
   });
 
-  // The harness has reported a post larger than the pre; that is not a negative
+  // The agent has reported a post larger than the pre; that is not a negative
   // reclaim, it is a figure to ignore rather than to subtract from the total.
   it("never subtracts from the total", () => {
     const s = initialChat("s1");

@@ -57,8 +57,8 @@ function modeLabel(mode: PermissionMode): string {
  *
  * Five answers, which are three decisions crossed with how far they reach:
  * allow this call, allow it for this session, allow it for this project, deny,
- * or deny with a typed reason. The reach travels back to the harness in its own
- * answer and is recorded in the harness's own grammar; Sway keeps no rule store
+ * or deny with a typed reason. The reach travels back to the agent in its own
+ * answer and is recorded in the agent's own grammar; Sway keeps no rule store
  * of its own and writes nothing to `~/.claude/settings.json`. The reason is not
  * cosmetic - it reaches the model as the tool result, so "not that file, use the
  * fixture" redirects the turn instead of just stopping it.
@@ -66,7 +66,7 @@ function modeLabel(mode: PermissionMode): string {
 export default function PermissionPrompt(props: {
   card: ToolItem;
   onAnswer: (answer: Answer) => void;
-  /** Switch the session's permission mode, for a `setMode` the harness offered.
+  /** Switch the session's permission mode, for a `setMode` the agent offered.
    *  Absent in contexts that cannot change the mode, which hides the action
    *  rather than offering one that would do nothing. */
   onSetMode?: (mode: PermissionMode) => void;
@@ -76,7 +76,7 @@ export default function PermissionPrompt(props: {
 
   const allow = (scope: PermissionScope) => props.onAnswer({ decision: "allow", scope, reason: null });
 
-  /** The mode switches the harness itself proposed, e.g. "stop asking about
+  /** The mode switches the agent itself proposed, e.g. "stop asking about
    *  edits". Only `setMode` is rendered here: `addRules` and `addDirectories`
    *  are already what the scoped Allow buttons send back, so surfacing them
    *  again would be two controls for one outcome. */
@@ -173,7 +173,7 @@ export default function PermissionPrompt(props: {
           <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
             Deny with feedback
           </Button>
-          {/* The harness's own offers, after Sway's. A mode switch answers a
+          {/* The agent's own offers, after Sway's. A mode switch answers a
               different question from this one call ("stop asking about edits"),
               so it reads as an aside rather than a fourth way to say yes. */}
           <For each={modeOffers()}>

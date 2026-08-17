@@ -1,4 +1,4 @@
-//! Which accounts Sway knows about per harness, and where each one's profile
+//! Which accounts Sway knows about per agent, and where each one's profile
 //! home lives.
 //!
 //! **State is split by sensitivity, not by feature.** Two stores, in two places,
@@ -10,7 +10,7 @@
 //!   * Profile homes live under the platform data dir (macOS: `~/Library/
 //!     Application Support/sway/profiles`), created `0700`. They are *not* in
 //!     `~/.config/sway` because that path is commonly a dotfile repo, and a
-//!     profile home accumulates the harness's own session transcripts. Copying
+//!     profile home accumulates the agent's own session transcripts. Copying
 //!     a machine's whole conversation history into a git remote is not a thing
 //!     a user should be able to do by accident.
 //!
@@ -30,7 +30,7 @@
 //! The Tauri commands at the bottom are the whole surface the frontend sees.
 //! They are thin on purpose: every rule they enforce lives in the pure core
 //! above or in [`crate::auth`], so the parts worth testing are tested without a
-//! filesystem, a harness, or an app handle.
+//! filesystem, a agent, or an app handle.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -54,14 +54,14 @@ fn default_file_version() -> u32 {
     FILE_VERSION
 }
 
-/// One account of one harness.
+/// One account of one agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Profile {
     /// Stable, Sway-minted, and never shown. The label is what the user sees,
     /// so renaming must not invalidate anything pointing at the profile.
     pub id: String,
     pub label: String,
-    /// Learned from the harness's own `whoami` probe, when it answers with one.
+    /// Learned from the agent's own `whoami` probe, when it answers with one.
     /// `None` is normal, not an error: an adapter may have no way to say who is
     /// signed in.
     #[serde(default)]
@@ -69,7 +69,7 @@ pub struct Profile {
     /// The **canonical** absolute path handed to the adapter's `home_env`.
     ///
     /// `None` exactly for [`DEFAULT_PROFILE_ID`], which is the whole mechanism
-    /// of the default profile: the variable is left unset, so the harness
+    /// of the default profile: the variable is left unset, so the agent
     /// resolves the login the user already had before Sway existed.
     #[serde(default)]
     pub home: Option<String>,
@@ -261,7 +261,7 @@ pub fn profile_home_root() -> PathBuf {
     dirs::data_dir().unwrap_or_default().join("sway/profiles")
 }
 
-/// Canonicalize a path before it is stored or handed to a harness.
+/// Canonicalize a path before it is stored or handed to a agent.
 ///
 /// **Not cosmetic.** Phase 0 measured that `claude` derives its Keychain
 /// service name from `sha256` of the raw `CLAUDE_CONFIG_DIR` string, not of a
@@ -293,7 +293,7 @@ pub fn create_profile_home(adapter_id: &str, profile_id: &str) -> Result<String,
 
 /// Create a profile home under an explicit root and return its canonical path.
 ///
-/// `0700` on every directory Sway creates here, not just the leaf: the harness
+/// `0700` on every directory Sway creates here, not just the leaf: the agent
 /// writes its own session transcripts inside, and on a shared machine those are
 /// nobody else's business. The adapter level in the middle matters too, since a
 /// world-readable one leaks the profile names above the transcripts. Created
@@ -362,7 +362,7 @@ pub fn save(file: &AccountsFile) -> Result<(), String> {
 
 // --- what the accounts screen asks for ---
 
-/// One profile, plus what its harness says about it right now.
+/// One profile, plus what its agent says about it right now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileStatus {
@@ -383,7 +383,7 @@ pub struct ProfileStatus {
     /// revision of this file, and it would have sent every "Sign in" press to
     /// the user's existing login while the row it was pressed on said "Work".
     pub login: crate::auth::LoginRoute,
-    /// The account the harness named just now, which is not the same as the
+    /// The account the agent named just now, which is not the same as the
     /// `email` stored on the profile: this one is live, that one is the last
     /// thing that was learned.
     pub account: Option<String>,
@@ -443,7 +443,7 @@ pub fn mark_duplicates(statuses: &mut [ProfileStatus]) {
 /// from the tab this message points them at.
 ///
 /// Coarser than it will eventually be, and knowingly so: it blocks on any live
-/// session of the *harness*, not of the profile, because Sway does not yet
+/// session of the *agent*, not of the profile, because Sway does not yet
 /// record which profile a running session belongs to. Phase 4 carries the
 /// profile through `SessionMeta`, and this narrows then. Blocking too much is
 /// the safe direction: the failure it prevents is a session writing into a home
@@ -465,7 +465,7 @@ pub fn removal_refusal(live: &[String], what: &str) -> Option<String> {
 pub enum RemovalStep {
     /// Sign out first, and stop if that fails.
     SignOutFirst,
-    /// This harness has no sign-out command, so the user has to be told that
+    /// This agent has no sign-out command, so the user has to be told that
     /// removing the account revokes nothing before anything is deleted.
     AskFirst,
     /// Asked and answered. Forget it.
@@ -488,7 +488,7 @@ pub fn removal_plan(has_logout: bool, confirmed_without_logout: bool) -> Removal
     }
 }
 
-/// What to tell somebody removing an account from a harness that cannot sign
+/// What to tell somebody removing an account from a agent that cannot sign
 /// out.
 ///
 /// **Not a link to a revocation page**, which is what this task originally asked
@@ -499,7 +499,7 @@ pub fn removal_plan(has_logout: bool, confirmed_without_logout: bool) -> Removal
 /// field on `[accounts]` would therefore ship empty on every bundled adapter
 /// and be a guess on any other.
 ///
-/// What it does instead is name the harness's own credential command, which is
+/// What it does instead is name the agent's own credential command, which is
 /// derived from what the adapter already declares rather than added as a field
 /// nobody could fill in. That is where the revocation actually happens.
 fn no_logout_warning(
@@ -563,7 +563,7 @@ fn status_of(
     }
 }
 
-/// Every account this adapter has, and what its harness says about each.
+/// Every account this adapter has, and what its agent says about each.
 ///
 /// Not cached: this is the accounts screen asking on purpose, one probe per
 /// profile, and a user who just finished a login is the main person reading it.
@@ -682,13 +682,13 @@ fn mint_profile_id(file: &AccountsFile, adapter_id: &str, label: &str) -> String
 /// `chat::ownership::ClaimOutcome` is: the caller has to act differently on it,
 /// and the only way to tell it apart from a refusal would be to match on the
 /// message text. That distinction matters here because the other refusals are
-/// final - a session in flight, a logout the harness rejected - and a caller
+/// final - a session in flight, a logout the agent rejected - and a caller
 /// sniffing strings would offer "remove anyway?" for all of them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RemovalOutcome {
     Removed,
-    /// This harness cannot sign out. The message says what that means; calling
+    /// This agent cannot sign out. The message says what that means; calling
     /// again with `confirmed_without_logout` proceeds.
     NeedsConfirming { message: String },
 }
@@ -955,7 +955,7 @@ mod tests {
 
     /// The split-by-sensitivity rule, asserted structurally so it cannot drift
     /// back: `~/.config/sway` is commonly a dotfile repo, and a profile home
-    /// fills up with the harness's own transcripts.
+    /// fills up with the agent's own transcripts.
     #[test]
     fn no_profile_home_is_created_under_the_config_dir() {
         let config_dir = accounts_path().parent().unwrap().to_path_buf();
@@ -972,7 +972,7 @@ mod tests {
         );
     }
 
-    /// A profile home fills up with the harness's own transcripts, so the mode
+    /// A profile home fills up with the agent's own transcripts, so the mode
     /// is part of the store's contract rather than a detail of how it happened
     /// to be created.
     #[test]
@@ -1063,7 +1063,7 @@ mod tests {
         assert_eq!(rows[1].duplicate_of.as_deref(), Some("Work"));
     }
 
-    /// Two profiles the harness names nothing for are not evidence of anything.
+    /// Two profiles the agent names nothing for are not evidence of anything.
     /// Codex and OpenCode report no account at all, so treating "both unknown"
     /// as "the same" would flag every second profile they ever had.
     #[test]
@@ -1108,7 +1108,7 @@ mod tests {
 
     /// The default profile's answer comes from the cached sweep rather than a
     /// second probe, which is what keeps opening Settings from asking every
-    /// harness the same question it was already asked.
+    /// agent the same question it was already asked.
     #[test]
     fn the_default_profile_reuses_the_answer_the_sweep_already_has() {
         let claude = crate::agents::find("claude").expect("claude ships bundled");
@@ -1151,7 +1151,7 @@ mod tests {
     /// leave a credential Sway had abandoned rather than revoked, with nothing
     /// left in the UI to try again from.
     #[test]
-    fn a_harness_with_a_logout_command_signs_out_before_forgetting_anything() {
+    fn a_agent_with_a_logout_command_signs_out_before_forgetting_anything() {
         assert_eq!(removal_plan(true, false), RemovalStep::SignOutFirst);
         // Confirmation is for the *other* branch. An adapter that can sign out
         // must not be talked past it.
@@ -1160,9 +1160,9 @@ mod tests {
 
     /// The state the removal flow has to say out loud rather than paper over.
     /// OpenCode is the real case: its logout takes a provider argument, so
-    /// there is no single command that signs the harness out.
+    /// there is no single command that signs the agent out.
     #[test]
-    fn a_harness_with_no_logout_asks_before_it_deletes() {
+    fn a_agent_with_no_logout_asks_before_it_deletes() {
         assert_eq!(removal_plan(false, false), RemovalStep::AskFirst);
         assert_eq!(removal_plan(false, true), RemovalStep::ForgetWithoutSigningOut);
     }
@@ -1200,7 +1200,7 @@ mod tests {
         assert!(warning.ends_with("Confirm to remove it anyway."), "{warning}");
     }
 
-    /// The store holds names the user chose and addresses the harness reported.
+    /// The store holds names the user chose and addresses the agent reported.
     /// Nothing else has ever been in it, and this is the assertion that says so
     /// out loud, beside the one in `crate::auth` about the Keychain.
     #[test]

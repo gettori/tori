@@ -12,7 +12,7 @@ import { pointerClick, rightClick } from "../../test/menus";
 // the shape that rots silently. This suite mounts the real pane and asserts what
 // CodeEditor is actually handed.
 
-import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";
 
 installResizeObserver();
