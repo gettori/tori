@@ -163,7 +163,7 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   // once, so neither claims isolation and neither offers a second account.
   it("keeps declaring a sign-in separate from claiming two accounts can hold it", () => {
     const declaring = resolved.filter((a) => a.accounts).map((a) => a.id);
-    expect(declaring.sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(declaring.sort()).toEqual(["claude", "codex", "copilot", "opencode"]);
     const isolating = resolved.filter((a) => a.accounts?.supports_isolation).map((a) => a.id);
     expect(isolating).toEqual(["claude"]);
   });
@@ -178,6 +178,9 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
     expect(kinds).toEqual({
       claude: "claude_json",
       codex: "exit_code",
+      // A login command with no probe: copilot documents no non-interactive
+      // status command, so its sign-in state is honestly unknown.
+      copilot: null,
       opencode: "opencode_credentials",
     });
   });

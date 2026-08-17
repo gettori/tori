@@ -47,11 +47,13 @@ const clickTab = (label: string) =>
   fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${label}`) }));
 
 describe("the settings search box", () => {
-  it("opens on Agents with every row of that category and no query", () => {
+  it("opens on Agents with that category's content and no query", () => {
     render(() => <Settings onClose={() => {}} />);
     expect(activeTab()).toBe("Agents");
     expect(box().value).toBe("");
-    expect(rows()).toContain("Binary path");
+    // The Agents pane is runtime cards rather than catalogue rows, so its own
+    // filter box standing in the pane is the proof the category rendered.
+    expect(screen.getByLabelText("Search agents")).toBeTruthy();
   });
 
   it("answers across every category, not inside the one you were on", () => {
@@ -132,14 +134,15 @@ describe("Enter, the one keystroke that does navigate", () => {
   });
 
   it("resolves a tie to the earliest category in rail order", () => {
-    // "path" ties Agents and Editor at two matches each. The rule falls out
-    // of a `>` scan keeping the first maximum; a `>=` would silently turn it
-    // into "whichever category happened to be scanned last", which is Editor
-    // here - so the fixture has to be a tie the two rules disagree about.
+    // "adapters" ties Agents and Languages at one hint match each. The rule
+    // falls out of a `>` scan keeping the first maximum; a `>=` would silently
+    // turn it into "whichever category happened to be scanned last", which is
+    // Languages here - so the fixture has to be a tie the two rules disagree
+    // about.
     render(() => <Settings onClose={() => {}} />);
-    type("path");
+    type("adapters");
     expect(SETTING_TABS.findIndex((t) => t.id === "agents")).toBeLessThan(
-      SETTING_TABS.findIndex((t) => t.id === "editor"),
+      SETTING_TABS.findIndex((t) => t.id === "languages"),
     );
 
     enter();

@@ -299,7 +299,16 @@
         "serve_client_fs": false
       }
     },
-    "accounts": null,
+    "accounts": {
+      "home_env": null,
+      "login_args": [
+        "login"
+      ],
+      "logout_args": [],
+      "whoami_args": [],
+      "whoami_kind": null,
+      "supports_isolation": false
+    },
     "source": "bundled:copilot"
   },
   {

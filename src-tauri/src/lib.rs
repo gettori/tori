@@ -21,6 +21,7 @@ mod health;
 mod hooks;
 mod hot_exit;
 mod icons;
+mod install;
 mod launch;
 mod local_history;
 mod lsp;
@@ -313,9 +314,11 @@ pub fn run() {
             health::agent_health,
             health::refresh_agent_health,
             accounts::agent_accounts,
+            accounts::agent_account_counts,
             accounts::add_agent_account,
             accounts::remove_agent_account,
             accounts::rename_agent_account,
+            install::agent_install_route,
             onboarding::onboarding_should_show,
             onboarding::onboarding_content,
             onboarding::onboarding_mark_shown,

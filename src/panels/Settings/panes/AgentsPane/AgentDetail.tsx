@@ -1,5 +1,7 @@
-import { For, Show, Switch, Match, onMount } from "solid-js";
+import { For, Show, Switch, Match, createSignal, onMount } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
+import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
@@ -19,6 +21,14 @@ import {
   type ProbeFailureReason,
 } from "../../../../utils/modelCatalog";
 import type { AgentHealth, BinaryStatus } from "../../../../utils/agentHealth";
+import { installTab, installNote, type InstallRoute } from "../../../../utils/install";
+import {
+  OPEN_TERMINAL,
+  TOAST,
+  emitWith,
+  type OpenTerminal,
+  type ToastEvent,
+} from "../../../../utils/events";
 import { mirroredOptions } from "../../../../utils/chatTypes";
 import AgentAccounts from "./AgentAccounts";
 import styles from "../../Settings.module.css";
@@ -103,6 +113,31 @@ export default function AgentDetail(props: {
 
   onMount(() => backEl?.focus());
 
+  // Sway never installs anything itself: the button opens a real terminal tab
+  // running the vendor's own documented command (from the adapter's [install]
+  // table) and gets out of the way, the same posture as signing in. When the
+  // process exits the tab re-probes health, so a finished install flips this
+  // very page to Ready without a restart.
+  const [installing, setInstalling] = createSignal(false);
+  const install = async () => {
+    setInstalling(true);
+    try {
+      const route = await invoke<InstallRoute>("agent_install_route", { adapterId: a().id });
+      const cwd = await homeDir().catch(() => "/");
+      const tab = installTab(a().id, a().label, route, cwd);
+      if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+      else
+        emitWith<ToastEvent>(TOAST, {
+          message: installNote(a().label, a().program, route) ?? "",
+          kind: "info",
+        });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    } finally {
+      setInstalling(false);
+    }
+  };
+
   return (
     <div
       class={styles.detail}
@@ -180,6 +215,11 @@ export default function AgentDetail(props: {
       </Show>
 
       <div class={styles.cardActions}>
+        <Show when={a().status === "notFound"}>
+          <Button size="sm" onClick={() => void install()} disabled={installing()}>
+            Install
+          </Button>
+        </Show>
         <Button size="sm" onClick={() => void props.onRecheck()} disabled={props.rechecking}>
           {props.rechecking ? "Checking…" : "Check again"}
         </Button>

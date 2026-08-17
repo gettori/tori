@@ -549,42 +549,69 @@
     text-decoration: underline;
   }
 
-  /* --- Cards: agents, language servers, debuggers --- */
+  /* --- The agents table: one row per bundled agent --- */
 
-  /* One per row. Two across fit while the pane was as wide as the panel, but
-     the content now stops at a 720px measure, and half of that leaves a card's
-     second line (sign-in, then models) ellipsised to nothing. */
-  .cardGrid {
+  /* Head and rows share one column template, so every column lines up without
+     a <table>. Not a <table> on purpose: each row is a single button (one
+     target, one announced name), which table semantics would only complicate. */
+  .agentTableHead,
+  .agentRow {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--sway-space-4);
+    grid-template-columns:
+      minmax(0, 1fr) calc(68px * var(--ui-scale)) calc(56px * var(--ui-scale))
+      calc(68px * var(--ui-scale)) calc(120px * var(--ui-scale));
+    column-gap: var(--sway-space-5);
+    align-items: center;
+  }
+  .agentTable {
+    /* Air between the section title and the head: the title row carries
+       controls now, and the table reads as its own block rather than as the
+       title's next line. The gap spaces the bordered rows apart; the head is
+       a grid child too, so the same gap seats it off the first row. */
+    display: grid;
+    row-gap: calc(8px * var(--ui-scale));
+    margin-top: var(--sway-space-5);
     margin-bottom: var(--sway-space-6);
   }
+  /* The same horizontal padding as the rows, so the head's columns sit over
+     the rows' columns: the rows' box runs edge to edge and their content is
+     inset by padding, and the head has no box to be inset from. */
+  .agentTableHead {
+    padding: var(--sway-space-4) var(--sway-space-4) var(--sway-space-2);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+  .agentColEnd {
+    justify-self: end;
+  }
 
-  /* --- The agent card: a button, so the whole thing is one target --- */
+  /* --- One agent as a row: a button, so the whole thing is one target --- */
 
-  .hcard {
-    display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-    grid-template-rows: auto auto;
-    align-items: center;
-    column-gap: var(--sway-space-4);
-    row-gap: var(--sway-space-2);
+  .agentRow {
     width: 100%;
-    padding: var(--sway-space-5) var(--sway-space-5);
+    /* Taller than the density the rest of the panel runs at: seven rows have
+       the room, and the air is what lets the verdict column read at a glance.
+       The box is what runs edge to edge; the padding insets the content, so
+       nothing hugs a border. */
+    padding: var(--sway-space-5) var(--sway-space-4);
+    min-height: calc(52px * var(--ui-scale));
     border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
-    background: var(--neutral-subtle);
+    border-radius: var(--sway-radius-md);
+    background: transparent;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
     transition: border-color var(--sway-duration-fast), background var(--sway-duration-fast);
   }
-  .hcard:hover {
+  .agentRow:hover {
     border-color: var(--border-strong);
     background: var(--neutral-hover);
   }
-  .hcard:focus-visible {
+  .agentRow:focus-visible {
     outline: none;
     border-color: var(--brand-default);
     box-shadow: 0 0 0 3px var(--brand-ring);
@@ -602,72 +629,92 @@
     position: absolute;
     right: calc(-2px * var(--ui-scale));
     bottom: calc(-2px * var(--ui-scale));
-    /* Ringed in the card's own fill, so the dot reads as a badge sitting on the
-       mark rather than as a shape touching it. */
-    outline: calc(2px * var(--ui-scale)) solid var(--neutral-subtle);
+    /* Ringed in the surface behind it, so the dot reads as a badge sitting on
+       the mark rather than as a shape touching it. */
+    outline: calc(2px * var(--ui-scale)) solid var(--canvas-default);
   }
   /* On the detail page the head is a flex row, so the pair only needs to sit
      inline; the corner rule above still applies. */
   .detailHead .hcardGlyph {
     flex: none;
   }
-  .hcardName {
-    grid-column: 2;
-    grid-row: 1;
-    font-size: var(--sway-text-md);
-    font-weight: 600;
+  /* The name and its one quiet fact share the first column, so the fact
+     ellipsises rather than pushing the version out of line. */
+  .agentCell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    min-width: 0;
+  }
+  .agentName {
+    flex: none;
+    font-size: var(--sway-text-lg);
+    font-weight: 500;
     color: var(--fg-default);
   }
-  .hcardVersion {
-    grid-column: 3;
-    grid-row: 1;
-    justify-self: start;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
-    color: var(--fg-subtle);
-  }
-  /* Spans the label columns rather than sitting under the dot, so the second
-     line hangs off the name instead of the indicator. */
-  .hcardMeta {
-    grid-column: 2 / 5;
-    grid-row: 2;
+  .agentNote {
+    min-width: 0;
     overflow: hidden;
-    font-size: var(--sway-text-xs);
-    line-height: 1.4;
-    color: var(--fg-muted);
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
   }
-  .hcardMeta code {
+  .agentNote code {
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     color: var(--fg-subtle);
   }
-  /* Dimmer than the sign-in line it trails, because it answers a question
-     nobody asked yet: whether the agent is usable comes first. */
-  .hcardModels {
+  .agentVersion,
+  .agentModels,
+  .agentCount {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-xs);
     color: var(--fg-subtle);
+  }
+  .agentModels,
+  .agentCount {
+    justify-self: end;
   }
   /* Not red. A probe that failed is Sway not having got an answer, which is a
-     different thing from the agent being broken, and the card above it is
-     already saying whether the binary is there. */
-  .hcardModelsBad {
+     different thing from the agent being broken, and the row's own state cell
+     is already saying whether the binary is there. */
+  .agentModelsBad {
     color: var(--attention-fg);
   }
-  .hcardGo {
-    grid-column: 5;
-    grid-row: 1 / 3;
-    display: flex;
-    align-items: center;
+  .agentState {
+    justify-self: end;
+  }
+  .agentState .statePill {
+    margin-left: 0;
+  }
+
+  /* The section's own filter: the search-box recipe at row-control size, and a
+     fixed width so the title row does not breathe as the rule beside it flexes.
+     The title row is mono-uppercase and both properties inherit, so the input
+     resets them or the user's typing gets shouted back. */
+  .tableFilter {
+    flex: none;
+    width: calc(140px * var(--ui-scale));
+    background: transparent;
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-md);
+    color: var(--fg-default);
+    caret-color: var(--brand-default);
+    padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+    font-family: var(--sway-font-ui);
+    font-size: var(--sway-text-xs);
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    outline: none;
+    transition: border-color var(--sway-duration-fast) ease;
+  }
+  .tableFilter::placeholder {
     color: var(--fg-subtle);
   }
-  .hcard:hover .hcardGo {
-    color: var(--fg-muted);
-  }
-  .hcard .statePill {
-    grid-column: 4;
-    grid-row: 1;
-    margin-left: 0;
+  .tableFilter:focus {
+    border-color: var(--brand-default);
   }
 
   /* One column: a language server says less than a agent, so two across
