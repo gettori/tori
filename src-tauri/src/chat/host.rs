@@ -55,9 +55,9 @@ type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 /// The approval and snapshot machinery for one session.
 ///
 /// Held beside the session rather than inside the transport: the transport
-/// drives the harness's stdin, while this rides the harness's *hook*, and the
+/// drives the agent's stdin, while this rides the agent's *hook*, and the
 /// two only meet at the session id. Keeping them separate is also what lets a
-/// second harness reuse the bridge unchanged if its own hook mechanism matches.
+/// second agent reuse the bridge unchanged if its own hook mechanism matches.
 pub struct SessionBridge {
     pub server: Arc<CaptureServer>,
     pub snapshots: Arc<Mutex<SnapshotCache>>,
@@ -151,11 +151,11 @@ impl ChatHost {
         lock(&self.bridges).get(session_id).map(|b| b.snapshots.clone())
     }
 
-    /// Answer a tool call the harness is asking about.
+    /// Answer a tool call the agent is asking about.
     ///
     /// **Only the transport can take this.** There used to be a second waiter -
     /// Sway's own `PreToolUse` gate, blocking on a socket with its own request-id
-    /// space - and this routed between them. That gate is gone: the harness is
+    /// space - and this routed between them. That gate is gone: the agent is
     /// the only thing that asks, so an id the transport disclaims belongs to
     /// nobody, and saying so is better than resolving it somewhere that would
     /// swallow it.
@@ -570,7 +570,7 @@ mod tests {
     }
 
     /// The pacer is wired into the sink the transport writes to, not bolted on
-    /// somewhere a second harness could miss.
+    /// somewhere a second agent could miss.
     ///
     /// Deterministic without a clock injection because the bound is enormous: a
     /// synthetic burst of in-memory pushes finishes several orders of magnitude

@@ -29,7 +29,7 @@ import {
   type Budgets,
   type ChatDefaults,
   type Checkpoints,
-  type Harness,
+  type Agent,
   type Typography,
 } from "../settingsStore";
 import styles from "../Settings.module.css";
@@ -82,8 +82,8 @@ export const setChatDefaults = (c: Partial<ChatDefaults>) =>
   saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
 export const setBudgets = (b: Partial<Budgets>) =>
   saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
-export const setHarness = (h: Partial<Harness>) =>
-  saveSettings({ ...settings, harness: { ...settings.harness, ...h } });
+export const setAgent = (h: Partial<Agent>) =>
+  saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
 
 /** The workspace an override would be written to, by its folder name. The
  *  editor pane owns which workspace is selected; the panel reads it rather than
@@ -350,7 +350,7 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
         id={rowDomId(props.id)}
         classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}
       >
-        {/* A result, not the section: a harness grid and a 31-entry catalogue
+        {/* A result, not the section: a agent grid and a 31-entry catalogue
             unfolding into a list of matching *settings* is the wall this
             redesign removes. So it says where the thing is and offers to go. */}
         <Show when={searching()} fallback={props.children}>

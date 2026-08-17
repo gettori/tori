@@ -145,7 +145,7 @@ describe("the two tiers in one list", () => {
   //
   // Merging them here is what widened four consumers at once, so the fields
   // each of them keys on are asserted here rather than in four component
-  // harnesses: `folderActors`' revert guard and CheckpointTimeline's revert
+  // agents: `folderActors`' revert guard and CheckpointTimeline's revert
   // button read `status` + `folderPath`; Terminal's next-waiting jump and the
   // command palette's focus entry read `tabId`; the palette also shows
   // `sessionName`. This is where that contract is decided.

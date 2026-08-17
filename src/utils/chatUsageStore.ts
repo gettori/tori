@@ -7,7 +7,7 @@
 /** One session's running total, as `chat/usage.rs` records it. */
 export type SessionUsage = {
   tokens: number;
-  /** Null until some turn reported a cost, so a harness that reports no money
+  /** Null until some turn reported a cost, so a agent that reports no money
    *  reads as unknown rather than as free. */
   costUsd: number | null;
   /** Turns Sway watched finish, which the two figures above are the sum of. */

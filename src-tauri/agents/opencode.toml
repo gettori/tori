@@ -64,7 +64,7 @@ hooks = false
 #
 # **No `logout_args`.** `opencode auth logout` takes a provider argument and
 # prompts when it is missing, so there is no single command that signs this
-# harness out. Left empty on purpose: an empty list is the state the removal
+# agent out. Left empty on purpose: an empty list is the state the removal
 # flow has to say out loud, and it is truer than a command that would sit
 # waiting for a keystroke nobody sent.
 #

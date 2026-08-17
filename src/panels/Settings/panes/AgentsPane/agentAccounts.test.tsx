@@ -1,13 +1,13 @@
 // The accounts half of an agent card, end to end through the component.
 //
-// Everything on this screen came out of the harness's own probe, and the tests
+// Everything on this screen came out of the agent's own probe, and the tests
 // keep it that way: nothing asserts on a credential, because on macOS there is
 // no credential to assert on. Phase 0 measured that `claude` keeps its tokens in
 // the login Keychain, so a profile home holds nothing secret.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
-import HarnessSection from "./HarnessSection";
+import AgentsSection from "./AgentsSection";
 import { OPEN_TERMINAL, type OpenTerminal } from "../../../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -64,11 +64,11 @@ function mount(over: { health?: Record<string, unknown>; accounts?: Record<strin
     if (cmd === "acp_catalog_source") return null;
     return [];
   });
-  return render(() => <HarnessSection />);
+  return render(() => <AgentsSection />);
 }
 
 /** The card is a summary now: everything these tests are about lives one click
- *  in, on the harness's own page. */
+ *  in, on the agent's own page. */
 async function open(r: ReturnType<typeof render>, label = "Claude") {
   const card = await r.findByRole("button", { name: new RegExp(label) });
   fireEvent.click(card);
@@ -92,14 +92,14 @@ describe("the sign-in state on an agent card", () => {
 
   // The third state Phase 1 could not render, because nothing produced it yet.
   // Installed and signed-out are two independent facts.
-  it("says an installed harness is signed out, and why that matters", async () => {
+  it("says an installed agent is signed out, and why that matters", async () => {
     const { container } = await open(mount({ health: { signIn: "signedOut" } }));
     await waitFor(() => expect(container.textContent).toContain("Installed, version 2.1.231"));
     expect(container.textContent).toContain("Nobody is signed in");
     expect(container.textContent).toContain("not offered for a new session");
   });
 
-  // Unknown is the default for every harness that cannot answer and every probe
+  // Unknown is the default for every agent that cannot answer and every probe
   // that did not finish. It must not read as a problem.
   it("says nothing at all when the sign-in state is unknown", async () => {
     const { container } = await open(mount());
@@ -107,12 +107,12 @@ describe("the sign-in state on an agent card", () => {
     expect(container.textContent).not.toContain("Nobody is signed in");
   });
 
-  it("names the account when the harness names one", async () => {
+  it("names the account when the agent names one", async () => {
     const { container } = await open(mount({ health: { signIn: "signedIn", account: "a@b.c" } }));
     await waitFor(() => expect(container.textContent).toContain("Signed in as a@b.c"));
   });
 
-  // The harness's own statement about which credential it will bill against,
+  // The agent's own statement about which credential it will bill against,
   // rather than Sway reading its environment and guessing which variables
   // matter to which agent. A notice, never a block.
   it("warns when an inherited key overrides subscription billing", async () => {
@@ -122,7 +122,7 @@ describe("the sign-in state on an agent card", () => {
     await waitFor(() => expect(container.textContent).toContain("ANTHROPIC_API_KEY"));
     expect(container.textContent).toContain("rather than the subscription");
     // Still installed and still usable: the warning sits beside a working
-    // harness rather than in place of one.
+    // agent rather than in place of one.
     expect(container.textContent).toContain("Installed, version 2.1.231");
   });
 });
@@ -156,7 +156,7 @@ describe("the accounts list", () => {
 
   // An adapter that offers no logout has to say so at the point it matters,
   // because removing the account there does not revoke anything.
-  it("labels removal plainly when the harness has no sign-out command", async () => {
+  it("labels removal plainly when the agent has no sign-out command", async () => {
     const { container, getByText } = await open(mount({
       accounts: {
         canSignOut: false,
@@ -184,14 +184,14 @@ describe("the accounts list", () => {
 
   // Isolation is measured, never inferred from having a home variable, and the
   // absence of the button is explained rather than left as a gap.
-  it("says why there is no add button for a harness with no measured isolation", async () => {
+  it("says why there is no add button for a agent with no measured isolation", async () => {
     const { container, queryByText } = await open(mount({ accounts: { canAdd: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByText("Add account")).toBeNull();
     expect(container.textContent).toContain("two accounts at once");
   });
 
-  // "Sway has nothing true to say about this harness's accounts" is not the
+  // "Sway has nothing true to say about this agent's accounts" is not the
   // same claim as "nobody is signed in", so it renders no controls at all.
   it("renders nothing for an adapter that declares no accounts table", async () => {
     const { container } = await open(mount({ accounts: { declared: false, profiles: [] } }));
@@ -201,7 +201,7 @@ describe("the accounts list", () => {
 
   // An account list under a binary that is not there would be a set of controls
   // with nothing behind them.
-  it("renders nothing for a harness that is not installed", async () => {
+  it("renders nothing for a agent that is not installed", async () => {
     const { container } = await open(mount({ health: { status: "notFound", path: null, version: null } }));
     await waitFor(() => expect(container.textContent).toContain("Not installed"));
     expect(container.textContent).not.toContain("Accounts");

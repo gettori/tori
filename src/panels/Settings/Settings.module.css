@@ -549,7 +549,7 @@
     text-decoration: underline;
   }
 
-  /* --- Cards: harnesses, language servers, debuggers --- */
+  /* --- Cards: agents, language servers, debuggers --- */
 
   /* One per row. Two across fit while the pane was as wide as the panel, but
      the content now stops at a 720px measure, and half of that leaves a card's
@@ -561,7 +561,7 @@
     margin-bottom: var(--sway-space-6);
   }
 
-  /* --- The harness card: a button, so the whole thing is one target --- */
+  /* --- The agent card: a button, so the whole thing is one target --- */
 
   .hcard {
     display: grid;
@@ -626,12 +626,12 @@
     color: var(--fg-subtle);
   }
   /* Dimmer than the sign-in line it trails, because it answers a question
-     nobody asked yet: whether the harness is usable comes first. */
+     nobody asked yet: whether the agent is usable comes first. */
   .hcardModels {
     color: var(--fg-subtle);
   }
   /* Not red. A probe that failed is Sway not having got an answer, which is a
-     different thing from the harness being broken, and the card above it is
+     different thing from the agent being broken, and the card above it is
      already saying whether the binary is there. */
   .hcardModelsBad {
     color: var(--attention-fg);
@@ -652,7 +652,7 @@
     margin-left: 0;
   }
 
-  /* One column: a language server says less than a harness, so two across
+  /* One column: a language server says less than a agent, so two across
      would be a grid of mostly empty card. */
   .cardStack {
     display: grid;
@@ -783,7 +783,7 @@
     margin-top: var(--sway-space-2);
   }
 
-  /* One row per model the harness named. A list rather than chips: each row
+  /* One row per model the agent named. A list rather than chips: each row
      carries an id and sometimes a level list, which is more than a chip holds
      and more than fits across a narrow panel. */
   .modelList {
@@ -829,7 +829,7 @@
     text-decoration: line-through;
   }
 
-  /* --- One harness, in full --- */
+  /* --- One agent, in full --- */
 
   .detail {
     display: flex;

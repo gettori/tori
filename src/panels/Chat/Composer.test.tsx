@@ -89,7 +89,7 @@ describe("Composer keys", () => {
     expect(setup({ running: true, steering: false }).input.placeholder).toBe("Type to queue for the next turn");
   });
 
-  // The figure comes from the declared tier, so a harness measured differently
+  // The figure comes from the declared tier, so a agent measured differently
   // quotes its own; one with nothing measured still refuses to imply immediacy.
   it("quotes the measured delivery rather than implying a steer is instant", () => {
     const slower = setup({ running: true, steering: true, steerCost: "3.0-9.0s" }).input.placeholder;

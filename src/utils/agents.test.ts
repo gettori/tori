@@ -7,12 +7,12 @@ import {
   effortArgsFor,
   modeArgsFor,
   modelArgsFor,
-  FALLBACK_AGENTS,
-  type Agent,
+  FALLBACK_ADAPTERS,
+  type Adapter,
   type ChatConfig,
 } from "./agents";
 
-const agent = (program: string, resume_args: string[]): Agent => ({
+const agent = (program: string, resume_args: string[]): Adapter => ({
   id: "x",
   label: "X",
   program,
@@ -65,11 +65,11 @@ describe("applyTemplate", () => {
 // impl `list_agents` uses. So this compares the hand-maintained fallback
 // against what the backend genuinely produces, not against a restatement of
 // the TOML.
-describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
-  const resolved = bundled as unknown as Agent[];
+describe("FALLBACK_ADAPTERS agrees with the bundled adapters", () => {
+  const resolved = bundled as unknown as Adapter[];
 
   it("covers exactly the bundled ids", () => {
-    expect(FALLBACK_AGENTS.map((a) => a.id).sort()).toEqual(resolved.map((a) => a.id).sort());
+    expect(FALLBACK_ADAPTERS.map((a) => a.id).sort()).toEqual(resolved.map((a) => a.id).sort());
   });
 
   // The fields the pre-resolve paint actually uses. A drift in any of them is
@@ -77,7 +77,7 @@ describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
   // probe.
   it("matches field-for-field on everything the first paint reads", () => {
     for (const want of resolved) {
-      const got = FALLBACK_AGENTS.find((a) => a.id === want.id);
+      const got = FALLBACK_ADAPTERS.find((a) => a.id === want.id);
       expect(got, `no fallback entry for ${want.id}`).toBeDefined();
       if (!got) continue;
       expect(got.label, `${want.id}.label`).toBe(want.label);
@@ -96,7 +96,7 @@ describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
   // be a liability. Pinned so the omission stays a decision rather than
   // looking like a gap somebody should fill in.
   it("deliberately carries no chat table, so a chat surface waits for the real adapter", () => {
-    for (const a of FALLBACK_AGENTS) {
+    for (const a of FALLBACK_ADAPTERS) {
       expect(a.chat, `${a.id} must not duplicate the chat table`).toBeNull();
       expect(chatCapable(a)).toBe(false);
     }
@@ -106,7 +106,7 @@ describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
   // per-user state the fallback cannot know, and guessing "none" would show a
   // sign-in prompt to somebody already signed in.
   it("deliberately carries no accounts table", () => {
-    for (const a of FALLBACK_AGENTS) {
+    for (const a of FALLBACK_ADAPTERS) {
       expect(a.accounts, `${a.id} must not duplicate the accounts table`).toBeNull();
     }
   });
@@ -116,7 +116,7 @@ describe("FALLBACK_AGENTS agrees with the bundled adapters", () => {
 // `component_agent_adapter_registry` records the shape drifting because both
 // sides were hand-written and only one got updated.
 describe("the accounts table crosses the Rust/TypeScript boundary intact", () => {
-  const resolved = bundled as unknown as Agent[];
+  const resolved = bundled as unknown as Adapter[];
   const claude = resolved.find((a) => a.id === "claude")!;
 
   // The keys Rust's `AccountsConfig` serializes, listed rather than derived: a
@@ -168,7 +168,7 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   // The reason `whoami_kind` exists at all: OpenCode exits 0 whether or not it
   // holds any credentials, so an adapter that read the exit code would report it
   // signed in while its `auth.json` was empty.
-  it("gives each measured harness its own answer shape", () => {
+  it("gives each measured agent its own answer shape", () => {
     const kinds = Object.fromEntries(
       resolved.filter((a) => a.accounts).map((a) => [a.id, a.accounts!.whoami_kind]),
     );
@@ -181,7 +181,7 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
 });
 
 describe("the bundled chat tables", () => {
-  const resolved = bundled as unknown as Agent[];
+  const resolved = bundled as unknown as Adapter[];
   const claude = resolved.find((a) => a.id === "claude")!;
 
   it("makes claude chat-capable, and treats a table-less adapter as PTY-only", () => {
@@ -246,11 +246,11 @@ describe("the bundled chat tables", () => {
 });
 
 // `effortLevelsFor` is gone with the model table it read. A model's levels come
-// from the harness's own catalogue (`supportedEffortLevels`) and reach the
+// from the agent's own catalogue (`supportedEffortLevels`) and reach the
 // control through `pickableModels`; `[[chat.effort]]` now says only how to spell
 // a level as args, for whichever levels the catalogue turns out to name.
 describe("the adapter declares no models", () => {
-  const claude = (bundled as unknown as Agent[]).find((a) => a.id === "claude")!;
+  const claude = (bundled as unknown as Adapter[]).find((a) => a.id === "claude")!;
   const chat = claude.chat as ChatConfig;
 
   it("annotates one model and lists none", () => {
@@ -263,7 +263,7 @@ describe("the adapter declares no models", () => {
 // The same precedence rule the backend applies, mirrored so the two cannot
 // resolve the same adapter differently.
 describe("mode/effort/model arg resolution", () => {
-  const claude = (bundled as unknown as Agent[]).find((a) => a.id === "claude")!;
+  const claude = (bundled as unknown as Adapter[]).find((a) => a.id === "claude")!;
   const chat = claude.chat as ChatConfig;
 
   it("uses an entry's own args when it declares them", () => {

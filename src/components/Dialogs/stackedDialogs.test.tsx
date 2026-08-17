@@ -17,7 +17,7 @@ import styles from "./Dialogs.module.css";
 // Once the stack settles, the covered panel is aria-hidden with focusable
 // buttons still inside it, which is what axe's `aria-hidden-focus` rule is for,
 // and under jsdom that rule cannot answer at all: it comes back `incomplete`,
-// which this harness treats as a failure rather than a pass, because a rule that
+// which this agent treats as a failure rather than a pass, because a rule that
 // cannot produce an answer is not coverage. It is disabled for this one
 // assertion with that reason, rather than in `src/test/axe.ts`, because it is
 // judgeable everywhere except in a stack.

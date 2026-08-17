@@ -72,7 +72,7 @@ pub struct Claim {
     /// surviving child against *that* adapter's running pattern.
     ///
     /// Recorded rather than assumed: a reap that hardcoded one agent would
-    /// classify a second harness's orphan as gone, leaving a live child nobody
+    /// classify a second agent's orphan as gone, leaving a live child nobody
     /// is told about. Defaulted for a claim file written before this field
     /// existed, since only claude could have written one.
     #[serde(default = "default_agent")]
@@ -288,7 +288,7 @@ fn pid_alive(pid: u32) -> bool {
 ///
 /// **The id-independent half of liveness.** [`pid_runs_session`] answers "is
 /// this process running that session" by finding the session id on a command
-/// line, which only works for a harness that puts it there. An ACP agent's
+/// line, which only works for a agent that puts it there. An ACP agent's
 /// command line is identical for every session it ever runs - the id is minted
 /// inside the protocol and never appears in argv - so matching on it would
 /// report every ACP session of an agent running whenever any one of them was.
@@ -1105,7 +1105,7 @@ mod tests {
 
     /// The reap classifies each claim against **its own** adapter's running
     /// pattern, not one hardcoded agent. A reap that assumed claude would call a
-    /// second harness's surviving child "gone" and never mention it.
+    /// second agent's surviving child "gone" and never mention it.
     #[test]
     fn the_reap_matches_each_claim_against_its_own_agents_pattern() {
         let mut claims = HashMap::new();

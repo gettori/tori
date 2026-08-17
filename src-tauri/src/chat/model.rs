@@ -3,13 +3,13 @@
 //!
 //! A transport (today only `claude` stream-json, tomorrow possibly Codex or an
 //! ACP agent) maps its own wire format *into* these types, and nothing above
-//! the transport layer knows which harness produced an event. That is what lets
+//! the transport layer knows which agent produced an event. That is what lets
 //! the chat panel, the tool cards, the diff rendering and the status tier be
 //! written once. `neutrality_check.rs` is the compiling proof that the model is
-//! actually general enough to absorb a second harness rather than merely being
+//! actually general enough to absorb a second agent rather than merely being
 //! asserted to be.
 //!
-//! **Harness-specific data goes in `extra`, never in a new field.** Claude
+//! **Agent-specific data goes in `extra`, never in a new field.** Claude
 //! reports things nobody else does (`ttft_ms`, `modelUsage`, cache-tier token
 //! splits). Promoting those to first-class fields would quietly make the model
 //! Claude-shaped and every other transport would have to fake them; keeping
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Harness-specific payload that has no place in the neutral model. See the
+/// Agent-specific payload that has no place in the neutral model. See the
 /// module docs for why this is a map rather than a growing field list.
 pub type Extra = HashMap<String, serde_json::Value>;
 
@@ -36,11 +36,11 @@ fn extra_is_empty(e: &Extra) -> bool {
 // Supporting types
 // ---------------------------------------------------------------------------
 
-/// A permission mode, as the id its own harness names it.
+/// A permission mode, as the id its own agent names it.
 ///
 /// **A string rather than an enum, and deliberately so.** Sway used to
 /// enumerate Claude's four modes as variants, which made the neutral model
-/// carry one harness's vocabulary: Gemini's `--approval-mode` speaks
+/// carry one agent's vocabulary: Gemini's `--approval-mode` speaks
 /// `default|auto_edit|yolo|plan`, and Codex does not have a fixed set at all -
 /// it lists its permission profiles *at runtime* over `permissionProfile/list`.
 /// No fixed enum can represent that, so the mode is whatever the adapter
@@ -53,8 +53,8 @@ fn extra_is_empty(e: &Extra) -> bool {
 /// the `gotchas.md` entry on enum-to-string neutrality.
 ///
 /// **A permissive mode now means what it says.** This used to note that Sway's
-/// own `PreToolUse` gate ran ahead of every harness mode, so a permissive one
-/// was still supervised. Phase 7 deleted that gate: the harness decides, and a
+/// own `PreToolUse` gate ran ahead of every agent mode, so a permissive one
+/// was still supervised. Phase 7 deleted that gate: the agent decides, and a
 /// mode named after bypassing permissions really does bypass them.
 ///
 /// For an ACP session the mode is not a flag at all. Measured on `opencode acp`
@@ -78,13 +78,13 @@ impl PermissionMode {
 /// The five measured effort levels accepted by `--effort`.
 ///
 /// Still a closed enum, unlike [`PermissionMode`], and the difference is worth
-/// stating because a second harness now has levels too. Measured on
+/// stating because a second agent now has levels too. Measured on
 /// `@agentclientprotocol/codex-acp` 1.2.0, its `thought_level` selector offers
-/// six: these five and `ultra`. Adding `Ultra` here would put one harness's
+/// six: these five and `ultra`. Adding `Ultra` here would put one agent's
 /// vocabulary into the shared type for the benefit of one agent - the trap
 /// `PermissionMode` records - so instead the ACP transport publishes only the
 /// levels this enum can carry and names `ultra` as what it drops. The day a
-/// third harness disagrees again is the day this becomes a string.
+/// third agent disagrees again is the day this becomes a string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Effort {
@@ -101,7 +101,7 @@ impl Effort {
     pub const ALL: [Effort; 5] =
         [Effort::Low, Effort::Medium, Effort::High, Effort::Xhigh, Effort::Max];
 
-    /// The level as both harnesses spell it on the wire.
+    /// The level as both agents spell it on the wire.
     pub fn as_str(self) -> &'static str {
         match self {
             Effort::Low => "low",
@@ -170,7 +170,7 @@ pub enum PermissionScope {
     Project,
 }
 
-/// One rule the harness proposed, in the harness's own grammar.
+/// One rule the agent proposed, in the agent's own grammar.
 ///
 /// `rule_content` is optional because a rule can name a whole tool with no
 /// argument pattern (`toolName: "WebFetch"` and nothing else), which is a
@@ -183,14 +183,14 @@ pub struct SuggestedRule {
     pub rule_content: Option<String>,
 }
 
-/// An action the harness itself offered alongside a permission question.
+/// An action the agent itself offered alongside a permission question.
 ///
 /// **These are the CLI's words, not Sway's invention.** Measured on claude
 /// 2.1.231, a `can_use_tool` request carries up to three of them: the rule that
 /// would allow this call, the directory that would unblock it, and the mode that
 /// would stop it asking. Sway renders them and echoes the chosen one back
 /// verbatim rather than composing rule text itself, because the rule grammar
-/// belongs to the harness - a `Bash` rule is a command *pattern*, and Sway
+/// belongs to the agent - a `Bash` rule is a command *pattern*, and Sway
 /// guessing at that is how an "always allow `touch a.txt`" silently becomes
 /// "always allow every `touch`".
 ///
@@ -201,9 +201,9 @@ pub struct SuggestedRule {
 pub enum PermissionSuggestion {
     AddRules {
         rules: Vec<SuggestedRule>,
-        /// "allow" or "deny", as the harness spells it.
+        /// "allow" or "deny", as the agent spells it.
         behavior: String,
-        /// Where the harness would persist it, e.g. `session`, `localSettings`.
+        /// Where the agent would persist it, e.g. `session`, `localSettings`.
         destination: String,
     },
     AddDirectories {
@@ -234,7 +234,7 @@ pub struct SlashCommand {
     pub aliases: Vec<String>,
 }
 
-/// One mode the live harness says it can run, as the mode selector needs it.
+/// One mode the live agent says it can run, as the mode selector needs it.
 ///
 /// The counterpart to [`ChatModelInfo`], and deliberately thinner than the
 /// adapter's own `ChatMode`. That one carries `args` (an ACP mode is a request,
@@ -333,7 +333,7 @@ impl ChatConfigValue {
     }
 }
 
-/// One model the live harness says it can run, as the picker needs it.
+/// One model the live agent says it can run, as the picker needs it.
 ///
 /// Measured: this catalogue exists **only** in the `initialize` control
 /// response, never on `system/init`, which reports a single already-resolved
@@ -372,18 +372,18 @@ pub struct ChatModelInfo {
     pub supports_auto_mode: bool,
 }
 
-/// What a harness said it can do, read off its own handshake.
+/// What a agent said it can do, read off its own handshake.
 ///
 /// **Advertised, not measured, and the distinction is the point.** Sway's
-/// per-transport tier records what *shipped* against a harness somebody sat down
+/// per-transport tier records what *shipped* against a agent somebody sat down
 /// and measured; this records what *this* agent, on this machine, at this
 /// version, claims about itself. They answer different questions and the tier
 /// needs both: one generic transport carries agents that genuinely differ, so a
 /// tier that only knew the transport would publish the same capabilities for an
 /// agent that resumes conversations and one that cannot.
 ///
-/// `None` on the event for a harness that advertises nothing. That is not a
-/// harness with no capabilities: Claude's are measured and pinned rather than
+/// `None` on the event for a agent that advertises nothing. That is not a
+/// agent with no capabilities: Claude's are measured and pinned rather than
 /// asked for, so there is nothing to carry, and a surface reads the absence as
 /// "the tier is all there is" rather than as an empty list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -420,7 +420,7 @@ pub struct ChatCapabilities {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatAccount {
-    /// As the harness words it, e.g. `Claude Pro`, `Claude Max`. Passed through
+    /// As the agent words it, e.g. `Claude Pro`, `Claude Max`. Passed through
     /// rather than parsed into a tier: the strings are the CLI's to change, and
     /// a plan Sway has never seen should render as itself, not as "unknown".
     #[serde(default)]
@@ -446,7 +446,7 @@ pub struct McpServer {
     pub error: Option<String>,
 }
 
-/// Token and cost accounting, flattened out of the harness's own richer shape.
+/// Token and cost accounting, flattened out of the agent's own richer shape.
 /// Cache-tier splits and per-model breakdowns live in the owning event's
 /// `extra` rather than here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -565,7 +565,7 @@ pub enum ChatEvent {
         #[serde(default)]
         modes: Vec<ChatModeInfo>,
         /// `system/init`'s fast-mode state and, when it is unavailable, the
-        /// harness's own reason. Typed rather than left in `extra` because the
+        /// agent's own reason. Typed rather than left in `extra` because the
         /// toggle renders the reason instead of an inert control.
         #[serde(default)]
         fast_mode_state: Option<String>,
@@ -609,7 +609,7 @@ pub enum ChatEvent {
         /// for the first `system/init` would hold back data already in hand.
         #[serde(default)]
         account: Option<ChatAccount>,
-        /// What this agent advertised about itself, for a harness that
+        /// What this agent advertised about itself, for a agent that
         /// advertises. `None` for one whose capabilities are measured and
         /// pinned instead; see [`ChatCapabilities`].
         #[serde(default)]
@@ -645,7 +645,7 @@ pub enum ChatEvent {
         /// attributed to Sway retroactively: only the response carries the
         /// marker, so the started frame inherits ownership through this id.
         hook_id: String,
-        /// As the harness names it, e.g. `PreToolUse:Bash`. **Reports the tool,
+        /// As the agent names it, e.g. `PreToolUse:Bash`. **Reports the tool,
         /// not the configured matcher** (measured, claude 2.1.220), which is
         /// why it cannot identify whose hook this is.
         name: String,
@@ -794,7 +794,7 @@ pub enum ChatEvent {
     ///
     /// Two sources produce this, and a consumer cannot tell them apart nor needs
     /// to: the `PreToolUse` approval socket (a forked hook helper), and the
-    /// harness's own in-protocol `can_use_tool` control request. Either way the
+    /// agent's own in-protocol `can_use_tool` control request. Either way the
     /// `assistant` frame declaring the same call arrives on a different channel
     /// with nothing ordering the two, so consumers must materialize a card from
     /// whichever reaches them first and key it on `tool_use_id`.
@@ -804,7 +804,7 @@ pub enum ChatEvent {
         tool_name: String,
         input: serde_json::Value,
         /// Correlates the answer back to the blocked helper process, or to the
-        /// control request the harness is waiting on.
+        /// control request the agent is waiting on.
         request_id: String,
         /// When Sway will auto-deny. Sway owns this deadline and keeps it
         /// strictly below the hook's own timeout, so an unanswered prompt fails
@@ -820,7 +820,7 @@ pub enum ChatEvent {
         /// about directly.
         #[serde(default)]
         agent_id: Option<String>,
-        /// Actions the harness offered for this call. Empty when it offered
+        /// Actions the agent offered for this call. Empty when it offered
         /// none, which is normal rather than a failure.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         suggestions: Vec<PermissionSuggestion>,
@@ -895,7 +895,7 @@ pub enum ChatCommand {
     },
     /// The same content delivered *into* a turn that is already running, rather
     /// than opening one. Its own variant because it is not a turn: a queued
-    /// mode or model switch must not be spent on it, and a harness that cannot
+    /// mode or model switch must not be spent on it, and a agent that cannot
     /// take input mid-turn has to be able to refuse this while still accepting
     /// [`Self::SendTurn`].
     Steer {
@@ -1372,7 +1372,7 @@ mod tests {
         std::fs::write(dir.join("commands.json"), format!("{commands}\n")).expect("write commands");
     }
 
-    /// Harness-specific data must survive the round trip untouched, since the
+    /// Agent-specific data must survive the round trip untouched, since the
     /// whole point of `extra` is that the neutral model does not know what is
     /// in it.
     #[test]

@@ -3,7 +3,7 @@ import { render } from "@solidjs/testing-library";
 import FastModeStatus from "./FastModeStatus";
 
 describe("FastModeStatus", () => {
-  it("shows the harness's reason rather than a toggle that cannot move", () => {
+  it("shows the agent's reason rather than a toggle that cannot move", () => {
     // The measured state on this transport, by both routes a toggle could take
     // (claude 2.1.220): `set_fast_mode` comes back as an unsupported subtype,
     // and the `/fast` slash command - which *is* in the catalogue - answers

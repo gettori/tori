@@ -1,11 +1,11 @@
-//! Asking a harness who is signed in, and reading the three different answers
+//! Asking a agent who is signed in, and reading the three different answers
 //! back.
 //!
 //! **Unknown is a first-class outcome, and it is never spelled "signed out".**
 //! Everything in this module leans that way: a probe that times out, a binary
 //! that is not there, output nothing here knows how to read - all of it is
 //! [`SignIn::Unknown`]. The asymmetry is the whole argument. A wrong "signed
-//! out" tells a user their working account is broken and hides the harness from
+//! out" tells a user their working account is broken and hides the agent from
 //! the picker; a wrong "unknown" renders one line of neutral text. Same shape as
 //! [`crate::health`]'s `VersionUnknown`, for the same reason.
 //!
@@ -32,12 +32,12 @@ use crate::agents::{AccountsConfig, WhoamiKind};
 /// Belt and braces rather than a measured control: none of the three probes
 /// opens one (they are status subcommands), and the real guard is that
 /// `output_with_timeout` gives the child no stdin and kills it on the timeout.
-/// This is here so that a harness which *does* honour the convention has been
+/// This is here so that a agent which *does* honour the convention has been
 /// told, and so a future adapter pointing `whoami_args` at something chattier
 /// starts from the quiet default.
 const NO_BROWSER: (&str, &str) = ("NO_BROWSER", "1");
 
-/// Whether a harness says somebody is signed in.
+/// Whether a agent says somebody is signed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum SignIn {
@@ -55,7 +55,7 @@ pub enum SignIn {
 
 /// What one `whoami` probe learned.
 ///
-/// `email` and `api_key_source` are `None` for every harness that does not
+/// `email` and `api_key_source` are `None` for every agent that does not
 /// volunteer them, which is two of the three measured: Codex prints no identity
 /// at all, and OpenCode counts providers rather than naming an account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -63,14 +63,14 @@ pub enum SignIn {
 pub struct Whoami {
     pub state: SignIn,
     pub email: Option<String>,
-    /// The environment variable the harness says it is taking an API key from.
+    /// The environment variable the agent says it is taking an API key from.
     ///
     /// Measured on `claude auth status`: with `ANTHROPIC_API_KEY` inherited it
     /// reports `apiKeySource: "ANTHROPIC_API_KEY"` and blanks `email`,
-    /// `orgName` and `subscriptionType`. That is the harness's own statement
+    /// `orgName` and `subscriptionType`. That is the agent's own statement
     /// about which credential it will bill against, which is a far better source
     /// for the warning than Sway reading its own environment and guessing which
-    /// variables matter to which harness.
+    /// variables matter to which agent.
     pub api_key_source: Option<String>,
 }
 
@@ -203,10 +203,10 @@ pub fn probe_command(
     cmd
 }
 
-/// Ask one harness who is signed in, bounded.
+/// Ask one agent who is signed in, bounded.
 ///
 /// `None` args means the adapter declares no probe, which is unknown rather
-/// than signed out: plenty of harnesses have no way to say, and reporting them
+/// than signed out: plenty of agents have no way to say, and reporting them
 /// signed out would hide a working install behind a sign-in prompt it cannot
 /// satisfy.
 pub fn whoami(
@@ -233,7 +233,7 @@ pub fn whoami(
 
 /// Sign a profile out, bounded.
 ///
-/// `Err` carries whatever the harness said, because the removal flow reports a
+/// `Err` carries whatever the agent said, because the removal flow reports a
 /// failed logout rather than deleting the profile behind it: a profile forgotten
 /// while its tokens are still live is a credential Sway has abandoned rather
 /// than revoked.
@@ -246,7 +246,7 @@ pub fn logout(
     home: Option<&(String, String)>,
 ) -> Result<(), String> {
     if accounts.logout_args.is_empty() {
-        return Err("this harness offers no logout command".into());
+        return Err("this agent offers no logout command".into());
     }
     let mut cmd = probe_command(path, &accounts.logout_args, home);
     let out = crate::env::output_with_timeout(&mut cmd)
@@ -263,13 +263,13 @@ pub fn logout(
 }
 
 /// Where ADAPTERS.md documents what an adapter has to declare to get a sign-in
-/// flow, which is the honest destination for a harness that declares none.
+/// flow, which is the honest destination for a agent that declares none.
 const ADAPTER_DOCS: &str = "https://github.com/skarif2/sway/blob/main/ADAPTERS.md";
 
-/// How this harness can be signed in to, given what it declares.
+/// How this agent can be signed in to, given what it declares.
 ///
 /// Three rungs, and the ladder **degrades** rather than failing: every adapter
-/// resolves to one of them, so no harness renders a sign-in card with nothing
+/// resolves to one of them, so no agent renders a sign-in card with nothing
 /// on it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
@@ -290,7 +290,7 @@ pub enum LoginRoute {
     AgentStates,
     /// Nothing declared, nothing to relay. The link goes to what an adapter has
     /// to declare, because "no sign-in button" is a fact about the adapter file
-    /// rather than about the harness.
+    /// rather than about the agent.
     Docs { url: String },
 }
 
@@ -381,11 +381,11 @@ mod tests {
         assert_eq!(answer.email, None);
     }
 
-    /// The billing-override warning's actual producer. The harness names the
+    /// The billing-override warning's actual producer. The agent names the
     /// variable itself, so the warning does not depend on Sway knowing which
     /// environment variables matter to which agent.
     #[test]
-    fn an_inherited_api_key_is_reported_by_the_harness_not_guessed() {
+    fn an_inherited_api_key_is_reported_by_the_agent_not_guessed() {
         let answer = parse_whoami(WhoamiKind::ClaudeJson, true, CLAUDE_WITH_KEY, "");
         assert_eq!(answer.api_key_source.as_deref(), Some("ANTHROPIC_API_KEY"));
         // Still signed in, so the warning is a notice beside a working session
@@ -505,7 +505,7 @@ mod tests {
     /// Every probe in this module is bounded, asserted structurally because the
     /// behavioural version costs a real timeout of wall clock per run.
     ///
-    /// The bound is what stops a harness that decides to prompt from stranding
+    /// The bound is what stops a agent that decides to prompt from stranding
     /// the memoized health sweep and every caller queued behind it, per
     /// `gotchas#A subprocess probe inside a memoized sweep must be bounded`. It
     /// is also the other half of "non-interactive": `output_with_timeout` gives
@@ -533,7 +533,7 @@ mod tests {
             .collect();
         assert!(offenders.is_empty(), "run it through output_with_timeout: {offenders:?}");
         // The positive half is behavioural rather than counted here:
-        // `a_successful_logout_is_ok` and `a_failing_logout_reports_what_the_harness_said`
+        // `a_successful_logout_is_ok` and `a_failing_logout_reports_what_the_agent_said`
         // really do run `/bin/sh`, so a probe that spawned nothing would fail
         // them. A `matches().count()` would only pin how often this file happens
         // to say the name.
@@ -563,7 +563,7 @@ mod tests {
     // --- degrading rather than lying ---
 
     /// An adapter that declares no probe is unknown. Reporting it signed out
-    /// would put a sign-in prompt in front of a harness that has no sign-in.
+    /// would put a sign-in prompt in front of a agent that has no sign-in.
     #[test]
     fn an_adapter_with_no_probe_is_unknown_not_signed_out() {
         let cfg = config(None);
@@ -580,7 +580,7 @@ mod tests {
         assert_eq!(answer.state, SignIn::Unknown);
     }
 
-    /// A harness with no logout is a question for the user, never a silent
+    /// A agent with no logout is a question for the user, never a silent
     /// success: the caller has to ask before it deletes anything.
     #[test]
     fn logout_refuses_when_the_adapter_declares_none() {
@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_logout_reports_what_the_harness_said() {
+    fn a_failing_logout_reports_what_the_agent_said() {
         let mut cfg = config(Some(WhoamiKind::ExitCode));
         cfg.logout_args = vec!["-c".into(), "echo could not reach the server >&2; exit 1".into()];
         let err = logout(std::path::Path::new("/bin/sh"), &cfg, None).unwrap_err();
@@ -617,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn a_harness_with_login_args_opens_a_terminal_carrying_the_profile_home() {
+    fn a_agent_with_login_args_opens_a_terminal_carrying_the_profile_home() {
         let home = Some(("CLAUDE_CONFIG_DIR".to_string(), "/canonical/work".to_string()));
         match login_route(&bundled("claude"), home.clone()) {
             LoginRoute::Terminal { program, args, home: carried } => {
@@ -671,7 +671,7 @@ mod tests {
     /// writes, so the rung has a real producer even though nothing bundled is
     /// one.
     #[test]
-    fn a_harness_declaring_neither_gets_a_documentation_link() {
+    fn a_agent_declaring_neither_gets_a_documentation_link() {
         let minimal = crate::agents::test_adapter("some-agent");
         assert!(minimal.accounts.is_none() && minimal.chat.is_none(), "declares neither");
         match login_route(&minimal, None) {
@@ -684,7 +684,7 @@ mod tests {
     /// has no login command, but it does speak ACP and so relays its own
     /// instructions rather than falling through to a link.
     #[test]
-    fn an_acp_harness_with_no_accounts_table_still_beats_a_documentation_link() {
+    fn an_acp_agent_with_no_accounts_table_still_beats_a_documentation_link() {
         let gemini = bundled("gemini");
         assert!(gemini.accounts.is_none());
         assert_eq!(login_route(&gemini, None), LoginRoute::AgentStates);
@@ -701,7 +701,7 @@ mod tests {
     /// Source text rather than behaviour, because the claim is "no code path
     /// does this", which no single run can demonstrate.
     ///
-    /// The file needles are the other half, kept for the harnesses whose tokens
+    /// The file needles are the other half, kept for the agents whose tokens
     /// really are on disk: OpenCode's live in `auth.json` under its data dir,
     /// where the Keychain finding says nothing. Sway reads neither.
     ///
@@ -735,7 +735,7 @@ mod tests {
                 let text = std::fs::read_to_string(&path).unwrap_or_default();
                 for (n, line) in text.lines().enumerate() {
                     // Comments are where the measurement is written down, and
-                    // writing down where a harness keeps its tokens is the
+                    // writing down where a agent keeps its tokens is the
                     // opposite of reaching for them. The claim is about code.
                     if line.trim_start().starts_with("//") {
                         continue;
@@ -748,7 +748,7 @@ mod tests {
         }
         assert!(
             offenders.is_empty(),
-            "Sway must never read the harness's credentials: {offenders:?}"
+            "Sway must never read the agent's credentials: {offenders:?}"
         );
     }
 }

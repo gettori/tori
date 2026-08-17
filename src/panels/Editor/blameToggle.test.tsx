@@ -7,7 +7,7 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // tested in blameGutter.test.ts; what is here is the wiring between the control
 // and the editor, which is otherwise three one-liners nothing exercises.
 
-import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorHarness";
+import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 
 installResizeObserver();
 

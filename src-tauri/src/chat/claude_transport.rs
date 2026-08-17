@@ -81,7 +81,7 @@ struct Shared {
     /// accumulates one sleeping thread per prompt for 110s apiece.
     settled: Condvar,
     /// The rule the CLI itself proposed for each outstanding question, kept so a
-    /// "for this session" answer can echo the harness's own grammar back rather
+    /// "for this session" answer can echo the agent's own grammar back rather
     /// than compose one. Keyed by `request_id` and dropped when answered, so it
     /// is bounded by the number of *outstanding* prompts, not by the session.
     granted_rules: Mutex<HashMap<String, Value>>,
@@ -365,7 +365,7 @@ fn permission_response(
         }),
         PermissionDecision::Allow => {
             let mut response = json!({ "behavior": "allow" });
-            // A durable allow only ships when the harness told us how to spell
+            // A durable allow only ships when the agent told us how to spell
             // it. With no suggestion to echo, this degrades to a one-call allow
             // rather than inventing rule text.
             if let (Some(destination), Some(rules)) = (grant_destination(scope), granted_rules) {
@@ -381,14 +381,14 @@ fn permission_response(
     }
 }
 
-/// Where the harness should persist a granted rule, per how far the user said
+/// Where the agent should persist a granted rule, per how far the user said
 /// the answer reaches.
 ///
 /// `Once` is `None` rather than a destination: it is the absence of a grant, and
 /// mapping it to a destination would persist the very thing the user scoped to
-/// one call. `Project` uses `localSettings`, which is the harness's own
-/// project-local file - the point of this phase is that the harness owns the
-/// permission, so Sway records it where the harness looks rather than in a
+/// one call. `Project` uses `localSettings`, which is the agent's own
+/// project-local file - the point of this phase is that the agent owns the
+/// permission, so Sway records it where the agent looks rather than in a
 /// Sway-side store the CLI never reads.
 fn grant_destination(scope: PermissionScope) -> Option<&'static str> {
     match scope {
@@ -543,7 +543,7 @@ impl AgentTransport for ClaudeTransport {
                 "type": "control_request",
                 "request_id": request_id,
                 // The id as its adapter declared it: the transport is the layer
-                // that knows this harness's spelling, and for Claude the
+                // that knows this agent's spelling, and for Claude the
                 // declared id *is* the wire value.
                 "request": { "subtype": "set_permission_mode", "mode": mode.as_str() },
             }));
@@ -587,15 +587,15 @@ impl AgentTransport for ClaudeTransport {
         }))
     }
 
-    /// Answer the harness's own `can_use_tool` question.
+    /// Answer the agent's own `can_use_tool` question.
     ///
-    /// **The scope is delivered as the harness's rule, not as Sway's.** An allow
+    /// **The scope is delivered as the agent's rule, not as Sway's.** An allow
     /// that should outlast this one call rides back as `updatedPermissions`,
     /// which was measured to work: two `Write`s in one turn, the first answered
     /// with a session-scoped `addRules`, and the second never asked
     /// (`dev/protocol-probe.mjs`, scenario `permission-grant`). The rule text
     /// itself is the CLI's own suggestion echoed back rather than composed here,
-    /// because the grammar belongs to the harness: a `Bash` rule is a command
+    /// because the grammar belongs to the agent: a `Bash` rule is a command
     /// pattern, and Sway guessing at one is how "always allow `touch a.txt`"
     /// quietly becomes "always allow every `touch`". With no suggestion to echo,
     /// the answer degrades to a one-call allow rather than inventing a rule.
@@ -632,7 +632,7 @@ impl AgentTransport for ClaudeTransport {
         _config_id: &str,
         _value: &ChatConfigValue,
     ) -> Result<(), String> {
-        Err("this harness publishes no session options to switch".to_string())
+        Err("this agent publishes no session options to switch".to_string())
     }
 
     fn close(&mut self) -> Result<(), String> {
@@ -660,7 +660,7 @@ impl AgentTransport for ClaudeTransport {
     }
 }
 
-/// Both harnesses spell these the same, so the mapping lives on the enum and
+/// Both agents spell these the same, so the mapping lives on the enum and
 /// this is the name the call site reads by.
 fn effort_wire(effort: Effort) -> &'static str {
     effort.as_str()
@@ -708,10 +708,10 @@ pub mod tests {
         assert!(once.get("updatedInput").is_none());
     }
 
-    /// The measured grant path: a session-scoped allow echoes the harness's own
+    /// The measured grant path: a session-scoped allow echoes the agent's own
     /// rule back, which is what stops the next identical call from asking.
     #[test]
-    fn a_scoped_allow_echoes_the_harnesss_own_rule() {
+    fn a_scoped_allow_echoes_the_agents_own_rule() {
         let rules = json!([{ "toolName": "Bash", "ruleContent": "touch a.txt" }]);
         let granted =
             permission_response(PermissionDecision::Allow, PermissionScope::Session, None, Some(rules.clone()));
@@ -721,8 +721,8 @@ pub mod tests {
         assert_eq!(update["destination"], "session");
         assert_eq!(update["rules"], rules);
 
-        // Project scope goes to the harness's own project-local file, because
-        // the harness is what has to read it back on the next call.
+        // Project scope goes to the agent's own project-local file, because
+        // the agent is what has to read it back on the next call.
         let project = permission_response(PermissionDecision::Allow, PermissionScope::Project, None, Some(rules));
         assert_eq!(project["updatedPermissions"][0]["destination"], "localSettings");
     }

@@ -42,7 +42,7 @@ function mount(item: ToolItem, onSetMode: (mode: string) => void = () => {}) {
   ));
 }
 
-/** A call blocked on the harness's own question, carrying the suggestions
+/** A call blocked on the agent's own question, carrying the suggestions
  *  claude 2.1.231 was measured to send with one. */
 function blocked(over: Partial<ToolItem> = {}): ToolItem {
   return card({
@@ -92,7 +92,7 @@ describe("ToolCallCard", () => {
     expect(getByText("tool")).toBeTruthy();
   });
 
-  // The harness offered "stop asking about edits" alongside the question. That
+  // The agent offered "stop asking about edits" alongside the question. That
   // is a one-click action issuing the real mode switch, not a third way to
   // answer this one call.
   it("turns a setMode suggestion into a one-click mode switch", () => {

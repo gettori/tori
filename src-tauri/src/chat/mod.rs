@@ -1,4 +1,4 @@
-//! Native in-app chat: driving an agent harness as a long-lived stream-json
+//! Native in-app chat: driving an agent agent as a long-lived stream-json
 //! process and normalizing its output into one transport-neutral event model.
 //!
 //! The layering is deliberate and one-directional:
@@ -6,7 +6,7 @@
 //! | Module | Knows about |
 //! |---|---|
 //! | [`model`] | nothing (the normalized events and commands) |
-//! | [`transport`] | the model (the harness-neutral seam) |
+//! | [`transport`] | the model (the agent-neutral seam) |
 //! | [`claude`] | the model, plus Claude's wire format |
 //! | [`claude_transport`] | the seam, plus `claude`'s process |
 //! | [`acp`] | the model, plus the ACP schema |

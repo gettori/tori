@@ -10,6 +10,36 @@ Three adapters ship bundled (`claude`, `opencode`, `gemini`). You add your own,
 or whole-replace a bundled one, by dropping a TOML file into
 `~/.config/sway/agents/`.
 
+## Agent, adapter, provider
+
+Sway used to call the same thing an agent in one file and a harness in the next.
+It is **agent** everywhere now, including where the word is slightly too broad,
+because a second word bought a distinction almost nothing in the codebase
+actually used.
+
+Two other words remain, and they are not synonyms for it:
+
+| Word | What it means | Seen in |
+| --- | --- | --- |
+| **agent** | an AI coding CLI. Also the protocol's own word, the `A` in ACP. | `agentId`, `agent_health`, `~/.config/sway/agents/` |
+| **adapter** | the TOML that says *how* to drive one, and the record it loads into. Data, never behaviour. Exactly one per agent. | this file, `agents/*.toml`, `AgentAdapter`, `Adapter` |
+| **provider** | the vendor behind a **model**. | `providerIcon`, the model pill |
+
+**Provider is the one worth being strict about**, because it is a genuinely
+different axis: it varies independently of the agent. A Claude adapter pointed at
+a router is running a model Anthropic did not make, so "the provider" and "the
+agent" give different answers about the same turn.
+
+The one place the single word is doing double duty is the launch catalogue,
+whose rows are agents Sway cannot drive yet. They are called catalog entries
+rather than agents wherever the difference matters, and installing one is
+precisely what turns it into a drivable agent.
+
+**Two on-disk names outlived the rename.** The `harness` block in
+`settings.json` and the `harnessId` in each cached model catalogue are still
+read, via serde aliases, because a missed key there is not an error - it reads as
+a default and quietly discards a user's binary override or a real probe result.
+
 > **Schema stability: v3 (stable), v1 and v2 still load.** Every version so
 > far is **purely additive**: v2 added the optional `[chat]` table describing
 > how to drive an agent as a structured chat session instead of a PTY, and v3
@@ -35,7 +65,7 @@ list per agent, and a chat session publishes its own under Session.
 
 **gemini** ships bundled and **untested**: nothing has measured it, which is why
 it declares no `verified_against` and why Settings labels it as a starting point
-rather than a supported harness. An ACP adapter is mostly launch instructions,
+rather than a supported agent. An ACP adapter is mostly launch instructions,
 which is what makes shipping one unmeasured reasonable - not what makes it
 tested.
 
@@ -55,11 +85,11 @@ them - read from the official
 [ACP Registry](https://github.com/agentclientprotocol/registry) with the command
 that launches each.
 
-**A catalog entry is not a supported harness**, and the two are kept visibly
+**A catalog entry is not a supported agent**, and the two are kept visibly
 apart because conflating them is how a listing ends up promising what nobody
 tested:
 
-| | Supported harness | Catalog entry |
+| | Supported agent | Catalog entry |
 | --- | --- | --- |
 | What it is | An adapter TOML | A launch command from the registry |
 | Measured | Yes, `verified_against` names the version | No, nothing has run it |
@@ -67,7 +97,7 @@ tested:
 | Can start a chat | Yes | No - write its adapter first |
 
 So a catalog entry is a suggestion. It carries no tier, appears in no launch
-picker, and turning one into a harness means writing the four-line TOML above -
+picker, and turning one into a agent means writing the four-line TOML above -
 which is also the moment somebody decides the entry is worth trusting.
 
 **Provenance and refresh**, so the list cannot rot quietly: the committed file
@@ -130,7 +160,7 @@ about to pass. Decline and the install still happens: the refusal is then macOS'
 visible, and reversible.
 
 **Nothing installed is put on your PATH, and nothing installed becomes a
-supported harness.** An installed agent is a path on disk and a manifest saying
+supported agent.** An installed agent is a path on disk and a manifest saying
 where it came from. Sway shows you the absolute path, the args and any env the
 registry named, and running it means writing the adapter TOML above with that
 path as `program`. Downloading a binary and deciding to run it are two acts, and
@@ -265,13 +295,13 @@ table would only go stale or contradict the user's own account.
 
 `[chat.acp]` holds the per-agent departures from a spec-correct client. It is a
 **closed, named set** rather than free-form JSON: a third quirk has to be argued
-for in Rust before a TOML can spell it, which is what keeps "a new harness is a
-TOML file" from meaning "a new harness is a TOML file plus a pile of
+for in Rust before a TOML can spell it, which is what keeps "a new agent is a
+TOML file" from meaning "a new agent is a TOML file plus a pile of
 agent-specific escape hatches". `serve_client_fs` advertises Sway's filesystem
 and terminal to the agent; the default declines both, which is a complete
 configuration rather than a degraded one, since ACP agents do their own I/O.
 
-Everything else in the table is an **arg template**, so adding a harness is a
+Everything else in the table is an **arg template**, so adding a agent is a
 TOML table rather than a Rust branch. Placeholders are substituted at spawn
 time: `{id}`, `{model}`, `{effort}`, `{mode}`, `{dir}`.
 
@@ -279,7 +309,7 @@ time: `{id}`, `{model}`, `{effort}`, `{mode}`, `{dir}`.
 the table-level template (`mode_args = ["--permission-mode", "{mode}"]`) or the
 entry's own `args`. The rule is: **an entry's `args` are used when non-empty,
 otherwise the template is filled with the entry's `id`.** The template is the
-concise default; per-entry `args` are the escape hatch for a harness whose
+concise default; per-entry `args` are the escape hatch for a agent whose
 modes are not one flag with a varying value. `claude.toml` states both, and
 they agree.
 
@@ -337,7 +367,7 @@ adapter that does not claim isolation offers no "add account" action at all.
 with no non-interactive variant and `setup-token` is interactive too, so a
 captured login would hang rather than fail. `whoami_args` is the opposite: it
 must be bounded and answer without a terminal, and it comes with a
-`whoami_kind` naming the shape of its answer. No two harnesses report sign-in
+`whoami_kind` naming the shape of its answer. No two agents report sign-in
 the same way (claude prints JSON, codex says it in its exit code, opencode
 exits 0 either way and states a credential count), so there is nothing to fall
 back on and args without a kind are rejected.

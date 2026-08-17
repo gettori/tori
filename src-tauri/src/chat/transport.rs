@@ -1,9 +1,9 @@
-//! The seam between the chat host and whatever harness is actually driving a
+//! The seam between the chat host and whatever agent is actually driving a
 //! session.
 //!
 //! [`AgentTransport`] is deliberately the *only* thing the host knows about a
-//! harness. `chat/claude.rs` maps Claude's wire format and `ClaudeTransport`
-//! drives its process; a second harness is a second implementor plus a TOML
+//! agent. `chat/claude.rs` maps Claude's wire format and `ClaudeTransport`
+//! drives its process; a second agent is a second implementor plus a TOML
 //! `[chat]` table, with no branch anywhere in the host.
 //!
 //! Two shapes here are load-bearing rather than incidental:
@@ -38,7 +38,7 @@ pub fn new_sink(emit: Emit) -> Sink {
 /// Send one event to the sink's current listener, if any.
 ///
 /// Silent when nobody is listening. That is correct rather than lossy: the
-/// transcript's durable record is the harness's own on-disk one, and blocking a
+/// transcript's durable record is the agent's own on-disk one, and blocking a
 /// reader thread on an absent UI would wedge the child process.
 pub fn emit(sink: &Sink, event: ChatEvent) {
     if let Ok(guard) = sink.lock() {
@@ -98,20 +98,20 @@ pub trait AgentTransport: Send {
     /// Separate from [`Self::send`] rather than a flag on it, because the two
     /// differ in what they are allowed to carry: `send` also flushes whatever
     /// mode or model switch is queued for the next turn, and a steer must not
-    /// spend that switch on a turn already under way. A harness that buffers
+    /// spend that switch on a turn already under way. A agent that buffers
     /// stdin to turn end has no honest implementation of this and should return
     /// an error rather than degrade into a queued turn, which the caller cannot
     /// tell apart from a steer that landed.
     fn steer(&mut self, blocks: &[ContentBlock]) -> Result<(), String>;
 
-    /// Ask the harness to abandon the running turn.
+    /// Ask the agent to abandon the running turn.
     fn interrupt(&mut self) -> Result<(), String>;
 
     /// Answer a blocked permission request, if this transport is what is
     /// blocked on it.
     ///
     /// **Returns whether the request was ours.** A prompt can reach the user
-    /// from two places - the harness asking in-protocol, and Sway's own
+    /// from two places - the agent asking in-protocol, and Sway's own
     /// `PreToolUse` bridge blocking on a socket - and the answer must go back to
     /// whichever one is waiting. `Ok(false)` means "not mine, try the other
     /// route"; answering the wrong one would leave the real waiter hanging until
@@ -131,16 +131,16 @@ pub trait AgentTransport: Send {
     /// Same next-turn semantics as [`Self::set_mode`].
     fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String>;
 
-    /// Set one of the harness's **own** configuration options, by the id it
+    /// Set one of the agent's **own** configuration options, by the id it
     /// published for it.
     ///
     /// Separate from [`Self::set_model`] and [`Self::set_mode`] because those
     /// two have Sway-side state behind them (a pending pick, a permission
     /// story) and this one has none: Sway does not know what the option
-    /// governs, so it forwards the switch and renders whatever the harness says
+    /// governs, so it forwards the switch and renders whatever the agent says
     /// afterwards.
     ///
-    /// A harness that publishes no such options **errors** rather than
+    /// A agent that publishes no such options **errors** rather than
     /// succeeding silently. Nothing can reach this without a mirror to click
     /// in, so a quiet `Ok(())` here would only ever hide a routing bug.
     fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue)

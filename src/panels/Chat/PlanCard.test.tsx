@@ -48,7 +48,7 @@ describe("PlanCard", () => {
   // Driven through the real fold rather than by handing the component a list
   // per stage, so a `planUpdate` the store dropped fails here rather than
   // passing on a hand-built fixture. Each stage is a fresh mount because this
-  // repo's DOM harness does not propagate a signal write through `<Show>` (a
+  // repo's DOM agent does not propagate a signal write through `<Show>` (a
   // pre-existing limitation, not this component's - a signal interpolated
   // directly into JSX does update). What is under test is the mapping from a
   // sequence of events to what the card says, and that is what this asserts.

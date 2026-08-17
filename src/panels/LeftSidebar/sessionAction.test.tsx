@@ -50,7 +50,7 @@ const session = {
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
-  /** Which harness produced the folder's one session. `gemini` is the bundled
+  /** Which agent produced the folder's one session. `gemini` is the bundled
    *  adapter with no parser kind, so its sessions have no transcript. */
   agent: "claude",
 }));

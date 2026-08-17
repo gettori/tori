@@ -2,7 +2,7 @@
 // the hand-rolled implementation before the Kobalte migration (#105) and kept
 // green, assertions unmodified, across it.
 //
-// The harness below is the only part that knows which implementation is
+// The agent below is the only part that knows which implementation is
 // mounted; everything the tests assert goes through it or through
 // `document.body.textContent`. Deliberately not characterized, because the two
 // implementations disagree by design (see grimoire/plan.md, Decisions): what
@@ -14,14 +14,14 @@ import { render, screen, fireEvent } from "@solidjs/testing-library";
 import ToastRegion, { pushToast } from "./Toasts";
 import { Toast } from "../../lib/toast";
 
-type Harness = {
+type Agent = {
   push: (message: string) => void;
   hover: (message: string) => void;
   unhover: (message: string) => void;
 };
 
 // The implementation seam. Everything below `mount` is implementation-blind.
-function mount(): Harness {
+function mount(): Agent {
   render(() => <ToastRegion />);
   return {
     push: (message) => pushToast(message, "info"),

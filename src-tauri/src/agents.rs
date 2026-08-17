@@ -106,7 +106,7 @@ impl ChatTransport {
     /// through files on disk?
     ///
     /// The question decides whether an adapter may omit `[discovery]`,
-    /// `[parser]` and `[running]`. A harness whose transcripts are files needs
+    /// `[parser]` and `[running]`. A agent whose transcripts are files needs
     /// all three; one that mints session ids inside the protocol and keeps them
     /// somewhere only the protocol reaches has nothing true to put in any of
     /// them (see [`AgentAdapter::discovery`]).
@@ -136,7 +136,7 @@ impl ParserKind {
     }
 }
 
-/// How to read the answer a harness gives when asked who is signed in.
+/// How to read the answer a agent gives when asked who is signed in.
 ///
 /// Closed, like [`ParserKind`] and [`ChatTransport`], because there is no
 /// generic shape to fall back to. All three were measured on 2026-08-14 against
@@ -187,23 +187,23 @@ pub enum Discovery {
     File { dir: PathBuf, filename_regex: Regex },
 }
 
-/// Something Sway knows about a model, keyed by the id the harness names it by.
+/// Something Sway knows about a model, keyed by the id the agent names it by.
 ///
 /// **Not a model list, and the distinction is the whole point.** An adapter used
 /// to declare `[[chat.models]]`: a hand-maintained table that was the picker's
 /// fallback and the context meter's pre-first-turn denominator. It was wrong in
-/// both jobs. Sonnet 5 and Opus 5 both said 200k while the harness reported 1M
+/// both jobs. Sonnet 5 and Opus 5 both said 200k while the agent reported 1M
 /// for each, and a session that never handshook offered four models the CLI had
 /// no say in. A model Sway names is a claim Sway cannot back.
 ///
-/// So an annotation only ever **decorates a model the harness itself named**. It
+/// So an annotation only ever **decorates a model the agent itself named**. It
 /// contributes nothing to any list: an entry whose id no catalogue mentions
 /// renders nothing at all, and there is deliberately no code path that turns one
 /// of these into a picker row.
 ///
 /// One field, because there is exactly one thing in this category. Everything
 /// else the old table carried (label, window, effort levels, thinking, images)
-/// is something the harness says better, and now does.
+/// is something the agent says better, and now does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatAnnotation {
     pub id: String,
@@ -246,7 +246,7 @@ pub struct ChatMode {
     /// get the row.
     ///
     /// Declared rather than keyed on the mode's id, because the gate is not a
-    /// property of the *word* "auto": another harness could gate a differently
+    /// property of the *word* "auto": another agent could gate a differently
     /// named mode on a differently named flag, and hardcoding the pair here
     /// would be one more Claude-shaped assumption in a neutral resolver.
     ///
@@ -257,11 +257,11 @@ pub struct ChatMode {
     pub requires: Option<String>,
     /// This mode runs tools without asking anybody.
     ///
-    /// A fact about the **harness's** mode, not about Sway, which is what makes
+    /// A fact about the **agent's** mode, not about Sway, which is what makes
     /// it survivable where its predecessor was not: `permissive_caveat` declared
     /// that Sway asked anyway, and was retired when that stopped being true.
     /// Adapter-declared rather than keyed on `"bypassPermissions"`, because a
-    /// harness calling the same thing `yolo` is describing the same thing.
+    /// agent calling the same thing `yolo` is describing the same thing.
     #[serde(default)]
     pub permissive: bool,
     /// The mode a session runs when nothing else is chosen, and what an
@@ -287,7 +287,7 @@ pub struct ChatEffort {
 /// The resolved `[chat]` table: everything needed to start and steer a
 /// structured chat session for this adapter.
 ///
-/// Arg templates rather than hardcoded flags, so a second harness is a TOML
+/// Arg templates rather than hardcoded flags, so a second agent is a TOML
 /// table instead of a Rust branch. Placeholders are substituted by
 /// `apply_chat_template`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -339,7 +339,7 @@ impl ChatConfig {
     /// one and they would disagree. The rule is: **an entry's own `args` win
     /// when non-empty, otherwise the template is filled with the entry's id.**
     /// The template is the concise default; per-entry args are the escape
-    /// hatch for a harness whose modes are not one flag with a varying value.
+    /// hatch for a agent whose modes are not one flag with a varying value.
     ///
     /// Both callers (Phase 6's mode selector, Phase 9's effort control) go
     /// through here rather than reading the fields directly.
@@ -357,7 +357,7 @@ impl ChatConfig {
     /// mode. Falling back to *position* rather than to the literal `"default"`
     /// keeps the Claude spelling out of a neutral resolver: an adapter that
     /// forgot the marker still gets a real mode of its own, not one named after
-    /// another harness's vocabulary.
+    /// another agent's vocabulary.
     pub fn default_mode(&self) -> Option<&ChatMode> {
         self.modes.iter().find(|m| m.is_default).or_else(|| self.modes.first())
     }
@@ -367,7 +367,7 @@ impl ChatConfig {
     /// **A mode Sway cannot resolve downgrades; it never fails the spawn.** The
     /// requested id reaches here from a settings file that outlived the adapter
     /// that declared it - a mode removed from the TOML, or a project pinned to
-    /// one a different harness offered. Refusing to start would strand that
+    /// one a different agent offered. Refusing to start would strand that
     /// session permanently behind a file the user cannot see, and the failure
     /// would arrive as a dead child rather than as an explanation.
     ///
@@ -421,12 +421,12 @@ impl ChatConfig {
 /// rejected, because there would be no mechanism behind the claim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AccountsConfig {
-    /// The environment variable that points this harness at an isolated profile
+    /// The environment variable that points this agent at an isolated profile
     /// home, e.g. `CLAUDE_CONFIG_DIR`. The **default profile is this variable
     /// left unset**, which is what makes it resolve the user's existing login
     /// rather than a Sway-managed copy of it.
     pub home_env: Option<String>,
-    /// Where `home_env` points when it is left unset: the harness's own default
+    /// Where `home_env` points when it is left unset: the agent's own default
     /// home, `~/.claude` for claude.
     ///
     /// Discovery uses it as a hinge. Phase 0 measured that an isolated home
@@ -445,7 +445,7 @@ pub struct AccountsConfig {
     /// no non-interactive variant, so anything that tried to complete a login
     /// headlessly would hang instead of failing.
     pub login_args: Vec<String>,
-    /// Args that sign the profile out. Empty for a harness that offers no
+    /// Args that sign the profile out. Empty for a agent that offers no
     /// logout, which is a state the removal flow has to say out loud rather
     /// than paper over: tokens stay valid until they expire.
     pub logout_args: Vec<String>,
@@ -479,7 +479,7 @@ pub struct AgentAdapter {
     pub yolo_args: Vec<String>,
     /// `{id}`/`{file}` placeholder template; `apply_template` substitutes.
     pub resume_args: Vec<String>,
-    /// Where this adapter's sessions are on disk, or `None` for a harness whose
+    /// Where this adapter's sessions are on disk, or `None` for a agent whose
     /// sessions only its protocol reaches.
     ///
     /// The three file-era fields (`discovery`, `parser_kind`, `running_pattern`)
@@ -895,7 +895,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             })?;
             // The effort levels a declared model listed used to be checked
             // against `[[chat.effort]]` here. There is no declared model left to
-            // check: a model's levels come from the harness's own catalogue
+            // check: a model's levels come from the agent's own catalogue
             // (`supportedEffortLevels`), and `[[chat.effort]]` now says only how
             // to *spell* a level as args, for whichever levels the catalogue
             // turns out to name.
@@ -959,7 +959,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 (false, None) => {
                     return Err(format!(
                         "{source}: accounts.whoami_args needs accounts.whoami_kind \
-                         (no two harnesses report sign-in the same way, so there is \
+                         (no two agents report sign-in the same way, so there is \
                          nothing to fall back to)"
                     ))
                 }
@@ -1315,7 +1315,7 @@ mod tests {
 
     /// Gemini ships **unmeasured**, and `verified_against` is how that is said.
     /// Naming a version there would claim a measurement nobody took; the Agents
-    /// surface reads its absence to tell a measured harness from an untested one.
+    /// surface reads its absence to tell a measured agent from an untested one.
     #[test]
     fn an_unmeasured_bundled_adapter_declares_no_verified_version() {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
@@ -1346,7 +1346,7 @@ mod tests {
         assert_eq!(chat.program, "npx");
         assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.2.0"]);
         // Everything else comes off the handshake, so there is nothing to declare.
-        assert!(chat.annotations.is_empty(), "nothing to annotate on a harness Sway has not measured");
+        assert!(chat.annotations.is_empty(), "nothing to annotate on a agent Sway has not measured");
         assert!(chat.modes.is_empty());
         assert!(chat.effort.is_empty());
     }
@@ -1608,10 +1608,10 @@ supports_isolation = true
     }
 
     /// The rule is about relocating a directory, so an adapter that has no
-    /// directory is not asked for one. An ACP harness keeps its sessions where
+    /// directory is not asked for one. An ACP agent keeps its sessions where
     /// only its protocol reaches, and there is nothing there to move.
     #[test]
-    fn a_harness_with_no_discovery_dir_may_claim_isolation_without_one() {
+    fn a_agent_with_no_discovery_dir_may_claim_isolation_without_one() {
         // The three file-era tables are absent together, which is the shape the
         // loader already requires of a protocol-backed adapter.
         let table = ACCOUNTS_TABLE
@@ -1661,7 +1661,7 @@ supports_isolation = true
     }
 
     /// An adapter may declare accounts without declaring a probe: plenty of
-    /// harnesses have no way to say who is signed in, and that has to load
+    /// agents have no way to say who is signed in, and that has to load
     /// rather than being a schema error.
     #[test]
     fn an_accounts_table_with_no_probe_at_all_is_fine() {
@@ -1672,11 +1672,11 @@ supports_isolation = true
         assert!(acc.whoami_args.is_empty());
     }
 
-    /// Each of the three bundled harnesses answers differently, and the file is
+    /// Each of the three bundled agents answers differently, and the file is
     /// where that measurement is spent. Read as a set rather than one at a time:
     /// the moment two of them shared a kind, one of them would be a guess.
     #[test]
-    fn each_measured_harness_declares_the_shape_of_its_own_answer() {
+    fn each_measured_agent_declares_the_shape_of_its_own_answer() {
         let kinds: Vec<(String, Option<WhoamiKind>)> = BUNDLED
             .iter()
             .filter_map(|(source, text)| load_adapter_str(text, source).ok())
@@ -1694,7 +1694,7 @@ supports_isolation = true
     }
 
     /// OpenCode's `auth logout` needs a provider argument and prompts without
-    /// one, so there is no single command that signs the harness out. The empty
+    /// one, so there is no single command that signs the agent out. The empty
     /// list is what makes the removal flow ask instead of running something that
     /// would sit waiting for a keystroke.
     #[test]
@@ -1813,7 +1813,7 @@ supports_isolation = true
     ///
     /// Codex and OpenCode declare `[accounts]` too, and neither claims
     /// isolation, which is the distinction worth keeping sharp: declaring a
-    /// table says "here is how this harness signs in", and `supports_isolation`
+    /// table says "here is how this agent signs in", and `supports_isolation`
     /// says "and two accounts can hold it at once". `CODEX_HOME` and
     /// `XDG_DATA_HOME` were both measured relocating a credential store, which
     /// is *not* the same claim: nobody has run two accounts side by side on
@@ -1843,7 +1843,7 @@ supports_isolation = true
         // The annotation table is not a model list and must never grow into one.
         // Its predecessor `[[chat.models]]` declared four models with labels,
         // windows and effort levels, and was measurably wrong: Opus 5 and Sonnet
-        // 5 both said 200000 while the harness reports 1000000 for each on
+        // 5 both said 200000 while the agent reports 1000000 for each on
         // `result.modelUsage` (dev/fixtures/claude/plain-turn.jsonl,
         // fast-mode.jsonl), and Fable's figure was inferred from a `[1m]` suffix
         // by a build that had never run a Fable turn.
@@ -1988,7 +1988,7 @@ supports_isolation = true
         );
     }
 
-    /// A harness whose modes are named nothing like Claude's, used wherever a
+    /// A agent whose modes are named nothing like Claude's, used wherever a
     /// resolver has to be shown not to have Claude's vocabulary baked in.
     /// These are Gemini's real `--approval-mode` values, and none of them is
     /// the literal `"default"` that Sway used to fall back to.
@@ -2016,7 +2016,7 @@ default = true
 
     /// The fallback must be the mode the *adapter* nominates, never the literal
     /// `"default"`: that string is Claude's spelling, and a resolver carrying it
-    /// would quietly pick nothing at all on a harness that does not use it.
+    /// would quietly pick nothing at all on a agent that does not use it.
     #[test]
     fn the_default_mode_is_the_one_the_adapter_marks() {
         let chat = foreign_chat();
@@ -2249,7 +2249,7 @@ default = true
     }
 
     /// The doc's ACP example is the load-bearing one now: it is the file a user
-    /// writes to add a harness, and it claims to be *complete*. If it stopped
+    /// writes to add a agent, and it claims to be *complete*. If it stopped
     /// validating, the shortest path into Sway would be a broken copy-paste.
     #[test]
     fn adapters_md_acp_example_parses_and_needs_no_session_plumbing() {

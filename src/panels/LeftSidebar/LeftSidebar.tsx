@@ -53,7 +53,7 @@ import {
   type Rollup,
 } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import {
   sessions,
   fetchSessions,
@@ -1716,7 +1716,7 @@ export default function LeftSidebar(props: {
     // removes one, and all that happens here is that Sway stops listing it.
     // Saying "its history is removed" there would promise something Sway cannot
     // do, and the promise would be believed.
-    const hasTranscript = findAgent(s.agent ?? "claude").parser_kind != null;
+    const hasTranscript = findAdapter(s.agent ?? "claude").parser_kind != null;
     const ok = await askConfirm({
       title: hasTranscript ? "Delete this session’s transcript?" : "Forget this session?",
       message: hasTranscript

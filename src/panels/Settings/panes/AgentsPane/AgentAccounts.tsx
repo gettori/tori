@@ -17,7 +17,7 @@ import styles from "../../Settings.module.css";
 // It never reads a credential. On macOS there is nothing to read: Phase 0
 // measured that `claude` keeps its tokens in the login Keychain, keyed by config
 // dir, so a profile home holds no secret at all. Everything on this screen came
-// out of the harness's own `whoami` probe.
+// out of the agent's own `whoami` probe.
 //
 // It never completes a login itself. `claude auth login` is browser OAuth with
 // no non-interactive variant, so the button opens a real terminal tab and gets
@@ -60,7 +60,7 @@ export type AccountsView = {
 const SIGN_IN_LABEL: Record<SignIn, string> = {
   signedIn: "Signed in",
   signedOut: "Signed out",
-  // Not a failure and not a warning: plenty of harnesses have no way to say.
+  // Not a failure and not a warning: plenty of agents have no way to say.
   unknown: "Sign-in state unknown",
 };
 
@@ -115,7 +115,7 @@ function ProfileRow(props: {
       const first = await call(false);
       // "Needs confirming" arrives as a value rather than an error, so this
       // never has to tell it apart from a refusal by reading the message. The
-      // other refusals are final - a session in flight, a logout the harness
+      // other refusals are final - a session in flight, a logout the agent
       // rejected - and offering "remove anyway?" for those would be offering
       // something the backend will refuse again.
       if (first.type === "removed") {
@@ -139,7 +139,7 @@ function ProfileRow(props: {
       <strong>{p().label}</strong>
       {p().isDefault ? " (your existing login)" : ""} · {SIGN_IN_LABEL[p().signIn]}
       <Show when={p().account}>{(account) => <> · {account()}</>}</Show>
-      {/* The harness's own answer about which credential it will bill against,
+      {/* The agent's own answer about which credential it will bill against,
           not Sway reading its environment and guessing which variables matter
           to which agent. A notice, never a block: the session still runs. */}
       <Show when={p().apiKeySource}>
@@ -176,7 +176,7 @@ function ProfileRow(props: {
   );
 }
 
-export default function HarnessAccounts(props: { agentId: string; agentLabel: string }) {
+export default function AgentAccounts(props: { agentId: string; agentLabel: string }) {
   const [view, { refetch }] = createResource(
     () => props.agentId,
     (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }),
@@ -211,7 +211,7 @@ export default function HarnessAccounts(props: { agentId: string; agentLabel: st
 
   // Re-probe both: this screen's per-profile answers and the cached sweep the
   // picker and the status line above read. Otherwise removing the account a
-  // harness was signed in to would leave it offered for new sessions.
+  // agent was signed in to would leave it offered for new sessions.
   // Refresh before refetch, in that order: this list reads the default
   // profile's answer out of the cached sweep, so refetching first would read
   // the answer that was true before whatever just happened.
@@ -251,12 +251,12 @@ export default function HarnessAccounts(props: { agentId: string; agentLabel: st
   return (
     // An adapter that declares no `[accounts]` table renders nothing at all,
     // rather than a set of controls that cannot do anything. "Sway has nothing
-    // true to say about this harness's accounts" is not the same claim as
+    // true to say about this agent's accounts" is not the same claim as
     // "nobody is signed in".
     <Show when={view()?.declared && view()}>
       {(v) => (
         <>
-          {/* Its own heading rather than the detail page's, so a harness whose
+          {/* Its own heading rather than the detail page's, so a agent whose
               adapter declares no accounts table gets no empty section. */}
           <div class={styles.groupHead}>
             <span class={styles.groupTitle}>Accounts</span>
@@ -293,7 +293,7 @@ export default function HarnessAccounts(props: { agentId: string; agentLabel: st
           <Show when={nameReq()}>
             <PromptModal
               title={`Name for the new ${props.agentLabel} account`}
-              note="Sway's own label for it. The harness never sees this."
+              note="Sway's own label for it. The agent never sees this."
               okLabel="Create and sign in"
               onSubmit={(v) => resolveName(v)}
               onCancel={() => resolveName(null)}

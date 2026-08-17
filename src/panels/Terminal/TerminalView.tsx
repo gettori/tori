@@ -10,7 +10,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import { refusalMessage, refusalOf, type ClaimOutcome, type Refusal } from "../../utils/chatOwnership";
 import { settings, terminalFontSize } from "../Settings/settingsStore";
 import { ensureFontLoaded } from "../../utils/fontLoad";
@@ -86,7 +86,7 @@ export default function TerminalView(props: {
   args: string[];
   init?: string;
   /** Extra environment for this tab's process. Only a sign-in tab carries one:
-   *  the profile's home variable, which is what makes the harness write its
+   *  the profile's home variable, which is what makes the agent write its
    *  credentials into that account's home rather than the default one. */
   env?: Record<string, string>;
   // The agent session this tab resumes. Absent for shell/command tabs and for a
@@ -299,7 +299,7 @@ export default function TerminalView(props: {
     // Agent tabs use their adapter's own (empirically measured) quiet
     // threshold for the pty://activity working/needs-you pulse; shell/command
     // tabs fall back to the backend's default.
-    const quietMs = props.kind === "agent" ? findAgent(props.program).pty_quiet_ms : null;
+    const quietMs = props.kind === "agent" ? findAdapter(props.program).pty_quiet_ms : null;
 
     const spawned = await invoke<PtySpawnResult>("pty_spawn", {
       id: props.id,

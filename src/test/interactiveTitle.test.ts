@@ -187,17 +187,17 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
-  ["panels/Settings/panes/HarnessPane/HarnessAccounts.tsx", { count: 2, reason: HEADING }],
-  ["panels/Settings/panes/HarnessPane/HarnessSection.tsx", { count: 1, reason: HEADING }],
+  ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 2, reason: HEADING }],
+  ["panels/Settings/panes/AgentsPane/AgentsSection.tsx", { count: 1, reason: HEADING }],
   [
-    "panels/Settings/panes/HarnessPane/HarnessDetail.tsx",
+    "panels/Settings/panes/AgentsPane/AgentDetail.tsx",
     {
       count: 4,
       reason: `three ${TRUNCATION}, and the explanation on a struck-through capability chip, which matches the one on the chips beside it`,
     },
   ],
   ["panels/Settings/components/paneKit.tsx", { count: 2, reason: TRUNCATION }],
-  ["panels/Settings/panes/HarnessPane/HarnessPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/AgentsPane/AgentsPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/AppearancePane/AppearancePane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
@@ -236,7 +236,7 @@ const KEPT = new Map<string, Kept>([
  *  this guard, which is worth knowing before the next one is written.
  *
  *  **Net one up on the redesign**, and not in the direction this guard wants:
- *  the harness detail page explains each capability chip with hover text on a
+ *  the agent detail page explains each capability chip with hover text on a
  *  `span` nothing can focus. It is the established chip pattern rather than a
  *  new idea, so it is pinned here rather than blocked, and the `code` entry
  *  went with the card layout that carried it. */
@@ -333,7 +333,7 @@ describe("the title= guard", () => {
     // touch, now that everything else is gone. Written as the breakdown rather
     // than the total, so a `span` that turned into a `button` fails here even
     // if some other file lost one and the sum still came out right.
-    // The lone `code` is gone and `span` is up two: the harness cards' capability
+    // The lone `code` is gone and `span` is up two: the agent cards' capability
     // list became chips on a detail page, so the same explanations moved onto a
     // different element and two more joined them. The breakdown is what makes
     // that visible rather than a silent wash against some other file's loss.

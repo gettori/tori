@@ -41,7 +41,7 @@ const FORMAT_VERSION: u32 = 2;
 pub struct SessionUsage {
     pub tokens: u64,
     /// `None` until some turn actually reported a cost, so a session whose
-    /// harness reports no money reads as "unknown" rather than as free.
+    /// agent reports no money reads as "unknown" rather than as free.
     #[serde(default)]
     pub cost_usd: Option<f64>,
     /// Turns Sway watched finish, which is what the two figures above are the

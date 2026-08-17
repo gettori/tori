@@ -47,7 +47,7 @@ export function loginTab(
     program: route.program,
     args: route.args,
     kind: "command",
-    // The whole mechanism of a second account. Without it the harness writes
+    // The whole mechanism of a second account. Without it the agent writes
     // into the login the user already had, and Sway would show two profiles
     // that are one account.
     ...(route.home ? { env: { [route.home[0]]: route.home[1] } } : {}),

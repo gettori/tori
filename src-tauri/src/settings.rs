@@ -430,14 +430,14 @@ pub struct EditorPrefs {
     pub format_on_save: Option<bool>,
 }
 
-/// The harness binary this install drives.
+/// The agent binary this install drives.
 ///
 /// `path` overrides discovery. Empty means "use the discovered one", which is
 /// the normal case; an override is for a user running a build that is not on
 /// the login shell's PATH.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Harness {
+pub struct Agent {
     #[serde(default)]
     pub path: Option<String>,
 }
@@ -459,8 +459,12 @@ pub struct Settings {
     pub budgets: Budgets,
     #[serde(default)]
     pub editor_defaults: EditorDefaults,
-    #[serde(default)]
-    pub harness: Harness,
+    /// Read from `harness` too, because that is what this block was called on
+    /// disk until the vocabulary was unified. Dropping the alias would not error
+    /// - it would silently read the default and lose a user's binary override,
+    /// which is exactly the kind of loss nobody reports as a bug.
+    #[serde(default, alias = "harness")]
+    pub agent: Agent,
     /// Keyed by project path. Untyped as a map rather than a list so a project
     /// that has never been opened simply has no entry, instead of needing one
     /// written before the first pick can be stored.
@@ -567,14 +571,14 @@ pub fn get_settings() -> Settings {
     load_from(&settings_path())
 }
 
-/// The user's harness binary override, if they set a non-empty one.
+/// The user's agent binary override, if they set a non-empty one.
 ///
 /// Read from disk at each call rather than cached: the setting's whole purpose
 /// is to point at a different binary, and requiring a restart to try one would
 /// make it useless for exactly the debugging it exists for. A blank string is
 /// treated as unset so clearing the field in the UI restores discovery.
-pub fn harness_override() -> Option<String> {
-    let path = load_from(&settings_path()).harness.path?;
+pub fn agent_override() -> Option<String> {
+    let path = load_from(&settings_path()).agent.path?;
     let trimmed = path.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
@@ -668,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn chat_defaults_and_harness_round_trip_through_the_file() {
+    fn chat_defaults_and_agent_round_trip_through_the_file() {
         let p = tmp_file();
         let s = Settings {
             chat_defaults: ChatDefaults {
@@ -682,11 +686,11 @@ mod tests {
                 show_sway_hooks: true,
                 max_concurrent_chats: 9,
             },
-            harness: Harness { path: Some("/opt/claude".into()) },
+            agent: Agent { path: Some("/opt/claude".into()) },
             ..Default::default()
         };
         save_to(&p, &s).unwrap();
-        assert_eq!(load_from(&p), s, "every chat and harness field survived the round trip");
+        assert_eq!(load_from(&p), s, "every chat and agent field survived the round trip");
 
         // Under the name the frontend sends, or the round trip only works
         // between this struct and itself - the half of the trap that a
@@ -920,7 +924,7 @@ mod tests {
         assert_eq!(back.chat_defaults.tool_output_lines, 20);
         // Sway's own hook noise stays folded until asked for.
         assert!(!back.chat_defaults.show_sway_hooks);
-        assert_eq!(back.harness.path, None);
+        assert_eq!(back.agent.path, None);
         // And the section it did carry is untouched.
         assert_eq!(back.appearance.theme, "sway-dark");
     }

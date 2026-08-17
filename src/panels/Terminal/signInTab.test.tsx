@@ -5,7 +5,7 @@ import { render, waitFor } from "@solidjs/testing-library";
 // of them are silent when they break.
 //
 // The profile's home variable has to reach the spawned process: without it the
-// harness writes into the login the user already had, reports success, and
+// agent writes into the login the user already had, reports success, and
 // leaves two profiles that are one account.
 //
 // The re-probe has to happen when the process ends: without it a finished login
@@ -131,7 +131,7 @@ describe("a sign-in tab", () => {
   });
 
   // Abandoning the tab ends the process too, and re-probing then is right: it
-  // re-reads the harness and finds it unchanged, rather than leaving a stale
+  // re-reads the agent and finds it unchanged, rather than leaving a stale
   // answer behind after a cancel.
   it("re-probes once per tab, not once per exit event", async () => {
     mount();

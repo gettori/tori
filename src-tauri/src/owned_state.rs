@@ -9,7 +9,7 @@
 //! `chat/rules.rs`, next to the permission-rule engine, because that engine was
 //! the first thing to need a durable per-project store. Five other callers
 //! followed it there. When the rule engine was deleted (Sway no longer decides
-//! tool calls; the harness does) the plumbing had to survive it, and a shared
+//! tool calls; the agent does) the plumbing had to survive it, and a shared
 //! helper reached through `chat::rules::` would have been a module named after
 //! the one job it no longer does.
 //!
@@ -38,9 +38,9 @@ pub fn project_state_path(kind: &str, cwd: &str) -> PathBuf {
 
 /// Reduce a value to a bare path segment.
 ///
-/// The values reaching this are basenames and harness session ids, so it should
+/// The values reaching this are basenames and agent session ids, so it should
 /// never do anything - which is exactly why it is here: the result is
-/// concatenated into a path, and a `..` or a `/` arriving from a harness we do
+/// concatenated into a path, and a `..` or a `/` arriving from a agent we do
 /// not control must not be able to point the file somewhere else.
 fn sanitize_segment(value: &str) -> String {
     value

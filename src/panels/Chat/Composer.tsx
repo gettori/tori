@@ -53,7 +53,7 @@ export default function Composer(props: {
   /** The running turn can take input right now, so Enter steers it rather than
    *  queueing for the next one. False for the window between Enter and the
    *  child's acknowledgement, where there is no turn to steer yet, and false
-   *  for a harness whose declared tier cannot take input mid-turn. */
+   *  for a agent whose declared tier cannot take input mid-turn. */
   steering: boolean;
   /** How long a steer took when it was measured (`"1.5-5.4s"`), or null when
    *  there is nothing to quote. Shown rather than dropped, because the one

@@ -10,10 +10,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 // between them must not cost the reader their place. The list reports the turn
 // it was showing as it goes away, and opens on that turn when it comes back.
 //
-// Exercised through a `<Show>` toggle rather than through the test harness's
+// Exercised through a `<Show>` toggle rather than through the test agent's
 // `unmount`, because that is the real mechanism: ChatView swaps the two views
 // with a `<Show>`, and disposing that branch is what runs the cleanup. The
-// harness's `unmount` clears the container without disposing, so a test built
+// agent's `unmount` clears the container without disposing, so a test built
 // on it would prove nothing about the app.
 
 // No cast: `as ChatItem` would let a fixture omit a field the store always
@@ -165,7 +165,7 @@ describe("MessageList turn anchoring", () => {
   });
 });
 
-// A compaction summary is the harness's own text, several hundred words of it,
+// A compaction summary is the agent's own text, several hundred words of it,
 // and it used to sit inline in the middle of the conversation. The boundary is
 // what the reader needs at a glance; the summary is what they go looking for
 // afterwards, so only one of the two is open.

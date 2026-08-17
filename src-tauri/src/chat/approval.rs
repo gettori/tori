@@ -13,19 +13,19 @@
 //! `can_use_tool` control request that `claude_transport.rs` answers. The two
 //! cannot both be live for one call, and the hook wins: a `PreToolUse` `allow`
 //! short-circuits the rest of the chain, so a hook that answers every tool means
-//! the harness is never reached and never asks (measured three ways in
+//! the agent is never reached and never asks (measured three ways in
 //! `dev/protocol-probe.mjs`). So the hook stopped answering, and now it is gone:
-//! Sway decides no tool call, in any mode, for any harness.
+//! Sway decides no tool call, in any mode, for any agent.
 //!
 //! **What is left is a capture, and only a capture.** The helper matches the
 //! write tools, exits 0 emitting **no** decision at all - which lets the chain
-//! continue to the harness while the hook still runs - and the one thing it does
+//! continue to the agent while the hook still runs - and the one thing it does
 //! on the way is hand Sway the file's prior contents, synchronously, before the
 //! write lands. A before-state captured after the write is not a before-state,
 //! which is the whole reason a socket is involved rather than a fire-and-forget.
 //!
 //! **It is fail-open, deliberately.** Whatever goes wrong - no socket, wrong
-//! token, a dead server - the harness is still going to ask, and denying here
+//! token, a dead server - the agent is still going to ask, and denying here
 //! would be Sway gating again by the back door on the one path built to have
 //! stopped. The cost of a failure is a tool card with no diff.
 //!
@@ -67,7 +67,7 @@ fn matcher() -> String {
     super::snapshot::WRITE_TOOLS.join("|")
 }
 
-/// How long a harness may leave an in-protocol permission question unanswered.
+/// How long a agent may leave an in-protocol permission question unanswered.
 ///
 /// Must stay **strictly below** [`HOOK_TIMEOUT_SECS`], which is what the CLI is
 /// told. Sway owning the deadline is the point: if the CLI's timeout fired
@@ -120,7 +120,7 @@ pub const SWAY_HOOK_MARKER: &str = "swayApproval";
 ///
 /// **There is deliberately no `permissionDecision` here.** Measured on claude
 /// 2.1.231, any `permissionDecision` ends the permission chain at the hook, so
-/// emitting one would take the question away from the harness - the exact
+/// emitting one would take the question away from the agent - the exact
 /// failure this whole change exists to undo.
 ///
 /// Measured alongside it on claude 2.1.232: an output carrying **only** unknown
@@ -149,7 +149,7 @@ pub fn is_helper() -> bool {
 /// Everything the helper reads out of a `PreToolUse` payload.
 ///
 /// **`permission_mode` is deliberately not here**, though the payload carries
-/// it. Nothing in Sway is entitled to branch on it: the mode is the harness's
+/// it. Nothing in Sway is entitled to branch on it: the mode is the agent's
 /// own control, and a helper that read it would be a helper capable of behaving
 /// differently in one mode than another - which is a gate, however small.
 pub struct HookInputs {
@@ -203,7 +203,7 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) {
         return;
     }
     let req = HookRequest { token: token.to_string(), session_id, tool_use_id, tool_name, tool_input };
-    // Fail-open: whatever went wrong, the harness is still going to ask, and
+    // Fail-open: whatever went wrong, the agent is still going to ask, and
     // refusing here would be Sway gating again by the back door. The round trip
     // is still synchronous, because a before-state captured after the write is
     // not a before-state.
@@ -213,7 +213,7 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) {
 /// Exit 0 having written the marker and no decision.
 ///
 /// Measured on claude 2.1.231: a `PreToolUse` hook that exits 0 without a
-/// `permissionDecision` lets the permission chain continue to the harness, while
+/// `permissionDecision` lets the permission chain continue to the agent, while
 /// any `permissionDecision` ends the chain there. A stdout that cannot be
 /// written is not worth a non-zero exit - the capture already happened, and all
 /// that is lost is the row's attribution.
@@ -589,7 +589,7 @@ mod tests {
     }
 
     /// The 104-byte `sun_path` cap. The session id is not in the path, which is
-    /// the whole reason this holds however long an id a harness mints.
+    /// the whole reason this holds however long an id a agent mints.
     #[test]
     fn socket_paths_stay_under_the_darwin_104_byte_cap() {
         let (server, _observed) = observing_server();
@@ -626,7 +626,7 @@ mod tests {
 
     /// **The claim the whole change rests on**: the helper emits no
     /// `permissionDecision`. Any decision ends the permission chain at the hook,
-    /// so a helper that answered here would suppress the harness's own question
+    /// so a helper that answered here would suppress the agent's own question
     /// for exactly the write tools this hook is narrowed to.
     ///
     /// It does emit the marker, which carries no decision and is what lets a
@@ -636,7 +636,7 @@ mod tests {
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
         assert_eq!(out[SWAY_HOOK_MARKER], true);
         assert_eq!(out.as_object().unwrap().len(), 1, "the marker is the whole output: {out}");
-        assert!(out.get("hookSpecificOutput").is_none(), "a decision here would short-circuit the harness");
+        assert!(out.get("hookSpecificOutput").is_none(), "a decision here would short-circuit the agent");
     }
 
     /// The capture happens, and it happens without the helper deciding anything.

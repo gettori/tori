@@ -3,7 +3,7 @@
 //
 // Both are mirrors of `catalog_probe.rs`, and both have a case that looks like
 // an edge and is not: an alias-heavy catalogue is the normal one, and a
-// version-less binary is two of the four harnesses Sway ships adapters for.
+// version-less binary is two of the four agents Sway ships adapters for.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -32,13 +32,13 @@ const model = (value: string, resolvedModel: string): CatalogModel => ({
 });
 
 const withModels = (models: CatalogModel[], version: string | null = "2.1.231"): ModelCatalog => ({
-  harnessId: "claude",
+  agentId: "claude",
   state: "probed",
   catalogue: { version, probedAtMs: 0, models, modes: [], account: null },
   lastFailure: null,
 });
 
-describe("counting what a harness offers", () => {
+describe("counting what a agent offers", () => {
   it("counts one model once, however many names the catalogue gives it", () => {
     const catalog = withModels([
       model("default", "claude-sonnet-5"),
@@ -58,10 +58,10 @@ describe("counting what a harness offers", () => {
     expect(distinctModelCount(catalog)).toBe(2);
   });
 
-  it("answers zero for a harness with nothing remembered", () => {
+  it("answers zero for a agent with nothing remembered", () => {
     expect(distinctModelCount(undefined)).toBe(0);
     expect(
-      distinctModelCount({ harnessId: "solo", state: "neverProbed", catalogue: null, lastFailure: null }),
+      distinctModelCount({ agentId: "solo", state: "neverProbed", catalogue: null, lastFailure: null }),
     ).toBe(0);
   });
 });
@@ -75,13 +75,13 @@ describe("whether a remembered answer still describes the binary", () => {
 
   // Neither unknown-version case is evidence that anything changed, and treating
   // absence of evidence as staleness would re-probe a version-less binary on
-  // every read. Such a harness comes back through Ask again.
+  // every read. Such a agent comes back through Ask again.
   it("says fresh when either side has no version to compare", () => {
     expect(isStale(withModels([], null), "2.1.231")).toBe(false);
     expect(isStale(withModels([]), null)).toBe(false);
   });
 
-  it("says fresh for a harness that never answered, which has nothing to be stale", () => {
+  it("says fresh for a agent that never answered, which has nothing to be stale", () => {
     expect(isStale(undefined, "2.1.231")).toBe(false);
   });
 });
@@ -91,7 +91,7 @@ describe("whether a remembered answer still describes the binary", () => {
 // free and a probe is not, which is why they are separate commands at all.
 describe("the shared store", () => {
   const opencode = (): ModelCatalog => ({
-    harnessId: "opencode",
+    agentId: "opencode",
     state: "probed",
     catalogue: {
       version: "1.18.3",
@@ -103,7 +103,7 @@ describe("the shared store", () => {
     lastFailure: null,
   });
   const unasked = (): ModelCatalog => ({
-    harnessId: "claude",
+    agentId: "claude",
     state: "neverProbed",
     catalogue: null,
     lastFailure: null,
@@ -119,12 +119,12 @@ describe("the shared store", () => {
     });
   });
 
-  it("hands each harness its own remembered answer and nobody else's", async () => {
+  it("hands each agent its own remembered answer and nobody else's", async () => {
     await ensureModelCatalogsLoaded();
     expect(cachedModels(catalogFor("opencode")).map((m) => m.value)).toEqual([
       "anthropic/claude-sonnet-4.6",
     ]);
-    // The row an unasked harness gets is an empty list, which `pickableModels`
+    // The row an unasked agent gets is an empty list, which `pickableModels`
     // reads as "no models" rather than as a list worth offering.
     expect(cachedModels(catalogFor("claude"))).toEqual([]);
     expect(cachedModels(catalogFor("nothing-here"))).toEqual([]);
@@ -135,9 +135,9 @@ describe("the shared store", () => {
     expect(invoked.mock.calls.map(([cmd]) => cmd)).toEqual(["model_catalogs"]);
   });
 
-  // Opening a chat is already launching that harness, so asking it costs nothing
+  // Opening a chat is already launching that agent, so asking it costs nothing
   // new. Asking one that answered about the binary now installed would.
-  it("asks a harness nobody has asked, and leaves a current answer alone", async () => {
+  it("asks a agent nobody has asked, and leaves a current answer alone", async () => {
     await refreshCatalogIfDue("claude");
     expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(1);
 

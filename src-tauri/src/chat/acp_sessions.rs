@@ -1,6 +1,6 @@
 //! Sway's own record of the ACP sessions it knows about.
 //!
-//! Every other harness Sway drives keeps its sessions as files Sway can read:
+//! Every other agent Sway drives keeps its sessions as files Sway can read:
 //! `agents::Discovery` names the directory, `ParserKind` names the format, and
 //! `SessionMeta.path` points at the transcript. An ACP agent keeps its history
 //! privately and hands out an opaque `sessionId`; there is no file to point at
@@ -31,7 +31,7 @@ pub struct AcpSession {
     /// Sway's own id for the session: what the ownership registry claims, what
     /// a tab addresses, and what names this locator file.
     pub id: String,
-    /// The adapter that produced it, so a listing can say which harness a row
+    /// The adapter that produced it, so a listing can say which agent a row
     /// belongs to without guessing from the id's shape.
     pub agent: String,
     /// The agent's own session id, which is the only thing `session/load`
@@ -408,7 +408,7 @@ mod tests {
         assert_eq!(rows[0].cwd, "/elsewhere");
     }
 
-    /// Matching is per agent: two harnesses are free to hand out the same id
+    /// Matching is per agent: two agents are free to hand out the same id
     /// string, and treating them as one session would open the wrong history.
     #[test]
     fn a_row_from_another_agent_is_not_mistaken_for_this_one() {

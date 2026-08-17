@@ -38,7 +38,7 @@ export type SettingSection =
   | "editing"
   | "checkpoints"
   | "chat"
-  | "harness";
+  | "agent";
 
 /**
  * A tab in the panel's strip, in the order the strip renders them.
@@ -82,16 +82,18 @@ export type SettingTabDef = {
  * The six tabs, in rail order.
  *
  * The pairings are the ones that read as one subject rather than the ones that
- * happen to be adjacent today: the harness binary is a property of the agent
+ * happen to be adjacent today: the agent binary is a property of the agent
  * that runs it, checkpoints are what makes a chat's turns revertible, and the
  * two Editor sections were already titled the same thing.
  *
- * "Harnesses" rather than "Agents" because the catalogue's 31 entries are agents
- * too. Only the label moved; the id stays `agents`, so settings.json, the
- * schemas and every `Preferences:` command are untouched.
+ * This tab was briefly labelled "Harnesses", to keep it apart from the ~31
+ * catalogue entries below the cards, which are agents too. The vocabulary is one
+ * word now, so it reads "Agents" again and the catalogue's rows carry the
+ * qualifier instead. The id never moved either way: it stays `agents`, so
+ * settings.json, the schemas and every `Preferences:` command are untouched.
  */
 export const SETTING_TABS: SettingTabDef[] = [
-  { id: "agents", label: "Harnesses", group: "Workbench", icon: "bot", sections: ["agents", "harness"] },
+  { id: "agents", label: "Agents", group: "Workbench", icon: "bot", sections: ["agents", "agent"] },
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
@@ -114,7 +116,7 @@ export function tabOfEntry(id: string): SettingTab | undefined {
 }
 
 export const SECTION_TITLES: Record<SettingSection, string> = {
-  agents: "Harnesses",
+  agents: "Agents",
   lsp: "Language servers",
   dap: "Debuggers",
   github: "GitHub",
@@ -124,7 +126,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   editing: "Editor",
   checkpoints: "Checkpoints",
   chat: "Chat",
-  harness: "Harness",
+  agent: "Agent",
 };
 
 export type SettingEntry = {
@@ -161,7 +163,7 @@ export const SETTINGS: SettingEntry[] = [
   {
     id: "agents",
     section: "agents",
-    label: "Harnesses",
+    label: "Agents",
     hint: "Which agent CLIs Sway found on your PATH, their versions, and the drift from what its adapters were built against.",
   },
   {
@@ -360,8 +362,8 @@ export const SETTINGS: SettingEntry[] = [
   },
 
   {
-    id: "harness-path",
-    section: "harness",
+    id: "agent-path",
+    section: "agent",
     label: "Binary path",
     hint: "Overrides the discovered agent binary for new chat sessions. Leave it empty to use the one found in Agents.",
   },

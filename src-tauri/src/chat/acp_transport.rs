@@ -350,7 +350,7 @@ fn split_options(
 pub struct AcpTransport {
     shared: Arc<Shared>,
     /// The adapter this session belongs to. Recorded in every locator this
-    /// transport writes, so a listed row can say which harness it came from
+    /// transport writes, so a listed row can say which agent it came from
     /// rather than leaving the sidebar to guess from the id's shape.
     agent: String,
     /// The command channel into the connection thread. `None` before `start`,
@@ -717,7 +717,7 @@ async fn run_session(
 
 /// Park a permission question and show it, rather than answering it here.
 ///
-/// Sway never decides a permission itself: the harness owns permissions and Sway
+/// Sway never decides a permission itself: the agent owns permissions and Sway
 /// only carries the question to the user and the answer back. Auto-answering
 /// anything here - even a deny - would be Sway deciding.
 fn park_permission_request(
@@ -1568,7 +1568,7 @@ mod tests {
         assert!(!with_selector.contains("still opening"), "{with_selector}");
     }
 
-    /// ACP has no mid-turn delivery, and the trait says a harness without one
+    /// ACP has no mid-turn delivery, and the trait says a agent without one
     /// must refuse rather than quietly queue. A queued turn looks exactly like
     /// a steer that landed to everything upstream.
     #[test]
@@ -1885,7 +1885,7 @@ mod tests {
     /// Nothing here names a program, an argument or a quirk. Every one of those
     /// is read out of the bundled `opencode.toml`, so if this passes then adding
     /// OpenCode really did cost a TOML file and no Rust - which is the claim
-    /// [[adr_harness_breadth]] rests on and the reason the ACP transport exists
+    /// [[adr_agent_breadth]] rests on and the reason the ACP transport exists
     /// rather than a second typed adapter.
     ///
     /// **The permission half needed the agent's own config, not Sway's.**
@@ -1894,8 +1894,8 @@ mod tests {
     /// different agent. Measured here: with `permission.edit = "ask"` in the
     /// agent's own `opencode.json`, it asks - offering `once`, `always` and
     /// `reject`. That whether-to-ask is the agent's setting and not Sway's is
-    /// exactly [[sway-harness-owns-permissions]], so the fix was to configure the
-    /// harness rather than to add anything here.
+    /// exactly [[sway-agent-owns-permissions]], so the fix was to configure the
+    /// agent rather than to add anything here.
     #[test]
     #[ignore = "drives the real `opencode acp` binary: costs tokens"]
     fn an_acp_agent_is_driven_entirely_from_its_own_adapter_toml() {
@@ -2175,7 +2175,7 @@ mod tests {
     /// This is the same fact `[[gotchas#ensure_inside returns the caller's
     /// unresolved path]]` records from the install side and Phase 0 measured on
     /// `CLAUDE_CONFIG_DIR`: on macOS one directory has two spellings, and a
-    /// harness that compares paths as strings sees two directories.
+    /// agent that compares paths as strings sees two directories.
     #[test]
     fn two_spellings_of_one_directory_resolve_to_one_path() {
         let base = std::env::temp_dir().join(format!("sway-samedir-{}", std::process::id()));
@@ -2279,7 +2279,7 @@ mod tests {
 
         let earlier = acp_sessions::read("live-codex-list-a")
             .expect("the first session must leave a locator");
-        assert_eq!(earlier.agent, "codex", "a locator names the harness that wrote it");
+        assert_eq!(earlier.agent, "codex", "a locator names the agent that wrote it");
 
         // **The store is wiped before the second connection, and that is the
         // whole design of this test.** `session/new` records a locator of its
@@ -2445,7 +2445,7 @@ mod tests {
     ///
     /// Note what this test does *not* prove: no `PermissionRequest` arrives,
     /// because OpenCode's own configuration approved the write without asking.
-    /// That is the harness owning permissions working as intended, and it means
+    /// That is the agent owning permissions working as intended, and it means
     /// the in-protocol prompt path stays covered by the unit tests above rather
     /// than by this one.
     #[test]
@@ -2571,7 +2571,7 @@ mod tests {
     /// asks before writing a file and offers three options of its own
     /// (`reject`, `allow`, `allow_always`). OpenCode does not ask under its
     /// default configuration, which is why this test names a different agent
-    /// from the others: whether to ask is the harness's decision, not Sway's.
+    /// from the others: whether to ask is the agent's decision, not Sway's.
     #[test]
     #[ignore = "drives the real claude-agent-acp over npx: costs tokens and needs network"]
     fn a_live_permission_prompt_is_answered_in_the_agents_own_vocabulary() {

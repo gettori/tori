@@ -14,7 +14,7 @@ import manifestSource from "../../src-tauri/resources/dap/manifest.json?raw";
 
 /** A connection plus the frames it wrote, which is the whole observable
  *  surface: everything else is fed in through `receive`. */
-function harness() {
+function agent() {
   const sent: Record<string, unknown>[] = [];
   const conn = createDapConnection((message) => sent.push(JSON.parse(message)));
   return { conn, sent };
@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe("request correlation", () => {
   it("resolves a request by its request_seq, not by the response's own seq", async () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     const first = conn.request("stackTrace");
     const second = conn.request("scopes");
 
@@ -57,7 +57,7 @@ describe("request correlation", () => {
   });
 
   it("rejects on success:false, carrying the adapter's own message", async () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     const pending = conn.request("evaluate");
     conn.receive(
       response({
@@ -71,7 +71,7 @@ describe("request correlation", () => {
   });
 
   it("reads the error body first, which is where js-debug puts the text", async () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     const pending = conn.request("evaluate");
     // Measured against js-debug 1.117, verbatim: no `message` at all, and the
     // only readable text in `body.error.format`. Reading `message` first turned
@@ -94,7 +94,7 @@ describe("request correlation", () => {
   });
 
   it("fills the placeholders the spec puts in that text", async () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     const pending = conn.request("source");
     conn.receive(
       response({
@@ -110,12 +110,12 @@ describe("request correlation", () => {
   });
 
   it("ignores a response nothing is waiting for", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     expect(() => conn.receive(response({ request_seq: 4242, command: "ghost" }))).not.toThrow();
   });
 
   it("rejects everything in flight when the session goes away", async () => {
-    const { conn } = harness();
+    const { conn } = agent();
     const pending = conn.request("variables");
     conn.dispose("the debug session ended");
     await expect(pending).rejects.toThrow("the debug session ended");
@@ -127,7 +127,7 @@ describe("request correlation", () => {
 
 describe("event fan-out", () => {
   it("delivers one event to every subscriber", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     const seen: string[] = [];
     conn.on("stopped", (body) => seen.push(`a:${(body as { reason: string }).reason}`));
     conn.on("stopped", (body) => seen.push(`b:${(body as { reason: string }).reason}`));
@@ -138,7 +138,7 @@ describe("event fan-out", () => {
   });
 
   it("lets a subscriber unsubscribe from inside its own call", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     let calls = 0;
     const off = conn.on("initialized", () => {
       calls += 1;
@@ -151,7 +151,7 @@ describe("event fan-out", () => {
   });
 
   it("does not let one failing subscriber starve the next", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     let reached = false;
     conn.on("output", () => {
       throw new Error("boom");
@@ -166,7 +166,7 @@ describe("event fan-out", () => {
 
 describe("the reverse-request router", () => {
   it("answers every reverse request the adapter can send", () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
 
     for (const [index, command] of REVERSE_REQUESTS.entries()) {
       conn.receive(JSON.stringify({ seq: 100 + index, type: "request", command, arguments: {} }));
@@ -189,7 +189,7 @@ describe("the reverse-request router", () => {
   });
 
   it("answers a served request with its handler's body", async () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     conn.onReverse("startDebugging", () => ({}));
     expect(conn.refuses("startDebugging")).toBe(false);
 
@@ -199,7 +199,7 @@ describe("the reverse-request router", () => {
   });
 
   it("answers a handler that throws with a failure rather than nothing", () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     conn.onReverse("remoteFileExists", () => {
       throw new Error("no");
     });
@@ -208,13 +208,13 @@ describe("the reverse-request router", () => {
   });
 
   it("answers a name it has never heard of instead of leaving it hanging", () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     conn.receive(JSON.stringify({ seq: 9, type: "request", command: "somethingBrandNew" }));
     expect(sent[0]).toMatchObject({ request_seq: 9, success: false });
   });
 
   it("leaves a notification-shaped frame alone", () => {
-    const { conn, sent } = harness();
+    const { conn, sent } = agent();
     // No `seq` of its own to answer against, and no id: replying would put a
     // response on the wire that correlates with nothing.
     conn.receive(JSON.stringify({ type: "event", event: "runInTerminal" }));
@@ -233,7 +233,7 @@ describe("the reverse-request list", () => {
   });
 
   it("gives every name a router entry from birth", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     expect(conn.handledReverseRequests()).toEqual([...REVERSE_REQUESTS].sort());
   });
 });
@@ -254,7 +254,7 @@ describe("the initialize payload", () => {
   });
 
   it("declares a request-implying capability only when Sway actually serves it", () => {
-    const { conn } = harness();
+    const { conn } = agent();
     // A fresh connection refuses everything; the real handlers are installed by
     // `dapSessions.ts`, so this asserts the *default* posture is honest.
     for (const [capability, command] of Object.entries(CAPABILITY_OBLIGATIONS)) {

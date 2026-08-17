@@ -206,12 +206,12 @@ impl ClaudeMapper {
     /// asking whether a tool call may proceed.
     ///
     /// This is the request `--permission-prompt-tool stdio` turns on, and it is
-    /// the harness's *own* permission chain asking - so it fires only for calls
-    /// the harness itself has not already settled. Measured on claude 2.1.231
+    /// the agent's *own* permission chain asking - so it fires only for calls
+    /// the agent itself has not already settled. Measured on claude 2.1.231
     /// (`dev/protocol-probe.mjs`, scenario `permission-coverage`): `Write`,
     /// `WebFetch`, a non-safe-listed `Bash`, an MCP tool and a `Task` subagent's
     /// own call all ask; `Read` does not, and neither does anything under
-    /// `acceptEdits` or `bypassPermissions`. Those silences are the harness
+    /// `acceptEdits` or `bypassPermissions`. Those silences are the agent
     /// deciding, not a gap Sway has to cover.
     ///
     /// **Nothing is answered here.** The mapper's only job is to turn the frame
@@ -267,7 +267,7 @@ impl ClaudeMapper {
             modes: Vec::new(),
             account: self.account.clone(),
             // Claude advertises no capability set of its own. What Sway knows
-            // about this harness was measured and pinned in the chat tier, so
+            // about this agent was measured and pinned in the chat tier, so
             // there is nothing on the wire to carry - and `None` says exactly
             // that rather than claiming an agent that supports nothing.
             capabilities: None,
@@ -710,7 +710,7 @@ fn usage_from(raw: &Value) -> Usage {
 /// The actions a `can_use_tool` request offered, as the CLI wrote them.
 ///
 /// An entry whose `type` Sway does not know is **skipped**, not guessed at and
-/// not fatal: the list is the harness's, it grows on the harness's schedule, and
+/// not fatal: the list is the agent's, it grows on the agent's schedule, and
 /// one unknown offer must not cost the user the offers that came with it.
 fn suggestions(raw: &Value) -> Vec<PermissionSuggestion> {
     raw.as_array()
@@ -1404,7 +1404,7 @@ mod tests {
     }
 
     #[test]
-    fn the_harnesss_own_suggestions_are_carried_through() {
+    fn the_agents_own_suggestions_are_carried_through() {
         let mut m = ClaudeMapper::new("s1");
         let events = m.map(&can_use_tool(None));
         let Some(ChatEvent::PermissionRequest { suggestions, .. }) = events.first() else {

@@ -1,6 +1,6 @@
 // Pure helpers behind the Search panel's toggles. The panel itself is a thin
 // shell over these: anything with a decision in it lives here, where vitest can
-// reach it, because there is no component-test harness in this repo.
+// reach it, because there is no component-test agent in this repo.
 
 /** Mirrors `SearchOptions` in `src-tauri/src/search.rs`. Field names are the
  *  wire names (the Rust struct is `rename_all = "camelCase"`), so the keys here

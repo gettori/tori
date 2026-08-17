@@ -6,7 +6,7 @@ import type { AgentId } from "../../utils/agents";
 import { isUnderPath } from "../../utils/pathScope";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { SessionTarget } from "../../utils/safeSend";
-import { findAgent } from "../../utils/agents";
+import { findAdapter } from "../../utils/agents";
 import { editingNow } from "../../utils/editingNow";
 import HunkCommentInput from "./HunkCommentInput";
 import hunkStyles from "./HunkCommentInput.module.css";
@@ -163,7 +163,7 @@ export default function SessionPanel(props: {
   // (empty resume_args - ADAPTERS.md).
   function disabledReason(): string | null {
     if (!target()) return "Select a session first";
-    return findAgent(props.agent).resume_args.length === 0 ? "This agent's sessions can't be resumed" : null;
+    return findAdapter(props.agent).resume_args.length === 0 ? "This agent's sessions can't be resumed" : null;
   }
 
   createEffect(

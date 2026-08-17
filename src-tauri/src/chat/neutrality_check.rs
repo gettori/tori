@@ -1,10 +1,10 @@
 //! A compiling proof that `ChatEvent` is actually transport-neutral.
 //!
-//! "The model is harness-agnostic" is the kind of claim that is true when
+//! "The model is agent-agnostic" is the kind of claim that is true when
 //! written and quietly false a month later, because the only transport in the
 //! tree is Claude's and nothing pushes back when a Claude-shaped assumption
 //! leaks into the model. This module is the pushback: it declares the *source*
-//! event vocabularies of the two harnesses parked as handoffs - Codex's
+//! event vocabularies of the two agents parked as handoffs - Codex's
 //! `app-server` methods and ACP's `session/update` variants - and maps each
 //! one into a `ChatEvent` with an **exhaustive `match`**.
 //!
@@ -233,7 +233,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             request_id: "rpc-1".into(),
             auto_deny_at_ms: None,
             // Both are optional for exactly this reason: they are things one
-            // harness happens to send, not things the neutral model requires.
+            // agent happens to send, not things the neutral model requires.
             // Codex names no subagent and offers no alternatives.
             agent_id: None,
             suggestions: vec![],
@@ -359,19 +359,19 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
 }
 
 // ---------------------------------------------------------------------------
-// The other direction: what a harness can be *asked* to do
+// The other direction: what a agent can be *asked* to do
 // ---------------------------------------------------------------------------
 
-/// What a harness does with one [`ChatCommand`].
+/// What a agent does with one [`ChatCommand`].
 ///
 /// The command side needs its own check for a reason the event side does not
-/// have: an event Sway cannot map is a gap in the *model*, but a verb a harness
+/// have: an event Sway cannot map is a gap in the *model*, but a verb a agent
 /// cannot serve is normal and permanent. Nothing is wrong with a transport that
 /// has no mid-turn input; what would be wrong is a verb only Claude can be
 /// asked for, since then the trait is Claude's interface wearing a neutral name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Support {
-    /// The harness has a wire form for this verb.
+    /// The agent has a wire form for this verb.
     Native,
     /// It has none. The transport returns an error, and the caller degrades;
     /// it must never accept the call and quietly do something else, which the
@@ -382,7 +382,7 @@ pub enum Support {
 /// Codex `app-server`, per the captured protocol in the parked handoff.
 ///
 /// Exhaustive on purpose: a new [`ChatCommand`] stops this compiling until
-/// someone says what a non-Claude harness does with it.
+/// someone says what a non-Claude agent does with it.
 pub fn codex_support(command: &ChatCommand) -> Support {
     match command {
         ChatCommand::SendTurn { .. } => Support::Native,
@@ -550,7 +550,7 @@ mod tests {
 
     /// **The check that replaces what the `PermissionMode` enum used to do.**
     ///
-    /// The enum was a compile-time guard: a harness whose modes were not
+    /// The enum was a compile-time guard: a agent whose modes were not
     /// Claude's four could not be expressed, so the drift showed up as a build
     /// error. A `String` has the opposite property - it accepts every
     /// vocabulary, which is the point, and therefore *nothing fails to compile
@@ -623,19 +623,19 @@ mod tests {
 
     /// A verb only Claude can be asked for would make `AgentTransport` Claude's
     /// interface under a neutral name, so every command has to be answerable by
-    /// a harness that is not Claude - including by refusing it.
+    /// a agent that is not Claude - including by refusing it.
     ///
-    /// `Steer` is the one this phase publishes, and both non-Claude harnesses
+    /// `Steer` is the one this phase publishes, and both non-Claude agents
     /// refuse it. That is the *right* answer, and the point: a refusable verb is
     /// neutral, an unaskable one is not.
     #[test]
-    fn every_command_is_answerable_by_a_harness_that_is_not_claude() {
+    fn every_command_is_answerable_by_a_agent_that_is_not_claude() {
         let steer = ChatCommand::Steer { session_id: "s1".into(), blocks: vec![] };
         assert_eq!(codex_support(&steer), Support::Refuses);
         assert_eq!(acp_support(&steer), Support::Refuses);
 
         // Not every verb may refuse, or the trait would describe nothing two
-        // harnesses share. Send, interrupt and close are the floor.
+        // agents share. Send, interrupt and close are the floor.
         for cmd in [
             ChatCommand::SendTurn { session_id: "s1".into(), blocks: vec![] },
             ChatCommand::Interrupt { session_id: "s1".into() },

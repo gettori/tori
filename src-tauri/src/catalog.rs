@@ -4,7 +4,7 @@
 // The distinction is the whole point of this module, and conflating the two is
 // what lets a listing promise something nobody tested:
 //
-//   * A **supported harness** is an adapter (`crate::agents`). It has a launch,
+//   * A **supported agent** is an adapter (`crate::agents`). It has a launch,
 //     a transport, a capability tier, and a `verified_against` naming the CLI
 //     version its conventions were captured against. Settings > Agents shows one
 //     card per adapter, and everything on that card is something Sway checked.
@@ -630,7 +630,7 @@ mod tests {
         assert!(row.get("publishedCapabilities").is_some());
     }
 
-    /// **The line between a catalog entry and a supported harness.**
+    /// **The line between a catalog entry and a supported agent.**
     ///
     /// The catalog contributes nothing to the adapter registry, so nothing in it
     /// can reach Settings > Agents as a card, get a capability tier, or be
@@ -652,7 +652,7 @@ mod tests {
         );
 
         // And the ones an adapter already covers say which, so the UI can offer
-        // the measured harness instead of a second way to start the same agent.
+        // the measured agent instead of a second way to start the same agent.
         let covered: Vec<&str> = rows
             .iter()
             .filter(|r| r.covered_by.is_some())

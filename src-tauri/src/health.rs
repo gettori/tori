@@ -28,7 +28,7 @@
 //
 // The cache is invalidatable rather than lifetime-memoized, which it used to
 // be. "Cached for the app's lifetime" was correct only while nothing inside
-// Sway could change the answer; once a harness can be installed or signed in
+// Sway could change the answer; once a agent can be installed or signed in
 // from the app, a `OnceLock` would show `NotFound` for a binary the user just
 // installed until they restarted. See `HealthCache`.
 
@@ -62,7 +62,7 @@ pub struct AgentHealth {
     /// The adapter's configured launch binary, e.g. `claude`.
     pub program: String,
     pub status: BinaryStatus,
-    /// Whether the harness says anybody is signed in, **for the default
+    /// Whether the agent says anybody is signed in, **for the default
     /// profile**.
     ///
     /// Deliberately a separate axis from `status` rather than a fifth
@@ -76,10 +76,10 @@ pub struct AgentHealth {
     /// `crate::accounts::account_status`, which is a different question asked by
     /// a different screen.
     pub sign_in: SignIn,
-    /// The account the harness named, when it names one. Only Claude does, of
+    /// The account the agent named, when it names one. Only Claude does, of
     /// the three measured.
     pub account: Option<String>,
-    /// The environment variable the harness says it is taking an API key from.
+    /// The environment variable the agent says it is taking an API key from.
     /// `Some` means a subscription login is being overridden by an inherited
     /// key, which is a warning and never a block.
     pub api_key_source: Option<String>,
@@ -172,7 +172,7 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
     let sessions_dir = adapter.discovery_path();
     // Only for a binary that exists and an adapter that declares a probe.
     // Everything else is `Unknown` by construction, which costs no subprocess
-    // and never reports a missing harness as signed out.
+    // and never reports a missing agent as signed out.
     let account = match (resolved.as_deref(), adapter.accounts.as_ref()) {
         (Some(path), Some(accounts)) => crate::auth::whoami(path, accounts, None),
         _ => crate::auth::Whoami::default(),
@@ -203,7 +203,7 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
 /// change: nothing inside Sway installed a binary or signed anyone in, so
 /// "computed once per app run" and "correct" were the same statement. They stop
 /// being the same the moment an install or a login happens in-app, and a
-/// `OnceLock` has no way back: the user would see `NotFound` for a harness they
+/// `OnceLock` has no way back: the user would see `NotFound` for a agent they
 /// just installed until they restarted the app.
 ///
 /// The sweep function is a parameter rather than hardcoded so the cache's rules
@@ -487,7 +487,7 @@ mod tests {
     /// Driven through `sh` so it asserts the wiring rather than whatever agent
     /// CLIs the machine running it happens to have.
     #[test]
-    fn the_sweep_asks_the_harness_who_is_signed_in() {
+    fn the_sweep_asks_the_agent_who_is_signed_in() {
         let adapter = with_accounts("sh", probe(&["-c", "exit 0"], agents::WhoamiKind::ExitCode));
         assert_eq!(check(&adapter).sign_in, SignIn::SignedIn);
 
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(check(&adapter).sign_in, SignIn::SignedOut);
     }
 
-    /// Two independent axes. A signed-out harness is still installed, and its
+    /// Two independent axes. A signed-out agent is still installed, and its
     /// card still says which version, because those are different facts and
     /// collapsing them would make one of them unsayable.
     #[test]
@@ -509,7 +509,7 @@ mod tests {
 
     /// No probe, no subprocess, and no verdict. An adapter with no way to say
     /// who is signed in must not read as signed out, which would put a sign-in
-    /// prompt in front of a harness that has no sign-in.
+    /// prompt in front of a agent that has no sign-in.
     #[test]
     fn an_adapter_that_declares_no_probe_reports_unknown() {
         assert_eq!(check(&agents::test_adapter("sh")).sign_in, SignIn::Unknown);

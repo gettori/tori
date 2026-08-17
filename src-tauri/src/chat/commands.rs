@@ -27,12 +27,12 @@ use super::transport::{AgentTransport, StartSpec};
 
 /// Build a transport for a declared wire protocol.
 ///
-/// **This is the extension point for a second harness.** The `match` is
+/// **This is the extension point for a second agent.** The `match` is
 /// exhaustive over [`ChatTransport`], so adding a variant fails to compile here
 /// until a transport exists for it - which is the point: a TOML able to name a
 /// transport with no implementation would be a runtime error instead of a build
 /// one. `ChatTransport::as_str` is exhaustive for the same reason on the
-/// serialization side; between them a new harness has exactly two compiler-named
+/// serialization side; between them a new agent has exactly two compiler-named
 /// obligations and no silent ones.
 fn make_transport(
     transport: ChatTransport,
@@ -44,9 +44,9 @@ fn make_transport(
         ChatTransport::ClaudeStreamJson => Box::new(ClaudeTransport::new(session_id)),
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
-        // makes a new ACP harness a TOML file rather than a Rust change. The
+        // makes a new ACP agent a TOML file rather than a Rust change. The
         // adapter id travels with it only so the session locators this transport
-        // writes can name the harness they came from, and `acp` is that table's
+        // writes can name the agent they came from, and `acp` is that table's
         // `[chat.acp]` quirks rather than this build's defaults.
         ChatTransport::Acp => Box::new(AcpTransport::new(session_id, agent_id, acp)),
     }
@@ -235,10 +235,10 @@ pub async fn chat_spawn(
     let spec = StartSpec {
         session_id: session_id.clone(),
         cwd,
-        // The user's harness override wins over the adapter's program name.
+        // The user's agent override wins over the adapter's program name.
         // Read at spawn time rather than cached, so changing it in Settings
         // applies to the next session started without restarting Sway.
-        program: crate::settings::harness_override().unwrap_or_else(|| chat.program.clone()),
+        program: crate::settings::agent_override().unwrap_or_else(|| chat.program.clone()),
         args,
         // Empty today. The map exists so multi-account support later changes
         // this one line rather than every signature between here and the child.
@@ -335,10 +335,10 @@ pub async fn chat_set_visible(state: State<'_, ChatState>, session_id: String, v
     Ok(())
 }
 
-/// Answer a permission question the harness asked.
+/// Answer a permission question the agent asked.
 ///
-/// **Nothing is persisted here.** The scope rode back to the harness in the same
-/// response, as `updatedPermissions`, in the harness's own rule grammar - and
+/// **Nothing is persisted here.** The scope rode back to the agent in the same
+/// response, as `updatedPermissions`, in the agent's own rule grammar - and
 /// that copy is the one its next tool call consults. Sway used to write a rule
 /// of its own alongside it, which recorded one decision twice in two formats and
 /// left the two free to disagree. There is no second store now.
@@ -379,7 +379,7 @@ pub async fn chat_record_usage(
 /// The denominator of the honesty rule: compared against the turns this chat saw
 /// a `result` frame for, it says whether the session total is the truth or a
 /// floor. Resolved from the session id here rather than in the panel, which
-/// knows its id but not the file the harness writes it to - and the resolution
+/// knows its id but not the file the agent writes it to - and the resolution
 /// is `transcript_path`, the same one the replay uses, so the two cannot drift
 /// onto different files.
 ///
@@ -404,7 +404,7 @@ pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u
 /// replay uses, so the figures and the conversation on screen come off one file.
 ///
 /// `None` when the session has no transcript on disk yet (a brand-new chat, or a
-/// SQLite-backed harness that keeps no per-session file), which the panel renders
+/// SQLite-backed agent that keeps no per-session file), which the panel renders
 /// as no figures rather than as zeroes it cannot stand behind.
 #[tauri::command]
 pub fn chat_session_detail(
@@ -441,7 +441,7 @@ pub struct UsageTotals {
 
 // `chat_add_restriction`, `chat_list_rules`, `chat_remove_rule` and
 // `chat_accept_rule_offer` used to live here, writing and reading Sway's own
-// allow/ask/deny store. There is no such store: the harness decides its own tool
+// allow/ask/deny store. There is no such store: the agent decides its own tool
 // calls and records its own grants, so a Sway-owned rule could only be a second
 // opinion nothing consults.
 
@@ -475,7 +475,7 @@ pub async fn chat_set_mode(
     state.0.set_mode(&session_id, mode)
 }
 
-/// Switch one of the harness's own configuration options, by the id it
+/// Switch one of the agent's own configuration options, by the id it
 /// published. What the mirrored controls call, and nothing else: a model, an
 /// effort level or a mode goes through its own command, which has the pending
 /// state those need.
@@ -688,7 +688,7 @@ pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Resu
 /// order, and a return value is ordered by construction where two producers on
 /// one channel are not.
 ///
-/// Works for a session Sway never ran: the file is the harness's own jsonl, and
+/// Works for a session Sway never ran: the file is the agent's own jsonl, and
 /// a PTY tab, an outside terminal and a chat tab all write the same one.
 ///
 /// A session with no transcript yet returns no events rather than an error - a
@@ -1071,11 +1071,11 @@ mod tests {
         assert!(json["spawned"].is_null());
     }
 
-    /// **The whole of what shipping an ACP harness costs**: a TOML naming the
+    /// **The whole of what shipping an ACP agent costs**: a TOML naming the
     /// transport, and the launch it composes.
     ///
     /// Pinned end to end from the bundled adapter rather than from a fixture,
-    /// because the claim [[adr_harness_breadth]] rests on is that this file is
+    /// because the claim [[adr_agent_breadth]] rests on is that this file is
     /// all there was. Every arg template an ACP adapter leaves empty is asserted
     /// empty here: a stray `--session-id` would be sent to an agent that mints
     /// its own ids in-protocol and would fail at spawn, on a path no unit test
