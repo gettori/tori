@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../../../../components/Icon/Icon";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
-import { ensureAdaptersLoaded } from "../../../../utils/agents";
+import { agents, ensureAdaptersLoaded, type Adapter } from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -25,9 +25,18 @@ import styles from "../../Settings.module.css";
 // resolves each launch binary against the login-shell PATH, so an agent
 // installed via nvm/asdf shows as found rather than missing.
 //
+// **The list never waits for the sweep.** The adapters are known synchronously
+// (the fallback, then `list_agents`), and the health sweep spawns a subprocess
+// or three per agent, so gating the cards on it held an empty panel open for
+// however long seven probes take. The cards render at once from the adapter
+// and each carries a quiet "Checking" state until its health row lands; a card
+// with no row yet claims nothing - no dot, no verdict - because a spinner that
+// sat where "Not installed" goes would still be an answer-shaped hole.
+//
 // Installed agents sort first and each half is alphabetical, so the order
 // answers the reader's first question without shuffling every time a re-check
-// changes one agent's state. No group headings: seven cards fit in one look,
+// changes one agent's state. Unswept cards sit between the two groups: they
+// are not yet either answer. No group headings: seven cards fit in one look,
 // and the dot plus the "Not installed" pill already draw the line a heading
 // would restate.
 //
@@ -75,50 +84,66 @@ const STATE_PILL: Record<BinaryStatus, string> = {
  * A button rather than a div with a handler, so it is reachable and announced
  * without inventing a role. Everything it used to carry (capabilities, gaps,
  * accounts, the sessions directory) moved to `AgentDetail`, which is what
- * lets four of these be read in one look.
+ * lets seven of these be read in one look.
+ *
+ * `health` is optional because the card renders before the sweep answers.
+ * Until it does, the card names the agent and claims nothing else. It stays
+ * clickable: the detail page is made of health facts and waits for the row,
+ * so an early click is remembered rather than swallowed - a click that does
+ * nothing reads as a broken card, not as a pending one.
  */
-function AgentCard(props: { agent: AgentHealth; onOpen: () => void }) {
-  const a = () => props.agent;
+function AgentCard(props: { adapter: CardAgent; health: AgentHealth | undefined; onOpen: () => void }) {
+  const a = () => props.adapter;
+  const h = () => props.health;
   const catalog = () => catalogFor(a().id);
   // The pill is for the states that need acting on. Painting "READY" on every
   // healthy card spends the reader's attention on the answer they expected.
-  const settled = () => a().status === "versionMatch" || a().status === "versionUnknown";
+  const settled = () => h()?.status === "versionMatch" || h()?.status === "versionUnknown";
   return (
     <button
       type="button"
       class={styles.hcard}
       data-agent={a().id}
+      aria-busy={!h()}
       onClick={() => props.onOpen()}
     >
       {/* The logo takes the leading slot the bare dot used to hold, and the
           dot rides its corner: the mark says which agent, the dot says whether
           it is usable, and stacking them keeps both without spending two
-          columns on one subject. */}
+          columns on one subject. No dot before the sweep answers: an unlit one
+          would read as a verdict. */}
       <span class={styles.hcardGlyph}>
         <AgentGlyph id={a().id} label={a().label} size={22} />
-        <span class={`${styles.dot} ${TONE[a().status]}`} />
+        <Show when={h()}>{(row) => <span class={`${styles.dot} ${TONE[row().status]}`} />}</Show>
       </span>
       <span class={styles.hcardName}>{a().label}</span>
-      <Show when={a().version}>{(v) => <span class={styles.hcardVersion}>{v()}</span>}</Show>
-      <Show when={!settled()}>
-        <span class={`${styles.statePill} ${STATE_PILL[a().status]}`}>
-          {STATE_LABEL[a().status]}
-        </span>
+      <Show when={h()?.version}>{(v) => <span class={styles.hcardVersion}>{v()}</span>}</Show>
+      <Show when={h() && !settled()}>
+        {(_) => (
+          <span class={`${styles.statePill} ${STATE_PILL[h()!.status]}`}>
+            {STATE_LABEL[h()!.status]}
+          </span>
+        )}
+      </Show>
+      <Show when={!h()}>
+        <span class={styles.statePill}>Checking</span>
       </Show>
       {/* One line, and the fact it carries differs by group: an installed
           agent is asked who it is signed in as, a missing one what it would
-          take to get it. Neither question is interesting for the other. */}
+          take to get it. Neither question is interesting for the other. An
+          unswept card shows the program alone, which is the one fact the
+          adapter already knows. */}
       <span class={styles.hcardMeta}>
         <Switch>
-          <Match when={a().status === "notFound"}>
+          <Match when={h()?.status === "notFound"}>
             Install <code>{a().program}</code> to use it
           </Match>
-          <Match when={a().apiKeySource}>
+          <Match when={h()?.apiKeySource}>
             {(source) => <>Billing against {source()}</>}
           </Match>
-          <Match when={a().signIn === "signedOut"}>Signed out</Match>
-          <Match when={a().account}>{(account) => <>Signed in as {account()}</>}</Match>
-          <Match when={a().signIn === "signedIn"}>Signed in</Match>
+          <Match when={h()?.signIn === "signedOut"}>Signed out</Match>
+          <Match when={h()?.account}>{(account) => <>Signed in as {account()}</>}</Match>
+          <Match when={h()?.signIn === "signedIn"}>Signed in</Match>
           <Match when={true}>
             <code>{a().program}</code>
           </Match>
@@ -152,10 +177,22 @@ function AgentCard(props: { agent: AgentHealth; onOpen: () => void }) {
   );
 }
 
-/** Alphabetical by label. The installed-first split lives at the call site, so
- *  this stays a pure sort both halves share. */
-function byLabel(list: AgentHealth[]) {
-  return [...list].sort((x, y) => x.label.localeCompare(y.label));
+/** One card's worth of input: what the card reads off the adapter, plus its
+ *  health row once the sweep has answered for it. A `Pick` rather than the
+ *  whole `Adapter` because a row can also be built *from* a health row - see
+ *  the join below. */
+type CardAgent = Pick<Adapter, "id" | "label" | "program">;
+type CardRow = { adapter: CardAgent; health: AgentHealth | undefined };
+
+/** Installed, then still-checking, then not installed - alphabetical inside
+ *  each. Checking sits between the verdicts because it is not yet either one,
+ *  and before the sweep answers at all this degrades to plain alphabetical,
+ *  so the first paint is stable rather than a shuffle waiting to happen. */
+function orderRows(rows: CardRow[]): CardRow[] {
+  const rank = (r: CardRow) => (r.health ? (r.health.status === "notFound" ? 2 : 0) : 1);
+  return [...rows]
+    .sort((x, y) => x.adapter.label.localeCompare(y.adapter.label))
+    .sort((x, y) => rank(x) - rank(y));
 }
 
 export default function AgentsSection() {
@@ -170,10 +207,42 @@ export default function AgentsSection() {
     const h = health();
     return Array.isArray(h) ? h : [];
   };
-  const ordered = createMemo(() => [
-    ...byLabel(all().filter((a) => a.status !== "notFound")),
-    ...byLabel(all().filter((a) => a.status === "notFound")),
-  ]);
+  // Joined from the adapters, not mapped from the sweep: the adapters are the
+  // list, and health decorates whichever rows it has answered for. That is
+  // what lets the cards paint before a single subprocess has run.
+  //
+  // A union, not a left join: the sweep covers the whole registry, which can
+  // be wider than the resolved adapter list (a user adapter's row can land
+  // before `list_agents` does). A health row is proof its adapter exists and
+  // carries the three facts a card needs, so it gets one either way.
+  const ordered = createMemo(() => {
+    const byId = new Map(all().map((row) => [row.id, row] as const));
+    const known = new Set(agents().map((a) => a.id));
+    // Once a health row lands it also supplies the card's naming facts: it
+    // carries the registry's own label and program, so it is the same answer
+    // from one hop closer, and the sweep can be ahead of `list_agents` (an
+    // override, a user adapter) without the card saying two different things.
+    const facet = (row: AgentHealth): CardAgent => ({
+      id: row.id,
+      label: row.label,
+      program: row.program,
+    });
+    const rows: CardRow[] = agents().map((adapter) => {
+      const health = byId.get(adapter.id);
+      return { adapter: health ? facet(health) : adapter, health };
+    });
+    for (const row of all()) {
+      if (!known.has(row.id)) rows.push({ adapter: facet(row), health: row });
+    }
+    return orderRows(rows);
+  });
+  const rowById = createMemo(() => new Map(ordered().map((r) => [r.adapter.id, r] as const)));
+  // Ids, not row objects: `For` keys by reference, and the join builds fresh
+  // objects every recompute, so iterating rows would tear every card down each
+  // time health or the adapters landed. A card keyed by its id keeps its DOM
+  // and updates in place, which is also what keeps a click from landing on a
+  // node the join just replaced.
+  const orderedIds = createMemo(() => ordered().map((r) => r.adapter.id));
   const opened = createMemo(() => all().find((a) => a.id === openId()));
 
   /** Back to the card that opened the page, not to the top of the list: a
@@ -248,21 +317,23 @@ export default function AgentsSection() {
                 {checkingAll() ? "Asking…" : "Check models"}
               </Button>
             </div> */}
-            <Switch>
-              <Match when={health.loading}>
-                <div class={styles.note}>Checking which agent CLIs are installed…</div>
-              </Match>
-              <Match when={health.error}>
-                <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
-              </Match>
-              <Match when={health()}>
-                <div class={styles.cardGrid}>
-                  <For each={ordered()}>
-                    {(h) => <AgentCard agent={h} onOpen={() => setOpenId(h.id)} />}
-                  </For>
-                </div>
-              </Match>
-            </Switch>
+            {/* The failure is a note above the cards rather than a screen of
+                its own: the list is real either way, and the cards degrade to
+                their unswept state, which already claims nothing. */}
+            <Show when={health.error}>
+              <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
+            </Show>
+            <div class={styles.cardGrid}>
+              <For each={orderedIds()}>
+                {(id) => (
+                  <AgentCard
+                    adapter={rowById().get(id)!.adapter}
+                    health={rowById().get(id)?.health}
+                    onOpen={() => setOpenId(id)}
+                  />
+                )}
+              </For>
+            </div>
           </>
         }
       >
