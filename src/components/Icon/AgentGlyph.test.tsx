@@ -14,11 +14,6 @@ describe("AgentGlyph", () => {
     expect(textIn(container)).toBe("");
   });
 
-  it("resolves a catalogue id through its alias", () => {
-    const { container } = render(() => <AgentGlyph id="qwen-code" label="Qwen Code" />);
-    expect(svgIn(container)).toBeTruthy();
-  });
-
   it("falls back to the label's initial, not to another agent's mark", () => {
     const { container } = render(() => <AgentGlyph id="stakpak" label="Stakpak" />);
     expect(svgIn(container)).toBeNull();

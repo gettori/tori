@@ -83,31 +83,12 @@ const GEMINI =
  *  rectangles - a filled square with a smaller one knocked out of it. */
 const OPENCODE = "M22 24H2V0h20zM17 4.8H7v14.4h10z";
 
-/** The rest of the ACP catalogue's marks, same source, same terms. Two of these
- *  are the *vendor's* mark rather than the product's, because the product ships
- *  none: JetBrains for Junie, Mistral AI for Mistral Vibe. That is still a true
- *  answer to "who is running this turn", which is the only claim a mark makes
- *  here. */
-const CURSOR =
-  "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23";
-
-const CLINE =
-  "m23.365 13.556-1.442-2.895V8.994c0-2.764-2.218-5.002-4.954-5.002h-2.464c.178-.367.276-.779.276-1.213A2.77 2.77 0 0 0 12.018 0a2.77 2.77 0 0 0-2.763 2.779c0 .434.098.846.276 1.213H7.067c-2.736 0-4.954 2.238-4.954 5.002v1.667L.64 13.549c-.149.29-.149.636 0 .927l1.472 2.855v1.667C2.113 21.762 4.33 24 7.067 24h9.902c2.736 0 4.954-2.238 4.954-5.002V17.33l1.44-2.865c.143-.286.143-.622.002-.91m-12.854 2.36a2.27 2.27 0 0 1-2.261 2.273 2.27 2.27 0 0 1-2.261-2.273v-4.042A2.27 2.27 0 0 1 8.249 9.6a2.267 2.267 0 0 1 2.262 2.274zm7.285 0a2.27 2.27 0 0 1-2.26 2.273 2.27 2.27 0 0 1-2.262-2.273v-4.042A2.267 2.267 0 0 1 15.535 9.6a2.267 2.267 0 0 1 2.261 2.274z";
-
+/** The marks the other bundled adapters name, same source, same terms. */
 const KIMI =
   "M21.765.351C22.998.351 24 1.353 24 2.586S22.998 4.82 21.765 4.82h-1.974c-.15 0-.26-.12-.26-.26V2.586A2.237 2.237 0 0 1 21.765.35M9.41 13.388l8.447-8.377c.16-.16.07-.471-.14-.471h-4.55s-.1.02-.14.06l-9.099 9.029c-.14.14-.35.02-.35-.21V4.81c0-.15-.1-.27-.221-.27H.22c-.12 0-.22.12-.22.27v18.57c0 .15.1.27.22.27h3.137c.12 0 .22-.12.22-.27v-3.79c0-.08.03-.16.08-.21l2.826-2.796c.07-.07.16-.08.241-.03l7.546 5.551a8.9 8.9 0 0 0 4.018 1.493c.12.01.23-.11.23-.27V19.76c0-.14-.08-.25-.19-.26a5.8 5.8 0 0 1-2.355-.942l-6.533-4.73c-.14-.09-.15-.32-.03-.441";
 
 const COPILOT =
   "M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z";
-
-const QWEN =
-  "M23.919 14.545 20.817 9.17l1.47-2.544a.56.56 0 0 0 0-.566l-1.633-2.83a.57.57 0 0 0-.49-.283h-6.207L12.487.402a.57.57 0 0 0-.49-.284H8.732a.56.56 0 0 0-.49.284L5.139 5.775h-2.94a.56.56 0 0 0-.49.284L.077 8.887a.56.56 0 0 0 0 .567L3.18 14.83l-1.47 2.545a.56.56 0 0 0 0 .566l1.634 2.83a.57.57 0 0 0 .49.283h6.205l1.47 2.545a.57.57 0 0 0 .49.284h3.266a.57.57 0 0 0 .49-.284l3.104-5.375h2.94a.57.57 0 0 0 .49-.283l1.634-2.828a.55.55 0 0 0-.004-.568M8.733.686l1.634 2.828-1.634 2.828H21.8L20.164 9.17H7.425L5.63 6.06Zm1.306 19.801-6.205-.002 1.634-2.83h3.265L2.201 6.344h3.267q3.182 5.517 6.367 11.032zm10.124-5.66L18.53 12l-6.532 11.315-1.634-2.83c2.129-3.673 4.25-7.351 6.373-11.028h3.592l3.102 5.374z";
-
-const MISTRAL =
-  "M17.143 3.429v3.428h-3.429v3.429h-3.428V6.857H6.857V3.43H3.43v13.714H0v3.428h10.286v-3.428H6.857v-3.429h3.429v3.429h3.429v-3.429h3.428v3.429h-3.428v3.428H24v-3.428h-3.43V3.429z";
-
-const JETBRAINS =
-  "M2.345 23.997A2.347 2.347 0 0 1 0 21.652V10.988C0 9.665.535 8.37 1.473 7.433l5.965-5.961A5.01 5.01 0 0 1 10.989 0h10.666A2.347 2.347 0 0 1 24 2.345v10.664a5.056 5.056 0 0 1-1.473 3.554l-5.965 5.965A5.017 5.017 0 0 1 13.007 24v-.003H2.345Zm8.969-6.854H5.486v1.371h5.828v-1.371ZM3.963 6.514h13.523v13.519l4.257-4.257a3.936 3.936 0 0 0 1.146-2.767V2.345c0-.678-.552-1.234-1.234-1.234H10.989a3.897 3.897 0 0 0-2.767 1.145L3.963 6.514Zm-.192.192L2.256 8.22a3.944 3.944 0 0 0-1.145 2.768v10.664c0 .678.552 1.234 1.234 1.234h10.666a3.9 3.9 0 0 0 2.767-1.146l1.512-1.511H3.771V6.706Z";
 
 const PI = "M0 0v24h6v-6h6v-6H6V6h6v6h6V0Zm18 12v12h6V12Z";
 
@@ -124,47 +105,25 @@ const PI = "M0 0v24h6v-6h6v-6H6V6h6v6h6V0Zm18 12v12h6V12Z";
 const CODEX =
   "M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z";
 
-/** Every mark this build has, keyed by the name an adapter's `icon` field or the
- *  alias table below resolves to. An entry left as an empty string resolves to
- *  no mark, which is the same answer as an unknown key and lands the call site
- *  on its fallback. */
+/** Every mark this build has, keyed by the name an adapter's `icon` field
+ *  declares (which for every bundled adapter is also its id). An entry left as
+ *  an empty string resolves to no mark, which is the same answer as an unknown
+ *  key and lands the call site on its fallback.
+ *
+ *  A note for whoever adds the next one: match on the *brand*, never the name.
+ *  Simple Icons publishes slugs like `amp`, `x` and `square` that a name-based
+ *  sweep would happily pair with agents of the same name, and all three are a
+ *  different company (Google's Accelerated Mobile Pages, the social network,
+ *  Block's payments brand). A confident wrong logo is the one outcome this
+ *  file exists to avoid. */
 const PATHS: Record<string, string> = {
   claude: CLAUDE,
-  cline: CLINE,
   codex: CODEX,
   copilot: COPILOT,
-  cursor: CURSOR,
   gemini: GEMINI,
-  jetbrains: JETBRAINS,
   kimi: KIMI,
-  mistral: MISTRAL,
   opencode: OPENCODE,
   pi: PI,
-  qwen: QWEN,
-};
-
-/**
- * Catalogue ids that wear a mark registered under another name: the same agent
- * arriving twice (`claude-acp`), a suffix the registry uses and we do not
- * (`qwen-code`), or a product carrying its vendor's mark (`junie`).
- *
- * **Three slugs that look like matches are deliberately absent.** Simple Icons
- * publishes `amp`, `x` and `square`, and a name-based sweep pairs them with
- * Amp, Grok Build and goose. All three are the wrong company: `amp` is Google's
- * Accelerated Mobile Pages, `x` is the social network rather than xAI, and
- * `square` is Block's payments brand rather than its agent. Each would put a
- * confident wrong logo on a card, which is the one outcome this file exists to
- * avoid, so they stay on the fallback until a real mark turns up.
- */
-const ALIASES: Record<string, string> = {
-  "claude-acp": "claude",
-  "codex-acp": "codex",
-  "github-copilot": "copilot",
-  "github-copilot-cli": "copilot",
-  "junie": "jetbrains",
-  "mistral-vibe": "mistral",
-  "pi-acp": "pi",
-  "qwen-code": "qwen",
 };
 
 /** Marks whose artwork does not ink the full 24x24, with the box that crops to
@@ -182,15 +141,12 @@ const MARKS: Record<string, Component<MarkProps>> = Object.fromEntries(
     .map(([name, d]) => [name, brandMark(d, VIEW_BOXES[name])]),
 );
 
-/** Resolve a mark name, an adapter id or a catalogue id to its logo, or
- *  `undefined` when this build has none for it, so the caller can fall back to
- *  something that claims nothing.
- *
- *  Takes ids as well as mark names because the catalogue's 31 rows are not
- *  adapters: they have no TOML and so no `icon` field to declare. */
+/** Resolve a mark name (an adapter's `icon`, or its id for callers that have
+ *  nothing better) to its logo, or `undefined` when this build has none for
+ *  it, so the caller can fall back to something that claims nothing. */
 export function agentMark(name: string | null | undefined): Component<MarkProps> | undefined {
   if (!name) return undefined;
-  return MARKS[name] ?? MARKS[ALIASES[name]];
+  return MARKS[name];
 }
 
 /** Which keys resolve today. Exported for the test that pins this against the
