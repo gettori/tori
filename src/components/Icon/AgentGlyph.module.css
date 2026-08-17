@@ -1,0 +1,33 @@
+/* One agent's logo in a fixed box, so a row of them lines up whether each one
+   resolved a mark or fell back to its initial. */
+@layer components {
+  .glyph {
+    /* Declared here as well as set inline by the component: a var that only
+       ever arrives from a style prop resolves to nothing the day a call site
+       forgets it, collapsing the box to zero. `check-tokens.mjs` fails on that
+       shape, which is how this was caught. */
+    --glyph-size: calc(20px * var(--ui-scale));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: var(--glyph-size);
+    height: var(--glyph-size);
+    border-radius: var(--sway-radius-sm);
+    /* Tinted rather than transparent: a one-colour mark on the card's own
+       surface reads as a stray shape, and the plate gives the letter fallback
+       somewhere to sit so the two states are the same size and weight. */
+    background: var(--neutral-hover);
+    color: var(--fg-muted);
+  }
+
+  /* Mono, like every other machine-supplied string in the panel, and sized off
+     the box so one rule covers every call site's `size`. */
+  .letter {
+    font-family: var(--sway-font-mono);
+    font-size: calc(var(--glyph-size) * 0.5);
+    font-weight: 600;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+}

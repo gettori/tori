@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
+import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import {
   catalogFor,
@@ -92,7 +93,14 @@ function AgentCard(props: { agent: AgentHealth; onOpen: () => void }) {
       data-agent={a().id}
       onClick={() => props.onOpen()}
     >
-      <span class={`${styles.dot} ${TONE[a().status]}`} />
+      {/* The logo takes the leading slot the bare dot used to hold, and the
+          dot rides its corner: the mark says which agent, the dot says whether
+          it is usable, and stacking them keeps both without spending two
+          columns on one subject. */}
+      <span class={styles.hcardGlyph}>
+        <AgentGlyph id={a().id} label={a().label} size={22} />
+        <span class={`${styles.dot} ${TONE[a().status]}`} />
+      </span>
       <span class={styles.hcardName}>{a().label}</span>
       <Show when={a().version}>{(v) => <span class={styles.hcardVersion}>{v()}</span>}</Show>
       <Show when={!settled()}>
@@ -351,6 +359,7 @@ function CatalogRowItem(props: {
     <li class={styles.catalogRow}>
       <div class={styles.catalogMain}>
         <div class={styles.catalogName}>
+          <AgentGlyph id={row().id} label={row().label} size={16} />
           {row().label}
           {/* "untested" stays on the row whether or not it is installed.
               Downloading a binary is not measuring one, and the label is the

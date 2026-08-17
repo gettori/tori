@@ -2,6 +2,7 @@ import { For, Show, Switch, Match, onMount } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
+import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import { findAdapter } from "../../../../utils/agents";
 import {
   chatTier,
@@ -117,7 +118,12 @@ export default function AgentDetail(props: {
       </button>
 
       <div class={styles.detailHead}>
-        <span class={`${styles.dot} ${props.tone[a().status]}`} />
+        {/* Same pairing as the card it was opened from, one size up: the mark
+            names the agent, the dot beside it says whether it runs. */}
+        <span class={styles.hcardGlyph}>
+          <AgentGlyph id={a().id} label={a().label} size={28} />
+          <span class={`${styles.dot} ${props.tone[a().status]}`} />
+        </span>
         <span class={styles.detailTitle}>{a().label}</span>
         <Show when={a().version}>{(v) => <span class={styles.detailVersion}>{v()}</span>}</Show>
         <span class={`${styles.statePill} ${props.statePill[a().status]}`}>
