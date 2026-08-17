@@ -589,9 +589,27 @@
     border-color: var(--brand-default);
     box-shadow: 0 0 0 3px var(--brand-ring);
   }
-  .hcard .dot {
+  /* The logo, with the status dot on its corner. Spans both rows so the mark
+     sits against the whole card rather than only its first line, which is what
+     stops it drifting up when the meta line wraps. */
+  .hcardGlyph {
+    position: relative;
+    display: inline-flex;
     grid-column: 1;
-    grid-row: 1;
+    grid-row: 1 / 3;
+  }
+  .hcardGlyph .dot {
+    position: absolute;
+    right: calc(-2px * var(--ui-scale));
+    bottom: calc(-2px * var(--ui-scale));
+    /* Ringed in the card's own fill, so the dot reads as a badge sitting on the
+       mark rather than as a shape touching it. */
+    outline: calc(2px * var(--ui-scale)) solid var(--neutral-subtle);
+  }
+  /* On the detail page the head is a flex row, so the pair only needs to sit
+     inline; the corner rule above still applies. */
+  .detailHead .hcardGlyph {
+    flex: none;
   }
   .hcardName {
     grid-column: 2;
