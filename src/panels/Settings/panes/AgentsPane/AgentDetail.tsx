@@ -20,8 +20,11 @@ import {
   isProbing,
   isStale,
   refreshCatalog,
+  type CatalogModel,
   type ProbeFailureReason,
 } from "../../../../utils/modelCatalog";
+import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
+import { Mark } from "../../components/paneKit";
 import type { AgentHealth } from "../../../../utils/agentHealth";
 import { setupTab, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
 import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
@@ -140,13 +143,32 @@ export default function AgentDetail(props: {
   // visibly a filter and not a shorter answer.
   const models = () => catalogue()?.models ?? [];
   const [modelQuery, setModelQuery] = createSignal("");
-  const visibleModels = () => {
-    const q = modelQuery().trim().toLowerCase();
-    if (!q) return models();
-    return models().filter((m) =>
-      `${m.displayName} ${m.value} ${m.resolvedModel}`.toLowerCase().includes(q),
-    );
+  /** What one row shows, exactly as it shows it. The filter matches these and
+   *  nothing invisible (`resolvedModel` is deliberately out), so a kept row
+   *  can always mark why it was kept. */
+  const rowText = (m: CatalogModel) => ({
+    name: m.displayName || m.value,
+    id: m.value,
+    effort:
+      m.supportsEffort && m.supportedEffortLevels.length
+        ? m.supportedEffortLevels.join(" · ")
+        : "",
+  });
+  /** Fuzzy, per field, marks included: `fuzzyMatch` is the same subsequence
+   *  walk the palette and the settings search run, and returning the ranges
+   *  with the verdict is what pins the marks to the match. Null filters the
+   *  row out; an empty query keeps every row with nothing marked. */
+  const rowHit = (m: CatalogModel): { name: Range[]; id: Range[]; effort: Range[] } | null => {
+    const q = modelQuery().trim();
+    if (!q) return { name: [], id: [], effort: [] };
+    const t = rowText(m);
+    const name = fuzzyMatch(q, t.name);
+    const id = fuzzyMatch(q, t.id);
+    const effort = t.effort ? fuzzyMatch(q, t.effort) : null;
+    if (!name && !id && !effort) return null;
+    return { name: name?.ranges ?? [], id: id?.ranges ?? [], effort: effort?.ranges ?? [] };
   };
+  const visibleModels = () => models().filter((m) => rowHit(m) !== null);
   const modelCount = () => (catalogue() ? `${visibleModels().length} of ${models().length}` : "unknown");
 
   // All of these are reads of the adapter file, no probe behind any, which is
@@ -489,23 +511,32 @@ export default function AgentDetail(props: {
                   <OverlayScroll class={styles.modelScroll}>
                     <ul class={styles.modelList}>
                     <For each={visibleModels()}>
-                      {(m) => (
-                        <li class={styles.modelRow}>
-                          <span class={styles.modelName}>{m.displayName || m.value}</span>
-                          <code class={styles.modelId}>{m.value}</code>
-                          {/* Said out loud, because its provenance differs: the
-                              user wrote this id in the agent's own settings and
-                              Sway passes it through unresolved. */}
-                          <Show when={m.userConfigured}>
-                            <span class={styles.chip}>yours</span>
-                          </Show>
-                          <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
-                            <span class={styles.modelEffort}>
-                              {m.supportedEffortLevels.join(" · ")}
+                      {(m) => {
+                        // The same call that kept the row on screen, so what is
+                        // marked is the actual reason it is here.
+                        const hit = () => rowHit(m) ?? { name: [], id: [], effort: [] };
+                        return (
+                          <li class={styles.modelRow}>
+                            <span class={styles.modelName}>
+                              <Mark text={rowText(m).name} ranges={hit().name} />
                             </span>
-                          </Show>
-                        </li>
-                      )}
+                            <code class={styles.modelId}>
+                              <Mark text={m.value} ranges={hit().id} />
+                            </code>
+                            {/* Said out loud, because its provenance differs: the
+                                user wrote this id in the agent's own settings and
+                                Sway passes it through unresolved. */}
+                            <Show when={m.userConfigured}>
+                              <span class={styles.chip}>yours</span>
+                            </Show>
+                            <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
+                              <span class={styles.modelEffort}>
+                                <Mark text={rowText(m).effort} ranges={hit().effort} />
+                              </span>
+                            </Show>
+                          </li>
+                        );
+                      }}
                     </For>
                   </ul>
                     <Show when={models().length && !visibleModels().length}>
