@@ -15,7 +15,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-import { withAcpCatalog } from "../../test/settingsInvoke";
 
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, toggleEditorDefault } from "./settingsStore";
@@ -33,13 +32,13 @@ let off: (() => void) | undefined;
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
-    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
+    async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "set_settings") return args.settings;
       if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
       if (cmd === "get_workspace_settings") return { editor: overlay };
       if (cmd === "set_workspace_settings") return args.settings;
       return DEFAULT_SETTINGS;
-    }),
+    },
   );
   off?.();
   off = onWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) => toggleEditorDefault(key));

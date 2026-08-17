@@ -31,7 +31,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 import { setAppearance } from "./components/paneKit";
-import { withAcpCatalog } from "../../test/settingsInvoke";
 import { pointerClick } from "../../test/menus";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
@@ -42,8 +41,8 @@ const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
-    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS),
+    async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
   );
   await loadWorkspaceSettings(null);
 });

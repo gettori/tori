@@ -264,6 +264,45 @@
     "source": "bundled:codex"
   },
   {
+    "id": "copilot",
+    "label": "Copilot",
+    "icon": "copilot",
+    "program": "copilot",
+    "base_args": [],
+    "yolo_args": [
+      "--allow-all-tools"
+    ],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": null,
+    "chat": {
+      "transport": "acp",
+      "program": "copilot",
+      "base_args": [
+        "--acp"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "annotations": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "accounts": null,
+    "source": "bundled:copilot"
+  },
+  {
     "id": "gemini",
     "label": "Gemini",
     "icon": "gemini",
@@ -301,6 +340,43 @@
     },
     "accounts": null,
     "source": "bundled:gemini"
+  },
+  {
+    "id": "kimi",
+    "label": "Kimi",
+    "icon": "kimi",
+    "program": "kimi",
+    "base_args": [],
+    "yolo_args": [],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": null,
+    "chat": {
+      "transport": "acp",
+      "program": "kimi",
+      "base_args": [
+        "acp"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "annotations": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "accounts": null,
+    "source": "bundled:kimi"
   },
   {
     "id": "opencode",
@@ -353,5 +429,43 @@
       "supports_isolation": false
     },
     "source": "bundled:opencode"
+  },
+  {
+    "id": "pi",
+    "label": "Pi",
+    "icon": "pi",
+    "program": "pi",
+    "base_args": [],
+    "yolo_args": [],
+    "resume_args": [],
+    "parser_kind": null,
+    "running_pattern": null,
+    "pty_quiet_ms": 2000,
+    "needs_you": false,
+    "hooks": false,
+    "verified_against": null,
+    "chat": {
+      "transport": "acp",
+      "program": "npx",
+      "base_args": [
+        "-y",
+        "pi-acp@0.0.33"
+      ],
+      "session_id_args": [],
+      "resume_args": [],
+      "fork_args": [],
+      "model_args": [],
+      "effort_args": [],
+      "mode_args": [],
+      "add_dir_args": [],
+      "annotations": [],
+      "modes": [],
+      "effort": [],
+      "acp": {
+        "serve_client_fs": false
+      }
+    },
+    "accounts": null,
+    "source": "bundled:pi"
   }
 ]

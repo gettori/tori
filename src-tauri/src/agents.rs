@@ -1042,6 +1042,9 @@ const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
 const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
 const BUILTIN_GEMINI: &str = include_str!("../agents/gemini.toml");
 const BUILTIN_CODEX: &str = include_str!("../agents/codex.toml");
+const BUILTIN_COPILOT: &str = include_str!("../agents/copilot.toml");
+const BUILTIN_KIMI: &str = include_str!("../agents/kimi.toml");
+const BUILTIN_PI: &str = include_str!("../agents/pi.toml");
 
 /// Every adapter compiled into the binary, source label and text.
 ///
@@ -1049,11 +1052,14 @@ const BUILTIN_CODEX: &str = include_str!("../agents/codex.toml");
 /// that emits the frontend's fallback fixture. Kept apart, a new bundled adapter
 /// would reach the app while the fixture the TypeScript fallback is checked
 /// against still described the old set - and that check would keep passing.
-const BUNDLED: [(&str, &str); 4] = [
+const BUNDLED: [(&str, &str); 7] = [
     ("bundled:claude", BUILTIN_CLAUDE),
     ("bundled:opencode", BUILTIN_OPENCODE),
     ("bundled:gemini", BUILTIN_GEMINI),
     ("bundled:codex", BUILTIN_CODEX),
+    ("bundled:copilot", BUILTIN_COPILOT),
+    ("bundled:kimi", BUILTIN_KIMI),
+    ("bundled:pi", BUILTIN_PI),
 ];
 
 fn user_agents_dir() -> PathBuf {
@@ -1067,7 +1073,7 @@ fn user_agents_dir() -> PathBuf {
 /// the id it would have overridden keeps its previous (built-in or
 /// earlier-loaded) entry, so one broken file can't make an agent disappear.
 ///
-/// Four built-ins ship today: one Claude-shaped file adapter and three ACP ones.
+/// Seven built-ins ship today: one Claude-shaped file adapter and six ACP ones.
 /// The loop stays a loop: what makes this a registry is that nothing downstream
 /// knows how many adapters there are.
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
@@ -1294,11 +1300,11 @@ mod tests {
         assert!(claude.hooks);
     }
 
-    /// The registry mechanism is the point, not the count. Four built-ins ship
+    /// The registry mechanism is the point, not the count. Seven built-ins ship
     /// and nothing downstream may assume that number.
     ///
     /// What is worth pinning is the *shape spread*: one file-backed adapter and
-    /// three protocol-backed ones, so both halves of the loader's session-plumbing
+    /// six protocol-backed ones, so both halves of the loader's session-plumbing
     /// rule are exercised by something that actually ships rather than only by a
     /// fixture.
     #[test]
@@ -1306,7 +1312,7 @@ mod tests {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "codex", "gemini", "opencode"]);
+        assert_eq!(ids, vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi"]);
 
         let by_id = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter").clone();
         let claude = by_id("claude");
@@ -1314,7 +1320,7 @@ mod tests {
         assert!(claude.parser_kind.is_some());
         assert!(claude.running_pattern.is_some());
 
-        for id in ["opencode", "gemini", "codex"] {
+        for id in ["opencode", "gemini", "codex", "copilot", "kimi", "pi"] {
             let a = by_id(id);
             assert_eq!(
                 a.chat.as_ref().map(|c| c.transport),
@@ -1433,7 +1439,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
         let reg = build_registry_from(&dir);
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "codex", "gemini", "opencode", "x"]);
+        assert_eq!(ids, vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi", "x"]);
 
         std::fs::remove_dir_all(&dir).ok();
     }

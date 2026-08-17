@@ -60,8 +60,6 @@ function mount(over: { health?: Record<string, unknown>; accounts?: Record<strin
   invoked.mockImplementation(async (cmd: string) => {
     if (cmd === "agent_health") return [health(over.health)];
     if (cmd === "agent_accounts") return view(over.accounts);
-    if (cmd === "acp_catalog") return [];
-    if (cmd === "acp_catalog_source") return null;
     return [];
   });
   return render(() => <AgentsSection />);

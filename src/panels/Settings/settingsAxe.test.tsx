@@ -22,7 +22,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-import { withAcpCatalog } from "../../test/settingsInvoke";
 
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
@@ -31,9 +30,8 @@ import { expectNoAxeViolations } from "../../test/axe";
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
-    withAcpCatalog(async (cmd: string, args: Record<string, unknown>) =>
+    async (cmd: string, args: Record<string, unknown>) =>
       cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
-    ),
   );
   await loadWorkspaceSettings(null);
 });
@@ -77,7 +75,7 @@ describe("the Settings panel's accessibility", () => {
   // the page behind it.
   it("passes on a agent card and the page it opens", async () => {
     invoke.mockImplementation(
-      withAcpCatalog(async (cmd: string, args: Record<string, unknown>) => {
+      async (cmd: string, args: Record<string, unknown>) => {
         if (cmd === "agent_health")
           return [
             {
@@ -101,7 +99,7 @@ describe("the Settings panel's accessibility", () => {
         if (cmd === "agent_accounts")
           return { adapterId: "claude", declared: true, canAdd: true, canSignOut: true, profiles: [] };
         return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
-      }),
+      },
     );
     render(() => <Settings onClose={() => {}} />);
     const card = await screen.findByRole("button", { name: /Claude/ });

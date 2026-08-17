@@ -260,17 +260,28 @@ impl ModelCatalog {
 
 /// `~/Library/Application Support/sway/model-catalogs` on macOS.
 ///
-/// The data dir rather than `~/.config/sway`, for the reason `install.rs` and
-/// `accounts.rs` both chose it: this is state Sway derived, not configuration a
-/// user edits, and `~/.config` commonly lives in a dotfile repo. One file per
-/// agent rather than one map, so deleting a single agent's answer is a `rm`
-/// and a corrupt file costs one agent rather than all of them.
+/// The data dir rather than `~/.config/sway`, for the reason `accounts.rs`
+/// chose it: this is state Sway derived, not configuration a user edits, and
+/// `~/.config` commonly lives in a dotfile repo. One file per agent rather
+/// than one map, so deleting a single agent's answer is a `rm` and a corrupt
+/// file costs one agent rather than all of them.
 pub fn catalog_root() -> PathBuf {
     dirs::data_dir().unwrap_or_default().join("sway/model-catalogs")
 }
 
+/// Reduce an id to a bare path segment. The cache files are named from adapter
+/// ids that come out of user TOML, and the id is about to be concatenated into
+/// a path. Same rule as `accounts.rs` and `owned_state.rs` keep privately: one
+/// line each, so no module's escape depends on another's.
+fn sanitize_segment(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}
+
 fn catalog_path(root: &Path, agent_id: &str) -> PathBuf {
-    root.join(format!("{}.json", crate::install::sanitize_segment(agent_id)))
+    root.join(format!("{}.json", sanitize_segment(agent_id)))
 }
 
 /// Read one agent's remembered catalogue.
