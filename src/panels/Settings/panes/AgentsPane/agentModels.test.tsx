@@ -302,6 +302,62 @@ describe("the model list on a agent page", () => {
     expect(lists[1].children).toHaveLength(1);
   });
 
+  // The filter is the shared fuzzy walk, run against only what the row shows
+  // (name, id, effort - never resolvedModel), and the marks land on exactly
+  // the characters that earned the match.
+  it("filters fuzzily and marks only what matched", async () => {
+    const r = mount({}, [
+      probed("claude", [
+        model("sonnet", "claude-sonnet-5", { displayName: "Sonnet 5" }),
+        model("haiku", "claude-haiku-4-5", { displayName: "Haiku" }),
+      ]),
+    ]);
+    const { container, getByLabelText } = await open(r, /Claude/);
+
+    fireEvent.input(getByLabelText("Filter models"), { target: { value: "snt" } });
+
+    await waitFor(() => expect(container.textContent).not.toContain("Haiku"));
+    expect(container.textContent).toContain("Sonnet 5");
+    // The counter says it is a filter, not a shorter answer.
+    expect(container.textContent).toContain("1 of 2");
+    // Both the name and the id matched, so each carries the query's letters
+    // as marks - s, n, t twice, in the display's own casing - and nothing
+    // else is marked.
+    const marked = [...container.querySelectorAll("mark")].map((el) => el.textContent).join("");
+    expect(marked).toBe("Sntsnt");
+  });
+
+  it("keeps a row whose only match is its effort ladder", async () => {
+    const r = mount({}, [
+      probed("claude", [
+        model("sonnet", "claude-sonnet-5", {
+          displayName: "Sonnet",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "xhigh"],
+        }),
+        model("haiku", "claude-haiku-4-5", { displayName: "Haiku" }),
+      ]),
+    ]);
+    const { container, getByLabelText } = await open(r, /Claude/);
+
+    fireEvent.input(getByLabelText("Filter models"), { target: { value: "xhigh" } });
+
+    await waitFor(() => expect(container.textContent).not.toContain("Haiku"));
+    expect(container.textContent).toContain("Sonnet");
+    const marked = [...container.querySelectorAll("mark")].map((el) => el.textContent).join("");
+    expect(marked).toBe("xhigh");
+  });
+
+  it("says so when the filter matches nothing", async () => {
+    const r = mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]);
+    const { container, getByLabelText } = await open(r, /Claude/);
+
+    fireEvent.input(getByLabelText("Filter models"), { target: { value: "zzz" } });
+
+    await waitFor(() => expect(container.textContent).toContain('No model matches "zzz"'));
+    expect(container.textContent).toContain("0 of 1");
+  });
+
   // The answer describes the binary that answered it. A different one is
   // installed now, so the list may have moved and the page says so rather than
   // presenting a remembered answer as a current one.
