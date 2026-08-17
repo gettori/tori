@@ -430,16 +430,24 @@ pub struct EditorPrefs {
     pub format_on_save: Option<bool>,
 }
 
-/// The agent binary this install drives.
+/// The agent binaries this install drives.
 ///
-/// `path` overrides discovery. Empty means "use the discovered one", which is
-/// the normal case; an override is for a user running a build that is not on
-/// the login shell's PATH.
+/// An override wins over discovery. Empty means "use the discovered one",
+/// which is the normal case; an override is for a user running a build that is
+/// not on the login shell's PATH.
+///
+/// `paths` is keyed by adapter id, because the agents are different programs:
+/// one global path pointing every adapter at the same binary was only ever
+/// right on a machine with one agent installed. `path` is that older global
+/// shape, kept readable as a fallback so a hand-edited settings file goes on
+/// working; the per-agent entry wins where both exist.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
     #[serde(default)]
     pub path: Option<String>,
+    #[serde(default)]
+    pub paths: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -571,16 +579,28 @@ pub fn get_settings() -> Settings {
     load_from(&settings_path())
 }
 
-/// The user's agent binary override, if they set a non-empty one.
+/// The user's binary override for one agent, if they set a non-empty one.
 ///
 /// Read from disk at each call rather than cached: the setting's whole purpose
 /// is to point at a different binary, and requiring a restart to try one would
 /// make it useless for exactly the debugging it exists for. A blank string is
 /// treated as unset so clearing the field in the UI restores discovery.
-pub fn agent_override() -> Option<String> {
-    let path = load_from(&settings_path()).agent.path?;
-    let trimmed = path.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+pub fn agent_override(adapter_id: &str) -> Option<String> {
+    let agent = load_from(&settings_path()).agent;
+    pick_override(&agent, adapter_id)
+}
+
+/// The resolution `agent_override` applies, off-disk so it can be tested.
+fn pick_override(agent: &Agent, adapter_id: &str) -> Option<String> {
+    let non_empty = |s: &str| {
+        let trimmed = s.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    };
+    agent
+        .paths
+        .get(adapter_id)
+        .and_then(|p| non_empty(p))
+        .or_else(|| agent.path.as_deref().and_then(non_empty))
 }
 
 #[tauri::command]
@@ -686,7 +706,10 @@ mod tests {
                 show_sway_hooks: true,
                 max_concurrent_chats: 9,
             },
-            agent: Agent { path: Some("/opt/claude".into()) },
+            agent: Agent {
+                path: Some("/opt/claude".into()),
+                paths: [("codex".to_string(), "/opt/codex".to_string())].into(),
+            },
             ..Default::default()
         };
         save_to(&p, &s).unwrap();
@@ -927,6 +950,27 @@ mod tests {
         assert_eq!(back.agent.path, None);
         // And the section it did carry is untouched.
         assert_eq!(back.appearance.theme, "sway-dark");
+    }
+
+    /// The per-agent override wins over the legacy global path, and a blank
+    /// entry means "back to discovery" rather than "run the empty string".
+    #[test]
+    fn the_agent_override_prefers_the_per_agent_entry() {
+        let agent = Agent {
+            path: Some("/old/global".into()),
+            paths: [
+                ("claude".to_string(), "/builds/claude-dev".to_string()),
+                ("codex".to_string(), "  ".to_string()),
+            ]
+            .into(),
+        };
+        assert_eq!(pick_override(&agent, "claude"), Some("/builds/claude-dev".into()));
+        // Blank per-agent entry falls through to the global, not to nothing:
+        // the global was the only override this install had before the map.
+        assert_eq!(pick_override(&agent, "codex"), Some("/old/global".into()));
+        assert_eq!(pick_override(&agent, "gemini"), Some("/old/global".into()));
+        let none = Agent::default();
+        assert_eq!(pick_override(&none, "claude"), None);
     }
 
     /// A partially-written section fills only its missing fields, so hand-editing

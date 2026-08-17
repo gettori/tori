@@ -68,23 +68,6 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-/** The same four states as a word, and in the same three tones as the dot.
- *  "Ready" covers both healthy statuses for the reason above: a CLI that does
- *  not report a version is not a worse install, only a quieter one. */
-const STATE_LABEL: Record<BinaryStatus, string> = {
-  versionMatch: "Ready",
-  versionUnknown: "Ready",
-  versionDrift: "Version drift",
-  notFound: "Not installed",
-};
-
-const STATE_PILL: Record<BinaryStatus, string> = {
-  versionMatch: styles.statePillOk,
-  versionUnknown: styles.statePillOk,
-  versionDrift: styles.statePillWarn,
-  notFound: "",
-};
-
 /** Who ships the agent, as the row's quiet fact. Frontend-owned branding, the
  *  same trade `agentMarks` makes: adding it to the TOML schema would buy
  *  nothing but churn for a string only this row reads. An id Sway has never
@@ -424,9 +407,6 @@ export default function AgentsSection() {
         {(agent) => (
           <AgentDetail
             agent={agent()}
-            tone={TONE}
-            stateLabel={STATE_LABEL}
-            statePill={STATE_PILL}
             onBack={close}
             onRecheck={recheck}
             rechecking={rechecking()}

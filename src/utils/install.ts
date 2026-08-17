@@ -18,14 +18,26 @@ export type InstallRoute =
   | { type: "terminal"; program: string; args: string[] }
   | { type: "undeclared" };
 
+/** The three things the `[install]` table can do to a binary. One tab shape
+ *  serves all of them; only the id and the title say which one is running. */
+export type SetupVerb = "install" | "update" | "uninstall";
+
+const VERB_TITLE: Record<SetupVerb, string> = {
+  install: "Install",
+  update: "Update",
+  uninstall: "Uninstall",
+};
+
 /**
- * The tab that installs one agent, or `null` for a route that opens no tab.
+ * The tab that runs one verb for one agent, or `null` for a route that opens
+ * no tab.
  *
- * The id carries only the adapter: unlike a login there is nothing per-profile
- * about an install, so pressing the button twice focuses the tab already doing
+ * The id carries the verb and the adapter: unlike a login there is nothing
+ * per-profile here, so pressing the button twice focuses the tab already doing
  * it rather than racing two package managers over one global bin directory.
  */
-export function installTab(
+export function setupTab(
+  verb: SetupVerb,
   agentId: string,
   agentLabel: string,
   route: InstallRoute,
@@ -33,8 +45,8 @@ export function installTab(
 ): OpenTerminal | null {
   if (route.type !== "terminal") return null;
   return {
-    id: `install:${agentId}`,
-    title: `Install ${agentLabel}`,
+    id: `${verb}:${agentId}`,
+    title: `${VERB_TITLE[verb]} ${agentLabel}`,
     cwd,
     program: route.program,
     args: route.args,

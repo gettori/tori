@@ -238,7 +238,7 @@ pub async fn chat_spawn(
         // The user's agent override wins over the adapter's program name.
         // Read at spawn time rather than cached, so changing it in Settings
         // applies to the next session started without restarting Sway.
-        program: crate::settings::agent_override().unwrap_or_else(|| chat.program.clone()),
+        program: crate::settings::agent_override(&agent_id).unwrap_or_else(|| chat.program.clone()),
         args,
         // Empty today. The map exists so multi-account support later changes
         // this one line rather than every signature between here and the child.

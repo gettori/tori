@@ -474,10 +474,17 @@ pub struct AccountsConfig {
 /// (`kind: "command"` in the PTY tab): no shell means no quoting surprises, and
 /// the tab stays put on failure so "npm: command not found" is readable rather
 /// than a vanished window.
+///
+/// The update and uninstall verbs share the table and its program: every
+/// package manager worth declaring spells all three as arguments to one
+/// binary. Either arg list empty means that verb is undeclared, which renders
+/// as no button rather than a guessed command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallSpec {
     pub program: String,
     pub args: Vec<String>,
+    pub update_args: Vec<String>,
+    pub uninstall_args: Vec<String>,
 }
 
 /// A resolved, validated adapter. The frontend gets a mirrored subset of this
@@ -602,6 +609,10 @@ struct InstallToml {
     program: String,
     #[serde(default)]
     args: Vec<String>,
+    #[serde(default)]
+    update_args: Vec<String>,
+    #[serde(default)]
+    uninstall_args: Vec<String>,
 }
 
 /// `[accounts]`, v3's addition.
@@ -1035,7 +1046,12 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             if i.program.trim().is_empty() {
                 return Err(format!("{source}: install.program must not be empty"));
             }
-            Ok(InstallSpec { program: i.program, args: i.args })
+            Ok(InstallSpec {
+                program: i.program,
+                args: i.args,
+                update_args: i.update_args,
+                uninstall_args: i.uninstall_args,
+            })
         })
         .transpose()?;
 

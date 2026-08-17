@@ -209,9 +209,12 @@ describe("how many models a agent offers", () => {
     await waitFor(() => expect(r.container.textContent).toContain("Gemini"));
     expect(cell(r.container, "gemini")).toBe("-");
 
-    // And the page says so in words, with the ask as the next step.
+    // The page drops the Models section entirely during setup rather than
+    // heading a shrug: the steps already say Sway asks once setup finishes,
+    // and nothing anywhere reads as an error.
     const { container } = await open(r, /Gemini/);
-    expect(container.textContent).toContain("Nobody has asked Gemini what it can run");
+    expect(container.textContent).toContain("Ready for chat");
+    expect(container.textContent).not.toContain("Nobody has asked");
     expect(container.textContent).not.toContain("Error");
   });
 

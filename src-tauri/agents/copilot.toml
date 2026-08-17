@@ -70,6 +70,11 @@ serve_client_fs = false
 # chosen because it names the same package this adapter's launch is read from.
 program = "npm"
 args = ["install", "-g", "@github/copilot"]
+# npm's own semantics: `install -g` on an installed package moves it to the
+# latest published version, so the update verb is the install command again,
+# and `uninstall -g` is its documented removal.
+update_args = ["install", "-g", "@github/copilot"]
+uninstall_args = ["uninstall", "-g", "@github/copilot"]
 
 [accounts]
 # `copilot login` is the CLI's first-party OAuth command: browser flow on a
