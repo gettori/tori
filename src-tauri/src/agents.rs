@@ -474,6 +474,16 @@ pub struct AccountsConfig {
 pub struct AgentAdapter {
     pub id: String,
     pub label: String,
+    /// A `PICKER_ICONS` name (the set the space picker draws from), or `None`
+    /// for an adapter that names no glyph - the cards fall back to the label's
+    /// first letter, which is what every adapter looked like before this.
+    ///
+    /// Optional scalar rather than a version-gated table: the gates exist for
+    /// `[chat]` and `[accounts]`, whose absence changes what Sway can *do*, and
+    /// a missing icon changes only what it looks like. The cost of not bumping
+    /// is that a v3 file carrying `icon` is rejected by a build that predates
+    /// the key, which is the same trade every additive key here has taken.
+    pub icon: Option<String>,
     pub program: String,
     pub base_args: Vec<String>,
     pub yolo_args: Vec<String>,
@@ -541,6 +551,8 @@ struct AdapterToml {
     schema_version: u32,
     id: String,
     label: String,
+    #[serde(default)]
+    icon: Option<String>,
     launch: LaunchToml,
     /// Absent together for a protocol-backed adapter; see
     /// [`AgentAdapter::discovery`]. Optional here rather than required so the
@@ -710,10 +722,11 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 11] = [
+const KNOWN_TOP_LEVEL: [&str; 12] = [
     "schema_version",
     "id",
     "label",
+    "icon",
     "launch",
     "discovery",
     "parser",
@@ -985,6 +998,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     Ok(AgentAdapter {
         id: raw.id,
         label: raw.label,
+        icon: raw.icon,
         program: raw.launch.program,
         base_args: raw.launch.base_args,
         yolo_args: raw.launch.yolo_args,

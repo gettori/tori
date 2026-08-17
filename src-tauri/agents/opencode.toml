@@ -1,6 +1,7 @@
 schema_version = 3
 id = "opencode"
 label = "OpenCode"
+icon = "opencode"
 
 # Measured against this build with dev/acp-probe.mjs. Unlike claude.toml, almost
 # nothing below is a captured wire format: an ACP adapter's job is to say how to

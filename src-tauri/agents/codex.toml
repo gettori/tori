@@ -1,6 +1,7 @@
 schema_version = 3
 id = "codex"
 label = "Codex"
+icon = "codex"
 
 # Measured against this pair with `node dev/acp-probe.mjs --agent codex-acp`,
 # `node dev/codex-probe.mjs` and a live turn, 2026-08-14. Two versions because

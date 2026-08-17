@@ -1,6 +1,7 @@
 schema_version = 3
 id = "claude"
 label = "Claude"
+icon = "claude"
 # The CLI these conventions were empirically captured against. The chat
 # transport below is a measurement of this version's wire format, so a drift
 # warning against a newer binary is meaningful rather than cosmetic.

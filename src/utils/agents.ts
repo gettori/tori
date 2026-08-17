@@ -118,6 +118,10 @@ export type AccountsConfig = {
 export type Adapter = {
   id: string;
   label: string;
+  /** The agent logo this adapter wears, as a key into `agentMarks.tsx`.
+   *  Null for one that names none: every call site falls back rather than
+   *  borrowing another agent's mark. */
+  icon?: string | null;
   program: string;
   base_args: string[];
   yolo_args: string[];
@@ -151,6 +155,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
   {
     id: "claude",
     label: "Claude",
+    icon: "claude",
     program: "claude",
     base_args: [],
     yolo_args: ["--dangerously-skip-permissions"],
@@ -176,6 +181,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
   {
     id: "opencode",
     label: "OpenCode",
+    icon: "opencode",
     program: "opencode",
     base_args: [],
     yolo_args: ["--auto"],
@@ -194,6 +200,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
   {
     id: "gemini",
     label: "Gemini",
+    icon: "gemini",
     program: "gemini",
     base_args: [],
     yolo_args: ["--yolo"],
@@ -207,6 +214,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
   {
     id: "codex",
     label: "Codex",
+    icon: "codex",
     program: "codex",
     base_args: [],
     yolo_args: ["--dangerously-bypass-approvals-and-sandbox"],
