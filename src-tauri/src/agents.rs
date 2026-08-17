@@ -468,6 +468,18 @@ pub struct AccountsConfig {
     pub supports_isolation: bool,
 }
 
+/// One command that installs the agent, exactly as the vendor documents it.
+///
+/// A program plus args rather than a shell line, because it is spawned directly
+/// (`kind: "command"` in the PTY tab): no shell means no quoting surprises, and
+/// the tab stays put on failure so "npm: command not found" is readable rather
+/// than a vanished window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallSpec {
+    pub program: String,
+    pub args: Vec<String>,
+}
+
 /// A resolved, validated adapter. The frontend gets a mirrored subset of this
 /// via `list_agents` (the regex/path fields stay backend-only).
 #[derive(Debug, Clone, Serialize)]
@@ -535,6 +547,12 @@ pub struct AgentAdapter {
     /// this adapter's accounts", which is why it renders no account controls at
     /// all rather than an inert set.
     pub accounts: Option<AccountsConfig>,
+    /// The `[install]` table: the vendor's own documented install command, run
+    /// in a visible PTY tab by `crate::install`. `None` renders instructions
+    /// instead of a button. Backend-only, like `discovery`: the frontend asks
+    /// `agent_install_route` rather than mirroring the raw command.
+    #[serde(skip)]
+    pub install: Option<InstallSpec>,
     /// Where this adapter was loaded from: `"bundled:<id>"` for a built-in, or
     /// the absolute path of the user TOML that defined (or whole-replaced) it.
     /// The Agents cards show the path so a user who forgot about an override
@@ -572,6 +590,18 @@ struct AdapterToml {
     chat: Option<ChatToml>,
     #[serde(default)]
     accounts: Option<AccountsToml>,
+    #[serde(default)]
+    install: Option<InstallToml>,
+}
+
+/// `[install]`. Strict like `[accounts]` and for the same reason: a silently
+/// dropped key here would run a different command than the file's author wrote.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstallToml {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
 }
 
 /// `[accounts]`, v3's addition.
@@ -722,7 +752,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 12] = [
+const KNOWN_TOP_LEVEL: [&str; 13] = [
     "schema_version",
     "id",
     "label",
@@ -735,6 +765,7 @@ const KNOWN_TOP_LEVEL: [&str; 12] = [
     "verified_against",
     "chat",
     "accounts",
+    "install",
 ];
 
 /// Are `[discovery]`, `[parser]` and `[running]` declared in a combination this
@@ -995,6 +1026,19 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         })
         .transpose()?;
 
+    // Not version-gated, on the icon precedent: dropping it changes what the
+    // page offers, never what a session does. An older build warns and shows
+    // instructions instead of a button, which is the pre-[install] behaviour.
+    let install = raw
+        .install
+        .map(|i| {
+            if i.program.trim().is_empty() {
+                return Err(format!("{source}: install.program must not be empty"));
+            }
+            Ok(InstallSpec { program: i.program, args: i.args })
+        })
+        .transpose()?;
+
     Ok(AgentAdapter {
         id: raw.id,
         label: raw.label,
@@ -1012,6 +1056,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         verified_against: raw.verified_against,
         chat,
         accounts,
+        install,
         source: source.to_string(),
     })
 }
@@ -1708,9 +1753,39 @@ supports_isolation = true
                 ("claude".to_string(), Some(WhoamiKind::ClaudeJson)),
                 ("opencode".to_string(), Some(WhoamiKind::OpencodeCredentials)),
                 ("codex".to_string(), Some(WhoamiKind::ExitCode)),
+                // A login command with no probe: copilot documents no
+                // non-interactive status command, so its sign-in state is
+                // honestly unknown rather than read from a guessed shape.
+                ("copilot".to_string(), None),
             ],
             "a new adapter has to come here and say which answer shape it measured"
         );
+    }
+
+    #[test]
+    fn an_install_table_parses_into_a_spec() {
+        let text = format!(
+            "{VALID_MINIMAL}\n[install]\nprogram = \"npm\"\nargs = [\"install\", \"-g\", \"x\"]\n"
+        );
+        let spec = load_adapter_str(&text, "test").expect("parses").install.expect("declared");
+        assert_eq!(spec.program, "npm");
+        assert_eq!(spec.args, ["install", "-g", "x"]);
+    }
+
+    /// Strict like `[accounts]`: a silently dropped key here would run a
+    /// different command than the file's author wrote.
+    #[test]
+    fn an_unknown_install_key_is_loud() {
+        let text = format!("{VALID_MINIMAL}\n[install]\nprogram = \"npm\"\ncommand = \"npm i\"\n");
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("command"), "{err}");
+    }
+
+    #[test]
+    fn an_empty_install_program_is_rejected() {
+        let text = format!("{VALID_MINIMAL}\n[install]\nprogram = \"\"\n");
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("install.program"), "{err}");
     }
 
     /// OpenCode's `auth logout` needs a provider argument and prompts without

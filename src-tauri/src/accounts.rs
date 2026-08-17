@@ -129,6 +129,20 @@ pub fn profile(file: &AccountsFile, adapter_id: &str, profile_id: &str) -> Optio
     profiles_for(file, adapter_id).into_iter().find(|p| p.id == profile_id)
 }
 
+/// How many accounts each adapter holds, for the Agents table's column.
+///
+/// Counts alone, and only for adapters that declare `[accounts]`: an adapter
+/// with no table gets no row here rather than a default "1", because that
+/// would claim an account Sway has nothing true to say about. The default
+/// profile is in every count, the same way it is in every profile list.
+pub fn account_counts(file: &AccountsFile) -> BTreeMap<String, usize> {
+    crate::agents::registry()
+        .iter()
+        .filter(|a| a.accounts.is_some())
+        .map(|a| (a.id.clone(), profiles_for(file, &a.id).len()))
+        .collect()
+}
+
 /// Add a profile.
 ///
 /// Rejects a duplicate id and rejects reusing [`DEFAULT_PROFILE_ID`], which
@@ -569,6 +583,14 @@ fn status_of(
 /// profile, and a user who just finished a login is the main person reading it.
 /// The cached answer for the *default* profile rides `agent_health` instead,
 /// which is what the picker and the Agents cards read.
+/// The stored file read once, no probes: this renders on every Settings open,
+/// and the subprocess budget belongs to `agent_accounts`, which is only asked
+/// about one agent's page at a time.
+#[tauri::command]
+pub fn agent_account_counts() -> BTreeMap<String, usize> {
+    account_counts(&load())
+}
+
 #[tauri::command]
 pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> {
     let adapter = adapter(&adapter_id)?;
@@ -844,6 +866,19 @@ mod tests {
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         assert_eq!(profiles_for(&file, "claude").len(), 2);
         assert_eq!(profiles_for(&file, "codex").len(), 1, "codex sees only its default");
+    }
+
+    /// The Agents table's column: declared adapters count their default plus
+    /// whatever was added, and an adapter with no `[accounts]` table has no
+    /// row at all rather than a claimed "1".
+    #[test]
+    fn account_counts_cover_exactly_the_adapters_that_declare_accounts() {
+        let mut file = AccountsFile::default();
+        add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
+        let counts = account_counts(&file);
+        assert_eq!(counts.get("claude"), Some(&2), "default plus one added");
+        assert_eq!(counts.get("codex"), Some(&1), "the default alone");
+        assert_eq!(counts.get("gemini"), None, "gemini declares no [accounts]");
     }
 
     #[test]

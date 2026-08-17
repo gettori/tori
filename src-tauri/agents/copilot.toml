@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 id = "copilot"
 label = "Copilot"
 icon = "copilot"
@@ -63,3 +63,22 @@ add_dir_args = []
 [chat.acp]
 # Left at the safe default, like every unmeasured ACP adapter.
 serve_client_fs = false
+
+[install]
+# `npm install -g @github/copilot` is the one documented install that covers
+# every platform (Node 22+). The docs also offer brew and a curl script; npm is
+# chosen because it names the same package this adapter's launch is read from.
+program = "npm"
+args = ["install", "-g", "@github/copilot"]
+
+[accounts]
+# `copilot login` is the CLI's first-party OAuth command: browser flow on a
+# local terminal, device code on a remote one. From the CLI reference
+# (2026-08), untested like the rest of this file.
+login_args = ["login"]
+# No whoami_args: the reference documents no non-interactive status command,
+# so sign-in state stays unknown rather than guessed. No logout_args either:
+# `/logout` exists only inside the interactive session.
+#
+# No supports_isolation: `COPILOT_HOME` is documented to relocate config and
+# state, but nobody has measured two simultaneous logins through it.

@@ -37,8 +37,7 @@ export type SettingSection =
   | "editor"
   | "editing"
   | "checkpoints"
-  | "chat"
-  | "agent";
+  | "chat";
 
 /**
  * A tab in the panel's strip, in the order the strip renders them.
@@ -82,9 +81,8 @@ export type SettingTabDef = {
  * The six tabs, in rail order.
  *
  * The pairings are the ones that read as one subject rather than the ones that
- * happen to be adjacent today: the agent binary is a property of the agent
- * that runs it, checkpoints are what makes a chat's turns revertible, and the
- * two Editor sections were already titled the same thing.
+ * happen to be adjacent today: checkpoints are what makes a chat's turns
+ * revertible, and the two Editor sections were already titled the same thing.
  *
  * This tab was briefly labelled "Harnesses", to keep it apart from the ~31
  * catalogue entries below the cards, which are agents too. The vocabulary is one
@@ -93,7 +91,7 @@ export type SettingTabDef = {
  * settings.json, the schemas and every `Preferences:` command are untouched.
  */
 export const SETTING_TABS: SettingTabDef[] = [
-  { id: "agents", label: "Agents", group: "Workbench", icon: "bot", sections: ["agents", "agent"] },
+  { id: "agents", label: "Agents", group: "Workbench", icon: "bot", sections: ["agents"] },
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
@@ -126,7 +124,6 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   editing: "Editor",
   checkpoints: "Checkpoints",
   chat: "Chat",
-  agent: "Agent",
 };
 
 export type SettingEntry = {
@@ -359,12 +356,5 @@ export const SETTINGS: SettingEntry[] = [
     section: "chat",
     label: "Show every hook event",
     hint: "Off, the transcript shows a hook only when it fails. On reveals every execution.",
-  },
-
-  {
-    id: "agent-path",
-    section: "agent",
-    label: "Binary path",
-    hint: "Overrides the discovered agent binary for new chat sessions. Leave it empty to use the one found in Agents.",
   },
 ];

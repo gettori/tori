@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
 import type { CatalogModel, ModelCatalog, ProbeFailureReason } from "../../../../utils/modelCatalog";
+import styles from "../../Settings.module.css";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
@@ -144,26 +145,28 @@ const open = async (r: ReturnType<typeof render>, name: RegExp) => {
 };
 
 // **A count is a claim about what the installed binary can run.** So it exists
-// only where a probe answered, and the three states below are rendered
-// differently on purpose: the one that matters most is the first, because "0
-// models" for a agent nobody asked reads as a broken install.
+// only where a probe answered, and the states below are rendered differently
+// on purpose: the one that matters most is the first, because "0" for a agent
+// nobody asked reads as a broken install.
 describe("how many models a agent offers", () => {
-  // Read off the card itself, not the section: the page's own "Check models"
-  // button is the thing that would ask for one.
-  const card = (container: HTMLElement) =>
-    container.querySelector('[data-agent="claude"]')?.textContent ?? "";
+  // Read off the row's own MODELS cell, not the whole row: the version cell
+  // beside it is also digits, so row text cannot tell the two apart.
+  const cell = (container: HTMLElement, id = "claude") =>
+    container
+      .querySelector(`[data-agent="${id}"] .${styles.agentModels}`)
+      ?.textContent?.trim() ?? "";
 
   it("claims no count for a agent nothing has asked", async () => {
     const { container } = mount({}, [neverProbed("claude")]);
     await waitFor(() => expect(container.textContent).toContain("Claude"));
-    expect(card(container)).not.toContain("model");
+    expect(cell(container)).toBe("-");
   });
 
   it("counts what the agent named", async () => {
     const { container } = mount({}, [
       probed("claude", [model("sonnet", "claude-sonnet-5"), model("haiku", "claude-haiku-4-5")]),
     ]);
-    await waitFor(() => expect(container.textContent).toContain("2 models"));
+    await waitFor(() => expect(cell(container)).toBe("2"));
   });
 
   // A catalogue names aliases: `default`, `sonnet` and the dated id are three
@@ -177,8 +180,7 @@ describe("how many models a agent offers", () => {
         model("claude-sonnet-5", "claude-sonnet-5"),
       ]),
     ]);
-    await waitFor(() => expect(container.textContent).toContain("1 model"));
-    expect(container.textContent).not.toContain("3 model");
+    await waitFor(() => expect(cell(container)).toBe("1"));
   });
 
   // The dedupe key falls back to `value` for exactly this row: a user-configured
@@ -192,7 +194,7 @@ describe("how many models a agent offers", () => {
         model("my-fine-tune", "", { userConfigured: true }),
       ]),
     ]);
-    await waitFor(() => expect(container.textContent).toContain("2 models"));
+    await waitFor(() => expect(cell(container)).toBe("2"));
   });
 
   /** The agent nobody here can measure. No machine in this project has
@@ -205,9 +207,7 @@ describe("how many models a agent offers", () => {
       [neverProbed("gemini")],
     );
     await waitFor(() => expect(r.container.textContent).toContain("Gemini"));
-    const gemini = () => r.container.querySelector('[data-agent="gemini"]')?.textContent ?? "";
-    expect(gemini()).not.toContain("model");
-    expect(gemini()).not.toContain("Error");
+    expect(cell(r.container, "gemini")).toBe("-");
 
     // And the page says so in words, with the ask as the next step.
     const { container } = await open(r, /Gemini/);
@@ -217,7 +217,7 @@ describe("how many models a agent offers", () => {
 
   it("says Error when the last probe failed and there was never an answer", async () => {
     const { container } = mount({}, [failed("claude", "signedOut")]);
-    await waitFor(() => expect(container.textContent).toContain("Error"));
+    await waitFor(() => expect(cell(container)).toBe("Error"));
   });
 
   // Stale-but-real beats fresh-but-empty. A signed-out moment must not turn a
@@ -226,7 +226,7 @@ describe("how many models a agent offers", () => {
   it("keeps showing the old count when a later probe failed", async () => {
     const kept = probed("claude", [model("sonnet", "claude-sonnet-5")]).catalogue;
     const { container } = mount({}, [failed("claude", "timedOut", "", kept)]);
-    await waitFor(() => expect(container.textContent).toContain("1 model"));
+    await waitFor(() => expect(cell(container)).toBe("1"));
     expect(container.textContent).not.toContain("Error");
   });
 });
