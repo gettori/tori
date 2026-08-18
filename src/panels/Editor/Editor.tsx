@@ -197,7 +197,7 @@ import {
   noteBufferDirty,
   toggleBreakpointAt,
 } from "../../utils/debugBreakpoints";
-import { rememberClosedTab, sweepClosed, takeClosedTab, type ClosedStore } from "./reopenStack";
+import { rememberClosedTab, sweepClosed, takeClosedTab } from "./reopenStack";
 import { setTouchedPaths, writtenPaths, isTouched, type TouchOp } from "../../utils/touchedFiles";
 import {
   setEditingNow,
@@ -229,12 +229,17 @@ import { adoptBufferText, liveBufferText } from "./liveBuffers";
 // the rest of CodeMirror and would put the whole graph back in the startup
 // chunk. The only call is the fire-and-forget warm-up below.
 import type { Selection } from "../LeftSidebar/LeftSidebar";
+import {
+  tabsByWs,
+  setTabsByWs,
+  activeByWs,
+  setActiveByWs,
+  closedByWs,
+  setClosedByWs,
+  resetEditorTabModel,
+  type FileTab,
+} from "./editorTabStore";
 import styles from "./Editor.module.css";
-
-// Every editor tab is a file now that the transcript viewer is gone, so a tab
-// *is* its path: `tabId` and `FileTab.path` are the same string, and the tab
-// bar's `idOf` is what still names the mapping.
-type FileTab = { path: string; name: string };
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
 // filtered list hands OverflowTabBar the same object references on every read:
@@ -331,6 +336,9 @@ export default function Editor(props: {
   showFiletree?: boolean;
   onToggleFiletree?: () => void;
 }) {
+  // The tab model lives in editorTabStore (module-level, phase 4 composes it);
+  // the reset keeps its lifetime tied to this panel exactly as before.
+  resetEditorTabModel();
   const filetreeOn = () => props.showFiletree ?? true;
   // The file-tree show/hide button lives where the tree currently is: in the
   // right panel's own tab strip (right-aligned) while the tree is shown, and in
@@ -344,17 +352,6 @@ export default function Editor(props: {
       tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
-  // Tabs belong to a workspace (branch-unit folder), not to the editor: a file
-  // open in one worktree has no meaning in another, and usually does not exist
-  // there. Switching branch-unit therefore swaps the strip, and coming back
-  // restores the strip you left. Both maps are keyed by workspace and read
-  // through the accessors below, so every call site still says `tabs()`.
-  //
-  // The empty-string key is the bucket for "no selection yet". Nothing can
-  // select into it, so it is transient by construction, and `toStore` refuses to
-  // persist under it.
-  const [tabsByWs, setTabsByWs] = createSignal<Record<string, FileTab[]>>({});
-  const [activeByWs, setActiveByWs] = createSignal<Record<string, string | null>>({});
   // Derived from `root()` rather than reading the prop a second time, so the two
   // cannot drift; they differ only in how each spells "nothing selected".
   const ws = () => root() ?? "";
@@ -579,10 +576,6 @@ export default function Editor(props: {
   // through App to two components that mount and unmount on a keystroke.
   const [frecency, setFrecency] = createSignal<FrecencyStore>(loadFrecency(Date.now()));
   createEffect(() => saveFrecency(frecency()));
-  // The tabs you closed, for Cmd+Shift+T. Session-lived on purpose: reopening
-  // is an undo of something you just did, and last week's closes are what the
-  // pickers above are for.
-  const [closedByWs, setClosedByWs] = createSignal<ClosedStore>({});
 
   /** Note working in a file. Synthetic views are skipped for `recordJump`'s
    *  reason: `sway://` is not a path any picker can offer. */
