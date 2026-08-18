@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // Type-only, so it is erased and does not load the module ahead of the mocks
 // the dynamic imports below are waiting for.
@@ -133,7 +134,12 @@ let dropAccess: (() => void) | null = null;
 let mounted: ReturnType<typeof render> | null = null;
 
 async function mountEditor() {
-  mounted = render(() => <Editor selected={selection as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selection as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
   // The scratch directory arrives one await after mount, and every delete path
   // is gated on knowing it.

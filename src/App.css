@@ -356,6 +356,25 @@ html {
   flex: 1 1 auto;
 }
 
+/* The editor pane's row (phase 7): the file pane's column beside the editor
+   chrome, which portals in through a stage host. The old .editorPane rule. */
+.editor-split {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  background: var(--canvas-card);
+}
+
+/* Layout-transparent plumbing: the chrome slot, every stage-host element, and
+   the wrapper div Solid's Portal inserts inside one. What renders into a host
+   participates directly in the adopting pane's flex. */
+.chrome-slot,
+[data-stage-host],
+[data-stage-host] > div {
+  display: contents;
+}
+
 /* Show/hide: panes drop out of flow with display:none rather than unmounting, so
    PTYs, CodeMirror buffers, and panel state survive a hide/show cycle. The extra
    class specificity beats the base `.pane { display: flex }` rule. */

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
@@ -80,7 +81,12 @@ const ON_BUTTON = /Showing git blame/;
 let mounted: ReturnType<typeof render> | null = null;
 
 async function mountWithFile() {
-  mounted = render(() => <Editor selected={selection as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selection as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
   emitWith(OPEN_IN_EDITOR, { path: FILE });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
@@ -133,7 +139,12 @@ describe("the blame toggle", () => {
   it("offers no toggle on a tab that is not a file", async () => {
     // A commit log has no lines to blame, and the control would sit there doing
     // nothing beside a view that cannot use it.
-    mounted = render(() => <Editor selected={selection as never} />);
+    mounted = render(() => (
+      <>
+        <Editor selected={selection as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
     await waitFor(() => expect(listening.ready).toBe(true));
     emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", REPO) });
 

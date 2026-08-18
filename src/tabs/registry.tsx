@@ -2,7 +2,7 @@
 // drawn, closed, activated, and staged. Panels register at setup with closures
 // over their own state, so the strips draw every kind through one code path
 // and the per-kind knowledge lives with the panel that owns the kind.
-import type { JSX } from "solid-js";
+import { createSignal, type JSX } from "solid-js";
 import Tab from "../components/Tab/Tab";
 import type { UnifiedTab, UnifiedTabKind } from "./unifiedTabs";
 
@@ -28,19 +28,40 @@ export type TabDescriptor = {
   close: (t: UnifiedTab, e: Event) => void;
   /** The tab's surface on the stage (the render component of the kind). */
   stage?: (t: UnifiedTab) => JSX.Element;
+  /** Pane hosting (plan phase 7): how a pane pinned to this kind fills itself.
+   *  The strip's list/active/reorder, the stage hosts to adopt, and the
+   *  overlays drawn over the stage - all closures over the panel's state. */
+  stripItems?: () => UnifiedTab[];
+  stripActiveId?: () => string | null;
+  stripReorder?: (next: UnifiedTab[]) => void;
+  stripClass?: string;
+  hostIds?: () => string[];
+  overlay?: () => JSX.Element;
 };
 
 const entries = new Map<UnifiedTabKind, TabDescriptor>();
+// Registration order is render order now that panes and panels are separate
+// components: a pane mounted before its panel must pick the descriptor up when
+// it lands, and a Map alone is invisible to tracking scopes.
+const [generation, setGeneration] = createSignal(0);
 
 // Re-registering overwrites: a panel remount (tests) refreshes its closures.
 export function registerKind(kind: UnifiedTabKind, d: TabDescriptor): void {
   entries.set(kind, d);
+  setGeneration((g) => g + 1);
 }
 
 export function kindEntry(kind: UnifiedTabKind): TabDescriptor {
-  const d = entries.get(kind);
+  const d = maybeKindEntry(kind);
   if (!d) throw new Error(`no tab descriptor registered for kind "${kind}"`);
   return d;
+}
+
+/** For readers that must tolerate a not-yet-mounted panel (a pane's pin kind
+ *  before its panel registers, App suites that stub the panels outright). */
+export function maybeKindEntry(kind: UnifiedTabKind): TabDescriptor | undefined {
+  generation();
+  return entries.get(kind);
 }
 
 /** The one tab markup every strip draws, fed entirely from the descriptor. */

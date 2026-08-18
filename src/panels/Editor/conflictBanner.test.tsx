@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // The conflict banner: the editor's half of the Conflicts section. Nothing in a
@@ -90,7 +91,12 @@ const BANNER = /Merge conflict/;
 let mounted: ReturnType<typeof render> | null = null;
 
 async function mountWith(path: string, sel: Partial<typeof withSession> = selection) {
-  mounted = render(() => <Editor selected={sel as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={sel as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
   emitWith(OPEN_IN_EDITOR, { path });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());

@@ -67,6 +67,7 @@ vi.mock("./TerminalView", async () => {
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 
 const { default: Terminal } = await import("./Terminal");
+const { default: PaneView } = await import("../../tabs/PaneView");
 const { emitWith, OPEN_TERMINAL } = await import("../../utils/events");
 type OpenTerminal = import("../../utils/events").OpenTerminal;
 
@@ -91,7 +92,12 @@ const branchSelection = {
 
 function mount() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return render(() => <Terminal selected={branchSelection as any} onOpenChange={() => {}} />);
+  return render(() => (
+    <>
+      <Terminal selected={branchSelection as any} onOpenChange={() => {}} />
+      <PaneView pinKind="shell" />
+    </>
+  ));
 }
 
 /** Open a plain shell tab, the way the New button does. The title is what the
