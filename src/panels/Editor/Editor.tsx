@@ -115,6 +115,10 @@ import {
   DEBUG_PICK,
   type DebugPick,
   FILE_RENAMED,
+  CLOSE_TAB,
+  TAB_JUMP,
+  TAB_CYCLE,
+  type TabJump,
   EDITOR_CLOSE_TAB,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
@@ -239,10 +243,11 @@ import {
   resetEditorTabModel,
   type FileTab,
 } from "./editorTabStore";
-import { noteTabFocus } from "../../layout/layoutStore";
+import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
-import { unifiedTabs, idOf, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
-import { registerKind, kindEntry, renderRegistryTab } from "../../tabs/registry";
+import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
+import { registerKind } from "../../tabs/registry";
+import UnifiedTabStrip from "../../tabs/UnifiedTabStrip";
 import styles from "./Editor.module.css";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
@@ -1663,6 +1668,27 @@ export default function Editor(props: {
         const id = activeId();
         if (id) void closeTab(id);
       }),
+      // Pane-scoped tab keys (plan phase 6): the same events the terminal
+      // panel handles for its own tabs, gated on which pane holds focus, so
+      // one keystroke acts on exactly one pane. Close goes through closeTab,
+      // which already asks before discarding a dirty buffer.
+      onEvent(CLOSE_TAB, () => {
+        if (!kindPaneFocused(ws(), "file")) return;
+        const id = activeId();
+        if (id) void closeTab(id);
+      }),
+      onWith<TabJump>(TAB_JUMP, ({ index }) => {
+        if (!kindPaneFocused(ws(), "file")) return;
+        const t = tabs()[index];
+        if (t) setActiveId(tabId(t));
+      }),
+      onEvent(TAB_CYCLE, () => {
+        if (!kindPaneFocused(ws(), "file")) return;
+        const list = tabs();
+        if (!list.length) return;
+        const idx = list.findIndex((t) => tabId(t) === activeId());
+        setActiveId(tabId(list[(idx + 1) % list.length]));
+      }),
       onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
       onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
       onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
@@ -1817,6 +1843,68 @@ export default function Editor(props: {
       </>
     );
   };
+  // The bar's trailing cluster while a file tab is active (or while the file
+  // pane sits empty). Moved verbatim from the old bar's `trailing` prop.
+  const editorTrailing = () => (
+    <>
+      {/* Always mounted rather than shown only once there is somewhere
+          to go: a control that appears and disappears moves everything
+          beside it, and the greyed-out pair is what says the list has
+          an end. */}
+      <IconButton
+        icon={<Icon icon={ArrowLeft} />}
+        disabled={!canGoBack(jumps())}
+        onClick={() => goJump(-1)}
+        tooltip="Go back to where you were (⌃−)"
+      />
+      <IconButton
+        icon={<Icon icon={ArrowRight} />}
+        disabled={!canGoForward(jumps())}
+        onClick={() => goJump(1)}
+        tooltip="Go forward again (⌃⇧−)"
+      />
+      <Show when={isPreviewableTab()}>
+        <IconButton
+          active={showingPreview()}
+          icon={
+            <Icon icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner} />
+          }
+          onClick={togglePreview}
+          tooltip={
+            showingPreview()
+              ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
+              : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
+          }
+        />
+      </Show>
+      <Show when={activeFileTab()}>
+        <IconButton
+          active={blameOn()}
+          icon={<Icon icon={UserRound} />}
+          onClick={toggleBlame}
+          tooltip={
+            blameOn()
+              ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
+              : "Git blame: show who last changed each line, shaded by age."
+          }
+        />
+      </Show>
+      <IconButton
+        active={follow()}
+        icon={<Icon icon={Bot} />}
+        onClick={() => setFollow(!follow())}
+        tooltip={
+          follow()
+            ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
+            : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
+        }
+      />
+      <Show when={props.onToggleFiletree && !filetreeOn()}>
+        {filetreeToggleBtn(false)}
+      </Show>
+    </>
+  );
+
   registerKind("file", {
     icon: (u) => tabIcon(asFile(u)),
     title: (u) => asFile(u).name,
@@ -1860,6 +1948,7 @@ export default function Editor(props: {
         </>
       );
     },
+    trailing: editorTrailing,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
   });
@@ -1871,77 +1960,12 @@ export default function Editor(props: {
   return (
     <div class={styles.editorPane} ref={paneEl}>
       <div class={styles.editorMain}>
-        <OverflowTabBar
+        <UnifiedTabStrip
           class={styles.editorTabs}
           items={stripTabs()}
           activeId={activeId()}
-          idOf={idOf}
-          onActivate={(id) => {
-            const u = stripTabs().find((t) => t.id === id);
-            if (u) kindEntry(u.kind).activate(u);
-          }}
-          onReorder={(next) => setTabs(next.map((u) => u.file))}
-          renderTab={renderRegistryTab}
-          renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
-          trailing={
-            <>
-              {/* Always mounted rather than shown only once there is somewhere
-                  to go: a control that appears and disappears moves everything
-                  beside it, and the greyed-out pair is what says the list has
-                  an end. */}
-              <IconButton
-                icon={<Icon icon={ArrowLeft} />}
-                disabled={!canGoBack(jumps())}
-                onClick={() => goJump(-1)}
-                tooltip="Go back to where you were (⌃−)"
-              />
-              <IconButton
-                icon={<Icon icon={ArrowRight} />}
-                disabled={!canGoForward(jumps())}
-                onClick={() => goJump(1)}
-                tooltip="Go forward again (⌃⇧−)"
-              />
-              <Show when={isPreviewableTab()}>
-                <IconButton
-                  active={showingPreview()}
-                  icon={
-                    <Icon icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner} />
-                  }
-                  onClick={togglePreview}
-                  tooltip={
-                    showingPreview()
-                      ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
-                      : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
-                  }
-                />
-              </Show>
-              <Show when={activeFileTab()}>
-                <IconButton
-                  active={blameOn()}
-                  icon={<Icon icon={UserRound} />}
-                  onClick={toggleBlame}
-                  tooltip={
-                    blameOn()
-                      ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
-                      : "Git blame: show who last changed each line, shaded by age."
-                  }
-                />
-              </Show>
-              <IconButton
-                active={follow()}
-                icon={<Icon icon={Bot} />}
-                onClick={() => setFollow(!follow())}
-                tooltip={
-                  follow()
-                    ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
-                    : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
-                }
-              />
-              <Show when={props.onToggleFiletree && !filetreeOn()}>
-                {filetreeToggleBtn(false)}
-              </Show>
-            </>
-          }
+          pinKind="file"
+          onReorder={(next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file))}
         />
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,

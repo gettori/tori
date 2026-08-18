@@ -13,6 +13,8 @@ import {
   MAX_PANES,
   MAX_SPLIT_DEPTH,
   leaves,
+  resolvePinPane,
+  setPaneHidden,
   visibleLeaves,
   type PaneLeaf,
   type PaneNode,
@@ -136,6 +138,29 @@ export function setFocusedPane(ws: string, paneId: string) {
   if (!leaves(env.layout).some((l) => l.id === paneId)) return;
   setEnvelopes({ ...envelopes(), [ws]: { ...env, focusedPaneId: paneId } });
   persistEnvelopes();
+}
+
+// ---- Pane key routing ------------------------------------------------------
+
+/** Two-pane key routing (plan phase 6): does the focused pane host this kind's
+ *  pin side? True for terminal kinds when no envelope exists yet, so a panel
+ *  mounted outside the app shell keeps its pre-pane behavior. */
+export function kindPaneFocused(ws: string, kind: string): boolean {
+  const env = envelopes()[ws];
+  if (!env) return kind !== "file";
+  return resolvePinPane(env.layout, kind)?.id === env.focusedPaneId;
+}
+
+/** Reveal the pane a kind pins to and hand it pane focus: the shared shape of
+ *  every programmatic "take me to this tab" (sidebar session click,
+ *  next-waiting, focus-session-tab). No envelope means no pane to reveal. */
+export function revealKindPane(ws: string, kind: string) {
+  const env = envelopes()[ws];
+  if (!env) return;
+  const pane = resolvePinPane(env.layout, kind);
+  if (!pane) return;
+  if (pane.hidden) updateLayout(ws, (root) => setPaneHidden(root, pane.id, false));
+  setFocusedPane(ws, pane.id);
 }
 
 // ---- Tab focus recency -----------------------------------------------------
