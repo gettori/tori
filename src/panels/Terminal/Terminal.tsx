@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import ChatView from "../Chat/ChatView";
-import OverflowTabBar from "../../components/OverflowTabBar";
+import UnifiedTabStrip from "../../tabs/UnifiedTabStrip";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -73,8 +73,11 @@ import {
   type TabKind,
 } from "./terminalTabStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
-import { unifiedTabs, unifyTerm, idOf, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
-import { registerKind, kindEntry, renderRegistryTab, type TabDescriptor } from "../../tabs/registry";
+import { kindPaneFocused, revealKindPane } from "../../layout/layoutStore";
+import { preserveScrollAndFocus } from "../../utils/rowMovePreserve";
+import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
+import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
+import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
 import styles from "./Terminal.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
@@ -388,9 +391,17 @@ export default function Terminal(props: {
     saveTabs(mergeStore(restorable, live, touched));
   });
 
+  // Every tab key below is pane-scoped (plan phase 6): the editor panel
+  // listens to the same events for its own tabs, and the focused pane is what
+  // decides which listener acts, so one keystroke never lands twice.
+  const paneFocused = () => kindPaneFocused(activeWorkspace() ?? "", "shell");
+
+  // Cmd+W. Not the strip's close button, which stays immediate: the keystroke
+  // is blind (whatever happens to be active), so the busy cases ask first.
   const offClose = onEvent(CLOSE_TAB, () => {
+    if (!paneFocused()) return;
     const id = visibleId();
-    if (id) closeId(id);
+    if (id) void closeGuarded(id);
   });
   onCleanup(offClose);
 
@@ -398,6 +409,7 @@ export default function Terminal(props: {
   // `tabsIn(ws)` is canonical order, already reflecting any drag-reorder the
   // bar applied via `mergeReorder`.
   const offTabJump = onWith<TabJump>(TAB_JUMP, ({ index }) => {
+    if (!paneFocused()) return;
     const ws = activeWorkspace();
     if (!ws) return;
     const tab = tabsIn(ws)[index];
@@ -407,6 +419,7 @@ export default function Terminal(props: {
 
   // Ctrl+Tab: cycle to the next tab in the active workspace, wrapping around.
   const offTabCycle = onEvent(TAB_CYCLE, () => {
+    if (!paneFocused()) return;
     const ws = activeWorkspace();
     if (!ws) return;
     const tabs = tabsIn(ws);
@@ -425,7 +438,12 @@ export default function Terminal(props: {
     const idx = waiting.findIndex((w) => w.tabId === visibleId());
     const next = waiting[(idx + 1) % waiting.length];
     const tab = open().find((t) => t.id === next.tabId);
-    if (tab) focusTab(tab.workspace, tab.id);
+    if (tab) {
+      // Pane-aware (plan phase 6): a hidden or unfocused pane is revealed and
+      // focused before the tab inside it, or the jump lands off screen.
+      revealKindPane(tab.workspace, tab.kind);
+      focusTab(tab.workspace, tab.id);
+    }
   });
   onCleanup(offNextWaiting);
 
@@ -433,7 +451,10 @@ export default function Terminal(props: {
   // tab, so just reveal it (no resume needed).
   const offFocusSessionTab = onWith<FocusSessionTab>(FOCUS_SESSION_TAB, ({ tabId }) => {
     const tab = open().find((t) => t.id === tabId);
-    if (tab) focusTab(tab.workspace, tab.id);
+    if (tab) {
+      revealKindPane(tab.workspace, tab.kind);
+      focusTab(tab.workspace, tab.id);
+    }
   });
   onCleanup(offFocusSessionTab);
 
@@ -691,10 +712,19 @@ export default function Terminal(props: {
   createEffect(
     on(
       () => props.selected,
-      (sel) => {
+      (sel, prev) => {
         if (!sel?.folderPath) return;
         setActiveWorkspace(sel.folderPath);
-        if (sel.sessionId) void openSelectedSession(sel);
+        if (sel.sessionId) {
+          // A sidebar session click means "take me there": reveal and focus
+          // the pane the session's tab lives in (or will open in), even when
+          // that pane is hidden or another pane holds focus (plan phase 6).
+          // Not on the first delivery: that is the selection restored at
+          // launch, and revealing for it would override the workspace's saved
+          // pane focus (phase 5) with nobody having clicked anything.
+          if (prev !== undefined) revealKindPane(sel.folderPath, "shell");
+          void openSelectedSession(sel);
+        }
       },
     ),
   );
@@ -1046,6 +1076,40 @@ export default function Terminal(props: {
     closeId(id);
   }
 
+  // In-app replacement for window.confirm (unimplemented in WKWebView); the
+  // same shape the editor panel uses.
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  function askConfirm(opts: ConfirmOpts): Promise<boolean> {
+    return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
+  }
+  function resolveConfirm(v: boolean) {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(v);
+  }
+
+  /** Cmd+W's per-kind guard (plan phase 6): an idle shell closes at once; a
+   *  chat mid-turn (its own event stream, exact) or a PTY agent that is not
+   *  quiet (the inferred status, best-effort by design) asks first. */
+  async function closeGuarded(id: string) {
+    const t = open().find((o) => o.id === id);
+    if (!t) return;
+    const busy = (t.kind === "chat" || t.kind === "agent") && tabStatus(t) === "executing";
+    if (busy) {
+      const ok = await askConfirm({
+        title: `${tabTitle(t)} is still working.`,
+        message:
+          t.kind === "chat"
+            ? "Close the tab anyway? The turn stops here; the transcript stays and the session can be resumed."
+            : "Close the tab anyway? Its process ends now; the transcript stays and the session can be resumed.",
+        confirmLabel: "Close",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    closeId(id);
+  }
+
   /** What a chat tab's session is doing, from the live-chat registry, which the
    *  chat's own event stream fills - so it is exact rather than inferred from
    *  PTY quiet. Null for every tab that is not a chat, and for a chat whose
@@ -1085,12 +1149,21 @@ export default function Terminal(props: {
 
   // The bar reorders only the active workspace's tabs (the subset it was given).
   // Splice that new order back over the same slots in the full `open[]`, keeping
-  // every object ref and other groups' positions intact (gotcha #64).
+  // every object ref and other groups' positions intact (gotcha #64). The stage
+  // `<For>` keys on these objects, so this write moves live rows: scroll and
+  // focus are saved and restored around it (phase 1 spike: a keyed row move is
+  // detach plus reattach, and both are lost with it).
   function mergeReorder(next: OpenTerm[]) {
     const ws = activeWorkspace();
     if (!ws) return;
+    // The splice is positional, so it is only sound when `next` covers exactly
+    // this workspace's slots; a shorter list (a mixed pane list filtered down)
+    // must refuse rather than splice undefined into open[].
+    if (next.length !== open().filter((t) => t.workspace === ws).length) return;
     let i = 0;
-    setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t)));
+    preserveScrollAndFocus(areaEl ?? document, () =>
+      setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t))),
+    );
   }
 
   // Phase 4: every terminal kind registers its tab descriptor and stage view,
@@ -1147,6 +1220,125 @@ export default function Terminal(props: {
       />
     );
   };
+  // The bar's trailing cluster, one closure shared by every terminal kind (the
+  // strip keeps its DOM across active switches within the family, see
+  // UnifiedTabStrip). Moved verbatim from the old bar's `trailing` prop.
+  const termTrailing = () => (
+    <>
+      <div class={styles.termNewSplit}>
+        {/* Main half: quick new shell (terminal icon). Caret half: launch an
+            agent session from a fixed three-option menu. */}
+        {/* `whenDisabled`: with no branch picked the label is the reason
+            the button is greyed out, not a description of what it does. */}
+        <Tooltip
+          as="button"
+          type="button"
+          class={`${styles.termNew} ${styles.termNewMain}`}
+          disabled={!props.selected}
+          whenDisabled
+          label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+          aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
+          onClick={newShell}
+        >
+          <Icon icon={SquareTerminal} />
+        </Tooltip>
+        {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
+            wrapper keeps a box (a dropdown anchors on its trigger's rect),
+            and the two sibling rules the split button relies on are
+            written through it, see the stylesheet. */}
+        <Dropdown
+          as="span"
+          wrapper
+          class={styles.termNewCaretWrap}
+          open={menuOpen()}
+          onOpenChange={setMenuOpen}
+          placement="bottom-end"
+          items={[
+            // The user's default surface leads, and the other one sits
+            // directly under it: whichever way the setting points, the
+            // other route stays a single click from this menu.
+            ...(settings.chatDefaults.defaultSurface === "agent"
+              ? [
+                  { label: findAdapter("claude").label, onClick: () => newSession("claude") },
+                  { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                ]
+              : [
+                  { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                  { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                ]),
+            // Only for a session selection, since there is nothing to
+            // continue from a bare branch. The session need not have been
+            // started in chat: every surface writes the transcript this
+            // resumes and backfills from.
+            ...(props.selected?.sessionId
+              ? [
+                  {
+                    label: "Continue this session in chat",
+                    onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                  },
+                  // The counterpart route for a session selection, so the
+                  // PTY surface is reachable for an existing session and
+                  // not only for a new one.
+                  {
+                    label: "Continue this session in terminal",
+                    onClick: () => void focusOrResume(props.selected!),
+                  },
+                ]
+              : []),
+            { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+          ]}
+        >
+          <Tooltip
+            as="button"
+            type="button"
+            class={`${styles.termNew} ${styles.termNewCaret}`}
+            disabled={!props.selected}
+            label="Launch an agent session"
+            aria-label="Launch an agent session"
+            // Kobalte writes these on the trigger, which is the wrapper,
+            // and they cannot be taken off it (`wrapper` removes its
+            // `role` and tab stop, not its ARIA). The button is what the
+            // keyboard reaches, so it says this too.
+            aria-haspopup="menu"
+            aria-expanded={menuOpen()}
+          >
+            <Icon icon={ChevronDown} class={styles.termNewChevron} />
+          </Tooltip>
+        </Dropdown>
+      </div>
+      {/* Session navigation, at the surface the sessions run in rather than
+          in a tree you have to find them in. Last in the trailing cluster,
+          so the launch control keeps the position muscle memory has. */}
+      <Tooltip
+        as="button"
+        type="button"
+        ref={historyEl}
+        class={`${styles.termNew} ${styles.termHistory}`}
+        disabled={!activeWorkspace()}
+        label="Session history"
+        aria-label="Session history"
+        aria-haspopup="dialog"
+        aria-expanded={historyOpen()}
+        onClick={toggleHistory}
+      >
+        <Icon icon={History} />
+        <Show when={detachedLive()}>
+          <span
+            class={styles.termHistoryBadge}
+            title={
+              detachedLive() === 1
+                ? "1 session running here with no tab open"
+                : `${detachedLive()} sessions running here with no tab open`
+            }
+          >
+            <Icon icon={CircleDashed} />
+            <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+          </span>
+        </Show>
+      </Tooltip>
+    </>
+  );
+
   const termDescriptor = (kind: TabKind): TabDescriptor => ({
     // A session's state is true whether or not you are looking at it, so the
     // tab carries it: it rides on the provider mark rather than a glyph of its
@@ -1163,6 +1355,7 @@ export default function Terminal(props: {
       return blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd;
     },
     renderMenuItem: termMenuItem,
+    trailing: termTrailing,
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
     stage: kind === "chat" ? chatStage : ptyStage,
@@ -1177,134 +1370,16 @@ export default function Terminal(props: {
     return ws ? unifiedTabs().filter((u): u is TerminalUnifiedTab => u.kind !== "file" && u.workspace === ws) : [];
   };
 
+  let areaEl!: HTMLDivElement;
   return (
-    <div class={styles.termArea}>
-      <OverflowTabBar
+    <div class={styles.termArea} ref={areaEl}>
+      <UnifiedTabStrip
         class={styles.termTabs}
         items={stripTabs()}
         activeId={visibleId()}
-        idOf={idOf}
-        onActivate={(id) => {
-          const u = stripTabs().find((t) => t.id === id);
-          if (u) kindEntry(u.kind).activate(u);
-        }}
-        onReorder={(next) => mergeReorder(next.map((u) => u.term))}
-        renderTab={renderRegistryTab}
-        renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
-        trailing={
-          <>
-            <div class={styles.termNewSplit}>
-              {/* Main half: quick new shell (terminal icon). Caret half: launch an
-                  agent session from a fixed three-option menu. */}
-              {/* `whenDisabled`: with no branch picked the label is the reason
-                  the button is greyed out, not a description of what it does. */}
-              <Tooltip
-                as="button"
-                type="button"
-                class={`${styles.termNew} ${styles.termNewMain}`}
-                disabled={!props.selected}
-                whenDisabled
-                label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
-                aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
-                onClick={newShell}
-              >
-                <Icon icon={SquareTerminal} />
-              </Tooltip>
-              {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
-                  wrapper keeps a box (a dropdown anchors on its trigger's rect),
-                  and the two sibling rules the split button relies on are
-                  written through it, see the stylesheet. */}
-              <Dropdown
-                as="span"
-                wrapper
-                class={styles.termNewCaretWrap}
-                open={menuOpen()}
-                onOpenChange={setMenuOpen}
-                placement="bottom-end"
-                items={[
-                  // The user's default surface leads, and the other one sits
-                  // directly under it: whichever way the setting points, the
-                  // other route stays a single click from this menu.
-                  ...(settings.chatDefaults.defaultSurface === "agent"
-                    ? [
-                        { label: findAdapter("claude").label, onClick: () => newSession("claude") },
-                        { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
-                      ]
-                    : [
-                        { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
-                        { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
-                      ]),
-                  // Only for a session selection, since there is nothing to
-                  // continue from a bare branch. The session need not have been
-                  // started in chat: every surface writes the transcript this
-                  // resumes and backfills from.
-                  ...(props.selected?.sessionId
-                    ? [
-                        {
-                          label: "Continue this session in chat",
-                          onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                        },
-                        // The counterpart route for a session selection, so the
-                        // PTY surface is reachable for an existing session and
-                        // not only for a new one.
-                        {
-                          label: "Continue this session in terminal",
-                          onClick: () => void focusOrResume(props.selected!),
-                        },
-                      ]
-                    : []),
-                  { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
-                ]}
-              >
-                <Tooltip
-                  as="button"
-                  type="button"
-                  class={`${styles.termNew} ${styles.termNewCaret}`}
-                  disabled={!props.selected}
-                  label="Launch an agent session"
-                  aria-label="Launch an agent session"
-                  // Kobalte writes these on the trigger, which is the wrapper,
-                  // and they cannot be taken off it (`wrapper` removes its
-                  // `role` and tab stop, not its ARIA). The button is what the
-                  // keyboard reaches, so it says this too.
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen()}
-                >
-                  <Icon icon={ChevronDown} class={styles.termNewChevron} />
-                </Tooltip>
-              </Dropdown>
-            </div>
-            {/* Session navigation, at the surface the sessions run in rather than
-                in a tree you have to find them in. Last in the trailing cluster,
-                so the launch control keeps the position muscle memory has. */}
-            <Tooltip
-              as="button"
-              type="button"
-              ref={historyEl}
-              class={`${styles.termNew} ${styles.termHistory}`}
-              disabled={!activeWorkspace()}
-              label="Session history"
-              aria-label="Session history"
-              aria-haspopup="dialog"
-              aria-expanded={historyOpen()}
-              onClick={toggleHistory}
-            >
-              <Icon icon={History} />
-              <Show when={detachedLive()}>
-                <span
-                  class={styles.termHistoryBadge}
-                  title={
-                    detachedLive() === 1
-                      ? "1 session running here with no tab open"
-                      : `${detachedLive()} sessions running here with no tab open`
-                  }
-                >
-                  <Icon icon={CircleDashed} />
-                  <Show when={detachedLive() > 1}>{detachedLive()}</Show>
-                </span>
-              </Show>
-            </Tooltip>
-          </>
+        pinKind="shell"
+        onReorder={(next) =>
+          mergeReorder(next.filter((u): u is TerminalUnifiedTab => u.kind !== "file").map((u) => u.term))
         }
       />
 
@@ -1391,6 +1466,16 @@ export default function Terminal(props: {
           </div>
         </Show>
       </div>
+      <Show when={confirmReq()}>
+        <ConfirmDialog
+          title={confirmReq()!.title}
+          message={confirmReq()!.message}
+          confirmLabel={confirmReq()!.confirmLabel}
+          danger={confirmReq()!.danger}
+          onConfirm={() => resolveConfirm(true)}
+          onCancel={() => resolveConfirm(false)}
+        />
+      </Show>
     </div>
   );
 }

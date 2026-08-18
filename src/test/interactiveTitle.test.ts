@@ -217,8 +217,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Terminal/Terminal.tsx",
     {
-      count: 2,
-      reason: `one ${TRUNCATION}, plus the title *prop* of ChatView - the session name it shows, never hover text`,
+      count: 3,
+      reason: `one ${TRUNCATION}, plus the title *props* of ChatView (the session name it shows) and of the Cmd+W ConfirmDialog (its heading) - neither is hover text`,
     },
   ],
 ]);

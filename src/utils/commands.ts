@@ -29,6 +29,7 @@ import {
   FOCUS_PROJECT_SEARCH,
   TAB_JUMP,
   TAB_CYCLE,
+  CLOSE_TAB,
   NEXT_WAITING_SESSION,
   STOP_CHAT,
   type StopChat,
@@ -403,7 +404,7 @@ export const COMMANDS: Command[] = [
   {
     id: "tab-jump",
     keys: ["⌘", "1–9"],
-    label: "Jump to terminal tab 1 to 9",
+    label: "Jump to tab 1 to 9 in the focused pane",
     group: "terminal",
     scope: "global",
     match: (e) =>
@@ -418,11 +419,20 @@ export const COMMANDS: Command[] = [
   {
     id: "tab-cycle",
     keys: ["⌃", "Tab"],
-    label: "Cycle terminal tabs",
+    label: "Cycle the focused pane's tabs",
     group: "terminal",
     scope: "global",
     match: (e) => e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "Tab",
     run: () => emit(TAB_CYCLE),
+  },
+  {
+    id: "close-tab",
+    keys: ["⌘", "W"],
+    label: "Close the focused pane's tab",
+    group: "terminal",
+    scope: "global",
+    match: cmd("w"),
+    run: () => emit(CLOSE_TAB),
   },
   {
     id: "next-waiting",

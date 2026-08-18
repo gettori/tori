@@ -1,0 +1,41 @@
+// One pane's tab strip (plan phase 6): a single OverflowTabBar over a
+// heterogeneous UnifiedTab list, every per-kind decision resolved through the
+// registry. The two-pane default feeds it kind-filtered lists, so it renders
+// exactly what the panels' own bars did; a mixed list needs no other code path.
+import { createMemo } from "solid-js";
+import OverflowTabBar from "../components/OverflowTabBar";
+import { kindEntry, renderRegistryTab } from "../tabs/registry";
+import { idOf, type UnifiedTab, type UnifiedTabKind } from "./unifiedTabs";
+
+export default function UnifiedTabStrip(props: {
+  items: UnifiedTab[];
+  activeId: string | null;
+  /** The pane's pin kind: whose trailing cluster shows while the strip is
+   *  empty or the active id names no tab of this pane. */
+  pinKind: UnifiedTabKind;
+  onReorder: (next: UnifiedTab[]) => void;
+  class?: string;
+}) {
+  const activeTab = () => props.items.find((t) => t.id === props.activeId);
+  // The trailing cluster follows the active tab's kind. Memoized on the
+  // descriptor's trailing function itself: the five terminal kinds register
+  // the same cluster, so switching between them keeps its DOM (open menus,
+  // refs), while a genuine kind change swaps the whole cluster.
+  const trailingOf = createMemo(() => kindEntry((activeTab() ?? { kind: props.pinKind }).kind).trailing);
+  return (
+    <OverflowTabBar
+      class={props.class}
+      items={props.items}
+      activeId={props.activeId}
+      idOf={idOf}
+      onActivate={(id) => {
+        const u = props.items.find((t) => t.id === id);
+        if (u) kindEntry(u.kind).activate(u);
+      }}
+      onReorder={props.onReorder}
+      renderTab={renderRegistryTab}
+      renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
+      trailing={trailingOf()?.()}
+    />
+  );
+}
