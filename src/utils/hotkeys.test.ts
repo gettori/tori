@@ -39,6 +39,7 @@ describe("the canonical binding table", () => {
     // the Cmd+/ sheet move together, because both read BINDINGS.
     expect(BINDINGS.map((b) => b.id).sort()).toEqual(
       [
+        "close-tab",
         "command-palette",
         "debug-start",
         "debug-stop",

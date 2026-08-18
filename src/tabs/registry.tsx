@@ -19,6 +19,11 @@ export type TabDescriptor = {
   wrapTab?: (t: UnifiedTab, tab: JSX.Element) => JSX.Element;
   /** The overflow menu row, whole: the two panels' rows genuinely differ. */
   renderMenuItem: (t: UnifiedTab) => JSX.Element;
+  /** The bar's trailing action cluster while a tab of this kind is active (or
+   *  while an empty pane's pin kind is this kind). A function so the strip can
+   *  compare identity: kinds sharing one cluster keep its DOM across an active
+   *  switch instead of rebuilding it. */
+  trailing?: () => JSX.Element;
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
   /** The tab's surface on the stage (the render component of the kind). */
