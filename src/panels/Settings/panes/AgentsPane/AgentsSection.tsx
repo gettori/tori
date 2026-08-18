@@ -24,6 +24,7 @@ import {
   type AgentHealth,
   type BinaryStatus,
 } from "../../../../utils/agentHealth";
+import { behindVerified } from "../../../../utils/versions";
 import AgentDetail from "./AgentDetail";
 import styles from "../../Settings.module.css";
 
@@ -64,7 +65,10 @@ export type { AgentHealth } from "../../../../utils/agentHealth";
 const TONE: Record<BinaryStatus, string> = {
   versionMatch: styles.dotOk,
   versionUnknown: styles.dotOk,
-  versionDrift: styles.dotWarn,
+  // Green here; `rowTone` overrides to warn for the one drift direction that
+  // matters. Newer than the measurement is the steady state of a fast-shipping
+  // vendor, older than it means a release provably exists to move to.
+  versionDrift: styles.dotOk,
   notFound: styles.dotOff,
 };
 
@@ -102,18 +106,30 @@ function rowNote(id: string, program: string): string {
 
 /**
  * What the STATE column says. One verdict per row, most actionable first:
- * a signed-out agent says "Sign in" even when its version also drifted,
- * because signing in is the thing the reader can do from here and the drift
- * is explained on the detail page. "Ready" is painted (unlike the old cards,
- * which suppressed it) because an empty cell in a filled column reads as a
- * rendering bug, not as calm.
+ * a signed-out agent says "Sign in" because signing in is the thing the
+ * reader can do from here. Version drift is deliberately not a verdict:
+ * vendors ship weekly, so it would be the permanent state of every row.
+ * "Ready" is painted (unlike the old cards, which suppressed it) because an
+ * empty cell in a filled column reads as a rendering bug, not as calm.
  */
 function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
   if (!h) return { label: "Checking", cls: "" };
   if (h.status === "notFound") return { label: "Not installed", cls: "" };
   if (h.signIn === "signedOut") return { label: "Sign in", cls: styles.statePillWarn };
-  if (h.status === "versionDrift") return { label: "Version drift", cls: styles.statePillWarn };
+  // Only the behind direction: older than the measured version means a newer
+  // release provably exists, which is actionable in a way "newer than what we
+  // measured" never is.
+  if (h.status === "versionDrift" && behindVerified(h.version, h.verifiedAgainst))
+    return { label: "Outdated", cls: styles.statePillWarn };
   return { label: "Ready", cls: styles.statePillOk };
+}
+
+/** The dot beside the mark, agreeing with the pill: warn only for the drift
+ *  direction the pill warns about. */
+function rowTone(h: AgentHealth): string {
+  if (h.status === "versionDrift" && behindVerified(h.version, h.verifiedAgainst))
+    return styles.dotWarn;
+  return TONE[h.status];
 }
 
 /**
@@ -154,7 +170,7 @@ function AgentRow(props: {
             before the sweep answers - an unlit one would read as a verdict. */}
         <span class={styles.hcardGlyph}>
           <AgentGlyph id={a().id} label={a().label} size={20} />
-          <Show when={h()}>{(row) => <span class={`${styles.dot} ${TONE[row().status]}`} />}</Show>
+          <Show when={h()}>{(row) => <span class={`${styles.dot} ${rowTone(row())}`} />}</Show>
         </span>
         <span class={styles.agentName}>{a().label}</span>
         {/* Standing facts, not status: who ships it and how Sway drives it.

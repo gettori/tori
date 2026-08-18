@@ -1248,6 +1248,18 @@
   .modelsCard .modelRow:nth-child(even) {
     background: color-mix(in srgb, var(--fg-default) 3%, transparent);
   }
+  /* The shared field recipe with room to breathe: a path is long, mono, and
+     the section's only control, so it earns the taller box the mockup gives
+     it without touching every other .input in the panel. */
+  .pathInput {
+    padding: var(--sway-space-4) var(--sway-space-5);
+    /* The sidebar search's surface, and only its surface: transparent, so the
+       field sits on the page like that bar sits on the rail, instead of
+       carrying the shared .input's filled recipe. Type and metrics stay this
+       panel's own. */
+    background: transparent;
+  }
+
   .modelsNone {
     padding: var(--sway-space-4) var(--sway-space-5);
     font-size: var(--sway-text-xs);

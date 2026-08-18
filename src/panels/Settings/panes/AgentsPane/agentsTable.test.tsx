@@ -120,6 +120,28 @@ describe("the agents table", () => {
 
   // The verdict is the most actionable fact, not the most severe: a signed-out
   // agent says what to do next, and the drift detail waits on its page.
+  // Drift has a direction. Behind the measured version, a newer release
+  // provably exists and the verdict says so; ahead of it is the steady state
+  // of a fast-shipping vendor and reads as plain Ready.
+  it("calls a binary behind the measurement Outdated, and one ahead Ready", async () => {
+    const { findByText, container } = mount([
+      row({ status: "versionDrift", version: "2.1.100", verifiedAgainst: "claude 2.1.231" }),
+      row({
+        id: "copilot",
+        label: "Copilot",
+        program: "copilot",
+        status: "versionDrift",
+        version: "1.2.0",
+        verifiedAgainst: "copilot 1.0.80",
+      }),
+    ]);
+    await findByText("Outdated");
+    const pill = (id: string) =>
+      container.querySelector(`[data-agent="${id}"] .${styles.statePill}`)?.textContent;
+    expect(pill("claude")).toBe("Outdated");
+    expect(pill("copilot")).toBe("Ready");
+  });
+
   it("turns a signed-out agent's verdict into the action", async () => {
     const { findByText } = mount([row({ signIn: "signedOut", account: null })]);
     await findByText("Sign in");
