@@ -239,6 +239,8 @@ import {
   resetEditorTabModel,
   type FileTab,
 } from "./editorTabStore";
+import { unifiedTabs, idOf, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
+import { registerKind, kindEntry, renderRegistryTab } from "../../tabs/registry";
 import styles from "./Editor.module.css";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
@@ -1785,86 +1787,95 @@ export default function Editor(props: {
     for (const off of offCommands) off();
   });
 
+  // Phase 4: the file kind registers its descriptor here, closing over this
+  // panel's dirty/touched state and close; the strip below renders through the
+  // registry with no per-kind switches of its own.
+  const asFile = (u: UnifiedTab) => (u as FileUnifiedTab).file;
+  const fileDots = (u: UnifiedTab) => {
+    const t = asFile(u);
+    return (
+      <>
+        <Show when={isTouched(t.path) || isEditingNow(t.path)}>
+          <span
+            class={styles.tabTouched}
+            classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
+            title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
+          >
+            ●
+          </span>
+        </Show>
+        <Show when={dirty()[t.path]}>
+          <span class="tab-dirty">●</span>
+        </Show>
+      </>
+    );
+  };
+  registerKind("file", {
+    icon: (u) => tabIcon(asFile(u)),
+    title: (u) => asFile(u).name,
+    tooltip: (u) => tabTitle(asFile(u)),
+    dots: fileDots,
+    // A synthetic view has no path to hand anyone: dropping its id on a
+    // terminal would paste `sway://…`, which names nothing on disk.
+    draggable: (u) => !isSyntheticId(asFile(u).path),
+    onDragStart: (u, e) => {
+      const t = asFile(u);
+      e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
+      e.dataTransfer?.setData("text/plain", t.path);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+    },
+    // The menu wraps the tab instead of being the tab: `Tab` composes
+    // `Tooltip`, which already renders *as* the button, and two wrappers
+    // cannot own one element. The registry skips this wrap for the measuring
+    // ghost row, which is measured, never reached.
+    wrapTab: (u, tab) => (
+      <MaybeTabMenu when tab={asFile(u)}>
+        {tab}
+      </MaybeTabMenu>
+    ),
+    renderMenuItem: (u) => {
+      const t = asFile(u);
+      return (
+        <>
+          {tabIcon(t)}
+          <span class="tab-name">{t.name}</span>
+          {fileDots(u)}
+          <button
+            class="tab-close"
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeTab(tabId(t));
+            }}
+          >
+            <Icon icon={X} />
+          </button>
+        </>
+      );
+    },
+    activate: (u) => setActiveId(u.id),
+    close: (u) => void closeTab(u.id),
+  });
+  // The strip consumes the unified model filtered to this panel's kind: same
+  // tabs, same order, same references, read through the union.
+  const stripTabs = (): FileUnifiedTab[] =>
+    unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
+
   return (
     <div class={styles.editorPane} ref={paneEl}>
       <div class={styles.editorMain}>
         <OverflowTabBar
           class={styles.editorTabs}
-          items={tabs()}
+          items={stripTabs()}
           activeId={activeId()}
-          idOf={tabId}
-          onActivate={setActiveId}
-          onReorder={setTabs}
-          renderTab={(t, ghost) => (
-            // The menu wraps the tab instead of being the tab: `Tab` composes
-            // `Tooltip`, which already renders *as* the button, and two wrappers
-            // cannot own one element. `.tabMenu` is `display: contents`, so the
-            // strip's flex row and its drag-reorder see exactly what they saw
-            // before, and the drag stays on the `Tab` itself, which is the thing
-            // with a box. The ghost row skips it: it is measured, never reached.
-            <MaybeTabMenu when={!ghost} tab={t}>
-              <Tab
-                value={tabId(t)}
-                tooltip={tabTitle(t)}
-                // A synthetic view has no path to hand anyone: dropping its id on a
-                // terminal would paste `sway://…`, which names nothing on disk.
-                draggable={!isSyntheticId(t.path)}
-                onDragStart={(e) => {
-                  e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
-                  e.dataTransfer?.setData("text/plain", t.path);
-                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-                }}
-                icon={tabIcon(t)}
-                trailing={
-                  <>
-                    <Show when={isTouched(t.path) || isEditingNow(t.path)}>
-                      <span
-                        class={styles.tabTouched}
-                        classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
-                        title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
-                      >
-                        ●
-                      </span>
-                    </Show>
-                    <Show when={dirty()[t.path]}>
-                      <span class="tab-dirty">●</span>
-                    </Show>
-                  </>
-                }
-                onClose={() => closeTab(tabId(t))}
-              >
-                {t.name}
-              </Tab>
-            </MaybeTabMenu>
-          )}
-          renderMenuItem={(t) => (
-            <>
-              {tabIcon(t)}
-              <span class="tab-name">{t.name}</span>
-              <Show when={isTouched(t.path) || isEditingNow(t.path)}>
-                <span
-                  class={styles.tabTouched}
-                  classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
-                  title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
-                >
-                  ●
-                </span>
-              </Show>
-              <Show when={dirty()[t.path]}>
-                <span class="tab-dirty">●</span>
-              </Show>
-              <button
-                class="tab-close"
-                aria-label="Close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(tabId(t));
-                }}
-              >
-                <Icon icon={X} />
-              </button>
-            </>
-          )}
+          idOf={idOf}
+          onActivate={(id) => {
+            const u = stripTabs().find((t) => t.id === id);
+            if (u) kindEntry(u.kind).activate(u);
+          }}
+          onReorder={(next) => setTabs(next.map((u) => u.file))}
+          renderTab={renderRegistryTab}
+          renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
           trailing={
             <>
               {/* Always mounted rather than shown only once there is somewhere
