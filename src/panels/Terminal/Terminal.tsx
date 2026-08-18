@@ -6,7 +6,6 @@ import ChatView from "../Chat/ChatView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
-import Tab from "../../components/Tab/Tab";
 import TabMark from "./TabMark";
 import HistoryPanel from "./HistoryPanel";
 import Button from "../../components/Button/Button";
@@ -72,6 +71,8 @@ import {
   type OpenTerm,
   type TabKind,
 } from "./terminalTabStore";
+import { unifiedTabs, unifyTerm, idOf, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
+import { registerKind, kindEntry, renderRegistryTab, type TabDescriptor } from "../../tabs/registry";
 import styles from "./Terminal.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
@@ -105,7 +106,6 @@ type RestoreSession = BackfillSession & { path: string; title: string; name?: st
 // takes. Narrowed here rather than by widening TerminalView's prop, because a
 // chat tab genuinely cannot be rendered by it.
 type PtyTab = OpenTerm & { kind: Exclude<TabKind, "chat"> };
-const asPtyTab = (t: OpenTerm): PtyTab | null => (t.kind === "chat" ? null : (t as PtyTab));
 
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
@@ -1080,45 +1080,104 @@ export default function Terminal(props: {
     setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t)));
   }
 
+  // Phase 4: every terminal kind registers its tab descriptor and stage view,
+  // closing over this panel's state; the strip and stage below render through
+  // the registry with no per-kind switches of their own.
+  const asTerm = (u: UnifiedTab) => (u as TerminalUnifiedTab).term;
+  const termMenuItem = (u: UnifiedTab) => {
+    const t = asTerm(u);
+    return (
+      <>
+        <span class="tab-label">{tabTitle(t)}</span>
+        <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
+          <Icon icon={X} />
+        </span>
+      </>
+    );
+  };
+  const ptyStage = (u: UnifiedTab) => {
+    const term = asTerm(u) as PtyTab;
+    return (
+      <TerminalView
+        id={term.id}
+        cwd={term.cwd}
+        kind={term.kind}
+        program={term.program}
+        args={term.args}
+        init={term.init}
+        env={term.env}
+        sessionId={term.sessionId}
+        active={visibleId() === term.id}
+        onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
+      />
+    );
+  };
+  const chatStage = (u: UnifiedTab) => {
+    const t = asTerm(u);
+    return (
+      <ChatView
+        sessionId={t.sessionId!}
+        tabId={t.id}
+        agentId={t.program}
+        cwd={t.cwd}
+        workspace={t.workspace}
+        title={tabTitle(t)}
+        resume={!!t.resume}
+        active={visibleId() === t.id}
+        onForkSession={() => spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)}
+        onForkFrom={() =>
+          spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, t.sessionId)
+        }
+        onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
+        forkFrom={t.forkFrom}
+        rewindTo={t.rewindTo}
+      />
+    );
+  };
+  const termDescriptor = (kind: TabKind): TabDescriptor => ({
+    // A session's state is true whether or not you are looking at it, so the
+    // tab carries it: it rides on the provider mark rather than a glyph of its
+    // own, so a tab going quiet does not change shape in a scanned strip.
+    icon: (u) => {
+      const t = asTerm(u);
+      return marksSession(t) ? (
+        <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} />
+      ) : undefined;
+    },
+    title: (u) => tabTitle(asTerm(u)),
+    tooltip: (u) => {
+      const t = asTerm(u);
+      return blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd;
+    },
+    renderMenuItem: termMenuItem,
+    activate: (u) => selectTab(asTerm(u)),
+    close: (u, e) => close(u.id, e),
+    stage: kind === "chat" ? chatStage : ptyStage,
+  });
+  for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
+    registerKind(kind, termDescriptor(kind));
+  }
+  // The strip consumes the unified model filtered to this panel's kinds: same
+  // tabs, same order, same references, read through the union.
+  const stripTabs = (): TerminalUnifiedTab[] => {
+    const ws = activeWorkspace();
+    return ws ? unifiedTabs().filter((u): u is TerminalUnifiedTab => u.kind !== "file" && u.workspace === ws) : [];
+  };
+
   return (
     <div class={styles.termArea}>
       <OverflowTabBar
         class={styles.termTabs}
-        items={workspaceTabs()}
+        items={stripTabs()}
         activeId={visibleId()}
-        idOf={(t) => t.id}
+        idOf={idOf}
         onActivate={(id) => {
-          const t = open().find((o) => o.id === id);
-          if (t) selectTab(t);
+          const u = stripTabs().find((t) => t.id === id);
+          if (u) kindEntry(u.kind).activate(u);
         }}
-        onReorder={mergeReorder}
-        renderTab={(t) => (
-          <Tab
-            value={t.id}
-            tooltip={blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd}
-            onClose={(e) => close(t.id, e)}
-            // A session's state is true whether or not you are looking at it, so
-            // the tab carries it: without this a background session waiting on
-            // an approval is indistinguishable from one still working. It rides
-            // on the provider mark rather than on a glyph of its own, so a tab
-            // going quiet does not change shape in a strip being scanned.
-            icon={
-              marksSession(t) ? (
-                <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} />
-              ) : undefined
-            }
-          >
-            {tabTitle(t)}
-          </Tab>
-        )}
-        renderMenuItem={(t) => (
-          <>
-            <span class="tab-label">{tabTitle(t)}</span>
-            <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
-              <Icon icon={X} />
-            </span>
-          </>
-        )}
+        onReorder={(next) => mergeReorder(next.map((u) => u.term))}
+        renderTab={renderRegistryTab}
+        renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
         trailing={
           <>
             <div class={styles.termNewSplit}>
@@ -1253,55 +1312,7 @@ export default function Terminal(props: {
             so switching workspaces never unmounts a group's PTYs (gotcha #64).
             The empty message is an overlay, not a fallback that would replace
             (and thus unmount) the tabs. */}
-        <For each={open()}>
-          {(t) => (
-            <Show
-              when={asPtyTab(t)}
-              fallback={
-                <ChatView
-                  sessionId={t.sessionId!}
-                  tabId={t.id}
-                  agentId={t.program}
-                  cwd={t.cwd}
-                  workspace={t.workspace}
-                  title={tabTitle(t)}
-                  resume={!!t.resume}
-                  active={visibleId() === t.id}
-                  onForkSession={() =>
-                    spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)
-                  }
-                  onForkFrom={() =>
-                    spawnChat(
-                      t.workspace,
-                      t.cwd,
-                      t.workspace.split("/").pop() || "chat",
-                      t.program,
-                      t.sessionId,
-                    )
-                  }
-                  onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
-                  forkFrom={t.forkFrom}
-                  rewindTo={t.rewindTo}
-                />
-              }
-            >
-              {(term) => (
-                <TerminalView
-                  id={term().id}
-                  cwd={term().cwd}
-                  kind={term().kind}
-                  program={term().program}
-                  args={term().args}
-                  init={term().init}
-                  env={term().env}
-                  sessionId={term().sessionId}
-                  active={visibleId() === term().id}
-                  onOwnershipRefused={(refusal) => noteRefusal(term(), refusal)}
-                />
-              )}
-            </Show>
-          )}
-        </For>
+        <For each={open()}>{(t) => kindEntry(t.kind).stage!(unifyTerm(t))}</For>
         <Show when={!visibleId()}>
           <div class={styles.termEmpty}>
             Select a session to resume it, or pick a branch and start a new Claude or pi session.
