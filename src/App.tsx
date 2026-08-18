@@ -86,7 +86,7 @@ import {
   resetTabPlacement,
   type TabRef,
 } from "./layout/tabPlacement";
-import { paneActiveId, paneTabs } from "./tabs/paneTabs";
+import { paneActiveId, paneTabs, reorderPane } from "./tabs/paneTabs";
 import { unifiedTabs } from "./tabs/unifiedTabs";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
@@ -434,13 +434,15 @@ function App() {
     return `pane-${n}`;
   }
 
-  function splitFocusedPane(dir: "row" | "column") {
+  /** Split a pane, optionally carrying one tab into the new one, which is what
+   *  a drop on a pane's edge asks for (plan phase 10). */
+  function splitPaneFor(p: SplitPane) {
     const ws = wsKey();
     ensureEnvelope(ws, seedEnvelope);
-    const from = activePane();
+    const from = p.paneId ?? activePane();
     if (!from) return;
     const leaf: PaneLeaf = { type: "pane", id: mintPaneId(), size: 50, hidden: false };
-    if (!updateLayout(ws, (r) => splitPane(r, from, dir, leaf))) {
+    if (!updateLayout(ws, (r) => splitPane(r, from, p.dir, leaf, p.pos))) {
       say(
         paneLeaves().length >= MAX_PANES
           ? `${MAX_PANES} panes is as many as fit.`
@@ -450,6 +452,10 @@ function App() {
     }
     setFocusedPane(ws, leaf.id);
     persistLayout();
+    // After the tree edit: the pane has to exist for the placement guard to
+    // accept it. A refusal would leave the new pane empty, and the collapse
+    // effect only takes panes that have held a tab, so it says so out loud.
+    if (p.tabId) moveTab({ tabId: p.tabId, kind: p.kind, paneId: leaf.id });
   }
 
   /** Close a pane, its tabs going to the neighbor (right first, then left).
@@ -501,6 +507,16 @@ function App() {
     if (refusal) {
       say(refusal);
       return;
+    }
+    // A drop names the slot it landed on; the palette and the menu append.
+    if (p.index != null) {
+      const list = paneTabs(ws, target);
+      const moved = list.find((t) => t.id === tab.id);
+      if (moved) {
+        const rest = list.filter((t) => t.id !== tab.id);
+        rest.splice(Math.max(0, Math.min(p.index, rest.length)), 0, moved);
+        reorderPane(ws, rest);
+      }
     }
     updateLayout(ws, (r) => setPaneHidden(r, target, false));
     setFocusedPane(ws, target);
@@ -648,7 +664,7 @@ function App() {
     offToggleTerminal = onEvent(TOGGLE_TERMINAL, toggleTerminal);
     offToggleEditor = onEvent(TOGGLE_EDITOR, toggleEditor);
     offToggleFiletree = onEvent(TOGGLE_FILETREE, toggleFiletree);
-    offSplitPane = onEventWith<SplitPane>(SPLIT_PANE, ({ dir }) => splitFocusedPane(dir));
+    offSplitPane = onEventWith<SplitPane>(SPLIT_PANE, splitPaneFor);
     offClosePane = onEvent(CLOSE_PANE, () => {
       const pane = activePane();
       if (pane) closePaneWithTabs(pane);

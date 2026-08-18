@@ -163,24 +163,27 @@ function parentOf(root: PaneNode, id: string): PaneSplit | null {
 // it has. Refusal is a return value rather than a throw because every refusal
 // here is an expected outcome (a cap, a guard), not a bug.
 
-/** Split `paneId`, placing `newLeaf` after it. A split in the direction the
- *  parent already runs inserts a sibling; a cross split nests, and nesting is
- *  where the depth cap bites. */
+/** Split `paneId`, placing `newLeaf` on the `pos` side of it (after by default;
+ *  a drop on a pane's left or top edge is what asks for before). A split in the
+ *  direction the parent already runs inserts a sibling; a cross split nests, and
+ *  nesting is where the depth cap bites. */
 export function splitPane(
   root: PaneNode,
   paneId: string,
   dir: SplitDir,
   newLeaf: PaneLeaf,
+  pos: "before" | "after" = "after",
 ): PaneNode | null {
   if (!findPane(root, paneId)) return null;
   if (leaves(root).some((l) => l.id === newLeaf.id)) return null;
   if (leaves(root).length >= MAX_PANES) return null;
+  const order = (target: PaneNode, added: PaneNode) =>
+    pos === "before" ? [added, target] : [target, added];
   const parent = parentOf(root, paneId);
   if (parent && parent.dir === dir) {
-    return mapNode(root, paneId, (t) => [
-      { ...(t as PaneLeaf), size: t.size / 2 },
-      { ...newLeaf, size: t.size / 2 },
-    ]);
+    return mapNode(root, paneId, (t) =>
+      order({ ...(t as PaneLeaf), size: t.size / 2 }, { ...newLeaf, size: t.size / 2 }),
+    );
   }
   const above = splitsAbove(root, paneId) ?? 0;
   if (above >= MAX_SPLIT_DEPTH) return null;
@@ -189,10 +192,7 @@ export function splitPane(
     id: mintSplitId(),
     dir,
     size: t.size,
-    children: [
-      { ...(t as PaneLeaf), size: 50 },
-      { ...newLeaf, size: 50 },
-    ],
+    children: order({ ...(t as PaneLeaf), size: 50 }, { ...newLeaf, size: 50 }),
   }));
 }
 

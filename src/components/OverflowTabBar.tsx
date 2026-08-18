@@ -38,6 +38,8 @@ export default function OverflowTabBar<T>(props: {
   renderTab: (t: T, ghost?: boolean) => JSX.Element;
   renderMenuItem: (t: T) => JSX.Element;
   trailing?: JSX.Element;
+  /** The bar's own element, for a consumer that hit-tests against its box. */
+  ref?: (el: HTMLElement) => void;
   class?: string;
 }) {
   let bar!: HTMLDivElement;
@@ -187,7 +189,10 @@ export default function OverflowTabBar<T>(props: {
     // split is two instances of it.
     <Tabs.Root
       class={props.class}
-      ref={bar}
+      ref={(el: HTMLDivElement) => {
+        bar = el;
+        props.ref?.(el);
+      }}
       style={{ position: "relative" }}
       activationMode="automatic"
       // Never null: Kobalte reads `undefined` as "uncontrolled" and takes the

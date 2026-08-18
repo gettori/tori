@@ -4,6 +4,7 @@
 // and the per-kind knowledge lives with the panel that owns the kind.
 import { createSignal, type JSX } from "solid-js";
 import Tab from "../components/Tab/Tab";
+import { endTabDrag, startTabDrag } from "./tabDrag";
 import type { UnifiedTab, UnifiedTabKind } from "./unifiedTabs";
 
 export type TabDescriptor = {
@@ -13,7 +14,8 @@ export type TabDescriptor = {
   tooltip: (t: UnifiedTab) => string;
   /** Trailing dirty/status dots. */
   dots?: (t: UnifiedTab) => JSX.Element;
-  draggable?: (t: UnifiedTab) => boolean;
+  /** The kind's own payload on a tab drag (a path for a terminal to insert).
+   *  The tab-move payload is added for every kind, above this. */
   onDragStart?: (t: UnifiedTab, e: DragEvent) => void;
   /** Wraps the on-screen tab (a context menu); the measuring ghost skips it. */
   wrapTab?: (t: UnifiedTab, tab: JSX.Element) => JSX.Element;
@@ -67,15 +69,30 @@ export function maybeKindEntry(kind: UnifiedTabKind): TabDescriptor | undefined 
   return entries.get(kind);
 }
 
+/** Where a strip's tabs are being drawn, so a drag off one knows what it is
+ *  moving out of. Absent for a strip outside the pane tree. */
+export type StripPlace = { ws: string; paneId: string };
+
 /** The one tab markup every strip draws, fed entirely from the descriptor. */
-export function renderRegistryTab(t: UnifiedTab, ghost?: boolean): JSX.Element {
+export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripPlace): JSX.Element {
   const d = kindEntry(t.kind);
   const tab = (
     <Tab
       value={t.id}
+      data-tab-id={t.id}
       tooltip={d.tooltip(t)}
-      draggable={d.draggable?.(t)}
-      onDragStart={d.onDragStart && ((e: DragEvent) => d.onDragStart!(t, e))}
+      // Every tab moves between panes, so every tab drags (plan phase 10); what
+      // a kind adds to the payload is still the kind's own business.
+      draggable={!ghost}
+      onDragStart={(e: DragEvent) => {
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copyMove";
+        startTabDrag(
+          { id: t.id, kind: t.kind, ws: place?.ws ?? t.workspace, fromPane: place?.paneId ?? null },
+          e,
+        );
+        d.onDragStart?.(t, e);
+      }}
+      onDragEnd={() => endTabDrag()}
       icon={d.icon(t)}
       trailing={d.dots?.(t)}
       onClose={(e) => d.close(t, e)}
