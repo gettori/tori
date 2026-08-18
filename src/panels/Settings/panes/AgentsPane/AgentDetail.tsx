@@ -30,6 +30,7 @@ import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import { OPEN_TERMINAL, emitWith, type OpenTerminal } from "../../../../utils/events";
 import { mirroredOptions } from "../../../../utils/chatTypes";
 import { settings, saveSettings } from "../../settingsStore";
+import { behindVerified, verifiedVersion } from "../../../../utils/versions";
 import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import AgentAccounts from "./AgentAccounts";
 import styles from "../../Settings.module.css";
@@ -106,6 +107,10 @@ export default function AgentDetail(props: {
   let backEl: HTMLButtonElement | undefined;
   const a = () => props.agent;
   const installed = () => a().status !== "notFound";
+  // The one drift direction worth surfacing: strictly older than the version
+  // the adapter was measured against. Ahead of it is the steady state.
+  const behind = () =>
+    a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
   // The page has two shapes. An agent that is not usable yet gets the setup
   // steps; one that is gets its accounts. Never both: the setup page's sign-in
   // step signs in the default profile, which is the account that decides
@@ -278,19 +283,20 @@ export default function AgentDetail(props: {
         <span class={`${styles.statePill} ${verdict().cls}`}>{verdict().label}</span>
       </div>
 
-      {/* Drift gets a banner rather than the pill: the pill has no room for the
-          two versions, and without them "drift" is a worry with no next step.
-          Where the adapter declares an update command, the next step is right
-          here - honestly worded, because moving to the vendor's latest is not
-          guaranteed to land on the version Sway measured. */}
-      <Show when={a().status === "versionDrift"}>
+      {/* Drift is only worth a banner in one direction. A binary *newer* than
+          the adapter's measurement is the steady state of every fast-shipping
+          vendor and stays quiet - that bookkeeping lives in ADAPTERS.md. A
+          binary *older* than it is different in kind: the measured version
+          exists, so a newer release provably does, and the banner can offer
+          it with the vendor's own update where one is declared. */}
+      <Show when={behind()}>
         <div class={styles.detailBanner}>
           <span class={styles.bannerMark}>!</span>
           <div class={styles.bannerBody}>
-            <div class={styles.bannerTitle}>Version drift</div>
+            <div class={styles.bannerTitle}>Update available</div>
             <div class={styles.bannerText}>
-              Sway's adapter was built against {a().verifiedAgainst} and you are running{" "}
-              {a().version}, so some behaviour may differ.
+              You are running {a().label} {a().version} and {verifiedVersion(a().verifiedAgainst)}{" "}
+              is available.
             </div>
             <Show when={updateCmd()}>
               {(cmd) => (
@@ -300,22 +306,12 @@ export default function AgentDetail(props: {
                     <Button size="sm" onClick={() => void runVerb("update", cmd())}>
                       Update
                     </Button>
-                    <span class={styles.stepActionNote}>
-                      Opens a terminal running the vendor's update
-                    </span>
+                    <span class={styles.stepActionNote}>Opens a terminal</span>
                   </div>
                 </>
               )}
             </Show>
           </div>
-        </div>
-      </Show>
-      {/* Installed, but **this adapter** was never measured against it: the
-          adapter declares no `verified_against` at all. */}
-      <Show when={a().status === "versionUnknown" && a().version && !a().verifiedAgainst}>
-        <div class={styles.hint}>
-          Untested: nobody has measured Sway against this agent, so treat it as a starting point
-          rather than a supported agent.
         </div>
       </Show>
       <Show when={installed() && a().status === "versionUnknown" && !a().version}>
@@ -669,49 +665,74 @@ export default function AgentDetail(props: {
         </Show>
       </div>
 
+      {/* Its own section rather than a label-and-control row: a path is the
+          widest string on the page, and a 196px control column truncated it to
+          uselessness. The field gets the full measure, the explanation sits
+          under what it explains. */}
       <div class={styles.groupHead}>
-        <span class={styles.groupTitle}>Agent</span>
+        <span class={styles.groupTitle}>Binary path</span>
         <span class={styles.sectionRule} />
       </div>
-      <div class={styles.row}>
-        <div class={styles.label}>Binary path</div>
-        <div class={styles.hint}>
-          Overrides the discovered binary for new chat sessions. Leave it empty to use the one
-          found above.
-        </div>
-        <div class={styles.control}>
-          <input
-            type="text"
-            class={`${styles.input} ${styles.text}`}
-            aria-label="Binary path"
-            value={settings.agent.paths?.[a().id] ?? ""}
-            placeholder={installed() ? "found on your login shell" : "nothing found yet"}
-            onChange={(e) => savePath(e.currentTarget.value)}
-          />
-        </div>
+      <input
+        type="text"
+        class={`${styles.input} ${styles.text} ${styles.pathInput}`}
+        aria-label="Binary path"
+        value={settings.agent.paths?.[a().id] ?? ""}
+        placeholder={installed() ? "found on your login shell" : "nothing found yet"}
+        onChange={(e) => savePath(e.currentTarget.value)}
+      />
+      <div class={styles.hint}>
+        Overrides the discovered binary for new chat sessions. Leave empty to use the one found
+        above.
       </div>
+      <Show when={a().overridePath}>
+        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
+      </Show>
       {/* Only when there is a binary to remove and a declared command to do it
-          with: an uninstall row for an agent that is not installed, or with no
-          verified command, would be a button that can only guess. Danger
+          with: an uninstall section for an agent that is not installed, or with
+          no verified command, would be a button that can only guess. Danger
           styling because the tab it opens really removes the binary. */}
+      {/* The vendor's update, offered whenever it is declared and there is a
+          binary to move - a tool, not an alarm. When the update-available
+          banner is up it already carries this command and button, so the
+          section yields to it rather than repeating the control. */}
+      <Show when={installed() && !behind() && updateCmd()}>
+        {(cmd) => (
+          <>
+            <div class={styles.groupHead}>
+              <span class={styles.groupTitle}>Update</span>
+              <span class={styles.sectionRule} />
+            </div>
+            <div class={styles.cardMeta}>
+              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the
+              vendor's own update.
+            </div>
+            <div class={styles.cardActions}>
+              <Button size="sm" onClick={() => void runVerb("update", cmd())}>
+                Update
+              </Button>
+            </div>
+          </>
+        )}
+      </Show>
       <Show when={installed() && uninstallCmd()}>
         {(cmd) => (
-          <div class={styles.row}>
-            <div class={styles.label}>Uninstall</div>
-            <div class={styles.hint}>
+          <>
+            <div class={styles.groupHead}>
+              <span class={styles.groupTitle}>Uninstall</span>
+              <span class={styles.sectionRule} />
+            </div>
+            <div class={styles.cardMeta}>
               Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the
               vendor's own removal. Your sign-in and settings stay wherever the agent keeps them.
             </div>
-            <div class={styles.control}>
+            <div class={styles.cardActions}>
               <Button size="sm" variant="danger" onClick={() => void runVerb("uninstall", cmd())}>
                 Uninstall
               </Button>
             </div>
-          </div>
+          </>
         )}
-      </Show>
-      <Show when={a().overridePath}>
-        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
       </Show>
     </div>
   );

@@ -148,21 +148,15 @@ describe("installing an agent from its detail page", () => {
 describe("updating and uninstalling", () => {
   beforeEach(() => invoked.mockReset());
 
-  const drifted = {
-    status: "versionDrift",
-    path: "/usr/bin/copilot",
-    version: "1.2.0",
-    verifiedAgainst: "copilot 1.0.80",
-  };
+  const installedCopilot = { status: "versionUnknown", path: "/usr/bin/copilot", version: "1.2.0" };
 
-  // Drift's banner carries the next step when the adapter declares one.
-  it("offers the vendor's update from the drift banner", async () => {
+  // Offered whenever it is declared and there is a binary to move: not gated
+  // on version drift, which is the steady state of every fast-shipping vendor
+  // and deliberately never painted as a warning anywhere in the app.
+  it("offers the vendor's update for any installed agent that declares one", async () => {
     const tabs = openedTabs();
-    const r = await open(mount({ health: drifted, update: NPM_UPDATE }));
-    await waitFor(() => expect(r.container.textContent).toContain("Version drift"));
-    // Both versions are named: without them drift is a worry with no content.
-    expect(r.container.textContent).toContain("copilot 1.0.80");
-    expect(r.container.textContent).toContain("1.2.0");
+    const r = await open(mount({ health: installedCopilot, update: NPM_UPDATE }));
+    await waitFor(() => expect(r.container.textContent).toContain("Ready"));
 
     fireEvent.click(r.getByRole("button", { name: "Update" }));
     await waitFor(() => expect(tabs.length).toBe(1));
@@ -172,9 +166,69 @@ describe("updating and uninstalling", () => {
     expect(tabs[0].recheckAgentsOnExit).toBe(true);
   });
 
-  it("shows the drift banner without an update button when none is declared", async () => {
-    const r = await open(mount({ health: drifted }));
-    await waitFor(() => expect(r.container.textContent).toContain("Version drift"));
+  it("offers no update where none is declared", async () => {
+    const r = await open(mount({ health: installedCopilot }));
+    await waitFor(() => expect(r.container.textContent).toContain("Ready"));
+    expect(r.queryByRole("button", { name: "Update" })).toBeNull();
+  });
+
+  // Drift has a direction, and only one of them speaks. Newer than the
+  // measurement is the steady state of a fast-shipping vendor, so the page
+  // reads exactly like a current install; the bookkeeping stays in
+  // ADAPTERS.md.
+  it("stays quiet about a binary newer than the measurement", async () => {
+    const r = await open(
+      mount({
+        health: { ...installedCopilot, status: "versionDrift", verifiedAgainst: "copilot 1.0.80" },
+        update: NPM_UPDATE,
+      }),
+    );
+    await waitFor(() => expect(r.container.textContent).toContain("Ready"));
+    expect(r.container.textContent).not.toContain("Update available");
+    expect(r.container.textContent).not.toContain("copilot 1.0.80");
+    // The update stays what it always is: a tool in its own section.
+    expect(r.getByRole("button", { name: "Update" })).toBeTruthy();
+  });
+
+  // Older than the measurement means a newer release provably exists: that
+  // earns the banner, carrying both versions and the vendor's update.
+  it("offers the update in a banner when the binary is behind the measurement", async () => {
+    const tabs = openedTabs();
+    const r = await open(
+      mount({
+        health: {
+          ...installedCopilot,
+          version: "1.0.0",
+          status: "versionDrift",
+          verifiedAgainst: "copilot 1.2.0",
+        },
+        update: NPM_UPDATE,
+      }),
+    );
+    await waitFor(() => expect(r.container.textContent).toContain("Update available"));
+    expect(r.container.textContent).toContain("1.0.0");
+    expect(r.container.textContent).toContain("1.2.0");
+
+    // One Update control on the page: the banner's. The standalone section
+    // yields rather than repeating the button.
+    fireEvent.click(r.getByRole("button", { name: "Update" }));
+    await waitFor(() => expect(tabs.length).toBe(1));
+    expect(tabs[0].id).toBe("update:copilot");
+    expect(tabs[0].recheckAgentsOnExit).toBe(true);
+  });
+
+  it("says a newer release exists even when no update command is declared", async () => {
+    const r = await open(
+      mount({
+        health: {
+          ...installedCopilot,
+          version: "1.0.0",
+          status: "versionDrift",
+          verifiedAgainst: "copilot 1.2.0",
+        },
+      }),
+    );
+    await waitFor(() => expect(r.container.textContent).toContain("Update available"));
     expect(r.queryByRole("button", { name: "Update" })).toBeNull();
   });
 

@@ -204,15 +204,14 @@ describe("the accounts list", () => {
     expect(container.textContent).toContain("same account as Default");
   });
 
-  // Isolation is measured, never inferred from having a home variable. The
-  // button stays on screen, disabled beside the reason, so "why can I not add
-  // a second account here" has an answer where the answer matters.
-  it("says why adding is off for a agent with no measured isolation", async () => {
-    const { container, getByText } = await open(mount({ accounts: { canAdd: false } }));
+  // Isolation is measured, never inferred from having a home variable. Where
+  // it is unmeasured there is simply no add button: the sentence explaining
+  // why is maintainer bookkeeping and lives in ADAPTERS.md, not in the app.
+  it("offers no add button for a agent with no measured isolation", async () => {
+    const { container, queryByText } = await open(mount({ accounts: { canAdd: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    const button = getByText("Add account").closest("button")!;
-    expect(button.disabled).toBe(true);
-    expect(container.textContent).toContain("two accounts at once");
+    expect(queryByText("Add account")).toBeNull();
+    expect(container.textContent).not.toContain("two accounts at once");
   });
 
   // "Sway has nothing true to say about this agent's accounts" is not the
