@@ -44,6 +44,11 @@ import {
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
+  SPLIT_PANE,
+  type SplitPane,
+  CLOSE_PANE,
+  MOVE_TAB_TO_PANE,
+  type MoveTabToPane,
   SET_RIGHT_MODE,
   type SetRightMode,
   EDITOR_SAVE,
@@ -733,6 +738,37 @@ export const COMMANDS: Command[] = [
       run: () => emitWith<DebugPick>(DEBUG_PICK, { kind: t.kind }),
     }),
   ),
+
+  // --- Panes ---------------------------------------------------------------
+  //
+  // Keyless on purpose (plan phase 8): splitting is a layout decision made now
+  // and then lived with, not a thing reached mid-typing, and every free chord
+  // in this range already belongs to something a terminal program can claim.
+  {
+    id: "split-pane-right",
+    label: "Split the pane to the right",
+    group: "view",
+    run: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "row" }),
+  },
+  {
+    id: "split-pane-down",
+    label: "Split the pane below",
+    group: "view",
+    run: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "column" }),
+  },
+  {
+    id: "move-tab-next-pane",
+    label: "Move this tab to the next pane",
+    group: "view",
+    run: () => emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { direction: "next" }),
+  },
+  {
+    id: "close-pane",
+    label: "Close this pane",
+    sub: "Its tabs move to the pane beside it",
+    group: "view",
+    run: () => emit(CLOSE_PANE),
+  },
 
   // --- Git ----------------------------------------------------------------
   {

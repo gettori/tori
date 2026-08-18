@@ -2,6 +2,20 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import { stageHost, dropStageHost } from "../tabs/stageHost";
+import PaneTree, { type PaneRoles } from "../layout/PaneTree";
+import { closePane, splitPane } from "../layout/paneLayout";
+import { ensureEnvelope, envelopeFor, resetPaneLayoutModel, seedTwoPane, updateLayout } from "../layout/layoutStore";
+import { mergePaneInto, moveTabToPane, resetTabPlacement } from "../layout/tabPlacement";
+import { registerKind } from "../tabs/registry";
+import { unifiedTabs } from "../tabs/unifiedTabs";
+import {
+  open,
+  setOpen,
+  setActiveWorkspace,
+  setActiveByWorkspace,
+  visibleId,
+} from "../panels/Terminal/terminalTabStore";
+import { on as onEvent, REFIT_PANES } from "../utils/events";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -35,13 +49,17 @@ const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 function trackErrors() {
   let n = 0;
-  const bump = () => {
+  const seen: string[] = [];
+  const bump = (e: Event) => {
     n++;
+    const err = e as ErrorEvent & PromiseRejectionEvent;
+    seen.push(String(err.message ?? err.reason ?? e.type));
   };
   window.addEventListener("error", bump);
   window.addEventListener("unhandledrejection", bump);
   return {
     count: () => n,
+    messages: () => seen,
     stop: () => {
       window.removeEventListener("error", bump);
       window.removeEventListener("unhandledrejection", bump);
@@ -680,6 +698,152 @@ export const StageHostCycle: Story = {
         </Portal>
         <div data-slot="a" ref={slotA} style={SLOT} />
         <div data-slot="b" ref={slotB} style={SLOT} />
+      </div>
+    );
+  },
+};
+
+/** Phase 8: the real machinery (layout store, placement, PaneTree, PaneView)
+ *  moving a live xterm from one pane to another and back, driven by
+ *  dev/p8-move-probe.mjs. The xterm stands in for the PTY surface, as in the
+ *  phase 1 spike: Storybook has no Tauri backend to spawn one. */
+const P8_WS = "spike-ws";
+
+const P8_CSS = `
+.pane-split { display: flex; min-width: 0; min-height: 0; }
+.pane-split.row { flex-direction: row; }
+.pane-split.column { flex-direction: column; }
+.pane { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.pane-split.filler, .pane-slot.filler, .pane.filler { flex: 1 1 auto; }
+.pane-slot.sized, .pane.sized { flex: 0 0 auto; }
+.pane-slot { display: flex; min-width: 0; min-height: 0; }
+.pane.hidden, .pane-slot.hidden { display: none; }
+.chrome-slot, [data-stage-host], [data-stage-host] > div { display: contents; }
+`;
+
+export const PaneMoveCycle: Story = {
+  render: () => {
+    const term1 = { id: "sh:1", title: "one", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [] };
+    const term2 = { id: "sh:2", title: "two", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [] };
+    let live: ReturnType<typeof makeTerm> | undefined;
+    // The other pane's surface is a CM6 view, so the same run shows both kinds
+    // of stage re-measuring as the tree changes shape around them.
+    let cm: EditorView | undefined;
+    const cmWidth = () => cm?.contentDOM.clientWidth ?? 0;
+
+    localStorage.removeItem("sway.panes.v1");
+    localStorage.removeItem("sway.tabpanes.v1");
+    resetPaneLayoutModel();
+    resetTabPlacement();
+    setOpen([term1, term2]);
+    setActiveWorkspace(P8_WS);
+    setActiveByWorkspace({ [P8_WS]: "sh:1" });
+    ensureEnvelope(P8_WS, () => seedTwoPane({ rightShare: 40, showLeft: true, showRight: true }));
+    for (const kind of ["shell"] as const) {
+      registerKind(kind, {
+        icon: () => undefined,
+        title: (u) => u.id,
+        tooltip: (u) => u.id,
+        renderMenuItem: (u) => <span>{u.id}</span>,
+        activate: () => {},
+        close: () => {},
+        stripItems: () => unifiedTabs().filter((u) => u.workspace === P8_WS),
+        stripActiveId: () => visibleId(),
+        stripReorder: () => {},
+        hostIds: () => open().map((t) => t.id),
+      });
+    }
+    const root = () => envelopeFor(P8_WS, () => seedTwoPane({ rightShare: 40, showLeft: true, showRight: true })).layout;
+    const tabs = () => open().map((t) => ({ id: t.id, kind: t.kind }));
+    const paneOf = (id: string) =>
+      stageHost(id).closest("[data-pane-id]")?.getAttribute("data-pane-id") ?? null;
+
+    onMount(() => {
+      // The app refits on REFIT_PANES; this story is the app for that purpose.
+      const off = onEvent(REFIT_PANES, () => {
+        live?.fit.fit();
+        cm?.requestMeasure();
+      });
+      onCleanup(off);
+      window.__spikeRun = async () => {
+        const errs = trackErrors();
+        await frame();
+        await writeAll(live!.term, seqLines(300));
+        const startedIn = paneOf("sh:1");
+        const colsBefore = live!.term.cols;
+        const cmBefore = cmWidth();
+
+        updateLayout(P8_WS, (r) => splitPane(r, "left", "row", { type: "pane", id: "pane-1", size: 50, hidden: false }));
+        await frame();
+        const refusal = moveTabToPane({ ws: P8_WS, tab: { id: "sh:1", kind: "shell" }, targetPaneId: "pane-1", root: root(), tabsInWs: tabs() });
+        await frame();
+        await frame();
+        const movedTo = paneOf("sh:1");
+        const aliveAfterMove = await renderedAfterWrite(live!.term, "post-move-marker");
+        const colsAfterMove = live!.term.cols;
+        const cmAfterMove = cmWidth();
+
+        mergePaneInto({ ws: P8_WS, from: "pane-1", to: "left", root: root(), tabsInWs: tabs() });
+        updateLayout(P8_WS, (r) => closePane(r, "pane-1"));
+        await frame();
+        await frame();
+        const mergedTo = paneOf("sh:1");
+        const aliveAfterMerge = await renderedAfterWrite(live!.term, "post-merge-marker");
+        const after = termSnapshot(live!.term);
+        errs.stop();
+        return {
+          scenario: "panemovecycle",
+          webglActive: live!.webglActive(),
+          contextLost: live!.contextLost(),
+          refusal,
+          startedIn,
+          movedTo,
+          mergedTo,
+          aliveAfterMove,
+          aliveAfterMerge,
+          colsBefore,
+          colsAfterMove,
+          colsAfterMerge: live!.term.cols,
+          cmBefore,
+          cmAfterMove,
+          cmAfterMerge: cmWidth(),
+          bufferLength: after.length,
+          errors: errs.count(),
+          errorMessages: errs.messages(),
+        };
+      };
+    });
+
+    const roles: PaneRoles = {
+      ws: P8_WS,
+      chromePaneId: null,
+      pinKindOf: () => "shell",
+      roleOf: () => "split",
+      chrome: () => null,
+      px: (n) => n,
+      onResize: () => {},
+      onCommit: () => {},
+    };
+    return (
+      <div style={{ width: "900px", height: "360px", display: "flex" }}>
+        <style>{P8_CSS}</style>
+        <Portal mount={stageHost("sh:1")}>
+          <div
+            style={{ width: "100%", height: "100%" }}
+            ref={(el) => queueMicrotask(() => (live = makeTerm(el)))}
+          />
+        </Portal>
+        <Portal mount={stageHost("sh:2")}>
+          <div
+            style={{ width: "100%", height: "100%" }}
+            ref={(el) =>
+              queueMicrotask(() => {
+                cm = new EditorView({ state: EditorState.create({ doc: seqLines(80).join("\n") }), parent: el });
+              })
+            }
+          />
+        </Portal>
+        <PaneTree node={root()} roles={roles} />
       </div>
     );
   },

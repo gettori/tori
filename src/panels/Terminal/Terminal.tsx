@@ -75,6 +75,9 @@ import {
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { kindPaneFocused, revealKindPane } from "../../layout/layoutStore";
 import { stageHost, dropStageHost } from "../../tabs/stageHost";
+import { forgetTab } from "../../layout/tabPlacement";
+import { paneMenuItems, visibleInPane } from "../../tabs/paneTabs";
+import ContextMenu from "../../components/Menu/ContextMenu";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
@@ -1069,6 +1072,7 @@ export default function Terminal(props: {
       }
     }
     setOpen(open().filter((o) => o.id !== id));
+    if (t) forgetTab(t.workspace, id);
     dropStageHost(id);
   }
 
@@ -1166,6 +1170,10 @@ export default function Terminal(props: {
   // closing over this panel's state; the strip and stage below render through
   // the registry with no per-kind switches of their own.
   const asTerm = (u: UnifiedTab) => (u as TerminalUnifiedTab).term;
+  // Which surface is on screen. With a pane tree, that is per pane (two panes
+  // can each show a terminal); with none, the workspace's own visible tab, as
+  // it was before panes could split.
+  const onScreen = (t: OpenTerm) => visibleInPane(t) ?? visibleId() === t.id;
   const termMenuItem = (u: UnifiedTab) => {
     const t = asTerm(u);
     return (
@@ -1189,7 +1197,7 @@ export default function Terminal(props: {
         init={term.init}
         env={term.env}
         sessionId={term.sessionId}
-        active={visibleId() === term.id}
+        active={onScreen(term)}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
       />
     );
@@ -1205,7 +1213,7 @@ export default function Terminal(props: {
         workspace={t.workspace}
         title={tabTitle(t)}
         resume={!!t.resume}
-        active={visibleId() === t.id}
+        active={onScreen(t)}
         onForkSession={() => spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)}
         onForkFrom={() =>
           spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, t.sessionId)
@@ -1359,6 +1367,13 @@ export default function Terminal(props: {
       return blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd;
     },
     renderMenuItem: termMenuItem,
+    // Where this tab could go, and how to make somewhere for it to go. The
+    // registry skips the wrap for the measuring ghost row.
+    wrapTab: (u, tab) => (
+      <ContextMenu class={styles.tabMenu} items={paneMenuItems(asTerm(u).workspace, u)}>
+        {tab}
+      </ContextMenu>
+    ),
     trailing: termTrailing,
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
