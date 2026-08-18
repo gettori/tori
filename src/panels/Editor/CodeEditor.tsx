@@ -1,11 +1,12 @@
-import { onCleanup, onMount, createEffect, createMemo, on, createSignal, Show } from "solid-js";
+import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
-import { EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateField } from "@codemirror/state";
-import { defaultKeymap, history, historyField, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateEffect, type StateField } from "@codemirror/state";
+import { defaultKeymap, history, historyField, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, HighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
@@ -268,12 +269,41 @@ const SERIALIZED_FIELDS = { history: historyField };
 // open, closed, opened again.
 const closedBuffers = new Map<string, { savedText: string; json: ReturnType<EditorState["toJSON"]> }>();
 
-/** Multi-buffer CM6 editor: one EditorView, one EditorState per open file (so
- *  cursor, selection and undo history are preserved per tab). The active file is
- *  `props.activePath`; `props.openPaths` is the live tab set used to evict the
- *  state of closed tabs. Dirty transitions are pushed up via `props.onDirty`. */
+// A transaction one view is only being told about, so the view it came from is
+// not told straight back (plan phase 9). Module-level: it identifies the kind of
+// transaction, not any one editor's.
+const Synced = Annotation.define<boolean>();
+
+/** Multi-buffer, multi-view CM6 editor: one EditorState per open file (so
+ *  cursor, selection and undo history are preserved per tab) and one EditorView
+ *  per pane over them (plan phase 9). The buffer map is the authority; a second
+ *  view onto the same file follows it. `props.openPaths` is the live tab set
+ *  used to evict the state of closed tabs, and dirty transitions are pushed up
+ *  via `props.onDirty`. */
 export default function CodeEditor(props: {
-  activePath: string | null;
+  /** The panes wanting a view, in shell order (which is what decides who is the
+   *  authority for a file two of them show), each with the element its view
+   *  goes in. Ids rather than objects, so a path or visibility change never
+   *  re-creates a view.
+   *
+   *  Absent is the solo form: one view in this component's own element showing
+   *  `activePath`, which is what the editor was before it had panes and what
+   *  every suite that mounts it directly still wants. */
+  paneIds?: string[];
+  paneHost?: (id: string) => HTMLElement | undefined;
+  panePath?: (id: string) => string | null;
+  paneHidden?: (id: string) => boolean;
+  /** Whose view answers for the caret: every command, publish and git read
+   *  comes off this one (plan phase 9 task 5). */
+  focusedPaneId?: string | null;
+  /** What the one view shows in the solo form, and whether it is CSS-hidden
+   *  (not unmounted, so background buffers and undo history survive).
+   *
+   *  `panePath`/`paneHidden` win wherever `paneIds` is given, so the pane form
+   *  may pass these too and they name the focused pane's file: that is the
+   *  answer every consumer outside the panes means by "the active file". */
+  activePath?: string | null;
+  hidden?: boolean;
   /** Whether the Calls panel is on screen. Rooting a call hierarchy is a
    *  request per caret settle, and it is worth exactly nothing while nobody is
    *  looking at the answer; the tab's *visibility* costs no request at all. */
@@ -322,10 +352,6 @@ export default function CodeEditor(props: {
   // silent no-op) the same way a missing session disables the hunk-comment
   // button.
   selected: Selection | null;
-  // CSS-hidden (not unmounted) while an image/markdown-preview overlay is
-  // showing for the active tab, so background buffers/undo history survive
-  // the swap the same way TerminalView keeps inactive PTYs alive.
-  hidden?: boolean;
   // Show git blame: an age-shaded gutter stripe, and the commit behind the
   // cursor's line beside it. Held in a compartment rather than gated inside the
   // extension, so switching it off takes the whole column with it instead of
@@ -342,8 +368,36 @@ export default function CodeEditor(props: {
   // user.
   confirm?: (opts: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
 }) {
-  let host!: HTMLDivElement;
+  // One view per pane (plan phase 9). `view` and `shown` still mean what they
+  // always did, the view the user is acting in and the file it holds, and are
+  // repointed as pane focus moves; everything that reads the caret reads them.
+  // `pending` is the path a swap is on its way to: the first open of a file
+  // awaits a read, and a second swap asked for the same file meanwhile would
+  // read it all over again.
+  type PaneRec = {
+    id: string;
+    view: EditorView;
+    path: string | null;
+    follower: boolean;
+    /** Undefined while idle: a swap to `null` is a swap like any other, so
+     *  "nothing pending" cannot be spelled the same way. */
+    pending?: string | null;
+    /** Per pane, not per component: two panes open files at the same time, and
+     *  one shared counter would have each abort the other's read. */
+    swaps: number;
+  };
+  const views = new Map<string, PaneRec>();
   let view: EditorView | undefined;
+  // The solo form's pane, so the two shapes differ in their props and nowhere
+  // below them.
+  const SOLO = "solo";
+  const paneIds = (): string[] => props.paneIds ?? [SOLO];
+  const pathOf = (id: string): string | null =>
+    props.paneIds ? (props.panePath?.(id) ?? null) : (props.activePath ?? null);
+  const hiddenOf = (id: string): boolean =>
+    props.paneIds ? !!props.paneHidden?.(id) : !!props.hidden;
+  const focusedId = (): string => props.focusedPaneId ?? paneIds()[0] ?? SOLO;
+  const activePath = (): string | null => pathOf(focusedId());
   let unlistenFs: UnlistenFn | undefined;
   let offAgentWrites: (() => void) | undefined;
   // Coalesced across a burst: this event is per tool call, so a turn rewriting
@@ -371,7 +425,6 @@ export default function CodeEditor(props: {
   let offLsp: (() => void) | undefined;
   const buffers = new Map<string, Buffer>();
   let shown: string | null = null;
-  let swapToken = 0;
 
   // A file the tree renamed or moved: carry its buffer to the new key. The
   // unsaved text and the undo history live in the buffer, so leaving it under
@@ -421,7 +474,8 @@ export default function CodeEditor(props: {
   // file's own ending. `sliceDoc` and never `doc.toString()`, which hard-codes
   // "\n" and so answers a different question for every CRLF file.
   function docOf(path: string): string | null {
-    if (path === shown && view) return view.state.sliceDoc();
+    const live = authorityState(path);
+    if (live) return live.sliceDoc();
     return buffers.get(path)?.state.sliceDoc() ?? null;
   }
 
@@ -461,7 +515,7 @@ export default function CodeEditor(props: {
     patch: (path, edits) => {
       const buf = buffers.get(path);
       if (!buf) return "absent";
-      const live = path === shown && view ? view.state : buf.state;
+      const live = authorityState(path) ?? buf.state;
       const changes: { from: number; to: number; insert: string }[] = [];
       for (const e of edits) {
         if (e.line < 1 || e.line > live.doc.lines) return "stale";
@@ -470,8 +524,9 @@ export default function CodeEditor(props: {
         changes.push({ from: line.from, to: line.to, insert: e.now });
       }
       if (!changes.length) return "applied";
-      if (path === shown && view) {
-        view.dispatch({ changes });
+      const owner = authorityView(path);
+      if (owner) {
+        owner.dispatch({ changes });
       } else {
         buf.state = buf.state.update({ changes }).state;
         // The background branch updates a stored state, so no update listener
@@ -495,8 +550,9 @@ export default function CodeEditor(props: {
     // function of the separator being configured in the same breath.
     const insert = Text.of(disk.lines);
     const effects = buf.eol.reconfigure(EditorState.lineSeparator.of(disk.eol));
-    if (path === shown && view) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert }, effects });
+    const live = authorityView(path);
+    if (live) {
+      live.dispatch({ changes: { from: 0, to: live.state.doc.length, insert }, effects });
     } else {
       buf.state = buf.state.update({
         changes: { from: 0, to: buf.state.doc.length, insert },
@@ -701,7 +757,8 @@ export default function CodeEditor(props: {
    *  takes long enough for an ordinary tab click, and the save it belongs to
    *  still has to write the file it started on. */
   function docFor(path: string): Text | null {
-    if (path === shown && view) return view.state.doc;
+    const live = authorityState(path);
+    if (live) return live.doc;
     return buffers.get(path)?.state.doc ?? null;
   }
 
@@ -755,8 +812,9 @@ export default function CodeEditor(props: {
     const doc = docFor(path);
     if (!doc) return;
     const changes = diffChanges(doc, toDoc(text));
-    if (path === shown && view) {
-      view.dispatch({ changes, userEvent: "format" });
+    const live = authorityView(path);
+    if (live) {
+      live.dispatch({ changes, userEvent: "format" });
       return;
     }
     const buf = buffers.get(path);
@@ -765,18 +823,19 @@ export default function CodeEditor(props: {
 
   async function saveActive() {
     const path = shown;
-    if (!path || !view) return;
+    const authority = path ? authorityState(path) : undefined;
+    if (!path || !authority) return;
     // `sliceDoc`, never `doc.toString()`: the latter hard-codes "\n" and so
     // answers a different question for every CRLF file, which is what makes the
     // bytes written below the buffer's own (see lineEndings.ts).
-    let text = view.state.sliceDoc();
+    let text = authority.sliceDoc();
     // Before the formatter, not after: organizing rewrites the import block and
     // the formatter is what decides how that block is laid out, so the other
     // order would leave the file formatted the way it was *before* the rewrite.
     // Bounded inside `organizeForSave`, because this one asks a language server
     // and a server can simply not answer.
     if (organizeImportsOnSaveFor(props.projectRoot)) {
-      const outcome = await organizeForSave(organizeDeps, path, { text, id: view.state.doc });
+      const outcome = await organizeForSave(organizeDeps, path, { text, id: authority.doc });
       if (outcome.kind === "gone") return;
       if (outcome.kind === "organized") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -784,11 +843,11 @@ export default function CodeEditor(props: {
     // Ahead of the write, so what lands on disk and what is in the buffer are
     // the same bytes. Gated on the setting first: detection is a directory walk
     // in the backend, and a project that has opted out should not pay for it.
-    // `view.state.doc` is read here rather than reused from above: organizing
-    // may have just replaced it, and handing the formatter the old identity
-    // would make it discard its own result every time both settings are on.
+    // The authority's doc is re-read here rather than reused from above:
+    // organizing may have just replaced it, and handing the formatter the old
+    // identity would make it discard its own result when both settings are on.
     if (formatOnSaveFor(props.projectRoot)) {
-      const outcome = await formatForSave(formatDeps, path, { text, id: view.state.doc });
+      const outcome = await formatForSave(formatDeps, path, { text, id: authorityState(path)?.doc ?? authority.doc });
       if (outcome.kind === "gone") return;
       if (outcome.kind === "formatted") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -959,7 +1018,10 @@ export default function CodeEditor(props: {
     void openPeek(view, kind, path);
   }
 
-  const commonExtensions: Extension[] = [
+  // A follower view (a second pane onto the same file) gets everything except
+  // the undo history: one document has one history, it lives on the authority,
+  // and the keymap below routes this view's undo there.
+  const commonExtensions = (follower = false): Extension[] => [
     // First, and load-bearing. Vim intercepts keys through a ViewPlugin DOM
     // handler, and for a key both it and a keymap claim, whichever is earlier
     // in this array takes it. `defaultKeymap`'s Mac Emacs bindings (Ctrl-A,
@@ -969,7 +1031,7 @@ export default function CodeEditor(props: {
     lineNumbers(),
     highlightActiveLine(),
     highlightActiveLineGutter(),
-    history(),
+    ...(follower ? [] : [history()]),
     drawSelection(),
     dropCursor(),
     // Without this facet the searchKeymap's Mod-d / Mod-Shift-l silently
@@ -1047,7 +1109,8 @@ export default function CodeEditor(props: {
         // that swallows a key it cannot act on is worse than no binding.
         key: "Alt-F12",
         run: () => {
-          if (!props.activePath || !claimedByLsp(props.activePath)) return false;
+          const p = activePath();
+          if (!p || !claimedByLsp(p)) return false;
           peekFromCaret("definition");
           return true;
         },
@@ -1157,12 +1220,51 @@ export default function CodeEditor(props: {
    * `disk` rather than a string, so the separator that will write the lines
    * back is configured beside the lines themselves.
    */
-  function bufferExtensions(path: string, disk: DiskText, lang: Extension, conf: BufferConf): Extension[] {
+  function bufferExtensions(
+    path: string,
+    disk: DiskText,
+    lang: Extension,
+    conf: BufferConf,
+    follower = false,
+  ): Extension[] {
     return [
-      ...commonExtensions,
+      ...commonExtensions(follower),
       lang,
       conf.eol.of(EditorState.lineSeparator.of(disk.eol)),
-      conf.lsp.of(lspPluginFor(path)),
+      // One view per file talks to the server (plan phase 9 task 4): a follower
+      // would double every notification and answer for a document it does not own.
+      conf.lsp.of(follower ? [] : lspPluginFor(path)),
+      // Undo and redo belong to the authority's history, whichever view the key
+      // was pressed in. Highest precedence, so it beats historyKeymap's own.
+      ...(follower
+        ? [
+            Prec.highest(
+              keymap.of([
+                { key: "Mod-z", preventDefault: true, run: () => runOnAuthority(path, undo) },
+                { key: "Mod-Shift-z", preventDefault: true, run: () => runOnAuthority(path, redo) },
+                { key: "Mod-y", preventDefault: true, run: () => runOnAuthority(path, redo) },
+              ]),
+            ),
+          ]
+        : []),
+      // Every view onto this file mirrors what the others typed, over one
+      // document: the change set is applied to the same doc it was made against,
+      // and the annotation is what stops the two from echoing forever.
+      EditorView.updateListener.of((u) => {
+        if (!u.docChanged || u.transactions.some((t) => t.annotation(Synced))) return;
+        for (const rec of views.values()) {
+          if (rec.path === path && rec.view !== u.view) {
+            rec.view.dispatch({ changes: u.changes, annotations: Synced.of(true) });
+          }
+        }
+        // The authority's live state is the buffer's state: keeping it current
+        // here is what lets save, dirty, hot exit and the LSP read the map
+        // without asking which pane happened to be focused.
+        if (!follower) {
+          const buf = buffers.get(path);
+          if (buf) buf.state = u.state;
+        }
+      }),
       conf.completion.of(currentFallbackCompletion(path)),
       conf.codeLens.of(currentCodeLens()),
       EditorView.updateListener.of((u) => {
@@ -1196,7 +1298,9 @@ export default function CodeEditor(props: {
       // arrive and leave together.
       debugHover(path),
       EditorView.updateListener.of((u) => {
-        if (!u.docChanged) return;
+        // The authority reports; a follower's own listener would say the same
+        // thing about the same document a moment later (task 3).
+        if (!u.docChanged || follower) return;
         const text = u.state.sliceDoc();
         const buf = buffers.get(path);
         if (buf) props.onDirty(path, text !== buf.savedText);
@@ -1250,8 +1354,8 @@ export default function CodeEditor(props: {
    *  included. Called from both directions: the client moving decides whether a
    *  buffer is claimed, and the preference decides what the unclaimed ones get. */
   function syncFallbackCompletion() {
-    reconfigureBuffers(buffers, shown, (buf) => buf.completion, currentFallbackCompletion, (effects) =>
-      view?.dispatch({ effects }),
+    reconfigureBuffers(buffers, (buf) => buf.completion, currentFallbackCompletion, (path, effects) =>
+      dispatchToAuthority(path, effects),
     );
   }
 
@@ -1264,8 +1368,8 @@ export default function CodeEditor(props: {
    *  the extension takes the field and its decorations with it, so nothing has
    *  to be cleared. */
   function syncCodeLens() {
-    reconfigureBuffers(buffers, shown, (buf) => buf.codeLens, currentCodeLens, (effects) =>
-      view?.dispatch({ effects }),
+    reconfigureBuffers(buffers, (buf) => buf.codeLens, currentCodeLens, (path, effects) =>
+      dispatchToAuthority(path, effects),
     );
     // Switching it on has nothing to draw until somebody asks: the field starts
     // empty, and without this the lenses would appear only at the next edit.
@@ -1280,7 +1384,7 @@ export default function CodeEditor(props: {
   // server has just claimed gives up its scraped words in favour of the
   // server's own list.
   function relinkLsp() {
-    reattachLsp(buffers, shown, lspPluginFor, (effects) => view?.dispatch({ effects }));
+    reattachLsp(buffers, lspPluginFor, dispatchToAuthority);
     syncFallbackCompletion();
     // The server that answers for this file just changed (came up, went away),
     // so what it would say about its symbols changed with it. This is also the
@@ -1522,7 +1626,9 @@ export default function CodeEditor(props: {
   // token in an answer is a position. The same guard format-on-save uses.
   const semanticDeps: SemanticDeps = {
     current: (path) =>
-      path === shown && view ? { id: view.state.doc, painted: semanticTokenCount(view.state) } : null,
+      authorityState(path)
+        ? { id: authorityState(path)!.doc, painted: semanticTokenCount(authorityState(path)!) }
+        : null,
     paint: (_path, tokens) => view?.dispatch({ effects: setSemanticTokens.of(tokens) }),
     again: () => refreshSemanticSoon(),
   };
@@ -1544,7 +1650,7 @@ export default function CodeEditor(props: {
   // decisions that belong in `lspCodeLens` where they can be tested without a
   // view. All this supplies is the buffer and the dispatch.
   const codeLensDeps: CodeLensDeps = {
-    current: (path) => (path === shown && view ? { id: view.state.doc } : null),
+    current: (path) => (authorityState(path) ? { id: authorityState(path)!.doc } : null),
     paint: (_path, lenses) => view?.dispatch({ effects: setCodeLenses.of(lenses) }),
   };
 
@@ -1598,9 +1704,77 @@ export default function CodeEditor(props: {
   // The panel expands a level at a time and cannot hold a client of its own.
   const offCallFetcher = setCallFetcher(callFetcher);
 
-  async function swapTo(path: string | null) {
-    if (!view) return;
-    const token = ++swapToken;
+
+  /** Open a file: read it, revive whatever was kept of it, and register the
+   *  buffer. One caller at a time, through `building`. */
+  async function buildBuffer(path: string): Promise<Buffer> {
+    let raw: string;
+    try {
+      raw = await invoke<string>("fs_read_file", { path });
+    } catch (e) {
+      raw = `// failed to open ${path}\n// ${String(e)}`;
+    }
+    // The first open of a language awaits its pack's chunk import.
+    const lang = await langForPath(path);
+    const existing = buffers.get(path);
+    if (existing) return existing;
+    const disk = fromDisk(raw);
+    const conf: BufferConf = {
+      lsp: new Compartment(),
+      completion: new Compartment(),
+      eol: new Compartment(),
+      codeLens: new Compartment(),
+    };
+    const extensions = bufferExtensions(path, disk, lang, conf);
+    // A tab reopened onto an unchanged file comes back with its undo history,
+    // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
+    // compared with what the buffer actually holds (see lineEndings.ts).
+    const kept = reviveClosed(closedBuffers, path, disk.text);
+    // Unsaved work the last quit stashed outranks both: the file on disk is by
+    // definition not what the user was looking at.
+    const stashed = takeStashEntry(path);
+    // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
+    // answer for this buffer, and every dirty check compares against that.
+    const buf: Buffer = stashed
+      ? restoreStashed(path, stashed, disk, extensions, conf)
+      : {
+          state: kept
+            ? EditorState.fromJSON(kept.json, { extensions }, SERIALIZED_FIELDS)
+            : EditorState.create({ doc: Text.of(disk.lines), extensions }),
+          savedText: disk.text,
+          ...conf,
+        };
+    buffers.set(path, buf);
+    // First reading of a buffer nobody has typed in yet. Its text may differ
+    // from the file already (a hot-exit stash, a reopened tab), so the preview
+    // has to be told rather than left to read disk.
+    publishText(path, buf.state.sliceDoc());
+    // First open of this file: bring up the server for its language, at the
+    // root the backend resolves for it. Fire-and-forget, because the plugin
+    // arrives through `onLspChange` -> `relinkLsp`, the same path a file opened
+    // before its server was ready already takes. Opening only `.ts` files
+    // therefore never starts rust-analyzer.
+    if (props.projectRoot) void ensureLspFor(path, props.projectRoot);
+    return buf;
+  }
+
+  /**
+   * Show `path` in one pane's view. The authority for a file builds (or takes
+   * over) its buffer state; a second pane onto the same file gets a follower
+   * state over the same document, which the sync listener keeps level.
+   *
+   * `force` rebuilds a view that already shows the path, which is how a view
+   * changes role when the other one holding that file went away.
+   */
+  async function swapTo(paneId: string, path: string | null, force = false) {
+    const rec = views.get(paneId);
+    if (!rec) return;
+    const v = rec.view;
+    const leaving = rec.path;
+    if (!force && (leaving === path || (rec.pending !== undefined && rec.pending === path))) return;
+    rec.pending = path;
+    const focused = focusedId() === paneId || views.size === 1;
+    const token = ++rec.swaps;
     // Whether the Calls tab exists for the file being swapped to. Free: it
     // reads a capability the server already sent at `initialize`. The roots
     // themselves are a request, and only happen while the panel is open.
@@ -1608,70 +1782,52 @@ export default function CodeEditor(props: {
     // An action is an offer about a range in a document, and neither survives
     // the file leaving the screen. Dropped before the swap rather than after,
     // so nothing can pick from a menu describing the tab being left.
-    setActionMenu(null);
-    clearCodeActions();
-    // Stash the live state of the buffer we're leaving.
-    if (shown && shown !== path) {
-      const prev = buffers.get(shown);
-      if (prev) prev.state = view.state;
+    if (focused) {
+      setActionMenu(null);
+      clearCodeActions();
+    }
+    // Stash the live state of the buffer being left, unless this view was only
+    // following another pane's: then the authority already holds it.
+    if (leaving && leaving !== path && !rec.follower) {
+      const prev = buffers.get(leaving);
+      if (prev) prev.state = v.state;
     }
     if (!path) {
-      shown = null;
+      rec.path = null;
+      rec.pending = undefined;
+      rec.follower = false;
+      if (focused) {
+        shown = null;
+        afterShow(null);
+      }
+      fixRoles(leaving);
       return;
     }
+    // Decided before the buffer is built, because it decides what is built: a
+    // file already held by an earlier pane makes this view a follower of it.
+    const follower = wouldFollow(paneId, path);
+    // One build per file, shared: two panes opening the same file in the same
+    // tick must end up with one buffer, or each would hold its own document.
     let buf = buffers.get(path);
     if (!buf) {
-      let raw: string;
-      try {
-        raw = await invoke<string>("fs_read_file", { path });
-      } catch (e) {
-        raw = `// failed to open ${path}\n// ${String(e)}`;
+      let build = building.get(path);
+      if (!build) {
+        build = buildBuffer(path);
+        building.set(path, build);
+        void build.finally(() => building.delete(path));
       }
-      // The first open of a language awaits its pack's chunk import; the
-      // token check below covers this await too.
-      const lang = await langForPath(path);
-      // A newer swap superseded us while reading: drop this result.
-      if (token !== swapToken) return;
-      const disk = fromDisk(raw);
-      const conf: BufferConf = {
-        lsp: new Compartment(),
-        completion: new Compartment(),
-        eol: new Compartment(),
-        codeLens: new Compartment(),
-      };
-      const extensions = bufferExtensions(path, disk, lang, conf);
-      // A tab reopened onto an unchanged file comes back with its undo history,
-      // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
-      // compared with what the buffer actually holds (see lineEndings.ts).
-      const kept = reviveClosed(closedBuffers, path, disk.text);
-      // Unsaved work the last quit stashed outranks both: the file on disk is
-      // by definition not what the user was looking at.
-      const stashed = takeStashEntry(path);
-      // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
-      // answer for this buffer, and every dirty check compares against that.
-      buf = stashed
-        ? restoreStashed(path, stashed, disk, extensions, conf)
-        : {
-            state: kept
-              ? EditorState.fromJSON(kept.json, { extensions }, SERIALIZED_FIELDS)
-              : EditorState.create({ doc: Text.of(disk.lines), extensions }),
-            savedText: disk.text,
-            ...conf,
-          };
-      buffers.set(path, buf);
-      // First reading of a buffer nobody has typed in yet. Its text may differ
-      // from the file already (a hot-exit stash, a reopened tab), so the
-      // preview has to be told rather than left to read disk.
-      publishText(path, buf.state.sliceDoc());
-      // First open of this file: bring up the server for its language, at the
-      // root the backend resolves for it. Fire-and-forget, because the plugin
-      // arrives through `onLspChange` -> `relinkLsp`, the same path a file
-      // opened before its server was ready already takes. Opening only `.ts`
-      // files therefore never starts rust-analyzer.
-      if (props.projectRoot) void ensureLspFor(path, props.projectRoot);
+      buf = await build;
+      if (token !== rec.swaps) return;
     }
-    if (token !== swapToken) return;
-    view.setState(buf.state);
+    if (token !== rec.swaps) return;
+    rec.pending = undefined;
+    // The authority takes the buffer's own state, undo history and all; a
+    // follower gets a second state over the same document, built without a
+    // history of its own (see bufferExtensions).
+    const authority = buf.state;
+    v.setState(follower ? await followerState(path, authority) : authority);
+    rec.path = path;
+    rec.follower = follower;
     // `setState` puts the scroll back at the top whatever the selection says, so
     // a buffer restored with its cursor five hundred lines down would open
     // showing line one with the cursor off screen. Neither a stash nor a closed
@@ -1684,17 +1840,17 @@ export default function CodeEditor(props: {
     // the reader was beats where the cursor was. Proportional by line, because
     // the two views share no units.
     const handedOff = takeHandOff(path, "source");
-    const cursor = buf.state.selection.main.head;
+    const cursor = v.state.selection.main.head;
     const anchor =
       handedOff === undefined
         ? cursor
-        : buf.state.doc.line(lineAtFraction(handedOff, buf.state.doc.lines)).from;
+        : v.state.doc.line(lineAtFraction(handedOff, v.state.doc.lines)).from;
     // `center` rather than the default `nearest` for the cursor: `nearest`
     // scrolls the minimum to bring the line into view, which from a fresh
     // `setState` (scrolled to the top) means it lands hard against the bottom
     // edge with the whole file above it. The buffer is supposed to come back
     // looking like it was left, and a line pinned to the edge does not.
-    view.dispatch({
+    v.dispatch({
       effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
     });
     // Landing on the cursor is itself a position, and saying so replaces
@@ -1703,17 +1859,48 @@ export default function CodeEditor(props: {
     // still pointed at where the reader was before the swap, and the next
     // preview would open there.
     if (handedOff === undefined && isMarkdownPath(path)) {
-      handOff(path, "source", fractionOfLine(buf.state.doc.lineAt(cursor).number, buf.state.doc.lines));
+      handOff(path, "source", fractionOfLine(v.state.doc.lineAt(cursor).number, v.state.doc.lines));
     }
-    view.focus();
-    shown = path;
+    if (focused) {
+      v.focus();
+      view = v;
+      shown = path;
+    }
     props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
     // Where this buffer was left, for the trail above the editor. Reported here
     // rather than by `caretListener`, because a `setState` never reaches an
     // update listener: without this the trail would sit blank until the caret
     // moved, on every tab swap and on every first open.
-    const at = buf.state.doc.lineAt(cursor);
-    props.onCaretMove?.(path, at.number, cursor - at.from + 1);
+    const at = v.state.doc.lineAt(cursor);
+    if (focused) props.onCaretMove?.(path, at.number, cursor - at.from + 1);
+    if (focused) afterShow(path);
+    fixRoles(leaving);
+    fixRoles(path);
+  }
+
+  /** A second view onto a file the authority owns: the same document, without
+   *  a history or a language client of its own. */
+  async function followerState(path: string, authority: EditorState): Promise<EditorState> {
+    const buf = buffers.get(path);
+    const disk = fromDisk(buf?.savedText ?? "");
+    const lang = await langForPath(path);
+    const conf: BufferConf = {
+      lsp: new Compartment(),
+      completion: new Compartment(),
+      eol: new Compartment(),
+      codeLens: new Compartment(),
+    };
+    return EditorState.create({
+      doc: authority.doc,
+      selection: authority.selection,
+      extensions: bufferExtensions(path, disk, lang, conf, true),
+    });
+  }
+
+  /** Everything that describes "the file on screen" for the focused pane: run
+   *  after a swap and after focus moves, since both change that answer. */
+  function afterShow(path: string | null) {
+    const buf = path ? buffers.get(path) : undefined;
     // The marks the pane holds for this file, laid onto the buffer now showing
     // it. Safe to re-seed on every swap because the field reports any edit that
     // moved a mark straight back, so the store is never behind the buffer.
@@ -1722,7 +1909,11 @@ export default function CodeEditor(props: {
     syncFrameLine();
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
-    setConflict(buf.pendingKind ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
+    setConflict(
+      buf?.pendingKind && path
+        ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind }
+        : null,
+    );
     refreshDiff();
     syncBlame();
     syncEditorPrefs();
@@ -1733,6 +1924,7 @@ export default function CodeEditor(props: {
     refreshLenses();
     publishSourceActions();
   }
+
 
   function evictClosed(openPaths: string[]) {
     const live = new Set(openPaths);
@@ -1776,21 +1968,122 @@ export default function CodeEditor(props: {
   // Where the reader is in the shown file, for its preview to open at. Taken
   // off the scroller and not off the state: a line number stops being a
   // position on screen the moment anything wraps or folds.
-  function noteSourceScroll() {
-    if (!view || !shown || !isMarkdownPath(shown)) return;
-    const el = view.scrollDOM;
+  function noteSourceScroll(paneId: string) {
+    const rec = views.get(paneId);
+    if (!rec?.path || !isMarkdownPath(rec.path)) return;
+    const el = rec.view.scrollDOM;
     const fraction = scrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight);
-    if (fraction !== undefined) handOff(shown, "source", fraction);
+    if (fraction !== undefined) handOff(rec.path, "source", fraction);
   }
 
-  onMount(async () => {
-    view = new EditorView({
-      parent: host,
-      state: EditorState.create({ doc: "", extensions: commonExtensions }),
+  /** The view that owns a file: the first pane, in the order the shell hands
+   *  them over, showing it. Every other view onto that file follows it, and
+   *  every consumer read (save, dirty, hot exit, LSP) comes off this one. */
+  function authorityRec(path: string): PaneRec | undefined {
+    for (const id of paneIds()) {
+      const rec = views.get(id);
+      if (rec?.path === path) return rec;
+    }
+    return undefined;
+  }
+  const authorityView = (path: string): EditorView | undefined => authorityRec(path)?.view;
+  const authorityState = (path: string): EditorState | undefined =>
+    authorityView(path)?.state ?? buffers.get(path)?.state;
+  /** Send a compartment reconfigure to the view that owns a file, and say
+   *  whether there was one: a buffer no pane shows is updated in place instead. */
+  function dispatchToAuthority(path: string, effects: StateEffect<unknown>): boolean {
+    const owner = authorityView(path);
+    if (!owner) return false;
+    owner.dispatch({ effects });
+    return true;
+  }
+
+  /** Run an authority-only command (undo, redo) from whichever view asked. */
+  function runOnAuthority(path: string, cmd: (v: EditorView) => boolean): boolean {
+    const rec = authorityRec(path);
+    return rec ? cmd(rec.view) : false;
+  }
+  /** What a pane holds or is on its way to holding. Both halves matter while two
+   *  panes open the same file at once: neither holds it yet, and the answer
+   *  still has to be the same for both. */
+  const claims = (rec: PaneRec, path: string) =>
+    rec.path === path || (rec.pending !== undefined && rec.pending === path);
+
+  /** Would this pane's view be a follower for `path`? Decided by pane order
+   *  rather than by who finished reading first, so it does not depend on
+   *  timing: the earliest pane claiming a file owns it. */
+  const wouldFollow = (paneId: string, path: string) => {
+    for (const id of paneIds()) {
+      if (id === paneId) return false;
+      const rec = views.get(id);
+      if (rec && claims(rec, path)) return true;
+    }
+    return false;
+  };
+
+  // One read per file, however many panes ask at once: the second swap awaits
+  // the first one's build instead of opening the file a second time.
+  const building = new Map<string, Promise<Buffer>>();
+
+  function attachView(paneId: string, el: HTMLElement) {
+    const v = new EditorView({
+      parent: el,
+      state: EditorState.create({ doc: "", extensions: commonExtensions() }),
     });
     // Removed with the element itself: `view.destroy()` takes the scroller
     // down, and this listener with it.
-    view.scrollDOM.addEventListener("scroll", noteSourceScroll, { passive: true });
+    v.scrollDOM.addEventListener("scroll", () => noteSourceScroll(paneId), { passive: true });
+    views.set(paneId, { id: paneId, view: v, path: null, follower: false, swaps: 0 });
+    if (focusedId() === paneId || !view) focusPane(paneId);
+    void swapTo(paneId, pathOf(paneId));
+  }
+
+  /** Roles are decided by which panes hold a file, so a view arriving at one or
+   *  leaving it can change another view's role: the last follower on a file
+   *  becomes its authority, and a view an earlier pane just took over from
+   *  becomes a follower. Rebuilt from the buffer, which both agree on. */
+  function fixRoles(path: string | null) {
+    if (!path) return;
+    for (const rec of views.values()) {
+      if (rec.path === path && rec.follower !== wouldFollow(rec.id, path)) {
+        void swapTo(rec.id, path, true);
+      }
+    }
+  }
+
+  function detachView(paneId: string) {
+    const rec = views.get(paneId);
+    if (!rec) return;
+    // Its live state is the buffer's, unless somebody else is already the
+    // authority for that file; either way the map keeps what it held.
+    if (rec.path && !rec.follower) {
+      const buf = buffers.get(rec.path);
+      if (buf) buf.state = rec.view.state;
+    }
+    views.delete(paneId);
+    rec.view.destroy();
+    fixRoles(rec.path);
+    if (view === rec.view) {
+      const next = paneIds().map((id) => views.get(id)).find(Boolean);
+      if (next) focusPane(next.id);
+      else {
+        view = undefined;
+        shown = null;
+      }
+    }
+  }
+
+  /** Point `view`/`shown` at a pane, and re-run everything that describes "the
+   *  file on screen" for the new one. */
+  function focusPane(paneId: string) {
+    const rec = views.get(paneId);
+    if (!rec) return;
+    view = rec.view;
+    shown = rec.path;
+    afterShow(rec.path);
+  }
+
+  onMount(async () => {
     // Subscribed before the first await, and before the opening swap, because
     // the client can finish starting inside either. A fire that lands with no
     // subscriber leaves the buffer holding no plugin for good, which is the bug
@@ -1798,7 +2091,6 @@ export default function CodeEditor(props: {
     // rather than one per buffer: the client is one per project, and every open
     // buffer wants the same news about it.
     offLsp = onLspChange(relinkLsp);
-    if (props.activePath) swapTo(props.activePath);
     // Genuine external changes to any open buffer: reload (clean) or banner
     // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
     // also resyncs the gutter for the active file.
@@ -1864,7 +2156,7 @@ export default function CodeEditor(props: {
   function dirtyStash(now: number): HotExitStore {
     const out: HotExitStore = {};
     for (const [path, buf] of buffers) {
-      const state = path === shown && view ? view.state : buf.state;
+      const state = authorityState(path) ?? buf.state;
       if (state.sliceDoc() === buf.savedText) continue;
       out[path] = { savedText: buf.savedText, state: state.toJSON(SERIALIZED_FIELDS), savedAt: now };
     }
@@ -2053,14 +2345,29 @@ export default function CodeEditor(props: {
   // pane was simply unmounted.
   createEffect(
     on(
-      () => props.hidden,
-      (h) => {
-        if (!h) view?.requestMeasure();
+      () => paneIds().map((id) => hiddenOf(id)).join(","),
+      () => {
+        for (const rec of views.values()) rec.view.requestMeasure();
       },
       { defer: true },
     ),
   );
-  createEffect(on(() => props.activePath, (p) => swapTo(p), { defer: true }));
+  // What each pane shows, and which one is being acted in. Both are props, and
+  // both move a view rather than re-create one.
+  createEffect(() => {
+    for (const id of paneIds()) {
+      const rec = views.get(id);
+      const path = pathOf(id);
+      if (rec && rec.path !== path) void swapTo(id, path);
+    }
+  });
+  createEffect(
+    on(
+      () => focusedId(),
+      (id) => focusPane(id),
+      { defer: true },
+    ),
+  );
   // Opening the panel roots it at once; waiting for the next caret move would
   // show an empty panel over a caret that is already on a function.
   createEffect(
@@ -2194,26 +2501,51 @@ export default function CodeEditor(props: {
     // No editor, no server answering for anything, so the palette must stop
     // offering three commands with nothing behind them.
     publishSourceActionKinds(null);
-    view?.destroy();
+    for (const rec of views.values()) rec.view.destroy();
+    views.clear();
+    view = undefined;
   });
 
+  /** One pane's editor: the reload banner for the file it holds, and the
+   *  element its view lives in for as long as the pane does. */
+  function PaneEditor(p: { id: string }) {
+    onCleanup(() => detachView(p.id));
+    return (
+      <div class={styles.codeEditorWrap} style={{ display: hiddenOf(p.id) ? "none" : undefined }}>
+        <Show when={conflict()?.path === pathOf(p.id) ? conflict() : null}>
+          {(c) => (
+            <div class={styles.reloadBanner}>
+              <Show
+                when={c().kind === "deleted"}
+                fallback={<span>This file changed on disk while you had unsaved edits.</span>}
+              >
+                <span>This file was deleted on disk, so saving would bring it back.</span>
+              </Show>
+              <Button size="sm" onClick={reloadConflict}>{c().kind === "deleted" ? "Close file" : "Reload"}</Button>
+              <Button size="sm" onClick={keepMine}>Keep mine</Button>
+            </div>
+          )}
+        </Show>
+        <div class={styles.codeEditor} ref={(el) => attachView(p.id, el)} />
+      </div>
+    );
+  }
+
   return (
-    <div class={styles.codeEditorWrap} style={{ display: props.hidden ? "none" : undefined }}>
-      <Show when={conflict()}>
-        {(c) => (
-          <div class={styles.reloadBanner}>
-            <Show
-              when={c().kind === "deleted"}
-              fallback={<span>This file changed on disk while you had unsaved edits.</span>}
-            >
-              <span>This file was deleted on disk, so saving would bring it back.</span>
-            </Show>
-            <Button size="sm" onClick={reloadConflict}>{c().kind === "deleted" ? "Close file" : "Reload"}</Button>
-            <Button size="sm" onClick={keepMine}>Keep mine</Button>
-          </div>
+    <>
+      {/* One view per pane, each in the element that pane handed over; the solo
+          form keeps its view here, where it always was. */}
+      <For each={paneIds()}>
+        {(id) => (
+          <Show when={props.paneIds ? props.paneHost?.(id) : undefined} fallback={<PaneEditor id={id} />}>
+            {(mount) => (
+              <Portal mount={mount()}>
+                <PaneEditor id={id} />
+              </Portal>
+            )}
+          </Show>
         )}
-      </Show>
-      <div class={styles.codeEditor} ref={host} />
+      </For>
       <Show when={actionMenu()}>
         {(m) => (
           <Dropdown
@@ -2233,6 +2565,6 @@ export default function CodeEditor(props: {
           />
         )}
       </Show>
-    </div>
+    </>
   );
 }

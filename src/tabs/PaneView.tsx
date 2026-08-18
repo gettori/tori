@@ -29,7 +29,7 @@ export default function PaneView(props: {
   // unplaced one hosts its kind's whole set (the editor's one shared stage,
   // every terminal tab's surface).
   const hostIds = () =>
-    props.paneId ? paneHostIds(props.ws ?? "", props.paneId) : (entry()?.hostIds?.() ?? []);
+    props.paneId ? paneHostIds(props.ws ?? "", props.paneId) : (entry()?.hostIds?.(null, []) ?? []);
 
   let root!: HTMLDivElement;
   let slot!: HTMLDivElement;
