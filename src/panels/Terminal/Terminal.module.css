@@ -282,3 +282,9 @@
   text-align: center;
   padding: calc(20px * var(--ui-scale));
 }
+
+/* The tab's right-click menu (plan phase 8: move it to another pane, or make
+   one). Layout-transparent, so the tab is still the strip's own flex child. */
+.tabMenu {
+  display: contents;
+}

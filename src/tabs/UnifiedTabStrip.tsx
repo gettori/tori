@@ -14,6 +14,8 @@ export default function UnifiedTabStrip(props: {
    *  empty or the active id names no tab of this pane. */
   pinKind: UnifiedTabKind;
   onReorder: (next: UnifiedTab[]) => void;
+  /** Runs before the kind's own activate, for the pane to remember its pick. */
+  onActivate?: (t: UnifiedTab) => void;
   class?: string;
 }) {
   const activeTab = () => props.items.find((t) => t.id === props.activeId);
@@ -33,7 +35,9 @@ export default function UnifiedTabStrip(props: {
       idOf={idOf}
       onActivate={(id) => {
         const u = props.items.find((t) => t.id === id);
-        if (u) kindEntry(u.kind).activate(u);
+        if (!u) return;
+        props.onActivate?.(u);
+        kindEntry(u.kind).activate(u);
       }}
       onReorder={props.onReorder}
       renderTab={renderRegistryTab}
