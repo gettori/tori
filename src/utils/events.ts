@@ -100,7 +100,16 @@ export const TOGGLE_FILETREE = "sway:toggle-filetree";
 // tree. Emitted by the command palette and by a tab's own context menu, so a
 // split made either way runs the same guards.
 export const SPLIT_PANE = "sway:split-pane";
-export type SplitPane = { dir: "row" | "column" };
+export type SplitPane = {
+  dir: "row" | "column";
+  /** Which pane to split; the focused one when omitted (the palette). */
+  paneId?: string;
+  /** Which side of it the new pane takes. Default "after". */
+  pos?: "before" | "after";
+  /** A tab to carry into the new pane, which is what a drop on an edge is. */
+  tabId?: string;
+  kind?: string;
+};
 export const CLOSE_PANE = "sway:close-pane";
 /** Move one tab into another pane. `paneId` names the target outright (the tab
  *  menu knows it); `direction` steps to the next or previous pane instead. */
@@ -111,6 +120,8 @@ export type MoveTabToPane = {
   kind?: string;
   paneId?: string;
   direction?: "next" | "prev";
+  /** Where in the target pane's strip it lands; appended when omitted. */
+  index?: number;
 };
 
 // Fired by App.tsx after a pane transitions hidden -> shown, so the terminal

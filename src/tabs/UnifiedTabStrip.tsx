@@ -4,7 +4,7 @@
 // exactly what the panels' own bars did; a mixed list needs no other code path.
 import { createMemo } from "solid-js";
 import OverflowTabBar from "../components/OverflowTabBar";
-import { kindEntry, maybeKindEntry, renderRegistryTab } from "../tabs/registry";
+import { kindEntry, maybeKindEntry, renderRegistryTab, type StripPlace } from "../tabs/registry";
 import { idOf, type UnifiedTab, type UnifiedTabKind } from "./unifiedTabs";
 
 export default function UnifiedTabStrip(props: {
@@ -16,6 +16,10 @@ export default function UnifiedTabStrip(props: {
   onReorder: (next: UnifiedTab[]) => void;
   /** Runs before the kind's own activate, for the pane to remember its pick. */
   onActivate?: (t: UnifiedTab) => void;
+  /** Which pane's strip this is, for a drag that leaves it (plan phase 10). */
+  place?: StripPlace;
+  /** The strip's own box, which the pane hit-tests a drop against. */
+  ref?: (el: HTMLElement) => void;
   class?: string;
 }) {
   const activeTab = () => props.items.find((t) => t.id === props.activeId);
@@ -29,6 +33,7 @@ export default function UnifiedTabStrip(props: {
   const trailingOf = createMemo(() => maybeKindEntry((activeTab() ?? { kind: props.pinKind }).kind)?.trailing);
   return (
     <OverflowTabBar
+      ref={props.ref}
       class={props.class}
       items={props.items}
       activeId={props.activeId}
@@ -40,7 +45,7 @@ export default function UnifiedTabStrip(props: {
         kindEntry(u.kind).activate(u);
       }}
       onReorder={props.onReorder}
-      renderTab={renderRegistryTab}
+      renderTab={(t, ghost) => renderRegistryTab(t, ghost, props.place)}
       renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
       trailing={trailingOf()?.()}
     />
