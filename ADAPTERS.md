@@ -55,9 +55,17 @@ card is two claims about one thing.
 
 The line that matters survives the catalogue: **bundled is not measured.** An
 adapter with a `verified_against` was run, probed and captured at that version;
-one without was written from documentation and ships as a starting point. The
-Agents settings surface reads exactly that key to tell the two apart, so the
-honest state of a new adapter is visible rather than implied.
+one without was written from documentation and ships as a starting point.
+
+That line is maintainer bookkeeping, and the UI deliberately does not recite
+it: no "untested" caveat on an unmeasured adapter's page, and no drift warning
+for a binary *newer* than its `verified_against` - vendors ship weekly, so
+being ahead of the measurement is the steady state of a healthy install, and a
+banner that is always up warns about nothing. The one drift direction the app
+surfaces is *behind*: an installed version older than the measured one means a
+newer release provably exists, so the row says "Outdated" and the page offers
+the vendor's update. Everything else this paragraph knows lives here, in this
+file.
 
 **claude** ships bundled and is fully wired: list, launch, resume, the
 working/needs-you dot, touched files, the History dropdown, and the native
@@ -78,8 +86,9 @@ and chat runs the first-party wrapper over `npx`, which drives that same
 `codex` underneath. `codex.toml` carries the full reasoning.
 
 **gemini** ships bundled and **untested**: nothing has measured it, which is why
-it declares no `verified_against` and why Settings labels it as a starting point
-rather than a supported agent. An ACP adapter is mostly launch instructions,
+it declares no `verified_against`. Treat it as a starting point rather than a
+supported agent - a distinction this file keeps and the app, by design, does
+not recite. An ACP adapter is mostly launch instructions,
 which is what makes shipping one unmeasured reasonable - not what makes it
 tested.
 
@@ -299,7 +308,10 @@ the variable may point at a config directory while the credentials behind it
 live in one shared store, in which case adding a second account silently signs
 the first one out. Claiming `supports_isolation = true` without a `home_env` is
 rejected outright, since there would be no mechanism behind the claim. An
-adapter that does not claim isolation offers no "add account" action at all.
+adapter that does not claim isolation offers no "add account" action at all -
+silently: the sentence explaining *why* ("nobody has measured this agent
+holding two accounts at once") is for whoever edits these files, so it lives
+in this paragraph rather than in the app.
 
 > **Canonicalize the home path.** Measured on `claude 2.1.232`: it derives its
 > macOS Keychain service name as `"Claude Code-credentials-" +

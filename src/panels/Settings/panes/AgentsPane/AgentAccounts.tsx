@@ -344,24 +344,25 @@ export default function AgentAccounts(props: {
               )}
             </For>
           </div>
-          {/* The button stays visible when adding is off, disabled beside the
-              reason: a missing button leaves "why can I not add a second
-              account here" with no answer on screen. */}
-          <div class={styles.cardActions}>
-            <Button
-              size="sm"
-              icon={<Icon icon={Plus} />}
-              onClick={() => void add()}
-              disabled={adding() || !v().canAdd}
-            >
-              Add account
-            </Button>
-            <span class={styles.actionNote}>
-              {v().canAdd
-                ? "Each account keeps its own session and model list. Pick one per chat."
-                : `Nobody has measured ${props.agentLabel} holding two accounts at once, so Sway offers one.`}
-            </span>
-          </div>
+          {/* No button at all where adding is off. The old rendering kept a
+              disabled button beside a sentence about unmeasured isolation -
+              a message for whoever maintains the adapters, which belongs in
+              ADAPTERS.md, not in the app. */}
+          <Show when={v().canAdd}>
+            <div class={styles.cardActions}>
+              <Button
+                size="sm"
+                icon={<Icon icon={Plus} />}
+                onClick={() => void add()}
+                disabled={adding()}
+              >
+                Add account
+              </Button>
+              <span class={styles.actionNote}>
+                Each account keeps its own session and model list. Pick one per chat.
+              </span>
+            </div>
+          </Show>
           <Show when={nameReq()}>
             <PromptModal
               title={`Name for the new ${props.agentLabel} account`}
