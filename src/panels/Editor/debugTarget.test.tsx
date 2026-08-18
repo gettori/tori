@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import { tab, tabs, closeOf } from "../../test/tabs";
@@ -130,7 +131,12 @@ const selection = {
 
 async function mountEditor() {
   const [selected] = createSignal<unknown>(selection);
-  render(() => <Editor selected={selected() as never} />);
+  render(() => (
+      <>
+        <Editor selected={selected() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 

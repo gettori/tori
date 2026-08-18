@@ -4,7 +4,7 @@
 // exactly what the panels' own bars did; a mixed list needs no other code path.
 import { createMemo } from "solid-js";
 import OverflowTabBar from "../components/OverflowTabBar";
-import { kindEntry, renderRegistryTab } from "../tabs/registry";
+import { kindEntry, maybeKindEntry, renderRegistryTab } from "../tabs/registry";
 import { idOf, type UnifiedTab, type UnifiedTabKind } from "./unifiedTabs";
 
 export default function UnifiedTabStrip(props: {
@@ -21,7 +21,10 @@ export default function UnifiedTabStrip(props: {
   // descriptor's trailing function itself: the five terminal kinds register
   // the same cluster, so switching between them keeps its DOM (open menus,
   // refs), while a genuine kind change swaps the whole cluster.
-  const trailingOf = createMemo(() => kindEntry((activeTab() ?? { kind: props.pinKind }).kind).trailing);
+  // `maybe`: an empty pane's pin kind can name a panel that has not registered
+  // yet (or never will, in App suites that stub the panels); items imply
+  // registration, the pin kind alone does not.
+  const trailingOf = createMemo(() => maybeKindEntry((activeTab() ?? { kind: props.pinKind }).kind)?.trailing);
   return (
     <OverflowTabBar
       class={props.class}

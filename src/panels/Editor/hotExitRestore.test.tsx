@@ -72,6 +72,7 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
+const { default: PaneView } = await import("../../tabs/PaneView");
 const { clearPendingStash, pendingStashPaths } = await import("../../utils/hotExit");
 
 const entry = (savedText: string) => ({ savedText, state: { doc: `${savedText} edited` }, savedAt: Date.now() });
@@ -87,7 +88,12 @@ function storeTabs(paths: string[], active: string) {
 }
 
 async function relaunch() {
-  mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selectionFor(REPO) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
 }

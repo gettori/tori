@@ -1,18 +1,15 @@
 /* Editor panel chrome (hash-scoped). Shared tab-content classes (.tab-name,
    .tab-dirty, .tab-close) stay global (also used by the OverflowTabBar overflow
    menu), so they're referenced via :global() from the scoped .editorTabs. */
-.editorPane {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-  background: var(--canvas-card);
-}
-
+/* The old .editorPane row (code | divider | chrome) is the app shell's
+   .editor-split since phase 7; the pieces portal into stage hosts placed there.
+   min-height keeps the column from overflowing the pane's stage box. */
 .editorMain {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .editorEmpty {
