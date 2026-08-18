@@ -78,13 +78,20 @@ describe("the seeded two-pane shell", () => {
     const editor = pane(container, "editor");
     expect(terminal.classList.contains("hidden")).toBe(false);
     expect(editor.classList.contains("hidden")).toBe(false);
-    expect(terminal.querySelector('[data-testid="terminal-panel"]')).toBeTruthy();
-    expect(editor.querySelector('[data-testid="editor-panel"]')).toBeTruthy();
-    // The share round-trips to the same px the legacy key stored.
-    expect(parseFloat(editor.style.width)).toBeCloseTo(LEGACY.editor, 3);
-    // The envelope the seed persisted holds the two pin panes.
+    // Both panels are service hosts since phase 7 and sit beside the tree since
+    // phase 8, so the panes hold strips and stages rather than panel DOM.
+    expect(container.querySelector('[data-testid="terminal-panel"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="editor-panel"]')).toBeTruthy();
+    expect(terminal.querySelector('[role="tablist"]')).toBeTruthy();
+    expect(editor.querySelector('[role="tablist"]')).toBeTruthy();
+    // The envelope the seed persisted holds the two pin panes, and the editor's
+    // share is the legacy px width over the room the two of them share. (The px
+    // itself is PaneTree's own measurement now, which jsdom never makes.)
     const stored = JSON.parse(localStorage.getItem("sway.panes.v1")!);
-    expect(stored[""].layout.children.map((c: { id: string }) => c.id)).toEqual(["left", "right"]);
+    const children = stored[""].layout.children as { id: string; size: number }[];
+    expect(children.map((c) => c.id)).toEqual(["left", "right"]);
+    const shared = window.innerWidth - 10 - 8 - 8;
+    expect((children[1].size / 100) * shared).toBeCloseTo(LEGACY.editor, 3);
   });
 
   it("carries legacy visibility into the seed", () => {

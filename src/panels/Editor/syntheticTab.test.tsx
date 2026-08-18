@@ -224,11 +224,9 @@ describe("a sway:// tab in the editor pane", () => {
   });
 
   // Written against the hand-rolled menu (skarif2/sway#103, phase 1), now
-  // running against Kobalte's (phase 4). The test above proves the view's menu
-  // is empty; this proves what the tab does with the right-click *instead*,
-  // which is the half a migration can silently lose. The synthetic case is now
-  // the trigger's `disabled`, since Kobalte returns before `preventDefault` for
-  // a disabled trigger and always calls it otherwise.
+  // running against Kobalte's (phase 4). The test above proves a view is offered
+  // no file history; this proves what the tab does with the right-click itself,
+  // which is the half a migration can silently lose.
   //
   // **These need the drawn tab, not the measuring ghost**, which is rendered
   // menu-free and would answer a right-click with nothing. That used to need a
@@ -246,14 +244,17 @@ describe("a sway:// tab in the editor pane", () => {
       expect(await screen.findByRole("menu")).toBeTruthy();
     });
 
-    it("leaves the event alone on a view, so the browser's own menu survives", async () => {
-      // A view has no file behind it, so Sway has nothing to offer and the
-      // browser's menu (copy, inspect) is more useful than an empty surface.
+    it("claims it on a view too, which has the pane actions if not the history", async () => {
+      // It used to leave the event to the browser, because a view had nothing
+      // to answer with. Since phase 8 every tab has somewhere else it could go,
+      // so the menu opens with those rows and without the file-only ones.
       await mountEditor();
       await open(LOG);
 
-      expect(rightClick(tab("Commit log"))).toBe(false);
-      expect(screen.queryByRole("menu")).toBeNull();
+      expect(rightClick(tab("Commit log"))).toBe(true);
+      expect(await screen.findByRole("menu")).toBeTruthy();
+      expect(screen.getByText("Split the pane to the right")).toBeTruthy();
+      expect(screen.queryByText("File history")).toBeNull();
     });
 
     // The tab strip derives nothing from "a menu is open" (HistoryPanel does,

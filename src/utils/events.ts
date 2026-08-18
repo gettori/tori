@@ -96,6 +96,23 @@ export const TOGGLE_TERMINAL = "sway:toggle-terminal";
 export const TOGGLE_EDITOR = "sway:toggle-editor";
 export const TOGGLE_FILETREE = "sway:toggle-filetree";
 
+// Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
+// tree. Emitted by the command palette and by a tab's own context menu, so a
+// split made either way runs the same guards.
+export const SPLIT_PANE = "sway:split-pane";
+export type SplitPane = { dir: "row" | "column" };
+export const CLOSE_PANE = "sway:close-pane";
+/** Move one tab into another pane. `paneId` names the target outright (the tab
+ *  menu knows it); `direction` steps to the next or previous pane instead. */
+export const MOVE_TAB_TO_PANE = "sway:move-tab-to-pane";
+export type MoveTabToPane = {
+  /** Omitted by the palette, which knows no tab: the focused pane's own. */
+  tabId?: string;
+  kind?: string;
+  paneId?: string;
+  direction?: "next" | "prev";
+};
+
 // Fired by App.tsx after a pane transitions hidden -> shown, so the terminal
 // refits its cell grid and CodeMirror re-measures without waiting on a
 // ResizeObserver tick. Consumed by TerminalView and CodeEditor.

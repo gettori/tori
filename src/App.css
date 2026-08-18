@@ -337,23 +337,48 @@ html {
   overflow: hidden;
 }
 
-/* Inner panes are transparent so the card's single surface shows through; only
-   the divider between them separates terminal from editor. */
-.pane.terminal {
+/* A split's own box (plan phase 8): the tree draws one per split node, laid out
+   along its direction. The root one fills the card. */
+.pane-split {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-split.row {
+  flex-direction: row;
+}
+
+.pane-split.column {
+  flex-direction: column;
+}
+
+/* Sizing, per split: the first visible child absorbs the slack (and any
+   rounding), every other one carries the inline px the tree measured for it. */
+.pane-split.filler,
+.pane-slot.filler,
+.pane.filler {
   flex: 1 1 auto;
+}
+
+.pane-slot.sized,
+.pane.sized {
+  flex: 0 0 auto;
+}
+
+.pane-slot {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Inner panes are transparent so the card's single surface shows through; only
+   the divider between them separates one from the next. */
+.pane.terminal,
+.pane.editor,
+.pane.split {
   min-width: 0;
   background: transparent;
-}
-
-.pane.editor {
-  flex: 0 0 auto;
-  background: transparent;
-}
-
-/* When the terminal is hidden, the editor fills the whole work-card (its inline
-   width is dropped in that state, so flex governs). */
-.pane.editor.fill {
-  flex: 1 1 auto;
 }
 
 /* The editor pane's row (phase 7): the file pane's column beside the editor
@@ -378,9 +403,11 @@ html {
 /* Show/hide: panes drop out of flow with display:none rather than unmounting, so
    PTYs, CodeMirror buffers, and panel state survive a hide/show cycle. The extra
    class specificity beats the base `.pane { display: flex }` rule. */
+.pane-slot.hidden,
 .pane.sidebar.hidden,
 .pane.terminal.hidden,
-.pane.editor.hidden {
+.pane.editor.hidden,
+.pane.split.hidden {
   display: none;
 }
 

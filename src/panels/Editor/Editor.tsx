@@ -248,6 +248,8 @@ import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind } from "../../tabs/registry";
+import { paneMenuItems } from "../../tabs/paneTabs";
+import { forgetTab } from "../../layout/tabPlacement";
 import { stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 
@@ -751,20 +753,15 @@ export default function Editor(props: {
     writeBlamePref(!blameOn());
   }
 
-  /** A view has no history of its own, so it has no menu to answer with, and the
-   *  browser's own menu is more useful than an empty one. This is the trigger's
-   *  `disabled`: Kobalte returns before `preventDefault()` when it is set, which
-   *  is exactly what the old handler did by returning early. */
-  const tabHasMenu = (t: FileTab) => {
-    const r = root();
-    return !!r && !!repoRelative(t.path, r);
-  };
 
   function tabMenuItems(t: FileTab): MenuItem[] {
+    const panes = paneMenuItems(ws(), { id: tabId(t), kind: "file" });
     const r = root();
     const rel = r && repoRelative(t.path, r);
-    if (!r || !rel) return [];
+    if (!r || !rel) return panes;
     return [
+      ...panes,
+      { separator: true },
       {
         label: "File history",
         onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
@@ -788,7 +785,7 @@ export default function Editor(props: {
     return (
       <ContextMenu
         class={styles.tabMenu}
-        disabled={!tabHasMenu(p.tab)}
+        disabled={tabMenuItems(p.tab).length === 0}
         items={tabMenuItems(p.tab)}
       >
         {p.children}
@@ -1235,6 +1232,9 @@ export default function Editor(props: {
     // Same reason the preview choice goes: a closed tab's per-tab state would
     // otherwise come back to a file reopened days later with no explanation.
     setWrapById((prev) => withoutTab(prev, id));
+    // Same reason again, for the pane it was in: a path reopened later would
+    // otherwise inherit a placement made for the tab that had the path before.
+    forgetTab(ws(), id);
     if (activeId() === id) {
       setActiveId(nextActive);
     }

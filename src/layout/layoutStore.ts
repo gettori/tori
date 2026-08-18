@@ -128,6 +128,12 @@ export function updateLayout(
   return true;
 }
 
+/** The workspace's tree, or null before the shell seeded one (a panel mounted
+ *  outside it, which is every panel-only test). */
+export function layoutRoot(ws: string): PaneNode | null {
+  return envelopes()[ws]?.layout ?? null;
+}
+
 export function focusedPaneId(ws: string): string | null {
   return envelopes()[ws]?.focusedPaneId ?? null;
 }

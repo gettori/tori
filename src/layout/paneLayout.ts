@@ -121,6 +121,22 @@ export const visibleLeaves = (root: PaneNode): PaneLeaf[] =>
 export const findPane = (root: PaneNode, id: string): PaneLeaf | null =>
   leaves(root).find((l) => l.id === id) ?? null;
 
+/** Who inherits a closing pane's tabs: the pane to its right, else the one to
+ *  its left (the reading order the tab-close policy already uses). */
+export function neighborPane(root: PaneNode, paneId: string): string | null {
+  const ls = leaves(root);
+  const i = ls.findIndex((l) => l.id === paneId);
+  if (i < 0) return null;
+  return ls[i + 1]?.id ?? ls[i - 1]?.id ?? null;
+}
+
+/** Panes a kind can open into, so nothing lands in a pane that is about to
+ *  auto-collapse. The pin rule's two ends today (see resolvePinPane). */
+export const pinnedPaneIds = (root: PaneNode): string[] => {
+  const ls = leaves(root);
+  return ls.length === 0 ? [] : [ls[0].id, ls[ls.length - 1].id];
+};
+
 /** How many splits sit above this pane (0 for a root leaf). */
 function splitsAbove(root: PaneNode, id: string, depth = 0): number | null {
   if (root.type === "pane") return root.id === id ? depth : null;

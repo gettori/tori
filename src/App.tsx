@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
-import PaneView from "./tabs/PaneView";
 import { stageHost } from "./tabs/stageHost";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
@@ -35,6 +34,11 @@ import {
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
+  SPLIT_PANE,
+  type SplitPane,
+  CLOSE_PANE,
+  MOVE_TAB_TO_PANE,
+  type MoveTabToPane,
   REFIT_PANES,
   FOCUS_SEARCH,
   FOCUS_PROJECT_SEARCH,
@@ -47,10 +51,25 @@ import {
   type LiveTab,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
-import { findPane, leaves, resizePane, resolvePinPane, resolveTogglePane, setPaneHidden } from "./layout/paneLayout";
+import {
+  MAX_PANES,
+  closePane,
+  findPane,
+  leaves,
+  neighborPane,
+  pinnedPaneIds,
+  resizePane,
+  resolvePinPane,
+  resolveTogglePane,
+  setPaneHidden,
+  splitPane,
+  visibleLeaves,
+  type PaneLeaf,
+} from "./layout/paneLayout";
 import {
   ensureEnvelope,
   envelopeFor,
+  focusedPaneId,
   persistEnvelopes,
   resetPaneLayoutModel,
   seedTwoPane,
@@ -58,6 +77,16 @@ import {
   tabFocusStamp,
   updateLayout,
 } from "./layout/layoutStore";
+import PaneTree, { type PaneRoles } from "./layout/PaneTree";
+import {
+  homePane,
+  mergePaneInto,
+  moveTabToPane,
+  paneOfTab,
+  resetTabPlacement,
+  type TabRef,
+} from "./layout/tabPlacement";
+import { paneActiveId, paneTabs } from "./tabs/paneTabs";
 import { unifiedTabs } from "./tabs/unifiedTabs";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
@@ -182,6 +211,7 @@ function App() {
   const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   resetPaneLayoutModel();
+  resetTabPlacement();
 
   // ---- Pane layout (plan phase 5) ----------------------------------------
   // The work-split renders from the per-workspace pane envelope. The legacy
@@ -201,15 +231,20 @@ function App() {
   const env = () => envelopeFor(wsKey(), seedEnvelope);
   createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
   const paneLeaves = () => leaves(env().layout);
-  // Phase 5 draws the two-pane default: the leftmost leaf is the terminal
-  // pane, the rightmost the editor pane, matching the pin rule.
-  const leftPane = () => paneLeaves()[0];
-  const rightPane = () => (paneLeaves().length > 1 ? paneLeaves()[paneLeaves().length - 1] : undefined);
-  const showTerminal = () => !leftPane().hidden;
-  const showEditor = () => {
-    const r = rightPane();
-    return !!r && !r.hidden;
+  // Where each kind opens, so the shell knows which pane is the editor (chrome
+  // and role) and which the terminal, wherever a move has since put them.
+  const filePane = () => homePane(wsKey(), "file", env().layout);
+  const termPane = () => homePane(wsKey(), "shell", env().layout);
+  const tabRefs = (): TabRef[] => unifiedTabs().filter((t) => t.workspace === wsKey());
+  // The topbar toggles and the legacy layout key still speak of "the terminal"
+  // and "the editor": they mean the pane each kind opens into, wherever a move
+  // has since put it.
+  const paneShown = (id: string | null) => {
+    const leaf = id ? findPane(env().layout, id) : null;
+    return !!leaf && !leaf.hidden;
   };
+  const showTerminal = () => paneShown(termPane());
+  const showEditor = () => paneShown(filePane());
 
   // ---- Pane bounds -------------------------------------------------------
   // A floor in JS, in the same scaled px its CSS counterparts use.
@@ -253,14 +288,16 @@ function App() {
   // so a narrower window (or a UI scale turned up) squeezes the pane for now
   // and widening it restores the choice.
   const editor = () => {
-    const r = rightPane();
-    if (!r) return 0;
+    const id = filePane();
+    const r = id ? findPane(env().layout, id) : null;
+    if (!r || paneLeaves().length < 2) return 0;
     return Math.min(Math.max((r.size / 100) * shared(), px(EDITOR_MIN)), editorMax());
   };
-  function setEditorWidth(v: number) {
-    const r = rightPane();
-    if (!r || shared() <= 0) return;
-    updateLayout(wsKey(), (t) => resizePane(t, r.id, (v / shared()) * 100), { persist: false });
+  // The tree's own dividers write straight to the model (PaneTree measures each
+  // split itself); the legacy px width above is only still computed so an older
+  // build reading sway.layout.v1 finds a sane one.
+  function resizePaneTo(paneId: string, percent: number) {
+    updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), { persist: false });
   }
 
   // The sidebar keeps its px width and the drag-time clamp only bites while a
@@ -373,7 +410,7 @@ function App() {
     } else {
       const next = setPaneHidden(root, pane.id, true);
       if (!next) return;
-      blurIfInside(leftPane().id === pane.id ? ".pane.terminal" : ".pane.editor");
+      blurIfInside(`[data-pane-id="${pane.id}"]`);
       updateLayout(ws, () => next);
     }
     persistLayout();
@@ -384,9 +421,134 @@ function App() {
   function toggleEditor() {
     togglePaneFor(["file"], "file");
   }
+  // ---- Splits and tab moves (plan phase 8) --------------------------------
+  const say = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "info" });
+  const activePane = () => focusedPaneId(wsKey()) ?? visibleLeaves(env().layout)[0]?.id ?? null;
+
+  // Ids the tree owns forever (a pane's id is what keeps its tabs and its DOM),
+  // so a new one only has to be unused in this workspace's tree.
+  function mintPaneId(): string {
+    const taken = new Set(paneLeaves().map((l) => l.id));
+    let n = 1;
+    while (taken.has(`pane-${n}`)) n++;
+    return `pane-${n}`;
+  }
+
+  function splitFocusedPane(dir: "row" | "column") {
+    const ws = wsKey();
+    ensureEnvelope(ws, seedEnvelope);
+    const from = activePane();
+    if (!from) return;
+    const leaf: PaneLeaf = { type: "pane", id: mintPaneId(), size: 50, hidden: false };
+    if (!updateLayout(ws, (r) => splitPane(r, from, dir, leaf))) {
+      say(
+        paneLeaves().length >= MAX_PANES
+          ? `${MAX_PANES} panes is as many as fit.`
+          : "That pane is already nested as deep as it goes.",
+      );
+      return;
+    }
+    setFocusedPane(ws, leaf.id);
+    persistLayout();
+  }
+
+  /** Close a pane, its tabs going to the neighbor (right first, then left).
+   *  Nothing is dropped: the merge runs while the pane still exists. */
+  function closePaneWithTabs(paneId: string) {
+    const ws = wsKey();
+    const root = env().layout;
+    const to = neighborPane(root, paneId);
+    if (!to) {
+      say("This is the last pane.");
+      return;
+    }
+    mergePaneInto({ ws, from: paneId, to, root, tabsInWs: tabRefs() });
+    updateLayout(ws, (r) => closePane(r, paneId));
+    setFocusedPane(ws, to);
+    persistLayout();
+  }
+
+  /** The pane a "move it over" step lands in: the next visible one, wrapping. */
+  function stepPane(from: string, direction: "next" | "prev"): string | null {
+    const vis = visibleLeaves(env().layout);
+    if (vis.length < 2) return null;
+    const i = vis.findIndex((l) => l.id === from);
+    if (i < 0) return null;
+    return vis[(i + (direction === "prev" ? vis.length - 1 : 1)) % vis.length].id;
+  }
+
+  function moveTab(p: MoveTabToPane) {
+    const ws = wsKey();
+    const root = env().layout;
+    const tabs = tabRefs();
+    const pane = activePane();
+    const tab = p.tabId
+      ? tabs.find((t) => t.id === p.tabId)
+      : tabs.find((t) => pane && t.id === paneActiveId(ws, pane));
+    if (!tab) {
+      say("No tab to move.");
+      return;
+    }
+    const from = paneOfTab(ws, tab, root);
+    const target = p.paneId ?? (from ? stepPane(from, p.direction ?? "next") : null);
+    if (!target) {
+      say("There is only one pane. Split it first.");
+      return;
+    }
+    // The placement guard's refusal is a sentence, not a silence (phase 8's
+    // interim single-pane rule for files says so here).
+    const refusal = moveTabToPane({ ws, tab, targetPaneId: target, root, tabsInWs: tabs });
+    if (refusal) {
+      say(refusal);
+      return;
+    }
+    updateLayout(ws, (r) => setPaneHidden(r, target, false));
+    setFocusedPane(ws, target);
+    // The move can reveal a hidden pane, and the legacy key carries visibility.
+    persistLayout();
+  }
+
+  // A pane that has held a tab and is now empty collapses into its neighbor;
+  // the two pin panes never do (they are where a new tab lands), and a pane
+  // that has never held one is a fresh split waiting for its first.
+  // Keyed by workspace too: pane ids repeat across workspaces, and a fresh
+  // split named after one that held tabs elsewhere would collapse on sight.
+  const held = new Set<string>();
+  createEffect(() => {
+    const ws = wsKey();
+    const root = env().layout;
+    const pinned = new Set(pinnedPaneIds(root));
+    let empty: string | null = null;
+    for (const leaf of leaves(root)) {
+      const key = `${ws}\u0000${leaf.id}`;
+      if (paneTabs(ws, leaf.id).length > 0) held.add(key);
+      else if (held.has(key) && !pinned.has(leaf.id)) empty = leaf.id;
+    }
+    if (empty) {
+      held.delete(`${ws}\u0000${empty}`);
+      updateLayout(ws, (r) => closePane(r, empty!));
+    }
+  });
+
+  // What the tree needs from the shell: which pane plays which part, and where
+  // the divider writes land.
+  const paneRoles = (): PaneRoles => ({
+    ws: wsKey(),
+    chromePaneId: filePane(),
+    pinKindOf: (id) => (id === filePane() ? "file" : "shell"),
+    roleOf: (id) => (id === filePane() ? "editor" : id === termPane() ? "terminal" : "split"),
+    chrome: () => <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />,
+    px,
+    onResize: resizePaneTo,
+    onCommit: () => {
+      persistEnvelopes();
+      persistLayout();
+    },
+  });
+
   function revealEditorPane() {
-    const r = rightPane();
-    if (r) updateLayout(wsKey(), (t) => setPaneHidden(t, r.id, false));
+    const r = filePane();
+    if (r) updateLayout(wsKey(), (t) => setPaneHidden(t, r, false));
   }
   // Showing the file tree implies showing the editor it is nested in.
   function toggleFiletree() {
@@ -426,6 +588,16 @@ function App() {
     if (revealed) requestAnimationFrame(() => emit(REFIT_PANES));
   });
 
+  // Any structural change (split, move, close, a committed divider drag) resizes
+  // panes that measure themselves. Same rAF as the reveal above: after layout.
+  let prevLayout = env().layout;
+  createEffect(() => {
+    const l = env().layout;
+    if (l === prevLayout) return;
+    prevLayout = l;
+    requestAnimationFrame(() => emit(REFIT_PANES));
+  });
+
   // Every binding now comes from the canonical table in utils/hotkeys.ts,
   // including Cmd+P: the table marks it `window` scope so it still does not
   // fire while a terminal has focus, which is what the old special case here
@@ -444,6 +616,9 @@ function App() {
   let offToggleTerminal: (() => void) | undefined;
   let offToggleEditor: (() => void) | undefined;
   let offToggleFiletree: (() => void) | undefined;
+  let offSplitPane: (() => void) | undefined;
+  let offClosePane: (() => void) | undefined;
+  let offMoveTab: (() => void) | undefined;
   let offFocusSearch: (() => void) | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
@@ -458,12 +633,8 @@ function App() {
     // where focus does not, so one window listener sees every surface.
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target instanceof HTMLElement ? e.target : null;
-      if (!el) return;
-      if (el.closest(".pane.terminal")) setFocusedPane(wsKey(), leftPane().id);
-      else if (el.closest(".pane.editor")) {
-        const r = rightPane();
-        if (r) setFocusedPane(wsKey(), r.id);
-      }
+      const pane = el?.closest<HTMLElement>("[data-pane-id]");
+      if (pane?.dataset.paneId) setFocusedPane(wsKey(), pane.dataset.paneId);
     };
     window.addEventListener("focusin", onFocusIn);
     offFocusIn = () => window.removeEventListener("focusin", onFocusIn);
@@ -477,6 +648,12 @@ function App() {
     offToggleTerminal = onEvent(TOGGLE_TERMINAL, toggleTerminal);
     offToggleEditor = onEvent(TOGGLE_EDITOR, toggleEditor);
     offToggleFiletree = onEvent(TOGGLE_FILETREE, toggleFiletree);
+    offSplitPane = onEventWith<SplitPane>(SPLIT_PANE, ({ dir }) => splitFocusedPane(dir));
+    offClosePane = onEvent(CLOSE_PANE, () => {
+      const pane = activePane();
+      if (pane) closePaneWithTabs(pane);
+    });
+    offMoveTab = onEventWith<MoveTabToPane>(MOVE_TAB_TO_PANE, moveTab);
     // Cmd+Shift+E focuses the sidebar filter: reveal the sidebar first if it is
     // collapsed (LeftSidebar defers the focus itself, so it lands after paint).
     offFocusSearch = onEvent(FOCUS_SEARCH, () => {
@@ -594,6 +771,9 @@ function App() {
     offToggleTerminal?.();
     offToggleEditor?.();
     offToggleFiletree?.();
+    offSplitPane?.();
+    offClosePane?.();
+    offMoveTab?.();
     offStopChat?.();
     offFocusSearch?.();
     offProjectSearch?.();
@@ -654,47 +834,18 @@ function App() {
         </Show>
 
         <div class="workspace" classList={{ "no-sidebar": !showSidebar() }}>
+          {/* Both panels are service hosts (phase 7): they render surfaces into
+              stage hosts and no visible DOM of their own, so they sit beside
+              the tree rather than in a pane of it. */}
+          <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
+          <Editor
+            selected={selected()}
+            liveTabs={liveTabs()}
+            showFiletree={showFiletree()}
+            onToggleFiletree={toggleFiletree}
+          />
           <div class="work-split">
-            <main class="pane terminal" classList={{ hidden: !showTerminal() }}>
-              {/* The panel is a service host (phase 7): it renders surfaces
-                  into stage hosts and no visible DOM here; the pane's strip
-                  and stage are PaneView's. */}
-              <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
-              <PaneView pinKind="shell" />
-            </main>
-            <Show when={showTerminal() && showEditor()}>
-              <Resizer
-                side="after"
-                variant="hairline"
-                value={editor()}
-                min={px(EDITOR_MIN)}
-                max={editorMax()}
-                onInput={setEditorWidth}
-                onCommit={() => {
-                  persistEnvelopes();
-                  persistLayout();
-                }}
-              />
-            </Show>
-            <section
-              class="pane editor"
-              classList={{ hidden: !showEditor(), fill: !showTerminal() }}
-              style={{ width: showTerminal() ? `${editor()}px` : undefined }}
-            >
-              <Editor
-                selected={selected()}
-                liveTabs={liveTabs()}
-                showFiletree={showFiletree()}
-                onToggleFiletree={toggleFiletree}
-              />
-              {/* The old .editorPane row, owned by the shell now: the pane's
-                  column beside the adopted editor chrome. The slot div keeps
-                  DOM order deterministic; display:contents keeps it unfelt. */}
-              <div class="editor-split">
-                <PaneView pinKind="file" />
-                <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />
-              </div>
-            </section>
+            <PaneTree node={env().layout} roles={paneRoles()} />
           </div>
         </div>
       </div>
