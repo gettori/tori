@@ -150,8 +150,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Editor/Editor.tsx",
     {
-      count: 4,
-      reason: `two ${TRUNCATION}, and two of ${HEADING}. Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
+      count: 3,
+      reason: `one ${TRUNCATION}, and two of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
     },
   ],
   [
@@ -238,7 +238,7 @@ const KEPT = new Map<string, Kept>([
  *  `span` nothing can focus. It is the established chip pattern rather than a
  *  new idea, so it is pinned here rather than blocked, and the `code` entry
  *  went with the card layout that carried it. */
-const RAW_ELEMENT_TITLES = 63;
+const RAW_ELEMENT_TITLES = 62;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -335,9 +335,12 @@ describe("the title= guard", () => {
     // list became chips on a detail page, so the same explanations moved onto a
     // different element and two more joined them. The breakdown is what makes
     // that visible rather than a silent wash against some other file's loss.
+    // Down one span since: Editor's touched-dot title now has one source site
+    // (the shared fileDots helper) where the strip and its overflow row each
+    // had a copy.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
-      span: 48,
+      span: 47,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
