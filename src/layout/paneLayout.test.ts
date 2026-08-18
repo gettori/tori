@@ -78,6 +78,21 @@ describe("splitPane", () => {
     ]);
   });
 
+  it("puts the new pane on the side it was asked for, sibling or nested", () => {
+    // What a drop on a pane's left or top edge asks for (plan phase 10).
+    const flat = splitPane(twoPane(), "right", "row", leaf("c"), "before")!;
+    expect(sizes(flat)).toEqual([
+      ["left", 50],
+      ["c", 25],
+      ["right", 25],
+    ]);
+    const nested = splitPane(twoPane(), "left", "column", leaf("c"), "before")!;
+    expect(sizes((nested as PaneSplit).children[0] as PaneSplit)).toEqual([
+      ["c", 50],
+      ["left", 50],
+    ]);
+  });
+
   it("refuses a split that would nest past the depth cap", () => {
     const nested = splitPane(twoPane(), "left", "column", leaf("c"))!;
     // "left" now sits under root > column split: a cross split there would be

@@ -2107,14 +2107,14 @@ export default function Editor(props: {
     title: (u) => asFile(u).name,
     tooltip: (u) => tabTitle(asFile(u)),
     dots: fileDots,
-    // A synthetic view has no path to hand anyone: dropping its id on a
-    // terminal would paste `sway://…`, which names nothing on disk.
-    draggable: (u) => !isSyntheticId(asFile(u).path),
+    // The tab moves between panes either way (the registry says so); what a
+    // synthetic view cannot do is hand anyone a path, since dropping its id on
+    // a terminal would paste `sway://…`, which names nothing on disk.
     onDragStart: (u, e) => {
       const t = asFile(u);
+      if (isSyntheticId(t.path)) return;
       e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
       e.dataTransfer?.setData("text/plain", t.path);
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
     },
     // The menu wraps the tab instead of being the tab: `Tab` composes
     // `Tooltip`, which already renders *as* the button, and two wrappers

@@ -7,6 +7,50 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  /* The drop overlay is positioned against the whole pane, strip included. */
+  position: relative;
+}
+
+/* Drop zones (plan phase 10). Drawn only while a tab is in flight, and never a
+   hit target of their own: the pane hit-tests the pointer against its own box,
+   so an overlay that swallowed events would only change the answer. */
+.dropZone {
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Where the tab would land in the strip. Anchored on the pane, so its `left` is
+   the tab edge the pointer passed and its height is the strip's. */
+.dropCaret {
+  top: 0;
+  height: calc(40px * var(--ui-scale));
+  width: 2px;
+  background: var(--accent-fg);
+}
+
+/* The half the new pane would take. Same recipe as the file tree's drop row, so
+   a drop target reads the same wherever it appears. */
+.dropHalf {
+  background: var(--accent-subtle);
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}
+
+.dropLeft {
+  inset: 0 50% 0 0;
+}
+
+.dropRight {
+  inset: 0 0 0 50%;
+}
+
+.dropTop {
+  inset: 0 0 50% 0;
+}
+
+.dropBottom {
+  inset: 50% 0 0 0;
 }
 
 .stage {

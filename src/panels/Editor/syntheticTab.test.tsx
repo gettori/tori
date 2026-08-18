@@ -303,3 +303,39 @@ describe("a sway:// tab in the editor pane", () => {
     });
   });
 });
+
+describe("what a file tab hands a drag", () => {
+  /** jsdom has no DataTransfer, and the payload is the whole claim here. */
+  const carry = (el: Element) => {
+    const store: Record<string, string> = {};
+    const dt = {
+      effectAllowed: "none",
+      setData: (t: string, v: string) => (store[t] = v),
+      getData: (t: string) => store[t] ?? "",
+    };
+    const e = new Event("dragstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "dataTransfer", { value: dt });
+    el.dispatchEvent(e);
+    return store;
+  };
+
+  it("carries the path a terminal or the composer inserts, and the tab move beside it", async () => {
+    await mountEditor();
+    await open(FILE);
+
+    const payload = carry(tab("a.ts"));
+    expect(payload["application/x-sway-path"]).toBe(FILE);
+    expect(payload["text/plain"]).toBe(FILE);
+    expect(payload["application/x-sway-tab"]).toBe(FILE);
+  });
+
+  it("hands a view no path at all, and still lets it be moved", async () => {
+    await mountEditor();
+    await open(LOG);
+
+    const payload = carry(tab("Commit log"));
+    expect(payload["application/x-sway-path"]).toBeUndefined();
+    expect(payload["text/plain"]).toBeUndefined();
+    expect(payload["application/x-sway-tab"]).toBe(LOG);
+  });
+});
