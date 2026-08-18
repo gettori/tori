@@ -1,4 +1,5 @@
-import { createSignal, createEffect, on, onCleanup, onMount, lazy, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -247,7 +248,7 @@ import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind } from "../../tabs/registry";
-import UnifiedTabStrip from "../../tabs/UnifiedTabStrip";
+import { stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
@@ -326,8 +327,6 @@ const LS_RIGHT_W = "sway.editor.rightw.v1";
 // below its own floor, so a wide editor can be almost all file tree.
 const RIGHT_W_MIN = 160;
 const CODE_MIN = 320;
-// The divider between the two (Resizer.module.css .resizer).
-const RIGHT_GUTTER = 8;
 
 function loadRightW(): number {
   const n = Number(localStorage.getItem(LS_RIGHT_W));
@@ -396,18 +395,21 @@ export default function Editor(props: {
   // pane rather than fixed, so the ceiling is "everything the code side can
   // spare" on whatever width the editor currently has.
   const px = (base: number) => base * chromeScale();
+  // The chrome portals out (phase 7), so the region is measured as editorMain
+  // plus rightW AT MEASURE TIME (untracked): reading rightW reactively here
+  // would make the clamp below chase its own writes between observer ticks.
   let paneEl: HTMLDivElement | undefined;
   const [paneW, setPaneW] = createSignal(0);
   onMount(() => {
     if (!paneEl) return;
-    const ro = new ResizeObserver(([entry]) => setPaneW(entry.contentRect.width));
+    const ro = new ResizeObserver(([entry]) => setPaneW(entry.contentRect.width + untrack(rightW)));
     ro.observe(paneEl);
     onCleanup(() => ro.disconnect());
   });
   // Unbounded until the pane has been measured, so a drag can never be pinned to
   // the floor by a width nothing has reported yet.
   const rightMax = () =>
-    paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(RIGHT_GUTTER) - px(CODE_MIN));
+    paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(CODE_MIN));
   // Same reason the app clamps its outer panes: the drag clamp only bites while a
   // pointer is down, so a stored width, a narrowed editor pane or a raised UI
   // scale could otherwise leave the code side with nothing. Not persisted, so
@@ -1905,6 +1907,11 @@ export default function Editor(props: {
     </>
   );
 
+  // The strip consumes the unified model filtered to this panel's kind: same
+  // tabs, same order, same references, read through the union.
+  const stripTabs = (): FileUnifiedTab[] =>
+    unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
+
   registerKind("file", {
     icon: (u) => tabIcon(asFile(u)),
     title: (u) => asFile(u).name,
@@ -1951,22 +1958,23 @@ export default function Editor(props: {
     trailing: editorTrailing,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
+    // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
+    // strip and adopts the one shared editor stage; every workspace's tabs
+    // render into it, so the pane never needs a host per file.
+    stripItems: stripTabs,
+    stripActiveId: activeId,
+    stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
+    stripClass: styles.editorTabs,
+    hostIds: () => ["editor-stage"],
   });
-  // The strip consumes the unified model filtered to this panel's kind: same
-  // tabs, same order, same references, read through the union.
-  const stripTabs = (): FileUnifiedTab[] =>
-    unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
 
+  // A service host since phase 7: no visible output. The code side and the
+  // chrome portal into stage hosts (the pane adopts one, App places the other
+  // beside it), and the dialogs portal themselves.
   return (
-    <div class={styles.editorPane} ref={paneEl}>
-      <div class={styles.editorMain}>
-        <UnifiedTabStrip
-          class={styles.editorTabs}
-          items={stripTabs()}
-          activeId={activeId()}
-          pinKind="file"
-          onReorder={(next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file))}
-        />
+    <>
+      <Portal mount={stageHost("editor-stage")}>
+      <div class={styles.editorMain} ref={paneEl}>
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,
             and this says the rest of the answer. Only for a real file - a commit
@@ -2098,6 +2106,8 @@ export default function Editor(props: {
           </Show>
         </Show>
       </div>
+      </Portal>
+      <Portal mount={stageHost("editor-chrome")}>
       <Show when={filetreeOn()}>
         <Resizer
           side="after"
@@ -2216,6 +2226,7 @@ export default function Editor(props: {
           </Match>
         </Switch>
       </div>
+      </Portal>
       <Show when={debugPick()}>
         {(pick) => (
           <DebugTargetDialog
@@ -2249,6 +2260,6 @@ export default function Editor(props: {
           onCancel={() => resolveConfirm(false)}
         />
       </Show>
-    </div>
+    </>
   );
 }

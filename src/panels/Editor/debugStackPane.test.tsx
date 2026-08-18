@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 
@@ -253,7 +254,12 @@ describe("from the pane to the editor", () => {
       branch: "main",
       projectKind: "plain",
     });
-    render(() => <Editor selected={selected() as never} />);
+    render(() => (
+      <>
+        <Editor selected={selected() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
     await waitFor(() => expect(listening.ready).toBe(true));
     emitWith(OPEN_IN_EDITOR, { path: FILE });
     await waitFor(() => expect(code?.activePath).toBe(FILE));

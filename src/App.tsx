@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
+import PaneView from "./tabs/PaneView";
+import { stageHost } from "./tabs/stageHost";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
@@ -654,7 +656,11 @@ function App() {
         <div class="workspace" classList={{ "no-sidebar": !showSidebar() }}>
           <div class="work-split">
             <main class="pane terminal" classList={{ hidden: !showTerminal() }}>
+              {/* The panel is a service host (phase 7): it renders surfaces
+                  into stage hosts and no visible DOM here; the pane's strip
+                  and stage are PaneView's. */}
               <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
+              <PaneView pinKind="shell" />
             </main>
             <Show when={showTerminal() && showEditor()}>
               <Resizer
@@ -681,6 +687,13 @@ function App() {
                 showFiletree={showFiletree()}
                 onToggleFiletree={toggleFiletree}
               />
+              {/* The old .editorPane row, owned by the shell now: the pane's
+                  column beside the adopted editor chrome. The slot div keeps
+                  DOM order deterministic; display:contents keeps it unfelt. */}
+              <div class="editor-split">
+                <PaneView pinKind="file" />
+                <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />
+              </div>
             </section>
           </div>
         </div>

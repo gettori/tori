@@ -1,9 +1,9 @@
 import { createSignal, createEffect, createMemo, on, onCleanup, onMount, For, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import ChatView from "../Chat/ChatView";
-import UnifiedTabStrip from "../../tabs/UnifiedTabStrip";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -74,7 +74,7 @@ import {
 } from "./terminalTabStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { kindPaneFocused, revealKindPane } from "../../layout/layoutStore";
-import { preserveScrollAndFocus } from "../../utils/rowMovePreserve";
+import { stageHost, dropStageHost } from "../../tabs/stageHost";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
@@ -1069,6 +1069,7 @@ export default function Terminal(props: {
       }
     }
     setOpen(open().filter((o) => o.id !== id));
+    dropStageHost(id);
   }
 
   function close(id: string, e: Event) {
@@ -1147,12 +1148,9 @@ export default function Terminal(props: {
     return s === "waitingForApproval" || s === "budgetStopped";
   }
 
-  // The bar reorders only the active workspace's tabs (the subset it was given).
-  // Splice that new order back over the same slots in the full `open[]`, keeping
-  // every object ref and other groups' positions intact (gotcha #64). The stage
-  // `<For>` keys on these objects, so this write moves live rows: scroll and
-  // focus are saved and restored around it (phase 1 spike: a keyed row move is
-  // detach plus reattach, and both are lost with it).
+  // Splice the bar's new order (active workspace only) back over the same
+  // slots in open[], keeping refs and other groups intact (gotcha #64). Only
+  // Portal markers move now; PaneView preserves the strip's scroll around it.
   function mergeReorder(next: OpenTerm[]) {
     const ws = activeWorkspace();
     if (!ws) return;
@@ -1161,9 +1159,7 @@ export default function Terminal(props: {
     // must refuse rather than splice undefined into open[].
     if (next.length !== open().filter((t) => t.workspace === ws).length) return;
     let i = 0;
-    preserveScrollAndFocus(areaEl ?? document, () =>
-      setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t))),
-    );
+    setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t)));
   }
 
   // Phase 4: every terminal kind registers its tab descriptor and stage view,
@@ -1339,6 +1335,14 @@ export default function Terminal(props: {
     </>
   );
 
+  // The strip consumes the unified model filtered to this panel's kinds: same
+  // tabs, same order, same references, read through the union. Declared before
+  // the registrations below, which capture it into descriptor objects.
+  const stripTabs = (): TerminalUnifiedTab[] => {
+    const ws = activeWorkspace();
+    return ws ? unifiedTabs().filter((u): u is TerminalUnifiedTab => u.kind !== "file" && u.workspace === ws) : [];
+  };
+
   const termDescriptor = (kind: TabKind): TabDescriptor => ({
     // A session's state is true whether or not you are looking at it, so the
     // tab carries it: it rides on the provider mark rather than a glyph of its
@@ -1359,30 +1363,101 @@ export default function Terminal(props: {
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
     stage: kind === "chat" ? chatStage : ptyStage,
+    // Pane hosting (plan phase 7): the shell-pinned pane draws this panel's
+    // strip and adopts every open tab's host - all workspaces, so a workspace
+    // switch hides surfaces instead of detaching them (gotcha #64).
+    stripItems: stripTabs,
+    stripActiveId: visibleId,
+    stripReorder: (next) =>
+      mergeReorder(next.filter((u): u is TerminalUnifiedTab => u.kind !== "file").map((u) => u.term)),
+    stripClass: styles.termTabs,
+    hostIds: () => open().map((t) => t.id),
+    overlay: termOverlay,
   });
+  // The stage overlays, drawn by the pane (PaneView) over whatever hosts it
+  // adopted. Overlays, never fallbacks: gating the always-mounted surfaces on
+  // any of these would unmount TerminalViews and kill their PTYs (gotcha #64).
+  const termOverlay = () => (
+    <>
+      <Show when={!visibleId()}>
+        <div class={styles.termEmpty}>
+          Select a session to resume it, or pick a branch and start a new Claude or pi session.
+        </div>
+      </Show>
+      {/* A PTY agent tab refused the session id. Same offer the chat surface
+          makes, because it is the same refusal: go to what holds it, end the
+          leftover process, or start a fresh session beside it. */}
+      <Show when={ptyRefusal()}>
+        {(entry) => (
+          <div class={styles.termRestore}>
+            <span class={styles.termRestoreText}>{refusalMessage(entry().refusal)}</span>
+            <Show when={holdingTab(entry().refusal)}>
+              {(tabId) => (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: tabId() })}
+                >
+                  Go to it
+                </Button>
+              )}
+            </Show>
+            <Show when={entry().refusal.type === "orphaned"}>
+              <Button variant="primary" size="sm" onClick={() => void endRefusalOrphan(entry())}>
+                End it
+              </Button>
+            </Show>
+            <Button size="sm" onClick={() => forkFrom(entry().tab)}>
+              Start a new session
+            </Button>
+          </div>
+        )}
+      </Show>
+      <Show when={orphans().length}>
+        <div class={styles.termRestore}>
+          <span class={styles.termRestoreText}>
+            {orphans().length} chat session{orphans().length > 1 ? "s" : ""} survived a crash and{" "}
+            {orphans().length > 1 ? "are" : "is"} still running
+          </span>
+          <Button variant="primary" size="sm" onClick={() => void Promise.all(orphans().map(endOrphan))}>
+            End {orphans().length > 1 ? "them" : "it"}
+          </Button>
+          <Button size="sm" onClick={() => setOrphans([])}>
+            Leave running
+          </Button>
+        </div>
+      </Show>
+      <Show when={restoreOffer()}>
+        <div class={styles.termRestore}>
+          <span class={styles.termRestoreText}>
+            {restoreOffer()!.count} terminal tab{restoreOffer()!.count > 1 ? "s" : ""} from last time
+          </span>
+          <Button variant="primary" size="sm" onClick={() => void acceptRestore(restoreOffer()!.ws)}>
+            Restore
+          </Button>
+          <Button size="sm" onClick={() => markOffered(restoreOffer()!.ws)}>
+            Dismiss
+          </Button>
+        </div>
+      </Show>
+    </>
+  );
+
   for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
     registerKind(kind, termDescriptor(kind));
   }
-  // The strip consumes the unified model filtered to this panel's kinds: same
-  // tabs, same order, same references, read through the union.
-  const stripTabs = (): TerminalUnifiedTab[] => {
-    const ws = activeWorkspace();
-    return ws ? unifiedTabs().filter((u): u is TerminalUnifiedTab => u.kind !== "file" && u.workspace === ws) : [];
-  };
 
-  let areaEl!: HTMLDivElement;
+  // A service host since phase 7: no visible output. Surfaces render through
+  // Portals into stage hosts (adopted by PaneView), strip and overlays through
+  // the registry, and the dialogs portal themselves.
   return (
-    <div class={styles.termArea} ref={areaEl}>
-      <UnifiedTabStrip
-        class={styles.termTabs}
-        items={stripTabs()}
-        activeId={visibleId()}
-        pinKind="shell"
-        onReorder={(next) =>
-          mergeReorder(next.filter((u): u is TerminalUnifiedTab => u.kind !== "file").map((u) => u.term))
-        }
-      />
-
+    <>
+      {/* Every tab is always mounted (CSS-hidden unless it is the visible one),
+          so switching workspaces never unmounts a group's PTYs (gotcha #64). A
+          strip reorder moves only these Portal markers, not the surfaces. */}
+      <For each={open()}>
+        {(t) => <Portal mount={stageHost(t.id)}>{kindEntry(t.kind).stage!(unifyTerm(t))}</Portal>}
+      </For>
       <Show when={historyOpen() && activeWorkspace()}>
         {(ws) => (
           <HistoryPanel
@@ -1394,78 +1469,6 @@ export default function Terminal(props: {
           />
         )}
       </Show>
-
-      <div class={styles.termStage}>
-        {/* Every tab is always mounted (CSS-hidden unless it is the visible one),
-            so switching workspaces never unmounts a group's PTYs (gotcha #64).
-            The empty message is an overlay, not a fallback that would replace
-            (and thus unmount) the tabs. */}
-        <For each={open()}>{(t) => kindEntry(t.kind).stage!(unifyTerm(t))}</For>
-        <Show when={!visibleId()}>
-          <div class={styles.termEmpty}>
-            Select a session to resume it, or pick a branch and start a new Claude or pi session.
-          </div>
-        </Show>
-        {/* Overlay, never a fallback: gating the always-mounted <For> on this
-            would unmount every group's TerminalView and kill their PTYs
-            (gotcha #64). */}
-        {/* A PTY agent tab refused the session id. Same offer the chat surface
-            makes, because it is the same refusal: go to what holds it, end the
-            leftover process, or start a fresh session beside it. */}
-        <Show when={ptyRefusal()}>
-          {(entry) => (
-            <div class={styles.termRestore}>
-              <span class={styles.termRestoreText}>{refusalMessage(entry().refusal)}</span>
-              <Show when={holdingTab(entry().refusal)}>
-                {(tabId) => (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: tabId() })}
-                  >
-                    Go to it
-                  </Button>
-                )}
-              </Show>
-              <Show when={entry().refusal.type === "orphaned"}>
-                <Button variant="primary" size="sm" onClick={() => void endRefusalOrphan(entry())}>
-                  End it
-                </Button>
-              </Show>
-              <Button size="sm" onClick={() => forkFrom(entry().tab)}>
-                Start a new session
-              </Button>
-            </div>
-          )}
-        </Show>
-        <Show when={orphans().length}>
-          <div class={styles.termRestore}>
-            <span class={styles.termRestoreText}>
-              {orphans().length} chat session{orphans().length > 1 ? "s" : ""} survived a crash and{" "}
-              {orphans().length > 1 ? "are" : "is"} still running
-            </span>
-            <Button variant="primary" size="sm" onClick={() => void Promise.all(orphans().map(endOrphan))}>
-              End {orphans().length > 1 ? "them" : "it"}
-            </Button>
-            <Button size="sm" onClick={() => setOrphans([])}>
-              Leave running
-            </Button>
-          </div>
-        </Show>
-        <Show when={restoreOffer()}>
-          <div class={styles.termRestore}>
-            <span class={styles.termRestoreText}>
-              {restoreOffer()!.count} terminal tab{restoreOffer()!.count > 1 ? "s" : ""} from last time
-            </span>
-            <Button variant="primary" size="sm" onClick={() => void acceptRestore(restoreOffer()!.ws)}>
-              Restore
-            </Button>
-            <Button size="sm" onClick={() => markOffered(restoreOffer()!.ws)}>
-              Dismiss
-            </Button>
-          </div>
-        </Show>
-      </div>
       <Show when={confirmReq()}>
         <ConfirmDialog
           title={confirmReq()!.title}
@@ -1476,6 +1479,6 @@ export default function Terminal(props: {
           onCancel={() => resolveConfirm(false)}
         />
       </Show>
-    </div>
+    </>
   );
 }

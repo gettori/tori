@@ -64,6 +64,7 @@ vi.mock("../panels/Editor/CodeEditor", () => ({ default: () => null }));
 vi.mock("../panels/Editor/lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
+const { default: PaneView } = await import("./PaneView");
 const { default: Editor } = await import("../panels/Editor/Editor");
 const { open } = await import("../panels/Terminal/terminalTabStore");
 const { emitWith, GIT_STAGE_ACTIVE } = await import("../utils/events");
@@ -109,6 +110,8 @@ describe("restore, per pane", () => {
       <div>
         <Terminal selected={selection as never} onOpenChange={() => {}} />
         <Editor selected={selection as never} />
+        <PaneView pinKind="shell" />
+        <PaneView pinKind="file" />
       </div>
     ));
 

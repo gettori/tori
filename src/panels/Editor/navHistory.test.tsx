@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
@@ -92,7 +93,12 @@ let setSelected: ((s: unknown) => void) | null = null;
 async function mountEditor(folderPath = REPO) {
   const [selected, setter] = createSignal<unknown>(selectionFor(folderPath));
   setSelected = setter;
-  mounted = render(() => <Editor selected={selected() as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selected() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 

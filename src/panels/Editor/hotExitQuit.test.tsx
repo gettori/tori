@@ -82,6 +82,7 @@ vi.mock("./CodeEditor", async () => {
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
+const { default: PaneView } = await import("../../tabs/PaneView");
 const { DEFAULT_SETTINGS, loadSettings } = await import("../Settings/settingsStore");
 const { emitWith, onWith, OPEN_IN_EDITOR, EDITOR_STASH_DIRTY, EDITOR_STASH_RESULT } = await import(
   "../../utils/events"
@@ -101,7 +102,12 @@ function answerStashWith(ok: boolean) {
 }
 
 async function mountWithDirtyFile() {
-  mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selectionFor(REPO) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(onClose).not.toBeNull());
   emitWith(OPEN_IN_EDITOR, { path: FILE });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
@@ -212,7 +218,12 @@ describe("closing the window with unsaved edits", () => {
     answerStashWith(true);
     const asked: string[] = [];
     offStash = onWith<{ requestId: string }>(EDITOR_STASH_DIRTY, ({ requestId }) => asked.push(requestId));
-    mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
+    mounted = render(() => (
+      <>
+        <Editor selected={selectionFor(REPO) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
     await waitFor(() => expect(onClose).not.toBeNull());
 
     const closing = requestClose();
@@ -230,7 +241,12 @@ describe("closing the window with unsaved edits", () => {
     // worth blocking a close for.
     hotExit = false;
     await loadSettings();
-    mounted = render(() => <Editor selected={selectionFor(REPO) as never} />);
+    mounted = render(() => (
+      <>
+        <Editor selected={selectionFor(REPO) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
     await waitFor(() => expect(onClose).not.toBeNull());
 
     const closing = requestClose();

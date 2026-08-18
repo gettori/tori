@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { tab, closeOf } from "../../test/tabs";
@@ -99,7 +100,12 @@ const last = () => handed[handed.length - 1];
 let mounted: ReturnType<typeof render> | null = null;
 
 async function mountEditor() {
-  mounted = render(() => <Editor selected={selection as never} />);
+  mounted = render(() => (
+      <>
+        <Editor selected={selection as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
@@ -157,7 +163,12 @@ describe("a sway:// tab in the editor pane", () => {
     // synthetic id ends in the workspace path. A folder called `notes.md` would
     // otherwise hand the commit log a source-vs-render toggle.
     const odd = `${REPO}/notes.md`;
-    mounted = render(() => <Editor selected={{ ...selection, folderPath: odd } as never} />);
+    mounted = render(() => (
+      <>
+        <Editor selected={{ ...selection, folderPath: odd } as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
     await waitFor(() => expect(listening.ready).toBe(true));
     await open(syntheticId("log", odd));
 

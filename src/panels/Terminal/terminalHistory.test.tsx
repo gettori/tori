@@ -60,6 +60,7 @@ vi.mock("./TerminalView", () => ({ default: () => <div data-testid="pty" /> }));
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 
 const { default: Terminal } = await import("./Terminal");
+const { default: PaneView } = await import("../../tabs/PaneView");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const {
   noteLiveTabs,
@@ -103,8 +104,11 @@ const branchSelection = {
  *  the app does (through the sidebar), so a tab's status can compose at all. */
 function mount(selected: Record<string, unknown> | null = branchSelection) {
   return render(() => (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <Terminal selected={selected as any} onOpenChange={(tabs: LiveTab[]) => noteLiveTabs(tabs)} />
+    <>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <Terminal selected={selected as any} onOpenChange={(tabs: LiveTab[]) => noteLiveTabs(tabs)} />
+      <PaneView pinKind="shell" />
+    </>
   ));
 }
 

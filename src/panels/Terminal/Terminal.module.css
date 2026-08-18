@@ -2,12 +2,8 @@
    tab-content classes stay global in App.css (also used by the editor tabs), and
    `OverflowTabBar` keeps its own global classes; only `.term-*` moves here.
    xterm.js applies `.xterm*` to its own DOM, so those are wrapped in :global(). */
-.termArea {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
+/* The pane column and stage boxes are PaneView.module.css's since phase 7; the
+   overlays and surfaces below render into them through the registry. */
 
 .termTabs {
   display: flex;
@@ -189,14 +185,6 @@
 }
 
 /* Restore / Dismiss are shared <Button>s now. */
-
-.termStage {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  display: flex;
-  background: var(--canvas-card);
-}
 
 .termHostWrap {
   flex: 1;

@@ -1,0 +1,19 @@
+/* The pane column: strip above stage, filling whatever box the shell gives it.
+   The stage replicates the old .termStage contract - relative for the absolute
+   overlays, flex so an adopted surface (termHostWrap, editorMain) fills it. */
+.pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  background: var(--canvas-card);
+}

@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For, createSignal, onCleanup, onMount } from "solid-js";
+import { Portal } from "solid-js/web";
+import { stageHost, dropStageHost } from "../tabs/stageHost";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -614,6 +616,70 @@ export const ForOwned: Story = {
           </For>
         </div>
         <div data-c="outside" ref={outside} style={SLOT} />
+      </div>
+    );
+  },
+};
+
+/** Phase 7's shape end to end: a surface Portal-rendered into a module-owned
+ *  stage host, adopted by a slot, then re-hosted A -> B -> A the way a pane
+ *  move will. The xterm stands in for the PTY, as in the stories above. */
+export const StageHostCycle: Story = {
+  render: () => {
+    let slotA!: HTMLDivElement;
+    let slotB!: HTMLDivElement;
+    let surface!: HTMLDivElement;
+    onMount(() => {
+      window.__spikeRun = async () => {
+        const errs = trackErrors();
+        const host = stageHost("p7-term");
+        slotA.appendChild(host);
+        await frame();
+        const { term, fit, contextLost, webglActive } = makeTerm(surface);
+        await writeAll(term, seqLines(300));
+        const adoptedInA = host.parentElement === slotA && surface.isConnected;
+
+        slotB.appendChild(host);
+        await frame();
+        fit.fit();
+        const inB = host.parentElement === slotB;
+        const aliveAfterAtoB = await renderedAfterWrite(term, "post-rehost-marker");
+
+        slotA.appendChild(host);
+        await frame();
+        fit.fit();
+        const backInA = host.parentElement === slotA;
+        const aliveAfterBtoA = await renderedAfterWrite(term, "post-return-marker");
+        const after = termSnapshot(term);
+
+        dropStageHost("p7-term");
+        const droppedGone = !host.isConnected && stageHost("p7-term") !== host;
+        dropStageHost("p7-term");
+        errs.stop();
+        return {
+          scenario: "stagehostcycle",
+          webglActive: webglActive(),
+          contextLost: contextLost(),
+          adoptedInA,
+          inB,
+          aliveAfterAtoB,
+          backInA,
+          aliveAfterBtoA,
+          bufferLength: after.length,
+          droppedGone,
+          errors: errs.count(),
+        };
+      };
+    });
+    return (
+      <div style={{ display: "flex", gap: "12px" }}>
+        {/* Fixed px, not 100%: the wrapper div Portal inserts only collapses
+            via App.css's display:contents rule, which Storybook does not load. */}
+        <Portal mount={stageHost("p7-term")}>
+          <div ref={surface} style={{ width: "318px", height: "198px" }} />
+        </Portal>
+        <div data-slot="a" ref={slotA} style={SLOT} />
+        <div data-slot="b" ref={slotB} style={SLOT} />
       </div>
     );
   },
