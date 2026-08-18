@@ -1386,7 +1386,9 @@ export default function Terminal(props: {
     stripReorder: (next) =>
       mergeReorder(next.filter((u): u is TerminalUnifiedTab => u.kind !== "file").map((u) => u.term)),
     stripClass: styles.termTabs,
-    hostIds: () => open().map((t) => t.id),
+    // A terminal tab is its own surface, so a pane adopts exactly its own; a
+    // pane-less panel keeps every one of them (phase 7's shape).
+    hostIds: (paneId, tabs) => (paneId ? tabs.map((t) => t.id) : open().map((t) => t.id)),
     overlay: termOverlay,
   });
   // The stage overlays, drawn by the pane (PaneView) over whatever hosts it

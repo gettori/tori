@@ -60,7 +60,10 @@ vi.mock("./panels/Editor/Editor", async () => {
         stripItems: () => unifiedTabs().filter((u) => u.kind === "file" && u.workspace === REPO),
         stripActiveId: () => store.activeByWs()[REPO] ?? null,
         stripReorder: () => {},
-        hostIds: () => ["editor-stage"],
+        // The real panel's shape (phase 9): one stage host per pane holding
+        // file tabs, so two panes can each hold an editor view.
+        hostIds: (paneId, tabs) =>
+          paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : [],
       });
       return null;
     },
@@ -186,7 +189,9 @@ describe("moving a tab", () => {
     await waitFor(() => expect(tabsIn(pane(1))).toEqual(["sh:2"]));
   });
 
-  it("refuses a file tab out of the pane its siblings are in, and says so", async () => {
+  it("takes one file tab into a second pane and leaves its sibling behind", async () => {
+    // Phase 8 refused this (one CodeMirror view, one pane); phase 9 gave each
+    // pane its own view, and the guard stopped saying no.
     setTabsByWs({
       [REPO]: [
         { path: `${REPO}/a.ts`, name: "a.ts" },
@@ -201,8 +206,12 @@ describe("moving a tab", () => {
       paneId: "pane-1",
     });
 
-    expect(await screen.findByText(/Files open in one pane for now/)).toBeTruthy();
-    expect(tabsIn(pane(1))).toEqual([]);
+    await waitFor(() => expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`]));
+    expect(tabsIn(pane(2))).toEqual([`${REPO}/b.ts`]);
+    // Each pane adopted its own editor stage, which is what phase 9 gave the
+    // panes a view apiece to put in.
+    expect(pane(1).querySelector('[data-stage-host="editor-stage:pane-1"]')).toBeTruthy();
+    expect(pane(2).querySelector('[data-stage-host="editor-stage:right"]')).toBeTruthy();
   });
 
   it("steps to the pane beside it when no target is named", async () => {

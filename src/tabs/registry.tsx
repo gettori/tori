@@ -35,7 +35,10 @@ export type TabDescriptor = {
   stripActiveId?: () => string | null;
   stripReorder?: (next: UnifiedTab[]) => void;
   stripClass?: string;
-  hostIds?: () => string[];
+  /** The stage hosts a pane must adopt for these of the kind's tabs. `paneId` is
+   *  null for a pane outside the tree (a panel mounted on its own), where the
+   *  kind answers for everything it has. */
+  hostIds?: (paneId: string | null, tabs: UnifiedTab[]) => string[];
   overlay?: () => JSX.Element;
 };
 

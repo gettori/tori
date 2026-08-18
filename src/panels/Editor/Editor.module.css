@@ -12,6 +12,21 @@
   min-height: 0;
 }
 
+/* A column in a pane that is showing something else (a terminal tab): out of
+   the way, still mounted, so its buffers and scroll survive the trip. */
+.editorMain.hidden {
+  display: none;
+}
+
+/* Where a pane's CodeMirror view is portalled in (plan phase 9): the column
+   owns the box, the one editor component owns what goes in it. */
+.codeSlot {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
 .editorEmpty {
   flex: 1;
   display: flex;

@@ -32,15 +32,37 @@ export function paneTabs(ws: string, paneId: string): UnifiedTab[] {
   );
 }
 
-/** Every stage host this pane should hold, background workspaces included: a
- *  tab in another workspace keeps its surface in the pane its kind pins to, so
- *  switching workspaces hides surfaces instead of detaching them (gotcha #64). */
+/**
+ * Every stage host this pane should hold, background workspaces included: a tab
+ * in another workspace keeps its surface in the pane its kind pins to, so
+ * switching workspaces hides surfaces instead of detaching them (gotcha #64).
+ *
+ * Each kind maps its own tabs to hosts (a terminal tab is its own surface; the
+ * editor's panes share one per pane), so this asks rather than assumes.
+ */
 export function paneHostIds(ws: string, paneId: string): string[] {
   const root = layoutRoot(ws);
   if (!root) return [];
-  return unifiedTabs()
-    .filter((t) => paneOfTab(t.workspace, t, root) === paneId)
-    .map((t) => t.id);
+  const here = unifiedTabs().filter((t) => paneOfTab(t.workspace, t, root) === paneId);
+  const out: string[] = [];
+  const done = new Set<unknown>();
+  for (const t of here) {
+    const hostIds = maybeKindEntry(t.kind)?.hostIds;
+    if (!hostIds || done.has(hostIds)) continue;
+    done.add(hostIds);
+    const family = here.filter((o) => maybeKindEntry(o.kind)?.hostIds === hostIds);
+    out.push(...hostIds(paneId, family));
+  }
+  return out;
+}
+
+/** The visible panes holding at least one tab of a kind, in shell order. */
+export function panesWithKind(ws: string, kind: string): string[] {
+  const root = layoutRoot(ws);
+  if (!root) return [];
+  return visibleLeaves(root)
+    .map((l) => l.id)
+    .filter((id) => paneTabs(ws, id).some((t) => t.kind === kind));
 }
 
 /** The ids their own kind calls active. One per kind, so a pane holding a file
@@ -62,6 +84,12 @@ export function paneActiveId(ws: string, paneId: string): string | null {
 export function isKindHome(ws: string, kind: string, paneId: string): boolean {
   const root = layoutRoot(ws);
   return !root || homePane(ws, kind, root) === paneId;
+}
+
+/** Where a kind opens, or null when this workspace has no pane tree yet. */
+export function kindHomePane(ws: string, kind: string): string | null {
+  const root = layoutRoot(ws);
+  return root ? homePane(ws, kind, root) : null;
 }
 
 /** Is this tab the one its pane shows? Null when there is no pane tree yet. */

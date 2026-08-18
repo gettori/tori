@@ -15,9 +15,10 @@ export type LspBuffer = { state: EditorState; lsp: Compartment };
 /**
  * Point one compartment of every buffer at what `resolve` now says.
  *
- * The shown buffer's live truth is the view's own state, not the stashed one,
- * so its effect goes through `dispatch`. Every other buffer is updated in
- * place. Callers pass `shown: null` when no buffer is on screen.
+ * A buffer on screen has its live truth in a view's own state rather than the
+ * stashed one, so its effect goes through that view: `dispatch` answers with
+ * the view holding a path, or null for a buffer no pane is showing, which is
+ * updated in place instead.
  *
  * `pick` names which compartment, because a buffer has more than one thing that
  * moves when the client does: the plugin itself, and the fallback completion
@@ -25,24 +26,21 @@ export type LspBuffer = { state: EditorState; lsp: Compartment };
  */
 export function reconfigureBuffers<T extends { state: EditorState }>(
   buffers: Iterable<[string, T]>,
-  shown: string | null,
   pick: (buf: T) => Compartment,
   resolve: (path: string) => Extension,
-  dispatch: (effects: StateEffect<unknown>) => void,
+  dispatch: (path: string, effects: StateEffect<unknown>) => boolean,
 ): void {
   for (const [path, buf] of buffers) {
     const effects = pick(buf).reconfigure(resolve(path));
-    if (path === shown) dispatch(effects);
-    else buf.state = buf.state.update({ effects }).state;
+    if (!dispatch(path, effects)) buf.state = buf.state.update({ effects }).state;
   }
 }
 
 /** Point every buffer's LSP compartment at what `resolve` now says. */
 export function reattachLsp<T extends LspBuffer>(
   buffers: Iterable<[string, T]>,
-  shown: string | null,
   resolve: (path: string) => Extension,
-  dispatch: (effects: StateEffect<unknown>) => void,
+  dispatch: (path: string, effects: StateEffect<unknown>) => boolean,
 ): void {
-  reconfigureBuffers(buffers, shown, (buf) => buf.lsp, resolve, dispatch);
+  reconfigureBuffers(buffers, (buf) => buf.lsp, resolve, dispatch);
 }

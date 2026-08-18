@@ -154,10 +154,12 @@ export function setPaneActive(ws: string, paneId: string, tabId: string) {
 }
 
 /**
- * The one placement guard (plan phase 8 task 2). Every path that would put a
- * tab in a pane asks here first, and a non-null answer is the sentence the user
- * is shown. Phase 9 deletes the `file` branch and nothing else changes: file
- * tabs share one CodeMirror stage today, so they cannot be in two panes at once.
+ * The one placement guard. Every path that would put a tab in a pane asks here
+ * first, and a non-null answer is the sentence the user is shown.
+ *
+ * Phase 8 kept file tabs to one pane here, because they shared one CodeMirror
+ * view; phase 9 gave each pane its own view over the shared buffer map, so that
+ * branch is gone and only a pane that does not exist is refused.
  */
 export function placementRefusal(a: {
   ws: string;
@@ -167,20 +169,12 @@ export function placementRefusal(a: {
   tabsInWs: TabRef[];
 }): string | null {
   if (!leaves(a.root).some((l) => l.id === a.targetPaneId)) return "That pane is gone.";
-  if (paneOfTab(a.ws, a.tab, a.root) === a.targetPaneId) return null;
-  if (a.tab.kind !== "file") return null;
-  const stranded = a.tabsInWs.filter(
-    (t) => t.kind === "file" && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) !== a.targetPaneId,
-  );
-  if (stranded.length === 0) return null;
-  return `Files open in one pane for now. Close or move the other ${stranded.length} file tab${
-    stranded.length > 1 ? "s" : ""
-  } first.`;
+  return null;
 }
 
-/** Move a tab, or say why not. A file tab that gets this far is the only one
- *  outside the target (the guard saw to that), so its kind home moves with it
- *  and the next file opens beside it rather than back where files used to be. */
+/** Move a tab, or say why not. A kind's home follows only when the last tab of
+ *  that kind leaves a pane: the whole group moved, so the next tab of it should
+ *  open where the group went, while one tab pulled aside is just that. */
 export function moveTabToPane(a: {
   ws: string;
   tab: TabRef;
@@ -191,8 +185,14 @@ export function moveTabToPane(a: {
   const refusal = placementRefusal(a);
   if (refusal) return refusal;
   const p = wsOf(a.ws);
+  const from = paneOfTab(a.ws, a.tab, a.root);
   const tabs = { ...p.tabs, [a.tab.id]: a.targetPaneId };
-  const kinds = a.tab.kind === "file" ? { ...p.kinds, file: a.targetPaneId } : p.kinds;
+  const groupLeft =
+    !!from &&
+    !a.tabsInWs.some(
+      (t) => t.kind === a.tab.kind && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) === from,
+    );
+  const kinds = groupLeft ? { ...p.kinds, [a.tab.kind]: a.targetPaneId } : p.kinds;
   write(a.ws, { ...p, tabs, kinds, active: { ...p.active, [a.targetPaneId]: a.tab.id } });
   stampOrder(a.ws, [a.tab.id]);
   return null;

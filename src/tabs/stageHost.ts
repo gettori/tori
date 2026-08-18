@@ -21,7 +21,9 @@ export function stageHost(id: string): HTMLElement {
   let el = hosts.get(id);
   if (!el) {
     el = document.createElement("div");
-    el.dataset.stageHost = "";
+    // The id, not a bare marker: a pane's DOM says which surface it adopted,
+    // which is what makes a two-pane layout readable in the inspector.
+    el.dataset.stageHost = id;
     // The host (and the wrapper div Portal inserts, see App.css) is layout-
     // transparent, so the surface inside participates in the pane's own flex.
     el.style.display = "contents";
@@ -30,6 +32,12 @@ export function stageHost(id: string): HTMLElement {
   }
   return el;
 }
+
+/** Where a pane's editor view lives (plan phase 9). One host per pane rather
+ *  than one for the editor, since a file can be open in two of them; the bare
+ *  id is the pane-less form, which panel-only mounts still use. */
+export const editorStageId = (paneId: string): string =>
+  paneId === "editor-stage" ? paneId : `editor-stage:${paneId}`;
 
 /** On tab close: the surface inside was unmounted by its panel; the element
  *  itself would otherwise sit in its pane (or the lot) forever. */

@@ -38,12 +38,13 @@ describe("where a tab is", () => {
     expect(paneOfTab(WS, file("/a.ts"), root)).toBe("right");
   });
 
-  it("keeps a moved tab where it was put, and its kind where it was", () => {
+  it("keeps a moved tab where it was put, and its kind where the rest of it is", () => {
     const root = threePane();
-    expect(moveTabToPane({ ws: WS, tab: sh("sh:1"), targetPaneId: "pane-1", root, tabsInWs: [sh("sh:1")] })).toBeNull();
-    expect(paneOfTab(WS, sh("sh:1"), root)).toBe("pane-1");
-    // Only that tab: the next shell still opens where shells open.
-    expect(paneOfTab(WS, sh("sh:2"), root)).toBe("left");
+    const tabs = [sh("sh:1"), sh("sh:2")];
+    expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    expect(paneOfTab(WS, tabs[0], root)).toBe("pane-1");
+    // Only that tab: its sibling is still there, so the next shell opens beside it.
+    expect(paneOfTab(WS, tabs[1], root)).toBe("left");
     expect(homePane(WS, "shell", root)).toBe("left");
   });
 
@@ -61,16 +62,18 @@ describe("where a tab is", () => {
   });
 });
 
-describe("the interim single-pane guard", () => {
-  it("refuses a file tab that would strand its siblings, and says why", () => {
+describe("the placement guard", () => {
+  // Phase 8 refused this: file tabs shared one CodeMirror view, so a second
+  // pane could not have one. Phase 9 gave each pane its own view, and deleting
+  // that branch of the guard is the whole of what changed at this call site.
+  it("lets a file tab into a second pane, leaving its siblings where they are", () => {
     const root = threePane();
     const tabs = [file("/a.ts"), file("/b.ts")];
-    const why = placementRefusal({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs });
-    expect(why).toMatch(/one pane for now/);
-    expect(why).toContain("1 file tab");
-    // Refused means unmoved, through the move path too.
-    expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBe(why);
-    expect(paneOfTab(WS, tabs[0], root)).toBe("right");
+    expect(placementRefusal({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    expect(paneOfTab(WS, tabs[0], root)).toBe("pane-1");
+    // And only it: its sibling stays where the file kind opens.
+    expect(paneOfTab(WS, tabs[1], root)).toBe("right");
   });
 
   it("allows the lone file tab, and every terminal tab", () => {
@@ -126,7 +129,10 @@ describe("which tab a pane shows", () => {
 
   it("forgets a closed tab, so a reopened path does not inherit its pane", () => {
     const root = threePane();
-    moveTabToPane({ ws: WS, tab: sh("sh:1"), targetPaneId: "pane-1", root, tabsInWs: [sh("sh:1")] });
+    // Two of them, so the kind's home stays put and the tab entry is the only
+    // thing saying where sh:1 went.
+    const tabs = [sh("sh:1"), sh("sh:2")];
+    moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs });
     forgetTab(WS, "sh:1");
     expect(paneOfTab(WS, sh("sh:1"), root)).toBe("left");
   });

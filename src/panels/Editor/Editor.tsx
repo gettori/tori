@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import { For, createSignal, createEffect, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -248,9 +248,11 @@ import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind } from "../../tabs/registry";
+import { isKindHome, kindHomePane, paneActiveId, panesWithKind } from "../../tabs/paneTabs";
+import { focusedPaneId } from "../../layout/layoutStore";
 import { paneMenuItems } from "../../tabs/paneTabs";
 import { forgetTab } from "../../layout/tabPlacement";
-import { stageHost } from "../../tabs/stageHost";
+import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
@@ -366,7 +368,35 @@ export default function Editor(props: {
   // cannot drift; they differ only in how each spells "nothing selected".
   const ws = () => root() ?? "";
   const tabs = () => tabsByWs()[ws()] ?? [];
-  const activeId = () => activeByWs()[ws()] ?? null;
+  // ---- Panes (plan phase 9) ----------------------------------------------
+  // A column per pane holding file tabs; with no pane tree (a panel mounted
+  // outside the shell, which is every panel-only suite) there is one, in the
+  // stage host the editor has always used.
+  const SOLO_PANE = "editor-stage";
+  const editorPaneIds = () => {
+    const panes = panesWithKind(ws(), "file");
+    if (panes.length) return panes;
+    // No file tabs anywhere: the column still belongs in the pane files open
+    // into, which is where "open a file from the tree" has to be readable.
+    return [kindHomePane(ws(), "file") ?? SOLO_PANE];
+  };
+  const focusedEditorPane = () => {
+    const panes = editorPaneIds();
+    const focused = focusedPaneId(ws());
+    return focused && panes.includes(focused) ? focused : panes[0];
+  };
+  /** The file tab a pane shows, or null while it is showing something else. */
+  const paneFileId = (paneId: string): string | null => {
+    const shown = paneId === SOLO_PANE ? (activeByWs()[ws()] ?? null) : paneActiveId(ws(), paneId);
+    // Only a tab that is actually open: the workspace's stored pick outlives
+    // the tab it names (closing the last one leaves it behind), and a column
+    // asking for it would draw an editor over a file nobody has open.
+    return shown && tabs().some((t) => tabId(t) === shown) ? shown : null;
+  };
+  // The file everything outside the columns means (plan phase 9 task 5): the
+  // focused pane's, so the git store, the breadcrumb and every command's
+  // enablement follow pane focus rather than one workspace-wide pick.
+  const activeId = () => paneFileId(focusedEditorPane()) ?? activeByWs()[ws()] ?? null;
   function setTabs(next: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
     const key = ws();
     setTabsByWs((prev) => ({
@@ -630,6 +660,37 @@ export default function Editor(props: {
   // buffer to keep, and so no language server to attach.
   const allOpenPaths = () =>
     Object.values(tabsByWs()).flatMap((ts) => ts.map((t) => t.path).filter((p) => !isSyntheticId(p)));
+  // Per pane (plan phase 9): the same questions asked of whatever tab a given
+  // pane shows. The zero-argument forms below ask them of the focused pane,
+  // which is what every consumer outside the columns still means.
+  const tabOf = (id: string | null) => tabs().find((t) => tabId(t) === id) ?? null;
+  const fileTabOf = (id: string | null) => {
+    const t = tabOf(id);
+    return t && !isSyntheticId(t.path) ? t : null;
+  };
+  const imageOf = (id: string | null) => {
+    const t = fileTabOf(id);
+    return t != null && isImagePath(t.path);
+  };
+  const svgOf = (id: string | null) => {
+    const t = fileTabOf(id);
+    return t != null && t.path.toLowerCase().endsWith(".svg");
+  };
+  const markdownOf = (id: string | null) => {
+    const t = fileTabOf(id);
+    return t != null && isMarkdownPath(t.path);
+  };
+  const syntheticOf = (id: string | null) => {
+    const t = tabOf(id);
+    return t ? parseSyntheticId(t.path) : null;
+  };
+  const previewingOf = (id: string | null) =>
+    (markdownOf(id) || svgOf(id)) && previewOn().has(id ?? "");
+  /** What a pane's own CodeMirror view should hold: nothing at all unless the
+   *  tab it shows is a file being edited rather than rendered. */
+  const editablePathOf = (id: string | null) =>
+    tabOf(id) && !imageOf(id) && !previewingOf(id) && !syntheticOf(id) ? id : null;
+
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   // The active tab when it is a real file. The three suffix tests below ask
   // what is on disk, and a synthetic id ends in the workspace path - a folder
@@ -653,10 +714,6 @@ export default function Editor(props: {
   };
   // A view rather than a file: CodeEditor stays out of its way, the same as it
   // does for an image or a rendered preview.
-  const syntheticTab = () => {
-    const t = activeTab();
-    return t ? parseSyntheticId(t.path) : null;
-  };
   // Tabs that carry a source-vs-render toggle: Markdown renders to HTML, SVG
   // renders to its image. Everything else edits in place with no toggle.
   const isPreviewableTab = () => isMarkdownTab() || isSvgTab();
@@ -685,7 +742,6 @@ export default function Editor(props: {
   // probed per file: the store is already refreshed by every watcher burst and
   // every git action, so the banner appears and clears on the same beat as the
   // Changes panel's Conflicts section, with no second source of truth.
-  const conflicted = () => isConflicted(root(), activeFileTab()?.path ?? null);
 
   /** Open the open file's three-way view. A tab rather than a pane inside this
    *  one: the file itself stays open beside it, which is where the reader ends
@@ -1907,6 +1963,140 @@ export default function Editor(props: {
     </>
   );
 
+  // Where each column's CodeMirror view goes. Elements rather than ids, so the
+  // one editor component can portal into a column it did not render.
+  const [slots, setSlots] = createSignal<Record<string, HTMLElement>>({});
+  const holdSlot = (paneId: string, el: HTMLElement) => {
+    setSlots((prev) => ({ ...prev, [paneId]: el }));
+    onCleanup(() =>
+      setSlots((prev) => {
+        const next = { ...prev };
+        if (next[paneId] === el) delete next[paneId];
+        return next;
+      }),
+    );
+  };
+
+  /** One pane's editor column: what its tab is, said above the file, and what
+   *  the tab actually is (a buffer, a rendered preview, an image, a view). The
+   *  editor view itself is portalled into `.codeSlot` by CodeEditor. */
+  function EditorColumn(p: { paneId: string }) {
+    const fileId = () => paneFileId(p.paneId);
+    const focused = () => focusedEditorPane() === p.paneId;
+    // A pane showing a terminal tab keeps its editor column mounted (buffers
+    // and scroll survive) but out of the way; the pane files open into keeps
+    // it either way, since that is where the empty note belongs.
+    const shown = () =>
+      !!fileId() || p.paneId === SOLO_PANE || isKindHome(ws(), "file", p.paneId);
+    const conflictedHere = () => isConflicted(root(), fileTabOf(fileId())?.path ?? null);
+    return (
+      <div
+        class={styles.editorMain}
+        classList={{ [styles.hidden]: !shown() }}
+        ref={(el) => {
+          // The width observer belongs to one column: the right panel's bound
+          // is about the region as a whole, not about each pane in it.
+          if (focused()) paneEl = el;
+        }}
+      >
+        {/* Where the open file sits and where the caret sits in it. Below the
+            tabs and above everything else in the column: a tab says which file,
+            and this says the rest of the answer. Only for a real file - a commit
+            log or a conflict view has a `sway://` id, which names no folder any
+            picker could list. */}
+        <Breadcrumbs
+          root={root()}
+          path={fileTabOf(fileId())?.path ?? null}
+          caret={focused() ? caretHere() : null}
+        />
+        {/* Above the editor rather than inside it: the file on screen is the
+            merged working-tree copy, markers and all, and nothing in the buffer
+            itself says that is why it looks like that. */}
+        <Show when={conflictedHere()}>
+          <div class={styles.conflictBanner} role="status">
+            <span>Merge conflict: this file holds both sides.</span>
+            <Button size="xs" onClick={openConflictView}>
+              Compare the versions
+            </Button>
+            <Button
+              size="xs"
+              disabled={!!sendDisabledReason() || askingConflict()}
+              tooltipWhenDisabled
+              tooltip={sendDisabledReason() ?? "Ask the selected session to resolve this conflict"}
+              onClick={askAgentToResolveOpen}
+            >
+              Ask agent to resolve
+            </Button>
+          </div>
+        </Show>
+        <div class={styles.codeSlot} ref={(el) => holdSlot(p.paneId, el)} />
+        <Show
+          when={fileId()}
+          fallback={
+            <Show when={!filePaths().length}>
+              <div class={styles.editorEmpty}>
+                Open a file from the tree to start editing, or press ⌘P to find one by name.
+              </div>
+            </Show>
+          }
+        >
+          <Show when={syntheticOf(fileId())}>
+            {(t) => (
+              <>
+                <Show when={t().kind === "log"}>
+                  <CommitLog workspace={t().workspace} />
+                </Show>
+                {/* One file's history is the same list under a pathspec, so it
+                    is the same component, not a near-copy of it. */}
+                <Show when={t().kind === "history"}>
+                  <CommitLog workspace={t().workspace} file={t().arg} />
+                </Show>
+                {/* The other half of the same question: git's list is what was
+                    committed, this one is what was saved. */}
+                <Show when={t().kind === "localhistory"}>
+                  <LocalHistory workspace={t().workspace} file={t().arg} />
+                </Show>
+                <Show when={t().kind === "commit"}>
+                  <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+                {/* Its own CodeMirror instance, not a buffer in CodeEditor:
+                    this document has no file behind it and lives under rules no
+                    file buffer has (its line count is fixed, and only a result's
+                    own text is editable). */}
+                <Show when={t().kind === "search"}>
+                  <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
+                    <SearchResultsBuffer id={fileId()!} />
+                  </Suspense>
+                </Show>
+                {/* Code with no file behind it, fetched from the adapter by
+                    reference. Read-only by construction: there is nothing to
+                    save it to. */}
+                <Show when={t().kind === "dapsource"}>
+                  <DebugSourceView id={fileId()!} name={syntheticTabName(fileId()!)} />
+                </Show>
+                <Show when={t().kind === "conflict"}>
+                  {/* Resolving rewrites the file, so it reports on the same
+                      channel a discard or a checkpoint revert does: a buffer
+                      open on it with unsaved edits is offered keep-mine /
+                      take-disk rather than writing the conflict back. */}
+                  <ConflictView workspace={t().workspace} file={t().arg} onResolved={handleReverted} />
+                </Show>
+              </>
+            )}
+          </Show>
+          <Show when={imageOf(fileId())}>
+            <ImageView path={fileId()!} />
+          </Show>
+          <Show when={previewingOf(fileId())}>
+            <Show when={svgOf(fileId())} fallback={<MarkdownPreview path={fileId()!} />}>
+              <ImageView path={fileId()!} />
+            </Show>
+          </Show>
+        </Show>
+      </div>
+    );
+  }
+
   // The strip consumes the unified model filtered to this panel's kind: same
   // tabs, same order, same references, read through the union.
   const stripTabs = (): FileUnifiedTab[] =>
@@ -1962,10 +2152,18 @@ export default function Editor(props: {
     // strip and adopts the one shared editor stage; every workspace's tabs
     // render into it, so the pane never needs a host per file.
     stripItems: stripTabs,
-    stripActiveId: activeId,
+    // The workspace's own pick, not the focused pane's: a pane's strip resolves
+    // its own active tab from this (see activeIdInPane), and answering with the
+    // pane-derived one would ask this question in a circle.
+    stripActiveId: () => activeByWs()[ws()] ?? null,
     stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
     stripClass: styles.editorTabs,
-    hostIds: () => ["editor-stage"],
+    // One host per pane (phase 9), so two panes can each hold a view; a pane-less
+    // panel keeps the single host it has always rendered into.
+    hostIds: (paneId, tabs) =>
+      paneId === null || tabs.length || isKindHome(ws(), "file", paneId)
+        ? [editorStageId(paneId ?? "editor-stage")]
+        : [],
   });
 
   // A service host since phase 7: no visible output. The code side and the
@@ -1973,140 +2171,59 @@ export default function Editor(props: {
   // beside it), and the dialogs portal themselves.
   return (
     <>
-      <Portal mount={stageHost("editor-stage")}>
-      <div class={styles.editorMain} ref={paneEl}>
-        {/* Where the open file sits and where the caret sits in it. Below the
-            tabs and above everything else in the column: a tab says which file,
-            and this says the rest of the answer. Only for a real file - a commit
-            log or a conflict view has a `sway://` id, which names no folder any
-            picker could list. */}
-        <Breadcrumbs root={root()} path={activeFileTab()?.path ?? null} caret={caretHere()} />
-        {/* Above the editor rather than inside it: the file on screen is the
-            merged working-tree copy, markers and all, and nothing in the buffer
-            itself says that is why it looks like that. */}
-        <Show when={conflicted()}>
-          <div class={styles.conflictBanner} role="status">
-            <span>Merge conflict: this file holds both sides.</span>
-            <Button size="xs" onClick={openConflictView}>
-              Compare the versions
-            </Button>
-            <Button
-              size="xs"
-              disabled={!!sendDisabledReason() || askingConflict()}
-              tooltipWhenDisabled
-              tooltip={sendDisabledReason() ?? "Ask the selected session to resolve this conflict"}
-              onClick={askAgentToResolveOpen}
-            >
-              Ask agent to resolve
-            </Button>
-          </div>
-        </Show>
-        {/* Mounted on the union, hidden on the visible strip. Gating the mount
-            on the current workspace's tab count would unmount CodeEditor the
-            moment you selected a workspace with nothing open, and its cleanup
-            destroys the view and every buffer behind it - including a background
-            workspace's unsaved edits, which is the loss `openPaths` carrying the
-            union exists to prevent. */}
-        <Show when={allOpenPaths().length}>
-          <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
-            <CodeEditor
-              activePath={
-                activeTab() && !isImageTab() && !showingPreview() && !syntheticTab() ? activeId() : null
-              }
-              openPaths={allOpenPaths()}
-              projectRoot={root()}
-              callsVisible={rightMode() === "calls"}
-              goto={gotoTarget()}
-              onDirty={handleDirty}
-              onCursorJump={(path, line) => recordJump({ path, line })}
-              onCaretMove={noteCaret}
-              bookmarks={marksHere()}
-              onToggleBookmark={toggleMark}
-              onBookmarksMoved={marksMoved}
-              breakpoints={breaksHere()}
-              onToggleBreakpoint={toggleBreak}
-              onBreakpointsMoved={breaksMoved}
-              frameLine={frameLocation()}
-              onCloseFile={forceCloseFile}
-              reverted={reverted()}
-              selected={props.selected}
-              hidden={!filePaths().length || isImageTab() || showingPreview() || !!syntheticTab()}
-              blame={blameOn()}
-              // The active tab's override, or null to follow the setting. Only
-              // the shown buffer's answer is needed: the others are re-resolved
-              // when they are swapped in.
-              softWrap={wrapById()[activeId() ?? ""] ?? null}
-              confirm={askConfirm}
-            />
-          </Suspense>
-        </Show>
-        <Show
-          when={filePaths().length}
-          fallback={
-            <div class={styles.editorEmpty}>
-              Open a file from the tree to start editing, or press ⌘P to find one by name.
-            </div>
-          }
-        >
-          <Show when={syntheticTab()}>
-            {(t) => (
-              <>
-                <Show when={t().kind === "log"}>
-                  <CommitLog workspace={t().workspace} />
-                </Show>
-                {/* One file's history is the same list under a pathspec, so it
-                    is the same component, not a near-copy of it. */}
-                <Show when={t().kind === "history"}>
-                  <CommitLog workspace={t().workspace} file={t().arg} />
-                </Show>
-                {/* The other half of the same question: git's list is what was
-                    committed, this one is what was saved. */}
-                <Show when={t().kind === "localhistory"}>
-                  <LocalHistory workspace={t().workspace} file={t().arg} />
-                </Show>
-                <Show when={t().kind === "commit"}>
-                  <CommitDetail workspace={t().workspace} sha={t().arg} />
-                </Show>
-                {/* Its own CodeMirror instance, not a buffer in CodeEditor:
-                    this document has no file behind it and lives under rules no
-                    file buffer has (its line count is fixed, and only a result's
-                    own text is editable). */}
-                <Show when={t().kind === "search"}>
-                  <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
-                    <SearchResultsBuffer id={activeId()!} />
-                  </Suspense>
-                </Show>
-                {/* Code with no file behind it, fetched from the adapter by
-                    reference. Read-only by construction: there is nothing to
-                    save it to. */}
-                <Show when={t().kind === "dapsource"}>
-                  <DebugSourceView id={activeId()!} name={syntheticTabName(activeId()!)} />
-                </Show>
-                <Show when={t().kind === "conflict"}>
-                  {/* Resolving rewrites the file, so it reports on the same
-                      channel a discard or a checkpoint revert does: a buffer
-                      open on it with unsaved edits is offered keep-mine /
-                      take-disk rather than writing the conflict back. */}
-                  <ConflictView
-                    workspace={t().workspace}
-                    file={t().arg}
-                    onResolved={handleReverted}
-                  />
-                </Show>
-              </>
-            )}
-          </Show>
-          <Show when={isImageTab()}>
-            <ImageView path={activeId()!} />
-          </Show>
-          <Show when={showingPreview()}>
-            <Show when={isSvgTab()} fallback={<MarkdownPreview path={activeId()!} />}>
-              <ImageView path={activeId()!} />
-            </Show>
-          </Show>
-        </Show>
-      </div>
-      </Portal>
+      {/* One column per pane holding file tabs (plan phase 9), each portalled
+          into that pane's own stage host; with no pane tree at all there is one
+          column in the host the panel has always used. */}
+      <For each={editorPaneIds()}>
+        {(paneId) => (
+          <Portal mount={stageHost(editorStageId(paneId))}>
+            <EditorColumn paneId={paneId} />
+          </Portal>
+        )}
+      </For>
+      {/* Mounted on the union, hidden on the visible strip. Gating the mount on
+          the current workspace's tab count would unmount CodeEditor the moment
+          you selected a workspace with nothing open, and its cleanup destroys
+          every view and buffer behind it - including a background workspace's
+          unsaved edits, which is the loss `openPaths` carrying the union exists
+          to prevent. */}
+      <Show when={allOpenPaths().length}>
+        <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
+          <CodeEditor
+            // The focused pane's file, which is what the solo form shows and
+            // what everything outside the columns means by "the active file".
+            activePath={editablePathOf(paneFileId(focusedEditorPane()))}
+            paneIds={editorPaneIds()}
+            paneHost={(id) => slots()[id]}
+            panePath={(id) => editablePathOf(paneFileId(id))}
+            paneHidden={(id) => !editablePathOf(paneFileId(id))}
+            focusedPaneId={focusedEditorPane()}
+            openPaths={allOpenPaths()}
+            projectRoot={root()}
+            callsVisible={rightMode() === "calls"}
+            goto={gotoTarget()}
+            onDirty={handleDirty}
+            onCursorJump={(path, line) => recordJump({ path, line })}
+            onCaretMove={noteCaret}
+            bookmarks={marksHere()}
+            onToggleBookmark={toggleMark}
+            onBookmarksMoved={marksMoved}
+            breakpoints={breaksHere()}
+            onToggleBreakpoint={toggleBreak}
+            onBreakpointsMoved={breaksMoved}
+            frameLine={frameLocation()}
+            onCloseFile={forceCloseFile}
+            reverted={reverted()}
+            selected={props.selected}
+            blame={blameOn()}
+            // The active tab's override, or null to follow the setting. Only
+            // the shown buffer's answer is needed: the others are re-resolved
+            // when they are swapped in.
+            softWrap={wrapById()[activeId() ?? ""] ?? null}
+            confirm={askConfirm}
+          />
+        </Suspense>
+      </Show>
       <Portal mount={stageHost("editor-chrome")}>
       <Show when={filetreeOn()}>
         <Resizer
