@@ -239,6 +239,8 @@ import {
   resetEditorTabModel,
   type FileTab,
 } from "./editorTabStore";
+import { noteTabFocus } from "../../layout/layoutStore";
+import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, idOf, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, renderRegistryTab } from "../../tabs/registry";
 import styles from "./Editor.module.css";
@@ -367,6 +369,7 @@ export default function Editor(props: {
     }));
   }
   function setActiveId(id: string | null) {
+    if (id) noteTabFocus(id);
     const key = ws();
     setActiveByWs((prev) => ({ ...prev, [key]: id }));
   }
@@ -1202,6 +1205,9 @@ export default function Editor(props: {
     // rather than a file; and a scratch just deleted would come back as a failed
     // read of a file that is no longer there.
     if (!isSyntheticId(tab.path) && !spent) setClosedByWs((s) => rememberClosedTab(s, ws(), tab.path));
+    // Right neighbor, then left: the unified active-after-close policy (plan
+    // phase 5). Computed before the list shrinks, or the closed id has no index.
+    const nextActive = nextActiveAfterClose(tabs().map(tabId), id);
     const remaining = tabs().filter((t) => tabId(t) !== id);
     setTabs(remaining);
     setDirty((d) => {
@@ -1223,7 +1229,7 @@ export default function Editor(props: {
     // otherwise come back to a file reopened days later with no explanation.
     setWrapById((prev) => withoutTab(prev, id));
     if (activeId() === id) {
-      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
+      setActiveId(nextActive);
     }
   }
 
@@ -1397,6 +1403,7 @@ export default function Editor(props: {
   function forceCloseFile(path: string) {
     if (!tabs().some((t) => t.path === path)) return;
     dropStashEntry(path);
+    const nextActive = nextActiveAfterClose(tabs().map(tabId), path);
     const remaining = tabs().filter((t) => t.path !== path);
     setTabs(remaining);
     setDirty((d) => {
@@ -1406,7 +1413,7 @@ export default function Editor(props: {
     });
     noteBufferClosed(ws(), path);
     if (activeId() === path) {
-      setActiveId(remaining.length ? tabId(remaining[remaining.length - 1]) : null);
+      setActiveId(nextActive);
     }
   }
 

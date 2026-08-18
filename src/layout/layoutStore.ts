@@ -1,0 +1,197 @@
+// Per-workspace pane layout (plan phase 5): one versioned envelope holding the
+// pane tree and the focused pane, keyed by workspace (branch-unit folder).
+// Module-level signals, the panel stores' precedent; App.tsx resets it at
+// setup so its lifetime tracks the app shell.
+//
+// Everything read from storage passes sanitizeEnvelope first: a malformed
+// tree, an unknown node kind, a broken depth or an all-hidden layout falls
+// back to a freshly seeded envelope rather than crashing the shell. The
+// stored value is never repaired in place; only focusedPaneId, whose loss is
+// recoverable, is patched to a visible pane.
+import { createSignal } from "solid-js";
+import {
+  MAX_PANES,
+  MAX_SPLIT_DEPTH,
+  leaves,
+  visibleLeaves,
+  type PaneLeaf,
+  type PaneNode,
+} from "./paneLayout";
+
+export type LayoutEnvelope = {
+  version: 1;
+  layout: PaneNode;
+  focusedPaneId: string;
+};
+
+const LS_PANES = "sway.panes.v1";
+
+function validNode(n: unknown, depth: number, ids: Set<string>): boolean {
+  if (!n || typeof n !== "object") return false;
+  const node = n as Record<string, unknown>;
+  if (typeof node.id !== "string" || node.id === "" || ids.has(node.id)) return false;
+  ids.add(node.id);
+  if (typeof node.size !== "number" || !Number.isFinite(node.size) || node.size < 0) return false;
+  if (node.type === "pane") return typeof node.hidden === "boolean";
+  if (node.type === "split") {
+    if (depth > MAX_SPLIT_DEPTH) return false;
+    if (node.dir !== "row" && node.dir !== "column") return false;
+    if (!Array.isArray(node.children) || node.children.length < 2) return false;
+    return node.children.every((c) => validNode(c, depth + 1, ids));
+  }
+  // An unknown node kind is a layout this build cannot draw; reject the whole
+  // envelope rather than guess at what a future (or corrupted) shape meant.
+  return false;
+}
+
+export function sanitizeEnvelope(raw: unknown): LayoutEnvelope | null {
+  if (!raw || typeof raw !== "object") return null;
+  const v = raw as Record<string, unknown>;
+  if (v.version !== 1) return null;
+  if (!validNode(v.layout, 1, new Set())) return null;
+  const layout = v.layout as PaneNode;
+  if (leaves(layout).length > MAX_PANES) return null;
+  const vis = visibleLeaves(layout);
+  if (vis.length === 0) return null;
+  const focused =
+    typeof v.focusedPaneId === "string" && leaves(layout).some((l) => l.id === v.focusedPaneId)
+      ? (v.focusedPaneId as string)
+      : vis[0].id;
+  return { version: 1, layout, focusedPaneId: focused };
+}
+
+function loadAll(): Record<string, LayoutEnvelope> {
+  const out: Record<string, LayoutEnvelope> = {};
+  try {
+    const raw = localStorage.getItem(LS_PANES);
+    if (!raw) return out;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return out;
+    for (const [ws, env] of Object.entries(parsed as Record<string, unknown>)) {
+      const ok = sanitizeEnvelope(env);
+      if (ok) out[ws] = ok;
+    }
+  } catch {
+    // ignore: an unreadable store seeds fresh
+  }
+  return out;
+}
+
+const [envelopes, setEnvelopes] = createSignal<Record<string, LayoutEnvelope>>(loadAll());
+
+export function persistEnvelopes() {
+  try {
+    localStorage.setItem(LS_PANES, JSON.stringify(envelopes()));
+  } catch {
+    // ignore
+  }
+}
+
+/** The workspace's envelope, or the caller's seed when none is stored yet.
+ *  Pure read: pair it with ensureEnvelope so the seed gets stored once. */
+export function envelopeFor(ws: string, seed: () => LayoutEnvelope): LayoutEnvelope {
+  return envelopes()[ws] ?? seed();
+}
+
+export function ensureEnvelope(ws: string, seed: () => LayoutEnvelope) {
+  if (envelopes()[ws]) return;
+  setEnvelopes({ ...envelopes(), [ws]: seed() });
+  persistEnvelopes();
+}
+
+/**
+ * Apply a tree edit. `fn` returning null (a refused edit) or the same tree is
+ * a no-op. Focus follows the tree: a focused pane that vanished or hid hands
+ * focus to the first visible pane. Pass `persist: false` for high-frequency
+ * edits (a divider drag) and commit once at the end.
+ */
+export function updateLayout(
+  ws: string,
+  fn: (root: PaneNode) => PaneNode | null,
+  opts?: { persist?: boolean },
+): boolean {
+  const env = envelopes()[ws];
+  if (!env) return false;
+  const next = fn(env.layout);
+  if (!next || next === env.layout) return false;
+  const focusedLeaf = leaves(next).find((l) => l.id === env.focusedPaneId);
+  // The all-hidden fallback covers edits the tree layer allows but this phase
+  // never makes (closing the last visible pane while hidden ones remain).
+  const focused =
+    focusedLeaf && !focusedLeaf.hidden
+      ? env.focusedPaneId
+      : (visibleLeaves(next)[0] ?? leaves(next)[0]).id;
+  setEnvelopes({ ...envelopes(), [ws]: { ...env, layout: next, focusedPaneId: focused } });
+  if (opts?.persist !== false) persistEnvelopes();
+  return true;
+}
+
+export function focusedPaneId(ws: string): string | null {
+  return envelopes()[ws]?.focusedPaneId ?? null;
+}
+
+export function setFocusedPane(ws: string, paneId: string) {
+  const env = envelopes()[ws];
+  if (!env || env.focusedPaneId === paneId) return;
+  if (!leaves(env.layout).some((l) => l.id === paneId)) return;
+  setEnvelopes({ ...envelopes(), [ws]: { ...env, focusedPaneId: paneId } });
+  persistEnvelopes();
+}
+
+// ---- Tab focus recency -----------------------------------------------------
+// Which tab of a kind was focused last, for the kind toggles. A session-local
+// ordering, not persisted: after a relaunch every stamp is 0 and the toggles
+// fall back to the pin default, which is also where every tab still is.
+
+let focusSeq = 0;
+const focusStamps = new Map<string, number>();
+
+export function noteTabFocus(tabId: string) {
+  focusStamps.set(tabId, ++focusSeq);
+}
+
+export function tabFocusStamp(tabId: string): number {
+  return focusStamps.get(tabId) ?? 0;
+}
+
+// ---- Seeding ---------------------------------------------------------------
+
+/** Today's two-pane default. `rightShare` is the editor's percent of the
+ *  split; visibility carries over from the legacy layout, with its same
+ *  both-hidden repair. */
+export function seedTwoPane(opts: {
+  rightShare: number;
+  showLeft: boolean;
+  showRight: boolean;
+}): LayoutEnvelope {
+  const bothHidden = !opts.showLeft && !opts.showRight;
+  const showLeft = bothHidden ? true : opts.showLeft;
+  const showRight = bothHidden ? true : opts.showRight;
+  const right = Math.min(99, Math.max(1, opts.rightShare));
+  const mk = (id: string, size: number, hidden: boolean): PaneLeaf => ({
+    type: "pane",
+    id,
+    size,
+    hidden,
+  });
+  return {
+    version: 1,
+    layout: {
+      type: "split",
+      id: "root",
+      dir: "row",
+      size: 100,
+      children: [mk("left", 100 - right, !showLeft), mk("right", right, !showRight)],
+    },
+    focusedPaneId: showLeft ? "left" : "right",
+  };
+}
+
+// Called from App.tsx's setup, nowhere else: the shell mounts once per app
+// run, so this keeps the model's lifetime what today's layout signals had
+// (and gives repeated test mounts a fresh model without touching the tests).
+export function resetPaneLayoutModel() {
+  setEnvelopes(loadAll());
+  focusStamps.clear();
+  focusSeq = 0;
+}

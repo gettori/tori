@@ -64,6 +64,7 @@ import {
   activeWorkspace,
   setActiveWorkspace,
   activeByWorkspace,
+  setActiveByWorkspace,
   tabsIn,
   visibleId,
   focusTab,
@@ -71,6 +72,7 @@ import {
   type OpenTerm,
   type TabKind,
 } from "./terminalTabStore";
+import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, unifyTerm, idOf, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, renderRegistryTab, type TabDescriptor } from "../../tabs/registry";
 import styles from "./Terminal.module.css";
@@ -1023,9 +1025,20 @@ export default function Terminal(props: {
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
     if (t?.kind !== "chat") invoke("pty_kill", { id }).catch(() => {});
     clearRefusal(id);
+    // Closing the active tab hands the slot to its right neighbor, then the
+    // left (plan phase 5's unified policy; the fallback used to be the first
+    // tab). Recorded directly rather than through focusTab, so closing a tab
+    // in a background workspace cannot pull that workspace on screen.
+    if (t) {
+      const wsTabs = tabsIn(t.workspace);
+      const recorded = activeByWorkspace()[t.workspace];
+      const activeNow = recorded && wsTabs.some((o) => o.id === recorded) ? recorded : wsTabs[0]?.id;
+      if (activeNow === id) {
+        const next = nextActiveAfterClose(wsTabs.map((o) => o.id), id);
+        if (next) setActiveByWorkspace({ ...activeByWorkspace(), [t.workspace]: next });
+      }
+    }
     setOpen(open().filter((o) => o.id !== id));
-    // No active-tab bookkeeping needed: visibleId() falls back to the workspace's
-    // first tab when its remembered id is now gone.
   }
 
   function close(id: string, e: Event) {
