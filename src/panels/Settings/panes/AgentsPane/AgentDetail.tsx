@@ -18,7 +18,6 @@ import {
 import {
   catalogFor,
   isProbing,
-  isStale,
   refreshCatalog,
   type CatalogModel,
   type ProbeFailureReason,
@@ -69,12 +68,6 @@ const FAILURE_NOTE: Record<ProbeFailureReason, string> = {
   noAnswer: "It started and said nothing.",
   unsupported: "Sway cannot ask this agent yet. Its models arrive when a session starts.",
 };
-
-/** The probe's date, in the reader's own locale. The time is dropped: what
- *  matters is how old the answer is, and a catalogue does not move by the hour. */
-function probedOn(ms: number): string {
-  return new Date(ms).toLocaleDateString();
-}
 
 /** A command the user could run themselves, with the one control that keeps
  *  the promise honest: copy, exactly as shown. */
@@ -128,7 +121,6 @@ export default function AgentDetail(props: {
   const catalog = () => catalogFor(a().id);
   const catalogue = () => catalog()?.catalogue ?? null;
   const probingThis = () => isProbing(a().id);
-  const stale = () => isStale(catalog(), a().version);
   /** The agent's own words when it gave any, after Sway's sentence naming the
    *  kind of failure. Quoted rather than paraphrased, and omitted when empty. */
   const failureNote = () => {
@@ -143,6 +135,9 @@ export default function AgentDetail(props: {
   // visibly a filter and not a shorter answer.
   const models = () => catalogue()?.models ?? [];
   const [modelQuery, setModelQuery] = createSignal("");
+  /* Eight rows is also the card's height cap, so the box appears exactly when
+     there is something off screen to find. */
+  const searchable = () => models().length > 8;
   /** What one row shows, exactly as it shows it. The filter matches these and
    *  nothing invisible (`resolvedModel` is deliberately out), so a kept row
    *  can always mark why it was kept. */
@@ -159,7 +154,10 @@ export default function AgentDetail(props: {
    *  with the verdict is what pins the marks to the match. Null filters the
    *  row out; an empty query keeps every row with nothing marked. */
   const rowHit = (m: CatalogModel): { name: Range[]; id: Range[]; effort: Range[] } | null => {
-    const q = modelQuery().trim();
+    // A list of eight or fewer gets no search box, so a query left over from a
+    // longer answer (a re-probe can shrink the list under the threshold, taking
+    // the box and the way to clear it) must not keep filtering invisibly.
+    const q = searchable() ? modelQuery().trim() : "";
     if (!q) return { name: [], id: [], effort: [] };
     const t = rowText(m);
     const name = fuzzyMatch(q, t.name);
@@ -473,15 +471,18 @@ export default function AgentDetail(props: {
           <span class={styles.groupFact}>{modelCount()}</span>
           {/* The same chrome recipe as the Agents list title: count, filter,
               re-ask, all on the heading so the card below is nothing but
-              rows. */}
-          <input
-            type="text"
-            class={styles.tableFilter}
-            placeholder="Search"
-            aria-label="Filter models"
-            value={modelQuery()}
-            onInput={(e) => setModelQuery(e.currentTarget.value)}
-          />
+              rows. The filter only exists where the card scrolls: a list that
+              fits whole has nothing off screen to find. */}
+          <Show when={searchable()}>
+            <input
+              type="text"
+              class={styles.tableFilter}
+              placeholder="Search"
+              aria-label="Filter models"
+              value={modelQuery()}
+              onInput={(e) => setModelQuery(e.currentTarget.value)}
+            />
+          </Show>
           {/* "Ask again", not "Check again": the setup head's button re-probes
               the binary, this one re-asks the agent what it can run, and two
               controls with one label would be two different actions under one
@@ -549,31 +550,10 @@ export default function AgentDetail(props: {
                     {a().label} answered, and named no models it can run.
                   </div>
                 </Show>
-                {/* Provenance in full: who was asked, which build, and when. A
-                    list with no date is a list that can rot without saying so. */}
-                <div class={styles.hint}>
-                  Asked {a().label}
-                  <Show when={cat().version}>{(v) => <> {v()}</>}</Show>, {probedOn(cat().probedAtMs)}.
-                  {/* A catalogue can differ per account: OpenCode's depends on
-                      which providers are authenticated. So a page showing one has
-                      to say whose answer it is, and the probe runs as the default
-                      profile rather than as whichever account you were reading. */}
-                  <Show when={cat().account}>
-                    {(acct) => (
-                      <>
-                        {" "}
-                        Answered for {acct().subscriptionType || "the signed-in account"}, which is the
-                        default profile: another account can be offered different models.
-                      </>
-                    )}
-                  </Show>
-                </div>
-                <Show when={stale()}>
-                  <div class={styles.hint}>
-                    This was asked of {catalogue()?.version}, and {a().version} is installed now, so
-                    the list may have moved. Check again to re-ask.
-                  </div>
-                </Show>
+                {/* No footnotes under the list - not the probe date, not the
+                    account it answered for, not the staleness flag. All were
+                    dropped by request: the rows are the answer, and Ask again
+                    is always one press away. */}
                 {/* The rest of what the agent published: the levers with no
                     control of Sway's own, previewed from the same probe rather
                     than only appearing once a chat is open. Read-only here, on
@@ -616,11 +596,6 @@ export default function AgentDetail(props: {
             </div>
           </Match>
         </Switch>
-        {/* Kept below the list rather than instead of it, because a failure never
-            clears an older answer: stale-but-real beats fresh-but-empty. */}
-        <Show when={catalogue() && catalog()?.state === "failed"}>
-          <div class={styles.hint}>The last attempt failed. {failureNote()}</div>
-        </Show>
       </Show>
 
       <div class={styles.groupHead}>

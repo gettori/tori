@@ -1225,11 +1225,14 @@
     background: transparent;
     overflow: hidden;
   }
-  /* Capped so a fifteen-row answer scrolls instead of pushing the page's
-     other sections below the fold; the overlay scrollbar floats over the
-     rows, so scrolling costs no width. */
+  /* Capped at eight rows, so a fifteen-row answer scrolls instead of pushing
+     the page's other sections below the fold; the overlay scrollbar floats
+     over the rows, so scrolling costs no width. Eight is also the filter's
+     threshold: a list that fits whole gets no search box. The height is the
+     row metrics times eight: 12px padding twice plus the 13px name line at
+     1.4 (the panel remaps the type scale, so sm is 13px here). */
   .modelScroll {
-    max-height: calc(320px * var(--ui-scale));
+    max-height: calc(338px * var(--ui-scale));
   }
   /* Inside the card the list loses its own box; the card is the box. Zebra
      instead of rules between rows - barely there, just enough for the eye to
