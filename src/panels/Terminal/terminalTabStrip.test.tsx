@@ -49,12 +49,21 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   onAction: () => Promise.resolve(() => {}),
 }));
 
-vi.mock("./TerminalView", () => ({
-  default: (props: { id: string }) => {
-    bridge.mounted.push(props.id);
-    return <div data-testid="pty" data-id={props.id} />;
-  },
-}));
+vi.mock("./TerminalView", async () => {
+  const { createEffect } = await import("solid-js");
+  return {
+    default: (props: { id: string; active?: boolean }) => {
+      bridge.mounted.push(props.id);
+      let el!: HTMLDivElement;
+      // The real view focuses its term whenever it becomes the active tab;
+      // the stub keeps that contract so focus-follows-active is observable.
+      createEffect(() => {
+        if (props.active) el.focus();
+      });
+      return <div data-testid="pty" data-id={props.id} tabindex="-1" ref={el} />;
+    },
+  };
+});
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 
 const { default: Terminal } = await import("./Terminal");
@@ -139,6 +148,27 @@ describe("the terminal tab strip", () => {
 
     await waitFor(() => expect(tabs("two")).toHaveLength(0));
     expect(tabs("one")).toHaveLength(1);
+  });
+
+  it("hands the closed active slot to the right neighbor, then the left, and focuses it", async () => {
+    mount();
+    await openShell("one");
+    await openShell("two");
+    await openShell("three");
+    fireEvent.click(tab("two"));
+    await waitFor(() => expect(tab("two").getAttribute("aria-selected")).toBe("true"));
+
+    fireEvent.click(closeOf("two"));
+    await waitFor(() => expect(tabs("two")).toHaveLength(0));
+    // The right neighbor takes the slot, and with it the DOM focus, through
+    // the view's focus-on-active contract (mirrored by the stub above).
+    expect(tab("three").getAttribute("aria-selected")).toBe("true");
+    expect((document.activeElement as HTMLElement | null)?.dataset.id).toBe("three");
+
+    // No right neighbor left: the slot falls back to the left one.
+    fireEvent.click(closeOf("three"));
+    await waitFor(() => expect(tabs("three")).toHaveLength(0));
+    expect(tab("one").getAttribute("aria-selected")).toBe("true");
   });
 });
 

@@ -2,6 +2,7 @@
 // phase 4) can compose it without mounting the panel; sessionStore is the
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
 import { createSignal } from "solid-js";
+import { noteTabFocus } from "../../layout/layoutStore";
 
 // A `task` tab is a shell tab seeded with the task's command line, kept a kind
 // of its own for one reason: `tabPersist` restores shell tabs, and restoring a
@@ -79,6 +80,7 @@ const visibleId = (): string | null => {
   return tabs.length ? tabs[0].id : null;
 };
 function focusTab(ws: string, id: string) {
+  noteTabFocus(id);
   setActiveWorkspace(ws);
   setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
 }
