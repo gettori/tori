@@ -251,16 +251,6 @@ describe("the model list on a agent page", () => {
     expect(container.textContent).toContain("low · high");
   });
 
-  // Provenance, so the list cannot rot silently: who was asked, which build,
-  // and when.
-  it("says who was asked, which build, and when", async () => {
-    const { container } = await open(
-      mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]),
-      /Claude/,
-    );
-    expect(container.textContent).toContain("Asked Claude 2.1.231");
-  });
-
   /** Phase 5's preview: the levers with no control of Sway's own, read from the
    *  same probe rather than only appearing once a chat is open. The three with
    *  bespoke controls are not repeated here - the model list above is already
@@ -302,6 +292,20 @@ describe("the model list on a agent page", () => {
     expect(lists[1].children).toHaveLength(1);
   });
 
+  /** Padding rows that no test query matches ("snt", "xhigh", "zzz" all need
+   *  letters "filler-n" does not have), pushing a fixture past the
+   *  eight-row threshold where the search box exists at all. */
+  const fillers = Array.from({ length: 8 }, (_, i) => model(`filler-${i}`, `filler-${i}`));
+
+  // No search over a list that fits whole: eight rows is the card's height
+  // cap, so the box appears exactly when something is off screen to find.
+  it("offers no filter for a list of eight or fewer", async () => {
+    const r = mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]);
+    const { container, queryByLabelText } = await open(r, /Claude/);
+    expect(container.textContent).toContain("sonnet");
+    expect(queryByLabelText("Filter models")).toBeNull();
+  });
+
   // The filter is the shared fuzzy walk, run against only what the row shows
   // (name, id, effort - never resolvedModel), and the marks land on exactly
   // the characters that earned the match.
@@ -309,17 +313,17 @@ describe("the model list on a agent page", () => {
     const r = mount({}, [
       probed("claude", [
         model("sonnet", "claude-sonnet-5", { displayName: "Sonnet 5" }),
-        model("haiku", "claude-haiku-4-5", { displayName: "Haiku" }),
+        ...fillers,
       ]),
     ]);
     const { container, getByLabelText } = await open(r, /Claude/);
 
     fireEvent.input(getByLabelText("Filter models"), { target: { value: "snt" } });
 
-    await waitFor(() => expect(container.textContent).not.toContain("Haiku"));
+    await waitFor(() => expect(container.textContent).not.toContain("filler-0"));
     expect(container.textContent).toContain("Sonnet 5");
     // The counter says it is a filter, not a shorter answer.
-    expect(container.textContent).toContain("1 of 2");
+    expect(container.textContent).toContain("1 of 9");
     // Both the name and the id matched, so each carries the query's letters
     // as marks - s, n, t twice, in the display's own casing - and nothing
     // else is marked.
@@ -335,44 +339,44 @@ describe("the model list on a agent page", () => {
           supportsEffort: true,
           supportedEffortLevels: ["low", "xhigh"],
         }),
-        model("haiku", "claude-haiku-4-5", { displayName: "Haiku" }),
+        ...fillers,
       ]),
     ]);
     const { container, getByLabelText } = await open(r, /Claude/);
 
     fireEvent.input(getByLabelText("Filter models"), { target: { value: "xhigh" } });
 
-    await waitFor(() => expect(container.textContent).not.toContain("Haiku"));
+    await waitFor(() => expect(container.textContent).not.toContain("filler-0"));
     expect(container.textContent).toContain("Sonnet");
     const marked = [...container.querySelectorAll("mark")].map((el) => el.textContent).join("");
     expect(marked).toBe("xhigh");
   });
 
   it("says so when the filter matches nothing", async () => {
-    const r = mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]);
+    const r = mount({}, [
+      probed("claude", [model("sonnet", "claude-sonnet-5"), ...fillers]),
+    ]);
     const { container, getByLabelText } = await open(r, /Claude/);
 
     fireEvent.input(getByLabelText("Filter models"), { target: { value: "zzz" } });
 
     await waitFor(() => expect(container.textContent).toContain('No model matches "zzz"'));
-    expect(container.textContent).toContain("0 of 1");
+    expect(container.textContent).toContain("0 of 9");
   });
 
-  // The answer describes the binary that answered it. A different one is
-  // installed now, so the list may have moved and the page says so rather than
-  // presenting a remembered answer as a current one.
-  it("flags an answer that describes a binary no longer installed", async () => {
-    const stale = probed("claude", [model("sonnet", "claude-sonnet-5")], { version: "2.0.0" });
+  // The page carries no footnotes under the list any more - not the probe
+  // date, not staleness, not the account it answered for. The rows are the
+  // answer; this pins the silence so the messages do not creep back.
+  it("puts nothing below the list, even for a stale or per-account answer", async () => {
+    const stale = probed("claude", [model("sonnet", "claude-sonnet-5")], {
+      version: "2.0.0",
+      account: { subscriptionType: "Claude Max", apiProvider: "firstParty", organization: "" },
+    });
     const { container } = await open(mount({}, [stale]), /Claude/);
-    expect(container.textContent).toContain("the list may have moved");
-  });
-
-  it("does not flag one that describes the binary that is installed", async () => {
-    const { container } = await open(
-      mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]),
-      /Claude/,
-    );
+    expect(container.textContent).toContain("sonnet");
     expect(container.textContent).not.toContain("the list may have moved");
+    expect(container.textContent).not.toContain("Claude Max");
+    expect(container.textContent).not.toContain("Asked Claude");
   });
 
   it("explains an unasked agent rather than showing an empty list", async () => {
@@ -397,26 +401,6 @@ describe("the model list on a agent page", () => {
   it("blames Sway rather than the binary for a transport it cannot probe", async () => {
     const { container } = await open(mount({}, [failed("claude", "unsupported")]), /Claude/);
     expect(container.textContent).toContain("Sway cannot ask this agent yet");
-  });
-
-  // A catalogue can differ per account (OpenCode's depends on which providers
-  // are authenticated), and the probe runs as the default profile. A page
-  // showing one list has to say whose answer it is.
-  it("says whose answer it is when the agent named an account", async () => {
-    const withAccount = probed("claude", [model("sonnet", "claude-sonnet-5")], {
-      account: { subscriptionType: "Claude Max", apiProvider: "firstParty", organization: "" },
-    });
-    const { container } = await open(mount({}, [withAccount]), /Claude/);
-    expect(container.textContent).toContain("Claude Max");
-    expect(container.textContent).toContain("default profile");
-  });
-
-  it("makes no such claim when the agent named none", async () => {
-    const { container } = await open(
-      mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5")])]),
-      /Claude/,
-    );
-    expect(container.textContent).not.toContain("default profile");
   });
 
   // Ask again re-probes. Reading the cache would leave the button doing nothing
