@@ -45,6 +45,18 @@ import {
   type LiveTab,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
+import { findPane, leaves, resizePane, resolvePinPane, resolveTogglePane, setPaneHidden } from "./layout/paneLayout";
+import {
+  ensureEnvelope,
+  envelopeFor,
+  persistEnvelopes,
+  resetPaneLayoutModel,
+  seedTwoPane,
+  setFocusedPane,
+  tabFocusStamp,
+  updateLayout,
+} from "./layout/layoutStore";
+import { unifiedTabs } from "./tabs/unifiedTabs";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
 import Omnibox from "./components/Omnibox/Omnibox";
@@ -165,11 +177,37 @@ function App() {
 
   const initial = loadLayout();
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
-  const [editor, setEditor] = createSignal(initial.editor);
   const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
-  const [showTerminal, setShowTerminal] = createSignal(initial.showTerminal);
-  const [showEditor, setShowEditor] = createSignal(initial.showEditor);
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
+  resetPaneLayoutModel();
+
+  // ---- Pane layout (plan phase 5) ----------------------------------------
+  // The work-split renders from the per-workspace pane envelope. The legacy
+  // sway.layout.v1 fields seed each workspace's envelope once, and keep being
+  // written below so an older build still reads a sane layout back.
+  const wsKey = () => selected()?.folderPath ?? "";
+  const seedEnvelope = () => {
+    const both = initial.showTerminal && initial.showEditor;
+    const w =
+      bodyW() - px(WORKSPACE_PAD) - px(showSidebar() ? GUTTER : WORKSPACE_PAD) - (both ? px(GUTTER) : 0);
+    return seedTwoPane({
+      rightShare: w > 0 ? (initial.editor / w) * 100 : 50,
+      showLeft: initial.showTerminal,
+      showRight: initial.showEditor,
+    });
+  };
+  const env = () => envelopeFor(wsKey(), seedEnvelope);
+  createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
+  const paneLeaves = () => leaves(env().layout);
+  // Phase 5 draws the two-pane default: the leftmost leaf is the terminal
+  // pane, the rightmost the editor pane, matching the pin rule.
+  const leftPane = () => paneLeaves()[0];
+  const rightPane = () => (paneLeaves().length > 1 ? paneLeaves()[paneLeaves().length - 1] : undefined);
+  const showTerminal = () => !leftPane().hidden;
+  const showEditor = () => {
+    const r = rightPane();
+    return !!r && !r.hidden;
+  };
 
   // ---- Pane bounds -------------------------------------------------------
   // A floor in JS, in the same scaled px its CSS counterparts use.
@@ -208,18 +246,28 @@ function App() {
   const editorMax = () =>
     Math.max(px(EDITOR_MIN), shared() - (showSidebar() ? sidebar() : 0) - px(CHAT_MIN));
 
-  // The drag clamp only bites while a pointer is down, so a width restored from a
-  // wider display, a window since made narrower, or a UI scale since turned up
-  // would apply verbatim and could push a pane (and the divider that resizes it)
-  // out of reach. Re-clamp whenever any of those change. Deliberately not
-  // persisted: the stored width is what the user chose on the display they chose
-  // it on, so unplugging a monitor narrows the pane for now and plugging it back
-  // in restores the width.
+  // The editor pane's width, from its stored share of the split. Clamped at
+  // render rather than in the model: the stored share is what the user chose,
+  // so a narrower window (or a UI scale turned up) squeezes the pane for now
+  // and widening it restores the choice.
+  const editor = () => {
+    const r = rightPane();
+    if (!r) return 0;
+    return Math.min(Math.max((r.size / 100) * shared(), px(EDITOR_MIN)), editorMax());
+  };
+  function setEditorWidth(v: number) {
+    const r = rightPane();
+    if (!r || shared() <= 0) return;
+    updateLayout(wsKey(), (t) => resizePane(t, r.id, (v / shared()) * 100), { persist: false });
+  }
+
+  // The sidebar keeps its px width and the drag-time clamp only bites while a
+  // pointer is down, so a width restored from a wider display could push the
+  // divider out of reach. Re-clamp when the bounds change; deliberately not
+  // persisted, for the editor's reason above.
   createEffect(() => {
     const s = Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
     if (s !== sidebar()) setSidebar(s);
-    const e = Math.min(Math.max(editor(), px(EDITOR_MIN)), editorMax());
-    if (e !== editor()) setEditor(e);
   });
 
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
@@ -302,25 +350,47 @@ function App() {
     setShowSidebar((v) => !v);
     persistLayout();
   }
-  // Terminal and editor are guarded: hiding the last visible one would leave the
-  // work-card empty, so it is refused (the topbar button is also disabled then).
-  function toggleTerminal() {
-    if (showTerminal() && !showEditor()) return;
-    if (showTerminal()) blurIfInside(".pane.terminal");
-    setShowTerminal((v) => !v);
+  // Cmd+Alt+J/E act on the pane holding the most recently focused tab of
+  // their kind, falling back to the kind's pin pane when no such tab is open
+  // (plan phase 5). Hiding the last visible pane is refused by the layout
+  // layer: an empty work-card has no button left to undo itself with (the
+  // topbar toggle is also disabled then).
+  const TERMINAL_KINDS = ["shell", "agent", "command", "chat", "task"];
+  function togglePaneFor(kinds: string[], pinKind: string) {
+    const ws = wsKey();
+    ensureEnvelope(ws, seedEnvelope);
+    const root = env().layout;
+    const matches = unifiedTabs()
+      .filter((t) => t.workspace === ws && kinds.includes(t.kind))
+      .map((t) => ({ paneId: resolvePinPane(root, t.kind)?.id ?? "", stamp: tabFocusStamp(t.id) }));
+    const target = resolveTogglePane(root, matches, pinKind);
+    const pane = target ? findPane(root, target) : null;
+    if (!pane) return;
+    if (pane.hidden) {
+      updateLayout(ws, (r) => setPaneHidden(r, pane.id, false));
+    } else {
+      const next = setPaneHidden(root, pane.id, true);
+      if (!next) return;
+      blurIfInside(leftPane().id === pane.id ? ".pane.terminal" : ".pane.editor");
+      updateLayout(ws, () => next);
+    }
     persistLayout();
   }
+  function toggleTerminal() {
+    togglePaneFor(TERMINAL_KINDS, "chat");
+  }
   function toggleEditor() {
-    if (showEditor() && !showTerminal()) return;
-    if (showEditor()) blurIfInside(".pane.editor");
-    setShowEditor((v) => !v);
-    persistLayout();
+    togglePaneFor(["file"], "file");
+  }
+  function revealEditorPane() {
+    const r = rightPane();
+    if (r) updateLayout(wsKey(), (t) => setPaneHidden(t, r.id, false));
   }
   // Showing the file tree implies showing the editor it is nested in.
   function toggleFiletree() {
     const next = !showFiletree();
     setShowFiletree(next);
-    if (next) setShowEditor(true);
+    if (next) revealEditorPane();
     persistLayout();
   }
   // User-initiated commands aimed at content inside the right panel (palette
@@ -328,7 +398,7 @@ function App() {
   // Passive triggers (the diagnostics auto-switch to Problems) never call this,
   // so they update the mode without popping a collapsed panel open.
   function revealRightPanel() {
-    setShowEditor(true);
+    revealEditorPane();
     setShowFiletree(true);
     persistLayout();
   }
@@ -379,8 +449,22 @@ function App() {
   let offPrefsToggle: (() => void) | undefined;
   let offOpenSettings: (() => void) | undefined;
   let offRunLastTask: (() => void) | undefined;
+  let offFocusIn: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
+    // Which pane holds focus, for the per-workspace envelope. focusin bubbles
+    // where focus does not, so one window listener sees every surface.
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (!el) return;
+      if (el.closest(".pane.terminal")) setFocusedPane(wsKey(), leftPane().id);
+      else if (el.closest(".pane.editor")) {
+        const r = rightPane();
+        if (r) setFocusedPane(wsKey(), r.id);
+      }
+    };
+    window.addEventListener("focusin", onFocusIn);
+    offFocusIn = () => window.removeEventListener("focusin", onFocusIn);
     offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => setOmnibox({ prefix }));
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => setShortcutsOpen((open) => !open));
     offZoomIn = onEvent(ZOOM_IN, zoomIn);
@@ -515,6 +599,7 @@ function App() {
     offPrefsToggle?.();
     offOpenSettings?.();
     offRunLastTask?.();
+    offFocusIn?.();
     document.body.classList.remove("dragging");
   });
 
@@ -578,8 +663,11 @@ function App() {
                 value={editor()}
                 min={px(EDITOR_MIN)}
                 max={editorMax()}
-                onInput={setEditor}
-                onCommit={persistLayout}
+                onInput={setEditorWidth}
+                onCommit={() => {
+                  persistEnvelopes();
+                  persistLayout();
+                }}
               />
             </Show>
             <section
