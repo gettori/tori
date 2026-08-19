@@ -12,7 +12,7 @@ import {
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import { Bot, Braces, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
+import { Bot, Braces, Columns2, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
@@ -25,6 +25,7 @@ import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
+import PanesPane from "./panes/PanesPane/PanesPane";
 import LanguagesPane from "./panes/LanguagesPane/LanguagesPane";
 import { overlayRoot } from "./settingsStore";
 import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
@@ -50,6 +51,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   braces: Braces,
   palette: Palette,
   plug: Plug,
+  "columns-2": Columns2,
 };
 
 const PANES: Record<SettingTab, Component<PaneProps>> = {
@@ -58,6 +60,7 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   editor: EditorPane,
   languages: LanguagesPane,
   appearance: AppearancePane,
+  panes: PanesPane,
   integrations: IntegrationsPane,
 };
 
