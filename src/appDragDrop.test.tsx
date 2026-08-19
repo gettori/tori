@@ -80,6 +80,7 @@ import { setPaneLock } from "./layout/tabPlacement";
 
 const REPO = "/space/proj/main";
 const { default: App } = await import("./App");
+const { storeTwoPanes } = await import("./test/panes");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -186,6 +187,8 @@ function dragTo(from: HTMLElement, onto: HTMLElement, x: number, y: number) {
 
 beforeEach(() => {
   localStorage.clear();
+  // This suite is about two panes; the shell seeds one (plan phase 12).
+  storeTwoPanes(REPO);
   localStorage.setItem(
     "sway.selection.v1",
     JSON.stringify({

@@ -78,6 +78,7 @@ import { saveSettings } from "./panels/Settings/settingsStore";
 
 const REPO = "/space/proj/main";
 const { default: App } = await import("./App");
+const { storeTwoPanes } = await import("./test/panes");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -117,6 +118,8 @@ const click = (items: ReturnType<typeof paneMenuItems>, label: string) => {
 
 beforeEach(async () => {
   localStorage.clear();
+  // This suite is about two panes; the shell seeds one (plan phase 12).
+  storeTwoPanes(REPO);
   localStorage.setItem(
     "sway.selection.v1",
     JSON.stringify({

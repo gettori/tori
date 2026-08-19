@@ -826,10 +826,8 @@ export const PaneMoveCycle: Story = {
 
     const roles: PaneRoles = {
       ws: P8_WS,
-      chromePaneId: null,
       pinKindOf: () => "shell",
       roleOf: () => "split",
-      chrome: () => null,
       px: (n) => n,
       onResize: () => {},
       onCommit: () => {},
@@ -965,10 +963,8 @@ export const TabDragCycle: Story = {
 
     const roles: PaneRoles = {
       ws: P10_WS,
-      chromePaneId: null,
       pinKindOf: () => "shell",
       roleOf: () => "split",
-      chrome: () => null,
       px: (n) => n,
       onResize: () => {},
       onCommit: () => {},
