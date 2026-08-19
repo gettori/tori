@@ -45,6 +45,7 @@ import {
   type SetRightMode,
 } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
@@ -1982,6 +1983,9 @@ export default function LeftSidebar(props: {
   }
 
   async function selectUnit(g: Space, p: Project, u: BranchUnit): Promise<boolean> {
+    // The span opens at the click, not at the flip: `ensureBranch` can run a
+    // checkout first, and a switch the user waited through is a switch.
+    traceSwitchStart("worktree", u.folderPath);
     if (!(await ensureBranch(p, u, u.branch))) return false;
     props.onSelect({
       spaceName: g.name,
@@ -2014,6 +2018,7 @@ export default function LeftSidebar(props: {
   }
 
   async function selectSession(g: Space, p: Project, u: BranchUnit, s: SessionMeta) {
+    traceSwitchStart("worktree", u.folderPath);
     // A session wants its recorded branch checked out, when it recorded one.
     const target = s.branch || u.branch;
     if (!(await ensureBranch(p, u, target))) return;

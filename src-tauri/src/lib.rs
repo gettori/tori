@@ -38,6 +38,7 @@ mod sessions;
 mod settings;
 mod workspace_settings;
 mod themes;
+mod trace;
 mod update;
 mod worktree;
 
@@ -90,6 +91,10 @@ pub fn run() {
     if chat::approval::is_helper() {
         std::process::exit(chat::approval::run_helper());
     }
+
+    // Before the builder: the invoke wrapper and `trace_config` both read the
+    // flag, and the frontend asks for it on its first frame.
+    trace::init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -177,7 +182,7 @@ pub fn run() {
         .manage(TouchedIndex::default())
         .manage(SettingsWatch::default())
         .manage(themes::ThemesWatch::default())
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(trace::traced(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,
@@ -416,7 +421,10 @@ pub fn run() {
             settings::take_theme_import_notice,
             themes::list_user_themes,
             themes::themes_watch_start,
-        ])
+            trace::trace_config,
+            trace::trace_write,
+            trace::trace_quit,
+        ]))
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         // `build` + a run callback rather than `run`, so app exit can be
