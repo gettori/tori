@@ -11,8 +11,9 @@ import {
 } from "../../../utils/events";
 import FileIcon from "../../../seti/FileIcon";
 import Chevron from "../../../components/Chevron/Chevron";
-import Button from "../../../components/Button/Button";
+import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
+import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
 import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "lucide-solid";
 import ContextMenu from "../../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../../components/Menu/rows";
@@ -641,7 +642,7 @@ export default function FileTree(props: {
   };
 
   return (
-    <div
+    <OverlayScroll
       class={styles.fileTree}
       classList={{ [styles.dropInto]: dropRoot() }}
       // The background is the way back out of a folder: without it, a file
@@ -664,48 +665,59 @@ export default function FileTree(props: {
         if (from) void moveInto(c, from, c.root);
       }}
     >
-      <Show when={ctx()}>
-        {(c) => (
-          <div class={styles.treeActions}>
-            <Button variant="ghost" size="xs" onClick={() => newFileIn(c(), c().root, reloadRoots)}>
-              <Icon icon={FilePlus} />
-              New File
-            </Button>
-            <Button variant="ghost" size="xs" onClick={() => newFolderIn(c(), c().root, reloadRoots)}>
-              <Icon icon={FolderPlus} />
-              New Folder
-            </Button>
-            <Show when={revealable()}>
-              <Button variant="ghost" size="xs" tooltip="Reveal the open file" onClick={reveal}>
-                <Icon icon={Crosshair} />
-                Reveal
-              </Button>
-            </Show>
-            <Button
-              variant="ghost"
-              size="xs"
-              tooltip="Collapse all folders"
-              aria-label="Collapse all folders"
-              onClick={() => setCollapseNonce((n) => n + 1)}
-            >
-              <Icon icon={ChevronsDownUp} />
-            </Button>
-          </div>
-        )}
-      </Show>
-      <Show when={props.root}>
-        <input
-          class={styles.filterBox}
-          type="text"
-          placeholder="Filter files"
-          aria-label="Filter files"
-          value={filter()}
-          onFocus={ensureFileList}
-          onInput={(e) => {
-            setFilter(e.currentTarget.value);
-            void ensureFileList();
-          }}
-        />
+      {/* One toolbar: the filter takes the width, the actions are the icons at
+          its right. Every action is icon-only, so the row stays on one line at
+          the panel's narrowest and the tooltip carries the name. */}
+      <Show when={props.root || ctx()}>
+        <div class={styles.treeActions}>
+          <Show when={props.root}>
+            <input
+              class={styles.filterBox}
+              type="text"
+              placeholder="Filter files"
+              aria-label="Filter files"
+              value={filter()}
+              onFocus={ensureFileList}
+              onInput={(e) => {
+                setFilter(e.currentTarget.value);
+                void ensureFileList();
+              }}
+            />
+          </Show>
+          <Show when={ctx()}>
+            {(c) => (
+              <>
+                <IconButton
+                  size="md"
+                  icon={<Icon icon={FilePlus} />}
+                  tooltip="New File"
+                  onClick={() => newFileIn(c(), c().root, reloadRoots)}
+                />
+                <IconButton
+                  size="md"
+                  icon={<Icon icon={FolderPlus} />}
+                  tooltip="New Folder"
+                  onClick={() => newFolderIn(c(), c().root, reloadRoots)}
+                />
+                <Show when={revealable()}>
+                  <IconButton
+                    size="md"
+                    icon={<Icon icon={Crosshair} />}
+                    tooltip="Reveal the open file"
+                    aria-label="Reveal"
+                    onClick={reveal}
+                  />
+                </Show>
+                <IconButton
+                  size="md"
+                  icon={<Icon icon={ChevronsDownUp} />}
+                  tooltip="Collapse all folders"
+                  onClick={() => setCollapseNonce((n) => n + 1)}
+                />
+              </>
+            )}
+          </Show>
+        </div>
       </Show>
       <Show when={!filter().trim()} fallback={<FilterResults root={props.root!} matches={matches()} />}>
       <Show
@@ -729,6 +741,6 @@ export default function FileTree(props: {
         </For>
       </Show>
       </Show>
-    </div>
+    </OverlayScroll>
   );
 }

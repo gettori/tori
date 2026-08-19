@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { createSignal, onCleanup, onMount, splitProps, type JSX } from "solid-js";
 import styles from "./OverlayScroll.module.css";
 
 /**
@@ -19,8 +19,15 @@ import styles from "./OverlayScroll.module.css";
  *
  * Sizing: the wrapper is a column flex, so a `max-height` (or flex sizing) on
  * `props.class` constrains the viewport and the content scrolls inside it.
+ *
+ * Anything else passed lands on that wrapper, so a caller can hang its own
+ * handlers (a drop target, say) off the whole box rather than off the content,
+ * which would only cover the rows and not the space under them.
  */
-export default function OverlayScroll(props: { class?: string; children: JSX.Element }) {
+export default function OverlayScroll(
+  props: { class?: string; children: JSX.Element } & JSX.HTMLAttributes<HTMLDivElement>,
+) {
+  const [local, rest] = splitProps(props, ["class", "children"]);
   let viewport!: HTMLDivElement;
   let content!: HTMLDivElement;
   let track!: HTMLDivElement;
@@ -93,12 +100,13 @@ export default function OverlayScroll(props: { class?: string; children: JSX.Ele
 
   return (
     <div
-      class={`${styles.frame} ${props.class ?? ""}`}
+      {...rest}
+      class={`${styles.frame} ${local.class ?? ""}`}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
       <div class={styles.viewport} ref={viewport} onScroll={onScroll}>
-        <div ref={content}>{props.children}</div>
+        <div ref={content}>{local.children}</div>
       </div>
       {/* Purely presentational: the real scroller above is what assistive
           tech and the keyboard already drive. */}

@@ -121,7 +121,7 @@ describe("the editable project tree", () => {
     await screen.findByText("README.md");
     const before = readsOf(ROOT).length;
 
-    fireEvent.click(screen.getByText("New File"));
+    fireEvent.click(screen.getByLabelText("New File"));
 
     await waitFor(() => expect(sent("fs_write_file")).toHaveLength(1));
     expect(askText).toHaveBeenCalled();
@@ -139,7 +139,7 @@ describe("the editable project tree", () => {
     mountProject({ askText: answering("README.md") });
     await screen.findByText("README.md");
 
-    fireEvent.click(screen.getByText("New File"));
+    fireEvent.click(screen.getByLabelText("New File"));
 
     await waitFor(() => expect(sent("file_exists")).toHaveLength(1));
     // The whole point: an existing name opens the file rather than truncating it.
@@ -237,7 +237,7 @@ describe("the editable project tree", () => {
     render(() => <FileTree root={ROOT} />);
     await screen.findByText("README.md");
 
-    expect(screen.queryByText("New File")).toBeNull();
+    expect(screen.queryByLabelText("New File")).toBeNull();
     fireEvent.contextMenu(screen.getByText("README.md"));
 
     await waitFor(() => expect(screen.queryByText("Rename")).toBeNull());
@@ -523,7 +523,7 @@ describe("selecting and revealing", () => {
     // `src` is collapsed, so the target's row does not exist yet.
     expect(screen.queryByText("main.ts")).toBeNull();
 
-    fireEvent.click(screen.getByText("Reveal"));
+    fireEvent.click(screen.getByLabelText("Reveal"));
 
     // The intervening directory opens itself, which is what makes the row exist.
     await screen.findByText("main.ts");
@@ -538,7 +538,7 @@ describe("selecting and revealing", () => {
     mountProject({ activePath: `${ROOT}/src/main.ts` });
     await screen.findByText("README.md");
 
-    fireEvent.click(screen.getByText("Reveal"));
+    fireEvent.click(screen.getByLabelText("Reveal"));
     await screen.findByText("main.ts");
 
     fireEvent.click(screen.getByLabelText("Collapse all folders"));
@@ -555,7 +555,7 @@ describe("selecting and revealing", () => {
     mountProject({ activePath: "sway://commit-log" });
     await screen.findByText("README.md");
 
-    expect(screen.queryByText("Reveal")).toBeNull();
+    expect(screen.queryByLabelText("Reveal")).toBeNull();
   });
 });
 
@@ -728,7 +728,8 @@ describe("the row context menu", () => {
     expect(within(m).getByText("Rename")).toBeTruthy();
     expect(within(m).getByText("Delete")).toBeTruthy();
     // Creating happens *inside* a container, so a file offers neither. The
-    // toolbar has its own "New File", which is why this is scoped to the menu.
+    // The toolbar names its icon button "New File" too, but as an aria-label;
+    // this is scoped to the menu either way.
     expect(within(m).queryByText("New File")).toBeNull();
     expect(within(m).queryByText("New Folder")).toBeNull();
   });
