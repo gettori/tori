@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import styles from "./ImageView.module.css";
 
 // SVG is deliberately absent: it is XML text, so it opens as an editable source
@@ -16,8 +17,8 @@ export function isImagePath(path: string): boolean {
  *  the same mechanism MarkdownPreview uses for embedded relative images. */
 export default function ImageView(props: { path: string }) {
   return (
-    <div class={styles.imageView}>
+    <OverlayScroll class={styles.imageView} contentClass={styles.imageContent}>
       <img class={styles.image} src={convertFileSrc(props.path)} alt={props.path} />
-    </div>
+    </OverlayScroll>
   );
 }
