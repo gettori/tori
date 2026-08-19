@@ -446,6 +446,25 @@ html {
   color: var(--fg-default);
 }
 
+/* Every pane's tab strip. The layout used to come from the active kind's own
+   class (`.termTabs`, `.editorTabs`), which left the strip with no box at all
+   whenever that kind had not registered - and a strip with no `display: flex`
+   stacks its tabs down the pane. One strip draws every kind since phase 13, so
+   the row is the strip's own; a kind's class still rides along for its extras. */
+.unified-strip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  -webkit-user-select: none;
+  user-select: none;
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  overflow: hidden;
+}
+
 /* Overflow tab bar (shared by the terminal + editor tab bars via OverflowTabBar) */
 
 /* Inert measuring row: a hidden clone of every tab, used only to read true

@@ -158,4 +158,5 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-/* The mode tabs (Files / Changes / …) are icon-only <Tab> pills now. */
+/* The mode tabs (Files / Changes / ...) are icon-only <Tab> pills; the selected
+   one's top rail is the shared Tab's, see Tab.module.css. */

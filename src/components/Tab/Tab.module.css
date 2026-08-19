@@ -6,6 +6,7 @@
    pill. The wrapper is always rendered, so a strip with no close button gets
    the same box as one with. */
 .pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   border-radius: var(--sway-radius-md);
@@ -21,6 +22,23 @@
 
 .pill:has([data-selected]) {
   background: var(--tab-active-bg);
+}
+
+/* The selected tab's rail, along the top edge: the settings rail's marker turned
+   ninety degrees. Drawn on the pill, so a tab with a close carries it over the
+   close too and the mark reads as belonging to the whole tab. Inset by a fixed
+   amount rather than by a fraction of the width, so the gap either side is the
+   same on a narrow icon tab as on a wide one - a percentage reads as nearly full
+   width on the narrow one and as a stub on the wide one. */
+.pill:has([data-selected])::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(10px * var(--ui-scale));
+  right: calc(10px * var(--ui-scale));
+  height: var(--sway-border-thick);
+  border-radius: var(--sway-radius-sm);
+  background: var(--brand-bar);
 }
 
 .tab {
