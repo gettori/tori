@@ -6,6 +6,7 @@ import { For } from "solid-js";
 import OverflowTabBar from "../components/OverflowTabBar";
 import { kindEntry, renderRegistryTab, trailingClusters, type StripPlace } from "../tabs/registry";
 import { idOf, type UnifiedTab } from "./unifiedTabs";
+import { traceSwitchStart } from "../utils/perfTrace";
 
 export default function UnifiedTabStrip(props: {
   items: UnifiedTab[];
@@ -35,6 +36,9 @@ export default function UnifiedTabStrip(props: {
       onActivate={(id) => {
         const u = props.items.find((t) => t.id === id);
         if (!u) return;
+        // The one fan-out point for every kind's activation, so it is also the
+        // one place a tab switch can be timed from.
+        traceSwitchStart("tab", id);
         props.onActivate?.(u);
         kindEntry(u.kind).activate(u);
       }}

@@ -4,6 +4,8 @@ import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
 import { stageHost } from "./tabs/stageHost";
+import { tracePaint } from "./utils/perfTrace";
+import { registerRecipeHost } from "./utils/perfRecipe";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
@@ -383,6 +385,16 @@ function App() {
       // ignore
     }
   });
+
+  // The workspace flip has been applied; the paint endpoint is the frame after
+  // the one that draws it. The span itself was opened by the sidebar click, so
+  // whatever ran before this (a checkout, say) is inside the measurement.
+  createEffect(on(() => selected()?.folderPath ?? null, () => tracePaint(), { defer: true }));
+
+  // The selection signal is the one thing the scripted perf recipe cannot reach
+  // on its own. Registered unconditionally and consulted only by a run launched
+  // with SWAY_RECIPE, which is the only thing that loads the driver at all.
+  onMount(() => registerRecipeHost({ select: (s) => setSelected(s as Selection) }));
 
   function persistLayout() {
     try {
