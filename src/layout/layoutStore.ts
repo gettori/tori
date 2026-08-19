@@ -22,10 +22,16 @@ import {
 } from "./paneLayout";
 
 export type LayoutEnvelope = {
-  version: 1;
+  version: 2;
   layout: PaneNode;
   focusedPaneId: string;
 };
+
+/** The envelope this build writes. Version 1 was the two-pane default every
+ *  workspace was seeded with; rejecting it on load is the migration (phase 12),
+ *  since a rejected envelope re-seeds as the single pane and every tab in it
+ *  falls back to the pin rule, which now resolves to that one pane. */
+const ENVELOPE_VERSION = 2;
 
 const LS_PANES = "sway.panes.v1";
 
@@ -50,7 +56,7 @@ function validNode(n: unknown, depth: number, ids: Set<string>): boolean {
 export function sanitizeEnvelope(raw: unknown): LayoutEnvelope | null {
   if (!raw || typeof raw !== "object") return null;
   const v = raw as Record<string, unknown>;
-  if (v.version !== 1) return null;
+  if (v.version !== ENVELOPE_VERSION) return null;
   if (!validNode(v.layout, 1, new Set())) return null;
   const layout = v.layout as PaneNode;
   if (leaves(layout).length > MAX_PANES) return null;
@@ -60,7 +66,7 @@ export function sanitizeEnvelope(raw: unknown): LayoutEnvelope | null {
     typeof v.focusedPaneId === "string" && leaves(layout).some((l) => l.id === v.focusedPaneId)
       ? (v.focusedPaneId as string)
       : vis[0].id;
-  return { version: 1, layout, focusedPaneId: focused };
+  return { version: ENVELOPE_VERSION, layout, focusedPaneId: focused };
 }
 
 function loadAll(): Record<string, LayoutEnvelope> {
@@ -188,9 +194,23 @@ export function tabFocusStamp(tabId: string): number {
 
 // ---- Seeding ---------------------------------------------------------------
 
-/** Today's two-pane default. `rightShare` is the editor's percent of the
- *  split; visibility carries over from the legacy layout, with its same
- *  both-hidden repair. */
+/**
+ * What a workspace starts as (phase 12): one pane, whose strip holds every kind
+ * together. A split is something the user asks for and keeps, so nothing here
+ * makes one on their behalf.
+ */
+export function seedOnePane(): LayoutEnvelope {
+  return {
+    version: ENVELOPE_VERSION,
+    layout: { type: "pane", id: "main", size: 100, hidden: false },
+    focusedPaneId: "main",
+  };
+}
+
+/** The two-pane layout Sway shipped with, kept for the suites and stories that
+ *  are about two panes. `rightShare` is the editor's percent of the split;
+ *  visibility carries over from the legacy layout, with its both-hidden
+ *  repair. */
 export function seedTwoPane(opts: {
   rightShare: number;
   showLeft: boolean;
@@ -207,7 +227,7 @@ export function seedTwoPane(opts: {
     hidden,
   });
   return {
-    version: 1,
+    version: ENVELOPE_VERSION,
     layout: {
       type: "split",
       id: "root",

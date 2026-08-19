@@ -73,7 +73,7 @@ import {
   layoutRoot,
   persistEnvelopes,
   resetPaneLayoutModel,
-  seedTwoPane,
+  seedOnePane,
   setFocusedPane,
   tabFocusStamp,
   updateLayout,
@@ -85,12 +85,14 @@ import {
   mergePaneInto,
   moveTabToPane,
   paneOfTab,
+  setPaneActive,
   pinCurrentPlacements,
   pinRulesFor,
   resetTabPlacement,
   type TabRef,
 } from "./layout/tabPlacement";
 import { paneActiveId, paneTabs, reorderPane } from "./tabs/paneTabs";
+import { maybeKindEntry } from "./tabs/registry";
 import { unifiedTabs } from "./tabs/unifiedTabs";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
@@ -251,20 +253,12 @@ function App() {
   );
 
   // ---- Pane layout (plan phase 5) ----------------------------------------
-  // The work-split renders from the per-workspace pane envelope. The legacy
-  // sway.layout.v1 fields seed each workspace's envelope once, and keep being
-  // written below so an older build still reads a sane layout back.
+  // The work-split renders from the per-workspace pane envelope. A workspace
+  // starts as one pane holding every kind (phase 12); the legacy
+  // sway.layout.v1 fields still describe the sidebar and the chrome, and are
+  // still written below so an older build reads a sane layout back.
   const wsKey = () => selected()?.folderPath ?? "";
-  const seedEnvelope = () => {
-    const both = initial.showTerminal && initial.showEditor;
-    const w =
-      bodyW() - px(WORKSPACE_PAD) - px(showSidebar() ? GUTTER : WORKSPACE_PAD) - (both ? px(GUTTER) : 0);
-    return seedTwoPane({
-      rightShare: w > 0 ? (initial.editor / w) * 100 : 50,
-      showLeft: initial.showTerminal,
-      showRight: initial.showEditor,
-    });
-  };
+  const seedEnvelope = () => seedOnePane();
   const env = () => envelopeFor(wsKey(), seedEnvelope);
   createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
   const paneLeaves = () => leaves(env().layout);
@@ -401,7 +395,11 @@ function App() {
         LS_LAYOUT,
         JSON.stringify({
           sidebar: sidebar(),
-          editor: editor(),
+          // One pane has no editor width to describe, and the bound above wants
+          // that zero. What gets written keeps the last real one instead: an
+          // older build reads this key as a pane's width, and would take the
+          // zero for a pane squeezed shut (phase 12).
+          editor: editor() || initial.editor,
           showSidebar: showSidebar(),
           showTerminal: showTerminal(),
           showEditor: showEditor(),
@@ -445,6 +443,13 @@ function App() {
     const target = resolveTogglePane(root, matches, pinKind);
     const pane = target ? findPane(root, target) : null;
     if (!pane) return;
+    // With one pane there is nothing to hide (the layout layer refuses it, and
+    // an empty work card has no button left to undo itself with), so the
+    // toggle means the only other thing it could: show me that kind.
+    if (!pane.hidden && visibleLeaves(root).length === 1) {
+      showKindIn(ws, pane.id, kinds);
+      return;
+    }
     if (pane.hidden) {
       updateLayout(ws, (r) => setPaneHidden(r, pane.id, false));
     } else {
@@ -455,6 +460,17 @@ function App() {
     }
     persistLayout();
   }
+  /** Bring a kind's most recently focused tab to the front of a pane. The
+   *  kind's own `activate` is what makes its store claim the tab, which is what
+   *  the pane reads back as active. */
+  function showKindIn(ws: string, paneId: string, kinds: string[]) {
+    const here = paneTabs(ws, paneId).filter((t) => kinds.includes(t.kind));
+    if (here.length === 0) return;
+    const pick = here.reduce((a, b) => (tabFocusStamp(b.id) > tabFocusStamp(a.id) ? b : a));
+    setPaneActive(ws, paneId, pick.id);
+    maybeKindEntry(pick.kind)?.activate(pick);
+  }
+
   function toggleTerminal() {
     togglePaneFor(TERMINAL_KINDS, "chat");
   }
@@ -591,10 +607,8 @@ function App() {
   // the divider writes land.
   const paneRoles = (): PaneRoles => ({
     ws: wsKey(),
-    chromePaneId: filePane(),
     pinKindOf: (id) => (id === filePane() ? "file" : "shell"),
     roleOf: (id) => (id === filePane() ? "editor" : id === termPane() ? "terminal" : "split"),
-    chrome: () => <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />,
     px,
     onResize: resizePaneTo,
     onCommit: () => {
@@ -903,6 +917,10 @@ function App() {
           />
           <div class="work-split">
             <PaneTree node={env().layout} roles={paneRoles()} />
+            {/* Workspace chrome, not a pane's (phase 12): the file tree and the
+                right panel belong to the workspace the way the sidebar does, so
+                they stay put through every split, move and close. */}
+            <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />
           </div>
         </div>
       </div>

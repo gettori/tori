@@ -3,6 +3,10 @@
 // Resizer between each pair, a leaf is a PaneView. The shell hands it the
 // per-pane roles; nothing about terminals or files is decided here.
 //
+// The editor chrome is not in here (phase 12). It is workspace chrome, like the
+// sidebar: it sits beside the whole tree, so splitting a pane or moving the
+// last file tab out of one never carries the file tree along with it.
+//
 // Sizing repeats what the two-pane shell did before it: the first visible child
 // of a split is the filler (it absorbs the slack and any rounding), every other
 // child gets an explicit px size derived from its stored share of the measured
@@ -19,13 +23,10 @@ export const PANE_MIN = 180;
 const GUTTER = 8;
 
 export type PaneRoles = {
-  /** Which pane the editor chrome sits beside, if any is on screen. */
-  chromePaneId: string | null;
   /** What an empty pane's trailing cluster belongs to. */
   pinKindOf: (paneId: string) => UnifiedTabKind;
   /** The pane's shell class: "terminal", "editor" or "split". */
   roleOf: (paneId: string) => string;
-  chrome: () => JSX.Element;
   /** The workspace whose tabs these panes hold. */
   ws: string;
   /** Design px -> on-screen px, at the current UI scale. */
@@ -158,17 +159,7 @@ function Leaf(props: {
       data-pane-id={props.node.id}
       style={props.style}
     >
-      <Show
-        when={props.roles.chromePaneId === props.node.id}
-        fallback={<PaneView paneId={props.node.id} ws={props.roles.ws} pinKind={pin()} />}
-      >
-        {/* The editor chrome rides beside its pane's column (phase 7's
-            .editor-split row), so the file pane's box is what it always was. */}
-        <div class="editor-split">
-          <PaneView paneId={props.node.id} ws={props.roles.ws} pinKind={pin()} />
-          {props.roles.chrome()}
-        </div>
-      </Show>
+      <PaneView paneId={props.node.id} ws={props.roles.ws} pinKind={pin()} />
     </div>
   );
 }
