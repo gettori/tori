@@ -21,6 +21,10 @@
  * strip's gesture guard asks whether a click is in flight on a `[role="tab"]`,
  * not whether it was trusted, so a synthetic click takes the same path a mouse
  * does.
+ *
+ * Keep the window frontmost for the whole run. `paint` and `settled` are
+ * double-rAF measurements and an occluded window gets no frames, so every
+ * switch times out and the report reads `paint: null` on rows that are fine.
  */
 
 import { invoke } from "@tauri-apps/api/core";
