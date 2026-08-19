@@ -614,7 +614,7 @@ fn take_notice_with(settings: &Settings, state: &mut crate::onboarding::State) -
 
 // --- thin wrappers over the real path ---
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_settings() -> Settings {
     load_from(&settings_path())
 }
@@ -643,8 +643,12 @@ fn pick_override(agent: &Agent, adapter_id: &str) -> Option<String> {
         .or_else(|| agent.path.as_deref().and_then(non_empty))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, String> {
+    // Load-modify-save on the settings store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     Ok(settings)
@@ -671,7 +675,7 @@ pub fn take_theme_import_notice() -> Option<String> {
 
 /// Watch the settings file's directory; emit `settings://changed` on any write
 /// to settings.json (hand edits or set_settings). Idempotent.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn settings_watch_start(app: AppHandle, state: State<SettingsWatch>) -> Result<(), String> {
     let path = settings_path();
     let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();

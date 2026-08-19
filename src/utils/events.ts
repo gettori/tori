@@ -303,7 +303,13 @@ export const SETTINGS_CHANGED = "sway:settings-changed";
 // `e.payload.paths`. An `as` cast on this payload defeats the whole point: that
 // is how a consumer came to read a `path` field the watcher has never emitted,
 // with no compile error to catch it.
-export type FsChanged = { paths: string[] };
+export type FsChanged = {
+  /** The watched root the burst came from. Optional only for old fixtures:
+   *  the backend always sends it, and a listener showing another worktree
+   *  drops the event instead of refreshing against the wrong tree. */
+  root?: string;
+  paths: string[];
+};
 
 // Payload-carrying event: open a file in the editor at an optional position.
 // (General file-change fan-out is not here — that rides the backend

@@ -71,44 +71,26 @@ type Reveal = { path: string; nonce: number };
  *  folders and acts on the deepest of them. */
 type Shown = { entry: Entry; label: string };
 
-async function readDir(path: string): Promise<Entry[]> {
+/** What `fs_read_dir_compact` returns: the deepest element of a collapsed
+ *  single-child chain, plus the label naming the whole chain. */
+type CompactRow = Entry & { label: string };
+
+/** One listing, one invoke. The chain walk that used to run here (a read of
+ *  every child dir to see whether it was a single-child run, each read paying
+ *  its own check-ignore spawn) moved into the backend, which tests every
+ *  candidate in one batched check-ignore. `HIDDEN` rides along so the chain
+ *  rule keeps counting only what the tree draws. */
+async function listChildren(path: string, compactFolders: boolean): Promise<Shown[]> {
   try {
-    const list = await invoke<Entry[]>("fs_read_dir", { path });
-    return list.filter((e) => !HIDDEN.has(e.name));
+    const rows = await invoke<CompactRow[]>("fs_read_dir_compact", {
+      path,
+      compact: compactFolders,
+      hidden: [...HIDDEN],
+    });
+    return rows.map(({ label, ...entry }) => ({ entry, label }));
   } catch {
     return [];
   }
-}
-
-// A chain longer than this is not a package layout, it is something generated,
-// and walking it would turn one expansion into a walk of the whole subtree.
-const MAX_COMPACT_DEPTH = 8;
-
-/** Collapse a run of single-child folders into one row: `src` holding only
- *  `utils` holding only `helpers` draws as `src/utils/helpers` and acts on the
- *  deepest one, which is where the files actually are.
- *
- *  Gitignored folders are left alone. Compacting means reading each child
- *  directory to see whether the chain continues, and `node_modules` is both the
- *  most expensive place to do that and the least useful. */
-async function compactChain(dir: Entry): Promise<Shown> {
-  let cur = dir;
-  let label = dir.name;
-  for (let i = 0; i < MAX_COMPACT_DEPTH; i++) {
-    const kids = await readDir(cur.path);
-    if (kids.length !== 1 || !kids[0].is_dir || kids[0].ignored) break;
-    cur = kids[0];
-    label = `${label}/${cur.name}`;
-  }
-  return { entry: cur, label };
-}
-
-async function listChildren(path: string, compactFolders: boolean): Promise<Shown[]> {
-  const kids = await readDir(path);
-  if (!compactFolders) return kids.map((entry) => ({ entry, label: entry.name }));
-  return Promise.all(
-    kids.map((k) => (k.is_dir && !k.ignored ? compactChain(k) : { entry: k, label: k.name })),
-  );
 }
 
 // Listings already read this run, so a workspace switch paints the tree from

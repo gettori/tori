@@ -46,7 +46,7 @@ pub struct UpdateInfo {
 /// Deliberately not a general `open_url(url)` command: the destination is a
 /// constant here, so the frontend cannot be talked into opening something
 /// arbitrary. Matches `launch.rs`'s "spawn the real tool" convention.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_releases_page() -> Result<(), String> {
     std::process::Command::new("open")
         .arg(RELEASES_PAGE)

@@ -94,7 +94,7 @@ fn write_map(root: &str, map: &AttemptMap) -> Result<(), String> {
 /// join against a recorded path is not defeated by `/private` on macOS or a
 /// trailing slash.
 fn live_worktree_paths(root: &str) -> Option<Vec<PathBuf>> {
-    let worktrees = crate::worktree::list_worktrees(root.to_string()).ok()?;
+    let worktrees = crate::worktree::list_worktrees_body(root.to_string()).ok()?;
     Some(worktrees.iter().map(|w| canon(&w.path)).collect())
 }
 
@@ -208,7 +208,11 @@ pub struct CreatedAttempt {
 /// attempt lives inside the project root instead. Removal does go through the
 /// shared path, which is where the dirty and live-use guards live.
 #[tauri::command]
-pub fn create_attempt(
+pub async fn create_attempt(app: AppHandle, root: String, group_id: String, goal: String, branch: String) -> Result<CreatedAttempt, String> {
+    crate::exec::git_write("create_attempt", root.clone(), move || create_attempt_body(app, root, group_id, goal, branch)).await
+}
+
+pub(crate) fn create_attempt_body(
     app: AppHandle,
     root: String,
     group_id: String,
@@ -297,7 +301,7 @@ fn ignore_attempts_dir(root: &str) {
 /// session records anchored at its path, its checkpoint refs and its per-turn
 /// attribution files. A leftover in any one of those is a session that shows up
 /// in the tree pointing at a directory that is gone.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn promote_attempt(
     app: AppHandle,
     index: tauri::State<'_, crate::sessions::SessionIndex>,
@@ -344,7 +348,11 @@ fn discard_attempt(
     session_ids: &[String],
     registry: Option<&crate::chat::ownership::Registry>,
 ) -> Result<(), String> {
-    let branch = crate::worktree::list_worktrees(root.to_string())
+    // Everything below writes to the shared repo (refs, the worktree list, a
+    // branch delete), so it all queues behind the repository write lock.
+    let lock = crate::exec::repo_lock(root);
+    let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let branch = crate::worktree::list_worktrees_body(root.to_string())
         .ok()
         .and_then(|wts| wts.into_iter().find(|w| canon(&w.path) == canon(path)).map(|w| w.branch))
         .filter(|b| !b.is_empty() && b != "(detached)");
@@ -352,7 +360,7 @@ fn discard_attempt(
     for id in session_ids {
         // Refs and the per-turn attribution directory both go; the refs live in
         // the shared repo, so leaving them would outlive the worktree entirely.
-        let _ = crate::checkpoint::checkpoint_prune(root.to_string(), id.clone());
+        let _ = crate::checkpoint::checkpoint_prune_body(root.to_string(), id.clone());
         if let Some(registry) = registry {
             registry.forget(id);
         }
@@ -385,7 +393,7 @@ fn discard_attempt(
 /// The attempts a project has, for the tree. Reconciled against git on every
 /// call, which is what makes task 2's guarantee hold on the surface that
 /// actually renders.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_project_attempts(root: String) -> Result<Vec<Attempt>, String> {
     Ok(list_attempts(&root))
 }
@@ -856,7 +864,7 @@ mod tests {
         git(root, &["worktree", "add", "-b", "try-1", &target.to_string_lossy()]);
         std::fs::write(target.join("attempt-only.txt"), "x\n").unwrap();
 
-        let files = crate::fs::list_project_files(root_str).expect("listing");
+        let files = crate::fs::list_project_files_body(root_str).expect("listing");
         assert!(files.iter().any(|f| f.contains("a.txt")), "the project's own files are still offered");
         assert!(
             !files.iter().any(|f| f.contains(ATTEMPTS_DIR) || f.contains("attempt-only")),

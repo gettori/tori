@@ -2095,6 +2095,7 @@ export default function CodeEditor(props: {
     // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
     // also resyncs the gutter for the active file.
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.projectRoot) return;
       for (const p of e.payload.paths) {
         // Every path, not only the open ones: the language workspace holds
         // snapshots of files the user never opened, and a snapshot that keeps

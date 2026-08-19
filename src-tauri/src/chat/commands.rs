@@ -391,7 +391,7 @@ pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u
     let Some(path) = crate::sessions::transcript_path(&session_id, &agent_id) else {
         return Ok(0);
     };
-    let tail = crate::sessions::session_prompt_tail(path, agent_id)?;
+    let tail = crate::sessions::session_prompt_tail(path, agent_id).await?;
     Ok(tail.count)
 }
 
@@ -406,7 +406,7 @@ pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u
 /// `None` when the session has no transcript on disk yet (a brand-new chat, or a
 /// SQLite-backed agent that keeps no per-session file), which the panel renders
 /// as no figures rather than as zeroes it cannot stand behind.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn chat_session_detail(
     touched: tauri::State<crate::sessions::TouchedIndex>,
     session_id: String,

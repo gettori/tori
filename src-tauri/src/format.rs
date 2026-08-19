@@ -236,7 +236,7 @@ impl FormatResult {
 /// the alternative is a save that either silently does nothing or writes half a
 /// file. The caller's fallback ladder reads off `formatter`: `None` means try
 /// the language server instead.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn format_document(path: String, text: String, project_path: String) -> FormatResult {
     let file = Path::new(&path);
     let root = Path::new(&project_path);

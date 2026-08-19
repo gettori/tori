@@ -78,7 +78,7 @@ pub fn status_for(session_id: &str) -> Option<TailState> {
 /// the frontend alongside `checkpoint::checkpoint_prune` at the same two call
 /// sites; a no-op for a non-claude session (a bare `remove_file` on an id
 /// that was never hook-tracked).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn hooks_status_prune(session_id: String) {
     let _ = std::fs::remove_file(status_path(&session_id));
 }
@@ -186,7 +186,7 @@ fn write_claude_settings_file() -> Result<PathBuf, String> {
 /// only, never editing user config): `["--settings", "<path>"]` for claude,
 /// empty for every other adapter (no verified injection mechanism yet, see
 /// `AgentAdapter::hooks`) or if the settings file can't be written.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_hook_launch_args(agent_id: String) -> Vec<String> {
     if !crate::agents::find(&agent_id).map(|a| a.hooks).unwrap_or(false) {
         return Vec::new();

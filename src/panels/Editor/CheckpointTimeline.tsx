@@ -1,7 +1,7 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type FsChanged, type ToastEvent } from "../../utils/events";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { liveSessionStatuses } from "../../utils/sessionActivity";
 import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
@@ -413,7 +413,8 @@ export default function CheckpointTimeline(props: {
   let unlistenFs: UnlistenFn | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", () => {
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.root) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         void loadEntries();
