@@ -16,6 +16,7 @@ import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/Spac
 import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import {
   on as onEvent,
   onWith,
@@ -2057,6 +2058,7 @@ export default function LeftSidebar(props: {
         class={`node ${styles.branchNode}`}
         classList={{
           [styles.attemptNode]: attempt != null,
+          // What the gilded rail above the selection keys off (CSS `:has`).
           [styles.railSel]: unitSelected(u),
         }}
       >
@@ -2433,7 +2435,7 @@ export default function LeftSidebar(props: {
         />
       </div>
 
-      <div class={styles.treeScroll}>
+      <OverlayScroll class={styles.treeScroll}>
         <For each={activeProjects()}>
           {(p) => {
             const g = activeSpace()!;
@@ -2557,7 +2559,7 @@ export default function LeftSidebar(props: {
             </Show>
           </div>
         </Show>
-      </div>
+      </OverlayScroll>
 
       <Show when={config()}>
         <div class={styles.spaceBar}>
