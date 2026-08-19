@@ -1125,6 +1125,50 @@ describe("project switch", () => {
   });
 });
 
+describe("warm roots", () => {
+  it("keeps a switched-away project's server, so switching back is a claim, not a start", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    await m.retainLspRoots("/proj/b");
+    await m.retainLspRoots("/proj/a");
+
+    // One start ever, and the plugin still attaches after the round trip.
+    expect(started.map((s) => s.projectPath)).toEqual(["/proj/a"]);
+    expect(stopped).toEqual([]);
+    expect(m.lspPluginFor("/proj/a/a.ts")).not.toEqual([]);
+  });
+
+  it("stops the project that falls off the warm end, and only that one", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    await m.ensureLspFor("/proj/b/a.ts", "/proj/b");
+    await m.ensureLspFor("/proj/c/a.ts", "/proj/c");
+    expect(stopped).toEqual([]);
+
+    // A fourth project evicts the oldest. Its server is stopped by handle and
+    // its files answer with nothing; the survivors still claim theirs.
+    await m.ensureLspFor("/proj/d/a.ts", "/proj/d");
+    expect(stopped).toEqual(["typescript"]);
+    expect(m.lspPluginFor("/proj/a/a.ts")).toEqual([]);
+    expect(m.lspPluginFor("/proj/b/a.ts")).not.toEqual([]);
+    expect(m.lspPluginFor("/proj/d/a.ts")).not.toEqual([]);
+  });
+
+  it("re-selecting keeps a project off the eviction end", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    await m.ensureLspFor("/proj/b/a.ts", "/proj/b");
+    await m.ensureLspFor("/proj/c/a.ts", "/proj/c");
+    // Coming back to `a` makes `b` the oldest, so the next new project
+    // evicts `b` and the flip-flopped pair both stay warm.
+    await m.retainLspRoots("/proj/a");
+    await m.ensureLspFor("/proj/d/a.ts", "/proj/d");
+
+    expect(m.lspPluginFor("/proj/a/a.ts")).not.toEqual([]);
+    expect(m.lspPluginFor("/proj/b/a.ts")).toEqual([]);
+  });
+});
+
 describe("a server that cannot start", () => {
   it("leaves the file editable with no plugin rather than throwing", async () => {
     const m = await freshModule();

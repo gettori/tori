@@ -63,7 +63,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 // buffers; this suite is about the tab model and the command handlers, and it
 // takes part in neither. (Its own command, EDITOR_SAVE, lands inside it.)
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { refreshStatus } = await import("../../utils/gitActions");
