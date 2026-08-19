@@ -147,6 +147,7 @@ import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
+import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
   refreshGit,
   startGitWatch,
@@ -1863,6 +1864,9 @@ export default function Editor(props: {
     // block the close first, then destroy the window ourselves if the user confirms
     // (destroy bypasses this handler, so there is no re-prompt loop).
     offClose = await getCurrentWindow().onCloseRequested(async (event) => {
+      // Before any branch: two of the three exits below are `destroy()`, which
+      // skips `beforeunload`, and the layout stores write on a debounce now.
+      flushDeferredWrites();
       const anyDirty = Object.values(dirty()).some(Boolean);
       // Hot exit rewrites the stash on *every* quit, not only when something is
       // unsaved. The file is the whole of this feature's memory, and a quit

@@ -31,12 +31,33 @@ export type PaneNode = PaneLeaf | PaneSplit;
 export const MAX_SPLIT_DEPTH = 2;
 export const MAX_PANES = 4;
 
-let nextSplitId = 1;
-const mintSplitId = () => `split-${nextSplitId++}`;
+/** A split id, minted from what this tree is *not* using, the way App mints a
+ *  pane id. A per-run counter gave two workspaces split the same way two id
+ *  sets, so the renderer rebuilt across a switch what it could have kept. */
+function mintSplitId(root: PaneNode): string {
+  const taken = new Set<string>();
+  const collect = (n: PaneNode) => {
+    if (n.type !== "split") return;
+    taken.add(n.id);
+    n.children.forEach(collect);
+  };
+  collect(root);
+  let n = 1;
+  while (taken.has(`split-${n}`)) n++;
+  return `split-${n}`;
+}
 
-/** Tests only: makes minted split ids deterministic per test. */
-export function resetPaneLayoutIds() {
-  nextSplitId = 1;
+/** `next`, with every node structurally identical to its counterpart in `prev`
+ *  replaced by the `prev` object. A tree is plain data, so two workspaces of one
+ *  shape can render from one set of nodes and the renderer keeps them mounted. */
+export function reuseNode(prev: PaneNode | undefined, next: PaneNode): PaneNode {
+  if (!prev || prev === next) return next;
+  if (prev.type !== next.type || prev.id !== next.id || prev.size !== next.size) return next;
+  if (next.type === "pane") return (prev as PaneLeaf).hidden === next.hidden ? prev : next;
+  const p = prev as PaneSplit;
+  if (p.dir !== next.dir || p.children.length !== next.children.length) return next;
+  const children = next.children.map((c, i) => reuseNode(p.children[i], c));
+  return children.every((c, i) => c === p.children[i]) ? p : { ...next, children };
 }
 
 export type MapResult = PaneNode | PaneNode[] | null;
@@ -61,7 +82,7 @@ export function mapNode(
   if (r.length === 0) return null;
   if (r.length === 1) return r[0];
   // A fragment at the root has no parent list to splice into; wrap it.
-  return { type: "split", id: mintSplitId(), dir: "row", size: 100, children: renorm(r) };
+  return { type: "split", id: mintSplitId(root), dir: "row", size: 100, children: renorm(r) };
 }
 
 function walk(node: PaneNode, id: string, fn: (n: PaneNode) => MapResult): MapResult {
@@ -190,7 +211,7 @@ export function splitPane(
   if (above >= MAX_SPLIT_DEPTH) return null;
   return mapNode(root, paneId, (t) => ({
     type: "split",
-    id: mintSplitId(),
+    id: mintSplitId(root),
     dir,
     size: t.size,
     children: order({ ...(t as PaneLeaf), size: 50 }, { ...newLeaf, size: 50 }),

@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   ensureEnvelope,
   envelopeFor,
+  flushEnvelopes,
   focusedPaneId,
   persistEnvelopes,
   resetPaneLayoutModel,
@@ -17,8 +18,10 @@ import { findPane, setPaneHidden } from "./paneLayout";
 
 const seed = () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true });
 
-/** What the store wrote, reread the way a relaunch would. */
+/** What the store wrote, reread the way a relaunch would: writes are deferred,
+ *  so a quit flushes them and the next launch loads what landed. */
 function relaunch() {
+  flushEnvelopes();
   resetPaneLayoutModel();
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   type PaneLeaf,
   type PaneNode,
@@ -10,10 +10,10 @@ import {
   mapNode,
   movePane,
   nextActiveAfterClose,
-  resetPaneLayoutIds,
   resizePane,
   resolvePinPane,
   resolveTogglePane,
+  reuseNode,
   setPaneHidden,
   splitPane,
   visibleLeaves,
@@ -42,8 +42,6 @@ const twoPane = (): PaneNode => ({
 });
 
 const sizes = (root: PaneNode) => leaves(root).map((l) => [l.id, Math.round(l.size)]);
-
-beforeEach(() => resetPaneLayoutIds());
 
 describe("splitPane", () => {
   it("splitting along the parent direction inserts a sibling, halving the target's share", () => {
@@ -314,5 +312,56 @@ describe("nextActiveAfterClose", () => {
     expect(nextActiveAfterClose(["a", "b", "c"], "c")).toBe("b");
     expect(nextActiveAfterClose(["a"], "a")).toBeNull();
     expect(nextActiveAfterClose(["a", "b"], "ghost")).toBeNull();
+  });
+});
+
+describe("split ids", () => {
+  // Two worktrees split the same way have to come out with the same ids: the
+  // renderer keys on them, so different ids make one tree look like another one
+  // entirely and the switch between them rebuilds what it could have kept.
+  it("are minted from what the tree is not using, not from a counter", () => {
+    const a = splitPane(twoPane(), "left", "column", leaf("pane-1"))!;
+    const b = splitPane(twoPane(), "left", "column", leaf("pane-1"))!;
+    expect(a).toEqual(b);
+    expect(((a as PaneSplit).children[0] as PaneSplit).id).toBe("split-1");
+  });
+
+  it("step past an id the tree already holds", () => {
+    const once = splitPane(twoPane(), "left", "column", leaf("pane-1"))!;
+    const twice = splitPane(once, "right", "column", leaf("pane-2"))!;
+    const ids = (n: PaneNode): string[] =>
+      n.type === "split" ? [n.id, ...n.children.flatMap(ids)] : [];
+    expect(ids(twice)).toEqual(["root", "split-1", "split-2"]);
+  });
+});
+
+describe("reuseNode", () => {
+  it("hands back the tree already on screen when the new one is the same shape", () => {
+    const prev = twoPane();
+    expect(reuseNode(prev, twoPane())).toBe(prev);
+  });
+
+  it("takes the new node wherever one differs", () => {
+    const prev = twoPane() as PaneSplit;
+    const hidden = setPaneHidden(twoPane(), "right", true)! as PaneSplit;
+    expect((reuseNode(prev, hidden) as PaneSplit).children[1]).toBe(hidden.children[1]);
+    const resized = resizePane(twoPane(), "left", 70)! as PaneSplit;
+    expect((reuseNode(prev, resized) as PaneSplit).children[0]).toBe(resized.children[0]);
+    // A different root is a different tree, however alike its children look.
+    const renamed = { ...twoPane(), id: "other" } as PaneNode;
+    expect(reuseNode(prev, renamed)).toBe(renamed);
+  });
+
+  it("keeps the subtrees that did not change", () => {
+    const prev = splitPane(twoPane(), "left", "column", leaf("pane-1"))!;
+    const next = setPaneHidden(splitPane(twoPane(), "left", "column", leaf("pane-1"))!, "right", true)!;
+    const merged = reuseNode(prev, next) as PaneSplit;
+    expect(merged).not.toBe(prev);
+    expect(merged.children[0]).toBe((prev as PaneSplit).children[0]);
+  });
+
+  it("has nothing to reuse on the first render", () => {
+    const next = twoPane();
+    expect(reuseNode(undefined, next)).toBe(next);
   });
 });
