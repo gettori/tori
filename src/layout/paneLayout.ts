@@ -259,14 +259,39 @@ export function resizePane(root: PaneNode, paneId: string, size: number): PaneNo
 
 // ---- Focus policy ----------------------------------------------------------
 
-/** Where a kind opens when nothing decides otherwise, resolved spatially at
- *  call time (the shape phase 11's rule resolver keeps): files pin to the
- *  rightmost pane, every terminal kind to the leftmost. Kinds are plain
- *  strings here so the layout layer never imports the tab layer. */
-export function resolvePinPane(root: PaneNode, kind: string): PaneLeaf | null {
+/**
+ * Where a kind opens when nothing decides otherwise (plan phase 11), resolved
+ * spatially at call time: a rule names an end of the tree, not a pane, so it
+ * still answers after a split, a close or a move. Kinds are plain strings here
+ * so the layout layer never imports the tab layer, and the rules are passed in
+ * so this stays pure.
+ *
+ * A pane locked to this kind outranks the side rule, and a pane locked to
+ * another kind is skipped. If every pane is locked away, the side's own end
+ * answers anyway: a lock is a routing preference here, and refusing to place a
+ * tab at all would leave it nowhere.
+ *
+ * Hidden panes count. That is what makes the terminal and editor toggles work:
+ * the pane a kind opens into is the one the toggle reveals, and dropping it
+ * from the search would open the tab somewhere else and leave the toggle
+ * pointing at an empty box.
+ */
+export function resolvePinPane(
+  root: PaneNode,
+  kind: string,
+  rules?: { side?: "leftmost" | "rightmost"; locks?: Record<string, string> },
+): PaneLeaf | null {
   const ls = leaves(root);
   if (ls.length === 0) return null;
-  return kind === "file" ? ls[ls.length - 1] : ls[0];
+  const locks = rules?.locks ?? {};
+  const ordered = (rules?.side ?? (kind === "file" ? "rightmost" : "leftmost")) === "rightmost"
+    ? [...ls].reverse()
+    : ls;
+  return (
+    ordered.find((l) => locks[l.id] === kind) ??
+    ordered.find((l) => !locks[l.id]) ??
+    ordered[0]
+  );
 }
 
 /** The pane a kind toggle acts on: the pane of the most recently focused

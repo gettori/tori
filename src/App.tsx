@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
+import { createSignal, createEffect, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
@@ -70,6 +70,7 @@ import {
   ensureEnvelope,
   envelopeFor,
   focusedPaneId,
+  layoutRoot,
   persistEnvelopes,
   resetPaneLayoutModel,
   seedTwoPane,
@@ -79,10 +80,13 @@ import {
 } from "./layout/layoutStore";
 import PaneTree, { type PaneRoles } from "./layout/PaneTree";
 import {
+  forgetPane,
   homePane,
   mergePaneInto,
   moveTabToPane,
   paneOfTab,
+  pinCurrentPlacements,
+  pinRulesFor,
   resetTabPlacement,
   type TabRef,
 } from "./layout/tabPlacement";
@@ -92,9 +96,11 @@ import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
 import Omnibox from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
+import { setPinSides } from "./layout/pinRules";
 import {
   chromeScale,
   initSettings,
+  settings,
   toggleEditorDefault,
   zoomIn,
   zoomOut,
@@ -212,6 +218,37 @@ function App() {
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   resetPaneLayoutModel();
   resetTabPlacement();
+  /** Every open tab, pinned to the pane it is in right now, in every workspace
+   *  that has a tree. */
+  function freezePlacements() {
+    const byWs = new Map<string, TabRef[]>();
+    for (const t of unifiedTabs()) {
+      const list = byWs.get(t.workspace) ?? [];
+      list.push({ id: t.id, kind: t.kind });
+      byWs.set(t.workspace, list);
+    }
+    for (const [ws, tabs] of byWs) {
+      const root = layoutRoot(ws);
+      if (root) pinCurrentPlacements(ws, root, tabs);
+    }
+  }
+
+  // The pin rules are the user's, but the layout layer never imports settings
+  // (it would be a cycle, and a pure resolver would stop being one). The shell
+  // pushes them in instead, and re-pushes when the file changes under it.
+  //
+  // A *change* freezes what is open first: a tab nobody moved resolves through
+  // the rule, so a new rule would otherwise carry the whole strip across the
+  // window rather than routing what opens next.
+  createEffect(
+    on(
+      () => ({ ...settings.panePins }),
+      (next, prev) => {
+        if (prev) freezePlacements();
+        setPinSides(next);
+      },
+    ),
+  );
 
   // ---- Pane layout (plan phase 5) ----------------------------------------
   // The work-split renders from the per-workspace pane envelope. The legacy
@@ -401,7 +438,10 @@ function App() {
     const root = env().layout;
     const matches = unifiedTabs()
       .filter((t) => t.workspace === ws && kinds.includes(t.kind))
-      .map((t) => ({ paneId: resolvePinPane(root, t.kind)?.id ?? "", stamp: tabFocusStamp(t.id) }));
+      .map((t) => ({
+        paneId: resolvePinPane(root, t.kind, pinRulesFor(ws, t.kind))?.id ?? "",
+        stamp: tabFocusStamp(t.id),
+      }));
     const target = resolveTogglePane(root, matches, pinKind);
     const pane = target ? findPane(root, target) : null;
     if (!pane) return;
@@ -542,6 +582,7 @@ function App() {
     }
     if (empty) {
       held.delete(`${ws}\u0000${empty}`);
+      forgetPane(ws, empty);
       updateLayout(ws, (r) => closePane(r, empty!));
     }
   });

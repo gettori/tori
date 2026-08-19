@@ -37,6 +37,21 @@
   outline-offset: -1px;
 }
 
+/* A drop this pane would refuse (a kind lock): shown while the drag is still in
+   the air, so the answer arrives before the tab is let go of. The drop is still
+   taken, and the shell replies with the sentence saying why. */
+.dropRefused {
+  /* No danger *surface* role exists, and the fill has to sit under the pane's
+     own content, so this is the danger outline over the neutral wash the
+     accepted zone uses for its fill. */
+  background: var(--neutral-subtle);
+  outline-color: var(--danger-fg);
+}
+
+.dropCaret.dropRefused {
+  background: var(--danger-fg);
+}
+
 .dropLeft {
   inset: 0 50% 0 0;
 }
