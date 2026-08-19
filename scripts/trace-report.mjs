@@ -45,15 +45,47 @@ const back = read("backend.jsonl");
 const backById = new Map();
 for (const r of back) if (r.t === "cmd" && r.id != null) backById.set(r.id, r);
 
+// Body spans (phase 2): a command moved off the IPC thread returns from the
+// handler at spawn time, so its `cmd` line measures dispatch and a separate
+// `body` line carries the real work. Bodies have no id (the id lives in the
+// payload the handler consumed), so each cmd greedily claims the first
+// unclaimed body of its name that starts at or after its arrival.
+const bodiesByName = new Map();
+for (const r of back) {
+  if (r.t !== "body") continue;
+  if (!bodiesByName.has(r.name)) bodiesByName.set(r.name, []);
+  bodiesByName.get(r.name).push(r);
+}
+for (const list of bodiesByName.values()) list.sort((a, b) => a.enter - b.enter);
+const bodyOf = new Map(); // cmd line -> body line
+{
+  const cmds = back.filter((r) => r.t === "cmd").sort((a, b) => a.enter - b.enter);
+  const cursors = new Map();
+  for (const c of cmds) {
+    const list = bodiesByName.get(c.name);
+    if (!list) continue;
+    let i = cursors.get(c.name) ?? 0;
+    while (i < list.length && list[i].enter < c.enter - 1) i++;
+    if (i < list.length) {
+      bodyOf.set(c, list[i]);
+      cursors.set(c.name, i + 1);
+    }
+  }
+}
+
 const jsById = new Map();
 for (const r of front) if (r.t === "invoke") jsById.set(r.id, r);
 
 const ms = (n) => (n == null ? "  n/a" : `${n.toFixed(1)}ms`.padStart(8));
 
-// Concurrency: a command overlaps another when its [enter, ret] intersects one
-// on a different thread. With every command sync on the IPC thread this is
-// always zero, which is the phase 2 "before" reading.
-const spans = back.filter((r) => r.t === "cmd").sort((a, b) => a.enter - b.enter);
+// Concurrency: real work overlaps when two spans intersect on different
+// threads. Work spans are body lines where a command has one (async bodies)
+// and the cmd line itself where it does not (still-sync commands). Before
+// phase 2 this was always zero.
+const spans = back
+  .filter((r) => r.t === "cmd")
+  .map((c) => bodyOf.get(c) ?? c)
+  .sort((a, b) => a.enter - b.enter);
 let overlaps = 0;
 for (let i = 0; i < spans.length; i++) {
   for (let j = i + 1; j < spans.length && spans[j].enter < spans[i].ret; j++) {
@@ -91,8 +123,9 @@ for (const s of switches) {
       const b = backById.get(iv.id);
       const js = jsById.get(iv.id);
       const wait = b && js ? b.enter - js.call : null;
-      const body = b ? b.ret - b.enter : null;
-      return { name: iv.name, at: iv.call, js: iv.dur, wait, body, thread: b?.thread ?? "?" };
+      const work = b ? (bodyOf.get(b) ?? b) : null;
+      const body = work ? work.ret - work.enter : null;
+      return { name: iv.name, at: iv.call, js: iv.dur, wait, body, thread: work?.thread ?? "?" };
     })
     .sort((a, b) => b.js - a.js);
 

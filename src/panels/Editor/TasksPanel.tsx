@@ -5,6 +5,7 @@ import { Play } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { debounce } from "../../utils/debounce";
+import type { FsChanged } from "../../utils/events";
 import { loadTasks, type Task, type TaskSource } from "../../utils/tasks";
 import { runTask } from "../../utils/runTask";
 import { loadTaskRuns, runsFor, type TaskRunStore } from "../../utils/taskRecents";
@@ -81,7 +82,10 @@ export default function TasksPanel(props: { root: string | null }) {
 
   let unlistenFs: UnlistenFn | undefined;
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", () => debouncedScan());
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.root) return;
+      debouncedScan();
+    });
   });
   onCleanup(() => unlistenFs?.());
 

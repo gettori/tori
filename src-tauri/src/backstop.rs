@@ -313,14 +313,18 @@ fn restore_from(repo: &str, target: &str, only: Option<&str>) -> Result<RestoreO
 /// to decide what an un-undoable rewrite is worth, and a `take` that quietly
 /// returned nothing would let it write with no way back.
 #[tauri::command]
-pub fn backstop_take(repo_path: String, label: String) -> Result<BackstopRecord, String> {
+pub async fn backstop_take(repo_path: String, label: String) -> Result<BackstopRecord, String> {
+    crate::exec::git_write("backstop_take", repo_path.clone(), move || backstop_take_body(repo_path, label)).await
+}
+
+pub(crate) fn backstop_take_body(repo_path: String, label: String) -> Result<BackstopRecord, String> {
     take(&repo_path, &label)
 }
 
 /// Whether this folder can be backed up at all, so a caller can refuse a
 /// multi-file rewrite *before* asking the user to confirm one, rather than
 /// discovering it from a failed `backstop_take` halfway through.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backstop_available(repo_path: String) -> bool {
     is_git_worktree(&repo_path)
 }
@@ -328,7 +332,7 @@ pub fn backstop_available(repo_path: String) -> bool {
 /// This worktree's backstops, newest last. Reads the sidecar, never the refs,
 /// which is what keeps another worktree's backstops out of the list even though
 /// the refs themselves are shared.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backstop_list(repo_path: String) -> Result<Vec<BackstopRecord>, String> {
     if !is_git_worktree(&repo_path) {
         return Ok(Vec::new());
@@ -346,7 +350,11 @@ pub fn backstop_list(repo_path: String) -> Result<Vec<BackstopRecord>, String> {
 /// everything, and unlike the single-file case there is no version of that the
 /// user could have meant.
 #[tauri::command]
-pub fn backstop_restore_tree(repo_path: String, ts: u64) -> Result<RestoreOutcome, String> {
+pub async fn backstop_restore_tree(repo_path: String, ts: u64) -> Result<RestoreOutcome, String> {
+    crate::exec::git_write("backstop_restore_tree", repo_path.clone(), move || backstop_restore_tree_body(repo_path, ts)).await
+}
+
+pub(crate) fn backstop_restore_tree_body(repo_path: String, ts: u64) -> Result<RestoreOutcome, String> {
     let rec = resolve(&repo_path, ts)?;
     if rec.head != head_now(&repo_path) {
         return Err(
@@ -363,7 +371,11 @@ pub fn backstop_restore_tree(repo_path: String, ts: u64) -> Result<RestoreOutcom
 /// wall: it refuses by default, and `force` goes ahead. That mirrors
 /// `checkpoint_revert_file`, where the same trade-off already lives.
 #[tauri::command]
-pub fn backstop_restore_file(
+pub async fn backstop_restore_file(repo_path: String, ts: u64, file: String, force: Option<bool>) -> Result<RestoreOutcome, String> {
+    crate::exec::git_write("backstop_restore_file", repo_path.clone(), move || backstop_restore_file_body(repo_path, ts, file, force)).await
+}
+
+pub(crate) fn backstop_restore_file_body(
     repo_path: String,
     ts: u64,
     file: String,
@@ -383,7 +395,11 @@ pub fn backstop_restore_file(
 /// accumulate the refs of every worktree it ever had. A ref is live when some
 /// worktree's sidecar still claims its id. Returns how many were removed.
 #[tauri::command]
-pub fn backstop_prune(repo_path: String) -> Result<usize, String> {
+pub async fn backstop_prune(repo_path: String) -> Result<usize, String> {
+    crate::exec::git_write("backstop_prune", repo_path.clone(), move || backstop_prune_body(repo_path)).await
+}
+
+pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
     if !is_git_worktree(&repo_path) {
         return Ok(0);
     }
@@ -525,7 +541,7 @@ mod tests {
             "A's backstop is invisible from B even though the ref is shared"
         );
         // Hand-forcing A's timestamp from B: refused, and the reason says why.
-        let err = backstop_restore_tree(b.clone(), rec.ts).unwrap_err();
+        let err = backstop_restore_tree_body(b.clone(), rec.ts).unwrap_err();
         assert!(err.contains("different worktree"), "unhelpful refusal: {err}");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -546,7 +562,7 @@ mod tests {
         // should take back off disk.
         std::fs::write(dir.join("later.txt"), "later\n").unwrap();
 
-        let out = backstop_restore_tree(repo.clone(), rec.ts).unwrap();
+        let out = backstop_restore_tree_body(repo.clone(), rec.ts).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.join("doomed.txt")).unwrap(), body);
         assert!(out.restored.contains(&"doomed.txt".to_string()));
@@ -567,7 +583,7 @@ mod tests {
         std::fs::write(dir.join("one.txt"), "clobbered\n").unwrap();
         std::fs::write(dir.join("two.txt"), "deliberate\n").unwrap();
 
-        let out = backstop_restore_file(repo.clone(), rec.ts, "one.txt".into(), None).unwrap();
+        let out = backstop_restore_file_body(repo.clone(), rec.ts, "one.txt".into(), None).unwrap();
 
         assert_eq!(out.restored, ["one.txt"]);
         assert_eq!(std::fs::read_to_string(dir.join("one.txt")).unwrap(), "original\n");
@@ -591,11 +607,11 @@ mod tests {
         git(&dir, &["commit", "-qm", "moved on"]);
         std::fs::write(dir.join("a.txt"), "two\n").unwrap();
 
-        let err = backstop_restore_tree(repo.clone(), rec.ts).unwrap_err();
+        let err = backstop_restore_tree_body(repo.clone(), rec.ts).unwrap_err();
         assert!(err.contains("branch has moved"), "unhelpful refusal: {err}");
         // One file at a time still works, with force, because the blast radius
         // is a single path the user named.
-        backstop_restore_file(repo.clone(), rec.ts, "a.txt".into(), Some(true)).unwrap();
+        backstop_restore_file_body(repo.clone(), rec.ts, "a.txt".into(), Some(true)).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -648,7 +664,7 @@ mod tests {
         git(&dir, &["worktree", "remove", "--force", wt.to_str().unwrap()]);
         assert_eq!(all(&main), 2, "the refs are shared, so removal alone leaves them behind");
 
-        assert_eq!(backstop_prune(main.clone()).unwrap(), 1);
+        assert_eq!(backstop_prune_body(main.clone()).unwrap(), 1);
         assert_eq!(all(&main), 1, "only the departed worktree's ref went");
         assert_eq!(backstop_list(main.clone()).unwrap().len(), 1, "main keeps its own");
 
@@ -663,7 +679,7 @@ mod tests {
         let repo = s(&dir);
         std::fs::write(dir.join("a.ts"), "const before = 1\n").unwrap();
 
-        let rec = backstop_take(repo.clone(), "Rename `before` in 3 files".into()).unwrap();
+        let rec = backstop_take_body(repo.clone(), "Rename `before` in 3 files".into()).unwrap();
 
         assert_eq!(rec.label, "Rename `before` in 3 files");
         // Listed, so the timeline can offer it, and the ref exists so the tree
@@ -677,7 +693,7 @@ mod tests {
         // And it actually restores: the whole point of taking one before a
         // mechanical rewrite.
         std::fs::write(dir.join("a.ts"), "const after = 1\n").unwrap();
-        backstop_restore_tree(repo.clone(), rec.ts).unwrap();
+        backstop_restore_tree_body(repo.clone(), rec.ts).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.ts")).unwrap(), "const before = 1\n");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -694,7 +710,7 @@ mod tests {
         let plain = s(&dir);
 
         assert!(!backstop_available(plain.clone()));
-        let err = backstop_take(plain.clone(), "whatever".into()).unwrap_err();
+        let err = backstop_take_body(plain.clone(), "whatever".into()).unwrap_err();
         assert!(err.contains("isn't a git repository"), "{err}");
 
         std::fs::remove_dir_all(&dir).ok();

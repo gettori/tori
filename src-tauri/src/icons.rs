@@ -804,7 +804,7 @@ pub fn prune_stored(old: Option<&str>, keep: Option<&str>) {
 /// filter that matches nothing is worse than none - `store_icon` rejects an
 /// unsupported pick with a message the user can act on. Mirrors `pick_folder`:
 /// a cancel is `Ok(None)`, not an error.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pick_icon_file() -> Result<Option<String>, String> {
     let out = Command::new("osascript")
         .args([

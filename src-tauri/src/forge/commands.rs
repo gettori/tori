@@ -101,18 +101,18 @@ pub enum PollReport {
     Expired,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_auth_state() -> AuthState {
     auth::state()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_is_configured() -> bool {
     device_flow::is_configured()
 }
 
 /// Starts a device flow, holding the secret half in Rust.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_device_start(
     state: tauri::State<'_, DeviceFlowState>,
 ) -> Result<DevicePrompt, ForgeErrorDto> {
@@ -123,7 +123,7 @@ pub fn github_device_start(
 
 /// One poll turn. The frontend owns the waiting, using the interval reported
 /// back, so a `slow_down` actually slows the caller down.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_device_poll(
     state: tauri::State<'_, DeviceFlowState>,
 ) -> Result<PollReport, ForgeErrorDto> {
@@ -168,7 +168,7 @@ pub fn github_device_cancel(state: tauri::State<'_, DeviceFlowState>) {
 }
 
 /// Signs out. The only thing in the app that deletes the credential.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_sign_out() -> Result<(), ForgeErrorDto> {
     auth::sign_out().map_err(Into::into)
 }
@@ -193,7 +193,7 @@ fn repo_ref(project_path: &str) -> Result<RepoRef, ForgeError> {
 ///
 /// `refresh` is the manual-refresh path. Nothing here is persisted: see
 /// [`super::prs`] for why the association is always a query.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_pr_for_branch(
     project_path: String,
     branch: String,
@@ -229,7 +229,7 @@ impl From<NewPr> for CreatePr {
 }
 
 /// Opens a pull request, then makes it immediately visible to the next lookup.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_create_pr(
     project_path: String,
     new_pr: NewPr,
@@ -247,7 +247,7 @@ pub fn github_create_pr(
 /// The push is blocking here rather than the usual fire-and-forget, because the
 /// create must not run until the head exists on the remote. See
 /// [`prs::push_then_create`].
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_push_and_create_pr(
     state: tauri::State<'_, crate::askpass::AskpassState>,
     project_path: String,
@@ -286,7 +286,7 @@ pub fn github_push_and_create_pr(
 /// itself when signed out, suspect, or switched off. This is what makes "no
 /// request" true even if a caller forgets, which matters most for the kill
 /// switch, whose whole job is to stop the traffic.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_unit_statuses(
     project_path: String,
     branches: Vec<String>,
@@ -321,7 +321,7 @@ pub fn github_unit_statuses(
 /// Checks and the review decision are **not** joined in here. The panel reads
 /// them from the same status store the sidebar chips do, which is what stops a
 /// row and its chip from being two answers to one question.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeErrorDto> {
     if !auth::may_call() {
         return Err(ForgeError::NotAuthenticated.into());
@@ -341,7 +341,7 @@ pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, Forge
 /// Phase 10's review threads anchor to the hunks GitHub computed. A locally
 /// recomputed diff would read identically and anchor differently, which puts
 /// comments on the wrong lines rather than failing outright.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_pr_files(
     project_path: String,
     number: u64,
@@ -361,7 +361,7 @@ pub fn github_pr_files(
 /// at all, only comments carrying an `in_reply_to_id`, and the resolve mutation
 /// takes a `PullRequestReviewThread` node id that no REST response ever
 /// produces. A thread read the REST way could be displayed and never resolved.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_review_threads(
     project_path: String,
     number: u64,
@@ -380,7 +380,7 @@ pub fn github_review_threads(
 /// The caller has already drawn the reply optimistically. What comes back is
 /// what corrects the three things it had to guess: the id, the author's login,
 /// and the timestamp.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_reply_to_thread(
     project_path: String,
     thread_id: String,
@@ -404,7 +404,7 @@ pub fn github_reply_to_thread(
 /// still taken, so the command refuses on a repo the forge cannot serve for the
 /// same reason every other one does, rather than being the single door that
 /// answers for a GitLab checkout.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_set_thread_resolved(
     project_path: String,
     thread_id: String,
@@ -434,7 +434,7 @@ pub fn github_set_thread_resolved(
 /// there would state the account has no avatar rather than that nobody asked.
 /// Returning the one field this command can always answer for keeps the cheap
 /// path and the fetched path telling the same kind of truth.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_viewer() -> Result<String, ForgeErrorDto> {
     if !auth::may_call() {
         return Err(ForgeError::NotAuthenticated.into());
@@ -457,7 +457,7 @@ pub fn github_viewer() -> Result<String, ForgeErrorDto> {
 /// first and the verdict second would leave a half-submitted review behind
 /// whenever the second call failed, with nothing telling the caller which
 /// comments had already landed.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_submit_review(
     project_path: String,
     number: u64,
@@ -507,7 +507,7 @@ where
 /// for a tick that runs forever, and this is somebody looking at one pull
 /// request. `Unknown` is a real answer (GitHub is still computing it) and means
 /// ask again, never "no".
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_mergeability(
     project_path: String,
     number: u64,
@@ -530,7 +530,7 @@ pub fn github_mergeability(
 ///
 /// Only on success. A refused merge changed nothing, and throwing the cache away
 /// would spend a fresh round of requests to re-learn what it already knew.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_merge(
     project_path: String,
     number: u64,
@@ -552,7 +552,7 @@ pub fn github_merge(
 /// The same repo-wide invalidation as a merge, for a narrower version of the same
 /// reason: the head moved, so the cached check rollup describes a commit that is
 /// no longer the tip.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_update_branch(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
     if !auth::may_call() {
         return Err(ForgeError::NotAuthenticated.into());

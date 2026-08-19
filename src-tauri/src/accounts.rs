@@ -586,7 +586,7 @@ fn status_of(
 /// The stored file read once, no probes: this renders on every Settings open,
 /// and the subprocess budget belongs to `agent_accounts`, which is only asked
 /// about one agent's page at a time.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_account_counts() -> BTreeMap<String, usize> {
     account_counts(&load())
 }

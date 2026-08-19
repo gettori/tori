@@ -69,21 +69,21 @@ fn verb_route(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_install_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter =
         agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(install_route(adapter))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_update_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter =
         agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(update_route(adapter))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_uninstall_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter =
         agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;

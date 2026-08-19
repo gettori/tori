@@ -915,6 +915,7 @@ export default function ReviewPanel(props: {
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.root) return;
       void refresh();
       // A `git stash` run in a terminal shows up as a working-tree burst like
       // any other, and the entry it created would otherwise stay invisible

@@ -1834,6 +1834,9 @@ export default function Editor(props: {
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
     offFollow = await listen<FsChanged>("fs://changed", (e) => {
+      // Another root's burst is not this workspace's news, even though the
+      // backend mutes background roots: a burst can land mid-switch.
+      if (e.payload.root && e.payload.root !== props.selected?.folderPath) return;
       const external = e.payload.paths.filter((p) => !isSelfWrite(p));
       // The fs fallback for the live indicator: only consulted when the
       // session's own parser named nothing, so an adapter Sway can read is

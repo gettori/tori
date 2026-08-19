@@ -105,7 +105,7 @@ fn read_stage(repo: &str, stage: u8, file: &str) -> Result<Vec<u8>, String> {
 }
 
 /// The three versions of a conflicted file.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_conflict_stages(project_path: String, file: String) -> Result<ConflictStages, String> {
     let mask = staged_at(&project_path, &file)?;
     if mask == 0 {
@@ -135,7 +135,7 @@ pub fn git_conflict_stages(project_path: String, file: String) -> Result<Conflic
 /// Read through `rev-parse --git-path`, never by joining `.git`: in this repo a
 /// worktree's git dir is `<main>/.bare/worktrees/<name>`, and `<worktree>/.git`
 /// is a file pointing at it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_conflict_op(project_path: String) -> Result<ConflictOp, String> {
     let git_path = |name: &str| -> Option<std::path::PathBuf> {
         let out = capture(&project_path, &["rev-parse", "--git-path", name]).ok()?;
@@ -181,7 +181,11 @@ pub fn git_conflict_op(project_path: String) -> Result<ConflictOp, String> {
 /// resolution over whatever is there now and stage it, which is the same class
 /// of mistake the discard fingerprints exist to prevent.
 #[tauri::command]
-pub fn git_conflict_resolve(
+pub async fn git_conflict_resolve(project_path: String, file: String, content: Option<String>) -> Result<(), String> {
+    crate::exec::git_write("git_conflict_resolve", project_path.clone(), move || git_conflict_resolve_body(project_path, file, content)).await
+}
+
+pub(crate) fn git_conflict_resolve_body(
     project_path: String,
     file: String,
     content: Option<String>,
@@ -425,7 +429,7 @@ mod tests {
         let p = dir.to_string_lossy().into_owned();
         assert!(!unmerged(&dir, "f.txt").is_empty(), "starts unmerged");
 
-        git_conflict_resolve(p, "f.txt".into(), Some("one\nRESOLVED\nthree\n".into())).unwrap();
+        git_conflict_resolve_body(p, "f.txt".into(), Some("one\nRESOLVED\nthree\n".into())).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(dir.join("f.txt")).unwrap(),
@@ -452,7 +456,7 @@ mod tests {
         git(&dir, &["add", "f.txt"]);
         std::fs::write(dir.join("f.txt"), "resolved by hand\n").unwrap();
 
-        let err = git_conflict_resolve(p, "f.txt".into(), Some("stale\n".into())).unwrap_err();
+        let err = git_conflict_resolve_body(p, "f.txt".into(), Some("stale\n".into())).unwrap_err();
 
         assert!(err.contains("no longer conflicted"), "unhelpful refusal: {err}");
         assert_eq!(
@@ -477,7 +481,7 @@ mod tests {
         git(&dir, &["merge", "feature"]);
         let p = dir.to_string_lossy().into_owned();
 
-        git_conflict_resolve(p, "f.txt".into(), None).unwrap();
+        git_conflict_resolve_body(p, "f.txt".into(), None).unwrap();
 
         assert!(!dir.join("f.txt").exists(), "the file is gone, not empty");
         assert!(unmerged(&dir, "f.txt").is_empty(), "and the conflict with it");
@@ -494,7 +498,7 @@ mod tests {
         let outside = dir.parent().unwrap().join("escaped.txt");
         std::fs::remove_file(&outside).ok();
 
-        let err = git_conflict_resolve(p, "../escaped.txt".into(), Some("owned\n".into()))
+        let err = git_conflict_resolve_body(p, "../escaped.txt".into(), Some("owned\n".into()))
             .unwrap_err();
 
         // Refused before the write, whether by the containment check or by the
