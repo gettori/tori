@@ -5,7 +5,11 @@
    a sibling of the button now (see Tab.tsx) and the two have to read as one
    pill. The wrapper is always rendered, so a strip with no close button gets
    the same box as one with. */
+/* The pill's horizontal breathing room, and the rail's inset with it. One value
+   for every shape, so an icon-only tab and a labelled one sit on the same
+   rhythm. */
 .pill {
+  --tab-pad: calc(8px * var(--ui-scale));
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -34,8 +38,8 @@
   content: "";
   position: absolute;
   top: 0;
-  left: calc(10px * var(--ui-scale));
-  right: calc(10px * var(--ui-scale));
+  left: var(--tab-pad);
+  right: var(--tab-pad);
   height: var(--sway-border-thick);
   border-radius: var(--sway-radius-sm);
   background: var(--brand-bar);
@@ -46,7 +50,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   height: var(--control-height);
-  padding: 0 calc(10px * var(--ui-scale));
+  padding: 0 var(--tab-pad);
   background: transparent;
   border: none;
   border-radius: var(--sway-radius-md);
