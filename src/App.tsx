@@ -57,7 +57,6 @@ import {
   findPane,
   leaves,
   neighborPane,
-  pinnedPaneIds,
   resizePane,
   resolvePinPane,
   resolveTogglePane,
@@ -580,21 +579,22 @@ function App() {
     persistLayout();
   }
 
-  // A pane that has held a tab and is now empty collapses into its neighbor;
-  // the two pin panes never do (they are where a new tab lands), and a pane
-  // that has never held one is a fresh split waiting for its first.
+  // A pane that has held a tab and is now empty collapses into its neighbor.
+  // A pane that has never held one is a fresh split waiting for its first, and
+  // the last pane standing stays whatever it holds: the pin rule resolves
+  // spatially at call time, so whatever is left is where the next tab lands.
   // Keyed by workspace too: pane ids repeat across workspaces, and a fresh
   // split named after one that held tabs elsewhere would collapse on sight.
   const held = new Set<string>();
   createEffect(() => {
     const ws = wsKey();
     const root = env().layout;
-    const pinned = new Set(pinnedPaneIds(root));
+    const solo = leaves(root).length < 2;
     let empty: string | null = null;
     for (const leaf of leaves(root)) {
       const key = `${ws}\u0000${leaf.id}`;
       if (paneTabs(ws, leaf.id).length > 0) held.add(key);
-      else if (held.has(key) && !pinned.has(leaf.id)) empty = leaf.id;
+      else if (held.has(key) && !solo) empty = leaf.id;
     }
     if (empty) {
       held.delete(`${ws}\u0000${empty}`);
@@ -864,11 +864,7 @@ function App() {
           ref={railEl}
           style={{ width: `${showSidebar() ? sidebar() : railFallback()}px` }}
         >
-          <WindowControls
-            showSidebar={showSidebar()}
-            showTerminal={showTerminal()}
-            showEditor={showEditor()}
-          />
+          <WindowControls showSidebar={showSidebar()} />
         </div>
         <Toolbar selected={selected()} />
         <UpdatePill suppressed={welcome()} />

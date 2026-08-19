@@ -1,18 +1,15 @@
 // One pane's tab strip (plan phase 6): a single OverflowTabBar over a
 // heterogeneous UnifiedTab list, every per-kind decision resolved through the
-// registry. The two-pane default feeds it kind-filtered lists, so it renders
-// exactly what the panels' own bars did; a mixed list needs no other code path.
-import { createMemo } from "solid-js";
+// registry. A pane holds whatever kinds were put in it, so the list is mixed by
+// default and the trailing controls are every kind's at once (phase 13).
+import { For } from "solid-js";
 import OverflowTabBar from "../components/OverflowTabBar";
-import { kindEntry, maybeKindEntry, renderRegistryTab, type StripPlace } from "../tabs/registry";
-import { idOf, type UnifiedTab, type UnifiedTabKind } from "./unifiedTabs";
+import { kindEntry, renderRegistryTab, trailingClusters, type StripPlace } from "../tabs/registry";
+import { idOf, type UnifiedTab } from "./unifiedTabs";
 
 export default function UnifiedTabStrip(props: {
   items: UnifiedTab[];
   activeId: string | null;
-  /** The pane's pin kind: whose trailing cluster shows while the strip is
-   *  empty or the active id names no tab of this pane. */
-  pinKind: UnifiedTabKind;
   onReorder: (next: UnifiedTab[]) => void;
   /** Runs before the kind's own activate, for the pane to remember its pick. */
   onActivate?: (t: UnifiedTab) => void;
@@ -22,15 +19,10 @@ export default function UnifiedTabStrip(props: {
   ref?: (el: HTMLElement) => void;
   class?: string;
 }) {
-  const activeTab = () => props.items.find((t) => t.id === props.activeId);
-  // The trailing cluster follows the active tab's kind. Memoized on the
-  // descriptor's trailing function itself: the five terminal kinds register
-  // the same cluster, so switching between them keeps its DOM (open menus,
-  // refs), while a genuine kind change swaps the whole cluster.
-  // `maybe`: an empty pane's pin kind can name a panel that has not registered
-  // yet (or never will, in App suites that stub the panels); items imply
-  // registration, the pin kind alone does not.
-  const trailingOf = createMemo(() => maybeKindEntry((activeTab() ?? { kind: props.pinKind }).kind)?.trailing);
+  // Every registered cluster, not the active tab's (phase 13): what a pane
+  // offers should not depend on which of its tabs is in front. Keyed by the
+  // cluster function, so a kind switch inside one strip keeps its DOM (open
+  // menus, refs) instead of rebuilding it.
   return (
     <OverflowTabBar
       ref={props.ref}
@@ -47,7 +39,7 @@ export default function UnifiedTabStrip(props: {
       onReorder={props.onReorder}
       renderTab={(t, ghost) => renderRegistryTab(t, ghost, props.place)}
       renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
-      trailing={trailingOf()?.()}
+      trailing={<For each={trailingClusters()}>{(cluster) => cluster()}</For>}
     />
   );
 }

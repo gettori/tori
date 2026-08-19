@@ -130,13 +130,6 @@ export function neighborPane(root: PaneNode, paneId: string): string | null {
   return ls[i + 1]?.id ?? ls[i - 1]?.id ?? null;
 }
 
-/** Panes a kind can open into, so nothing lands in a pane that is about to
- *  auto-collapse. The pin rule's two ends today (see resolvePinPane). */
-export const pinnedPaneIds = (root: PaneNode): string[] => {
-  const ls = leaves(root);
-  return ls.length === 0 ? [] : [ls[0].id, ls[ls.length - 1].id];
-};
-
 /** How many splits sit above this pane (0 for a root leaf). */
 function splitsAbove(root: PaneNode, id: string, depth = 0): number | null {
   if (root.type === "pane") return root.id === id ? depth : null;
