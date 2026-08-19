@@ -110,6 +110,44 @@ async function listChildren(path: string, compactFolders: boolean): Promise<Show
   );
 }
 
+// Listings already read this run, so a workspace switch paints the tree from
+// what it showed last time and the fresh read corrects it when it lands.
+// Module-level on purpose: the tree remounts on a switch, and a cache that
+// remounted with it would never have a hit. Mutations go through the same
+// reload paths, so the cache is refreshed by exactly what invalidates it.
+const listingCache = new Map<string, Shown[]>();
+
+/** Empty the cache, so a suite's mounts cannot see each other's filesystems.
+ *  The app never calls it: staleness there is corrected by the fresh read. */
+export function clearListingCache(): void {
+  listingCache.clear();
+}
+
+const sameListing = (a: Shown[], b: Shown[]) =>
+  a.length === b.length &&
+  a.every(
+    (x, i) =>
+      x.entry.path === b[i].entry.path &&
+      x.label === b[i].label &&
+      x.entry.is_dir === b[i].entry.is_dir &&
+      x.entry.ignored === b[i].entry.ignored,
+  );
+
+/** `listChildren` through the cache: `apply` runs at once when a cached listing
+ *  exists, and again with the fresh read only if it differs. */
+async function listChildrenCached(
+  path: string,
+  compactFolders: boolean,
+  apply: (kids: Shown[]) => void,
+): Promise<void> {
+  const k = `${compactFolders ? "c" : "p"}:${path}`;
+  const hit = listingCache.get(k);
+  if (hit) apply(hit);
+  const fresh = await listChildren(path, compactFolders);
+  listingCache.set(k, fresh);
+  if (!hit || !sameListing(hit, fresh)) apply(fresh);
+}
+
 // A single path segment: no separators, no `.`/`..`. fs_mkdir/rename/delete are
 // containment-scoped in the backend, but the new-file write is not, so the name
 // is validated here before it ever becomes part of a path.
@@ -307,7 +345,7 @@ function TreeNode(props: {
   // Re-read this dir's children in place (keeps it expanded), so an add inside it
   // shows without remounting the whole tree.
   async function reloadSelf() {
-    setChildren(await listChildren(props.entry.path, !!props.compactFolders));
+    await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
     setOpen(true);
   }
 
@@ -333,7 +371,7 @@ function TreeNode(props: {
   // Open without toggling. Reveal needs "make sure this is open"; a toggle would
   // close a directory that happened to be open already, hiding the target.
   async function expand() {
-    if (children() === null) setChildren(await listChildren(props.entry.path, !!props.compactFolders));
+    if (children() === null) await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
     setOpen(true);
   }
 
@@ -350,7 +388,7 @@ function TreeNode(props: {
       return;
     }
     // Lazy: fetch children the first time the dir is opened.
-    if (children() === null) setChildren(await listChildren(props.entry.path, !!props.compactFolders));
+    if (children() === null) await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
     setOpen(!open());
   }
 
@@ -582,7 +620,11 @@ export default function FileTree(props: {
   const compactFolders = () => editorDefaults().compactFolders;
 
   async function reloadRoots() {
-    setRoots(props.root ? await listChildren(props.root, compactFolders()) : []);
+    if (!props.root) {
+      setRoots([]);
+      return;
+    }
+    await listChildrenCached(props.root, compactFolders(), setRoots);
   }
 
   // Filtering searches the whole project, not the rows that happen to be

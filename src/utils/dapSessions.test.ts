@@ -490,15 +490,16 @@ describe("stopping", () => {
     expect(calls.filter((c) => c.cmd === "dap_stop")).toHaveLength(1);
   });
 
-  it("is swept by the same project switch that sweeps the language servers", () => {
+  it("is swept by the same project switch that retires the language servers", () => {
     // Read as source, because the alternative is mounting the whole editor to
     // observe one line of a teardown effect. What matters is that the two
-    // sweeps live in the *same* effect: a debug run left behind by a project
-    // switch holds a process nothing on screen can name any more.
+    // live in the *same* effect: a debug run left behind by a project switch
+    // holds a process nothing on screen can name any more. The language-server
+    // half is a retire (warm roots survive, the eviction sweeps), not a stop.
     const effect = editorSource.slice(editorSource.indexOf("on(root, (r) => {"));
     const guard = effect.indexOf("if (!r) return;");
     const dap = effect.indexOf("stopAllDap()");
-    const lsp = effect.indexOf("stopAllLsp()");
+    const lsp = effect.indexOf("retainLspRoots(");
 
     expect(guard).toBeGreaterThan(-1);
     expect(lsp).toBeGreaterThan(guard);

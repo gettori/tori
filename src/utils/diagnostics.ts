@@ -19,6 +19,7 @@
 // CodeMirror lives in `panels/Editor/problemsFromState.ts`.
 
 import { createSignal } from "solid-js";
+import { isUnderPath } from "./pathScope";
 
 export type Severity = "error" | "warning" | "info" | "hint";
 
@@ -102,9 +103,25 @@ export function dropDiagnostics(path: string) {
   });
 }
 
-/** Drop everything, called on project switch. */
+/** Drop everything. Full teardown only: a project switch keeps the store, so a
+ *  warm project's problems are still there when it is switched back to, and the
+ *  consumers scope what they show to the selected root. */
 export function clearDiagnostics() {
   setDiagnostics({});
+}
+
+/** Drop one evicted project's files, called when the warm-root policy stops its
+ *  servers: nothing can update or retract those entries any more. */
+export function dropDiagnosticsUnder(root: string) {
+  setDiagnostics((prev) => {
+    const next: Record<string, Problem[]> = {};
+    let changed = false;
+    for (const [path, list] of Object.entries(prev)) {
+      if (path === root || isUnderPath(path, root)) changed = true;
+      else next[path] = list;
+    }
+    return changed ? next : prev;
+  });
 }
 
 /** What the server would offer to do about one problem, by title. */

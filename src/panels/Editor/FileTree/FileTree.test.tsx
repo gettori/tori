@@ -55,7 +55,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-import FileTree from "./FileTree";
+import FileTree, { clearListingCache } from "./FileTree";
 import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
 
@@ -100,6 +100,7 @@ function dataTransfer() {
 const rowFor = (name: string) => screen.getByText(name).parentElement!;
 
 beforeEach(async () => {
+  clearListingCache();
   bridge.calls = [];
   bridge.existing = new Set();
   bridge.failRename = false;

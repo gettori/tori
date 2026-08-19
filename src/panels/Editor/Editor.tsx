@@ -27,7 +27,7 @@ import OutlinePanel from "./OutlinePanel";
 import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 import BookmarksPanel from "./BookmarksPanel";
-import { diagnostics, clearDiagnostics } from "../../utils/diagnostics";
+import { diagnostics } from "../../utils/diagnostics";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
@@ -500,7 +500,7 @@ export default function Editor(props: {
       // Only worth a tab when something is actually wrong; an always-present
       // "Problems (0)" is noise on a clean tree.
       case "problems":
-        return Object.keys(diagnostics()).length > 0;
+        return problemsHere();
       // Only for a file whose server actually answers `documentSymbol`. A
       // `.txt` tab, or a language with no server, has no outline to show, and
       // an always-present empty panel reads as "this file has no symbols".
@@ -530,6 +530,13 @@ export default function Editor(props: {
     }
   }
   const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
+  // This workspace's problems. The store now spans every warm project (the
+  // servers stay up across a switch), so what the tab and the panel show has to
+  // be scoped here, or one worktree's errors would badge another's tree.
+  const problemsHere = () => {
+    const r = root();
+    return r != null && Object.keys(diagnostics()).some((p) => isUnderPath(p, r));
+  };
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
   // Source-vs-render preview toggle, per tab id (so switching tabs remembers
   // each previewable file's own choice: .md renders to HTML, .svg to its image).
@@ -1028,7 +1035,7 @@ export default function Editor(props: {
     if (rightMode() === "docs" && !docsPath()) setRightMode("files");
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
-    if (rightMode() === "problems" && !Object.keys(diagnostics()).length) setRightMode("files");
+    if (rightMode() === "problems" && !problemsHere()) setRightMode("files");
     // And Outline disappears when the active tab is a file no server has
     // symbols for, which switching tabs is enough to cause.
     if (rightMode() === "outline" && !symbolsSupported(activeId())) setRightMode("files");
@@ -1048,6 +1055,8 @@ export default function Editor(props: {
     }),
   );
 
+  // Projects already swept by local_history_prune this run.
+  const prunedHistory = new Set<string>();
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
   createEffect(
@@ -1076,23 +1085,24 @@ export default function Editor(props: {
       invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // Sweep local history for what a save can never reach: versions past the
       // age cap in files nobody has saved since, and the timelines of worktrees
-      // that have been removed. Once per project open is enough for a store
-      // whose caps are otherwise applied on every write.
-      invoke("local_history_prune", { repoPath: r }).catch(() => {});
-      // A new project means a new language server; diagnostics from the old one
-      // describe files that are no longer open here, and so do its symbols.
-      // The tab set changing evicts both anyway, but that is one more thing
-      // than "the servers are gone" has to depend on.
-      clearDiagnostics();
+      // that have been removed. Once per project per run: the sweep walks the
+      // store on disk, and a switch is the hottest path in the app.
+      if (!prunedHistory.has(r)) {
+        prunedHistory.add(r);
+        invoke("local_history_prune", { repoPath: r }).catch(() => {});
+      }
+      // Symbols and call roots are cheap re-fetches from a warm server, so a
+      // switch still clears them; diagnostics are NOT cleared, because the warm
+      // servers keep them true and the consumers scope to the selected root.
+      // A silent stop-and-restart of every server was most of why a worktree
+      // switch felt slow: tsserver or rust-analyzer cold-started on every
+      // click. `retainLspRoots` keeps the last few projects' servers running
+      // and stops only what falls off the warm end. Servers are still started
+      // lazily by CodeEditor on the first file of each language; the lazy
+      // import keeps CodeMirror out of the startup chunk.
       clearSymbols();
       clearCallRoots();
-      // Stop every server from the previous project. Servers are no longer
-      // started here: a session is per (server, root), and which roots a
-      // project needs is only known once files are opened, so `CodeEditor`
-      // starts one lazily on the first file of each language instead. Already
-      // fire-and-forget, so loading the client lazily changes nothing the
-      // caller can observe, and it keeps CodeMirror out of the startup chunk.
-      void import("./lspClient").then((m) => m.stopAllLsp());
+      void import("./lspClient").then((m) => m.retainLspRoots(r));
     }),
   );
 

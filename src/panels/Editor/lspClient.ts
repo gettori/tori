@@ -22,6 +22,7 @@ import type { Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
   ensureLspServersLoaded,
   languageIdFor,
@@ -39,7 +40,11 @@ import { codeActionClientCapabilities } from "./lspCodeActions";
 import { codeLensClientCapabilities } from "./lspCodeLens";
 import { completionClientCapabilities, swayCompletion } from "./lspCompletion";
 import { configurationClientCapabilities, configurationFor } from "./lspConfiguration";
-import { clearDiagnosticContext, diagnosticContextCapture } from "./lspDiagnosticContext";
+import {
+  clearDiagnosticContext,
+  diagnosticContextCapture,
+  dropDiagnosticContextUnder,
+} from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
@@ -158,6 +163,7 @@ export async function ensureLspFor(path: string, projectPath: string): Promise<v
   // No server for this language is the normal case, not a failure.
   if (!server) return;
   if (!isUnderPath(path, projectPath)) return;
+  for (const r of touchWarmRoot(projectPath)) void stopLspUnder(r);
 
   const prev = starting.get(server.id) ?? Promise.resolve();
   const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
@@ -212,6 +218,14 @@ async function startFor(
   // and running, and `lsp_stop_all` may already have swept past it, so stop it
   // by handle rather than dropping it on the floor.
   if (startedAt !== generation) {
+    await invoke("lsp_stop", { handle }).catch(() => {});
+    return;
+  }
+
+  // The switch outran the start: this call was queued for a project that has
+  // since been evicted from the warm set, and its server is real and running,
+  // so stop it by handle rather than registering a session nothing will claim.
+  if (!underWarmRoot(handle.root)) {
     await invoke("lsp_stop", { handle }).catch(() => {});
     return;
   }
@@ -628,13 +642,67 @@ export async function executeServerCommand(
   return target.request("workspace/executeCommand", { command, arguments: args });
 }
 
-/** Tear down every client and stop every server. What a project switch calls:
- *  the old project's servers are all wrong at once. */
+/** Tear down every client and stop every server. What app teardown calls; a
+ *  project switch calls `retainLspRoots` instead, so servers stay warm. */
 export async function stopAllLsp(): Promise<void> {
   generation += 1;
   dropAllSessions();
   starting.clear();
+  rootLru.length = 0;
   await invoke("lsp_stop_all").catch(() => {});
+}
+
+// Warm roots (perf): a language server survives the switch away from its
+// project, so switching back is a claim on a running server instead of a cold
+// start and a re-index. Three, not unlimited: each root can hold a tsserver or
+// a rust-analyzer, and the point is the worktrees being flipped between, not
+// every project visited since launch. Most-recent last.
+const WARM_ROOTS = 3;
+const rootLru: string[] = [];
+
+/** Note that `projectPath` is the selected project, and stop the servers of
+ *  whatever falls off the warm end. What a project switch calls. */
+export async function retainLspRoots(projectPath: string | null): Promise<void> {
+  if (!projectPath) return;
+  for (const root of touchWarmRoot(projectPath)) await stopLspUnder(root);
+}
+
+/** Move a project to the warm end, returning what fell off. `ensureLspFor`
+ *  touches too, so a start is warm for its own project by construction rather
+ *  than by trusting the shell to have announced the switch first. */
+function touchWarmRoot(projectPath: string): string[] {
+  const i = rootLru.indexOf(projectPath);
+  if (i >= 0) rootLru.splice(i, 1);
+  rootLru.push(projectPath);
+  return rootLru.splice(0, Math.max(0, rootLru.length - WARM_ROOTS));
+}
+
+/** Whether a server root belongs to a still-warm project. A session's root can
+ *  be a package below the project (monorepo), so this is containment, not
+ *  equality. */
+function underWarmRoot(root: string): boolean {
+  return rootLru.some((r) => root === r || isUnderPath(root, r));
+}
+
+/** Stop the sessions of one evicted project, and drop what they published: the
+ *  Problems store and the code-action context would otherwise keep describing
+ *  files of a project whose servers are gone. */
+async function stopLspUnder(projectPath: string): Promise<void> {
+  const doomed = [...sessions.values()].filter(
+    (s) => s.handle.root === projectPath || isUnderPath(s.handle.root, projectPath),
+  );
+  for (const session of doomed) {
+    try {
+      session.client.disconnect();
+    } catch {
+      // ignore
+    }
+    sessions.delete(key(session.handle));
+    void invoke("lsp_stop", { handle: session.handle }).catch(() => {});
+  }
+  dropDiagnosticsUnder(projectPath);
+  dropDiagnosticContextUnder(`${pathToUri(projectPath)}/`);
+  if (doomed.length) notify();
 }
 
 /** Per-buffer editor extension for a file whose server is up, empty for
