@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../../test/axe";
 import { pointerClick } from "../../../test/menus";
@@ -55,6 +56,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import FileTree from "./FileTree";
+import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
 
 const ROOT = "/proj";
@@ -530,6 +532,21 @@ describe("selecting and revealing", () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 
+  it("walks to the file on its own when the focus moves to another one", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const [path, setPath] = createSignal<string | null>(null);
+    render(() => <FileTree root={ROOT} activePath={path()} />);
+    await screen.findByText("README.md");
+    expect(screen.queryByText("main.ts")).toBeNull();
+
+    // What another pane taking focus looks like from here. Nobody clicked
+    // Reveal; the tree opens `src` and scrolls the row in by itself.
+    setPath(`${ROOT}/src/main.ts`);
+    await screen.findByText("main.ts");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  });
+
   it("stops revealing once it arrives, so a later collapse sticks", async () => {
     // The walk leaves every node listening for the target. If that target were
     // left set, collapsing an ancestor would unmount these rows and remounting
@@ -556,6 +573,33 @@ describe("selecting and revealing", () => {
     await screen.findByText("README.md");
 
     expect(screen.queryByLabelText("Reveal")).toBeNull();
+  });
+});
+
+describe("the active file", () => {
+  it("marks the row of the file the editor is showing, and no other", async () => {
+    mountProject({ activePath: `${ROOT}/README.md` });
+    await waitFor(() => expect(screen.getByText("README.md")).toBeTruthy());
+
+    const marked = document.querySelectorAll(`.${styles.active}`);
+    expect(marked.length).toBe(1);
+    expect(marked[0].textContent).toContain("README.md");
+  });
+
+  it("follows the file across a change of pane focus, since it is handed one path", async () => {
+    const [path, setPath] = createSignal(`${ROOT}/README.md`);
+    render(() => <FileTree root={ROOT} activePath={path()} />);
+    await waitFor(() => expect(screen.getByText("README.md")).toBeTruthy());
+    fireEvent.click(screen.getByText("src"));
+    await waitFor(() => expect(screen.getByText("main.ts")).toBeTruthy());
+
+    // What the other pane taking focus looks like from here.
+    setPath(`${ROOT}/src/main.ts`);
+    await waitFor(() => {
+      const marked = document.querySelectorAll(`.${styles.active}`);
+      expect(marked.length).toBe(1);
+      expect(marked[0].textContent).toContain("main.ts");
+    });
   });
 });
 

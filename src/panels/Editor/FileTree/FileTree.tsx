@@ -288,6 +288,8 @@ function TreeNode(props: {
   compactFolders?: boolean;
   ctx?: EditCtx;
   reloadParent: () => Promise<void>;
+  /** The file the editor is showing, so its row can say so. */
+  activePath?: string | null;
   /** The path the tree is being asked to walk to, if any. Every node reacts to
    *  it independently: a directory the target sits under opens itself, and the
    *  target's own row scrolls into view once it exists. That is what makes the
@@ -409,6 +411,7 @@ function TreeNode(props: {
           [styles.ignored]: props.entry.ignored,
           [styles.dropInto]: dropInto(),
           [styles.selected]: !!props.ctx?.selected().has(props.entry.path),
+          [styles.active]: !props.entry.is_dir && props.activePath === props.entry.path,
         }}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
@@ -482,6 +485,7 @@ function TreeNode(props: {
               depth={props.depth + 1}
               ctx={props.ctx}
               reloadParent={reloadSelf}
+              activePath={props.activePath}
               revealing={props.revealing}
               onRevealed={props.onRevealed}
               collapseAll={props.collapseAll}
@@ -499,7 +503,11 @@ function TreeNode(props: {
  *  A tree keeps a match's ancestors on screen to place it, which is exactly the
  *  chrome someone filtering is trying to get past. Ranked paths put the best
  *  match on the first row every time. */
-function FilterResults(props: { root: string; matches: { rel: string; score: number }[] }) {
+function FilterResults(props: {
+  root: string;
+  matches: { rel: string; score: number }[];
+  activePath?: string | null;
+}) {
   return (
     <Show
       when={props.matches.length}
@@ -509,6 +517,7 @@ function FilterResults(props: { root: string; matches: { rel: string; score: num
         {(m) => (
           <div
             class={styles.treeRow}
+            classList={{ [styles.active]: props.activePath === `${props.root}/${m.rel}` }}
             onClick={() => emitWith(OPEN_IN_EDITOR, { path: `${props.root}/${m.rel}` })}
           >
             <FileIcon name={m.rel.slice(m.rel.lastIndexOf("/") + 1)} />
@@ -559,6 +568,12 @@ export default function FileTree(props: {
     const p = revealable();
     if (p) setRevealing({ path: p, nonce: ++revealNonce });
   }
+
+  // Whenever the file under the focus changes - another pane taking it, a tab
+  // switch, an open - walk to it: expand what it sits under and scroll its row
+  // in. Deferred, so mounting the panel does not undo a chain you just
+  // collapsed; only a change of file moves the tree.
+  createEffect(on(revealable, (p) => p && reveal(), { defer: true }));
 
   // Every mounted directory's reload, the root's included, so a move can refresh
   // both ends. Stable across `ctx()` calls, which rebuild the rest each time.
@@ -719,7 +734,9 @@ export default function FileTree(props: {
           </Show>
         </div>
       </Show>
-      <Show when={!filter().trim()} fallback={<FilterResults root={props.root!} matches={matches()} />}>
+      <Show when={!filter().trim()} fallback={
+          <FilterResults root={props.root!} matches={matches()} activePath={props.activePath} />
+        }>
       <Show
         when={roots().length}
         fallback={<div class={styles.empty}>This folder is empty. Use New File above to add one.</div>}
@@ -732,6 +749,7 @@ export default function FileTree(props: {
               depth={0}
               ctx={ctx()}
               reloadParent={reloadRoots}
+              activePath={props.activePath}
               revealing={revealing}
               onRevealed={() => setRevealing(null)}
               collapseAll={collapseNonce}
