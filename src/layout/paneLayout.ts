@@ -109,10 +109,18 @@ function renorm(children: PaneNode[]): PaneNode[] {
 
 // ---- Queries ---------------------------------------------------------------
 
+// Sound to cache by node identity: every edit goes through mapNode, which
+// rebuilds the changed path and keeps untouched subtrees, so a node object
+// never changes under its cached answer. Callers copy before mutating.
+const leafCache = new WeakMap<PaneNode, PaneLeaf[]>();
+
 /** Every pane leaf, in spatial (in-order) order. */
 export function leaves(root: PaneNode): PaneLeaf[] {
-  if (root.type === "pane") return [root];
-  return root.children.flatMap(leaves);
+  const hit = leafCache.get(root);
+  if (hit) return hit;
+  const out: PaneLeaf[] = root.type === "pane" ? [root] : root.children.flatMap(leaves);
+  leafCache.set(root, out);
+  return out;
 }
 
 export const visibleLeaves = (root: PaneNode): PaneLeaf[] =>
