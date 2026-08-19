@@ -48,6 +48,12 @@ export type SessionMeta = {
 /** One folder's listing, exactly as `list_sessions` returned it. */
 export type FolderScan = { folder: string; list: SessionMeta[] };
 
+/** `sessions://changed`. `folders` names the folders whose transcripts moved;
+ *  `null` means the backend could not attribute the change (a brand-new
+ *  transcript it has not indexed yet, or a burst too wide to name), so every
+ *  covered folder refreshes. */
+export type SessionsChanged = { folders: string[] | null };
+
 const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
 export { sessions };
 
@@ -113,9 +119,16 @@ export async function trackFolders(folders: readonly string[]) {
   }
 }
 
-/** Rescan every folder the store already covers. */
-export async function refreshSessions() {
-  const folders = Object.keys(sessions());
+/** Rescan the folders the store already covers.
+ *
+ *  `only` narrows it to the folders an event named. Anything the store does not
+ *  cover is dropped rather than listed: a folder nobody is showing has no row
+ *  to refresh, and `trackFolders` is what brings a new one in. Omit it (the
+ *  event could not say which folders moved) and every covered folder rescans,
+ *  which is what this always did. */
+export async function refreshSessions(only?: readonly string[]) {
+  const covered = Object.keys(sessions());
+  const folders = only ? covered.filter((f) => only.includes(f)) : covered;
   if (folders.length === 0) return;
   await fill(folders, false);
 }

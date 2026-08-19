@@ -41,7 +41,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::agents;
 
@@ -830,7 +830,7 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     // fires no filesystem event. Notify explicitly so every listener refreshes,
     // not just the caller: the sidebar tree AND the terminal tab titles, which
     // otherwise keep the name they were created with (an un-refreshed rename).
-    let _ = app.emit("sessions://changed", ());
+    let _ = app.emit("sessions://changed", SessionsChanged::all());
     Ok(())
 }
 
@@ -1543,8 +1543,57 @@ fn watch_dirs() -> Vec<PathBuf> {
 /// each looping forever.
 static WATCH_PENDING: Mutex<Option<Instant>> = Mutex::new(None);
 
+/// The transcript files the burst touched, so the emit can name the folders
+/// that actually moved instead of making every tracked folder re-list. A burst
+/// merges into a set, since the debounce is what joins the writes.
+static WATCH_TOUCHED: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+
+/// Past this many distinct files in one burst, naming them stops being cheaper
+/// than the full refresh it saves, so the payload gives up and says "all".
+const TOUCHED_CAP: usize = 64;
+
 /// Whether the emitter thread is already running.
 static EMITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// What `sessions://changed` carries.
+///
+/// `folders: None` means "something changed that could not be attributed", and
+/// every listener refreshes the way it always did. That is the honest answer
+/// for a brand-new transcript, whose path is not in the index yet and whose
+/// whole point is to surface a folder nobody is listing.
+#[derive(Clone, Serialize)]
+pub struct SessionsChanged {
+    pub folders: Option<Vec<String>>,
+}
+
+impl SessionsChanged {
+    /// Everything: the payload every non-watcher emit sends, and the fallback
+    /// whenever attribution fails.
+    fn all() -> Self {
+        Self { folders: None }
+    }
+}
+
+/// Resolve the burst's touched files to the folders their sessions are anchored
+/// on, or `None` when any of them cannot be resolved.
+///
+/// The index is the only thing that knows a transcript's cwd: the encoding of a
+/// cwd into a directory name belongs to the agent (see `transcript_path`), so
+/// the path alone cannot be decoded. A miss means a file Sway has not parsed
+/// yet, which is exactly the new-session case, so one miss makes the whole
+/// answer "all" rather than a set that quietly omits it.
+fn folders_for(index: &SessionIndex, touched: &HashSet<PathBuf>) -> Option<Vec<String>> {
+    if touched.is_empty() || touched.len() > TOUCHED_CAP {
+        return None;
+    }
+    let cache = index.0.lock().ok()?;
+    let mut folders = HashSet::new();
+    for path in touched {
+        let cwd = cache.get(path).and_then(|e| e.meta.as_ref()).map(|m| m.cwd.clone())?;
+        folders.insert(cwd);
+    }
+    Some(folders.into_iter().collect())
+}
 
 /// Start (or restart) the session watcher over the current set of roots.
 ///
@@ -1572,8 +1621,14 @@ pub fn sessions_watch_start(
     // Trailing debounce fires on the complete file; a max-wait heartbeat keeps a
     // long, continuously-streaming session updating rather than starving.
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if res.is_err() {
-            return;
+        let Ok(event) = res else { return };
+        if let Ok(mut t) = WATCH_TOUCHED.lock() {
+            let set = t.get_or_insert_with(HashSet::new);
+            // Stop accumulating once past the cap: the emit will say "all"
+            // anyway, and a pathological burst should not also grow a set.
+            if set.len() <= TOUCHED_CAP {
+                set.extend(event.paths.iter().cloned());
+            }
         }
         if let Ok(mut p) = WATCH_PENDING.lock() {
             *p = Some(Instant::now());
@@ -1618,7 +1673,12 @@ pub fn sessions_watch_start(
             };
             if should_emit {
                 last_emit = Instant::now();
-                let _ = app_handle.emit("sessions://changed", ());
+                // Drain rather than read: whatever this emit names, the next
+                // burst starts from empty, or a folder would keep re-listing
+                // long after its transcript stopped moving.
+                let touched = WATCH_TOUCHED.lock().ok().and_then(|mut t| t.take()).unwrap_or_default();
+                let folders = folders_for(&app_handle.state::<SessionIndex>(), &touched);
+                let _ = app_handle.emit("sessions://changed", SessionsChanged { folders });
             }
         }
     });
@@ -1768,114 +1828,214 @@ fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
         Some(agents::ParserKind::ClaudeJsonl) => {}
         None => return Vec::new(),
     }
-    let mut turns = Vec::new();
+    reader
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|line| turn_from_line(&line))
+        .collect()
+}
 
-    for line in reader.lines().map_while(Result::ok) {
-        let v: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let ts = v
-            .get("timestamp")
-            .and_then(|t| t.as_str())
-            .and_then(parse_rfc3339_secs)
-            .unwrap_or(0);
+/// How much of a transcript's end to read when only its last turn matters.
+/// Widened by doubling when the window holds no turn at all (a tail of nothing
+/// but meta lines, or one enormous line), so the answer never depends on the
+/// guess being generous enough.
+const TAIL_WINDOW_BYTES: u64 = 64 * 1024;
 
-        match v.get("type").and_then(|t| t.as_str()) {
-            Some("user") => {
-                if v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
-                    continue;
-                }
-                let mut blocks = Vec::new();
-                if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
-                    if let Some(s) = content.as_str() {
-                        if !s.trim().is_empty() && !is_command_envelope(s) {
-                            blocks.push(text_block("text", s.to_string()));
-                        }
-                    } else if let Some(arr) = content.as_array() {
-                        for b in arr {
-                            match b.get("type").and_then(|t| t.as_str()) {
-                                Some("text") => {
-                                    if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                        if !is_command_envelope(t) {
-                                            blocks.push(text_block("text", t.to_string()));
-                                        }
-                                    }
-                                }
-                                Some("tool_result") => {
-                                    let text = b.get("content").map(stringify_content).unwrap_or_default();
-                                    let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
-                                    let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
-                                    blocks.push(tool_result_block(None, text, is_error, id));
-                                }
-                                _ => {}
-                            }
-                        }
+/// The transcript's last turn, read from its end rather than from its start.
+///
+/// Sound because [`turn_from_line`] carries no state between lines: the turns
+/// the last complete lines produce are the same turns a full parse would put at
+/// the end of its list. Reading from a line boundary is what makes them
+/// *complete*; the partial first line of the window is dropped.
+fn tail_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
+    match agents::parser_kind_for(agent) {
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Vec::new(),
+    }
+    let Ok(mut file) = std::fs::File::open(path) else { return Vec::new() };
+    let Ok(len) = file.metadata().map(|m| m.len()) else { return Vec::new() };
+
+    let mut window = TAIL_WINDOW_BYTES;
+    loop {
+        let from_start = window >= len;
+        let Ok(text) = read_tail(&mut file, len, window) else { return Vec::new() };
+        let mut lines = text.split('\n');
+        // Unless the window covers the file, its first line starts mid-line.
+        if !from_start {
+            lines.next();
+        }
+        let turns: Vec<TranscriptTurn> = lines.filter_map(turn_from_line).collect();
+        if !turns.is_empty() || from_start {
+            return turns;
+        }
+        window *= 2;
+    }
+}
+
+/// The last `window` bytes of an open file, or the whole file when it is
+/// smaller. Lossy rather than strict: a window boundary can land inside a
+/// multi-byte character, and the line that character belongs to is one this
+/// caller drops anyway.
+fn read_tail(file: &mut std::fs::File, len: u64, window: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let start = len.saturating_sub(window);
+    file.seek(SeekFrom::Start(start))?;
+    let mut buf = Vec::with_capacity((len - start) as usize);
+    file.take(len - start).read_to_end(&mut buf)?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// What a cached answer is keyed by. A transcript is appended to, so mtime and
+/// size together move on every write that could change an answer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FileStamp {
+    mtime: SystemTime,
+    size: u64,
+}
+
+fn stamp_of(path: &str) -> Option<FileStamp> {
+    let m = std::fs::metadata(path).ok()?;
+    Some(FileStamp { mtime: m.modified().ok()?, size: m.len() })
+}
+
+/// A transcript and the adapter reading it: the pair any cached answer here is
+/// keyed by, since two adapters can parse the same file to different turns.
+type TranscriptKey = (String, String);
+
+/// Tail classification per (path, agent), so a 1Hz heartbeat over an unchanged
+/// transcript costs a `stat` rather than a parse.
+static TAIL_STATE_CACHE: Mutex<Option<HashMap<TranscriptKey, (FileStamp, TailState)>>> =
+    Mutex::new(None);
+
+/// How many times the tail actually had to be read. Test-only, because the
+/// difference between a hit and a miss is a 64KB read either way: fast enough
+/// that timing cannot tell them apart, and the cache still has to be shown to
+/// work.
+#[cfg(test)]
+static TAIL_READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// `classify_tail(tail_turns(..))`, memoised on the file's stamp.
+fn cached_tail_state(path: &str, agent: &str) -> TailState {
+    let Some(stamp) = stamp_of(path) else { return classify_tail(&tail_turns(path, agent)) };
+    let key = (path.to_string(), agent.to_string());
+    if let Ok(guard) = TAIL_STATE_CACHE.lock() {
+        if let Some((cached, state)) = guard.as_ref().and_then(|m| m.get(&key)) {
+            if *cached == stamp {
+                return *state;
+            }
+        }
+    }
+    #[cfg(test)]
+    TAIL_READS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let state = classify_tail(&tail_turns(path, agent));
+    if let Ok(mut guard) = TAIL_STATE_CACHE.lock() {
+        guard.get_or_insert_with(HashMap::new).insert(key, (stamp, state));
+    }
+    state
+}
+
+/// One transcript line as at most one turn.
+///
+/// Pulled out of the full walk so [`tail_turns`] can reuse it verbatim:
+/// a line yields its turn from its own contents alone, with no state carried
+/// from the lines before it, which is exactly what makes reading only the end
+/// of a 19MB transcript give the same last turn a full parse would.
+fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    let ts = v
+        .get("timestamp")
+        .and_then(|t| t.as_str())
+        .and_then(parse_rfc3339_secs)
+        .unwrap_or(0);
+
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("user") => {
+            if v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
+                return None;
+            }
+            let mut blocks = Vec::new();
+            if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
+                if let Some(s) = content.as_str() {
+                    if !s.trim().is_empty() && !is_command_envelope(s) {
+                        blocks.push(text_block("text", s.to_string()));
                     }
-                }
-                if !blocks.is_empty() {
-                    turns.push(TranscriptTurn { role: "user".into(), ts, blocks });
-                }
-            }
-            // A compaction boundary, kept as its own turn so a replayed
-            // transcript shows where its middle went rather than silently
-            // jumping. Sidechain boundaries belong to a subagent's context,
-            // not this conversation's, so they are skipped the same way the
-            // counts in `scan_counts` skip them.
-            Some("system")
-                if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
-                    && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
-            {
-                let m = v.get("compactMetadata");
-                let get = |k: &str| m.and_then(|m| m.get(k)).and_then(|n| n.as_u64());
-                turns.push(TranscriptTurn {
-                    role: "compaction".into(),
-                    ts,
-                    blocks: vec![compaction_block(
-                        m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
-                        get("preTokens"),
-                        get("postTokens"),
-                    )],
-                });
-            }
-            Some("assistant") => {
-                let mut blocks = Vec::new();
-                if let Some(arr) = v
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(|c| c.as_array())
-                {
+                } else if let Some(arr) = content.as_array() {
                     for b in arr {
                         match b.get("type").and_then(|t| t.as_str()) {
                             Some("text") => {
                                 if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
-                                    blocks.push(text_block("text", t.to_string()));
+                                    if !is_command_envelope(t) {
+                                        blocks.push(text_block("text", t.to_string()));
+                                    }
                                 }
                             }
-                            Some("thinking") => {
-                                if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
-                                    blocks.push(text_block("thinking", t.to_string()));
-                                }
-                            }
-                            Some("tool_use") => {
-                                let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                                let input = b.get("input").cloned().unwrap_or(serde_json::Value::Null);
-                                let id = b.get("id").and_then(|i| i.as_str()).map(str::to_string);
-                                blocks.push(tool_call_block(name, input, id));
+                            Some("tool_result") => {
+                                let text = b.get("content").map(stringify_content).unwrap_or_default();
+                                let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                                let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
+                                blocks.push(tool_result_block(None, text, is_error, id));
                             }
                             _ => {}
                         }
                     }
                 }
-                if !blocks.is_empty() {
-                    turns.push(TranscriptTurn { role: "assistant".into(), ts, blocks });
+            }
+            (!blocks.is_empty()).then(|| TranscriptTurn { role: "user".into(), ts, blocks })
+        }
+        // A compaction boundary, kept as its own turn so a replayed
+        // transcript shows where its middle went rather than silently
+        // jumping. Sidechain boundaries belong to a subagent's context,
+        // not this conversation's, so they are skipped the same way the
+        // counts in `scan_counts` skip them.
+        Some("system")
+            if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
+                && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
+        {
+            let m = v.get("compactMetadata");
+            let get = |k: &str| m.and_then(|m| m.get(k)).and_then(|n| n.as_u64());
+            Some(TranscriptTurn {
+                role: "compaction".into(),
+                ts,
+                blocks: vec![compaction_block(
+                    m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
+                    get("preTokens"),
+                    get("postTokens"),
+                )],
+            })
+        }
+        Some("assistant") => {
+            let mut blocks = Vec::new();
+            if let Some(arr) = v
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+            {
+                for b in arr {
+                    match b.get("type").and_then(|t| t.as_str()) {
+                        Some("text") => {
+                            if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
+                                blocks.push(text_block("text", t.to_string()));
+                            }
+                        }
+                        Some("thinking") => {
+                            if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
+                                blocks.push(text_block("thinking", t.to_string()));
+                            }
+                        }
+                        Some("tool_use") => {
+                            let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                            let input = b.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                            let id = b.get("id").and_then(|i| i.as_str()).map(str::to_string);
+                            blocks.push(tool_call_block(name, input, id));
+                        }
+                        _ => {}
+                    }
                 }
             }
-            _ => {}
+            (!blocks.is_empty()).then(|| TranscriptTurn { role: "assistant".into(), ts, blocks })
         }
+        _ => None,
     }
-
-    turns
 }
 
 // --- Needs-you floor: transcript-tail state (Finding A, Tier 3 floor) ---
@@ -1931,7 +2091,7 @@ pub async fn session_tail_state(id: String, path: String, agent: String) -> Resu
 }
 
 pub(crate) fn session_tail_state_body(id: String, path: String, agent: String) -> Result<TailState, String> {
-    let tail = classify_tail(&parse_transcript_turns(&path, &agent));
+    let tail = cached_tail_state(&path, &agent);
     let hooks_capable = agents::find(&agent).map(|a| a.hooks).unwrap_or(false);
     if hooks_capable {
         if let Some(state) = crate::hooks::status_for(&id) {
@@ -1989,28 +2149,47 @@ pub async fn session_prompt_tail(path: String, agent: String) -> Result<PromptTa
     crate::exec::blocking("session_prompt_tail", move || session_prompt_tail_body(path, agent)).await
 }
 
-pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
-    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-    let reader = BufReader::new(file);
-    // See `extract_touched_files` on why the kind is matched exhaustively.
-    match agents::parser_kind_for(&agent) {
-        Some(agents::ParserKind::ClaudeJsonl) => {}
-        None => return Ok(PromptTail { count: 0, last_ts: 0 }),
-    }
+/// How much of the file's head identifies it, so an appended transcript can be
+/// told from a different one written to the same path. A rewrite that kept the
+/// first line byte-for-byte AND only ever grew would still fool this, which is
+/// a transcript no agent writes.
+const TAIL_HEAD_SAMPLE: usize = 256;
+
+/// Everything the incremental prompt count needs to resume: where the last
+/// complete line ended, what the file looked like there, and the answer so far.
+struct PromptTailEntry {
+    stamp: FileStamp,
+    /// Byte offset just past the last complete line already counted.
+    consumed: u64,
+    head: Vec<u8>,
+    count: u32,
+    last_ts: u64,
+}
+
+static PROMPT_TAIL_CACHE: Mutex<Option<HashMap<TranscriptKey, PromptTailEntry>>> =
+    Mutex::new(None);
+
+/// What the cache had to say about this file.
+enum Resume {
+    /// Unchanged since the last call: the total already known is the answer.
+    Settled(u32, u64),
+    /// Grown: count on from this offset with this running total.
+    From(u64, u32, u64),
+}
+
+/// Count the human prompts in `text`, and say how far the last complete line
+/// reached. A transcript being written to ends mid-line often enough that
+/// stopping at the last newline is the difference between resuming correctly
+/// and counting one line twice.
+fn scan_prompts(text: &str) -> (u32, u64, u64) {
     let mut count = 0u32;
     let mut last_ts = 0u64;
-
-    for line in reader.lines().map_while(Result::ok) {
-        let v: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let ts = v
-            .get("timestamp")
-            .and_then(|t| t.as_str())
-            .and_then(parse_rfc3339_secs)
-            .unwrap_or(0);
-
+    let complete = match text.rfind('\n') {
+        Some(i) => i as u64 + 1,
+        None => 0,
+    };
+    for line in text[..complete as usize].split('\n') {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
         let content = (v.get("type").and_then(|t| t.as_str()) == Some("user")
             && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true))
         .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
@@ -2018,10 +2197,67 @@ pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<Pr
 
         if content.map(|c| is_human_prompt(&c)).unwrap_or(false) {
             count += 1;
-            last_ts = ts;
+            last_ts = v
+                .get("timestamp")
+                .and_then(|t| t.as_str())
+                .and_then(parse_rfc3339_secs)
+                .unwrap_or(0);
         }
     }
+    (count, last_ts, complete)
+}
 
+pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    // See `extract_touched_files` on why the kind is matched exhaustively.
+    match agents::parser_kind_for(&agent) {
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Ok(PromptTail { count: 0, last_ts: 0 }),
+    }
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    let stamp = FileStamp { mtime: meta.modified().map_err(|e| e.to_string())?, size: meta.len() };
+
+    let mut head = vec![0u8; TAIL_HEAD_SAMPLE.min(stamp.size as usize)];
+    file.read_exact(&mut head).map_err(|e| e.to_string())?;
+
+    let key = (path.clone(), agent.clone());
+    // Three answers, in order: nothing moved, so the cached total stands; the
+    // same file grew, so resume from where the last call stopped; anything else
+    // (shrunk, or a different transcript at this path) starts from the top.
+    let resume = match PROMPT_TAIL_CACHE.lock() {
+        Ok(guard) => guard.as_ref().and_then(|m| m.get(&key)).and_then(|e| {
+            if e.stamp == stamp {
+                return Some(Resume::Settled(e.count, e.last_ts));
+            }
+            (e.head == head && stamp.size >= e.consumed)
+                .then_some(Resume::From(e.consumed, e.count, e.last_ts))
+        }),
+        Err(_) => None,
+    };
+    let (from, mut count, mut last_ts) = match resume {
+        Some(Resume::Settled(count, last_ts)) => return Ok(PromptTail { count, last_ts }),
+        Some(Resume::From(from, count, last_ts)) => (from, count, last_ts),
+        None => (0, 0, 0),
+    };
+
+    file.seek(SeekFrom::Start(from)).map_err(|e| e.to_string())?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&buf);
+    let (added, added_ts, complete) = scan_prompts(&text);
+    count += added;
+    // A window with no prompt in it leaves the last one where it was.
+    if added > 0 {
+        last_ts = added_ts;
+    }
+
+    if let Ok(mut guard) = PROMPT_TAIL_CACHE.lock() {
+        guard.get_or_insert_with(HashMap::new).insert(
+            key,
+            PromptTailEntry { stamp, consumed: from + complete, head, count, last_ts },
+        );
+    }
     Ok(PromptTail { count, last_ts })
 }
 
@@ -3244,5 +3480,203 @@ mod tests {
         let round_tripped = serde_json::to_string(&map).unwrap();
         assert!(round_tripped.contains("the good one"));
         assert!(!round_tripped.contains("archived"));
+    }
+
+    // --- Incremental transcript tails (phase 6) ---
+
+    /// A transcript long enough that a full parse is the thing worth avoiding,
+    /// ending in `tail` so the caller can say what the answer should be.
+    fn big_transcript(name: &str, bytes: usize, tail: &str) -> PathBuf {
+        let filler = r#"{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":[{"type":"text","text":"PADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPADPAD"}]}}"#;
+        let mut body = String::with_capacity(bytes + tail.len());
+        while body.len() < bytes {
+            body.push_str(filler);
+            body.push('\n');
+        }
+        body.push_str(tail);
+        tmp_file(name, &body)
+    }
+
+    /// The point of the whole task: reading the end of a big transcript gives
+    /// the same answer as parsing all of it, and the warm read is a stat.
+    #[test]
+    fn a_tail_read_matches_the_full_parse_and_a_warm_one_is_instant() {
+        let tail = r#"{"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/x"}}]}}
+"#;
+        let p = big_transcript("tail_big.jsonl", 19 * 1024 * 1024, tail);
+        let path = p.to_str().unwrap().to_string();
+
+        let full = classify_tail(&parse_transcript_turns(&path, "claude"));
+        assert_eq!(cached_tail_state(&path, "claude"), full, "the tail must answer what the whole file does");
+        assert_eq!(full, TailState::BlockedCandidate);
+
+        let reads = TAIL_READS.load(std::sync::atomic::Ordering::SeqCst);
+        let t = Instant::now();
+        for _ in 0..20 {
+            assert_eq!(cached_tail_state(&path, "claude"), full);
+        }
+        let warm = t.elapsed() / 20;
+        assert!(warm < Duration::from_millis(5), "warm tail state took {warm:?}, budget is 5ms");
+        assert_eq!(
+            TAIL_READS.load(std::sync::atomic::Ordering::SeqCst),
+            reads,
+            "an unchanged transcript must cost a stat, not a read"
+        );
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// The window is a starting guess, not a limit: a tail made entirely of
+    /// lines that yield no turn has to keep widening until it finds one.
+    #[test]
+    fn the_window_widens_past_a_tail_with_no_turn_in_it() {
+        let mut body = String::from(
+            r#"{"type":"assistant","cwd":"/x","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"text","text":"the only turn"}]}}
+"#,
+        );
+        // Meta user lines are skipped outright, so none of these is a turn.
+        let noise = r#"{"type":"user","isMeta":true,"cwd":"/x","timestamp":"2026-07-18T10:00:09.000Z","message":{"content":"noise"}}"#;
+        while body.len() < (TAIL_WINDOW_BYTES as usize) * 3 {
+            body.push_str(noise);
+            body.push('\n');
+        }
+        let p = tmp_file("tail_widen.jsonl", &body);
+        let path = p.to_str().unwrap().to_string();
+        assert_eq!(classify_tail(&tail_turns(&path, "claude")), TailState::Done);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// A file that grew since the last call is counted from where the last one
+    /// stopped, and the total is the one a full scan would give.
+    #[test]
+    fn a_prompt_count_resumes_where_the_last_one_stopped() {
+        let one = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:00:00.000Z\",\"message\":{\"content\":\"first question\"}}\n";
+        let two = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:05:00.000Z\",\"message\":{\"content\":\"second question\"}}\n";
+        let p = tmp_file("prompt_grow.jsonl", one);
+        let path = p.to_str().unwrap().to_string();
+
+        let first = session_prompt_tail_body(path.clone(), "claude".into()).unwrap();
+        assert_eq!(first.count, 1);
+
+        // A distinct mtime, or the stamp would say nothing changed.
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(&p, format!("{one}{two}")).unwrap();
+        let grown = session_prompt_tail_body(path.clone(), "claude".into()).unwrap();
+        assert_eq!(grown.count, 2, "the appended prompt has to be added, not re-counted from zero");
+        assert!(grown.last_ts > first.last_ts);
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// A half-written last line is not counted until its newline arrives, or
+    /// the next call would count it a second time.
+    #[test]
+    fn a_partial_last_line_is_left_for_the_next_call() {
+        let whole = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:00:00.000Z\",\"message\":{\"content\":\"first question\"}}\n";
+        let partial = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:05:00.000Z\",\"message\":{\"conte";
+        let p = tmp_file("prompt_partial.jsonl", &format!("{whole}{partial}"));
+        let path = p.to_str().unwrap().to_string();
+        assert_eq!(session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count, 1);
+
+        std::thread::sleep(Duration::from_millis(20));
+        let rest = "nt\":\"second question\"}}\n";
+        std::fs::write(&p, format!("{whole}{partial}{rest}")).unwrap();
+        assert_eq!(
+            session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count,
+            2,
+            "the line that completed must be counted exactly once"
+        );
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// A different transcript written to the same path is not an append. The
+    /// head sample is what catches it: the replacement below is *longer* than
+    /// what it replaced, so resuming from the old offset would look perfectly
+    /// legitimate and would report the old file's count forever.
+    #[test]
+    fn a_replaced_transcript_is_recounted_rather_than_extended() {
+        let prompt = |n: &str, ts: &str| {
+            format!("{{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"{ts}\",\"message\":{{\"content\":\"{n}\"}}}}\n")
+        };
+        let a = format!(
+            "{}{}",
+            prompt("aaa question one", "2026-07-18T10:00:00.000Z"),
+            prompt("aaa question two", "2026-07-18T10:01:00.000Z")
+        );
+        let p = tmp_file("prompt_replaced.jsonl", &a);
+        let path = p.to_str().unwrap().to_string();
+        assert_eq!(session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count, 2);
+
+        // One prompt, but more bytes than the two it replaces, so size says
+        // "grew" and only the head says "different file".
+        let b = format!(
+            "{{\"type\":\"user\",\"cwd\":\"/y\",\"timestamp\":\"2026-07-19T10:00:00.000Z\",\"message\":{{\"content\":\"bbb {}\"}}}}\n",
+            "x".repeat(a.len())
+        );
+        assert!(b.len() > a.len());
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(&p, &b).unwrap();
+        assert_eq!(
+            session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count,
+            1,
+            "a replacement must be recounted, not appended to the old total"
+        );
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    // --- sessions://changed fanout (phase 6) ---
+
+    /// Every touched file resolves, so the payload names exactly the folders
+    /// that moved and no listener re-lists anything else.
+    #[test]
+    fn a_burst_within_one_folder_names_only_that_folder() {
+        let index = SessionIndex::default();
+        let a = PathBuf::from("/roots/proj-a/one.jsonl");
+        let b = PathBuf::from("/roots/proj-a/two.jsonl");
+        {
+            let mut c = index.0.lock().unwrap();
+            c.insert(a.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)) });
+            c.insert(b.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("two", "/Users/x/proj-a", "claude", 2)) });
+        }
+        let touched: HashSet<PathBuf> = [a, b].into_iter().collect();
+        assert_eq!(folders_for(&index, &touched), Some(vec!["/Users/x/proj-a".to_string()]));
+    }
+
+    /// The new-session case. A transcript the index has never parsed has no
+    /// cwd to give, and it is the one change that most needs a folder nobody is
+    /// listing to appear, so one miss makes the whole answer "refresh all".
+    #[test]
+    fn an_unindexed_file_falls_back_to_refreshing_everything() {
+        let index = SessionIndex::default();
+        let known = PathBuf::from("/roots/proj-a/one.jsonl");
+        index.0.lock().unwrap().insert(
+            known.clone(),
+            CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)) },
+        );
+        let touched: HashSet<PathBuf> =
+            [known, PathBuf::from("/roots/proj-b/brand-new.jsonl")].into_iter().collect();
+        assert_eq!(folders_for(&index, &touched), None);
+    }
+
+    /// Naming more files than the cap costs more than the refresh it saves.
+    #[test]
+    fn a_burst_wider_than_the_cap_gives_up_on_naming_folders() {
+        let index = SessionIndex::default();
+        let mut touched = HashSet::new();
+        {
+            let mut c = index.0.lock().unwrap();
+            for i in 0..(TOUCHED_CAP + 1) {
+                let p = PathBuf::from(format!("/roots/proj/{i}.jsonl"));
+                c.insert(p.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta(&i.to_string(), "/Users/x/proj", "claude", 1)) });
+                touched.insert(p);
+            }
+        }
+        assert_eq!(folders_for(&index, &touched), None);
+    }
+
+    /// An emit with nothing recorded (the `set_session_name` path, or a burst
+    /// whose paths were dropped) must not read as "no folder changed".
+    #[test]
+    fn an_empty_touched_set_means_all_not_none() {
+        assert_eq!(folders_for(&SessionIndex::default(), &HashSet::new()), None);
+        assert_eq!(SessionsChanged::all().folders, None);
     }
 }
