@@ -227,8 +227,22 @@ function counts(): Record<string, number> {
     terminalHosts: q('[class*="termHostWrap"]'),
     visibleTerminalHosts: q('[class*="termHostWrap"]:not([class*="hidden"])'),
     xtermCanvases: q(".xterm-screen canvas"),
+    liveWebglContexts: liveWebglContexts(),
     tabs: q('[role="tab"]'),
   };
+}
+
+/** What the WebGL cap is actually capping. The canvas count above cannot say:
+ *  an attached renderer puts two canvases in the host (its own and a 2d link
+ *  layer), so the total moves for reasons other than a context appearing.
+ *  `getContext` on a canvas that already has a 2d context answers null rather
+ *  than making a second one, so nothing here creates the thing it counts. */
+function liveWebglContexts(): number {
+  const canvases = [...document.querySelectorAll<HTMLCanvasElement>(".xterm-screen canvas")];
+  return canvases.filter((c) => {
+    const gl = c.getContext("webgl2") as WebGL2RenderingContext | null;
+    return !!gl && !gl.isContextLost();
+  }).length;
 }
 
 async function quit(): Promise<void> {

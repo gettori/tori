@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
-import { WebglAddon } from "@xterm/addon-webgl";
+import { acquireWebgl, type WebglSlot } from "./webglLru";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
@@ -106,6 +106,7 @@ export default function TerminalView(props: {
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
   let search: SearchAddon | undefined;
+  let webgl: WebglSlot | undefined;
   let linkProvider: IDisposable | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let ro: ResizeObserver | undefined;
@@ -207,15 +208,13 @@ export default function TerminalView(props: {
     term.loadAddon(new ClipboardAddon());
     term.open(host);
 
-    // WebGL renderer, with a one-time fallback to the DOM renderer if the GL
-    // context is lost (disposing the addon makes xterm fall back automatically).
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      // WebGL unavailable: xterm keeps the DOM renderer.
-    }
+    // WebGL renderer, held by a page-wide LRU rather than owned here: contexts
+    // are capped across the app, kept for the last few terminals to have been
+    // on screen, and re-attached after a loss instead of falling back to the
+    // DOM renderer for good. Attaching is a reveal, so a tab that mounts
+    // hidden pays nothing.
+    webgl = acquireWebgl(term, host);
+    if (props.active) webgl.reveal();
 
     // Clickable file paths: match path-like tokens on a line, validate each via
     // file_exists (so non-existent paths aren't linked), and on click open the
@@ -365,13 +364,18 @@ export default function TerminalView(props: {
     }
   });
 
-  // Fit + focus whenever this view becomes the active tab.
+  // Fit + focus whenever this view becomes the active tab, and tell the WebGL
+  // cap which side of the edge this is. `active` is a per-tab memo (phase 3),
+  // so both branches run on real edges only.
   createEffect(() => {
     if (props.active) {
+      webgl?.reveal();
       queueMicrotask(() => {
         fitNow();
         term?.focus();
       });
+    } else {
+      webgl?.conceal();
     }
   });
 
@@ -384,6 +388,9 @@ export default function TerminalView(props: {
     offTheme?.();
     offRefit?.();
     invoke("pty_kill", { id: props.id }).catch(() => {});
+    // Before term.dispose(), which drops the addon without releasing its
+    // context and would leave the cap counting one that no longer exists.
+    webgl?.release();
     term?.dispose();
   });
 

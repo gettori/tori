@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -30,6 +31,15 @@ const DEFAULT_QUIET_MS: u64 = 2000;
 // against its quiet threshold. Small relative to any real threshold (2s+),
 // so the active->quiet transition is detected promptly without busy-looping.
 const ACTIVITY_POLL_MS: u64 = 200;
+
+// Output coalescing window, roughly a frame. A reader that keeps producing
+// costs one IPC send per window instead of one per 8KB read, which is what a
+// hidden streaming terminal was paying in full for nobody to look at.
+const COALESCE_WINDOW: Duration = Duration::from_millis(16);
+
+// Ceiling on how much one send carries, so a fast producer flushes on size
+// rather than sitting on a growing buffer for the rest of the window.
+const COALESCE_MAX_BYTES: usize = 64 * 1024;
 
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
@@ -96,6 +106,48 @@ fn check_quiet(act: &mut Activity, threshold: Duration) -> Option<&'static str> 
         Some("quiet")
     } else {
         None
+    }
+}
+
+/// Drains `rx` into `emit`, concatenating chunks in arrival order and never
+/// dropping one, so the frontend's scrollback is byte-identical either way.
+///
+/// A chunk goes out on arrival whenever the last emit is older than `window`,
+/// which is the interactive case: the loop is parked in `recv` and the window
+/// closed long ago, so an echoed keystroke pays nothing. Only a producer that
+/// is already streaming waits, and only until the window closes or `max` is
+/// reached. Returns once the sender is dropped, having emitted the tail.
+fn coalesce(rx: Receiver<Vec<u8>>, mut emit: impl FnMut(Vec<u8>), window: Duration, max: usize) {
+    let mut pending: Vec<u8> = Vec::new();
+    let mut last_emit: Option<Instant> = None;
+    let window_closed = |last: Option<Instant>| last.is_none_or(|t| t.elapsed() >= window);
+
+    loop {
+        let chunk = if pending.is_empty() {
+            match rx.recv() {
+                Ok(c) => c,
+                Err(_) => break,
+            }
+        } else {
+            let wait = last_emit.map_or(Duration::ZERO, |t| window.saturating_sub(t.elapsed()));
+            match rx.recv_timeout(wait) {
+                Ok(c) => c,
+                Err(RecvTimeoutError::Timeout) => {
+                    emit(std::mem::take(&mut pending));
+                    last_emit = Some(Instant::now());
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        };
+        pending.extend_from_slice(&chunk);
+        if pending.len() >= max || window_closed(last_emit) {
+            emit(std::mem::take(&mut pending));
+            last_emit = Some(Instant::now());
+        }
+    }
+    if !pending.is_empty() {
+        emit(pending);
     }
 }
 
@@ -278,7 +330,6 @@ pub fn pty_spawn(
     }
 
     let sink: Sink = Arc::new(Mutex::new(Some(on_output)));
-    let reader_sink = sink.clone();
     let reader_writer = writer.clone();
     let reader_initialized = initialized.clone();
     let reader_init = init.clone();
@@ -290,19 +341,38 @@ pub fn pty_spawn(
     let reader_activity_app = app.clone();
     let reader_activity_id = id.clone();
 
+    // The reader hands bytes to a coalescer rather than to the channel, so the
+    // rate of IPC sends is the window's rather than the producer's. The reader
+    // itself keeps the init and activity work: both are about *when* a byte
+    // arrived, and holding them for a window would delay the needs-you pulse.
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let coalesce_sink = sink.clone();
+    let coalescer = thread::spawn(move || {
+        coalesce(
+            rx,
+            |bytes| {
+                // Stream raw bytes over the current channel (no base64, no
+                // global broadcast). A swapped-out channel just drops output
+                // until the next subscriber arrives.
+                if let Ok(guard) = coalesce_sink.lock() {
+                    if let Some(ch) = guard.as_ref() {
+                        let _ = ch.send(InvokeResponseBody::Raw(bytes));
+                    }
+                }
+            },
+            COALESCE_WINDOW,
+            COALESCE_MAX_BYTES,
+        );
+    });
+
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    // Stream raw bytes over the current channel (no base64, no
-                    // global broadcast). A swapped-out channel just drops output
-                    // until the next subscriber arrives.
-                    if let Ok(guard) = reader_sink.lock() {
-                        if let Some(ch) = guard.as_ref() {
-                            let _ = ch.send(InvokeResponseBody::Raw(buf[..n].to_vec()));
-                        }
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
                     }
                     // First real output means the shell is up: seed the agent
                     // command now (once, guarded), well before the timer.
@@ -319,6 +389,11 @@ pub fn pty_spawn(
                 Err(_) => break,
             }
         }
+        // Land the tail before the exit line: a command tab prints
+        // "[process exited]" on `pty://exit`, which must not overtake the last
+        // bytes the process wrote.
+        drop(tx);
+        let _ = coalescer.join();
         let _ = app_handle.emit("pty://exit", emit_id.clone());
     });
 
@@ -566,5 +641,90 @@ mod tests {
     fn never_active_never_reports_quiet() {
         let mut act = fresh();
         assert_eq!(check_quiet(&mut act, Duration::from_millis(1)), None);
+    }
+
+    /// Runs `coalesce` on a background thread and gives back the emitted
+    /// chunks once the sender is dropped, so a test can count sends and
+    /// reassemble the stream.
+    fn run_coalesce(
+        window: Duration,
+        max: usize,
+        feed: impl FnOnce(&std::sync::mpsc::Sender<Vec<u8>>),
+    ) -> Vec<Vec<u8>> {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let sink = out.clone();
+        let worker = thread::spawn(move || {
+            coalesce(rx, |bytes| sink.lock().unwrap().push(bytes), window, max);
+        });
+        feed(&tx);
+        drop(tx);
+        worker.join().unwrap();
+        let sends = out.lock().unwrap().clone();
+        sends
+    }
+
+    /// The interactive case: an isolated chunk (a keystroke echo) goes out on
+    /// its own, because the window closed long before it arrived. Coalescing
+    /// must not put a frame of latency on typing.
+    #[test]
+    fn an_isolated_chunk_is_emitted_at_once() {
+        let sends = run_coalesce(Duration::from_millis(16), 64 * 1024, |tx| {
+            for _ in 0..4 {
+                tx.send(b"x".to_vec()).unwrap();
+                thread::sleep(Duration::from_millis(40));
+            }
+        });
+        assert_eq!(sends.len(), 4, "spaced chunks must not be held for company");
+    }
+
+    /// A streaming producer costs sends at the window's rate, not its own, and
+    /// the bytes come out concatenated in order: this is the whole point, and
+    /// scrollback has to be identical either way.
+    #[test]
+    fn a_burst_coalesces_and_keeps_every_byte_in_order() {
+        let chunks = 200;
+        let sends = run_coalesce(Duration::from_millis(16), 64 * 1024, move |tx| {
+            for i in 0..chunks {
+                tx.send(format!("{i},").into_bytes()).unwrap();
+                thread::sleep(Duration::from_micros(200));
+            }
+        });
+        assert!(
+            sends.len() < chunks / 4,
+            "200 chunks over ~40ms should cost a handful of sends, got {}",
+            sends.len()
+        );
+        let expected: String = (0..chunks).map(|i| format!("{i},")).collect();
+        let got = String::from_utf8(sends.concat()).unwrap();
+        assert_eq!(got, expected, "coalescing must not reorder or drop a byte");
+    }
+
+    /// A producer faster than the window flushes on size instead of sitting on
+    /// a buffer that keeps growing.
+    #[test]
+    fn a_full_buffer_flushes_before_the_window_closes() {
+        let max = 4096;
+        let sends = run_coalesce(Duration::from_secs(60), max, move |tx| {
+            for _ in 0..10 {
+                tx.send(vec![b'z'; 1024]).unwrap();
+            }
+        });
+        // A 60s window can only be beaten by the size rule.
+        assert!(sends.len() >= 2, "size rule never fired, got {} send(s)", sends.len());
+        assert_eq!(sends.concat().len(), 10 * 1024);
+        assert!(sends.iter().all(|s| s.len() <= max + 1024), "a send overran the ceiling");
+    }
+
+    /// The tail matters: whatever is pending when the reader thread goes away
+    /// is emitted before `coalesce` returns, which is what lets the reader
+    /// join it before emitting `pty://exit`.
+    #[test]
+    fn the_tail_is_emitted_when_the_sender_goes_away() {
+        let sends = run_coalesce(Duration::from_secs(60), 64 * 1024, |tx| {
+            tx.send(b"first".to_vec()).unwrap();
+            tx.send(b"tail".to_vec()).unwrap();
+        });
+        assert_eq!(String::from_utf8(sends.concat()).unwrap(), "firsttail");
     }
 }
