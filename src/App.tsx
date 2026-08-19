@@ -330,14 +330,10 @@ function App() {
     updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), { persist: false });
   }
 
-  // The sidebar keeps its px width and the drag-time clamp only bites while a
-  // pointer is down, so a width restored from a wider display could push the
-  // divider out of reach. Re-clamp when the bounds change; deliberately not
-  // persisted, for the editor's reason above.
-  createEffect(() => {
-    const s = Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
-    if (s !== sidebar()) setSidebar(s);
-  });
+  // What the sidebar renders at. Same deal as the editor pane above: the stored
+  // width is the user's choice and nothing but a drag rewrites it, so a narrower
+  // window squeezes the sidebar for now and widening it hands the choice back.
+  const sidebarW = () => Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
 
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
   // Width the topbar rail collapses to when the sidebar is hidden, so the
@@ -862,7 +858,7 @@ function App() {
         <div
           class="topbar-rail"
           ref={railEl}
-          style={{ width: `${showSidebar() ? sidebar() : railFallback()}px` }}
+          style={{ width: `${showSidebar() ? sidebarW() : railFallback()}px` }}
         >
           <WindowControls showSidebar={showSidebar()} />
         </div>
@@ -882,7 +878,7 @@ function App() {
         <aside
           class="pane sidebar"
           classList={{ hidden: !showSidebar() }}
-          style={{ width: `${sidebar()}px` }}
+          style={{ width: `${sidebarW()}px` }}
         >
           <div class="pane-body tree-body">
             <LeftSidebar selected={selected()} onSelect={setSelected} liveTabs={liveTabs()} />
@@ -892,7 +888,7 @@ function App() {
         <Show when={showSidebar()}>
           <Resizer
             side="before"
-            value={sidebar()}
+            value={sidebarW()}
             min={px(SIDEBAR_MIN)}
             max={sidebarMax()}
             onInput={setSidebar}
