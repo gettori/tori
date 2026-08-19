@@ -16,6 +16,14 @@ import Dropdown from "./Menu/Dropdown";
 import { MenuRow } from "./Menu/rows";
 import Tooltip from "./Tooltip/Tooltip";
 
+let measures = 0;
+/** How many ghost measurements have run, across every bar in the window. A
+ *  measurement reads layout, so a click in one pane paying for one in every
+ *  other pane is the storm this counts. */
+export function __measuresForTests(): number {
+  return measures;
+}
+
 // A tab bar that never scrolls: it renders only the tabs that fully fit, plus a
 // `+N` button whose dropdown lists the rest. Generic over the tab item type T;
 // the consumer supplies the tab and menu-row markup. Fit is measured from an
@@ -66,6 +74,7 @@ export default function OverflowTabBar<T>(props: {
 
   function measure() {
     if (!bar || !ghost) return;
+    measures++;
     const children = Array.from(ghost.children).filter(
       (c) => c !== countSample,
     ) as HTMLElement[];
@@ -132,9 +141,12 @@ export default function OverflowTabBar<T>(props: {
   });
   onCleanup(() => ro?.disconnect());
 
-  // Re-measure when the item set changes.
+  // On the ids, not the list: every strip gets a fresh array whenever any pane's
+  // placement changes, so a click in one pane re-measured the ghost in all of
+  // them. A NUL joins, since a tab id is a path and a path can hold a space.
+  const idKey = createMemo(() => props.items.map(props.idOf).join("\u0000"));
   createEffect(() => {
-    props.items.length;
+    idKey();
     requestAnimationFrame(measure);
   });
 
