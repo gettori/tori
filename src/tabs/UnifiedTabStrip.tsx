@@ -18,6 +18,8 @@ export default function UnifiedTabStrip(props: {
   /** The strip's own box, which the pane hit-tests a drop against. */
   ref?: (el: HTMLElement) => void;
   class?: string;
+  /** The pane does not hold focus, so its selection is not drawn. */
+  blurred?: boolean;
 }) {
   // Every registered cluster, not the active tab's (phase 13): what a pane
   // offers should not depend on which of its tabs is in front. Keyed by the
@@ -26,7 +28,7 @@ export default function UnifiedTabStrip(props: {
   return (
     <OverflowTabBar
       ref={props.ref}
-      class={`unified-strip ${props.class ?? ""}`}
+      class={`unified-strip ${props.blurred ? "pane-blur" : ""} ${props.class ?? ""}`}
       items={props.items}
       activeId={props.activeId}
       idOf={idOf}

@@ -58,6 +58,9 @@ export default function Breadcrumbs(props: {
    *  (nothing open, or a caret last seen in a file that is no longer shown).
    *  Null renders the path half alone rather than a stale symbol trail. */
   caret: { line: number; column: number } | null;
+  /** Pinned to the bar's right edge: a control about the file the trail names,
+   *  which belongs to this pane rather than to the strip every pane shares. */
+  trailing?: JSX.Element;
 }) {
   const crumbs = createMemo(() => pathCrumbs(props.root, props.path));
   const nodes = createMemo(() => symbolsFor(props.path));
@@ -122,6 +125,9 @@ export default function Breadcrumbs(props: {
             </>
           )}
         </For>
+        <Show when={props.trailing}>
+          <div class={styles.trailing}>{props.trailing}</div>
+        </Show>
       </nav>
     </Show>
   );

@@ -28,6 +28,24 @@
   min-height: 0;
 }
 
+/* The wrapper div Solid's Portal inserts between the slot and codeEditorWrap.
+   Without this it is an unstyled block in a flex row, so the wrap's flex:1 has
+   no flex parent and the whole editor takes its content height: CodeMirror's
+   scroller never ends up shorter than the document, which is the only state in
+   which it scrolls. Stage hosts solve the same problem the same way (App.css
+   `[data-stage-host] > div`). */
+.codeSlot > div {
+  display: contents;
+}
+
+/* A pane showing something that is not an editable buffer (a preview, an image,
+   a commit view): the slot drops out of flow, or its flex:1 would keep half the
+   column as an empty box above whatever is actually shown. display:none rather
+   than unmount, as everywhere: the CM views inside keep their buffers. */
+.codeSlot.hidden {
+  display: none;
+}
+
 .editorEmpty {
   flex: 1;
   display: flex;
@@ -82,7 +100,9 @@
   user-select: none;
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
-  overflow: hidden;
+  /* clip, matching .unified-strip: this class lands on the same element, and a
+     hidden here would win the cascade coin-toss and make it scrollable again. */
+  overflow: clip;
 }
 
 /* Editor tabs are the shared <Tab> pill now; only the extra markers <Tab> does
@@ -153,7 +173,9 @@
   align-items: center;
   gap: calc(2px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale));
-  overflow: hidden;
+  /* clip, like every tab strip: an OverflowTabBar must never scroll, or a
+     focused tab drags the +N model's hidden tabs halfway in. */
+  overflow: clip;
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
 }

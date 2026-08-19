@@ -15,7 +15,9 @@
   user-select: none;
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
-  overflow: hidden;
+  /* clip, matching .unified-strip: this class lands on the same element, and a
+     hidden here would win the cascade coin-toss and make it scrollable again. */
+  overflow: clip;
 }
 
 /* The terminal tabs are the shared <Tab> pill now. */

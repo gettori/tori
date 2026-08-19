@@ -24,6 +24,7 @@ import {
 import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
+import { focusedPaneId } from "../layout/layoutStore";
 import { preserveScrollAndFocus } from "../utils/rowMovePreserve";
 import {
   emit,
@@ -43,6 +44,13 @@ export default function PaneView(props: {
   ws?: string;
 }) {
   const entry = () => maybeKindEntry(props.pinKind);
+  // A strip only marks its selection while its pane holds focus: two lit tabs in
+  // two panes read as two selections, and only one of them is the one every
+  // command means.
+  const blurred = () => {
+    const focused = props.paneId ? focusedPaneId(props.ws ?? "") : null;
+    return !!focused && focused !== props.paneId;
+  };
   const placed = () => (props.paneId ? paneTabs(props.ws ?? "", props.paneId) : null);
   const items = (): UnifiedTab[] => placed() ?? entry()?.stripItems?.() ?? [];
   const activeId = () =>
@@ -212,6 +220,7 @@ export default function PaneView(props: {
       <UnifiedTabStrip
         ref={(el) => (strip = el)}
         class={entry()?.stripClass}
+        blurred={blurred()}
         items={items()}
         activeId={activeId()}
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
