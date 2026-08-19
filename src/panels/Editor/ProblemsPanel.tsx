@@ -4,6 +4,7 @@ import { diagnostics, fixesFor, orderFiles, summarize, type Problem, type Severi
 import { composeDiagnosticWithFixes, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { diagnosticBlocks } from "../../utils/chatCompose";
 import { sendBlockedReason, sendTargetFor } from "../../utils/sendTarget";
+import { isUnderPath } from "../../utils/pathScope";
 import Button from "../../components/Button/Button";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import styles from "./ProblemsPanel.module.css";
@@ -27,8 +28,14 @@ function basename(path: string): string {
  *  Each row can hand its diagnostic to the selected session through safe-send,
  *  insert-only and never auto-submitted, exactly like the hunk-comment path. */
 export default function ProblemsPanel(props: { selected: Selection | null }) {
-  const files = () => orderFiles(Object.entries(diagnostics()));
-  const total = () => Object.values(diagnostics()).reduce((n, list) => n + list.length, 0);
+  // Scoped to the selected workspace: the store spans every warm project now
+  // (servers survive a switch), and this panel answers for one of them.
+  const here = () => {
+    const r = props.selected?.folderPath;
+    return Object.entries(diagnostics()).filter(([p]) => (r ? isUnderPath(p, r) : false));
+  };
+  const files = () => orderFiles(here());
+  const total = () => here().reduce((n, [, list]) => n + list.length, 0);
 
   // Same capability gate as the Changes panel, and the same one the TODO and
   // Debug panels ask: safe-send needs a resumable session to land the text in.

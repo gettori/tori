@@ -40,10 +40,20 @@ export function rememberDiagnostics(uri: string, diagnostics: RawDiagnostic[]): 
   else byUri.delete(uri);
 }
 
-/** Forget everything. What a project switch calls: every diagnostic held here
+/** Forget everything. What full teardown calls: every diagnostic held here
  *  describes a file some now-dead server had an opinion about. */
 export function clearDiagnosticContext(): void {
   byUri.clear();
+}
+
+/** Forget one evicted project's files, by URI prefix (its root URI plus a
+ *  trailing slash, so `/a/repo-two` never matches `/a/repo`). The warm-root
+ *  policy stops servers per project now, and the survivors' context has to
+ *  survive with them. */
+export function dropDiagnosticContextUnder(uriPrefix: string): void {
+  for (const uri of [...byUri.keys()]) {
+    if (uri.startsWith(uriPrefix)) byUri.delete(uri);
+  }
 }
 
 /**
