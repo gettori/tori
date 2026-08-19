@@ -2,19 +2,25 @@
 // exist; this says what goes in them, as an override over the kind's pin rule,
 // so a fresh install stores nothing and every tab is still where phase 5 put it.
 //
-// Three maps per workspace. `tabs` is a hand-moved tab's pane. `kinds` is where
+// Four maps per workspace. `tabs` is a hand-moved tab's pane. `kinds` is where
 // a kind's tabs land when no tab entry says, so a file opened after the editor
 // moved joins it rather than going back. `order` stamps a pane's visible
 // sequence, so a merged-in tab appends after what was there and a strip drag
-// still wins over both.
+// still wins over both. `locks` is the user saying a pane takes one kind and
+// nothing else (phase 11), which outranks both of the first two.
 import { createSignal } from "solid-js";
 import { leaves, resolvePinPane, type PaneNode } from "./paneLayout";
+import { pinSideOf } from "./pinRules";
 
 type WsPlacement = {
   tabs: Record<string, string>;
   kinds: Record<string, string>;
   /** paneId -> the tab that pane shows. */
   active: Record<string, string>;
+  /** paneId -> the only kind that pane takes (plan phase 11). A rule about what
+   *  may be *put* in a pane: a tab that was already there when the lock was set
+   *  stays, since taking it away would be a move nobody asked for. */
+  locks: Record<string, string>;
   order: Record<string, number>;
   seq: number;
 };
@@ -23,7 +29,7 @@ export type TabRef = { id: string; kind: string };
 
 const LS_PLACEMENT = "sway.tabpanes.v1";
 
-const empty = (): WsPlacement => ({ tabs: {}, kinds: {}, active: {}, order: {}, seq: 0 });
+const empty = (): WsPlacement => ({ tabs: {}, kinds: {}, active: {}, locks: {}, order: {}, seq: 0 });
 
 function sanitize(raw: unknown): WsPlacement | null {
   if (!raw || typeof raw !== "object") return null;
@@ -52,6 +58,7 @@ function sanitize(raw: unknown): WsPlacement | null {
     tabs: strMap(v.tabs),
     kinds: strMap(v.kinds),
     active: strMap(v.active),
+    locks: strMap(v.locks),
     order,
     seq: Math.max(seq, ...Object.values(order), 0),
   };
@@ -96,9 +103,36 @@ function write(ws: string, next: WsPlacement) {
 const liveId = (root: PaneNode, id: string | undefined): string | null =>
   id && leaves(root).some((l) => l.id === id) ? id : null;
 
-/** Where a kind's tabs land when nothing moved them individually. */
+/** The rules a pin resolves under here: the user's side for this kind, and the
+ *  panes this workspace has locked. Handed to `resolvePinPane` rather than read
+ *  by it, so the layout primitive stays pure. */
+export const pinRulesFor = (ws: string, kind: string) => ({
+  side: pinSideOf(kind),
+  locks: wsOf(ws).locks,
+});
+
+/** Which kind a pane takes, or null for one that takes anything. */
+export const paneLock = (ws: string, paneId: string): string | null =>
+  wsOf(ws).locks[paneId] ?? null;
+
+/** Lock a pane to one kind, or clear it. */
+export function setPaneLock(ws: string, paneId: string, kind: string | null) {
+  const p = wsOf(ws);
+  if ((p.locks[paneId] ?? null) === kind) return;
+  const locks = { ...p.locks };
+  if (kind) locks[paneId] = kind;
+  else delete locks[paneId];
+  write(ws, { ...p, locks });
+}
+
+/** Where a kind's tabs land when nothing moved them individually. A stored home
+ *  is dropped when that pane has since been locked to something else: the lock
+ *  is the newer answer, and the rule resolves around it. */
 export function homePane(ws: string, kind: string, root: PaneNode): string | null {
-  return liveId(root, wsOf(ws).kinds[kind]) ?? resolvePinPane(root, kind)?.id ?? null;
+  const stored = liveId(root, wsOf(ws).kinds[kind]);
+  const lock = stored ? paneLock(ws, stored) : null;
+  if (stored && (!lock || lock === kind)) return stored;
+  return resolvePinPane(root, kind, pinRulesFor(ws, kind))?.id ?? null;
 }
 
 export function paneOfTab(ws: string, tab: TabRef, root: PaneNode): string | null {
@@ -159,7 +193,8 @@ export function setPaneActive(ws: string, paneId: string, tabId: string) {
  *
  * Phase 8 kept file tabs to one pane here, because they shared one CodeMirror
  * view; phase 9 gave each pane its own view over the shared buffer map, so that
- * branch is gone and only a pane that does not exist is refused.
+ * branch is gone. What is left is a pane that does not exist, and a pane the
+ * user has locked to another kind (phase 11).
  */
 export function placementRefusal(a: {
   ws: string;
@@ -169,6 +204,8 @@ export function placementRefusal(a: {
   tabsInWs: TabRef[];
 }): string | null {
   if (!leaves(a.root).some((l) => l.id === a.targetPaneId)) return "That pane is gone.";
+  const lock = paneLock(a.ws, a.targetPaneId);
+  if (lock && lock !== a.tab.kind) return `That pane only takes ${lock} tabs.`;
   return null;
 }
 
@@ -198,6 +235,28 @@ export function moveTabToPane(a: {
   return null;
 }
 
+/**
+ * Freeze every tab where it currently sits.
+ *
+ * Run when the pin rules change (plan phase 11): a tab nobody moved has no
+ * entry of its own and resolves through the rule, so a new rule would pick up
+ * the whole strip and carry it across the window. Writing the current answer
+ * down first makes the new rule what it says it is, a rule for what opens next.
+ */
+export function pinCurrentPlacements(ws: string, root: PaneNode, tabsInWs: TabRef[]) {
+  const p = wsOf(ws);
+  const tabs = { ...p.tabs };
+  let changed = false;
+  for (const t of tabsInWs) {
+    if (tabs[t.id]) continue;
+    const pane = paneOfTab(ws, t, root);
+    if (!pane) continue;
+    tabs[t.id] = pane;
+    changed = true;
+  }
+  if (changed) write(ws, { ...p, tabs });
+}
+
 /** Close-pane merge (plan phase 8 task 3): every tab in `from` lands in `to`,
  *  appended after what `to` already holds. Runs before the tree edit, while
  *  `from` still exists to resolve against. */
@@ -216,11 +275,31 @@ export function mergePaneInto(a: {
   const tabs = { ...p.tabs };
   const kinds = { ...p.kinds };
   const active = { ...p.active };
+  const locks = { ...p.locks };
   for (const t of moving) tabs[t.id] = a.to;
   for (const [kind, pane] of Object.entries(kinds)) if (pane === a.from) kinds[kind] = a.to;
+  // The lock and the remembered active tab belonged to the box, not to what was
+  // in it (see `forgetPane`): the pane they merge into keeps its own answers.
   delete active[a.from];
-  write(a.ws, { ...p, tabs, kinds, active });
+  delete locks[a.from];
+  write(a.ws, { ...p, tabs, kinds, active, locks });
   stampOrder(a.ws, moving.map((t) => t.id));
+}
+
+/**
+ * A closed pane leaves nothing behind either. Pane ids are minted from what the
+ * tree is *not* using, so a freed id comes back, and a lock or a remembered
+ * active tab left under it would be inherited by a pane the user never set it
+ * on. Run wherever a pane closes, merge or no merge.
+ */
+export function forgetPane(ws: string, paneId: string) {
+  const p = wsOf(ws);
+  if (!(paneId in p.locks) && !(paneId in p.active)) return;
+  const locks = { ...p.locks };
+  const active = { ...p.active };
+  delete locks[paneId];
+  delete active[paneId];
+  write(ws, { ...p, locks, active });
 }
 
 /** A closed tab leaves nothing behind: its entries would otherwise outlive it

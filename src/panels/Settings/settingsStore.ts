@@ -19,6 +19,7 @@ import {
   type EditorOverlay,
   type Layer,
 } from "./utils/workspaceSettings";
+import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
 
 export type Appearance = { theme: string };
 export type Typography = {
@@ -31,6 +32,11 @@ export type Typography = {
   lineHeight: number;
 };
 export type Checkpoints = { enabled: boolean };
+
+/** Where each family of tabs opens (plan phase 11). A pane has no name to pin
+ *  to, so a rule names an end of the split tree; `layout/pinRules.ts` is what
+ *  resolves one against the tree the workspace actually has. */
+export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
 
 /** The forge integration's kill switch. Separate from signing out on purpose:
  *  signing out also stops the traffic but costs the credential, so quieting a
@@ -180,6 +186,7 @@ export type Settings = {
   appearance: Appearance;
   typography: Typography;
   checkpoints: Checkpoints;
+  panePins: PanePins;
   github: Github;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
@@ -208,6 +215,8 @@ export const DEFAULT_SETTINGS: Settings = {
     lineHeight: 1.5,
   },
   checkpoints: { enabled: true },
+  // Today's layout: terminals and chat on the left, files on the right.
+  panePins: { ...DEFAULT_PIN_SIDES },
   chatDefaults: {
     defaultSurface: "chat",
     streaming: true,

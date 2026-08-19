@@ -99,6 +99,7 @@ describe("the tab grouping", () => {
       "chat",
       "editor",
       "languages",
+      "panes",
       "appearance",
       "integrations",
     ]);
@@ -107,6 +108,7 @@ describe("the tab grouping", () => {
       ["chat", "checkpoints"],
       ["editor", "editing"],
       ["lsp", "dap"],
+      ["panes"],
       ["appearance", "typography"],
       ["github"],
     ]);

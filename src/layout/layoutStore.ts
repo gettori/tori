@@ -9,6 +9,7 @@
 // stored value is never repaired in place; only focusedPaneId, whose loss is
 // recoverable, is patched to a visible pane.
 import { createSignal } from "solid-js";
+import { pinRulesFor } from "./tabPlacement";
 import {
   MAX_PANES,
   MAX_SPLIT_DEPTH,
@@ -154,7 +155,7 @@ export function setFocusedPane(ws: string, paneId: string) {
 export function kindPaneFocused(ws: string, kind: string): boolean {
   const env = envelopes()[ws];
   if (!env) return kind !== "file";
-  return resolvePinPane(env.layout, kind)?.id === env.focusedPaneId;
+  return resolvePinPane(env.layout, kind, pinRulesFor(ws, kind))?.id === env.focusedPaneId;
 }
 
 /** Reveal the pane a kind pins to and hand it pane focus: the shared shape of
@@ -163,7 +164,7 @@ export function kindPaneFocused(ws: string, kind: string): boolean {
 export function revealKindPane(ws: string, kind: string) {
   const env = envelopes()[ws];
   if (!env) return;
-  const pane = resolvePinPane(env.layout, kind);
+  const pane = resolvePinPane(env.layout, kind, pinRulesFor(ws, kind));
   if (!pane) return;
   if (pane.hidden) updateLayout(ws, (root) => setPaneHidden(root, pane.id, false));
   setFocusedPane(ws, pane.id);

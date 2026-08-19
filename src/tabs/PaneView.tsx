@@ -13,7 +13,14 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
-import { isKindHome, paneActiveId, paneHostIds, paneTabs, reorderPane } from "./paneTabs";
+import {
+  isKindHome,
+  paneActiveId,
+  paneHostIds,
+  paneRefusal,
+  paneTabs,
+  reorderPane,
+} from "./paneTabs";
 import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
@@ -71,6 +78,17 @@ export default function PaneView(props: {
   // ---- Drop target (plan phase 10) -----------------------------------------
   const [zone, setZone] = createSignal<DropZone | null>(null);
   const [caret, setCaret] = createSignal(0);
+  const [refused, setRefused] = createSignal(false);
+
+  /** Would this pane take the tab in flight? Only asked of a drop into this
+   *  pane: an edge drop makes a new pane, and a new pane is locked to nothing.
+   *  The drop is still let through, so the shell answers with the sentence
+   *  rather than the pane swallowing it. */
+  const wouldRefuse = (z: DropZone) => {
+    const drag = draggingTab();
+    if (!drag || !props.paneId || z.kind === "edge") return false;
+    return !!paneRefusal(props.ws ?? "", { id: drag.id, kind: drag.kind }, props.paneId);
+  };
 
   /** The zone under the pointer, or null when this pane is not a target at all
    *  (no tree, or nothing in flight). */
@@ -127,6 +145,7 @@ export default function PaneView(props: {
     // The center is drawn by nobody: it is the surface's until the surface
     // passes, and lighting the pane up would promise a landing it may not get.
     setZone(z.kind === "center" ? null : z);
+    setRefused(wouldRefuse(z));
     if (z.kind === "strip") {
       const box = root.getBoundingClientRect();
       const after =
@@ -212,20 +231,22 @@ export default function PaneView(props: {
           {entry()?.overlay?.()}
         </Show>
       </div>
-      <Show when={zone()}>{(z) => <DropOverlay zone={z()} caret={caret()} />}</Show>
+      <Show when={zone()}>{(z) => <DropOverlay zone={z()} caret={caret()} refused={refused()} />}</Show>
     </div>
   );
 }
 
 /** What the pointer is aiming at, drawn: a caret between two tabs, the half the
  *  new pane would take, or the whole stage for a plain append. */
-function DropOverlay(props: { zone: DropZone; caret: number }) {
+function DropOverlay(props: { zone: DropZone; caret: number; refused: boolean }) {
   const edge = () => (props.zone.kind === "edge" ? props.zone.dir : null);
   return (
     <div
       class={styles.dropZone}
       data-drop-zone={edge() ? `edge-${edge()}` : props.zone.kind}
+      data-drop-refused={props.refused ? "" : undefined}
       classList={{
+        [styles.dropRefused]: props.refused,
         [styles.dropCaret]: props.zone.kind === "strip",
         [styles.dropHalf]: !!edge(),
         [styles.dropLeft]: edge() === "left",

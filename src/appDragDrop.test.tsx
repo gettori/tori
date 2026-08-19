@@ -76,6 +76,7 @@ import { DEFAULT_SETTINGS } from "./panels/Settings/settingsStore";
 import { setOpen, setActiveWorkspace, setActiveByWorkspace } from "./panels/Terminal/terminalTabStore";
 import { setTabsByWs, setActiveByWs } from "./panels/Editor/editorTabStore";
 import { emitWith, SPLIT_PANE, type SplitPane } from "./utils/events";
+import { setPaneLock } from "./layout/tabPlacement";
 
 const REPO = "/space/proj/main";
 const { default: App } = await import("./App");
@@ -270,6 +271,36 @@ describe("the overflow menu", () => {
     dragTo(tabEl(pane(0), "sh:2"), column(1), 395 + 400, 20);
 
     await waitFor(() => expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`, "sh:2"]));
+  });
+});
+
+describe("a drop into a locked pane", () => {
+  it("says no while the tab is still in the air, and again in words after it", async () => {
+    render(() => <App />);
+    layout();
+    setPaneLock(REPO, "right", "file");
+
+    const dt = new FakeDataTransfer();
+    fire(tabEl(pane(0), "sh:2"), "dragstart", { dt });
+    fire(column(1), "dragover", { x: 760, y: 20, dt });
+    // Refused before the drop ends: the zone is drawn, and drawn as a no.
+    expect(pane(1).querySelector("[data-drop-zone]")?.hasAttribute("data-drop-refused")).toBe(true);
+
+    fire(column(1), "drop", { x: 760, y: 20, dt });
+    fire(tabEl(pane(0), "sh:2"), "dragend", { dt });
+
+    expect(await screen.findByText(/only takes file tabs/)).toBeTruthy();
+    expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`]);
+  });
+
+  it("still takes an edge drop, which makes a pane of its own", async () => {
+    render(() => <App />);
+    layout();
+    setPaneLock(REPO, "right", "file");
+    dragTo(tabEl(pane(0), "sh:2"), column(1), 410, 150);
+
+    await waitFor(() => expect(tabsIn(pane(1))).toEqual(["sh:2"]));
+    expect(panes()).toBe(3);
   });
 });
 

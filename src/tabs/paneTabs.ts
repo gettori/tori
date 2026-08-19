@@ -14,6 +14,9 @@ import {
 import {
   activeIdInPane,
   homePane,
+  paneLock,
+  placementRefusal,
+  setPaneLock,
   orderInPane,
   paneOfTab,
   stampOrder,
@@ -100,6 +103,21 @@ export function visibleInPane(tab: TabRef & { workspace: string }): boolean | nu
   return pane ? paneActiveId(tab.workspace, pane) === tab.id : null;
 }
 
+/** Why a pane would refuse this tab, or null (plan phase 11). The same guard
+ *  the shell runs when the move happens, asked while a drag is still in the
+ *  air, so a pane can say no before it is let go of. */
+export function paneRefusal(ws: string, tab: TabRef, paneId: string): string | null {
+  const root = layoutRoot(ws);
+  if (!root) return null;
+  return placementRefusal({
+    ws,
+    tab,
+    targetPaneId: paneId,
+    root,
+    tabsInWs: unifiedTabs().filter((t) => t.workspace === ws),
+  });
+}
+
 /** A tab's own pane menu (plan phase 8): where else it could go, and how to
  *  make somewhere else. Both halves emit, so the shell runs the same guards a
  *  palette command would. */
@@ -115,6 +133,20 @@ export function paneMenuItems(ws: string, tab: TabRef): MenuItem[] {
         emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: tab.id, kind: tab.kind, paneId: l.id }),
     })),
     ...(others.length ? [{ separator: true } as MenuItem] : []),
+    // The lock is a property of the box rather than of a tab, so it is written
+    // straight to the placement store: there is no guard to run and no other
+    // path that sets one.
+    ...(here
+      ? [
+          paneLock(ws, here)
+            ? { label: "Let this pane take any tab", onClick: () => setPaneLock(ws, here, null) }
+            : {
+                label: `Only ${tab.kind} tabs in this pane`,
+                onClick: () => setPaneLock(ws, here, tab.kind),
+              },
+          { separator: true } as MenuItem,
+        ]
+      : []),
     {
       label: "Split the pane to the right",
       onClick: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "row" }),

@@ -37,7 +37,8 @@ export type SettingSection =
   | "editor"
   | "editing"
   | "checkpoints"
-  | "chat";
+  | "chat"
+  | "panes";
 
 /**
  * A tab in the panel's strip, in the order the strip renders them.
@@ -54,7 +55,8 @@ export type SettingTab =
   | "editor"
   | "languages"
   | "appearance"
-  | "integrations";
+  | "integrations"
+  | "panes";
 
 /** Not "Workspace": the panel already uses that word for a folder, and most of
  *  these rows write your global settings. */
@@ -95,6 +97,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
+  { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
   { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["github"] },
 ];
@@ -124,6 +127,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   editing: "Editor",
   checkpoints: "Checkpoints",
   chat: "Chat",
+  panes: "Panes",
 };
 
 export type SettingEntry = {
@@ -304,6 +308,25 @@ export const SETTINGS: SettingEntry[] = [
     edits: "todoPatterns",
     label: "TODO tags",
     hint: "Comma-separated tags the TODO panel searches for, matched case-sensitively so a TODO marker is not confused with the word in prose. Set it per workspace to follow a repo's own convention.",
+  },
+
+  {
+    id: "pin-terminal",
+    section: "panes",
+    label: "Terminals open in",
+    hint: "Which end of the split a new terminal, agent, command or task tab lands in. Tabs already open stay where they are.",
+  },
+  {
+    id: "pin-chat",
+    section: "panes",
+    label: "Chats open in",
+    hint: "Which end of the split a new chat tab lands in. Tabs already open stay where they are.",
+  },
+  {
+    id: "pin-file",
+    section: "panes",
+    label: "Files open in",
+    hint: "Which end of the split a file opens in. Files already open stay where they are.",
   },
 
   {

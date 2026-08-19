@@ -199,6 +199,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/AppearancePane/AppearancePane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Terminal/TabMark.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/LeftSidebar/LeftSidebar.tsx",

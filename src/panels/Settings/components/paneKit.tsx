@@ -29,6 +29,7 @@ import {
   type Budgets,
   type ChatDefaults,
   type Checkpoints,
+  type PanePins,
   type Agent,
   type Typography,
 } from "../settingsStore";
@@ -80,6 +81,8 @@ export const setCheckpoints = (c: Partial<Checkpoints>) =>
   saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
 export const setChatDefaults = (c: Partial<ChatDefaults>) =>
   saveSettings({ ...settings, chatDefaults: { ...settings.chatDefaults, ...c } });
+export const setPanePins = (p: Partial<PanePins>) =>
+  saveSettings({ ...settings, panePins: { ...settings.panePins, ...p } });
 export const setBudgets = (b: Partial<Budgets>) =>
   saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
 export const setAgent = (h: Partial<Agent>) =>

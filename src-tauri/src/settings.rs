@@ -126,6 +126,44 @@ impl Default for Checkpoints {
     }
 }
 
+/// Which end of the split tree a family of tabs opens at (plan phase 11).
+/// Panes are anonymous, so a rule names a position rather than a pane: the
+/// answer still resolves after a split, a close or a move.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PinSide {
+    #[default]
+    Leftmost,
+    Rightmost,
+}
+
+fn pin_rightmost() -> PinSide {
+    PinSide::Rightmost
+}
+
+/// Where each family of tabs opens. The defaults are the layout Sway shipped
+/// with: terminals and chat on the left, files on the right.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PanePins {
+    #[serde(default)]
+    pub terminal: PinSide,
+    #[serde(default)]
+    pub chat: PinSide,
+    #[serde(default = "pin_rightmost")]
+    pub file: PinSide,
+}
+
+impl Default for PanePins {
+    fn default() -> Self {
+        Self {
+            terminal: PinSide::Leftmost,
+            chat: PinSide::Leftmost,
+            file: PinSide::Rightmost,
+        }
+    }
+}
+
 /// The forge integration's kill switch: on by default.
 ///
 /// **Deliberately separate from signing out.** Signing out also stops the
@@ -459,6 +497,8 @@ pub struct Settings {
     pub typography: Typography,
     #[serde(default)]
     pub checkpoints: Checkpoints,
+    #[serde(default)]
+    pub pane_pins: PanePins,
     #[serde(default)]
     pub github: Github,
     #[serde(default)]
