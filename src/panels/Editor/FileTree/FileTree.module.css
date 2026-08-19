@@ -56,6 +56,18 @@
   outline-offset: -1px;
 }
 
+/* The file the editor is showing, in whichever pane holds focus (the tree is
+   handed that one file, see Editor's activeId). Brand rather than the blue of a
+   cmd-click selection: one is where you are, the other is what you are about to
+   act on, and both can be true of the same row. */
+.treeRow.active {
+  background: var(--brand-subtle);
+}
+
+.treeRow.active .treeName {
+  font-weight: 500;
+}
+
 /* Cmd-click selection. Flatter than the drop highlight on purpose: selection is
    a resting state you may sit in while deciding, not a live drag cue. */
 .treeRow.selected {
