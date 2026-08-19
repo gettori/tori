@@ -19,6 +19,7 @@ import ContextMenu from "../../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
+import { traceSettle } from "../../../utils/perfTrace";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
 import { editorDefaults } from "../../Settings/settingsStore";
@@ -670,7 +671,9 @@ export default function FileTree(props: {
         setFilter("");
         setSelected(new Set<string>());
         setRevealing(null);
-        void reloadRoots();
+        // Settled means the fresh read landed, not the cached one: the cache
+        // is what makes the paint fast, and measuring it would measure that.
+        void reloadRoots().then(() => traceSettle("tree", root ?? ""));
       },
     ),
   );

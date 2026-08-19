@@ -28,6 +28,7 @@ import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics } from "../../utils/diagnostics";
+import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
@@ -1065,7 +1066,7 @@ export default function Editor(props: {
       // the Changes panel: that panel is unmounted whenever the right pane shows
       // anything else, and the palette's git commands still have to know whether
       // this workspace has anything staged or anything to push.
-      void refreshGit(r);
+      void refreshGit(r).then(() => traceSettle("git", r ?? ""));
       // The per-workspace settings overlay, for the same reason: this pane is
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
