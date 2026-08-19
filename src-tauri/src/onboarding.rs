@@ -172,7 +172,7 @@ pub async fn onboarding_content() -> OnboardingContent {
 
 /// Record that onboarding has been shown. Called the moment it displays, not
 /// when it is dismissed: a user who quits mid-welcome has still seen it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn onboarding_mark_shown() -> Result<(), String> {
     let path = state_path();
     let mut state = load_from(&path);

@@ -38,11 +38,18 @@ const bridge: {
 } = { calls: [], dirs: {}, existing: new Set(), failRename: false, projectFiles: [], overlay: {} };
 
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
-const readsOf = (path: string) => sent("fs_read_dir").filter((c) => c.args.path === path);
+const readsOf = (path: string) =>
+  sent("fs_read_dir_compact").filter((c) => c.args.path === path);
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("@tauri-apps/api/core", async () => {
+  const { compactRows } = await import("../../../test/compactDirs");
+  return {
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args });
+    if (cmd === "fs_read_dir_compact")
+      return Promise.resolve(
+        compactRows(bridge.dirs, args as { path: string; compact: boolean; hidden: string[] }),
+      );
     if (cmd === "fs_read_dir") return Promise.resolve(bridge.dirs[args.path as string] ?? []);
     if (cmd === "list_project_files") return Promise.resolve(bridge.projectFiles);
     if (cmd === "file_exists") return Promise.resolve(bridge.existing.has(args.path as string));
@@ -53,7 +60,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "get_workspace_settings") return Promise.resolve({ editor: bridge.overlay });
     return Promise.resolve(null);
   },
-}));
+  };
+});
 
 import FileTree, { clearListingCache } from "./FileTree";
 import styles from "./FileTree.module.css";

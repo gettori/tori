@@ -109,6 +109,22 @@ pub fn command_span(name: &str, id: Option<u64>, enter: f64, ret: f64) {
     );
 }
 
+/// One command body, stamped on whatever thread actually ran it. Bodies moved
+/// off the IPC thread by `exec::blocking` have no correlation id of their own
+/// (the id lives in the invoke payload the handler consumed); the report joins
+/// them to `cmd` lines by name and time window instead.
+pub fn body_span(name: &str, enter: f64, ret: f64) {
+    let thread = format!("{:?}", std::thread::current().id());
+    append(
+        &BACKEND,
+        &format!(
+            r#"{{"t":"body","name":{},"enter":{enter},"ret":{ret},"thread":{}}}"#,
+            json_string(name),
+            json_string(&thread),
+        ),
+    );
+}
+
 /// Minimal JSON string escaping. Command and thread names are ASCII
 /// identifiers in practice; this exists so a stray quote cannot corrupt a line.
 fn json_string(s: &str) -> String {

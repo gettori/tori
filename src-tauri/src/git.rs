@@ -44,11 +44,19 @@ pub struct GitFileStatus {
 }
 
 #[tauri::command]
-pub fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, String> {
+pub async fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, String> {
+    crate::exec::blocking("git_status", move || git_status_body(&project_path)).await
+}
+
+pub(crate) fn git_status_body(project_path: &str) -> Result<Vec<GitFileStatus>, String> {
+    // `--no-optional-locks`: status opportunistically takes index.lock to save
+    // its refresh, and a concurrent stage or commit *fails* on that lock rather
+    // than waiting. Reads run outside the repo write lock, so they must not
+    // take locks a writer can trip over; re-refreshing later costs less.
     let output = Command::new("git")
         .arg("-C")
-        .arg(&project_path)
-        .args(["status", "--porcelain=v2", "-z"])
+        .arg(project_path)
+        .args(["--no-optional-locks", "status", "--porcelain=v2", "-z"])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -144,7 +152,11 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
 
 /// Stage `paths` (`git add --`). A no-op on an empty list.
 #[tauri::command]
-pub fn git_stage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_stage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    crate::exec::git_write("git_stage", project_path.clone(), move || git_stage_body(project_path, paths)).await
+}
+
+pub(crate) fn git_stage_body(project_path: String, paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
     }
@@ -156,7 +168,11 @@ pub fn git_stage(project_path: String, paths: Vec<String>) -> Result<(), String>
 /// Unstage `paths` back to the working tree (`git restore --staged --`),
 /// leaving worktree edits untouched. A no-op on an empty list.
 #[tauri::command]
-pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_unstage(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    crate::exec::git_write("git_unstage", project_path.clone(), move || git_unstage_body(project_path, paths)).await
+}
+
+pub(crate) fn git_unstage_body(project_path: String, paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
     }
@@ -173,7 +189,7 @@ pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<(), Strin
 /// The mode matters. A partially-staged file's Staged section compares
 /// index-vs-HEAD, so its unchanged lines are the *index's*, not the working
 /// tree's; reading the worktree there would show lines the user has not staged.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_file_slice(
     project_path: String,
     file: String,
@@ -271,7 +287,7 @@ pub fn fetch_pr_head(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_fetch_pr_head(
     state: State<AskpassState>,
     project_path: String,
@@ -279,6 +295,8 @@ pub fn git_fetch_pr_head(
     sha: String,
 ) -> Result<(), String> {
     let inner = state.0.clone();
+    let lock = crate::exec::repo_lock(&project_path);
+    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     fetch_pr_head(&project_path, number, &sha, inner.sock_path(), inner.token())
 }
 
@@ -289,7 +307,7 @@ pub fn git_fetch_pr_head(
 /// from disk there would show whatever happens to be in the editor's copy: the
 /// right line numbers over the wrong content, which is worse than showing
 /// nothing because it looks exactly like an answer.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_blob_slice(
     project_path: String,
     rev: String,
@@ -340,7 +358,11 @@ pub fn git_blob_slice(
 /// fingerprints) depend on it, since a wider context merges nearby changes into
 /// one hunk.
 #[tauri::command]
-pub fn git_apply_hunks(
+pub async fn git_apply_hunks(project_path: String, file: String, hunk_indices: Vec<usize>, fingerprints: Vec<String>, reverse: bool, context: Option<u32>) -> Result<(), String> {
+    crate::exec::git_write("git_apply_hunks", project_path.clone(), move || git_apply_hunks_body(project_path, file, hunk_indices, fingerprints, reverse, context)).await
+}
+
+pub(crate) fn git_apply_hunks_body(
     project_path: String,
     file: String,
     hunk_indices: Vec<usize>,
@@ -390,7 +412,11 @@ pub fn git_apply_hunks(
 /// command because it is the common case and because its patch is the hunk
 /// verbatim, with nothing rebuilt that could be rebuilt wrongly.
 #[tauri::command]
-pub fn git_apply_lines(
+pub async fn git_apply_lines(project_path: String, file: String, hunk_index: usize, fingerprint: String, lines: Vec<usize>, reverse: bool, context: Option<u32>) -> Result<(), String> {
+    crate::exec::git_write("git_apply_lines", project_path.clone(), move || git_apply_lines_body(project_path, file, hunk_index, fingerprint, lines, reverse, context)).await
+}
+
+pub(crate) fn git_apply_lines_body(
     project_path: String,
     file: String,
     hunk_index: usize,
@@ -532,7 +558,11 @@ fn matches_staged_diff(project_path: &str, file: &str, fingerprints: &[String], 
 /// first, which keeps the destructive path narrow: one source diff, one
 /// direction, no mode argument a caller could pair wrongly.
 #[tauri::command]
-pub fn git_discard_hunks(
+pub async fn git_discard_hunks(project_path: String, file: String, hunk_indices: Vec<usize>, fingerprints: Vec<String>, context: Option<u32>) -> Result<DiscardOutcome, String> {
+    crate::exec::git_write("git_discard_hunks", project_path.clone(), move || git_discard_hunks_body(project_path, file, hunk_indices, fingerprints, context)).await
+}
+
+pub(crate) fn git_discard_hunks_body(
     project_path: String,
     file: String,
     hunk_indices: Vec<usize>,
@@ -620,7 +650,11 @@ pub fn git_discard_hunks(
 /// Scoped to the unstaged side, matching the Changes section the control lives
 /// in: a file's staged content is left exactly as it is.
 #[tauri::command]
-pub fn git_discard_files(project_path: String, files: Vec<String>) -> Result<DiscardOutcome, String> {
+pub async fn git_discard_files(project_path: String, files: Vec<String>) -> Result<DiscardOutcome, String> {
+    crate::exec::git_write("git_discard_files", project_path.clone(), move || git_discard_files_body(project_path, files)).await
+}
+
+pub(crate) fn git_discard_files_body(project_path: String, files: Vec<String>) -> Result<DiscardOutcome, String> {
     if files.is_empty() {
         return Err("No files selected".into());
     }
@@ -794,7 +828,7 @@ fn split_stash_subject(subject: &str) -> (Option<String>, String) {
 }
 
 /// Every stash, newest first (git's own order).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
     // NUL-delimited fields, so neither a colon nor a newline in the message can
     // split one entry into two. The stream is flat: three fields per entry.
@@ -841,7 +875,11 @@ fn valid_selector(selector: &str) -> bool {
 /// and exits 0. Counting entries rather than reading that sentence keeps the
 /// answer true regardless of git's locale.
 #[tauri::command]
-pub fn git_stash_push(
+pub async fn git_stash_push(project_path: String, message: Option<String>, include_untracked: Option<bool>) -> Result<bool, String> {
+    crate::exec::git_write("git_stash_push", project_path.clone(), move || git_stash_push_body(project_path, message, include_untracked)).await
+}
+
+pub(crate) fn git_stash_push_body(
     project_path: String,
     message: Option<String>,
     include_untracked: Option<bool>,
@@ -876,7 +914,11 @@ pub struct StashOutcome {
 /// afterwards there is nothing left to ask. A conflicting apply fails and
 /// surfaces git's own message, which says which files are in the way.
 #[tauri::command]
-pub fn git_stash_apply(
+pub async fn git_stash_apply(project_path: String, selector: String, pop: Option<bool>) -> Result<StashOutcome, String> {
+    crate::exec::git_write("git_stash_apply", project_path.clone(), move || git_stash_apply_body(project_path, selector, pop)).await
+}
+
+pub(crate) fn git_stash_apply_body(
     project_path: String,
     selector: String,
     pop: Option<bool>,
@@ -929,7 +971,11 @@ pub fn git_stash_apply(
 /// and could not bring it back. The confirm says so rather than implying a
 /// safety net that does not exist.
 #[tauri::command]
-pub fn git_stash_drop(project_path: String, selector: String) -> Result<(), String> {
+pub async fn git_stash_drop(project_path: String, selector: String) -> Result<(), String> {
+    crate::exec::git_write("git_stash_drop", project_path.clone(), move || git_stash_drop_body(project_path, selector)).await
+}
+
+pub(crate) fn git_stash_drop_body(project_path: String, selector: String) -> Result<(), String> {
     if !valid_selector(&selector) {
         return Err("That is not a stash.".into());
     }
@@ -945,7 +991,11 @@ pub fn git_stash_drop(project_path: String, selector: String) -> Result<(), Stri
 /// question, not this one's - see `amendRewritesPushed` in
 /// `src/utils/commitMessage.ts`.
 #[tauri::command]
-pub fn git_commit(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
+pub async fn git_commit(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
+    crate::exec::git_write("git_commit", project_path.clone(), move || git_commit_body(project_path, message, amend)).await
+}
+
+pub(crate) fn git_commit_body(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("Commit message is empty".into());
@@ -961,7 +1011,7 @@ pub fn git_commit(project_path: String, message: String, amend: Option<bool>) ->
 /// HEAD's full commit message, for prefilling the editor when amend is toggled
 /// on. An unborn HEAD has no message to read, and that is not an error here:
 /// the toggle simply has nothing to prefill, so failure reads as empty.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_head_message(project_path: String) -> Result<String, String> {
     Ok(git_capture(&project_path, &["log", "-1", "--format=%B"]).unwrap_or_default())
 }
@@ -1040,7 +1090,7 @@ const LOG_PAGE: u32 = 100;
 /// `git log` exits non-zero there, and a fresh `bare_init` worktree is exactly
 /// that state. The check is `rev-parse --verify`, not the wording of git's
 /// complaint, which is localised.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_log(
     project_path: String,
     skip: Option<u32>,
@@ -1072,7 +1122,7 @@ pub fn git_log(
 /// on every HEAD-moving event and everything derived from committed history
 /// caches against it: `rev-parse` is one cheap answer where a log page is a
 /// hundred.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_head_sha(project_path: String) -> Result<String, String> {
     match git_capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"]) {
         // Same reading as `git_log`: `--quiet` says nothing on stderr for an
@@ -1192,7 +1242,7 @@ fn parse_commit_meta(text: &str, files: Vec<CommitFile>) -> Option<CommitDetail>
 }
 
 /// One commit's metadata and the files it touched.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_commit_detail(project_path: String, sha: String) -> Result<CommitDetail, String> {
     if !valid_object_name(&sha) {
         return Err(format!("Not a commit id: {}", sha));
@@ -1212,7 +1262,7 @@ pub fn git_commit_detail(project_path: String, sha: String) -> Result<CommitDeta
 /// Run directly rather than through `git_capture` because a patch's last line
 /// can legitimately be a context line that is nothing but a space, and trimming
 /// the output would drop it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_commit_file_diff(
     project_path: String,
     sha: String,
@@ -1297,7 +1347,11 @@ fn parse_range(s: &str) -> (u32, u32) {
 }
 
 #[tauri::command]
-pub fn git_diff_file(project_path: String, file: String, mode: Option<DiffMode>) -> Result<Vec<DiffHunk>, String> {
+pub async fn git_diff_file(project_path: String, file: String, mode: Option<DiffMode>) -> Result<Vec<DiffHunk>, String> {
+    crate::exec::blocking("git_diff_file", move || git_diff_file_body(project_path, file, mode)).await
+}
+
+pub(crate) fn git_diff_file_body(project_path: String, file: String, mode: Option<DiffMode>) -> Result<Vec<DiffHunk>, String> {
     let mode = mode.unwrap_or_default();
     // -U0: hunk headers carry exact ranges, no surrounding context to walk.
     let output = Command::new("git")
@@ -1325,7 +1379,7 @@ pub fn git_diff_file(project_path: String, file: String, mode: Option<DiffMode>)
 /// so its "n unchanged lines" collapse has something real to hide and to reveal
 /// on expand. Omitted means git's default. `mode` picks which two trees are
 /// compared, defaulting to worktree-vs-HEAD.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_diff_text(
     project_path: String,
     file: String,
@@ -1399,7 +1453,11 @@ fn parse_hunks(text: &str) -> Vec<DiffHunk> {
 /// gates this). git checkout is atomic: on a dirty/conflicting tree it fails and
 /// leaves the tree untouched, so surfacing stderr is enough to never half-switch.
 #[tauri::command]
-pub fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
+pub async fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
+    crate::exec::git_write("git_checkout", repo_path.clone(), move || git_checkout_body(repo_path, branch)).await
+}
+
+pub(crate) fn git_checkout_body(repo_path: String, branch: String) -> Result<(), String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(&repo_path)
@@ -1501,8 +1559,13 @@ fn do_init(dir: &Path, branch: Option<&str>) -> Result<bool, String> {
 /// Returns whether an initial commit was made, so the UI can warn when a missing
 /// git identity left the repo unborn.
 #[tauri::command]
-pub fn git_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<bool, String> {
+pub async fn git_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<bool, String> {
+    crate::exec::git_write("git_init", project_path.clone(), move || git_init_body(app, project_path, branch)).await
+}
+
+pub(crate) fn git_init_body(app: AppHandle, project_path: String, branch: Option<String>) -> Result<bool, String> {
     let committed = do_init(Path::new(&project_path), branch.as_deref())?;
+    crate::exec::forget_common_dir(&project_path);
     let _ = app.emit("config://changed", ());
     Ok(committed)
 }
@@ -1560,15 +1623,24 @@ fn do_bare_init(dir: &Path, branch: Option<&str>) -> Result<(), String> {
 /// Bootstrap a bare+worktree layout in an existing plain-dir folder (optional
 /// initial branch). Re-discovers (plain-dir becomes a worktree container).
 #[tauri::command]
-pub fn bare_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
+pub async fn bare_init(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
+    crate::exec::git_write("bare_init", project_path.clone(), move || bare_init_body(app, project_path, branch)).await
+}
+
+pub(crate) fn bare_init_body(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
     do_bare_init(Path::new(&project_path), branch.as_deref())?;
+    crate::exec::forget_common_dir(&project_path);
     let _ = app.emit("config://changed", ());
     Ok(())
 }
 
 /// Add the `origin` remote, or update its URL if it already exists.
 #[tauri::command]
-pub fn git_remote_add(app: AppHandle, project_path: String, url: String) -> Result<(), String> {
+pub async fn git_remote_add(app: AppHandle, project_path: String, url: String) -> Result<(), String> {
+    crate::exec::git_write("git_remote_add", project_path.clone(), move || git_remote_add_body(app, project_path, url)).await
+}
+
+pub(crate) fn git_remote_add_body(app: AppHandle, project_path: String, url: String) -> Result<(), String> {
     let url = url.trim();
     if url.is_empty() {
         return Err("Remote URL is empty".into());
@@ -1590,7 +1662,7 @@ pub fn git_remote_add(app: AppHandle, project_path: String, url: String) -> Resu
 }
 
 /// Origin's URL if configured, else None. Lets the UI gate push on a remote.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -1673,10 +1745,17 @@ pub fn git_fetch(
                 cmd.arg("--all");
             }
         }
-        let (ok, error) = match cmd.output() {
-            Ok(o) if o.status.success() => (true, String::new()),
-            Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
-            Err(e) => (false, e.to_string()),
+        // Fetch updates remote-tracking refs in the shared .git, so it queues
+        // with every other write on this repo (see exec.rs). Held only for the
+        // subprocess, not the emit.
+        let (ok, error) = {
+            let lock = crate::exec::repo_lock(&repo);
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match cmd.output() {
+                Ok(o) if o.status.success() => (true, String::new()),
+                Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                Err(e) => (false, e.to_string()),
+            }
         };
         let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
         let _ = app.emit(event, FetchResult { repo, ok, error });
@@ -1743,10 +1822,15 @@ pub fn git_push(
 ) -> Result<(), String> {
     let inner = state.0.clone();
     thread::spawn(move || {
-        let (ok, error) = match push_branch(&repo, &remote, &branch, inner.sock_path(), inner.token())
-        {
-            Ok(()) => (true, String::new()),
-            Err(e) => (false, e),
+        // Push writes local tracking refs when it lands, so it queues with the
+        // repo's other writes for its duration.
+        let (ok, error) = {
+            let lock = crate::exec::repo_lock(&repo);
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match push_branch(&repo, &remote, &branch, inner.sock_path(), inner.token()) {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e),
+            }
         };
         let event = if ok { "git://push-done" } else { "git://push-error" };
         let _ = app.emit(event, PushResult { repo, ok, error });
@@ -1764,7 +1848,7 @@ pub struct AheadBehind {
     has_upstream: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
     // Unborn HEAD or detached: `rev-parse --abbrev-ref HEAD` reports "HEAD"
     // itself rather than erroring, which then simply fails `has_upstream`
@@ -1786,7 +1870,7 @@ pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
 /// The PR base branch: `origin/HEAD` when set, else a probe for `origin/main`
 /// then `origin/master` (in that order), else None (no origin, or neither
 /// conventional branch exists - the UI hides "Open PR" without a base).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, String> {
     if let Ok(text) = git_capture(&project_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
         if let Some(b) = text.strip_prefix("refs/remotes/origin/") {
@@ -1815,7 +1899,7 @@ pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, S
 /// branch pushed under a different name still deletes the right ref; a branch that
 /// tracks nothing errors. Synchronous: the caller (the worktree-remove dialog)
 /// awaits the result to report success or failure. Emits `config://changed`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_remote_branch(
     app: AppHandle,
     state: State<AskpassState>,
@@ -1828,7 +1912,11 @@ pub fn delete_remote_branch(
     let op_id = next_op_id();
     let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
     cmd.args(["push", &remote, "--delete", &refname]);
-    let out = cmd.output().map_err(|e| e.to_string())?;
+    let out = {
+        let lock = crate::exec::repo_lock(&repo);
+        let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        cmd.output().map_err(|e| e.to_string())?
+    };
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -1838,7 +1926,7 @@ pub fn delete_remote_branch(
 
 /// Whether a `credential.helper` is configured for this repo (any scope). With
 /// none, git re-prompts every op (nothing is cached), so the UI warns once.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -1978,7 +2066,7 @@ mod tests {
         Command::new("git").arg("-C").arg(&dir).args(["merge", "feature"]).output().unwrap();
         let p = dir.to_string_lossy().into_owned();
 
-        let conflicted = git_status(p.clone()).unwrap();
+        let conflicted = git_status_body(&p).unwrap();
         let f = conflicted.iter().find(|f| f.path == "f.txt").expect("f.txt is listed");
         assert!(f.conflicted);
         assert!(!f.staged && !f.unstaged, "a conflict is in neither section");
@@ -1986,7 +2074,7 @@ mod tests {
         // Marking it resolved is an ordinary `git add`, and from that moment the
         // file is an ordinary staged change: one index stage, no `u` record.
         git(&dir, &["add", "f.txt"]);
-        let resolved = git_status(p).unwrap();
+        let resolved = git_status_body(&p).unwrap();
         let f = resolved.iter().find(|f| f.path == "f.txt").expect("f.txt is still listed");
         assert!(!f.conflicted);
         assert!(f.staged);
@@ -2002,7 +2090,7 @@ mod tests {
         git(&dir, &["mv", "before.txt", "after.txt"]);
         let p = dir.to_string_lossy().into_owned();
 
-        let files = git_status(p.clone()).unwrap();
+        let files = git_status_body(&p).unwrap();
         let renamed = files.iter().find(|f| f.orig_path.is_some()).expect("expected a rename entry");
         assert_eq!(renamed.path, "after.txt");
         assert_eq!(renamed.orig_path.as_deref(), Some("before.txt"));
@@ -2027,14 +2115,14 @@ mod tests {
         std::fs::write(dir.join("two words.txt"), "y").unwrap();
         let p = dir.to_string_lossy().into_owned();
 
-        let files = git_status(p.clone()).unwrap();
+        let files = git_status_body(&p).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
         assert!(paths.contains(&"naïve.txt"), "got {paths:?}");
         assert!(paths.contains(&"two words.txt"), "got {paths:?}");
         assert!(paths.iter().all(|p| !p.contains('"')), "no path should arrive quoted: {paths:?}");
 
-        git_stage(p.clone(), vec!["naïve.txt".into(), "two words.txt".into()]).unwrap();
-        let after = git_status(p).unwrap();
+        git_stage_body(p.clone(), vec!["naïve.txt".into(), "two words.txt".into()]).unwrap();
+        let after = git_status_body(&p).unwrap();
         let staged: Vec<&str> = after.iter().filter(|f| f.staged).map(|f| f.path.as_str()).collect();
         assert!(staged.contains(&"naïve.txt") && staged.contains(&"two words.txt"), "got {staged:?}");
 
@@ -2180,7 +2268,7 @@ diff --git a/f b/f
         std::fs::write(dir.join("f.txt"), "v2").unwrap(); // unstaged edit
         std::fs::write(dir.join("new.txt"), "x").unwrap(); // untracked
         let p = dir.to_string_lossy().into_owned();
-        let files = git_status(p).unwrap();
+        let files = git_status_body(&p).unwrap();
 
         let f = files.iter().find(|f| f.path == "f.txt").unwrap();
         assert!(!f.staged && f.unstaged);
@@ -2198,10 +2286,10 @@ diff --git a/f b/f
         let dir = repo_with_two_branches();
         std::fs::write(dir.join("f.txt"), "v2").unwrap();
         let p = dir.to_string_lossy().into_owned();
-        git_stage(p.clone(), vec!["f.txt".into()]).unwrap();
+        git_stage_body(p.clone(), vec!["f.txt".into()]).unwrap();
         std::fs::write(dir.join("f.txt"), "v3").unwrap();
 
-        let files = git_status(p).unwrap();
+        let files = git_status_body(&p).unwrap();
         let f = files.iter().find(|f| f.path == "f.txt").unwrap();
         assert!(f.staged && f.unstaged);
 
@@ -2217,7 +2305,7 @@ diff --git a/f b/f
         let dir = repo_with_two_branches();
         std::fs::write(dir.join("new.txt"), "x").unwrap();
         let p = dir.to_string_lossy().into_owned();
-        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+        git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
 
         let _ = Command::new("git")
             .arg("-C")
@@ -2237,7 +2325,7 @@ diff --git a/f b/f
             std::fs::remove_dir_all(&dir).ok();
             return;
         }
-        let err = git_commit(p, "won't work".into(), None).expect_err("commit without identity must fail");
+        let err = git_commit_body(p, "won't work".into(), None).expect_err("commit without identity must fail");
         assert!(!err.is_empty());
 
         std::fs::remove_dir_all(&dir).ok();
@@ -2249,13 +2337,13 @@ diff --git a/f b/f
         std::fs::write(dir.join("new.txt"), "x").unwrap();
         let p = dir.to_string_lossy().into_owned();
 
-        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
-        let staged = git_status(p.clone()).unwrap();
+        git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
+        let staged = git_status_body(&p).unwrap();
         let f = staged.iter().find(|f| f.path == "new.txt").unwrap();
         assert!(f.staged && !f.unstaged);
 
-        git_unstage(p.clone(), vec!["new.txt".into()]).unwrap();
-        let unstaged = git_status(p.clone()).unwrap();
+        git_unstage_body(p.clone(), vec!["new.txt".into()]).unwrap();
+        let unstaged = git_status_body(&p).unwrap();
         let f = unstaged.iter().find(|f| f.path == "new.txt").unwrap();
         assert!(!f.staged && f.unstaged);
 
@@ -2270,8 +2358,8 @@ diff --git a/f b/f
         std::fs::write(dir.join("-weird.txt"), "x").unwrap();
         let p = dir.to_string_lossy().into_owned();
 
-        git_stage(p.clone(), vec!["-weird.txt".into()]).unwrap();
-        let files = git_status(p).unwrap();
+        git_stage_body(p.clone(), vec!["-weird.txt".into()]).unwrap();
+        let files = git_status_body(&p).unwrap();
         let f = files.iter().find(|f| f.path == "-weird.txt").unwrap();
         assert!(f.staged);
 
@@ -2285,13 +2373,13 @@ diff --git a/f b/f
         git(&dir, &["config", "user.email", "t@t.test"]);
         std::fs::write(dir.join("new.txt"), "x").unwrap();
         let p = dir.to_string_lossy().into_owned();
-        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
+        git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
 
-        let err = git_commit(p.clone(), "   ".into(), None).expect_err("empty message must be refused");
+        let err = git_commit_body(p.clone(), "   ".into(), None).expect_err("empty message must be refused");
         assert!(!err.is_empty());
 
-        git_commit(p.clone(), "add new.txt".into(), None).unwrap();
-        let files = git_status(p).unwrap();
+        git_commit_body(p.clone(), "add new.txt".into(), None).unwrap();
+        let files = git_status_body(&p).unwrap();
         assert!(files.iter().all(|f| f.path != "new.txt"));
 
         std::fs::remove_dir_all(&dir).ok();
@@ -2314,14 +2402,14 @@ diff --git a/f b/f
         };
 
         std::fs::write(dir.join("new.txt"), "x").unwrap();
-        git_stage(p.clone(), vec!["new.txt".into()]).unwrap();
-        git_commit(p.clone(), "add new.txt".into(), None).unwrap();
+        git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
+        git_commit_body(p.clone(), "add new.txt".into(), None).unwrap();
         let before = count(&dir);
 
         // A subject, a blank line, and a body that itself contains a blank line:
         // the shape `composeCommitMessage` produces and `%B` must give back.
         let msg = "add new.txt\n\nwhy this was needed\n\nand a second paragraph";
-        git_commit(p.clone(), msg.into(), Some(true)).unwrap();
+        git_commit_body(p.clone(), msg.into(), Some(true)).unwrap();
 
         assert_eq!(count(&dir), before, "amend must rewrite HEAD, not add a commit");
         assert_eq!(git_head_message(p).unwrap().trim(), msg);
@@ -2341,7 +2429,7 @@ diff --git a/f b/f
     fn checkout_switches_branch_on_clean_tree() {
         let dir = repo_with_two_branches();
         assert_eq!(current_branch(&dir), "main");
-        git_checkout(dir.to_string_lossy().into_owned(), "feature".into()).unwrap();
+        git_checkout_body(dir.to_string_lossy().into_owned(), "feature".into()).unwrap();
         assert_eq!(current_branch(&dir), "feature");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2349,7 +2437,7 @@ diff --git a/f b/f
     #[test]
     fn checkout_surfaces_error_and_does_not_switch() {
         let dir = repo_with_two_branches();
-        let err = git_checkout(dir.to_string_lossy().into_owned(), "nope".into())
+        let err = git_checkout_body(dir.to_string_lossy().into_owned(), "nope".into())
             .expect_err("checkout of a missing branch must fail");
         assert!(!err.is_empty(), "stderr should be surfaced");
         // Never half-switch: the tree stays on the original branch.
@@ -2587,7 +2675,7 @@ diff --git a/f b/f
         assert_eq!(parsed.hunks.len(), 2, "expected two separate hunks at -U3");
 
         // Stage only the second hunk (line 19).
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![1], vec![parsed.hunks[1].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![1], vec![parsed.hunks[1].fingerprint.clone()], false, Some(3)).unwrap();
 
         assert_eq!(status_of(&dir, "f.txt"), "MM f.txt");
         let staged = indexed(&dir, "f.txt");
@@ -2606,7 +2694,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         let staged = indexed(&dir, "f.txt");
         assert!(staged.contains("line 2 EDITED"));
@@ -2623,13 +2711,13 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
 
         let first = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![first.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![first.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
         assert_eq!(status_of(&dir, "f.txt"), "MM f.txt");
 
         // Re-read: staging renumbered the remaining unstaged hunks.
         let rest = hunks_of(&p, "f.txt", DiffMode::Unstaged);
         assert_eq!(rest.hunks.len(), 1);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![rest.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![rest.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         assert_eq!(status_of(&dir, "f.txt"), "M  f.txt", "fully staged, nothing left unstaged");
         std::fs::remove_dir_all(&dir).ok();
@@ -2645,7 +2733,7 @@ diff --git a/f b/f
         // Now unstage only the line-19 hunk, from the index-vs-HEAD diff.
         let staged_hunks = hunks_of(&p, "f.txt", DiffMode::Staged);
         assert_eq!(staged_hunks.hunks.len(), 2);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![1], vec![staged_hunks.hunks[1].fingerprint.clone()], true, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![1], vec![staged_hunks.hunks[1].fingerprint.clone()], true, Some(3)).unwrap();
 
         let staged = indexed(&dir, "f.txt");
         assert!(staged.contains("line 2 EDITED"), "the untouched hunk stays staged");
@@ -2662,7 +2750,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![unstaged.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![unstaged.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         // "MM": one hunk in each section, and each section sees only its own.
         let staged = hunks_of(&p, "f.txt", DiffMode::Staged);
@@ -2681,7 +2769,7 @@ diff --git a/f b/f
     fn a_stale_fingerprint_refuses_and_stages_nothing() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        let err = git_apply_hunks(
+        let err = git_apply_hunks_body(
             p.clone(), "f.txt".into(), vec![1], vec!["deadbeef".into()], false, Some(3),
         ).unwrap_err();
         assert!(err.contains("diff changed"), "got: {err}");
@@ -2693,7 +2781,7 @@ diff --git a/f b/f
     fn an_out_of_range_index_refuses_rather_than_panicking() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        let err = git_apply_hunks(
+        let err = git_apply_hunks_body(
             p.clone(), "f.txt".into(), vec![9], vec!["deadbeef".into()], false, Some(3),
         ).unwrap_err();
         assert!(err.contains("diff changed"), "got: {err}");
@@ -2705,7 +2793,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         // Indices and fingerprints must correspond one-to-one.
-        assert!(git_apply_hunks(p, "f.txt".into(), vec![0, 1], vec!["x".into()], false, Some(3)).is_err());
+        assert!(git_apply_hunks_body(p, "f.txt".into(), vec![0, 1], vec!["x".into()], false, Some(3)).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -2721,7 +2809,7 @@ diff --git a/f b/f
         // file, but it must go through intent-to-add rather than failing.
         let parsed = hunks_of(&p, "n.txt", DiffMode::Unstaged);
         assert_eq!(parsed.hunks.len(), 1);
-        git_apply_hunks(p.clone(), "n.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "n.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         assert!(indexed(&dir, "n.txt").contains("new 20"));
         std::fs::remove_dir_all(&dir).ok();
@@ -2753,7 +2841,7 @@ diff --git a/f b/f
         let del = body.iter().position(|l| l == "-line 9").unwrap();
         let add = body.iter().position(|l| l == "+line 9 EDITED").unwrap();
 
-        git_apply_lines(
+        git_apply_lines_body(
             p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
             vec![del, add], false, Some(3),
         ).unwrap();
@@ -2790,7 +2878,7 @@ diff --git a/f b/f
             .map(|want| body.iter().position(|l| l == want).unwrap())
             .collect();
 
-        git_apply_lines(
+        git_apply_lines_body(
             p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
             pick, false, Some(3),
         ).unwrap();
@@ -2812,7 +2900,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
         let add = parsed.hunks[0].body.iter().position(|l| l == "+line 9 EDITED").unwrap();
 
-        git_apply_lines(
+        git_apply_lines_body(
             p.clone(), "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
             vec![add], false, Some(3),
         ).unwrap();
@@ -2834,7 +2922,7 @@ diff --git a/f b/f
         let del = body.iter().position(|l| l == "-line 10").unwrap();
         let add = body.iter().position(|l| l == "+line 10 EDITED").unwrap();
 
-        git_apply_lines(
+        git_apply_lines_body(
             p.clone(), "d.txt".into(), 0, staged_hunks.hunks[0].fingerprint.clone(),
             vec![del, add], true, Some(3),
         ).unwrap();
@@ -2852,7 +2940,7 @@ diff --git a/f b/f
     fn a_stale_fingerprint_refuses_a_line_apply_and_stages_nothing() {
         let dir = repo_with_one_dense_hunk();
         let p = dir.to_string_lossy().into_owned();
-        let err = git_apply_lines(
+        let err = git_apply_lines_body(
             p.clone(), "d.txt".into(), 0, "deadbeef".into(), vec![1], false, Some(3),
         ).unwrap_err();
         assert!(err.contains("diff changed"), "got: {err}");
@@ -2865,7 +2953,7 @@ diff --git a/f b/f
         let dir = repo_with_one_dense_hunk();
         let p = dir.to_string_lossy().into_owned();
         let parsed = hunks_of(&p, "d.txt", DiffMode::Unstaged);
-        assert!(git_apply_lines(
+        assert!(git_apply_lines_body(
             p, "d.txt".into(), 0, parsed.hunks[0].fingerprint.clone(), vec![], false, Some(3),
         ).is_err());
         std::fs::remove_dir_all(&dir).ok();
@@ -2883,7 +2971,7 @@ diff --git a/f b/f
         git(&dir, &["add", "n.txt"]);
         let staged = hunks_of(&p, "n.txt", DiffMode::Staged);
 
-        let err = git_apply_lines(
+        let err = git_apply_lines_body(
             p.clone(), "n.txt".into(), 0, staged.hunks[0].fingerprint.clone(),
             vec![0], true, Some(3),
         ).unwrap_err();
@@ -2900,7 +2988,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "n.txt", DiffMode::Unstaged);
 
         // Only the first of the three added lines.
-        git_apply_lines(
+        git_apply_lines_body(
             p.clone(), "n.txt".into(), 0, parsed.hunks[0].fingerprint.clone(),
             vec![0], false, Some(3),
         ).unwrap();
@@ -2932,7 +3020,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         let head = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Head)).unwrap();
         let staged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Staged)).unwrap();
@@ -2954,7 +3042,7 @@ diff --git a/f b/f
         // and the session diff both depend on still seeing the change here.
         let default = git_diff_text(p.clone(), "f.txt".into(), None, None).unwrap();
         assert!(default.contains("line 2 EDITED"), "default mode must stay vs HEAD");
-        assert!(!git_diff_file(p, "f.txt".into(), None).unwrap().is_empty());
+        assert!(!git_diff_file_body(p, "f.txt".into(), None).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -2975,7 +3063,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
         // Line 19 is edited in the worktree but not in the index.
         let staged = git_file_slice(p.clone(), "f.txt".into(), Some(DiffMode::Staged), 19, 19).unwrap();
@@ -3112,7 +3200,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "g.txt", DiffMode::Unstaged);
         assert_eq!(parsed.hunks.len(), 3);
 
-        git_apply_hunks(
+        git_apply_hunks_body(
             p.clone(), "g.txt".into(), vec![0, 2],
             vec![parsed.hunks[0].fingerprint.clone(), parsed.hunks[2].fingerprint.clone()],
             false, Some(3),
@@ -3136,7 +3224,7 @@ diff --git a/f b/f
 
         let parsed = hunks_of(&p, "g.txt", DiffMode::Staged);
         assert_eq!(parsed.hunks.len(), 3);
-        git_apply_hunks(
+        git_apply_hunks_body(
             p.clone(), "g.txt".into(), vec![0, 2],
             vec![parsed.hunks[0].fingerprint.clone(), parsed.hunks[2].fingerprint.clone()],
             true, Some(3),
@@ -3165,7 +3253,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "g.txt", DiffMode::Unstaged);
         let all: Vec<usize> = (0..parsed.hunks.len()).collect();
         let fps: Vec<String> = parsed.hunks.iter().map(|h| h.fingerprint.clone()).collect();
-        git_apply_hunks(p.clone(), "g.txt".into(), all, fps, false, Some(3)).unwrap();
+        git_apply_hunks_body(p.clone(), "g.txt".into(), all, fps, false, Some(3)).unwrap();
 
         // Staging every hunk must reproduce the worktree exactly.
         assert_eq!(indexed(&dir, "g.txt"), std::fs::read_to_string(dir.join("g.txt")).unwrap());
@@ -3190,7 +3278,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
         assert_eq!(parsed.hunks.len(), 2);
 
-        let out = git_discard_hunks(
+        let out = git_discard_hunks_body(
             p.clone(),
             "f.txt".into(),
             vec![1],
@@ -3219,10 +3307,10 @@ diff --git a/f b/f
         let all: Vec<usize> = (0..parsed.hunks.len()).collect();
         let fps: Vec<String> = parsed.hunks.iter().map(|h| h.fingerprint.clone()).collect();
 
-        let out = git_discard_hunks(p.clone(), "f.txt".into(), all, fps, Some(3)).unwrap();
+        let out = git_discard_hunks_body(p.clone(), "f.txt".into(), all, fps, Some(3)).unwrap();
         assert_ne!(worktree(&dir, "f.txt"), before, "the discard really happened");
 
-        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        crate::backstop::backstop_restore_tree_body(p, out.backstop_ts).unwrap();
         assert_eq!(worktree(&dir, "f.txt"), before, "byte-identical to before the discard");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3233,7 +3321,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         let before = worktree(&dir, "f.txt");
 
-        let err = git_discard_hunks(
+        let err = git_discard_hunks_body(
             p.clone(),
             "f.txt".into(),
             vec![0],
@@ -3256,7 +3344,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(
+        git_apply_hunks_body(
             p.clone(),
             "f.txt".into(),
             vec![0],
@@ -3270,7 +3358,7 @@ diff --git a/f b/f
         // Now aim a discard at the *staged* half. It cannot be reverse-applied
         // from the unstaged diff, and "the diff changed" would be a lie.
         let staged = hunks_of(&p, "f.txt", DiffMode::Staged);
-        let err = git_discard_hunks(
+        let err = git_discard_hunks_body(
             p.clone(),
             "f.txt".into(),
             vec![0],
@@ -3297,7 +3385,7 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "fresh.txt", DiffMode::Unstaged);
         assert_eq!(parsed.hunks.len(), 1, "an untracked file is one hunk, always");
 
-        let out = git_discard_hunks(
+        let out = git_discard_hunks_body(
             p.clone(),
             "fresh.txt".into(),
             vec![0],
@@ -3309,7 +3397,7 @@ diff --git a/f b/f
         assert!(!dir.join("fresh.txt").exists());
         assert_eq!(out.changed.deleted, ["fresh.txt"]);
         // And it is still recoverable, which is what makes deleting acceptable.
-        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        crate::backstop::backstop_restore_tree_body(p, out.backstop_ts).unwrap();
         assert_eq!(worktree(&dir, "fresh.txt"), body.join("\n") + "\n");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3320,7 +3408,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
 
-        let out = git_discard_files(p.clone(), vec!["f.txt".into(), "fresh.txt".into()]).unwrap();
+        let out = git_discard_files_body(p.clone(), vec!["f.txt".into(), "fresh.txt".into()]).unwrap();
 
         assert_eq!(status_of(&dir, "f.txt"), "", "tracked file is back to the index");
         assert!(!dir.join("fresh.txt").exists(), "untracked file is gone");
@@ -3340,7 +3428,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
 
-        let err = git_discard_hunks(
+        let err = git_discard_hunks_body(
             p.clone(),
             "fresh.txt".into(),
             vec![0],
@@ -3365,7 +3453,7 @@ diff --git a/f b/f
         let outside = dir.parent().unwrap().join("sway_escape_probe.txt");
         std::fs::write(&outside, "not yours\n").unwrap();
 
-        let err = git_discard_files(p, vec!["../sway_escape_probe.txt".into()]).unwrap_err();
+        let err = git_discard_files_body(p, vec!["../sway_escape_probe.txt".into()]).unwrap_err();
 
         assert!(err.contains("outside this folder"), "unhelpful refusal: {err}");
         assert!(outside.exists(), "the file outside the repo is untouched");
@@ -3387,7 +3475,7 @@ diff --git a/f b/f
         // Merge deliberately fails, leaving f.txt unmerged in the index.
         Command::new("git").arg("-C").arg(&dir).args(["merge", "side"]).output().unwrap();
 
-        let err = git_discard_files(p.clone(), vec!["f.txt".into()]).unwrap_err();
+        let err = git_discard_files_body(p.clone(), vec!["f.txt".into()]).unwrap_err();
         assert!(err.contains("merge conflicts"), "unhelpful refusal: {err}");
         // And no backstop was written for the refusal.
         assert!(crate::backstop::backstop_list(p).unwrap().is_empty());
@@ -3404,7 +3492,7 @@ diff --git a/f b/f
         std::fs::write(dir.join("g.txt"), "edited\n").unwrap();
         std::fs::write(dir.join("fresh.txt"), "brand new\n").unwrap();
 
-        let out = git_discard_files(
+        let out = git_discard_files_body(
             p.clone(),
             vec!["f.txt".into(), "g.txt".into(), "fresh.txt".into()],
         )
@@ -3415,7 +3503,7 @@ diff --git a/f b/f
         assert_eq!(std::fs::read_to_string(dir.join("g.txt")).unwrap(), "committed\n");
         // One snapshot for the batch, and it takes all three back at once.
         assert_eq!(crate::backstop::backstop_list(p.clone()).unwrap().len(), 1);
-        crate::backstop::backstop_restore_tree(p, out.backstop_ts).unwrap();
+        crate::backstop::backstop_restore_tree_body(p, out.backstop_ts).unwrap();
         assert_eq!(worktree(&dir, "g.txt"), "edited\n");
         assert_eq!(worktree(&dir, "fresh.txt"), "brand new\n");
         std::fs::remove_dir_all(&dir).ok();
@@ -3477,7 +3565,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("scratch.txt"), "local only\n").unwrap();
 
-        assert!(git_stash_push(p.clone(), Some("tracked only".into()), None).unwrap());
+        assert!(git_stash_push_body(p.clone(), Some("tracked only".into()), None).unwrap());
 
         // The default sweeps up tracked edits and leaves everything git has
         // never seen exactly where it is.
@@ -3485,7 +3573,7 @@ diff --git a/f b/f
         assert_eq!(status_of(&dir, "f.txt"), "");
 
         // With the flag on, the same file goes.
-        assert!(git_stash_push(p.clone(), Some("everything".into()), Some(true)).unwrap());
+        assert!(git_stash_push_body(p.clone(), Some("everything".into()), Some(true)).unwrap());
         assert!(!dir.join("scratch.txt").exists(), "untracked file was left behind");
         assert_eq!(git_stash_list(p).unwrap().len(), 2);
         std::fs::remove_dir_all(&dir).ok();
@@ -3499,7 +3587,7 @@ diff --git a/f b/f
 
         // git prints "No local changes to save" and exits 0, so success alone
         // does not mean an entry exists.
-        assert!(!git_stash_push(p.clone(), Some("nothing".into()), None).unwrap());
+        assert!(!git_stash_push_body(p.clone(), Some("nothing".into()), None).unwrap());
         assert!(git_stash_list(p).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3514,9 +3602,9 @@ diff --git a/f b/f
         git(&dir, &["commit", "-qm", "add gone"]);
         std::fs::remove_file(dir.join("gone.txt")).unwrap();
         git(&dir, &["rm", "-q", "--cached", "gone.txt"]);
-        git_stash_push(p.clone(), Some("wip".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("wip".into()), None).unwrap();
 
-        let out = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
+        let out = git_stash_apply_body(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
 
         assert_eq!(out.restored, ["f.txt"]);
         assert_eq!(out.deleted, ["gone.txt"]);
@@ -3539,9 +3627,9 @@ diff --git a/f b/f
         // A second file, so a desync would visibly swallow it.
         std::fs::write(dir.join("other.txt"), "edited\n").unwrap();
         git(&dir, &["add", "other.txt"]);
-        git_stash_push(p.clone(), Some("a rename".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("a rename".into()), None).unwrap();
 
-        let out = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
+        let out = git_stash_apply_body(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
 
         let mut restored = out.restored.clone();
         restored.sort();
@@ -3558,11 +3646,11 @@ diff --git a/f b/f
     fn a_conflicting_pop_surfaces_gits_reason_and_keeps_the_stash() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push(p.clone(), Some("wip".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("wip".into()), None).unwrap();
         // Edit the same file, so the stash cannot be laid back down over it.
         std::fs::write(dir.join("f.txt"), "something else entirely\n").unwrap();
 
-        let err = git_stash_apply(p.clone(), "stash@{0}".into(), Some(true)).unwrap_err();
+        let err = git_stash_apply_body(p.clone(), "stash@{0}".into(), Some(true)).unwrap_err();
 
         assert!(err.contains("f.txt"), "the error should name the file: {err}");
         // A failed pop must not consume the entry, or the work is gone.
@@ -3574,11 +3662,11 @@ diff --git a/f b/f
     fn drop_removes_one_entry_and_leaves_the_rest() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push(p.clone(), Some("first".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("first".into()), None).unwrap();
         std::fs::write(dir.join("f.txt"), "second round\n").unwrap();
-        git_stash_push(p.clone(), Some("second".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("second".into()), None).unwrap();
 
-        git_stash_drop(p.clone(), "stash@{0}".into()).unwrap();
+        git_stash_drop_body(p.clone(), "stash@{0}".into()).unwrap();
 
         let list = git_stash_list(p).unwrap();
         assert_eq!(list.len(), 1);
@@ -3592,11 +3680,11 @@ diff --git a/f b/f
         // option-shaped value would be read as an option.
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push(p.clone(), Some("keep me".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("keep me".into()), None).unwrap();
 
         for bad in ["--all", "stash@{0} --quiet", "refs/heads/main", "stash@{}", ""] {
             assert!(
-                git_stash_drop(p.clone(), bad.into()).is_err(),
+                git_stash_drop_body(p.clone(), bad.into()).is_err(),
                 "accepted {bad:?}"
             );
         }
@@ -3609,7 +3697,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let unstaged = hunks_of(&p, "f.txt", DiffMode::Unstaged);
-        git_apply_hunks(
+        git_apply_hunks_body(
             p.clone(),
             "f.txt".into(),
             vec![0],
@@ -3619,7 +3707,7 @@ diff --git a/f b/f
         )
         .unwrap();
 
-        git_discard_files(p, vec!["f.txt".into()]).unwrap();
+        git_discard_files_body(p, vec!["f.txt".into()]).unwrap();
 
         // "Discard" lives in the Changes section, so it means the unstaged
         // side. Eating the staged half too would be a different, larger promise

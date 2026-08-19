@@ -187,7 +187,11 @@ fn prefix_for(repo: &str, path: &str) -> Option<String> {
 /// Never an error the caller has to handle: a project that is not a git
 /// worktree simply has no local history, which is not a failed save.
 #[tauri::command]
-pub fn local_history_note(repo_path: String, path: String) -> Result<bool, String> {
+pub async fn local_history_note(repo_path: String, path: String) -> Result<bool, String> {
+    crate::exec::git_write("local_history_note", repo_path.clone(), move || local_history_note_body(repo_path, path)).await
+}
+
+pub(crate) fn local_history_note_body(repo_path: String, path: String) -> Result<bool, String> {
     let Some(prefix) = prefix_for(&repo_path, &path) else {
         return Ok(false);
     };
@@ -221,7 +225,7 @@ pub fn local_history_note(repo_path: String, path: String) -> Result<bool, Strin
 
 /// One file's saved versions, newest first. Empty (never an error) outside a
 /// git worktree or for a file nothing has saved.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_history_list(repo_path: String, path: String) -> Result<Vec<HistoryEntry>, String> {
     let Some(prefix) = prefix_for(&repo_path, &path) else {
         return Ok(Vec::new());
@@ -234,7 +238,7 @@ pub fn local_history_list(repo_path: String, path: String) -> Result<Vec<History
 /// `git_output`, not `git_capture`: the latter trims, and a version whose
 /// leading indentation or trailing newline had been shaved off would diff
 /// against the file as a change nobody made.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_history_read(repo_path: String, blob: String) -> Result<String, String> {
     git_output(&repo_path, &["cat-file", "blob", &blob])
 }
@@ -247,7 +251,7 @@ pub fn local_history_read(repo_path: String, blob: String) -> Result<String, Str
 /// exists to serve. The extra blob is unreferenced and collected by gc, and in
 /// the usual case (nothing edited since the last save) it is already the newest
 /// entry, so nothing new is written at all.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_history_diff(repo_path: String, path: String, ts: u64) -> Result<String, String> {
     let Some(prefix) = prefix_for(&repo_path, &path) else {
         return Ok(String::new());
@@ -266,7 +270,11 @@ pub fn local_history_diff(repo_path: String, path: String, ts: u64) -> Result<St
 /// invariant means restoring a version the user is looking at must not stage
 /// anything, and whatever they had already staged has to survive it untouched.
 #[tauri::command]
-pub fn local_history_restore(repo_path: String, path: String, ts: u64) -> Result<(), String> {
+pub async fn local_history_restore(repo_path: String, path: String, ts: u64) -> Result<(), String> {
+    crate::exec::git_write("local_history_restore", repo_path.clone(), move || local_history_restore_body(repo_path, path, ts)).await
+}
+
+pub(crate) fn local_history_restore_body(repo_path: String, path: String, ts: u64) -> Result<(), String> {
     let Some(prefix) = prefix_for(&repo_path, &path) else {
         return Err("this project is not a git worktree, so it has no local history".into());
     };
@@ -319,7 +327,11 @@ fn files_under(dir: &Path, out: &mut Vec<String>) {
 /// each one's old path is its new path with the moved prefix swapped back, so no
 /// listing has to be taken before the move.
 #[tauri::command]
-pub fn local_history_rename(repo_path: String, from: String, to: String) -> Result<(), String> {
+pub async fn local_history_rename(repo_path: String, from: String, to: String) -> Result<(), String> {
+    crate::exec::git_write("local_history_rename", repo_path.clone(), move || local_history_rename_body(repo_path, from, to)).await
+}
+
+pub(crate) fn local_history_rename_body(repo_path: String, from: String, to: String) -> Result<(), String> {
     // Resolved once, ahead of any walk: `prefix_for` costs two `git rev-parse`
     // calls, and doing that per file would put several thousand subprocesses on
     // the rename path of a directory of any size.
@@ -386,7 +398,11 @@ fn rename_one(repo_path: &str, wt: &str, from: &str, to: &str) -> Result<(), Str
 /// left to walk, and the paths are hashed into the ref names, so no prefix sweep
 /// could find them again.
 #[tauri::command]
-pub fn local_history_forget(repo_path: String, path: String) -> Result<(), String> {
+pub async fn local_history_forget(repo_path: String, path: String) -> Result<(), String> {
+    crate::exec::git_write("local_history_forget", repo_path.clone(), move || local_history_forget_body(repo_path, path)).await
+}
+
+pub(crate) fn local_history_forget_body(repo_path: String, path: String) -> Result<(), String> {
     // Resolved once, for the same reason the rename path resolves it once: a
     // folder of any size would otherwise pay two `git rev-parse` calls per file.
     if !is_git_worktree(&repo_path) {
@@ -438,7 +454,11 @@ fn live_keys(repo: &str) -> Option<Vec<String>> {
 /// never reach: a file nobody has saved since it aged out, and a worktree that
 /// was removed and took its files with it.
 #[tauri::command]
-pub fn local_history_prune(repo_path: String) -> Result<(), String> {
+pub async fn local_history_prune(repo_path: String) -> Result<(), String> {
+    crate::exec::git_write("local_history_prune", repo_path.clone(), move || local_history_prune_body(repo_path)).await
+}
+
+pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> {
     if !is_git_worktree(&repo_path) {
         return Ok(());
     }
@@ -540,7 +560,7 @@ mod tests {
         git(&dir, &["add", "a.ts"]);
         let staged_before = git_capture(&repo(&dir), &["diff", "--cached", "--name-only"]).unwrap();
 
-        assert!(local_history_note(repo(&dir), file.clone()).unwrap());
+        assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
 
         let entries = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(entries.len(), 1);
@@ -559,12 +579,12 @@ mod tests {
         // fill the timeline with versions that are all the same file.
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        assert!(local_history_note(repo(&dir), file.clone()).unwrap());
-        assert!(!local_history_note(repo(&dir), file.clone()).unwrap(), "deduped by blob");
+        assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
+        assert!(!local_history_note_body(repo(&dir), file.clone()).unwrap(), "deduped by blob");
         assert_eq!(local_history_list(repo(&dir), file.clone()).unwrap().len(), 1);
 
         write(&dir, "a.ts", "two\n");
-        assert!(local_history_note(repo(&dir), file.clone()).unwrap());
+        assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
         assert_eq!(local_history_list(repo(&dir), file).unwrap().len(), 2);
     }
 
@@ -574,11 +594,11 @@ mod tests {
         // an edit and saving is a thing that happened, and at a different time.
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         write(&dir, "a.ts", "two\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         write(&dir, "a.ts", "one\n");
-        assert!(local_history_note(repo(&dir), file.clone()).unwrap());
+        assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
         assert_eq!(local_history_list(repo(&dir), file).unwrap().len(), 3);
     }
 
@@ -586,9 +606,9 @@ mod tests {
     fn versions_are_listed_newest_first_and_read_back_verbatim() {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         write(&dir, "a.ts", "two\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
 
         let entries = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(entries.len(), 2);
@@ -605,7 +625,7 @@ mod tests {
         let file = write(&dir, "a.ts", "one\n");
         for i in 0..5 {
             write(&dir, "a.ts", &format!("v{i}\n"));
-            assert!(local_history_note(repo(&dir), file.clone()).unwrap());
+            assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
         }
         let entries = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(entries.len(), 5);
@@ -620,7 +640,7 @@ mod tests {
         let outside = std::env::temp_dir().join("sway_localhistory_outsider.ts");
         std::fs::write(&outside, "x\n").unwrap();
         let path = outside.to_string_lossy().into_owned();
-        assert!(!local_history_note(repo(&dir), path.clone()).unwrap());
+        assert!(!local_history_note_body(repo(&dir), path.clone()).unwrap());
         assert!(local_history_list(repo(&dir), path).unwrap().is_empty());
     }
 
@@ -630,12 +650,12 @@ mod tests {
         // nothing, and what the user had staged has to survive it.
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         write(&dir, "a.ts", "staged\n");
         git(&dir, &["add", "a.ts"]);
         let staged = git_capture(&repo(&dir), &["diff", "--cached"]).unwrap();
         write(&dir, "a.ts", "three\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
 
         let oldest = *local_history_list(repo(&dir), file.clone())
             .unwrap()
@@ -644,7 +664,7 @@ mod tests {
             .min()
             .as_ref()
             .unwrap();
-        local_history_restore(repo(&dir), file.clone(), oldest).unwrap();
+        local_history_restore_body(repo(&dir), file.clone(), oldest).unwrap();
 
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "one\n");
         assert_eq!(
@@ -658,7 +678,7 @@ mod tests {
     fn a_version_diffs_against_the_file_as_it_is_now() {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         let ts = local_history_list(repo(&dir), file.clone()).unwrap()[0].ts;
         write(&dir, "a.ts", "two\n");
 
@@ -675,8 +695,8 @@ mod tests {
     fn restoring_a_version_that_is_gone_says_so() {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
-        assert!(local_history_restore(repo(&dir), file, 1).is_err());
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
+        assert!(local_history_restore_body(repo(&dir), file, 1).is_err());
     }
 
     #[test]
@@ -685,13 +705,13 @@ mod tests {
         let from = write(&dir, "a.ts", "one\n");
         for body in ["one\n", "two\n", "three\n"] {
             write(&dir, "a.ts", body);
-            local_history_note(repo(&dir), from.clone()).unwrap();
+            local_history_note_body(repo(&dir), from.clone()).unwrap();
         }
         assert_eq!(local_history_list(repo(&dir), from.clone()).unwrap().len(), 3);
 
         std::fs::rename(&from, dir.join("b.ts")).unwrap();
         let to = dir.join("b.ts").to_string_lossy().into_owned();
-        local_history_rename(repo(&dir), from.clone(), to.clone()).unwrap();
+        local_history_rename_body(repo(&dir), from.clone(), to.clone()).unwrap();
 
         let moved = local_history_list(repo(&dir), to).unwrap();
         assert_eq!(moved.len(), 3, "all three readable under the new path");
@@ -710,11 +730,11 @@ mod tests {
     fn a_rename_onto_a_path_with_its_own_history_keeps_both() {
         let dir = tmp_repo();
         let from = write(&dir, "a.ts", "a\n");
-        local_history_note(repo(&dir), from.clone()).unwrap();
+        local_history_note_body(repo(&dir), from.clone()).unwrap();
         let to = write(&dir, "b.ts", "b\n");
-        local_history_note(repo(&dir), to.clone()).unwrap();
+        local_history_note_body(repo(&dir), to.clone()).unwrap();
 
-        local_history_rename(repo(&dir), from.clone(), to.clone()).unwrap();
+        local_history_rename_body(repo(&dir), from.clone(), to.clone()).unwrap();
         assert_eq!(local_history_list(repo(&dir), to).unwrap().len(), 2);
         assert!(local_history_list(repo(&dir), from).unwrap().is_empty());
     }
@@ -725,12 +745,12 @@ mod tests {
         // nobody will open its timeline and notice them.
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         write(&dir, "a.ts", "two\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         assert_eq!(all_refs(&dir).len(), 2);
 
-        local_history_forget(repo(&dir), file.clone()).unwrap();
+        local_history_forget_body(repo(&dir), file.clone()).unwrap();
         assert!(local_history_list(repo(&dir), file).unwrap().is_empty());
         assert!(all_refs(&dir).is_empty(), "collected, not merely unreachable");
     }
@@ -742,13 +762,13 @@ mod tests {
         let dir = tmp_repo();
         let a = write(&dir, "src/a.ts", "a\n");
         let b = write(&dir, "src/deep/b.ts", "b\n");
-        local_history_note(repo(&dir), a.clone()).unwrap();
-        local_history_note(repo(&dir), b.clone()).unwrap();
+        local_history_note_body(repo(&dir), a.clone()).unwrap();
+        local_history_note_body(repo(&dir), b.clone()).unwrap();
 
         std::fs::rename(dir.join("src"), dir.join("lib")).unwrap();
         let from = dir.join("src").to_string_lossy().into_owned();
         let to = dir.join("lib").to_string_lossy().into_owned();
-        local_history_rename(repo(&dir), from, to).unwrap();
+        local_history_rename_body(repo(&dir), from, to).unwrap();
 
         let moved_a = dir.join("lib/a.ts").to_string_lossy().into_owned();
         let moved_b = dir.join("lib/deep/b.ts").to_string_lossy().into_owned();
@@ -765,11 +785,11 @@ mod tests {
         let dir = tmp_repo();
         let a = write(&dir, "src/a.ts", "a\n");
         let kept = write(&dir, "other.ts", "k\n");
-        local_history_note(repo(&dir), a.clone()).unwrap();
-        local_history_note(repo(&dir), kept.clone()).unwrap();
+        local_history_note_body(repo(&dir), a.clone()).unwrap();
+        local_history_note_body(repo(&dir), kept.clone()).unwrap();
         assert_eq!(all_refs(&dir).len(), 2);
 
-        local_history_forget(repo(&dir), dir.join("src").to_string_lossy().into_owned()).unwrap();
+        local_history_forget_body(repo(&dir), dir.join("src").to_string_lossy().into_owned()).unwrap();
         assert!(local_history_list(repo(&dir), a).unwrap().is_empty());
         assert_eq!(local_history_list(repo(&dir), kept).unwrap().len(), 1, "and only that folder");
     }
@@ -779,10 +799,10 @@ mod tests {
         let dir = tmp_repo();
         let a = write(&dir, "a.ts", "a\n");
         let b = write(&dir, "b.ts", "b\n");
-        local_history_note(repo(&dir), a.clone()).unwrap();
-        local_history_note(repo(&dir), b.clone()).unwrap();
+        local_history_note_body(repo(&dir), a.clone()).unwrap();
+        local_history_note_body(repo(&dir), b.clone()).unwrap();
 
-        local_history_forget(repo(&dir), a).unwrap();
+        local_history_forget_body(repo(&dir), a).unwrap();
         assert_eq!(local_history_list(repo(&dir), b).unwrap().len(), 1);
     }
 
@@ -792,7 +812,7 @@ mod tests {
         let file = write(&dir, "a.ts", "0\n");
         for i in 0..6 {
             write(&dir, "a.ts", &format!("v{i}\n"));
-            local_history_note(repo(&dir), file.clone()).unwrap();
+            local_history_note_body(repo(&dir), file.clone()).unwrap();
         }
         let prefix = prefix_for(&repo(&dir), &file).unwrap();
         enforce_caps(&repo(&dir), &prefix, now_ms());
@@ -813,7 +833,7 @@ mod tests {
     fn an_entry_past_the_age_cap_is_swept() {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         let prefix = prefix_for(&repo(&dir), &file).unwrap();
         let entry = local_history_list(repo(&dir), file.clone()).unwrap().remove(0);
 
@@ -823,7 +843,7 @@ mod tests {
         git_run(&repo(&dir), &["update-ref", &format!("{prefix}{old}"), &entry.blob]).unwrap();
         assert_eq!(local_history_list(repo(&dir), file.clone()).unwrap().len(), 2);
 
-        local_history_prune(repo(&dir)).unwrap();
+        local_history_prune_body(repo(&dir)).unwrap();
         let left = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(left.len(), 1, "the aged-out one goes, the fresh one stays");
         assert_eq!(left[0].ts, entry.ts);
@@ -833,7 +853,7 @@ mod tests {
     fn a_removed_worktrees_history_is_collected_and_a_live_ones_is_not() {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
-        local_history_note(repo(&dir), file.clone()).unwrap();
+        local_history_note_body(repo(&dir), file.clone()).unwrap();
         let mine = all_refs(&dir);
         assert_eq!(mine.len(), 1);
 
@@ -843,7 +863,7 @@ mod tests {
         git_run(&repo(&dir), &["update-ref", &ghost, &blob]).unwrap();
         assert_eq!(all_refs(&dir).len(), 2);
 
-        local_history_prune(repo(&dir)).unwrap();
+        local_history_prune_body(repo(&dir)).unwrap();
         assert_eq!(all_refs(&dir), mine, "the ghost goes, this worktree's stays");
     }
 
@@ -853,12 +873,12 @@ mod tests {
         // key `src/a.ts` in fifteen checkouts would be one interleaved list.
         let dir = tmp_repo();
         let main_file = write(&dir, "a.ts", "main\n");
-        local_history_note(repo(&dir), main_file.clone()).unwrap();
+        local_history_note_body(repo(&dir), main_file.clone()).unwrap();
 
         let other = dir.join("wt");
         git(&dir, &["worktree", "add", "-q", "-b", "side", other.to_str().unwrap()]);
         let side_file = write(&other, "a.ts", "side\n");
-        local_history_note(repo(&other), side_file.clone()).unwrap();
+        local_history_note_body(repo(&other), side_file.clone()).unwrap();
 
         let mine = local_history_list(repo(&dir), main_file).unwrap();
         let theirs = local_history_list(repo(&other), side_file).unwrap();

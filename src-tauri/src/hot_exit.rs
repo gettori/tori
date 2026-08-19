@@ -55,7 +55,7 @@ fn save_to(path: &Path, stash: &Value) -> Result<(), String> {
 
 // --- commands ---
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn hot_exit_load() -> Value {
     load_from(&stash_path())
 }
@@ -63,7 +63,7 @@ pub fn hot_exit_load() -> Value {
 /// Write the stash. **This one does report failure**, unlike the read: the
 /// caller is a quit deciding whether it may skip the "unsaved edits will be
 /// lost" prompt, and it may only skip it if the work actually landed somewhere.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn hot_exit_save(stash: Value) -> Result<(), String> {
     save_to(&stash_path(), &stash)
 }

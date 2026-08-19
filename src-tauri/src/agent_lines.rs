@@ -237,7 +237,7 @@ fn live_index_path(repo: &str) -> PathBuf {
 /// An empty answer is the normal case (no agent has written this file), so
 /// nothing here is an error: a file no session touched, a repo with no
 /// checkpoints, and a failed snapshot all mean the same thing to the reader.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) -> Result<AgentLines, String> {
     let abs = Path::new(&project_path).join(&file).to_string_lossy().into_owned();
     let mut turns: Vec<AgentTurn> = Vec::new();
@@ -427,7 +427,7 @@ mod tests {
 
     // --- against a real repo ---------------------------------------------
 
-    use crate::checkpoint::{checkpoint_note_touched, checkpoint_snapshot};
+    use crate::checkpoint::{checkpoint_note_touched, checkpoint_snapshot_body};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -471,7 +471,7 @@ mod tests {
     /// One turn: snapshot the tree as it was before it ran, then write and
     /// record, exactly as `turnStarted` and `toolCallCompleted` do.
     fn ran_turn(dir: &Path, session: &str, ts: u64, file: &str, contents: &str) {
-        checkpoint_snapshot(session.to_string(), dir.to_string_lossy().into_owned(), ts).unwrap();
+        checkpoint_snapshot_body(session.to_string(), dir.to_string_lossy().into_owned(), ts).unwrap();
         std::fs::write(dir.join(file), contents).unwrap();
         checkpoint_note_touched(
             session.to_string(),
@@ -527,7 +527,7 @@ mod tests {
         ran_turn(&dir, &session, 100, "f.txt", "one\nagent\n");
         // A later prompt closes turn 1's interval. Its own turn ran a shell and
         // named no file, so nothing after this boundary is claimed by anyone.
-        checkpoint_snapshot(session.clone(), dir.to_string_lossy().into_owned(), 200).unwrap();
+        checkpoint_snapshot_body(session.clone(), dir.to_string_lossy().into_owned(), 200).unwrap();
         checkpoint_note_touched(session.clone(), 200, "Bash".into(), vec![]).unwrap();
         std::fs::write(dir.join("f.txt"), "mine\none\nagent\n").unwrap();
 
@@ -574,7 +574,7 @@ mod tests {
         std::fs::write(dir.join("f.bin"), [0u8, 159, 146, 150]).unwrap();
         git(&dir, &["add", "-A"]);
         git(&dir, &["commit", "-qm", "committed"]);
-        checkpoint_snapshot(session.clone(), dir.to_string_lossy().into_owned(), 100).unwrap();
+        checkpoint_snapshot_body(session.clone(), dir.to_string_lossy().into_owned(), 100).unwrap();
         std::fs::write(dir.join("f.bin"), [0u8, 1, 2, 3, 4]).unwrap();
         checkpoint_note_touched(
             session.clone(),

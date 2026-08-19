@@ -413,10 +413,15 @@ fn parse_by_adapter(
 /// Takes its roots rather than finding them, so the whole walk is testable over
 /// temporary directories without a registry or an `accounts.json`.
 fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
-    let mut cache = match index.0.lock() {
-        Ok(c) => c,
+    // Walk and parse with no lock held: only the mtimes already known are
+    // snapshotted up front, and the results are swapped in at the end. Two
+    // concurrent walks may both parse one changed file; both write the same
+    // answer, which costs a parse and corrupts nothing.
+    let known: std::collections::HashMap<PathBuf, SystemTime> = match index.0.lock() {
+        Ok(c) => c.iter().map(|(k, e)| (k.clone(), e.mtime)).collect(),
         Err(_) => return vec![],
     };
+    let mut parsed: Vec<(PathBuf, CacheEntry)> = Vec::new();
 
     // A set rather than a list: the retain below asks it once per cached entry,
     // and the number of entries is now the number of transcripts across every
@@ -452,16 +457,24 @@ fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
                 let created = metadata.as_ref().and_then(|m| m.created().ok()).unwrap_or(mtime);
                 seen.insert(fp.clone());
 
-                let fresh = cache.get(&fp).map(|e| e.mtime == mtime).unwrap_or(false);
+                let fresh = known.get(&fp).map(|m| *m == mtime).unwrap_or(false);
                 if !fresh {
                     let meta = parse_by_adapter(root.adapter, &root.profile, &fp, mtime, created);
-                    cache.insert(fp.clone(), CacheEntry { mtime, meta });
+                    parsed.push((fp.clone(), CacheEntry { mtime, meta }));
                 }
             }
         }
     }
 
-    // Drop entries whose files disappeared.
+    // Lock-swap: fold the fresh parses in and drop entries whose files
+    // disappeared, all in one short hold.
+    let mut cache = match index.0.lock() {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    for (k, v) in parsed {
+        cache.insert(k, v);
+    }
     cache.retain(|k, _| seen.contains(k));
 
     cache.values().filter_map(|e| e.meta.clone()).collect()
@@ -563,7 +576,7 @@ pub(crate) fn ids_under(index: &SessionIndex, folder: &str) -> Vec<String> {
 
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
 /// newest first.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_sessions(
     index: State<SessionIndex>,
     folder: String,
@@ -717,15 +730,23 @@ pub fn adopt(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn adopt_path(path: String) -> Result<(), String> {
+    // Load-modify-save on the sessions-store store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("sessions-store");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     adopt(&path)
 }
 
 /// Seed the adopted set from the current discovery (idempotent; no-op once seeded
 /// or when discovery is empty). The UI calls this after each `get_config`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
+    // Load-modify-save on the sessions-store store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("sessions-store");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut state = load_adopted();
     if do_seed(&mut state, &folders) {
         save_adopted(&state)?;
@@ -735,7 +756,7 @@ pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
 
 /// Is `folder` historical (a recreated folder whose sessions predate it)? Adopts
 /// it in passing when its sessions clearly belong to it (all postdate creation).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn folder_historical(
     index: State<SessionIndex>,
     folder: String,
@@ -796,8 +817,12 @@ fn save_overlay(map: &HashMap<String, Overlay>) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Result<(), String> {
+    // Load-modify-save on the sessions-store store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("sessions-store");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut map = load_overlay();
     map.entry(id).or_default().name = name.filter(|n| !n.trim().is_empty());
     save_overlay(&map)?;
@@ -818,8 +843,12 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
 /// and stops listing it. That branch goes through `acp_sessions::forget`, which
 /// also refuses a path outside Sway's store, rather than reaching
 /// `remove_file` with an arbitrary path and a protocol-backed agent's name.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_session(path: String, agent: String) -> Result<(), String> {
+    // Load-modify-save on the sessions-store store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("sessions-store");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     match agents::parser_kind_for(&agent) {
         Some(agents::ParserKind::ClaudeJsonl) => {
             std::fs::remove_file(&path).map_err(|e| e.to_string())
@@ -866,7 +895,7 @@ fn found_by_pattern(agent: &str) -> bool {
 /// about to spawn, a guard on one folder). Anything asking about a *set* of
 /// sessions must use `sessions_running`, whose cost does not scale with the
 /// number of ids.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_running(
     state: State<'_, crate::chat::host::ChatState>,
     id: String,
@@ -995,7 +1024,7 @@ fn resolve_running(
     running
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sessions_running(
     state: State<'_, crate::chat::host::ChatState>,
     sessions: Vec<SessionRef>,
@@ -1132,7 +1161,7 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
 /// Read the full transcript once (only on selection) for counts and tokens,
 /// then attach the touched-file count (which rides its own cache). The
 /// per-line scan lives in `scan_counts`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_detail(
     touched: State<TouchedIndex>,
     path: String,
@@ -1452,7 +1481,7 @@ fn touched_files_cached(index: &TouchedIndex, path: &str, agent: &str) -> Vec<To
     files
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_touched_files(
     index: State<TouchedIndex>,
     path: String,
@@ -1483,7 +1512,7 @@ fn latest_written(files: &[TouchedFile]) -> Option<&TouchedFile> {
 /// turn runs costs a full parse only when the transcript actually grew. An
 /// adapter whose transcript shape `extract_touched_files` cannot parse yields
 /// `None`, so the indicator no-ops rather than misreporting.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_editing_now(
     index: State<TouchedIndex>,
     path: String,
@@ -1523,7 +1552,7 @@ static EMITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::
 /// life of the app. Adding an account adds a transcript root, and a root nobody
 /// watches means that account's sessions do not appear until something else
 /// asks for a listing.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sessions_watch_start(
     app: AppHandle,
     state: State<SessionWatch>,
@@ -1897,7 +1926,11 @@ fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
 /// adapter turns it off today; a user adapter that cannot claim the join is
 /// what `gate_tail` is still here for.
 #[tauri::command]
-pub fn session_tail_state(id: String, path: String, agent: String) -> Result<TailState, String> {
+pub async fn session_tail_state(id: String, path: String, agent: String) -> Result<TailState, String> {
+    crate::exec::blocking("session_tail_state", move || session_tail_state_body(id, path, agent)).await
+}
+
+pub(crate) fn session_tail_state_body(id: String, path: String, agent: String) -> Result<TailState, String> {
     let tail = classify_tail(&parse_transcript_turns(&path, &agent));
     let hooks_capable = agents::find(&agent).map(|a| a.hooks).unwrap_or(false);
     if hooks_capable {
@@ -1952,7 +1985,11 @@ pub struct PromptTail {
 /// (see checkpoint.rs); `count` lets a caller detect a new prompt without
 /// tracking timestamps itself.
 #[tauri::command]
-pub fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, String> {
+pub async fn session_prompt_tail(path: String, agent: String) -> Result<PromptTail, String> {
+    crate::exec::blocking("session_prompt_tail", move || session_prompt_tail_body(path, agent)).await
+}
+
+pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
     // See `extract_touched_files` on why the kind is matched exhaustively.
@@ -2310,7 +2347,7 @@ mod tests {
         // The other three readers of the same path say the same thing.
         assert!(extract_touched_files(&path, "gemini").is_empty());
         assert!(parse_transcript_turns(&path, "gemini").is_empty());
-        let tail = session_prompt_tail(path.clone(), "gemini".into()).expect("prompt tail answers");
+        let tail = session_prompt_tail_body(path.clone(), "gemini".into()).expect("prompt tail answers");
         assert_eq!((tail.count, tail.last_ts), (0, 0));
 
         std::fs::remove_file(&locator).ok();
@@ -3057,7 +3094,7 @@ mod tests {
         // claude's needs_you capability is on, so the join surfaces directly.
         // No hook status file exists for this id, so the hooks capability
         // falls through to the tail join too.
-        assert_eq!(session_tail_state("no-hook-file-1".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
+        assert_eq!(session_tail_state_body("no-hook-file-1".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -3069,7 +3106,7 @@ mod tests {
 {"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"text","text":"It's an empty entry point."}]}}
 "#;
         let p = tmp_file("claude_tail_done.jsonl", body);
-        assert_eq!(session_tail_state("no-hook-file-2".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
+        assert_eq!(session_tail_state_body("no-hook-file-2".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -3088,7 +3125,7 @@ mod tests {
         let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"hello"}}
 "#;
         let p = tmp_file("claude_tail_fresh.jsonl", body);
-        assert_eq!(session_tail_state("no-hook-file-5".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
+        assert_eq!(session_tail_state_body("no-hook-file-5".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -3111,7 +3148,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            session_tail_state(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
+            session_tail_state_body(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
             TailState::Done
         );
 
@@ -3138,7 +3175,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            session_tail_state(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
+            session_tail_state_body(id.into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(),
             TailState::BlockedCandidate
         );
 
@@ -3178,7 +3215,7 @@ mod tests {
 {"type":"user","cwd":"/p","timestamp":"2026-07-18T10:00:05.000Z","message":{"content":"second prompt"}}
 "#;
         let p = tmp_file("prompt_tail_claude.jsonl", body);
-        let tail = session_prompt_tail(p.to_str().unwrap().to_string(), "claude".into()).unwrap();
+        let tail = session_prompt_tail_body(p.to_str().unwrap().to_string(), "claude".into()).unwrap();
         // A tool_result envelope and a [Context] block are not human prompts.
         assert_eq!(tail.count, 2);
         assert_eq!(tail.last_ts, parse_rfc3339_secs("2026-07-18T10:00:05.000Z").unwrap());

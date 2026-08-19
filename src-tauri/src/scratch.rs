@@ -91,7 +91,7 @@ pub fn scratch_dir() -> String {
     scratch_root().to_string_lossy().into_owned()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scratch_new() -> Result<String, String> {
     create_in(&scratch_root()).map(|p| p.to_string_lossy().into_owned())
 }

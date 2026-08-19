@@ -1,7 +1,7 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR, type LiveTab } from "../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, type FsChanged, type LiveTab } from "../../utils/events";
 import type { AgentId } from "../../utils/agents";
 import { isUnderPath } from "../../utils/pathScope";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -192,7 +192,8 @@ export default function SessionPanel(props: {
   onMount(async () => {
     // fs://changed only refreshes the git join (diffs of already-expanded
     // rows) - the touched list itself is a transcript read, driven separately.
-    unlistenFs = await listen("fs://changed", () => {
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.projectRoot) return;
       for (const p of expanded()) void loadDiff(p);
     });
     unlistenSessions = await listen("sessions://changed", () => {

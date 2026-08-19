@@ -217,8 +217,8 @@ struct ProbeEntry {
     units: Vec<BranchUnit>,
 }
 
-#[derive(Default)]
-pub struct ProjectIndex(Mutex<HashMap<PathBuf, ProbeEntry>>);
+#[derive(Default, Clone)]
+pub struct ProjectIndex(std::sync::Arc<Mutex<HashMap<PathBuf, ProbeEntry>>>);
 
 impl ProjectIndex {
     /// Drop the cached probe for `path`, forcing a fresh probe on next discovery.
@@ -478,6 +478,12 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
 
 /// Classify a project folder and enumerate its branch-units.
 fn probe_project(path: &Path) -> Vec<BranchUnit> {
+    // Counts only the single-flight test's own paths: tests run in parallel,
+    // and every other test's probes would otherwise race the assertion.
+    #[cfg(test)]
+    if path.to_string_lossy().contains("probe_flight") {
+        PROBE_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
     let Some(text) = run_git(path, &["worktree", "list", "--porcelain"]) else {
         // Not a git repo at all.
         return vec![BranchUnit {
@@ -551,28 +557,54 @@ fn head_mtime(path: &Path) -> SystemTime {
 }
 
 /// Probe a project, reusing the cached result when neither the dir nor HEAD moved.
+///
+/// The cache lock is never held across `probe_project` (a subprocess), and a
+/// per-path flight lock coalesces concurrent misses: the first caller probes,
+/// the rest wait on the flight lock and then hit the entry it wrote. Two
+/// `get_config` calls racing through a switch cost one probe, not two.
 fn cached_probe(index: &ProjectIndex, path: &Path) -> Vec<BranchUnit> {
     let dir_mtime = mtime_of(path);
     let head_mtime = head_mtime(path);
-    let mut cache = match index.0.lock() {
-        Ok(c) => c,
-        Err(_) => return probe_project(path),
+    let hit = |cache: &HashMap<PathBuf, ProbeEntry>| {
+        cache
+            .get(path)
+            .filter(|e| e.dir_mtime == dir_mtime && e.head_mtime == head_mtime)
+            .map(|e| e.units.clone())
     };
-    if let Some(e) = cache.get(path) {
-        if e.dir_mtime == dir_mtime && e.head_mtime == head_mtime {
-            return e.units.clone();
-        }
+    if let Some(units) = index.0.lock().ok().as_deref().and_then(hit) {
+        return units;
+    }
+    let flight = probe_flight(path);
+    let _probing = flight.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Whoever held the flight lock before us has already written the entry.
+    if let Some(units) = index.0.lock().ok().as_deref().and_then(hit) {
+        return units;
     }
     let units = probe_project(path);
-    cache.insert(
-        path.to_path_buf(),
-        ProbeEntry {
-            dir_mtime,
-            head_mtime,
-            units: units.clone(),
-        },
-    );
+    if let Ok(mut cache) = index.0.lock() {
+        cache.insert(
+            path.to_path_buf(),
+            ProbeEntry {
+                dir_mtime,
+                head_mtime,
+                units: units.clone(),
+            },
+        );
+    }
     units
+}
+
+#[cfg(test)]
+static PROBE_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// One lock per path being probed. Entries are never removed; the map is
+/// bounded by the number of projects the config has ever named.
+fn probe_flight(path: &Path) -> std::sync::Arc<Mutex<()>> {
+    static FLIGHTS: std::sync::OnceLock<Mutex<HashMap<PathBuf, std::sync::Arc<Mutex<()>>>>> =
+        std::sync::OnceLock::new();
+    let flights = FLIGHTS.get_or_init(Default::default);
+    let mut map = flights.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.entry(path.to_path_buf()).or_default().clone()
 }
 
 // --- discovery ---
@@ -758,15 +790,20 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 }
 
 #[tauri::command]
-pub fn get_config(index: State<ProjectIndex>) -> Result<ResolvedConfig, String> {
+pub async fn get_config(index: State<'_, ProjectIndex>) -> Result<ResolvedConfig, String> {
+    let index = index.inner().clone();
+    crate::exec::blocking("get_config", move || get_config_body(&index)).await
+}
+
+fn get_config_body(index: &ProjectIndex) -> Result<ResolvedConfig, String> {
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
-    Ok(resolve(raw, &index))
+    Ok(resolve(raw, index))
 }
 
 /// The base folder of the mirrored docs tree (`<docs.root>/<space>/<project>`),
 /// so the editor can show a project's notes alongside its files.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_docs_root() -> Result<String, String> {
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
@@ -774,7 +811,11 @@ pub fn get_docs_root() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn list_branches(path: String) -> Result<Vec<Branch>, String> {
+pub async fn list_branches(path: String) -> Result<Vec<Branch>, String> {
+    crate::exec::blocking("list_branches", move || list_branches_body(path)).await
+}
+
+pub(crate) fn list_branches_body(path: String) -> Result<Vec<Branch>, String> {
     let output = Command::new("git")
         .arg("-C")
         .arg(&path)
@@ -803,7 +844,7 @@ pub fn list_branches(path: String) -> Result<Vec<Branch>, String> {
 /// Remote branches under `origin`, as short names **without** the `origin/`
 /// prefix (e.g. `main`, `feature/x`). Excludes the `origin/HEAD` symref. Feeds
 /// the Attach Existing Branch picker's live remote-branch fold after a fetch.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_remote_branches(repo: String) -> Result<Vec<String>, String> {
     let output = Command::new("git")
         .arg("-C")
@@ -860,8 +901,12 @@ fn do_seed_attached(
 /// current checkout), so a freshly discovered repo shows a sensible branch instead
 /// of only its checkout. No-op once seeded, or while the repo has no branches yet.
 /// Called from `loadConfig`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn seed_attached(repo: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     let locals = local_branches(&path);
     let seed = default_branch(&path).or_else(|| current_branch(&path));
@@ -874,13 +919,21 @@ pub fn seed_attached(repo: String) -> Result<(), String> {
 
 /// Attach an existing local `branch` to `repo`'s visible set.
 /// Order: write store → evict cache → emit `config://changed`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn attach_branch(
     app: AppHandle,
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This one also writes to the repository, so it queues with every
+    // other git write on the same common dir.
+    let repo_lock = crate::exec::repo_lock(&repo);
+    let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     if !local_branches(&path).contains(&branch) {
         return Err(format!("No local branch \"{branch}\"."));
@@ -897,13 +950,21 @@ pub fn attach_branch(
 /// same-commit checkout that needs no working-tree confirm). Creation is
 /// independent of that switch, so the branch appears even if the switch is skipped.
 /// Order: create → write store → evict cache → emit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn new_branch(
     app: AppHandle,
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This one also writes to the repository, so it queues with every
+    // other git write on the same common dir.
+    let repo_lock = crate::exec::repo_lock(&repo);
+    let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     let name = branch.trim();
     if name.is_empty() {
@@ -937,13 +998,21 @@ pub fn new_branch(
 /// Detach `branch` from `repo`'s visible set (the git branch is untouched).
 /// Refuses the current checkout (it must stay reachable).
 /// Order: write store → evict cache → emit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn detach_branch(
     app: AppHandle,
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This one also writes to the repository, so it queues with every
+    // other git write on the same common dir.
+    let repo_lock = crate::exec::repo_lock(&repo);
+    let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     refuse_if_current(&path, &branch)?;
     let mut state = load_attached();
@@ -958,13 +1027,21 @@ pub fn detach_branch(
 
 /// Delete `branch` from `repo` (`git branch -D`) and prune the store entry.
 /// Refuses the current checkout. Order: delete → write store → evict cache → emit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_branch(
     app: AppHandle,
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This one also writes to the repository, so it queues with every
+    // other git write on the same common dir.
+    let repo_lock = crate::exec::repo_lock(&repo);
+    let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     refuse_if_current(&path, &branch)?;
     let out = Command::new("git")
@@ -1020,13 +1097,21 @@ fn ensure_local_tracking(path: &Path, name: &str) -> Result<(), String> {
 /// Attach a remote branch: create a local tracking branch from the already-fetched
 /// `origin/<branch>` (a separate op from the auth'd fetch, which runs in a tab),
 /// then attach it. Order: create/verify → write store → evict cache → emit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn attach_remote_branch(
     app: AppHandle,
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This one also writes to the repository, so it queues with every
+    // other git write on the same common dir.
+    let repo_lock = crate::exec::repo_lock(&repo);
+    let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     let name = branch.trim().trim_start_matches("origin/").to_string();
     if name.is_empty() {
@@ -1043,7 +1128,7 @@ pub fn attach_remote_branch(
 
 /// Install a watcher on the config file's directory. Emits `config://changed`
 /// whenever sway.toml is written. Idempotent: re-installing replaces the old one.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(), String> {
     let path = config_path();
     let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -1073,7 +1158,7 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
 
 /// Native macOS folder picker (dependency-free, via osascript). Returns the
 /// chosen folder, or None when the user cancels (so the UI can stay put).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pick_folder() -> Result<Option<String>, String> {
     let out = Command::new("osascript")
         .args([
@@ -1120,8 +1205,12 @@ fn clear_root(text: &str) -> Result<String, String> {
 }
 
 /// Set the single base folder, replacing any existing root(s).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let p = path.trim().trim_end_matches('/').to_string();
     if p.is_empty() {
         return Err("Empty path".into());
@@ -1134,8 +1223,12 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
 
 /// Forget the configured root (no on-disk deletion). Returns to the first-run
 /// state; `paths` pins and legacy `[[project]]` entries are kept.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_root(app: AppHandle) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let serialized = clear_root(&ensure_config()?)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
@@ -1181,8 +1274,12 @@ fn is_inside(child: &str, parent: &str) -> bool {
 /// Pin an out-of-root folder into `[discovery].paths` (the "Other" section).
 /// Refuses a path that is the root or nested under it (those belong to the tree),
 /// so the pin is always a genuine external, never a duplicate of a root project.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pin_path(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let p = path.trim().trim_end_matches('/').to_string();
     if p.is_empty() {
         return Err("Empty path".into());
@@ -1202,8 +1299,12 @@ pub fn pin_path(app: AppHandle, path: String) -> Result<(), String> {
 
 /// Unpin an external folder: remove it from `[discovery].paths` (no on-disk
 /// deletion). Other pins and the root are untouched.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn unpin_path(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let p = path.trim().trim_end_matches('/').to_string();
     let serialized = remove_path(&ensure_config()?, &p)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
@@ -1374,8 +1475,12 @@ fn current_icon_file(path: &str) -> Option<String> {
 /// Picking a glyph also retires any uploaded image, since the two cannot both
 /// be in force. Mirrors `set_space_meta`: write store → emit `config://changed`
 /// (the sidebar's listener drives the reload).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_project_icon(app: AppHandle, path: String, icon: Option<String>) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let previous = current_icon_file(&path);
     write_project_meta(&path, icon, None)?;
@@ -1388,8 +1493,12 @@ pub fn set_project_icon(app: AppHandle, path: String, icon: Option<String>) -> R
 /// the stored path. The copy happens first: a rejected or unreadable pick fails
 /// before the config is touched, so a bad upload leaves the previous icon
 /// exactly as it was.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_project_icon_file(app: AppHandle, path: String, source: String) -> Result<String, String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let stored = crate::icons::store_icon(&path, Path::new(&source))?;
     let previous = current_icon_file(&path);
     write_project_meta(&path, None, Some(&stored))?;
@@ -1409,7 +1518,7 @@ fn write_space_meta(name: &str, icon: Option<&str>, color: Option<&str>) -> Resu
 /// Doing the mkdir + `[[space]]` write + single emit here (rather than a separate
 /// edit) avoids a letter→icon flash and a folder-exists-but-metadata-failed
 /// window. Returns the created dir.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_space(
     app: AppHandle,
     root: String,
@@ -1417,6 +1526,10 @@ pub fn add_space(
     icon: Option<String>,
     color: Option<String>,
 ) -> Result<String, String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
     if dir.exists() {
@@ -1436,13 +1549,17 @@ pub fn add_space(
 /// folder. An empty/whitespace icon normalizes to `None`, pruning the entry.
 /// Mirrors `pin_path`: write store → emit `config://changed` (the sidebar's
 /// listener drives the reload).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_space_meta(
     app: AppHandle,
     name: String,
     icon: Option<String>,
     color: Option<String>,
 ) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     write_space_meta(&name, icon, color)?;
@@ -1470,8 +1587,12 @@ fn write_space_order(text: &str, names: &[String]) -> Result<String, String> {
 
 /// Persist the user-chosen order of root spaces (by name). The pinned ("Other")
 /// spaces are never included. Mirrors `pin_path`: write store → emit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let serialized = write_space_order(&ensure_config()?, &names)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
@@ -1479,8 +1600,12 @@ pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String>
 }
 
 /// mkdir a new project folder under a space. Returns the created dir.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<String, String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let n = valid_name(&name)?;
     let dir = PathBuf::from(&space_path).join(&n);
     if dir.exists() {
@@ -1494,16 +1619,24 @@ pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<St
 }
 
 /// Explicitly ask the UI to re-discover (emits the same event the watchers do).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rediscover(app: AppHandle) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     app.emit("config://changed", ()).map_err(|e| e.to_string())
 }
 
 /// Remove an `incomplete` stub: a `.bare` left by a killed bootstrap, with no
 /// worktrees. Refuses anything that does not probe as `incomplete`, so a real
 /// project can never be deleted through this path (the only UI removal in scope).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let p = PathBuf::from(&path);
     let units = probe_project(&p);
     let is_stub = units.len() == 1 && units[0].kind == ProjectKind::Incomplete;
@@ -1544,8 +1677,12 @@ fn do_delete_space(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
 /// `do_delete_space` against escaping the base folder; the destructive typed-name
 /// confirmation lives in the UI. Non-atomic: a mid-delete failure can leave a
 /// partial folder, surfaced as an error. Emits `config://changed` to re-discover.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_delete_space(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
@@ -1587,8 +1724,12 @@ fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
 /// `probe_project` re-check that refuses anything git (a repo or worktree
 /// container), so tracked work can never be deleted through this path. The
 /// typed-name confirmation lives in the UI. Emits `config://changed`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
@@ -1609,8 +1750,12 @@ pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
 /// a plain-dir (which has `remove_folder`) or an incomplete stub (which has "Remove
 /// stub") never routes here. The typed-name confirmation lives in the UI. Emits
 /// `config://changed`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_project(app: AppHandle, path: String) -> Result<(), String> {
+    // Load-modify-save on the config store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("config");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
@@ -1690,7 +1835,7 @@ fn repo_status(path: &Path) -> Option<(bool, bool)> {
 /// so the delete confirmation shows the full blast radius: loose files and non-git
 /// folders that discovery skips are still surfaced. Per-repo at-risk flags + total
 /// on-disk size drive the dialog.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn space_delete_preview(path: String) -> Result<SpacePreview, String> {
     let dir = PathBuf::from(&path);
     let mut entries: Vec<PreviewEntry> = Vec::new();
@@ -1717,7 +1862,7 @@ pub fn space_delete_preview(path: String) -> Result<SpacePreview, String> {
 /// uncommitted / unpushed work (a plain repo's own state, or a worktree container's
 /// aggregate), which the children-only space view would miss. Children follow
 /// (a worktree container's worktrees + `.bare`, or a plain repo's working tree).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_delete_preview(path: String) -> Result<SpacePreview, String> {
     let dir = PathBuf::from(&path);
     let mut entries: Vec<PreviewEntry> = Vec::new();
@@ -1767,7 +1912,7 @@ pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
 /// folders created outside the app surface without a restart. The config-file
 /// watcher only sees the toml itself, never filesystem creates under the roots.
 /// Deliberately non-recursive (one extra level) to avoid watching deep trees.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn roots_watch_start(
     app: AppHandle,
     state: State<RootWatch>,
@@ -1824,6 +1969,30 @@ mod tests {
         let p = std::env::temp_dir().join(format!("sway_cfg_test_{n}"));
         std::fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    /// Concurrent cold probes of one path coalesce to a single subprocess:
+    /// the first caller holds the flight lock and probes, the rest wait on it
+    /// and then read the entry it wrote. This is the seam `get_config` races
+    /// through on every worktree switch.
+    #[test]
+    fn concurrent_probes_of_one_path_run_one_probe() {
+        let dir = unique_tmp().join("probe_flight");
+        std::fs::create_dir_all(&dir).unwrap();
+        let index = ProjectIndex::default();
+        let before = PROBE_CALLS.load(std::sync::atomic::Ordering::SeqCst);
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let index = index.clone();
+            let dir = dir.clone();
+            handles.push(std::thread::spawn(move || cached_probe(&index, &dir)));
+        }
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let probes = PROBE_CALLS.load(std::sync::atomic::Ordering::SeqCst) - before;
+        assert_eq!(probes, 1, "eight concurrent cold probes must cost one subprocess");
+        for r in &results {
+            assert_eq!(r.len(), results[0].len());
+        }
     }
 
     fn git(dir: &Path, args: &[&str]) {

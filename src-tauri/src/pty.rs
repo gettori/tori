@@ -131,6 +131,10 @@ pub struct PtySpawnResult {
     pub ownership: Option<crate::chat::ownership::ClaimOutcome>,
 }
 
+// Sync like the rest of the pty family: the IPC thread is what serializes a
+// remount's re-subscribe against a concurrent spawn of the same id (the
+// check-then-insert below is only safe single-threaded), and the body is an
+// openpty plus a posix_spawn, a few milliseconds at worst.
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
@@ -361,6 +365,9 @@ pub fn pty_spawn(
     Ok(PtySpawnResult { ownership: None })
 }
 
+/// Sync by design, and it must stay that way: keystrokes are fire-and-forget,
+/// so their byte order is exactly IPC arrival order run inline. Moving this to
+/// the blocking pool would let two chunks of one paste race (see exec.rs).
 #[tauri::command]
 pub fn pty_write(state: State<PtyState>, id: String, data: String) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -457,6 +464,42 @@ mod tests {
             "npm run dev\n",
             "a second delivery would run the task again in the same shell"
         );
+    }
+
+    /// A rapid chunked paste arrives byte-ordered: ordering across chunks is
+    /// pty_write staying sync (execution follows IPC arrival), and this pins
+    /// the other half, that the writer mutex keeps each chunk whole even when
+    /// writers contend, so no interleaving can split a chunk's bytes.
+    #[test]
+    fn concurrent_chunk_writes_never_split_a_chunk() {
+        let (writer, seen) = recorder();
+        let mut handles = Vec::new();
+        for t in 0..4u8 {
+            let writer = writer.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..50u8 {
+                    let chunk = format!("<{t}:{i}>");
+                    let mut w = writer.lock().unwrap();
+                    w.write_all(chunk.as_bytes()).unwrap();
+                    w.flush().unwrap();
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let bytes = seen.lock().unwrap().clone();
+        let text = String::from_utf8(bytes).unwrap();
+        // Every chunk present exactly once and contiguous; per-writer order kept.
+        for t in 0..4u8 {
+            let mut last = -1i32;
+            for i in 0..50u8 {
+                let pos = text.find(&format!("<{t}:{i}>"));
+                let pos = pos.expect("chunk missing or split") as i32;
+                assert!(pos > last, "writer {t}'s chunks arrived out of order");
+                last = pos;
+            }
+        }
     }
 
     /// A tab with nothing seeded writes nothing: a plain shell tab must not be

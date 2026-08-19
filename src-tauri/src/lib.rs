@@ -12,6 +12,7 @@ mod config;
 mod conflict;
 mod dap;
 mod env;
+mod exec;
 pub mod forge;
 mod format;
 mod fs;
@@ -252,6 +253,7 @@ pub fn run() {
             config::attach_remote_branch,
             format::format_document,
             fs::fs_read_dir,
+            fs::fs_read_dir_compact,
             fs::fs_read_file,
             fs::fs_write_file,
             fs::file_exists,

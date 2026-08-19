@@ -21,7 +21,11 @@ pub struct Worktree {
 }
 
 #[tauri::command]
-pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
+pub async fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
+    crate::exec::blocking("list_worktrees", move || list_worktrees_body(repo_path)).await
+}
+
+pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(&repo_path)
@@ -132,7 +136,7 @@ fn new_branch_start_point(repo: &str, branch: &str) -> Option<String> {
 
 /// Does `branch` already have a worktree checked out? If so, creation reuses it.
 fn branch_has_worktree(repo: &str, branch: &str) -> bool {
-    list_worktrees(repo.to_string())
+    list_worktrees_body(repo.to_string())
         .map(|wts| wts.iter().any(|w| w.branch == *branch))
         .unwrap_or(false)
 }
@@ -196,7 +200,11 @@ pub(crate) fn link_shared(container: &Path, worktree: &Path) {
 /// collision-safe (see
 /// `pick_worktree_folder`); shared `.shared/` files are linked in afterward.
 #[tauri::command]
-pub fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
+pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
+    crate::exec::git_write("create_worktree", repo_path.clone(), move || create_worktree_body(app, repo_path, branch)).await
+}
+
+pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -296,7 +304,11 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
 /// Friendly pre-check before removal (the UI surfaces a clear message). Same
 /// `.shared`-aware rule the removal itself enforces.
 #[tauri::command]
-pub fn worktree_dirty(path: String) -> Result<bool, String> {
+pub async fn worktree_dirty(path: String) -> Result<bool, String> {
+    crate::exec::blocking("worktree_dirty", move || worktree_dirty_body(path)).await
+}
+
+pub(crate) fn worktree_dirty_body(path: String) -> Result<bool, String> {
     tree_dirty(Path::new(&path))
 }
 
@@ -417,7 +429,11 @@ fn branch_unpushed(worktree: &Path) -> bool {
 /// Removal-preview status for a worktree: uncommitted changes (`.shared`-aware) and
 /// unpushed commits, so the confirm dialog can warn about work about to be lost.
 #[tauri::command]
-pub fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
+pub async fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
+    crate::exec::blocking("worktree_status", move || worktree_status_body(path)).await
+}
+
+pub(crate) fn worktree_status_body(path: String) -> Result<WorktreeStatus, String> {
     let p = Path::new(&path);
     let has_remote = branch_at(p).and_then(|b| resolve_remote_branch(p, &b)).is_some();
     Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p), has_remote })
@@ -456,7 +472,11 @@ fn named_branch_unpushed(repo: &Path, branch: &str) -> bool {
 /// unpushed commits and whether it tracks a remote branch (so the confirm dialog can
 /// warn, and offer to delete the remote branch too).
 #[tauri::command]
-pub fn branch_status(repo: String, branch: String) -> Result<BranchStatus, String> {
+pub async fn branch_status(repo: String, branch: String) -> Result<BranchStatus, String> {
+    crate::exec::blocking("branch_status", move || branch_status_body(repo, branch)).await
+}
+
+pub(crate) fn branch_status_body(repo: String, branch: String) -> Result<BranchStatus, String> {
     let p = Path::new(&repo);
     Ok(BranchStatus {
         unpushed: named_branch_unpushed(p, &branch),
@@ -486,13 +506,15 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
 /// Remove a worktree, keeping its branch. The live-use teardown (PTYs, editor tabs)
 /// runs in the UI before this is called; `force` skips the dirty guard once the
 /// confirm dialog has warned about it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_worktree(
     app: AppHandle,
     repo_path: String,
     worktree_path: String,
     force: bool,
 ) -> Result<(), String> {
+    let lock = crate::exec::repo_lock(&repo_path);
+    let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     do_remove_worktree(&repo_path, &worktree_path, force)?;
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -502,7 +524,7 @@ pub fn remove_worktree(
 /// first; if the branch delete then fails, the folder is already gone, so we emit
 /// and surface an explicit partial-outcome message rather than swallow it. `force`
 /// matches `remove_worktree`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_worktree_and_branch(
     app: AppHandle,
     repo_path: String,
@@ -510,6 +532,8 @@ pub fn remove_worktree_and_branch(
     branch: String,
     force: bool,
 ) -> Result<(), String> {
+    let lock = crate::exec::repo_lock(&repo_path);
+    let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     do_remove_worktree(&repo_path, &worktree_path, force)?;
     let del = Command::new("git")
         .arg("-C")

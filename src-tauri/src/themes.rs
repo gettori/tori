@@ -127,7 +127,7 @@ fn load_themes_from(dir: &Path) -> UserThemes {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_user_themes() -> UserThemes {
     let out = load_themes_from(&user_themes_dir());
     for e in &out.errors {
@@ -138,7 +138,7 @@ pub fn list_user_themes() -> UserThemes {
 
 /// Watch `~/.config/sway/themes/`; emit `themes://changed` on any write to a
 /// `.json` file in it. Idempotent, and mirrors `settings_watch_start`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn themes_watch_start(app: AppHandle, state: State<ThemesWatch>) -> Result<(), String> {
     let dir = user_themes_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

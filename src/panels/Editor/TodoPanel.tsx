@@ -1,7 +1,7 @@
 import { createEffect, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type FsChanged, type ToastEvent } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import { composeTodo, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { todoBlocks } from "../../utils/chatCompose";
@@ -113,7 +113,10 @@ export default function TodoPanel(props: { root: string | null; selected: Select
 
   let unlistenFs: UnlistenFn | undefined;
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", () => debouncedScan());
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.root) return;
+      debouncedScan();
+    });
   });
   onCleanup(() => unlistenFs?.());
 

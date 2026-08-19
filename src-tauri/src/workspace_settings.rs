@@ -47,15 +47,19 @@ pub(crate) fn parse_overlay(text: &str) -> Value {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_workspace_settings(root: String) -> Value {
     std::fs::read_to_string(overlay_path(&root))
         .map(|t| parse_overlay(&t))
         .unwrap_or_else(|_| empty())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, String> {
+    // Load-modify-save on the workspace-settings store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("workspace-settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     // Excluded *before* the file is written, so there is no window in which git
     // would report it. Doing this the other way round is what would put an
     // unexplained untracked file in the Changes panel, however briefly.

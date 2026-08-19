@@ -194,7 +194,7 @@ fn write_frame(stdin: &mut ChildStdin, message: &str) -> Result<(), String> {
 /// Reuse is by handle: a second file under the same resolved root gets the
 /// running session rather than a respawn, while a file that resolves to a
 /// different root gets its own.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lsp_start(
     app: AppHandle,
     state: State<LspState>,
@@ -244,7 +244,7 @@ pub fn lsp_send(state: State<LspState>, handle: LspHandle, message: String) -> R
     write_frame(&mut session.stdin, &message)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lsp_stop(state: State<LspState>, handle: LspHandle) -> Result<(), String> {
     if let Some(mut session) = state.0.lock().map_err(|e| e.to_string())?.remove(&handle) {
         stop(&mut session);
@@ -255,7 +255,7 @@ pub fn lsp_stop(state: State<LspState>, handle: LspHandle) -> Result<(), String>
 /// Stop every running session. What a project switch calls: the old project's
 /// servers are all wrong at once, and there is no per-handle bookkeeping the
 /// caller would have to keep in step.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lsp_stop_all(state: State<LspState>) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     for (_, mut session) in guard.drain() {
@@ -628,8 +628,10 @@ mod tests {
         let module = include_str!("lsp.rs").split("#[cfg(test)]").next().unwrap();
         let lib = include_str!("lib.rs");
 
+        // The prefix, not the exact attribute: `#[tauri::command(async)]` is a
+        // registered command too.
         let defined: Vec<&str> = module
-            .split("#[tauri::command]")
+            .split("#[tauri::command")
             .skip(1)
             .filter_map(|after| {
                 // The name follows the attribute, past an optional `async`.

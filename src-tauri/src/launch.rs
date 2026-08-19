@@ -7,7 +7,7 @@ use std::process::Command;
 use crate::env::augmented_path;
 
 /// Open a project folder in VSCode, or jump to a specific file/line.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_in_vscode(
     path: String,
     file: Option<String>,
@@ -44,7 +44,7 @@ fn ghostty_bin() -> String {
 /// (e.g. `claude --resume <id>`). On macOS the launch form is
 /// `ghostty --working-directory=<cwd> -e <program> <args...>`
 /// (`+new-window` is Linux/GTK-only).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_in_ghostty(
     cwd: String,
     program: String,

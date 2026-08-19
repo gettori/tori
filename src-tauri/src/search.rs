@@ -441,7 +441,7 @@ fn plain_grep(
 }
 
 /// Search `root` for `query` under `options`, capping at `max` matching lines.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn grep_project(
     root: String,
     query: String,
@@ -599,7 +599,7 @@ fn expand_at(re: &Regex, line: &str, start: usize, end: usize, replacement: &str
 /// dialect and could show a preview the write would not reproduce.
 ///
 /// A span that no longer verifies yields `null` rather than a guess.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn preview_replace(
     query: String,
     options: SearchOptions,
@@ -624,7 +624,7 @@ pub fn preview_replace(
 /// its file rather than writing at an offset nobody agrees on. Edits are applied
 /// to the original bytes back to front, so earlier offsets stay valid and the
 /// file's line endings and final-newline state are whatever they already were.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn replace_in_files(
     root: String,
     query: String,
@@ -768,7 +768,7 @@ pub struct ApplyResult {
 /// `root`, a line that is gone, a line whose text has moved, or an edit that
 /// would add a line skips that file entirely and reports why. Every other file
 /// in the batch still lands, which is what makes a mixed outcome retryable.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn apply_line_edits(root: String, files: Vec<FileEdits>) -> Result<ApplyResult, String> {
     let mut changed = Vec::new();
     let mut skipped = Vec::new();

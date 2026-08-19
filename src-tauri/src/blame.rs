@@ -121,7 +121,7 @@ pub fn parse_porcelain(text: &str) -> (Vec<u32>, Vec<BlameCommit>) {
 /// A file git cannot blame (untracked, or never committed) is an empty blame
 /// rather than an error: every one of its lines is uncommitted, which is exactly
 /// what "no line has a commit" renders as.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_blame(project_path: String, file: String) -> Result<Blame, String> {
     let head = capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"])
         .map(|h| h.trim().to_string())

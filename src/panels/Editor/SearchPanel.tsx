@@ -28,7 +28,7 @@ import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, type FsChanged } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import {
   DEFAULT_SEARCH_OPTIONS,
@@ -577,7 +577,8 @@ export default function SearchPanel(props: {
     inputEl?.focus();
   });
   onMount(async () => {
-    unlistenFs = await listen("fs://changed", () => {
+    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root && e.payload.root !== props.root) return;
       if (query()) debouncedRefresh();
     });
   });

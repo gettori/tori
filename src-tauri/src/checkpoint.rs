@@ -141,13 +141,17 @@ enum AttributionState {
 /// naming the tool: a `Bash` call reports nothing, and a turn that returns
 /// early on an empty path list leaves no trace that the shell ran at all, which
 /// is indistinguishable from a PTY turn and lands in the unfiltered branch.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn checkpoint_note_touched(
     session_id: String,
     prompt_ts: u64,
     tool: String,
     files: Vec<String>,
 ) -> Result<(), String> {
+    // Load-modify-save on the touched store: serialized behind a named
+    // lock now that commands no longer queue on one IPC thread.
+    let store = crate::exec::named_lock("touched");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let before = read_touched(&session_id, prompt_ts);
     let mut rec = before.clone().unwrap_or_default();
     rec.tools.push(tool);
@@ -542,7 +546,11 @@ fn tree_after(
 /// written at all (an idle turn or a duplicate trigger creates no new ref).
 /// Returns whether a new ref was created.
 #[tauri::command]
-pub fn checkpoint_snapshot(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
+pub async fn checkpoint_snapshot(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
+    crate::exec::git_write("checkpoint_snapshot", repo_path.clone(), move || checkpoint_snapshot_body(session_id, repo_path, prompt_ts)).await
+}
+
+pub(crate) fn checkpoint_snapshot_body(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
     if !is_git_worktree(&repo_path) {
         return Ok(false);
     }
@@ -629,7 +637,7 @@ fn diff_after(
 /// tree as it is right now. That span is *not* this session's own work: it
 /// also contains the user's edits and any other session's, which is why the UI
 /// labels it "workspace since here" rather than attributing it.
-#[tauri::command]
+#[tauri::command(async)]
 /// `others` names the sessions sharing this worktree, so a file more than one
 /// of them wrote is marked rather than silently attributed to whichever asked.
 pub fn checkpoint_turn_files(
@@ -854,7 +862,7 @@ fn batch_blob_sizes(repo: &str, ids: &[String]) -> Result<HashMap<String, u64>, 
 /// how many files the turn starting there touched, and roughly how many bytes
 /// it wrote. Empty (never an error) outside a git worktree or for a session
 /// that has never snapshotted, so a non-repo folder simply shows no timeline.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn checkpoint_list(repo_path: String, session_id: String) -> Result<Vec<CheckpointEntry>, String> {
     if !is_git_worktree(&repo_path) {
         return Ok(Vec::new());
@@ -894,7 +902,7 @@ pub fn checkpoint_list(repo_path: String, session_id: String) -> Result<Vec<Chec
 
 /// Unified diff text for one file within a turn's checkpoint-to-checkpoint
 /// range.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn checkpoint_diff_file(
     repo_path: String,
     session_id: String,
@@ -946,7 +954,11 @@ fn is_unattributed(repo: &str, session_id: &str, prompt_ts: u64, file: &str) -> 
 /// about them. So the default is to refuse and name the file; `force` is the
 /// separate per-file confirmation the caller collects.
 #[tauri::command]
-pub fn checkpoint_revert_file(
+pub async fn checkpoint_revert_file(repo_path: String, session_id: String, prompt_ts: u64, file: String, force: Option<bool>) -> Result<String, String> {
+    crate::exec::git_write("checkpoint_revert_file", repo_path.clone(), move || checkpoint_revert_file_body(repo_path, session_id, prompt_ts, file, force)).await
+}
+
+pub(crate) fn checkpoint_revert_file_body(
     repo_path: String,
     session_id: String,
     prompt_ts: u64,
@@ -1121,7 +1133,19 @@ fn write_backstop(
 /// candidates are left on disk: they are listed in `checkpoint_turn_files` so
 /// the caller can name them, and reverted only one at a time through
 /// `checkpoint_revert_file`'s `force`, never in bulk here.
-pub fn checkpoint_revert_tree(
+pub async fn checkpoint_revert_tree(
+    repo_path: String,
+    session_id: String,
+    prompt_ts: u64,
+    shared: Option<Vec<String>>,
+) -> Result<RevertOutcome, String> {
+    crate::exec::git_write("checkpoint_revert_tree", repo_path.clone(), move || {
+        checkpoint_revert_tree_body(repo_path, session_id, prompt_ts, shared)
+    })
+    .await
+}
+
+pub(crate) fn checkpoint_revert_tree_body(
     repo_path: String,
     session_id: String,
     prompt_ts: u64,
@@ -1187,7 +1211,11 @@ pub fn checkpoint_revert_tree(
 /// called on session delete/archive so `refs/sway/checkpoint/*` doesn't grow
 /// unbounded.
 #[tauri::command]
-pub fn checkpoint_prune(repo_path: String, session_id: String) -> Result<(), String> {
+pub async fn checkpoint_prune(repo_path: String, session_id: String) -> Result<(), String> {
+    crate::exec::git_write("checkpoint_prune", repo_path.clone(), move || checkpoint_prune_body(repo_path, session_id)).await
+}
+
+pub(crate) fn checkpoint_prune_body(repo_path: String, session_id: String) -> Result<(), String> {
     let prefix = ref_prefix(&session_id);
     if let Ok(out) = Command::new("git")
         .arg("-C")
@@ -1368,7 +1396,7 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("probe.txt"), "alpha\nbeta\ngamma\n").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         // File A, rewritten by `Edit`; file B, written by the shell.
         std::fs::write(dir.join("probe.txt"), "alpha\ndelta\ngamma\n").unwrap();
@@ -1464,8 +1492,8 @@ mod tests {
         let b = format!("{a}-b");
         let repo = dir.to_string_lossy().into_owned();
 
-        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
-        checkpoint_snapshot(b.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(b.clone(), repo.clone(), 100).unwrap();
 
         std::fs::write(dir.join("edited-by-a.txt"), "from a").unwrap();
         std::fs::write(dir.join("shell-written.txt"), "from a's heredoc").unwrap();
@@ -1513,7 +1541,7 @@ mod tests {
         std::fs::write(dir.join("mine.txt"), "before").unwrap();
         git(&dir, &["add", "-A"]);
         git(&dir, &["commit", "-qm", "base"]);
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         std::fs::write(dir.join("mine.txt"), "after").unwrap();
         std::fs::write(dir.join("who-wrote-this.txt"), "nobody claims this").unwrap();
@@ -1526,7 +1554,7 @@ mod tests {
         .unwrap();
         checkpoint_note_touched(sid.clone(), 100, "Bash".into(), vec![]).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         assert_eq!(out.restored, ["mine.txt"]);
         assert!(out.deleted.is_empty());
         assert!(
@@ -1543,17 +1571,17 @@ mod tests {
     fn a_file_revert_refuses_an_unattributed_file_until_it_is_forced() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         std::fs::write(dir.join("who-wrote-this.txt"), "nobody claims this").unwrap();
         checkpoint_note_touched(sid.clone(), 100, "Bash".into(), vec![]).unwrap();
 
-        let refused = checkpoint_revert_file(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), None);
+        let refused = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), None);
         assert!(refused.unwrap_err().contains("who-wrote-this.txt"), "the refusal names the file");
         assert!(dir.join("who-wrote-this.txt").exists());
 
         let forced =
-            checkpoint_revert_file(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), Some(true)).unwrap();
+            checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), Some(true)).unwrap();
         assert_eq!(forced, "deleted");
         assert!(!dir.join("who-wrote-this.txt").exists());
 
@@ -1568,8 +1596,8 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
 
         // Both sessions open a turn at the same boundary.
-        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
-        checkpoint_snapshot(b.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(b.clone(), repo.clone(), 100).unwrap();
 
         // Each writes its own file, and each reports what it wrote.
         std::fs::write(dir.join("a.txt"), "from a").unwrap();
@@ -1600,8 +1628,8 @@ mod tests {
         let b = format!("{a}-b");
         let repo = dir.to_string_lossy().into_owned();
 
-        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
-        checkpoint_snapshot(b.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(b.clone(), repo.clone(), 100).unwrap();
 
         std::fs::write(dir.join("shared.txt"), "both touched this").unwrap();
         std::fs::write(dir.join("only-a.txt"), "just a").unwrap();
@@ -1633,7 +1661,7 @@ mod tests {
     fn a_turn_with_no_recorded_writes_falls_back_to_the_whole_tree_diff() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("untracked-by-events.txt"), "written by a PTY agent").unwrap();
 
         let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
@@ -1651,7 +1679,7 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("unchanged.txt"), "same").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         // Reported as written, but rewritten with identical content.
         std::fs::write(dir.join("unchanged.txt"), "same").unwrap();
@@ -1673,7 +1701,7 @@ mod tests {
     fn recorded_writes_accumulate_across_a_turns_tool_calls() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("one.txt"), "1").unwrap();
         std::fs::write(dir.join("two.txt"), "2").unwrap();
 
@@ -1694,7 +1722,7 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "hello").unwrap();
-        let created = checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        let created = checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         assert!(created);
         let checkpoints = list_checkpoints(&repo, &sid);
         assert_eq!(checkpoints.len(), 1);
@@ -1709,7 +1737,7 @@ mod tests {
         std::fs::write(dir.join(".gitignore"), "ignored.txt\n").unwrap();
         std::fs::write(dir.join("ignored.txt"), "junk").unwrap();
         std::fs::write(dir.join("kept.txt"), "keep").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         let checkpoints = list_checkpoints(&repo, &sid);
         assert!(tree_has_file(&repo, &checkpoints[0].tree, "kept.txt").unwrap());
         assert!(!tree_has_file(&repo, &checkpoints[0].tree, "ignored.txt").unwrap());
@@ -1726,7 +1754,7 @@ mod tests {
         std::fs::write(dir.join("untracked.txt"), "x").unwrap();
         let before_status = git_capture(&repo, &["status", "--porcelain"]).unwrap();
 
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         let after_status = git_capture(&repo, &["status", "--porcelain"]).unwrap();
         assert_eq!(before_status, after_status, "the user's real index/staging must be untouched");
@@ -1738,9 +1766,9 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "hello").unwrap();
-        assert!(checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap());
+        assert!(checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap());
         // No file changes since the last snapshot: the next boundary is a no-op.
-        assert!(!checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap());
+        assert!(!checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap());
         assert_eq!(list_checkpoints(&repo, &sid).len(), 1);
         cleanup(&dir, &sid);
     }
@@ -1750,9 +1778,9 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "hello").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("a.txt"), "hello world").unwrap();
-        assert!(checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap());
+        assert!(checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap());
         assert_eq!(list_checkpoints(&repo, &sid).len(), 2);
         cleanup(&dir, &sid);
     }
@@ -1766,7 +1794,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let sid = format!("sess-plain-{n}-{seq}");
         let repo = dir.to_string_lossy().into_owned();
-        let result = checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        let result = checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         assert!(!result);
         assert!(list_checkpoints(&repo, &sid).is_empty());
         cleanup(&dir, &sid);
@@ -1778,12 +1806,12 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         // Turn 1 writes one file, turn 2 writes two, turn 3 is the open turn.
         std::fs::write(dir.join("a.txt"), "a").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("b.txt"), "bb").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
         std::fs::write(dir.join("c.txt"), "ccc").unwrap();
         std::fs::write(dir.join("d.txt"), "dddd").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 300).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 300).unwrap();
 
         let entries = checkpoint_list(repo.clone(), sid.clone()).unwrap();
         assert_eq!(entries.len(), 3);
@@ -1819,9 +1847,9 @@ mod tests {
     fn turn_diff_includes_a_file_written_after_the_boundary() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("bash_written.txt"), "written by a shell redirect").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
 
         let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
         assert_eq!(files.len(), 1);
@@ -1834,7 +1862,7 @@ mod tests {
     fn latest_turn_diffs_against_a_live_snapshot() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("mid_turn.txt"), "still running").unwrap();
         // No next prompt boundary yet: the diff still reflects the live tree.
         let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
@@ -1849,11 +1877,11 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "before").unwrap();
         std::fs::write(dir.join("untouched.txt"), "stays").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("a.txt"), "after").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
 
-        let action = checkpoint_revert_file(repo.clone(), sid.clone(), 100, "a.txt".into(), None).unwrap();
+        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "a.txt".into(), None).unwrap();
         assert_eq!(action, "restored");
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "before");
         assert_eq!(std::fs::read_to_string(dir.join("untouched.txt")).unwrap(), "stays");
@@ -1873,7 +1901,7 @@ mod tests {
 
         std::fs::write(dir.join("a.txt"), "a before").unwrap();
         std::fs::write(dir.join("b.txt"), "b before").unwrap();
-        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
 
         // Both sessions write in the same interval; each reports its own paths.
         std::fs::write(dir.join("a.txt"), "a after").unwrap();
@@ -1881,7 +1909,7 @@ mod tests {
         checkpoint_note_touched(a.clone(), 100, "Edit".into(), vec![dir.join("a.txt").to_string_lossy().into_owned()]).unwrap();
         checkpoint_note_touched(b.clone(), 100, "Edit".into(), vec![dir.join("b.txt").to_string_lossy().into_owned()]).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), a.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), a.clone(), 100, None).unwrap();
         assert_eq!(out.restored, ["a.txt"]);
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "a before");
         // B's concurrent edit survives, which is the whole point.
@@ -1901,7 +1929,7 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
 
         std::fs::write(dir.join("shared.txt"), "before").unwrap();
-        checkpoint_snapshot(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("shared.txt"), "after").unwrap();
 
         let shared_abs = dir.join("shared.txt").to_string_lossy().into_owned();
@@ -1909,7 +1937,7 @@ mod tests {
         checkpoint_note_touched(b.clone(), 100, "Edit".into(), vec![shared_abs]).unwrap();
 
         // Confirmed: it comes back.
-        let out = checkpoint_revert_tree(repo.clone(), a.clone(), 100, Some(vec!["shared.txt".into()])).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), a.clone(), 100, Some(vec!["shared.txt".into()])).unwrap();
         assert_eq!(out.restored, ["shared.txt"]);
         assert_eq!(std::fs::read_to_string(dir.join("shared.txt")).unwrap(), "before");
 
@@ -1925,10 +1953,10 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("f.txt"), "before").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("f.txt"), "after").unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         assert_eq!(out.restored, ["f.txt"]);
         assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "before");
 
@@ -1944,7 +1972,7 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("one.txt"), "before").unwrap();
         std::fs::write(dir.join("two.txt"), "before").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         // Turn at 100 wrote one.txt; a later turn at 200 wrote two.txt.
         std::fs::write(dir.join("one.txt"), "after").unwrap();
@@ -1952,7 +1980,7 @@ mod tests {
         std::fs::write(dir.join("two.txt"), "after").unwrap();
         checkpoint_note_touched(sid.clone(), 200, "Edit".into(), vec![dir.join("two.txt").to_string_lossy().into_owned()]).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         let mut restored = out.restored.clone();
         restored.sort();
         assert_eq!(restored, ["one.txt", "two.txt"]);
@@ -1969,7 +1997,7 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("kept.txt"), "before").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         let target =
             list_checkpoints(&repo, &sid).into_iter().find(|c| c.ts == 100).unwrap().tree;
 
@@ -1987,7 +2015,7 @@ mod tests {
         )
         .unwrap();
 
-        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
 
         let now = write_tree_scratch(&repo, &checkpoint_index_path(&sid)).unwrap();
         assert_eq!(now, target);
@@ -1998,11 +2026,11 @@ mod tests {
     fn revert_created_file_deletes_it() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("new_file.txt"), "created this turn").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
 
-        let action = checkpoint_revert_file(repo.clone(), sid.clone(), 100, "new_file.txt".into(), None).unwrap();
+        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "new_file.txt".into(), None).unwrap();
         assert_eq!(action, "deleted");
         assert!(!dir.join("new_file.txt").exists());
         cleanup(&dir, &sid);
@@ -2013,11 +2041,11 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("gone.txt"), "will be deleted").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::remove_file(dir.join("gone.txt")).unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
 
-        let action = checkpoint_revert_file(repo.clone(), sid.clone(), 100, "gone.txt".into(), None).unwrap();
+        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "gone.txt".into(), None).unwrap();
         assert_eq!(action, "recreated");
         assert_eq!(std::fs::read_to_string(dir.join("gone.txt")).unwrap(), "will be deleted");
         cleanup(&dir, &sid);
@@ -2027,11 +2055,11 @@ mod tests {
     fn cumulative_spans_every_turn_since_the_checkpoint() {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("turn1.txt"), "one").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
         std::fs::write(dir.join("turn2.txt"), "two").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 300).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 300).unwrap();
         // An edit by someone other than the agent, after the last boundary.
         std::fs::write(dir.join("by_the_user.txt"), "mine").unwrap();
 
@@ -2058,13 +2086,13 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
         std::fs::write(dir.join("keep.txt"), "same").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         // After the checkpoint: one edit, one brand-new file, one deletion.
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
         std::fs::write(dir.join("added_later.txt"), "should vanish").unwrap();
         std::fs::remove_file(dir.join("keep.txt")).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v1");
         assert_eq!(std::fs::read_to_string(dir.join("keep.txt")).unwrap(), "same");
@@ -2081,11 +2109,11 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
         std::fs::write(dir.join("b.txt"), "new").unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         let backstop = out.backstop_ts.unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v1");
         assert!(!dir.join("b.txt").exists());
@@ -2099,7 +2127,7 @@ mod tests {
         assert_eq!(entry.kind, "backstop");
 
         // Reverting to it undoes the revert.
-        checkpoint_revert_tree(repo.clone(), sid.clone(), backstop, None).unwrap();
+        checkpoint_revert_tree_body(repo.clone(), sid.clone(), backstop, None).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v2");
         assert_eq!(std::fs::read_to_string(dir.join("b.txt")).unwrap(), "new");
         cleanup(&dir, &sid);
@@ -2115,10 +2143,10 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), now - 60).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), now - 60).unwrap();
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
 
-        let backstop = checkpoint_revert_tree(repo.clone(), sid.clone(), now - 60, None)
+        let backstop = checkpoint_revert_tree_body(repo.clone(), sid.clone(), now - 60, None)
             .unwrap()
             .backstop_ts
             .unwrap();
@@ -2131,7 +2159,7 @@ mod tests {
 
         // A turn that happens after the revert still sorts last.
         std::fs::write(dir.join("later.txt"), "after the revert").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), now + 30).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), now + 30).unwrap();
         let order: Vec<u64> = checkpoint_list(repo.clone(), sid.clone())
             .unwrap()
             .into_iter()
@@ -2149,7 +2177,7 @@ mod tests {
         std::fs::write(dir.join("staged.txt"), "staged v1").unwrap();
         git(&dir, &["add", "."]);
         git(&dir, &["commit", "-q", "-m", "init"]);
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         // The user stages an edit. A whole-tree revert does rewrite the file
         // on disk (that is the point of a tree revert), but it must never
@@ -2159,7 +2187,7 @@ mod tests {
         let staged_before = git_capture(&repo, &["diff", "--cached", "--name-only"]).unwrap();
         std::fs::write(dir.join("reverted.txt"), "v2").unwrap();
 
-        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.join("reverted.txt")).unwrap(), "v1");
         assert_eq!(
@@ -2186,10 +2214,10 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(&script, "#!/bin/sh\necho v2\n").unwrap();
 
-        checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(&script).unwrap(), "#!/bin/sh\necho v1\n");
         #[cfg(unix)]
@@ -2205,9 +2233,9 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
-        let out = checkpoint_revert_tree(repo.clone(), sid.clone(), 100, None).unwrap();
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         assert_eq!(out.backstop_ts, None, "nothing changed, so nothing to back up");
         assert!(out.restored.is_empty() && out.deleted.is_empty());
         assert_eq!(list_checkpoints(&repo, &sid).len(), 1, "no ref spam");
@@ -2224,7 +2252,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "untouched").unwrap();
         let sid = format!("sess-revert-plain-{n}-{seq}");
         let repo = dir.to_string_lossy().into_owned();
-        assert!(checkpoint_revert_tree(repo, sid.clone(), 100, None).is_err());
+        assert!(checkpoint_revert_tree_body(repo, sid.clone(), 100, None).is_err());
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "untouched");
         cleanup(&dir, &sid);
     }
@@ -2234,13 +2262,13 @@ mod tests {
         let (dir, sid) = tmp_repo();
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("a.txt"), "v1").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
-        checkpoint_snapshot(sid.clone(), repo.clone(), 200).unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
         assert_eq!(list_checkpoints(&repo, &sid).len(), 2);
         assert!(checkpoint_index_path(&sid).exists());
 
-        checkpoint_prune(repo.clone(), sid.clone()).unwrap();
+        checkpoint_prune_body(repo.clone(), sid.clone()).unwrap();
 
         assert!(list_checkpoints(&repo, &sid).is_empty());
         assert!(!checkpoint_index_path(&sid).exists());

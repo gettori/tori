@@ -327,7 +327,7 @@ pub fn login_route(
 /// rather than failing - and needs no probe to get it, so this is a plain read
 /// of the adapter. Home is `None` because the default profile is the login the
 /// user already has: no variable set is what resolves it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_login_route(adapter_id: String) -> Result<LoginRoute, String> {
     let adapter = crate::agents::find(&adapter_id)
         .cloned()
