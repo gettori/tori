@@ -21,11 +21,16 @@ export type TabDescriptor = {
   wrapTab?: (t: UnifiedTab, tab: JSX.Element) => JSX.Element;
   /** The overflow menu row, whole: the two panels' rows genuinely differ. */
   renderMenuItem: (t: UnifiedTab) => JSX.Element;
-  /** The bar's trailing action cluster while a tab of this kind is active (or
-   *  while an empty pane's pin kind is this kind). A function so the strip can
-   *  compare identity: kinds sharing one cluster keep its DOM across an active
-   *  switch instead of rebuilding it. */
+  /** This kind's trailing action cluster. Every registered cluster is drawn in
+   *  every strip (phase 13), so the controls a pane offers no longer depend on
+   *  which tab happens to be active in it. A function so the strip can compare
+   *  identity: the five terminal kinds register one cluster and it is drawn
+   *  once. */
   trailing?: () => JSX.Element;
+  /** Where this kind's cluster sits in that combined row, ascending. Declared
+   *  rather than taken from registration order, which is mount order and says
+   *  nothing about how the controls read left to right. */
+  trailingRank?: number;
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
   /** The tab's surface on the stage (the render component of the kind). */
@@ -60,6 +65,20 @@ export function kindEntry(kind: UnifiedTabKind): TabDescriptor {
   const d = maybeKindEntry(kind);
   if (!d) throw new Error(`no tab descriptor registered for kind "${kind}"`);
   return d;
+}
+
+/** Every registered trailing cluster, in the order they are drawn: one entry
+ *  per distinct cluster, so the terminal kinds' shared one appears once. */
+export function trailingClusters(): (() => JSX.Element)[] {
+  generation();
+  const seen = new Set<() => JSX.Element>();
+  const out: { rank: number; fn: () => JSX.Element }[] = [];
+  for (const d of entries.values()) {
+    if (!d.trailing || seen.has(d.trailing)) continue;
+    seen.add(d.trailing);
+    out.push({ rank: d.trailingRank ?? 100, fn: d.trailing });
+  }
+  return out.sort((a, b) => a.rank - b.rank).map((x) => x.fn);
 }
 
 /** For readers that must tolerate a not-yet-mounted panel (a pane's pin kind

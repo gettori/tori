@@ -214,7 +214,6 @@ export default function PaneView(props: {
         class={entry()?.stripClass}
         items={items()}
         activeId={activeId()}
-        pinKind={props.pinKind}
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
         onActivate={(t) => props.paneId && setPaneActive(props.ws ?? "", props.paneId, t.id)}
         onReorder={(next) =>
