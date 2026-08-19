@@ -74,6 +74,7 @@ import { emit, emitWith, SPLIT_PANE, TOGGLE_SIDEBAR, type SplitPane } from "./ut
 import { setOpen, setActiveWorkspace, setActiveByWorkspace } from "./panels/Terminal/terminalTabStore";
 import { setTabsByWs, setActiveByWs } from "./panels/Editor/editorTabStore";
 import { stageHost } from "./tabs/stageHost";
+import { flushDeferredWrites } from "./utils/deferredWrite";
 
 const REPO = "/space/proj/main";
 const { default: App } = await import("./App");
@@ -146,7 +147,9 @@ describe("a workspace nobody has split", () => {
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
     expect(panes().length).toBe(2);
 
-    // Remounted the way a relaunch would: the model is reset from storage.
+    // Remounted the way a relaunch would: the quit lands the deferred store
+    // write, then the model is reset from storage.
+    flushDeferredWrites();
     cleanup();
     render(() => <App />);
     await waitFor(() => expect(panes().length).toBe(2));

@@ -9,6 +9,7 @@
 // stored value is never repaired in place; only focusedPaneId, whose loss is
 // recoverable, is patched to a visible pane.
 import { createSignal } from "solid-js";
+import { deferredWrite } from "../utils/deferredWrite";
 import { pinRulesFor } from "./tabPlacement";
 import {
   MAX_PANES,
@@ -88,12 +89,23 @@ function loadAll(): Record<string, LayoutEnvelope> {
 
 const [envelopes, setEnvelopes] = createSignal<Record<string, LayoutEnvelope>>(loadAll());
 
-export function persistEnvelopes() {
+const envelopeWrite = deferredWrite(() => {
   try {
     localStorage.setItem(LS_PANES, JSON.stringify(envelopes()));
   } catch {
     // ignore
   }
+});
+
+/** Ask for the store write. Deferred off the click frame; see `deferredWrite`. */
+export function persistEnvelopes() {
+  envelopeWrite.schedule();
+}
+
+/** Land a pending write now: the quit path, and a suite reading back what a
+ *  relaunch would load. */
+export function flushEnvelopes() {
+  envelopeWrite.flush();
 }
 
 /** The workspace's envelope, or the caller's seed when none is stored yet.
@@ -243,6 +255,9 @@ export function seedTwoPane(opts: {
 // run, so this keeps the model's lifetime what today's layout signals had
 // (and gives repeated test mounts a fresh model without touching the tests).
 export function resetPaneLayoutModel() {
+  // Unrun rather than flushed: the state a pending write would carry is the
+  // state this call is throwing away.
+  envelopeWrite.cancel();
   setEnvelopes(loadAll());
   focusStamps.clear();
   focusSeq = 0;

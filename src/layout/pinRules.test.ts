@@ -8,7 +8,6 @@ import {
   leaves,
   resolvePinPane,
   splitPane,
-  resetPaneLayoutIds,
   type PaneLeaf,
   type PaneNode,
 } from "./paneLayout";
@@ -31,7 +30,6 @@ const at = (root: PaneNode, kind: string, rules?: Parameters<typeof resolvePinPa
   resolvePinPane(root, kind, rules)?.id ?? null;
 
 beforeEach(() => {
-  resetPaneLayoutIds();
   resetPinRules();
 });
 

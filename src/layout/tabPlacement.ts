@@ -9,6 +9,7 @@
 // still wins over both. `locks` is the user saying a pane takes one kind and
 // nothing else (phase 11), which outranks both of the first two.
 import { createSignal } from "solid-js";
+import { deferredWrite } from "../utils/deferredWrite";
 import { leaves, resolvePinPane, type PaneNode } from "./paneLayout";
 import { pinSideOf } from "./pinRules";
 
@@ -83,19 +84,25 @@ function load(): Record<string, WsPlacement> {
 
 const [placements, setPlacements] = createSignal<Record<string, WsPlacement>>(load());
 
-function persist() {
+const placementWrite = deferredWrite(() => {
   try {
     localStorage.setItem(LS_PLACEMENT, JSON.stringify(placements()));
   } catch {
     // ignore
   }
+});
+
+/** Land a pending write now: the quit path, and a suite reading back what a
+ *  relaunch would load. */
+export function flushTabPlacement() {
+  placementWrite.flush();
 }
 
 const wsOf = (ws: string): WsPlacement => placements()[ws] ?? empty();
 
 function write(ws: string, next: WsPlacement) {
   setPlacements({ ...placements(), [ws]: next });
-  persist();
+  placementWrite.schedule();
 }
 
 // A pane id is only meaningful inside its own workspace's tree, so every read
@@ -319,5 +326,8 @@ export function forgetTab(ws: string, tabId: string) {
 // Called from App's setup, beside resetPaneLayoutModel, for its reason: the
 // shell mounts once per app run, and repeated test mounts get a fresh model.
 export function resetTabPlacement() {
+  // Unrun rather than flushed: the state a pending write would carry is the
+  // state this call is throwing away.
+  placementWrite.cancel();
   setPlacements(load());
 }

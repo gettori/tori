@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
@@ -61,11 +61,13 @@ import {
   neighborPane,
   resizePane,
   resolvePinPane,
+  reuseNode,
   resolveTogglePane,
   setPaneHidden,
   splitPane,
   visibleLeaves,
   type PaneLeaf,
+  type PaneNode,
 } from "./layout/paneLayout";
 import {
   ensureEnvelope,
@@ -342,6 +344,12 @@ function App() {
   const sidebarW = () => Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
 
   const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
+  // The tree the shell renders. Two same-shape worktrees are two envelope
+  // objects and PaneTree keys children by reference, so a switch between them
+  // would dispose live subtrees; handing the drawn nodes back makes it a no-op.
+  // Created here, not beside `env`: a memo runs on the spot, so `selected` must
+  // already exist.
+  const renderedLayout = createMemo<PaneNode>((prev) => reuseNode(prev, env().layout));
   // Width the topbar rail collapses to when the sidebar is hidden, so the
   // breadcrumb never slides under the traffic lights. Measured from the real
   // WindowControls cluster on mount (falls back to ~88px).
@@ -650,35 +658,32 @@ function App() {
     persistLayout();
   }
 
-  // Refit-on-reveal, centralized: whenever a pane transitions hidden -> shown,
-  // tell the terminal to refit and CodeMirror to re-measure, so every reveal
-  // path (button, hotkey, coupling) is covered without depending on a
-  // ResizeObserver tick that a display:none -> block flip can miss.
-  let prevS = showSidebar();
-  let prevT = showTerminal();
-  let prevE = showEditor();
-  let prevF = showFiletree();
+  // Refit on a reveal or a structural edit, after layout (the rAF).
+  //
+  // Remembered per workspace, since every input is a read of the *selected*
+  // one: one shared set of previous values compares two workspaces' answers
+  // across a switch and calls every switch a reveal.
+  //
+  // A workspace seen for the first time records and emits nothing (PaneView
+  // refits on adoption), and so does a switch back to panes left as they were:
+  // the activation edge and CodeMirror's hidden-pane effect cover the reveal.
+  type PaneGeometry = { s: boolean; t: boolean; e: boolean; f: boolean; layout: PaneNode };
+  const lastGeometry = new Map<string, PaneGeometry>();
   createEffect(() => {
-    const s = showSidebar();
-    const t = showTerminal();
-    const e = showEditor();
-    const f = showFiletree();
-    const revealed = (s && !prevS) || (t && !prevT) || (e && !prevE) || (f && !prevF);
-    prevS = s;
-    prevT = t;
-    prevE = e;
-    prevF = f;
-    if (revealed) requestAnimationFrame(() => emit(REFIT_PANES));
-  });
-
-  // Any structural change (split, move, close, a committed divider drag) resizes
-  // panes that measure themselves. Same rAF as the reveal above: after layout.
-  let prevLayout = env().layout;
-  createEffect(() => {
-    const l = env().layout;
-    if (l === prevLayout) return;
-    prevLayout = l;
-    requestAnimationFrame(() => emit(REFIT_PANES));
+    const ws = wsKey();
+    const now: PaneGeometry = {
+      s: showSidebar(),
+      t: showTerminal(),
+      e: showEditor(),
+      f: showFiletree(),
+      layout: env().layout,
+    };
+    const was = lastGeometry.get(ws);
+    lastGeometry.set(ws, now);
+    if (!was) return;
+    const revealed =
+      (now.s && !was.s) || (now.t && !was.t) || (now.e && !was.e) || (now.f && !was.f);
+    if (revealed || now.layout !== was.layout) requestAnimationFrame(() => emit(REFIT_PANES));
   });
 
   // Every binding now comes from the canonical table in utils/hotkeys.ts,
@@ -924,7 +929,7 @@ function App() {
             onToggleFiletree={toggleFiletree}
           />
           <div class="work-split">
-            <PaneTree node={env().layout} roles={paneRoles()} />
+            <PaneTree node={renderedLayout()} roles={paneRoles()} />
             {/* Workspace chrome, not a pane's (phase 12): the file tree and the
                 right panel belong to the workspace the way the sidebar does, so
                 they stay put through every split, move and close. */}
