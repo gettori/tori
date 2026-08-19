@@ -65,6 +65,7 @@ import {
   onFolderScan,
   type SessionMeta,
   type FolderScan,
+  type SessionsChanged,
 } from "../../utils/sessionStore";
 import {
   noteLiveTabs,
@@ -2211,13 +2212,17 @@ export default function LeftSidebar(props: {
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
     unlistenConfig = await listen("config://changed", () => loadConfig());
-    unlistenSessions = await listen("sessions://changed", () => {
+    unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
       // store as well as on liveTabs, so a refresh that changed something
       // already drives one, and a refresh that changed nothing has nothing to
       // re-read - a tail only moves when its transcript does, which is what
       // raised this event.
-      void refreshSessions();
+      //
+      // `folders` names what actually moved, so a heartbeat during one
+      // streaming session re-lists that session's folder rather than every
+      // folder the tree covers. A null payload still means all of them.
+      void refreshSessions(e.payload?.folders ?? undefined);
       probeActive();
     });
     unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
