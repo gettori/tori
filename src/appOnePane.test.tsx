@@ -70,7 +70,7 @@ vi.mock("./panels/Editor/Editor", async () => {
 });
 
 import { DEFAULT_SETTINGS } from "./panels/Settings/settingsStore";
-import { emitWith, SPLIT_PANE, type SplitPane } from "./utils/events";
+import { emit, emitWith, SPLIT_PANE, TOGGLE_SIDEBAR, type SplitPane } from "./utils/events";
 import { setOpen, setActiveWorkspace, setActiveByWorkspace } from "./panels/Terminal/terminalTabStore";
 import { setTabsByWs, setActiveByWs } from "./panels/Editor/editorTabStore";
 import { stageHost } from "./tabs/stageHost";
@@ -214,5 +214,27 @@ describe("the editor chrome", () => {
     // The file tree did not travel with the pane the files are in.
     expect(chrome.closest("[data-pane-id]")).toBeNull();
     expect(document.querySelectorAll('[data-stage-host="editor-chrome"]').length).toBe(1);
+  });
+});
+
+describe("the sidebar's width", () => {
+  it("is squeezed by a narrow window without losing the width the user picked", async () => {
+    localStorage.setItem(
+      "sway.layout.v1",
+      JSON.stringify({ sidebar: 900, editor: 640, showSidebar: true, showTerminal: true, showEditor: true }),
+    );
+    render(() => <App />);
+
+    const aside = await waitFor(() => document.querySelector<HTMLElement>(".pane.sidebar")!);
+    const drawn = parseFloat(aside.style.width);
+    expect(drawn).toBeLessThan(900);
+    expect(drawn).toBeGreaterThanOrEqual(180);
+
+    // Anything that persists the layout has to write the choice, not the squeeze,
+    // so widening the window later hands the 900 back.
+    emit(TOGGLE_SIDEBAR);
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("sway.layout.v1")!).sidebar).toBe(900),
+    );
   });
 });

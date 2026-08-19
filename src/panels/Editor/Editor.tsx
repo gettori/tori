@@ -428,13 +428,15 @@ export default function Editor(props: {
   // spare" on whatever width the editor currently has.
   const px = (base: number) => base * chromeScale();
   // The chrome portals out (phase 7), so the region is measured as editorMain
-  // plus rightW AT MEASURE TIME (untracked): reading rightW reactively here
+  // plus the panel's drawn width AT MEASURE TIME (untracked): reading it reactively here
   // would make the clamp below chase its own writes between observer ticks.
   let paneEl: HTMLDivElement | undefined;
   const [paneW, setPaneW] = createSignal(0);
   onMount(() => {
     if (!paneEl) return;
-    const ro = new ResizeObserver(([entry]) => setPaneW(entry.contentRect.width + untrack(rightW)));
+    const ro = new ResizeObserver(([entry]) =>
+      setPaneW(entry.contentRect.width + untrack(rightWidth)),
+    );
     ro.observe(paneEl);
     onCleanup(() => ro.disconnect());
   });
@@ -442,15 +444,10 @@ export default function Editor(props: {
   // the floor by a width nothing has reported yet.
   const rightMax = () =>
     paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(CODE_MIN));
-  // Same reason the app clamps its outer panes: the drag clamp only bites while a
-  // pointer is down, so a stored width, a narrowed editor pane or a raised UI
-  // scale could otherwise leave the code side with nothing. Not persisted, so
-  // widening the pane again restores the width the user picked.
-  createEffect(() => {
-    if (paneW() <= 0) return;
-    const w = Math.min(Math.max(rightW(), px(RIGHT_W_MIN)), rightMax());
-    if (w !== rightW()) setRightW(w);
-  });
+  // What the panel renders at. Clamped here rather than written back into the
+  // stored width, so a narrowed editor pane or a raised UI scale squeezes it for
+  // now and widening the pane again restores the width the user picked.
+  const rightWidth = () => Math.min(Math.max(rightW(), px(RIGHT_W_MIN)), rightMax());
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
@@ -2241,7 +2238,7 @@ export default function Editor(props: {
         <Resizer
           side="after"
           variant="hairline"
-          value={rightW()}
+          value={rightWidth()}
           min={px(RIGHT_W_MIN)}
           max={rightMax()}
           onInput={setRightW}
@@ -2251,7 +2248,7 @@ export default function Editor(props: {
       <div
         class={styles.rightPanel}
         classList={{ [styles.hidden]: !filetreeOn() }}
-        style={{ width: `${rightW()}px` }}
+        style={{ width: `${rightWidth()}px` }}
       >
         <OverflowTabBar
           class={styles.rightTabs}
