@@ -1185,8 +1185,12 @@ export default function Terminal(props: {
       </>
     );
   };
+  // A memo, not a bare call: `active` feeds fit/focus effects and the
+  // `chat_set_visible` flip, and a getter prop re-runs them whenever anything
+  // behind onScreen changes. The memo makes them fire on real edges only.
   const ptyStage = (u: UnifiedTab) => {
     const term = asTerm(u) as PtyTab;
+    const active = createMemo(() => onScreen(term));
     return (
       <TerminalView
         id={term.id}
@@ -1197,13 +1201,14 @@ export default function Terminal(props: {
         init={term.init}
         env={term.env}
         sessionId={term.sessionId}
-        active={onScreen(term)}
+        active={active()}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
       />
     );
   };
   const chatStage = (u: UnifiedTab) => {
     const t = asTerm(u);
+    const active = createMemo(() => onScreen(t));
     return (
       <ChatView
         sessionId={t.sessionId!}
@@ -1213,7 +1218,7 @@ export default function Terminal(props: {
         workspace={t.workspace}
         title={tabTitle(t)}
         resume={!!t.resume}
-        active={onScreen(t)}
+        active={active()}
         onForkSession={() => spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)}
         onForkFrom={() =>
           spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, t.sessionId)
