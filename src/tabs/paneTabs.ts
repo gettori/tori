@@ -1,6 +1,7 @@
 // What a pane holds (plan phase 8). The layout layer places tab ids and the
 // registry knows what a kind considers active; this is the one place the two
 // meet, so a pane's strip, its stages, and the panels all read the same answer.
+import { createMemo, getOwner, onCleanup, runWithOwner, type Owner } from "solid-js";
 import { layoutRoot } from "../layout/layoutStore";
 import { visibleLeaves } from "../layout/paneLayout";
 import type { MenuItem } from "../components/Menu/rows";
@@ -24,15 +25,78 @@ import {
 } from "../layout/tabPlacement";
 import { maybeKindEntry } from "./registry";
 import { unifiedTabs, type UnifiedTab } from "./unifiedTabs";
+import { activeWorkspace } from "../panels/Terminal/terminalTabStore";
+
+type PanePlacement = {
+  /** This workspace's tabs per pane, in display order. */
+  byPane: Map<string, UnifiedTab[]>;
+  /** Every workspace's tabs resolved against this workspace's tree, per pane:
+   *  what a pane hosts (background surfaces included, gotcha #64). */
+  hostedByPane: Map<string, UnifiedTab[]>;
+};
+
+let placementComputes = 0;
+/** How many times a workspace's placement maps were rebuilt. With the memo
+ *  installed, one placement change costs one rebuild per observed workspace,
+ *  not one filter pass per pane per consumer. */
+export function __placementComputesForTests(): number {
+  return placementComputes;
+}
+
+function computePlacement(ws: string): PanePlacement | null {
+  const root = layoutRoot(ws);
+  if (!root) return null;
+  placementComputes++;
+  const byPane = new Map<string, UnifiedTab[]>();
+  const hostedByPane = new Map<string, UnifiedTab[]>();
+  for (const t of unifiedTabs()) {
+    const pane = paneOfTab(t.workspace, t, root);
+    if (!pane) continue;
+    const hosted = hostedByPane.get(pane);
+    if (hosted) hosted.push(t);
+    else hostedByPane.set(pane, [t]);
+    if (t.workspace !== ws) continue;
+    const own = byPane.get(pane);
+    if (own) own.push(t);
+    else byPane.set(pane, [t]);
+  }
+  for (const [pane, tabs] of byPane) byPane.set(pane, orderInPane(ws, tabs));
+  return { byPane, hostedByPane };
+}
+
+// The memos live under the shell's root, not at module level, so they are
+// disposed with the app (the same story as installUnifiedTabsMemo). One memo
+// per visited workspace, made lazily on first ask; the map grows with visited
+// worktrees, which stay a handful per run.
+let placementOwner: Owner | null = null;
+let placementMemos: Map<string, () => PanePlacement | null> | null = null;
+
+/** Called once from the shell's setup, inside its reactive root. */
+export function installPaneTabsMemo() {
+  const owner = getOwner();
+  placementOwner = owner;
+  placementMemos = new Map();
+  onCleanup(() => {
+    if (placementOwner === owner) {
+      placementOwner = null;
+      placementMemos = null;
+    }
+  });
+}
+
+function placement(ws: string): PanePlacement | null {
+  if (!placementMemos || !placementOwner) return computePlacement(ws);
+  let m = placementMemos.get(ws);
+  if (!m) {
+    m = runWithOwner(placementOwner, () => createMemo(() => computePlacement(ws)))!;
+    placementMemos.set(ws, m);
+  }
+  return m();
+}
 
 /** This workspace's tabs, in the pane that holds them, in display order. */
 export function paneTabs(ws: string, paneId: string): UnifiedTab[] {
-  const root = layoutRoot(ws);
-  if (!root) return [];
-  return orderInPane(
-    ws,
-    unifiedTabs().filter((t) => t.workspace === ws && paneOfTab(ws, t, root) === paneId),
-  );
+  return placement(ws)?.byPane.get(paneId) ?? [];
 }
 
 /**
@@ -44,9 +108,7 @@ export function paneTabs(ws: string, paneId: string): UnifiedTab[] {
  * editor's panes share one per pane), so this asks rather than assumes.
  */
 export function paneHostIds(ws: string, paneId: string): string[] {
-  const root = layoutRoot(ws);
-  if (!root) return [];
-  const here = unifiedTabs().filter((t) => paneOfTab(t.workspace, t, root) === paneId);
+  const here = placement(ws)?.hostedByPane.get(paneId) ?? [];
   const out: string[] = [];
   const done = new Set<unknown>();
   for (const t of here) {
@@ -95,10 +157,15 @@ export function kindHomePane(ws: string, kind: string): string | null {
   return root ? homePane(ws, kind, root) : null;
 }
 
-/** Is this tab the one its pane shows? Null when there is no pane tree yet. */
+/** Is this tab the one its pane shows? Null when there is no pane tree yet.
+ *  False for every tab of a background workspace: its panes still remember
+ *  their picks, but nothing in them is on screen, and answering true here is
+ *  what kept one surface per pane per visited worktree active (fit, focus,
+ *  `pty_resize`, `chat_set_visible` never false) across a switch. */
 export function visibleInPane(tab: TabRef & { workspace: string }): boolean | null {
   const root = layoutRoot(tab.workspace);
   if (!root) return null;
+  if (tab.workspace !== activeWorkspace()) return false;
   const pane = paneOfTab(tab.workspace, tab, root);
   return pane ? paneActiveId(tab.workspace, pane) === tab.id : null;
 }

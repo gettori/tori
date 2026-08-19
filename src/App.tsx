@@ -92,9 +92,9 @@ import {
   resetTabPlacement,
   type TabRef,
 } from "./layout/tabPlacement";
-import { paneActiveId, paneTabs, reorderPane } from "./tabs/paneTabs";
+import { installPaneTabsMemo, paneActiveId, paneTabs, reorderPane } from "./tabs/paneTabs";
 import { maybeKindEntry } from "./tabs/registry";
-import { unifiedTabs } from "./tabs/unifiedTabs";
+import { installUnifiedTabsMemo, unifiedTabs } from "./tabs/unifiedTabs";
 import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
 import { rerunLast } from "./utils/runTask";
 import Omnibox from "./components/Omnibox/Omnibox";
@@ -221,6 +221,10 @@ function App() {
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   resetPaneLayoutModel();
   resetTabPlacement();
+  // Inside App's own root, so both memos are disposed with it (the module-level
+  // concern documented in unifiedTabs.ts); a repeated test mount installs fresh.
+  installUnifiedTabsMemo();
+  installPaneTabsMemo();
   /** Every open tab, pinned to the pane it is in right now, in every workspace
    *  that has a tree. */
   function freezePlacements() {
