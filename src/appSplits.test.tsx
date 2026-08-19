@@ -274,8 +274,8 @@ describe("closing a pane", () => {
     emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: "sh:2", kind: "shell", paneId: "pane-1" });
     await waitFor(() => expect(tabsIn(pane(1))).toEqual(["sh:2"]));
 
-    // The tab goes back; the pane it left has held one and is not a pin pane,
-    // so it collapses on its own.
+    // The tab goes back; the pane it left has held one and is empty now, so it
+    // collapses on its own.
     emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: "sh:2", kind: "shell", paneId: "left" });
     await waitFor(() => expect(panes()).toBe(2));
 
@@ -283,5 +283,24 @@ describe("closing a pane", () => {
     emit(CLOSE_PANE);
     expect(panes()).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/last pane/)).toBeTruthy();
+  });
+
+  it("collapses a pane a kind opens into once its last tab leaves", async () => {
+    // The editor's own pane, emptied by moving its only file out. It used to be
+    // exempt for being where files land, which left an empty box on screen;
+    // where a kind lands is resolved spatially at call time, so the pane that
+    // remains is the answer either way.
+    render(() => <App />);
+    await waitFor(() => expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`]));
+    expect(panes()).toBe(2);
+
+    emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, {
+      tabId: `${REPO}/a.ts`,
+      kind: "file",
+      paneId: "left",
+    });
+
+    await waitFor(() => expect(panes()).toBe(1));
+    expect(tabsIn(pane(0)).sort()).toEqual(["sh:1", "sh:2", `${REPO}/a.ts`].sort());
   });
 });

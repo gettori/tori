@@ -1,8 +1,8 @@
 // The per-pane strip over a heterogeneous item list (plan phase 6). The
 // registry is fed artificial descriptors here: what a kind renders belongs to
 // the panel suites, and what this file pins is that one bar composes any mix
-// of kinds - rows, activation routing, reorder, overflow, the kind-conditional
-// trailing cluster, and the wrap-skipping ghost.
+// of kinds - rows, activation routing, reorder, overflow, the combined trailing
+// cluster, and the wrap-skipping ghost.
 import { describe, it, expect, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor } from "@solidjs/testing-library";
@@ -61,7 +61,7 @@ const MIXED = [chatTab("c1", "claude one"), fileTab("f1", "app.ts"), chatTab("c2
 describe("a mixed strip", () => {
   it("renders every kind's tab through one bar, in list order", () => {
     render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" pinKind="shell" onReorder={() => {}} />
+      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
     ));
     const names = screen.getAllByRole("tab").map((t) => t.textContent);
     expect(names).toEqual(["claude one", "app.ts", "claude two"]);
@@ -69,7 +69,7 @@ describe("a mixed strip", () => {
 
   it("routes activation through the clicked tab's own descriptor", async () => {
     render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" pinKind="shell" onReorder={() => {}} />
+      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
     ));
     pointerClick(screen.getByRole("tab", { name: "app.ts" }));
     await waitFor(() => expect(activated).toEqual(["f1"]));
@@ -91,7 +91,7 @@ describe("a mixed strip", () => {
       <UnifiedTabStrip
         items={many}
         activeId="c1"
-        pinKind="shell"
+       
         onReorder={(next) => orders.push(next.map((t) => t.id))}
       />
     ));
@@ -106,28 +106,58 @@ describe("a mixed strip", () => {
 });
 
 describe("the trailing cluster", () => {
-  it("follows the active tab's kind", async () => {
+  it("draws every registered kind's controls, whatever is active", async () => {
+    // Phase 13: a pane offers the same controls whichever of its tabs is in
+    // front, so a file tab does not take the terminal's away.
     const [active, setActive] = createSignal<string | null>("c1");
-    render(() => (
-      <UnifiedTabStrip items={MIXED} activeId={active()} pinKind="shell" onReorder={() => {}} />
-    ));
+    render(() => <UnifiedTabStrip items={MIXED} activeId={active()} onReorder={() => {}} />);
     expect(screen.getByRole("button", { name: "chat-action" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "file-action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "file-action" })).toBeTruthy();
     setActive("f1");
     await waitFor(() => expect(screen.getByRole("button", { name: "file-action" })).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "chat-action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "chat-action" })).toBeTruthy();
   });
 
-  it("falls back to the pane's pin kind while the strip is empty", () => {
-    render(() => <UnifiedTabStrip items={[]} activeId={null} pinKind="file" onReorder={() => {}} />);
+  it("draws them in the declared order, not the order the panels registered", () => {
+    registerKind("chat", {
+      icon: () => undefined,
+      title: (t) => labels[t.id],
+      tooltip: (t) => labels[t.id],
+      renderMenuItem: (t) => <span>{labels[t.id]}</span>,
+      trailing: () => <button type="button">chat-action</button>,
+      trailingRank: 20,
+      activate: (t) => activated.push(t.id),
+      close: () => {},
+    });
+    registerKind("file", {
+      icon: () => undefined,
+      title: (t) => labels[t.id],
+      tooltip: (t) => labels[t.id],
+      renderMenuItem: (t) => <span>{labels[t.id]}</span>,
+      trailing: () => <button type="button">file-action</button>,
+      trailingRank: 10,
+      activate: (t) => activated.push(t.id),
+      close: () => {},
+    });
+    render(() => <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />);
+    const row = screen
+      .getAllByRole("button")
+      .map((b) => b.textContent)
+      .filter((t) => t === "chat-action" || t === "file-action");
+    expect(row).toEqual(["file-action", "chat-action"]);
+  });
+
+  it("still draws them while the strip is empty", () => {
+    render(() => <UnifiedTabStrip items={[]} activeId={null} onReorder={() => {}} />);
     expect(screen.getByRole("button", { name: "file-action" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "chat-action" })).toBeTruthy();
   });
 });
 
 describe("per-kind affordances", () => {
   it("wraps the on-screen tab but not the measuring ghost", () => {
     render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" pinKind="shell" onReorder={() => {}} />
+      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
     ));
     // One file tab, rendered twice (row + ghost): the wrap must appear once.
     expect(screen.getAllByTestId("file-wrap")).toHaveLength(1);
@@ -146,7 +176,7 @@ describe("accessibility", () => {
       fileTab("f3", "file 3"),
     ];
     const { container } = render(() => (
-      <UnifiedTabStrip items={many} activeId="c1" pinKind="shell" onReorder={() => {}} />
+      <UnifiedTabStrip items={many} activeId="c1" onReorder={() => {}} />
     ));
     await screen.findByRole("button", { name: "3 more" });
     await expectNoAxeViolations(container);

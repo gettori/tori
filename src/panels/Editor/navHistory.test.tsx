@@ -304,3 +304,17 @@ describe("recording where you have been", () => {
     await waitFor(() => expect(backBtn().disabled).toBe(false));
   });
 });
+
+describe("where the pair is drawn", () => {
+  it("is the topbar's own host, not the tab strip", async () => {
+    // Phase 13 moved them out of the editor's trailing cluster: they act on the
+    // workspace's jump history, and every strip drawing every kind's controls
+    // would otherwise put a copy of them in each pane.
+    await mountEditor();
+    await arrive({ path: `${REPO}/a.ts` });
+
+    expect(backBtn().closest('[data-stage-host="editor-nav"]')).toBeTruthy();
+    expect(fwdBtn().closest('[data-stage-host="editor-nav"]')).toBeTruthy();
+    expect(backBtn().closest('[class*="editorTabs"]')).toBeNull();
+  });
+});

@@ -1903,12 +1903,15 @@ export default function Editor(props: {
   };
   // The bar's trailing cluster while a file tab is active (or while the file
   // pane sits empty). Moved verbatim from the old bar's `trailing` prop.
-  const editorTrailing = () => (
+  // Jump navigation, in the topbar since phase 13: it acts on the workspace's
+  // history rather than on a pane's strip, and every strip drawing every kind's
+  // controls would otherwise put a copy of it in each pane.
+  //
+  // Always mounted rather than shown only once there is somewhere to go: a
+  // control that appears and disappears moves everything beside it, and the
+  // greyed-out pair is what says the list has an end.
+  const editorNav = () => (
     <>
-      {/* Always mounted rather than shown only once there is somewhere
-          to go: a control that appears and disappears moves everything
-          beside it, and the greyed-out pair is what says the list has
-          an end. */}
       <IconButton
         icon={<Icon icon={ArrowLeft} />}
         disabled={!canGoBack(jumps())}
@@ -1921,6 +1924,11 @@ export default function Editor(props: {
         onClick={() => goJump(1)}
         tooltip="Go forward again (⌃⇧−)"
       />
+    </>
+  );
+
+  const editorTrailing = () => (
+    <>
       <Show when={isPreviewableTab()}>
         <IconButton
           active={showingPreview()}
@@ -2146,6 +2154,9 @@ export default function Editor(props: {
       );
     },
     trailing: editorTrailing,
+    // Before the terminal's, so the file controls and then the session ones
+    // read as two groups rather than interleaving (phase 13).
+    trailingRank: 10,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
     // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
@@ -2224,6 +2235,7 @@ export default function Editor(props: {
           />
         </Suspense>
       </Show>
+      <Portal mount={stageHost("editor-nav")}>{editorNav()}</Portal>
       <Portal mount={stageHost("editor-chrome")}>
       <Show when={filetreeOn()}>
         <Resizer

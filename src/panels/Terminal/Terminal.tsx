@@ -316,17 +316,17 @@ export default function Terminal(props: {
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
 
-  // The "+ Claude ›" split button's dropdown of yolo-mode launchers. Still
-  // portalled out, because the tab bar clips overflow and would hide a menu
-  // rendered inside it; the caret's rect is Kobalte's problem now.
-  const [menuOpen, setMenuOpen] = createSignal(false);
-
   // --- History dropdown -------------------------------------------------------
 
   const [historyOpen, setHistoryOpen] = createSignal(false);
-  let historyEl: HTMLButtonElement | undefined;
+  // Set by the press rather than by a ref: every pane's strip mounts this
+  // cluster (phase 13), so the anchor is whichever button was clicked.
+  const [historyEl, setHistoryEl] = createSignal<HTMLElement | undefined>();
 
-  const toggleHistory = () => setHistoryOpen(!historyOpen());
+  const toggleHistory = (e: MouseEvent) => {
+    setHistoryEl(e.currentTarget as HTMLElement);
+    setHistoryOpen(!historyOpen());
+  };
 
   // Which of this workspace's sessions are open in a tab: History lists those
   // first, whatever their age, and everything else falls into time buckets.
@@ -1227,121 +1227,127 @@ export default function Terminal(props: {
   // The bar's trailing cluster, one closure shared by every terminal kind (the
   // strip keeps its DOM across active switches within the family, see
   // UnifiedTabStrip). Moved verbatim from the old bar's `trailing` prop.
-  const termTrailing = () => (
-    <>
-      <div class={styles.termNewSplit}>
-        {/* Main half: quick new shell (terminal icon). Caret half: launch an
-            agent session from a fixed three-option menu. */}
-        {/* `whenDisabled`: with no branch picked the label is the reason
-            the button is greyed out, not a description of what it does. */}
+  const termTrailing = () => {
+    // Declared here rather than at panel scope: every pane's strip draws this
+    // cluster since phase 13, and a shared signal would open the split button's
+    // menu in all of them at once. Still portalled out, because the tab bar
+    // clips overflow and would hide a menu rendered inside it.
+    const [menuOpen, setMenuOpen] = createSignal(false);
+    return (
+      <>
+        {/* Session navigation, at the surface the sessions run in rather than
+            in a tree you have to find them in. Before the launch control, which
+            stays the rightmost thing in the strip (phase 13). */}
         <Tooltip
           as="button"
           type="button"
-          class={`${styles.termNew} ${styles.termNewMain}`}
-          disabled={!props.selected}
-          whenDisabled
-          label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
-          aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
-          onClick={newShell}
+          class={`${styles.termNew} ${styles.termHistory}`}
+          disabled={!activeWorkspace()}
+          label="Session history"
+          aria-label="Session history"
+          aria-haspopup="dialog"
+          aria-expanded={historyOpen()}
+          onClick={toggleHistory}
         >
-          <Icon icon={SquareTerminal} />
+          <Icon icon={History} />
+          <Show when={detachedLive()}>
+            <span
+              class={styles.termHistoryBadge}
+              title={
+                detachedLive() === 1
+                  ? "1 session running here with no tab open"
+                  : `${detachedLive()} sessions running here with no tab open`
+              }
+            >
+              <Icon icon={CircleDashed} />
+              <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+            </span>
+          </Show>
         </Tooltip>
-        {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
-            wrapper keeps a box (a dropdown anchors on its trigger's rect),
-            and the two sibling rules the split button relies on are
-            written through it, see the stylesheet. */}
-        <Dropdown
-          as="span"
-          wrapper
-          class={styles.termNewCaretWrap}
-          open={menuOpen()}
-          onOpenChange={setMenuOpen}
-          placement="bottom-end"
-          items={[
-            // The user's default surface leads, and the other one sits
-            // directly under it: whichever way the setting points, the
-            // other route stays a single click from this menu.
-            ...(settings.chatDefaults.defaultSurface === "agent"
-              ? [
-                  { label: findAdapter("claude").label, onClick: () => newSession("claude") },
-                  { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
-                ]
-              : [
-                  { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
-                  { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
-                ]),
-            // Only for a session selection, since there is nothing to
-            // continue from a bare branch. The session need not have been
-            // started in chat: every surface writes the transcript this
-            // resumes and backfills from.
-            ...(props.selected?.sessionId
-              ? [
-                  {
-                    label: "Continue this session in chat",
-                    onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                  },
-                  // The counterpart route for a session selection, so the
-                  // PTY surface is reachable for an existing session and
-                  // not only for a new one.
-                  {
-                    label: "Continue this session in terminal",
-                    onClick: () => void focusOrResume(props.selected!),
-                  },
-                ]
-              : []),
-            { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
-          ]}
-        >
+        <div class={styles.termNewSplit}>
+          {/* Main half: quick new shell (terminal icon). Caret half: launch an
+              agent session from a fixed three-option menu. */}
+          {/* `whenDisabled`: with no branch picked the label is the reason
+              the button is greyed out, not a description of what it does. */}
           <Tooltip
             as="button"
             type="button"
-            class={`${styles.termNew} ${styles.termNewCaret}`}
+            class={`${styles.termNew} ${styles.termNewMain}`}
             disabled={!props.selected}
-            label="Launch an agent session"
-            aria-label="Launch an agent session"
-            // Kobalte writes these on the trigger, which is the wrapper,
-            // and they cannot be taken off it (`wrapper` removes its
-            // `role` and tab stop, not its ARIA). The button is what the
-            // keyboard reaches, so it says this too.
-            aria-haspopup="menu"
-            aria-expanded={menuOpen()}
+            whenDisabled
+            label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
+            aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
+            onClick={newShell}
           >
-            <Icon icon={ChevronDown} class={styles.termNewChevron} />
+            <Icon icon={SquareTerminal} />
           </Tooltip>
-        </Dropdown>
-      </div>
-      {/* Session navigation, at the surface the sessions run in rather than
-          in a tree you have to find them in. Last in the trailing cluster,
-          so the launch control keeps the position muscle memory has. */}
-      <Tooltip
-        as="button"
-        type="button"
-        ref={historyEl}
-        class={`${styles.termNew} ${styles.termHistory}`}
-        disabled={!activeWorkspace()}
-        label="Session history"
-        aria-label="Session history"
-        aria-haspopup="dialog"
-        aria-expanded={historyOpen()}
-        onClick={toggleHistory}
-      >
-        <Icon icon={History} />
-        <Show when={detachedLive()}>
-          <span
-            class={styles.termHistoryBadge}
-            title={
-              detachedLive() === 1
-                ? "1 session running here with no tab open"
-                : `${detachedLive()} sessions running here with no tab open`
-            }
+          {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
+              wrapper keeps a box (a dropdown anchors on its trigger's rect),
+              and the two sibling rules the split button relies on are
+              written through it, see the stylesheet. */}
+          <Dropdown
+            as="span"
+            wrapper
+            class={styles.termNewCaretWrap}
+            open={menuOpen()}
+            onOpenChange={setMenuOpen}
+            placement="bottom-end"
+            items={[
+              // The user's default surface leads, and the other one sits
+              // directly under it: whichever way the setting points, the
+              // other route stays a single click from this menu.
+              ...(settings.chatDefaults.defaultSurface === "agent"
+                ? [
+                    { label: findAdapter("claude").label, onClick: () => newSession("claude") },
+                    { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                  ]
+                : [
+                    { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                    { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
+                  ]),
+              // Only for a session selection, since there is nothing to
+              // continue from a bare branch. The session need not have been
+              // started in chat: every surface writes the transcript this
+              // resumes and backfills from.
+              ...(props.selected?.sessionId
+                ? [
+                    {
+                      label: "Continue this session in chat",
+                      onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                    },
+                    // The counterpart route for a session selection, so the
+                    // PTY surface is reachable for an existing session and
+                    // not only for a new one.
+                    {
+                      label: "Continue this session in terminal",
+                      onClick: () => void focusOrResume(props.selected!),
+                    },
+                  ]
+                : []),
+              { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+            ]}
           >
-            <Icon icon={CircleDashed} />
-            <Show when={detachedLive() > 1}>{detachedLive()}</Show>
-          </span>
-        </Show>
-      </Tooltip>
-    </>
-  );
+            <Tooltip
+              as="button"
+              type="button"
+              class={`${styles.termNew} ${styles.termNewCaret}`}
+              disabled={!props.selected}
+              label="Launch an agent session"
+              aria-label="Launch an agent session"
+              // Kobalte writes these on the trigger, which is the wrapper,
+              // and they cannot be taken off it (`wrapper` removes its
+              // `role` and tab stop, not its ARIA). The button is what the
+              // keyboard reaches, so it says this too.
+              aria-haspopup="menu"
+              aria-expanded={menuOpen()}
+            >
+              <Icon icon={ChevronDown} class={styles.termNewChevron} />
+            </Tooltip>
+          </Dropdown>
+        </div>
+      </>
+    );
+  };
 
   // The strip consumes the unified model filtered to this panel's kinds: same
   // tabs, same order, same references, read through the union. Declared before
@@ -1375,6 +1381,7 @@ export default function Terminal(props: {
       </ContextMenu>
     ),
     trailing: termTrailing,
+    trailingRank: 20,
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
     stage: kind === "chat" ? chatStage : ptyStage,
@@ -1481,7 +1488,7 @@ export default function Terminal(props: {
             folder={ws()}
             breadcrumb={historyCrumb()}
             openSessionIds={openSessionIds()}
-            anchorEl={historyEl}
+            anchorEl={historyEl()}
             onClose={() => setHistoryOpen(false)}
           />
         )}
