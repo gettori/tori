@@ -1,12 +1,14 @@
 // The app shell's pane layout (plan phase 5): the work-split renders from the
-// per-workspace envelope, seeded from the legacy sway.layout.v1 fields, and
-// the Cmd+Alt+J/E toggles resolve their pane through it.
+// per-workspace envelope and the Cmd+Alt+J/E toggles resolve their pane through
+// it.
 //
 // The panels themselves are stubbed: what phase 5 changed is the shell around
 // them (which pane shows, how wide, which one a toggle acts on), and the
-// panels' own suites cover their insides. The structural claims below are the
-// DOM-equivalence check for the seeded default: same pane elements, same
-// classes, same width the legacy layout stored.
+// panels' own suites cover their insides.
+//
+// Every case here is about *two* panes, which a workspace no longer starts with
+// (plan phase 12), so the layout is stored the way one that had been split
+// would have it. The single-pane default has its own suite, appOnePane.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@solidjs/testing-library";
 
@@ -31,6 +33,7 @@ import { seedTwoPane } from "./layout/layoutStore";
 import { setPaneHidden } from "./layout/paneLayout";
 
 const { default: App } = await import("./App");
+const { storeTwoPanes } = await import("./test/panes");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -38,8 +41,8 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-// What the legacy key stored before this phase. 350 sits inside every clamp at
-// jsdom's 1024px window, so the width must come back exactly, not merely close.
+// What the legacy key stores. It still describes the sidebar and the chrome;
+// the pane tree has its own envelope, so nothing here reads the editor width.
 const LEGACY = {
   sidebar: 280,
   editor: 350,
@@ -59,6 +62,7 @@ const pane = (root: HTMLElement, which: "terminal" | "editor") =>
 
 beforeEach(() => {
   localStorage.clear();
+  storeTwoPanes("");
   localStorage.setItem("sway.layout.v1", JSON.stringify(LEGACY));
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => {
@@ -69,11 +73,10 @@ beforeEach(() => {
   });
 });
 
-describe("the seeded two-pane shell", () => {
-  it("renders today's structure at the legacy layout's width", () => {
+describe("the two-pane shell", () => {
+  it("draws a pane apiece, with the panels beside them", () => {
     const { container } = render(() => <App />);
-    const split = container.querySelector(".work-split")!;
-    expect(split).toBeTruthy();
+    expect(container.querySelector(".work-split")).toBeTruthy();
     const terminal = pane(container, "terminal");
     const editor = pane(container, "editor");
     expect(terminal.classList.contains("hidden")).toBe(false);
@@ -84,21 +87,6 @@ describe("the seeded two-pane shell", () => {
     expect(container.querySelector('[data-testid="editor-panel"]')).toBeTruthy();
     expect(terminal.querySelector('[role="tablist"]')).toBeTruthy();
     expect(editor.querySelector('[role="tablist"]')).toBeTruthy();
-    // The envelope the seed persisted holds the two pin panes, and the editor's
-    // share is the legacy px width over the room the two of them share. (The px
-    // itself is PaneTree's own measurement now, which jsdom never makes.)
-    const stored = JSON.parse(localStorage.getItem("sway.panes.v1")!);
-    const children = stored[""].layout.children as { id: string; size: number }[];
-    expect(children.map((c) => c.id)).toEqual(["left", "right"]);
-    const shared = window.innerWidth - 10 - 8 - 8;
-    expect((children[1].size / 100) * shared).toBeCloseTo(LEGACY.editor, 3);
-  });
-
-  it("carries legacy visibility into the seed", () => {
-    localStorage.setItem("sway.layout.v1", JSON.stringify({ ...LEGACY, showEditor: false }));
-    const { container } = render(() => <App />);
-    expect(pane(container, "terminal").classList.contains("hidden")).toBe(false);
-    expect(pane(container, "editor").classList.contains("hidden")).toBe(true);
   });
 
   it("renders a pane hidden in the stored envelope hidden after relaunch", () => {

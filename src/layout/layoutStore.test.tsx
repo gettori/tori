@@ -35,13 +35,17 @@ describe("sanitizeEnvelope", () => {
   it("rejects a wrong version, a missing tree, and plain garbage", () => {
     expect(sanitizeEnvelope(null)).toBeNull();
     expect(sanitizeEnvelope("layout")).toBeNull();
-    expect(sanitizeEnvelope({ version: 2, layout: seed().layout, focusedPaneId: "left" })).toBeNull();
-    expect(sanitizeEnvelope({ version: 1, focusedPaneId: "left" })).toBeNull();
+    expect(sanitizeEnvelope({ version: 3, layout: seed().layout, focusedPaneId: "left" })).toBeNull();
+    expect(sanitizeEnvelope({ version: 2, focusedPaneId: "left" })).toBeNull();
+    // Version 1 is the two-pane default every workspace used to be seeded
+    // with. Rejecting it *is* the migration (plan phase 12): the workspace
+    // re-seeds as one pane and its tabs fall back to the pin rule.
+    expect(sanitizeEnvelope({ version: 1, layout: seed().layout, focusedPaneId: "left" })).toBeNull();
   });
 
   it("rejects a tree holding an unknown node kind", () => {
     const env = {
-      version: 1,
+      version: 2,
       layout: { type: "grid", id: "root", size: 100, children: [] },
       focusedPaneId: "root",
     };
@@ -58,13 +62,13 @@ describe("sanitizeEnvelope", () => {
       children,
     });
     const tooDeep = split("a", [split("b", [split("c", [pane("d"), pane("e")]), pane("f")]), pane("g")]);
-    expect(sanitizeEnvelope({ version: 1, layout: tooDeep, focusedPaneId: "d" })).toBeNull();
+    expect(sanitizeEnvelope({ version: 2, layout: tooDeep, focusedPaneId: "d" })).toBeNull();
   });
 
   it("rejects an all-hidden layout", () => {
     const hiddenPane = (id: string) => ({ type: "pane", id, size: 50, hidden: true });
     const both = {
-      version: 1,
+      version: 2,
       layout: {
         type: "split",
         id: "root",

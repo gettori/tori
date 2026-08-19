@@ -381,19 +381,11 @@ html {
   background: transparent;
 }
 
-/* The editor pane's row (phase 7): the file pane's column beside the editor
-   chrome, which portals in through a stage host. The old .editorPane rule. */
-.editor-split {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
-  background: var(--canvas-card);
-}
-
 /* Layout-transparent plumbing: the chrome slot, every stage-host element, and
    the wrapper div Solid's Portal inserts inside one. What renders into a host
-   participates directly in the adopting pane's flex. */
+   participates directly in the adopting pane's flex. The chrome slot is a child
+   of the work card rather than of a pane (phase 12), so the file tree keeps its
+   place through every split and move. */
 .chrome-slot,
 [data-stage-host],
 [data-stage-host] > div {
