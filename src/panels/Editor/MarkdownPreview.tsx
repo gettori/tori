@@ -3,6 +3,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import styles from "./MarkdownPreview.module.css";
 
 function dirOf(path: string): string {
@@ -76,12 +77,16 @@ export default function MarkdownPreview(props: { path: string }) {
   });
 
   return (
-    <div
+    <OverlayScroll
       class={styles.preview}
-      ref={box}
-      onScroll={() => {
-        const fraction = scrollFraction(box.scrollTop, box.scrollHeight, box.clientHeight);
-        if (fraction !== undefined) handOff(props.path, "preview", fraction);
+      // The hand-off needs the element that actually scrolls, which is the
+      // component's viewport, not its frame.
+      viewportRef={(el) => {
+        box = el;
+        el.addEventListener("scroll", () => {
+          const fraction = scrollFraction(box.scrollTop, box.scrollHeight, box.clientHeight);
+          if (fraction !== undefined) handOff(props.path, "preview", fraction);
+        });
       }}
     >
       <Show when={text() === undefined && disk.loading}>
@@ -90,6 +95,6 @@ export default function MarkdownPreview(props: { path: string }) {
       <Show when={text() !== undefined}>
         <div class={styles.markdownBody} innerHTML={html()} />
       </Show>
-    </div>
+    </OverlayScroll>
   );
 }

@@ -430,14 +430,33 @@ export default function Editor(props: {
   // The chrome portals out (phase 7), so the region is measured as editorMain
   // plus the panel's drawn width AT MEASURE TIME (untracked): reading it reactively here
   // would make the clamp below chase its own writes between observer ticks.
-  let paneEl: HTMLDivElement | undefined;
-  const [paneW, setPaneW] = createSignal(0);
-  onMount(() => {
-    if (!paneEl) return;
-    const ro = new ResizeObserver(([entry]) =>
-      setPaneW(entry.contentRect.width + untrack(rightWidth)),
+  //
+  // The observed element is re-picked reactively: a worktree switch can remount
+  // the columns (its envelope names different panes), and an observer bound
+  // once at mount would keep watching the detached element - whose only further
+  // report is width 0, which pins the panel to its floor with min == max.
+  const [colEls, setColEls] = createSignal<Record<string, HTMLElement>>({});
+  const holdCol = (paneId: string, el: HTMLElement) => {
+    setColEls((prev) => ({ ...prev, [paneId]: el }));
+    onCleanup(() =>
+      setColEls((prev) => {
+        const next = { ...prev };
+        if (next[paneId] === el) delete next[paneId];
+        return next;
+      }),
     );
-    ro.observe(paneEl);
+  };
+  const [paneW, setPaneW] = createSignal(0);
+  createEffect(() => {
+    const el = colEls()[focusedEditorPane()];
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      // display:none and detached both report 0. Zero is never a real width for
+      // a focused column, so keep the last honest measurement instead of
+      // collapsing the bound below to its floor.
+      if (entry.contentRect.width > 0) setPaneW(entry.contentRect.width + untrack(rightWidth));
+    });
+    ro.observe(el);
     onCleanup(() => ro.disconnect());
   });
   // Unbounded until the pane has been measured, so a drag can never be pinned to
@@ -715,15 +734,18 @@ export default function Editor(props: {
   // renders to its image. Everything else edits in place with no toggle.
   const isPreviewableTab = () => isMarkdownTab() || isSvgTab();
   const showingPreview = () => isPreviewableTab() && previewOn().has(activeId() ?? "");
-  function togglePreview() {
-    const id = activeId();
-    if (!id) return;
+  function togglePreviewOf(id: string) {
     setPreviewOn((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  }
+  // The command's form: whatever the focused pane is showing.
+  function togglePreview() {
+    const id = activeId();
+    if (id) togglePreviewOf(id);
   }
   function toggleSoftWrap() {
     const id = activeId();
@@ -1924,22 +1946,27 @@ export default function Editor(props: {
     </>
   );
 
+  // The source-vs-render toggle, per pane, in that pane's breadcrumb bar rather
+  // than in the strip. It is about one file, and only some files have it: in the
+  // strip it appeared and vanished as you moved between tabs, re-flowing every
+  // pane's row (and pushing tabs into `+N`) on a selection that changed nothing
+  // about them.
+  const previewBtn = (id: string) => (
+    <IconButton
+      size="xs"
+      active={previewingOf(id)}
+      icon={<Icon icon={previewingOf(id) ? FileCodeCorner : svgOf(id) ? FileHeart : FileTypeCorner} />}
+      onClick={() => togglePreviewOf(id)}
+      tooltip={
+        previewingOf(id)
+          ? `Showing rendered ${svgOf(id) ? "SVG" : "Markdown"}. Click to edit the source.`
+          : `Preview: render this ${svgOf(id) ? "SVG" : "Markdown"} file instead of editing its source.`
+      }
+    />
+  );
+
   const editorTrailing = () => (
     <>
-      <Show when={isPreviewableTab()}>
-        <IconButton
-          active={showingPreview()}
-          icon={
-            <Icon icon={showingPreview() ? FileCodeCorner : isSvgTab() ? FileHeart : FileTypeCorner} />
-          }
-          onClick={togglePreview}
-          tooltip={
-            showingPreview()
-              ? `Showing rendered ${isSvgTab() ? "SVG" : "Markdown"}. Click to edit the source.`
-              : `Preview: render this ${isSvgTab() ? "SVG" : "Markdown"} file instead of editing its source.`
-          }
-        />
-      </Show>
       <Show when={activeFileTab()}>
         <IconButton
           active={blameOn()}
@@ -1994,15 +2021,20 @@ export default function Editor(props: {
     const shown = () =>
       !!fileId() || p.paneId === SOLO_PANE || isKindHome(ws(), "file", p.paneId);
     const conflictedHere = () => isConflicted(root(), fileTabOf(fileId())?.path ?? null);
+    /** This pane's file when it is one that renders, which is what earns the
+     *  bar its toggle. */
+    const previewableId = () => {
+      const id = fileId();
+      return id && (markdownOf(id) || svgOf(id)) ? id : null;
+    };
     return (
       <div
         class={styles.editorMain}
         classList={{ [styles.hidden]: !shown() }}
-        ref={(el) => {
-          // The width observer belongs to one column: the right panel's bound
-          // is about the region as a whole, not about each pane in it.
-          if (focused()) paneEl = el;
-        }}
+        // Registered by pane id; the width observer effect above picks the
+        // focused one, so the right panel's bound tracks focus and remounts
+        // rather than whichever column happened to be focused at mount.
+        ref={(el) => holdCol(p.paneId, el)}
       >
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,
@@ -2013,6 +2045,14 @@ export default function Editor(props: {
           root={root()}
           path={fileTabOf(fileId())?.path ?? null}
           caret={focused() ? caretHere() : null}
+          trailing={
+            // Keyed, or the button freezes: non-keyed Show re-runs its child
+            // only when truthiness flips, so moving between two previewable
+            // files would leave the first one's button (and its id) in place.
+            <Show when={previewableId()} keyed>
+              {(id) => previewBtn(id)}
+            </Show>
+          }
         />
         {/* Above the editor rather than inside it: the file on screen is the
             merged working-tree copy, markers and all, and nothing in the buffer
@@ -2034,7 +2074,11 @@ export default function Editor(props: {
             </Button>
           </div>
         </Show>
-        <div class={styles.codeSlot} ref={(el) => holdSlot(p.paneId, el)} />
+        <div
+          class={styles.codeSlot}
+          classList={{ [styles.hidden]: !editablePathOf(fileId()) }}
+          ref={(el) => holdSlot(p.paneId, el)}
+        />
         <Show
           when={fileId()}
           fallback={

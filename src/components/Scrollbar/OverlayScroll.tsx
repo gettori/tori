@@ -25,9 +25,19 @@ import styles from "./OverlayScroll.module.css";
  * which would only cover the rows and not the space under them.
  */
 export default function OverlayScroll(
-  props: { class?: string; children: JSX.Element } & JSX.HTMLAttributes<HTMLDivElement>,
+  props: {
+    class?: string;
+    /** The scrolling element itself, for a caller that owns scroll state (a
+     *  reading-position hand-off, a restored offset). The frame never scrolls,
+     *  so a ref to it is the wrong element for anything scroll-shaped. */
+    viewportRef?: (el: HTMLDivElement) => void;
+    /** Class for the content box inside the viewport, for content that has to
+     *  fill it (centering a lone image) rather than stack at the top. */
+    contentClass?: string;
+    children: JSX.Element;
+  } & JSX.HTMLAttributes<HTMLDivElement>,
 ) {
-  const [local, rest] = splitProps(props, ["class", "children"]);
+  const [local, rest] = splitProps(props, ["class", "viewportRef", "contentClass", "children"]);
   let viewport!: HTMLDivElement;
   let content!: HTMLDivElement;
   let track!: HTMLDivElement;
@@ -105,8 +115,17 @@ export default function OverlayScroll(
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
-      <div class={styles.viewport} ref={viewport} onScroll={onScroll}>
-        <div ref={content}>{local.children}</div>
+      <div
+        class={styles.viewport}
+        ref={(el) => {
+          viewport = el;
+          local.viewportRef?.(el);
+        }}
+        onScroll={onScroll}
+      >
+        <div ref={content} class={local.contentClass}>
+          {local.children}
+        </div>
       </div>
       {/* Purely presentational: the real scroller above is what assistive
           tech and the keyboard already drive. */}

@@ -168,7 +168,12 @@ html {
   flex-direction: column;
   background: var(--canvas-card);
   min-width: 0;
-  overflow: hidden;
+  /* clip, not hidden: a hidden box is still programmatically scrollable, and
+     that is the API the browser uses to reveal a focused element. Content that
+     overflows for a frame (a preview swapping in, CodeMirror measuring) would
+     let a focus scroll the strip and breadcrumb out of the pane, with no
+     scrollbar to bring them back. clip pins scrollTop to zero. */
+  overflow: clip;
 }
 
 .pane.sidebar {
@@ -334,7 +339,9 @@ html {
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-xl);
   box-shadow: var(--shell-card-shadow);
-  overflow: hidden;
+  /* clip for the same reason as .pane: the card must clip its rounded corners
+     but may never scroll, whoever asks. */
+  overflow: clip;
 }
 
 /* A split's own box (plan phase 8): the tree draws one per split node, laid out
@@ -462,7 +469,9 @@ html {
   user-select: none;
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
-  overflow: hidden;
+  /* clip: the +N model depends on the strip never scrolling. A focused tab
+     (Kobalte's roving tabindex) would otherwise drag hidden tabs halfway in. */
+  overflow: clip;
 }
 
 /* Overflow tab bar (shared by the terminal + editor tab bars via OverflowTabBar) */

@@ -1,6 +1,10 @@
+/* An OverlayScroll frame: the drawn scrollbar floats over the document, so
+   there is no `overflow` here - the viewport inside is the scroller. min-height
+   keeps the column able to shrink to the pane; without it the pane overflows
+   its own box and a focus scrolls the strip and breadcrumb out of sight. */
 .preview {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
   background: var(--canvas-default);
   padding: calc(16px * var(--ui-scale)) calc(24px * var(--ui-scale));
 }

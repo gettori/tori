@@ -28,6 +28,18 @@
   background: var(--tab-active-bg);
 }
 
+/* A strip whose pane does not hold focus draws no selection at all: the fill and
+   the rail both say "this is the one", and two panes saying it at once is two
+   answers to a question with one. The label keeps its brighter colour, which
+   says which tab the pane would come back to without claiming the focus. */
+:global(.unified-strip.pane-blur) .pill:has([data-selected]) {
+  background: transparent;
+}
+
+:global(.unified-strip.pane-blur) .pill:has([data-selected])::before {
+  content: none;
+}
+
 /* The selected tab's rail, along the top edge: the settings rail's marker turned
    ninety degrees. Drawn on the pill, so a tab with a close carries it over the
    close too and the mark reads as belonging to the whole tab. Inset by a fixed

@@ -1,10 +1,19 @@
+/* An OverlayScroll frame; the viewport inside is the scroller, so no overflow
+   here. min-height keeps the column able to shrink to the pane. */
 .imageView {
   flex: 1;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+/* The content box inside the viewport. min-height 100% is what centres a small
+   image: the viewport has a definite height, so the box fills it and flex does
+   the rest; a tall image just grows past it and scrolls. */
+.imageContent {
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
-  background: var(--canvas-default);
   padding: calc(16px * var(--ui-scale));
 }
 
