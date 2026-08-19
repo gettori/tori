@@ -89,4 +89,26 @@ describe("the session store", () => {
     await refreshSessions();
     expect(rounds).toEqual([["/a", "/b"]]);
   });
+
+  // The heartbeat case: a session streaming in one folder raises
+  // `sessions://changed` about once a second, and re-listing every folder the
+  // tree covers on each one is what phase 6 is removing.
+  it("re-lists only the folders an event named", async () => {
+    await trackFolders(["/a", "/b", "/c"]);
+    bridge.listed = [];
+
+    await refreshSessions(["/b"]);
+    expect(bridge.listed).toEqual(["/b"]);
+
+    // A folder nobody covers has no row to refresh, so it is dropped rather
+    // than listed: `trackFolders` is what brings a new folder in.
+    bridge.listed = [];
+    await refreshSessions(["/b", "/never-tracked"]);
+    expect(bridge.listed).toEqual(["/b"]);
+
+    // No names (the backend could not attribute the change) still means all.
+    bridge.listed = [];
+    await refreshSessions();
+    expect(bridge.listed.sort()).toEqual(["/a", "/b", "/c"]);
+  });
 });
