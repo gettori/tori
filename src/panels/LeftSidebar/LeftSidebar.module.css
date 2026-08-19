@@ -15,15 +15,18 @@
   /* The tree's own horizontal insets. The filter field and every project card
      line up on these, so the column reads as one edge instead of two.
 
-     The right inset is not a margin: `.treeScroll` reserves a permanent
-     scrollbar gutter, so anything inside it already stands that far off the
-     right edge and adding a margin on top would push the cards visibly left of
-     centre. Cards therefore run flush into the gutter, and the filter - which
-     sits outside the scroll area and so has no gutter of its own - pads itself
-     by the same amount instead. The width mirrors `::-webkit-scrollbar` in
-     base.css; if that changes, this is the other half of the pair. */
+     The right inset is not a margin: `.treeScroll` pads by it, so anything
+     inside it already stands that far off the right edge and adding a margin on
+     top would push the cards visibly left of centre. Cards therefore run flush
+     into it, and the filter - which sits outside the scroll area - pads itself
+     by the same amount. It is also the lane the overlay scrollbar's thumb
+     floats in. */
+  /* Row height, matching the settings rail's items: their 8px·s block padding
+     around a 16px icon and a 13px·s label. Named because the elbow and the rail
+     terminator are derived from it, not tuned to it. */
+  --row-h: calc(34px * var(--ui-scale));
   --tree-inset: calc(14px * var(--ui-scale));
-  --tree-gutter: calc(9px * var(--ui-scale));
+  --tree-gutter: calc(4px * var(--ui-scale));
   /* Where a branch/worktree row's CONTENT begins (sub1 indent) - its type icon
      now, the name right after. 32px·s clears the elbow (which ends at 25px·s)
      with the same ~8px of breathing room the hover pill was always given, and
@@ -157,16 +160,14 @@
   background: var(--border-default);
 }
 
+/* The frame of an OverlayScroll: the bar is drawn, floats over the content, and
+   costs no width, so the reserved `scrollbar-gutter` this used to need is gone.
+   The right padding stays, at the width that gutter had: it is what the thumb
+   floats in, so a card's border is never under the pill. */
 .treeScroll {
   flex: 1;
-  overflow: auto;
-  /* Reserve the scrollbar gutter permanently (transparent at rest, thumb only
-     on hover) so the row width - and the whole list - never shifts when the bar
-     appears. Modern WebKit dropped `overflow: overlay`, so a genuinely floating
-     custom bar isn't available; a stable gutter is the reliable no-jump fix. */
-  scrollbar-gutter: stable;
-  padding: calc(8px * var(--ui-scale)) 0 calc(10px * var(--ui-scale));
   min-height: 0;
+  padding: 0 var(--tree-gutter) calc(10px * var(--ui-scale)) 0;
 }
 
 /* ---- Project cards ----
@@ -182,7 +183,7 @@
    one term. */
 .projectCard {
   position: relative;
-  /* No right margin: the scroll container's reserved gutter already stands the
+  /* No right margin: the scroll container's own right padding already stands the
      card off that edge (see --tree-gutter). */
   margin: 0 0 calc(10px * var(--ui-scale)) var(--tree-inset);
   padding: calc(6px * var(--ui-scale));
@@ -205,12 +206,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  height: calc(30px * var(--ui-scale));
-  /* Left inset only; the right runs flush toward the reserved scrollbar gutter
-     rather than doubling the right-hand gap. This is what an empty-state row
-     outside any card uses - a row inside one takes the card's padding instead
-     (see `.projectCard .row`), which is the same x. */
+  gap: var(--sway-space-3);
+  height: var(--row-h);
   margin: 0 0 0 var(--tree-inset);
   padding: 0 calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-md);
@@ -277,30 +274,44 @@
   bottom: 0;
   width: 1px;
   background: var(--border-rail);
+  /* Above the rows (`.row.branch` sits at 2). Every elbow's vertical leg is
+     drawn in the row, at exactly this x, so whichever of the two paints last
+     owns the line: with the rows on top a grey leg chopped the rail once per
+     row, and colouring those legs only moved the seam into the elbow's corner,
+     where its two borders blend. The rail owning its own column settles both -
+     it covers the legs, and each elbow keeps one colour, its own. */
+  z-index: 3;
 }
 
 /* The last branch terminates the rail at its own elbow (row centre), so nothing
    dangles below the final item, even when it is expanded. */
 .branchNode:last-child::before {
   bottom: auto;
-  height: calc(10px * var(--ui-scale));
+  /* Stops 5px·s short of the elbow's corner, where the elbow's own rounding
+     takes the line over. */
+  height: calc(var(--row-h) / 2 - 5px * var(--ui-scale));
 }
 
-/* Selected unit: gild the node rail. This is the ONLY thing drawing the gold
-   bar - the row's own ::before is the fill slot (see .row.branch.sel below), and
-   one pseudo-element cannot be both a 2px bar and a full-width pill. */
-.branchNode.railSel::before {
-  width: calc(2px * var(--ui-scale));
+/* The path to the selection, drawn in the rail itself: every segment above the
+   selected row is gilded, and the selected row's own segment is gilded down to
+   its elbow and grey after it, so the line reads as running from the project
+   down to where you are and stopping there.
+   `:has` does the whole thing, which is why the node carries `.railSel`: a
+   segment gilds if a later sibling is the selection (or holds it), and a group
+   holding the selection gilds too. The group's outer rail runs past its own
+   attempts, so on a selected attempt that outer segment overshoots by the rows
+   below it - the inner rail, the one at the selection's own depth, still stops
+   on the nose. */
+.branchNode:has(~ .railSel)::before,
+.branchNode:has(~ .branchNode .railSel)::before,
+.branchNode:has(.railSel)::before {
   background: var(--brand-bar);
 }
-/* ...which means the shortening above has to be undone when the selected unit
-   is the last one. That rule exists so a GREY rail does not dangle past the
-   final elbow; the gold bar is marking the row itself, so it has to span it.
-   A leaf branch node is exactly one row tall, so "full height" is the row. */
-.branchNode.railSel:last-child::before {
-  bottom: 0;
-  height: auto;
+.railSel::before {
+  top: -8px;
+  background: linear-gradient(var(--brand-bar) 0 calc(var(--row-h) / 2), var(--border-rail) 0);
 }
+
 
 /* ---- Attempt groups (one level deeper than a branch) ----
    A fan-out group is a branch node whose children are branch nodes: the group
@@ -370,26 +381,32 @@
   left: var(--rail-x-row);
   top: 0;
   width: var(--elbow-w);
-  height: calc(15px * var(--ui-scale));
+  height: calc(var(--row-h) / 2);
   border-left: 1px solid var(--border-rail);
   border-bottom: 1px solid var(--border-rail);
   border-bottom-left-radius: calc(8px * var(--ui-scale));
 }
 
-/* Selected branch: no fill; repurpose the ::before slot as a thin full-height
-   gold rail segment (overlaying the grey rail), plus the gilded elbow below. */
 /* Selected branch: the same pill the hover uses, held in the brand fill rather
    than the neutral one, so a selection reads as a state and not as "the pointer
    happens to be here". Declared AFTER the :hover rule at equal specificity, so
    hovering a selected row keeps the gold instead of dropping to grey - the same
    ordering every selected row in this app depends on.
-   Geometry is inherited from the base ::before: only the fill changes. */
+   Geometry is inherited from the base ::before: only the fill changes.
+   On top of the fill sits the same left bar the settings rail marks its active
+   category with (`.railItemActive::before`), painted as a gradient because both
+   of this row's pseudo-elements are already spent on the pill and the elbow. It
+   lands where the elbow terminates, so the rail reads as feeding into it. */
 .row.branch.sel::before {
-  background: var(--brand-subtle);
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+      var(--sway-border-thick) calc(15px * var(--ui-scale)) no-repeat,
+    var(--brand-subtle);
 }
+/* The elbow the gilded run turns on. Colour only, at the rail's own 1px: the
+   2px it used to take made a blob exactly where the rail, the elbow and the
+   pill's bar already meet. */
 .row.branch.sel::after {
-  border-left-width: 2px;
-  border-bottom-width: 2px;
   border-color: var(--brand-bar);
 }
 
