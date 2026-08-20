@@ -4,7 +4,7 @@ import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import Terminal from "./panels/Terminal/Terminal";
 import Editor from "./panels/Editor/Editor";
 import { stageHost } from "./tabs/stageHost";
-import { tracePaint } from "./utils/perfTrace";
+import { traceMark, tracePaint } from "./utils/perfTrace";
 import { registerRecipeHost } from "./utils/perfRecipe";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
@@ -401,7 +401,16 @@ function App() {
   // The workspace flip has been applied; the paint endpoint is the frame after
   // the one that draws it. The span itself was opened by the sidebar click, so
   // whatever ran before this (a checkout, say) is inside the measurement.
-  createEffect(on(() => selected()?.folderPath ?? null, () => tracePaint(), { defer: true }));
+  createEffect(
+    on(
+      () => selected()?.folderPath ?? null,
+      () => {
+        traceMark("ws:flip");
+        tracePaint();
+      },
+      { defer: true },
+    ),
+  );
 
   // The selection signal and the pane tree are what the scripted perf recipe
   // cannot reach on its own. Registered unconditionally and consulted only by a

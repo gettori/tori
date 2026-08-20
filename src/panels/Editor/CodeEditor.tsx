@@ -21,6 +21,7 @@ import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blam
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { gitState } from "../../utils/gitActions";
+import { traceMark } from "../../utils/perfTrace";
 import {
   claimedByLsp,
   ensureLspFor,
@@ -1769,6 +1770,7 @@ export default function CodeEditor(props: {
   async function swapTo(paneId: string, path: string | null, force = false) {
     const rec = views.get(paneId);
     if (!rec) return;
+    traceMark("cm:swap");
     const v = rec.view;
     const leaving = rec.path;
     if (!force && (leaving === path || (rec.pending !== undefined && rec.pending === path))) return;
@@ -1825,7 +1827,9 @@ export default function CodeEditor(props: {
     // follower gets a second state over the same document, built without a
     // history of its own (see bufferExtensions).
     const authority = buf.state;
+    traceMark("cm:setstate");
     v.setState(follower ? await followerState(path, authority) : authority);
+    traceMark("cm:setstate-end");
     rec.path = path;
     rec.follower = follower;
     // `setState` puts the scroll back at the top whatever the selection says, so
@@ -1853,6 +1857,7 @@ export default function CodeEditor(props: {
     v.dispatch({
       effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
     });
+    traceMark("cm:scrolled");
     // Landing on the cursor is itself a position, and saying so replaces
     // whatever this file's last scroll left pending. Otherwise a tab swap away
     // and back would leave the source at the cursor while the pending claim
@@ -1876,6 +1881,7 @@ export default function CodeEditor(props: {
     if (focused) afterShow(path);
     fixRoles(leaving);
     fixRoles(path);
+    traceMark("cm:swapped");
   }
 
   /** A second view onto a file the authority owns: the same document, without
@@ -2026,6 +2032,7 @@ export default function CodeEditor(props: {
   const building = new Map<string, Promise<Buffer>>();
 
   function attachView(paneId: string, el: HTMLElement) {
+    traceMark("cm:attach");
     const v = new EditorView({
       parent: el,
       state: EditorState.create({ doc: "", extensions: commonExtensions() }),
@@ -2054,6 +2061,7 @@ export default function CodeEditor(props: {
   function detachView(paneId: string) {
     const rec = views.get(paneId);
     if (!rec) return;
+    traceMark("cm:detach");
     // Its live state is the buffer's, unless somebody else is already the
     // authority for that file; either way the map keeps what it held.
     if (rec.path && !rec.follower) {
@@ -2062,6 +2070,7 @@ export default function CodeEditor(props: {
     }
     views.delete(paneId);
     rec.view.destroy();
+    traceMark("cm:destroyed");
     fixRoles(rec.path);
     if (view === rec.view) {
       const next = paneIds().map((id) => views.get(id)).find(Boolean);
@@ -2117,7 +2126,15 @@ export default function CodeEditor(props: {
     });
     // Re-measure when a pane is revealed: an editor that laid out while
     // display:none has a stale viewport until CodeMirror re-reads its geometry.
-    offRefit = onEvent(REFIT_PANES, () => view?.requestMeasure());
+    //
+    // Every pane's view and not the focused one: a split builds a view in the
+    // pane that did not take focus, and a view that never measures never
+    // renders - it keeps CM6's placeholder height. Measured at the split, that
+    // view reported a scrollHeight of 33554432 (2^25) before this loop and a
+    // real 4628 after it.
+    offRefit = onEvent(REFIT_PANES, () => {
+      for (const rec of views.values()) rec.view.requestMeasure();
+    });
   });
 
   // The palette's "Save file". It lands here rather than in Editor because the
