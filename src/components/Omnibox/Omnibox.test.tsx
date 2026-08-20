@@ -19,6 +19,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
+// The box lists the agents this install offers, and the default is none, so a
+// bench that wants a "New Claude session" row has to say Claude is offered.
+vi.mock("../../panels/Settings/settingsStore", async (orig) => {
+  const actual = await orig<typeof import("../../panels/Settings/settingsStore")>();
+  return {
+    ...actual,
+    get settings() {
+      return { ...actual.settings, agent: { enabled: { claude: true } } };
+    },
+  };
+});
+
 const { default: Omnibox } = await import("./Omnibox");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
 const { publishEditorState, clearEditorState } = await import("../../utils/editorState");

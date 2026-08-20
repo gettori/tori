@@ -39,6 +39,7 @@ import { branchOwner, projectUnitFor, sessionStatus } from "../../../utils/sessi
 import { emitWith, REMOVE_BRANCH_UNIT, type RemoveBranchUnit } from "../../../utils/events";
 import { STATUS_LABEL } from "../../../utils/sessionStatus";
 import { findAdapter } from "../../../utils/agents";
+import { agentOffReason } from "../../../utils/agentEnabled";
 import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
   forgeErrorMessage,
@@ -527,6 +528,10 @@ export default function PrDetail(props: {
       return { label, name: "", ready: false };
     }
     const name = o.session.name || o.session.title || o.session.id;
+    // An agent the user turned off first, since that is the refusal they can
+    // act on without leaving the question of what this agent can do.
+    const off = agentOffReason(o.session.agent ?? "claude");
+    if (off) return { label: off, name, ready: false };
     if (findAdapter(o.session.agent ?? "claude").resume_args.length === 0) {
       return { label: "This agent's sessions can't be resumed", name, ready: false };
     }

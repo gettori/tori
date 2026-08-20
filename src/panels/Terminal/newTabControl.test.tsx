@@ -50,11 +50,24 @@ const bridge = vi.hoisted(() => ({
   listeners: new Map<string, (e: { payload: unknown }) => void>(),
   /** This project's remembered chat picks, as the settings store would answer. */
   prefs: {} as { agent?: string | null },
+  /** Which agents this install offers. Every launch route asks before it offers
+   *  a row, so a bench with nothing enabled has no chat to open at all. */
+  enabled: {} as Record<string, boolean>,
 }));
 
 vi.mock("../Settings/settingsStore", async (orig) => {
   const actual = await orig<typeof import("../Settings/settingsStore")>();
-  return { ...actual, chatPrefs: () => bridge.prefs };
+  return {
+    ...actual,
+    chatPrefs: () => bridge.prefs,
+    // A getter, because this factory runs once at module load and the enabled
+    // map is set per test: spreading it here would freeze the first bench's
+    // answer into every later one.
+    get settings() {
+      return { ...actual.settings, agent: { enabled: bridge.enabled } };
+    },
+    settingsLoaded: () => true,
+  };
 });
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -136,6 +149,7 @@ beforeEach(() => {
   bridge.invoked.length = 0;
   bridge.listeners.clear();
   bridge.prefs = {};
+  bridge.enabled = { claude: true, codex: true };
   localStorage.clear();
 });
 
@@ -147,8 +161,11 @@ async function mountLoaded() {
 }
 
 describe("the launch control", () => {
+  // `mountLoaded` rather than `mount`: which agent a draft opens on is read off
+  // the resolved adapter list now, and the control says "no agent enabled"
+  // until that list has landed rather than guessing claude.
   it("opens a chat draft from the main half, spawning nothing", async () => {
-    mount();
+    await mountLoaded();
     fireEvent.click(screen.getByLabelText(`New chat in repo`));
 
     await waitFor(() => expect(screen.getAllByTestId("draft")).toHaveLength(1));
@@ -157,6 +174,18 @@ describe("the launch control", () => {
     expect(screen.queryByTestId("chat")).toBeNull();
     expect(bridge.invoked).not.toContain("chat_spawn");
     expect(bridge.invoked).not.toContain("pty_spawn");
+  });
+
+  // The whole point of the setting. The button greys out rather than opening a
+  // draft on an agent the user has said they do not want offered, and the
+  // reason it gives is the one they can act on.
+  it("refuses a new chat when this install offers no agent", async () => {
+    bridge.enabled = {};
+    await mountLoaded();
+    const button = screen.getByLabelText("New chat in repo") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(screen.queryByTestId("draft")).toBeNull();
   });
 
   it("still opens a shell, from the menu the main half used to be", async () => {
@@ -168,7 +197,7 @@ describe("the launch control", () => {
   });
 
   it("opens a draft from the menu's chat row too, on no named agent", async () => {
-    mount();
+    await mountLoaded();
     await menuItem("New chat");
 
     await waitFor(() => expect(screen.getAllByTestId("draft")).toHaveLength(1));

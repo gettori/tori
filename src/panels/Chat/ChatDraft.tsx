@@ -24,7 +24,8 @@ import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft }
 import { draftPick, hasPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
 import { agentReady, agentSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import { agents, ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
+import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
+import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
 import { capabilitiesFor, restoredPicks, type PickableModel } from "../../utils/chatModels";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
 import { chatPrefs } from "../Settings/settingsStore";
@@ -75,7 +76,10 @@ export default function ChatDraft(props: {
 
   const providers = createMemo(() =>
     paletteProviders({
-      adapters: agents(),
+      // The agents this install offers, not every one the registry ships. The
+      // palette is a list of things the user can start, so an agent they turned
+      // off is absent rather than listed and refused.
+      adapters: enabledChatAgents(),
       catalogs: modelCatalogs(),
       ready: agentReady,
       signedOut: agentSignedOut,
@@ -119,6 +123,11 @@ export default function ChatDraft(props: {
    *  way: a draft that silently switched away from a broken agent would be Sway
    *  choosing for the user, and the pill is where the problem is legible. */
   const blocked = () => {
+    // The tab can outlive the setting: a draft left open while its agent was
+    // turned off in another window still names it, and sending would start
+    // something the user has said they do not want offered.
+    const off = agentOffReason(props.agentId);
+    if (off) return off;
     const health = mine()?.health;
     if (!health || health.kind !== "fix") return null;
     return `${findAdapter(props.agentId).label}: ${health.reason.toLowerCase()}`;
