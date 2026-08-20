@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -10,7 +10,7 @@ import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
 import HistoryPanel from "./HistoryPanel";
 import Button from "../../components/Button/Button";
-import { X, ChevronDown, SquareTerminal, History, CircleDashed } from "lucide-solid";
+import { X, ChevronDown, Plus, History, CircleDashed } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -44,20 +44,28 @@ import {
 import { homeDir } from "@tauri-apps/api/path";
 import { refreshAgentHealth } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { agents, ensureAdaptersLoaded, findAdapter, agentIdForProgram, applyTemplate } from "../../utils/agents";
+import {
+  agents,
+  chatCapable,
+  ensureAdaptersLoaded,
+  findAdapter,
+  agentIdForProgram,
+  applyTemplate,
+} from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
+import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
-import { clearComposer, offerToComposer, routeFor } from "../../utils/chatCompose";
-import { clearDraftPick } from "../../utils/chatDraftPick";
+import { clearComposer, draftFor, offerToComposer, routeFor, setDraft } from "../../utils/chatCompose";
+import { clearDraftPick, draftPick, setDraftPick } from "../../utils/chatDraftPick";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
-import { settings } from "../Settings/settingsStore";
+import { chatPrefs, settings } from "../Settings/settingsStore";
 import {
   canRevertToDraft,
   isChatDraft,
@@ -118,6 +126,11 @@ type RestoreSession = BackfillSession & { path: string; title: string; name?: st
 // takes. Narrowed here rather than by widening TerminalView's prop, because a
 // chat tab genuinely cannot be rendered by it.
 type PtyTab = OpenTerm & { kind: Exclude<TabKind, "chat"> };
+
+// How long a draft's composer sits still before the tab store is rewritten.
+// Long enough that typing never writes localStorage, short enough that a pause
+// to think is already saved.
+const DRAFT_SAVE_MS = 500;
 
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
@@ -211,6 +224,10 @@ export default function Terminal(props: {
     markOffered(ws);
     const entry = restorable[ws];
     if (!entry) return;
+    // Waited for rather than assumed: a stored draft names its harness, and
+    // checking that name against a list that has not arrived would answer "no
+    // such agent" for every one of them and restore the lot onto claude.
+    await ensureAdaptersLoaded();
     // One scan for the whole workspace: every stored session is checked against
     // it, so a session deleted since last run is skipped rather than resumed
     // into a dead id.
@@ -241,6 +258,17 @@ export default function Terminal(props: {
       // preference: a workspace saved with agent tabs comes back as agent tabs
       // on an install where chat is now the default. See `restoreRoute`.
       const surface = restoreRoute(d.kind);
+      if (surface === "chat" && !d.sessionId) {
+        // A draft: there is no session to resume and nothing to respawn, so it
+        // comes back as the same unstarted tab, holding what was typed into it
+        // and what it was set to run as. Still no process and no claim - a
+        // restored draft costs exactly what an opened one does.
+        const id = openChatTab(ws, await cwdFor(d.cwd), d.title, chatAgent(d.program));
+        if (d.text) setDraft(id, d.text);
+        if (d.pick) setDraftPick(id, d.pick);
+        producedId[i] = id;
+        continue;
+      }
       if (surface === "chat" && d.sessionId) {
         // Chat restores by resuming its own session id, not by respawning a
         // shell. A session deleted since last run is skipped like any other.
@@ -392,11 +420,37 @@ export default function Terminal(props: {
   // erased by going empty, which is what lets current truth overwrite a
   // declined restore offer.
   const touched = new Set<string>();
-  createEffect(() => {
-    const live = toStore(open(), activeByWorkspace(), Date.now());
+  // A draft's unsent text and its pick live in stores of their own, keyed by tab
+  // id. Read here rather than inside `tabPersist`, which stays a pure fold over
+  // whatever it is handed.
+  const withDrafts = (tabs: readonly OpenTerm[]) =>
+    tabs.map((t) => (isChatDraft(t) ? { ...t, text: draftFor(t.id), pick: draftPick(t.id) } : t));
+
+  function saveTabStore(tabs: readonly OpenTerm[], active: Record<string, string>) {
+    const live = toStore(untrack(() => withDrafts(tabs)), active, Date.now());
     for (const ws of Object.keys(live)) touched.add(ws);
     saveTabs(mergeStore(restorable, live, touched));
+  }
+
+  createEffect(() => saveTabStore(open(), activeByWorkspace()));
+
+  // The same save, armed by a keystroke instead of run by one. Composer text
+  // changes on every key, and this store is a single localStorage key covering
+  // every workspace, so writing it per keypress is the one frequency it cannot
+  // afford. What is lost by the delay is the last few hundred ms of typing in a
+  // draft, on a quit that lands inside the window.
+  const saveDrafts = debounce(() => saveTabStore(open(), activeByWorkspace()), DRAFT_SAVE_MS);
+  createEffect(() => {
+    for (const t of open()) {
+      // Read for the subscription, not for the value: touching each draft's two
+      // stores is the whole of what makes a keystroke arm the timer below.
+      if (!isChatDraft(t)) continue;
+      draftFor(t.id);
+      draftPick(t.id);
+    }
+    saveDrafts();
   });
+  onCleanup(() => saveDrafts.cancel());
 
   // Every tab key below is pane-scoped (plan phase 6): the editor panel
   // listens to the same events for its own tabs, and the focused pane is what
@@ -1065,12 +1119,28 @@ export default function Terminal(props: {
     spawnChat(tab.workspace, tab.cwd, tab.workspace.split("/").pop() || "chat", tab.program, origin, promptTs);
   }
 
+  /**
+   * A remembered agent id, if anything still answers to it.
+   *
+   * Checked rather than trusted, because these ids outlive the adapter that
+   * wrote them: one dropped from the TOML would leave a draft whose `program`
+   * names nothing, and `findAdapter` would quietly serve claude's config under
+   * the other one's name.
+   */
+  function chatAgent(id: string | null | undefined): string {
+    return id && agents().some((a) => a.id === id && chatCapable(a)) ? id : "claude";
+  }
+
+  /** The harness a new draft here opens on: whatever the last chat in this
+   *  project locked to, and claude for a project that has never had one. */
+  const draftAgent = (projectPath: string) => chatAgent(chatPrefs(projectPath).agent);
+
   // A new chat is a draft: no process, no session id, no claim, until the first
   // message decides there is going to be a conversation at all.
-  function newChat(agentId = "claude") {
+  function newChat(agentId?: string) {
     const sel = props.selected;
     if (!sel) return;
-    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agentId);
+    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agentId ?? draftAgent(sel.folderPath));
   }
 
   /**
@@ -1325,6 +1395,7 @@ export default function Terminal(props: {
         <ChatDraft
           tabId={t.id}
           cwd={t.cwd}
+          workspace={t.workspace}
           active={active()}
           agentId={t.program}
           error={draftError(t.id)}
@@ -1397,8 +1468,10 @@ export default function Terminal(props: {
           </Show>
         </Tooltip>
         <div class={styles.termNewSplit}>
-          {/* Main half: quick new shell (terminal icon). Caret half: launch an
-              agent session from a fixed three-option menu. */}
+          {/* Main half: a new chat, which is a draft and so costs nothing until
+              it is written in. A plus rather than a terminal icon, because the
+              thing it makes is no longer a shell: the shell moved into the menu
+              beside every other surface. Caret half: everything else. */}
           {/* `whenDisabled`: with no branch picked the label is the reason
               the button is greyed out, not a description of what it does. */}
           <Tooltip
@@ -1407,11 +1480,11 @@ export default function Terminal(props: {
             class={`${styles.termNew} ${styles.termNewMain}`}
             disabled={!props.selected}
             whenDisabled
-            label={props.selected ? `New shell in ${props.selected.projectName}` : "Select a branch first"}
-            aria-label={props.selected ? `New shell in ${props.selected.projectName}` : "New shell"}
-            onClick={newShell}
+            label={props.selected ? `New chat in ${props.selected.projectName}` : "Select a branch first"}
+            aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
+            onClick={() => newChat()}
           >
-            <Icon icon={SquareTerminal} />
+            <Icon icon={Plus} />
           </Tooltip>
           {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
               wrapper keeps a box (a dropdown anchors on its trigger's rect),
@@ -1428,15 +1501,21 @@ export default function Terminal(props: {
               // The user's default surface leads, and the other one sits
               // directly under it: whichever way the setting points, the
               // other route stays a single click from this menu.
+              //
+              // The chat entry names no agent any more. It opens a draft, and
+              // which harness that draft would start is the palette's answer
+              // (the project's last-used one), not this menu's.
               ...(settings.chatDefaults.defaultSurface === "agent"
                 ? [
                     { label: findAdapter("claude").label, onClick: () => newSession("claude") },
-                    { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                    { label: "New chat", onClick: () => newChat() },
                   ]
                 : [
-                    { label: `${findAdapter("claude").label} chat`, onClick: () => newChat("claude") },
+                    { label: "New chat", onClick: () => newChat() },
                     { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
                   ]),
+              // The shell the main half used to open, still one click away.
+              { label: "Terminal", onClick: newShell },
               // Only for a session selection, since there is nothing to
               // continue from a bare branch. The session need not have been
               // started in chat: every surface writes the transcript this
