@@ -31,6 +31,12 @@ const SETTLE_TIMEOUT_MS = 5000;
 
 type InvokeRec = { id: number; name: string; call: number; dur: number };
 
+/** A point on the switch path. The invoke lines say when the backend answered
+ *  and when JS heard it, so a block on the main thread already shows up as a
+ *  cluster of callbacks landing together; marks say which code the block was
+ *  in, which no invoke can. */
+type MarkRec = { name: string; at: number };
+
 type Span = {
   kind: SwitchKind;
   key: string;
@@ -39,6 +45,7 @@ type Span = {
   settled: number | null;
   legs: Set<string>;
   invokes: InvokeRec[];
+  marks: MarkRec[];
   timer: ReturnType<typeof setTimeout>;
   /** Four paths reach `emit`, and a fired timer cannot be cleared: without
    *  this, a span that settles just as it times out writes two rows. */
@@ -167,6 +174,7 @@ export function traceSwitchStart(kind: SwitchKind, key: string): boolean {
     settled: null,
     legs: new Set(),
     invokes: [],
+    marks: [],
     timer: setTimeout(() => emit(span), SETTLE_TIMEOUT_MS),
     done: false,
   };
@@ -211,7 +219,7 @@ function emit(span: Span): void {
   write(
     `{"t":"switch","kind":${JSON.stringify(span.kind)},"key":${JSON.stringify(span.key)},` +
       `"start":${span.start},"paint":${span.paint},"settled":${span.settled},` +
-      `"invokes":${JSON.stringify(span.invokes)}}`,
+      `"invokes":${JSON.stringify(span.invokes)},"marks":${JSON.stringify(span.marks)}}`,
   );
   flush();
   const waiting = waiters.splice(0, waiters.length);
@@ -238,6 +246,15 @@ export function nextSpan(timeoutMs = 8000): Promise<void> {
     const timer = setTimeout(fire, timeoutMs);
     waiters.push(fire);
   });
+}
+
+/** Stamp a point on the open switch, if there is one. Callers are seams on the
+ *  switch path (a view attaching, a state swap, a pane adopting its hosts), not
+ *  hot paths: a mark per keystroke would grow the span line without bound.
+ *  Outside a switch this costs one comparison and drops the mark. */
+export function traceMark(name: string): void {
+  if (!on || !current) return;
+  current.marks.push({ name, at: round(wall() - current.start) });
 }
 
 /** A free-form line, for what the recipe counted and which pass it was in. */
