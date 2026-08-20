@@ -43,6 +43,7 @@ import {
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
 import { refreshAgentHealth } from "../../utils/agentHealth";
+import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import {
   agents,
@@ -263,7 +264,7 @@ export default function Terminal(props: {
         // comes back as the same unstarted tab, holding what was typed into it
         // and what it was set to run as. Still no process and no claim - a
         // restored draft costs exactly what an opened one does.
-        const id = openChatTab(ws, await cwdFor(d.cwd), d.title, chatAgent(d.program));
+        const id = openChatTab(ws, await cwdFor(d.cwd), d.title, storedChatAgent(d.program));
         if (d.text) setDraft(id, d.text);
         if (d.pick) setDraftPick(id, d.pick);
         producedId[i] = id;
@@ -1120,27 +1121,62 @@ export default function Terminal(props: {
   }
 
   /**
-   * A remembered agent id, if anything still answers to it.
+   * A stored agent id, if anything still answers to it.
    *
-   * Checked rather than trusted, because these ids outlive the adapter that
-   * wrote them: one dropped from the TOML would leave a draft whose `program`
-   * names nothing, and `findAdapter` would quietly serve claude's config under
-   * the other one's name.
+   * Checked against the registry rather than trusted, because these ids outlive
+   * the adapter that wrote them: one dropped from the TOML would leave a draft
+   * whose `program` names nothing, and `findAdapter` would quietly serve
+   * claude's config under the other one's name. **Not** checked against what is
+   * enabled: a restored draft comes back as the tab it was, and the composer is
+   * where an agent since turned off says so.
    */
-  function chatAgent(id: string | null | undefined): string {
-    return id && agents().some((a) => a.id === id && chatCapable(a)) ? id : "claude";
+  function storedChatAgent(id: string | null | undefined): string {
+    if (id && agents().some((a) => a.id === id && chatCapable(a))) return id;
+    return draftChatAgent(null) ?? "claude";
   }
 
-  /** The harness a new draft here opens on: whatever the last chat in this
-   *  project locked to, and claude for a project that has never had one. */
-  const draftAgent = (projectPath: string) => chatAgent(chatPrefs(projectPath).agent);
+  /**
+   * The harness a new draft here opens on: whatever the last chat in this
+   * project locked to, the first agent this install offers otherwise, and null
+   * when it offers none.
+   *
+   * The remembered id is checked rather than trusted, because these ids outlive
+   * the adapter that wrote them: one dropped from the TOML would leave a draft
+   * whose `program` names nothing, and `findAdapter` would quietly serve
+   * claude's config under the other one's name. It is checked against what is
+   * *offered* rather than what exists, so a project whose last chat was on an
+   * agent since turned off opens on one the user still wants.
+   */
+  const draftAgent = (projectPath: string) => draftChatAgent(chatPrefs(projectPath).agent);
+
+  /** Why a new chat cannot be started here, or null. */
+  const noChatReason = () => {
+    if (!props.selected) return "Select a branch first";
+    return draftAgent(props.selected.folderPath) ? null : "No agent enabled. Turn one on in Settings.";
+  };
+
+  /** The menu's two agent-backed rows, each present only while its agent is
+   *  one this install offers. Arrays so a call site can spread them in place
+   *  and an absent row costs no entry rather than a hole. */
+  const newChatItem = () => (noChatReason() ? [] : [{ label: "New chat", onClick: () => newChat() }]);
+  const claudeTerminalItem = (suffix?: string) =>
+    agentEnabled("claude")
+      ? [
+          {
+            label: [findAdapter("claude").label, suffix].filter(Boolean).join(" "),
+            onClick: () => newSession("claude"),
+          },
+        ]
+      : [];
 
   // A new chat is a draft: no process, no session id, no claim, until the first
   // message decides there is going to be a conversation at all.
   function newChat(agentId?: string) {
     const sel = props.selected;
     if (!sel) return;
-    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agentId ?? draftAgent(sel.folderPath));
+    const agent = agentId ?? draftAgent(sel.folderPath);
+    if (!agent) return;
+    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agent);
   }
 
   /**
@@ -1472,15 +1508,16 @@ export default function Terminal(props: {
               it is written in. A plus rather than a terminal icon, because the
               thing it makes is no longer a shell: the shell moved into the menu
               beside every other surface. Caret half: everything else. */}
-          {/* `whenDisabled`: with no branch picked the label is the reason
-              the button is greyed out, not a description of what it does. */}
+          {/* `whenDisabled`: with no branch picked, or with no agent enabled,
+              the label is the reason the button is greyed out, not a
+              description of what it does. */}
           <Tooltip
             as="button"
             type="button"
             class={`${styles.termNew} ${styles.termNewMain}`}
-            disabled={!props.selected}
+            disabled={noChatReason() !== null}
             whenDisabled
-            label={props.selected ? `New chat in ${props.selected.projectName}` : "Select a branch first"}
+            label={noChatReason() ?? `New chat in ${props.selected!.projectName}`}
             aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
             onClick={() => newChat()}
           >
@@ -1505,16 +1542,16 @@ export default function Terminal(props: {
               // The chat entry names no agent any more. It opens a draft, and
               // which harness that draft would start is the palette's answer
               // (the project's last-used one), not this menu's.
+              //
+              // Every entry that would start an agent is absent unless that
+              // agent is one this install offers: a menu row is a promise, and
+              // one that starts something the user turned off in Settings is
+              // Sway going around its own setting.
               ...(settings.chatDefaults.defaultSurface === "agent"
-                ? [
-                    { label: findAdapter("claude").label, onClick: () => newSession("claude") },
-                    { label: "New chat", onClick: () => newChat() },
-                  ]
-                : [
-                    { label: "New chat", onClick: () => newChat() },
-                    { label: `${findAdapter("claude").label} (terminal)`, onClick: () => newSession("claude") },
-                  ]),
-              // The shell the main half used to open, still one click away.
+                ? [...claudeTerminalItem(), ...newChatItem()]
+                : [...newChatItem(), ...claudeTerminalItem("(terminal)")]),
+              // The shell the main half used to open, still one click away. No
+              // agent behind it, so nothing gates it.
               { label: "Terminal", onClick: newShell },
               // Only for a session selection, since there is nothing to
               // continue from a bare branch. The session need not have been
@@ -1524,6 +1561,10 @@ export default function Terminal(props: {
                 ? [
                     {
                       label: "Continue this session in chat",
+                      // Disabled rather than absent, and the label says why: the
+                      // session exists and the reader can see it, so a row that
+                      // silently vanished would read as Sway losing it.
+                      disabled: agentOffReason(props.selected.agent ?? "claude") !== null,
                       onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
                     },
                     // The counterpart route for a session selection, so the
@@ -1531,11 +1572,14 @@ export default function Terminal(props: {
                     // not only for a new one.
                     {
                       label: "Continue this session in terminal",
+                      disabled: agentOffReason(props.selected.agent ?? "claude") !== null,
                       onClick: () => void focusOrResume(props.selected!),
                     },
                   ]
                 : []),
-              { label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) },
+              ...(agentEnabled("claude")
+                ? [{ label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) }]
+                : []),
             ]}
           >
             <Tooltip

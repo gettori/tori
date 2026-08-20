@@ -154,8 +154,7 @@ export default function AgentPalette(props: {
     // this key does something, so it has to.
     if ((e.metaKey || e.ctrlKey) && e.key === ',') {
       e.preventDefault();
-      const target = provider();
-      if (target) props.onFix?.(target.agentId);
+      props.onFix?.(provider()?.agentId ?? props.agentId);
       return;
     }
     if (e.key === 'ArrowDown') return (e.preventDefault(), move(1));
@@ -185,6 +184,7 @@ export default function AgentPalette(props: {
    *  provider clause, since "across 1 provider" is the lock restated as if it
    *  were a count. */
   const filterHint = () => {
+    if (props.providers.length === 0) return 'Nothing to filter';
     const total = props.providers.reduce((n, p) => n + p.models.length, 0);
     const m = `${total} ${total === 1 ? 'model' : 'models'}`;
     return props.providers.length === 1
@@ -298,9 +298,15 @@ export default function AgentPalette(props: {
                   </div>
                 )}
               </For>
+              {/* Two different nothings. An empty hand is a setting the reader
+                  can go change, and saying "no agents match" about a list that
+                  was never going to have any would send them to retype a
+                  filter that is not the problem. */}
               <Show when={filtered().length === 0}>
                 <div class={styles.empty} role="status">
-                  No agents match
+                  <Show when={props.providers.length === 0} fallback="No agents match">
+                    No agents enabled. Turn one on in Settings.
+                  </Show>
                 </div>
               </Show>
             </div>
@@ -479,10 +485,10 @@ export default function AgentPalette(props: {
         <button
           type="button"
           class={styles.settings}
-          onClick={() => {
-            const target = provider();
-            if (target) props.onFix?.(target.agentId);
-          }}
+          // The highlighted agent, or this chat's own when the list is empty:
+          // with nothing enabled this button is the way out, so it has to lead
+          // somewhere rather than go dead exactly when it is needed.
+          onClick={() => props.onFix?.(provider()?.agentId ?? props.agentId)}
         >
           agent settings
           <kbd>

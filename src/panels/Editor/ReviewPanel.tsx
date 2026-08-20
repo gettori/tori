@@ -42,7 +42,7 @@ import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
 import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
-import { findAdapter } from "../../utils/agents";
+import { sendBlockedReason } from "../../utils/sendTarget";
 import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
@@ -249,15 +249,11 @@ export default function ReviewPanel(props: {
     };
   }
 
-  // Capability gate: no session selected, or the selected adapter can't be
-  // resumed (empty resume_args - ADAPTERS.md), so safe-send has nowhere to
-  // land a queued comment or draft request.
-  function disabledReason(): string | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return "Select a session first";
-    if (findAdapter(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
-    return null;
-  }
+  // Capability gate: no session selected, an adapter that can't be resumed
+  // (empty resume_args - ADAPTERS.md), or an agent this install does not offer,
+  // so safe-send has nowhere to land a queued comment or draft request. The
+  // shared gate, so the three panels asking it cannot word it three ways.
+  const disabledReason = () => sendBlockedReason(props.selected ?? null);
 
   async function refresh() {
     await refreshStatus(props.root);
