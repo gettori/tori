@@ -291,6 +291,16 @@ type TermState = { found: boolean; length: number; viewportY: number; sentinel: 
 type EditorReading = {
   found: boolean;
   scrollTop: number;
+  /** The first line on screen, and the criterion for "the reader kept their
+   *  place". Not a pixel: a mismatch round has a narrow pane on one side and a
+   *  wide one on the other, so the document rewraps between the two readings
+   *  (3137px tall against 4649) and every offset in it moves. Same rule the
+   *  terminal check follows in refusing byte-identity of its visible window. */
+  topLine: number;
+  /** Recorded rather than compared: they are what a width change moves, so they
+   *  say whether a difference was a rewrap or a lost position. */
+  centerLine: number;
+  scrollHeight: number;
   anchor: number;
   head: number;
   undo: number;
@@ -407,11 +417,24 @@ function editorProbe(): Record<string, unknown>[] {
 
 function editorState(host: HTMLElement | null): EditorReading {
   const view = host ? EditorView.findFromDOM(host) : null;
-  if (!view) return { found: false, scrollTop: -1, anchor: -1, head: -1, undo: -1 };
+  if (!view) {
+    return {
+      found: false, scrollTop: -1, centerLine: -1, topLine: -1, scrollHeight: -1, anchor: -1, head: -1, undo: -1,
+    };
+  }
   const sel = view.state.selection.main;
+  const el = view.scrollDOM;
+  // `documentTop` is where the document starts in viewport coordinates, so the
+  // scroller's own top minus it is how far into the document the first visible
+  // pixel is, which is what `lineBlockAtHeight` answers in.
+  const into = el.getBoundingClientRect().top - view.documentTop;
+  const lineAt = (h: number) => view.state.doc.lineAt(view.lineBlockAtHeight(Math.max(0, h)).from).number;
   return {
     found: true,
-    scrollTop: Math.round(view.scrollDOM.scrollTop),
+    scrollTop: Math.round(el.scrollTop),
+    centerLine: lineAt(into + el.clientHeight / 2),
+    topLine: lineAt(into),
+    scrollHeight: el.scrollHeight,
     anchor: sel.anchor,
     head: sel.head,
     undo: undoDepthOf ? undoDepthOf(view.state) : -1,
@@ -487,10 +510,13 @@ async function roundTrip(a: Target, b: Target, termId: string, label: string, ro
       before.editor.anchor === after.editor.anchor &&
       before.editor.head === after.editor.head,
     editorUndoKept: bothViews(before, after) && before.editor.undo === after.editor.undo,
-    editorScrollKept: bothViews(before, after) && before.editor.scrollTop === after.editor.scrollTop,
+    editorScrollKept: bothViews(before, after) && before.editor.topLine === after.editor.topLine,
     sel: [before.editor.anchor, before.editor.head, after.editor.anchor, after.editor.head],
     undo: [before.editor.undo, after.editor.undo],
     scrollTop: [before.editor.scrollTop, after.editor.scrollTop],
+    centerLine: [before.editor.centerLine, after.editor.centerLine],
+    topLine: [before.editor.topLine, after.editor.topLine],
+    scrollHeight: [before.editor.scrollHeight, after.editor.scrollHeight],
   });
 }
 
