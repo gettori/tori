@@ -94,7 +94,7 @@
 }
 
 .filterBox::placeholder {
-  color: var(--fg-subtle);
+  color: var(--fg-watermark);
   opacity: 1;
 }
 
