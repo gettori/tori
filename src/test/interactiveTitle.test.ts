@@ -414,6 +414,12 @@ const NAMED_BY_TEXT = new Set(["Tab"]);
  *  `PickerButton` is the same pill for a control whose choices are a dialog
  *  rather than a menu, and takes the same required `ariaLabel`. */
 const NAMES_ITSELF = new Set(["Picker", "PickerButton", "Toast.CloseButton"]);
+/** Components that accept `tooltip` and are named by a `label` or an
+ *  `aria-label` the type does not force, so the naming is checked below rather
+ *  than trusted. `Toggle` is in here as well as `Switch` because the two files
+ *  that pass this prop also have Solid's control-flow `Switch` in scope and
+ *  alias the component around it; the scan reads the written tag name. */
+const NAMED_BY_OWN_LABEL = new Set(["Switch", "Toggle"]);
 
 /** The attribute region of every JSX opening tag: `[start, end, tagName]`.
  *
@@ -488,6 +494,9 @@ interface TooltipSite {
   path: string;
   tag: string | null;
   hasAriaLabel: boolean;
+  /** A `label` prop, which is a visible caption on the components that take one
+   *  and is a name the same way `aria-label` is. */
+  hasLabel: boolean;
   /** `<Tab … />` rather than `<Tab …>text</Tab>`: no children, so no visible text. */
   selfClosing: boolean;
 }
@@ -514,6 +523,7 @@ function tooltipSites(): TooltipSite[] {
         path,
         tag: polymorphic ? polymorphic[1] : region ? region[2] : null,
         hasAriaLabel: /\baria-label=/.test(attrs),
+        hasLabel: /\blabel=/.test(attrs),
         selfClosing: attrs.trimEnd().endsWith("/"),
       });
     }
@@ -535,7 +545,8 @@ describe("every tooltip= site resolves a name", () => {
           site.tag != null &&
           !BACKFILLS_NAME.has(site.tag) &&
           !NAMED_BY_TEXT.has(site.tag) &&
-          !NAMES_ITSELF.has(site.tag),
+          !NAMES_ITSELF.has(site.tag) &&
+          !NAMED_BY_OWN_LABEL.has(site.tag),
       )
       .map((site) => `${site.path}: <${site.tag} tooltip=…>`);
 
@@ -543,6 +554,18 @@ describe("every tooltip= site resolves a name", () => {
     // prop is inert: it names nothing and shows nothing. Use `<Tooltip>` with
     // `label`, which is what the primitive is for.
     expect(orphaned).toEqual([]);
+  });
+
+  // A tooltip is a description and never a name, and these components backfill
+  // nothing from it, so a switch whose only text is its tooltip announces as
+  // nothing at all.
+  it("makes a switch carrying a tooltip name itself as well", () => {
+    const nameless = tooltipSites()
+      .filter((site) => site.tag != null && NAMED_BY_OWN_LABEL.has(site.tag))
+      .filter((site) => !site.hasAriaLabel && !site.hasLabel)
+      .map((site) => `${site.path}: <${site.tag} tooltip=…>`);
+
+    expect(nameless).toEqual([]);
   });
 
   it("names a Tab by its own text rather than by the tooltip", () => {
