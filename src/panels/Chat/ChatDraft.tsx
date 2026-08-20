@@ -19,11 +19,11 @@ import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
 import { paletteProviders } from "./agentPaletteData";
-import { probeAgent, probeOnHighlight } from "./draftProbe";
+import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
 import { draftPick, hasPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
-import { agentReady, agentSignedOut, ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import { agentReady, agentSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { agents, ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { capabilitiesFor, restoredPicks, type PickableModel } from "../../utils/chatModels";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
@@ -80,6 +80,7 @@ export default function ChatDraft(props: {
       ready: agentReady,
       signedOut: agentSignedOut,
       probing: isProbing,
+      version: agentVersion,
     }),
   );
   const mine = () => providers().find((p) => p.agentId === props.agentId) ?? null;
@@ -207,6 +208,7 @@ export default function ChatDraft(props: {
               onSelectModel={onPickModel}
               onSelectEffort={(effort) => setDraftPick(props.tabId, { effort })}
               onHighlightAgent={(agentId) => probeOnHighlight(agentId)}
+              onRecheckAgent={(agentId) => recheckAgent(agentId)}
               onFixAgent={openAgentCard}
             />
             <Show when={offered().modes.length > 0}>

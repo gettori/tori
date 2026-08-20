@@ -26,8 +26,58 @@ export type PaletteProvider = {
    *  visible and its models listed but inert: hiding a broken agent is what
    *  makes it unreachable with nothing on screen explaining why. */
   selectable: boolean;
+  /** This agent's model names carry a `Provider/Name` path worth unpicking for
+   *  display. From the adapter's own declaration, never inferred from the
+   *  strings: a `/` in an honest model name is not a path. */
+  splitModels: boolean;
+  /** The binary's version, for the models pane to name the agent with. Null is
+   *  rendered as nothing rather than a guess. */
+  version: string | null;
   models: PickableModel[];
 };
+
+/** A model's name split for display: what to head the row with, and the
+ *  provider chain that used to crowd it, ending in the model's bare id. */
+export type ModelDisplay = {
+  name: string;
+  segments: string[];
+};
+
+/**
+ * `GitHub Copilot/Claude Sonnet 4.6` + `github-copilot/claude-sonnet-4.6`
+ * becomes `Claude Sonnet 4.6` over `GitHub Copilot . claude-sonnet-4.6`, and
+ * pi's `openrouter/Amazon: Nova 2 Lite` peels its vendor prefix into the chain
+ * too. Null when the label carries no path, which is what lets a flagged
+ * agent's plain-named model render untouched.
+ *
+ * Display only, and the caller gates it on the adapter's `split_model_names`:
+ * this is a naming convention two agents happen to share, not a protocol fact,
+ * so nothing here ever feeds a wire id, a preference, or the filter.
+ */
+export function splitModelDisplay(label: string, value: string): ModelDisplay | null {
+  const parts = label
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const chain = parts.slice(0, -1);
+  let name = parts[parts.length - 1];
+  // Pi qualifies the name itself (`Amazon: Nova 2 Lite`); the vendor belongs
+  // with the route, not the title.
+  const colon = name.indexOf(":");
+  if (colon > 0) {
+    chain.push(name.slice(0, colon).trim());
+    name = name.slice(colon + 1).trim();
+  }
+  if (!name) return null;
+  const idParts = value.split("/");
+  const idTail = idParts[idParts.length - 1] || value;
+  // A chain segment that arrived as a bare lowercase id (`openrouter`) gets a
+  // capital, since it now stands where a display name would.
+  return { name, segments: [...chain.map(pretty), idTail] };
+}
+
+const pretty = (s: string) => (s === s.toLowerCase() ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /** Why this agent cannot be started, in the user's terms, or null when it can.
  *
@@ -56,6 +106,10 @@ export function paletteProviders(input: {
   ready: (id: string) => boolean;
   signedOut: (id: string) => boolean;
   probing: (id: string) => boolean;
+  /** The binary's measured version, from `agentVersion`. Optional so a caller
+   *  with no health sweep still gets a palette; the head then falls back to
+   *  the version the probe recorded, which is the list's own vintage. */
+  version?: (id: string) => string | null;
 }): PaletteProvider[] {
   const byId = new Map((input.catalogs ?? []).map((c) => [c.agentId, c] as const));
   return input.adapters.filter(chatCapable).map((adapter) => {
@@ -70,6 +124,8 @@ export function paletteProviders(input: {
           ? ({ kind: "fix", reason } as const)
           : ({ kind: "count", count: distinctModelCount(catalog) } as const),
       selectable: reason === null,
+      splitModels: adapter.chat?.split_model_names ?? false,
+      version: input.version?.(adapter.id) ?? catalog?.catalogue?.version ?? null,
       models: pickableModels([], cachedModels(catalog), adapter.chat ?? null),
     };
   });
@@ -85,12 +141,17 @@ export function paletteProviders(input: {
 export function lockedProvider(
   adapter: Adapter,
   models: readonly PickableModel[],
+  /** The binary version the health sweep measured. Optional because it is a
+   *  display fact the palette can go without. */
+  info: { version?: string | null } = {},
 ): PaletteProvider {
   return {
     agentId: adapter.id,
     label: adapter.label,
     health: { kind: "count", count: models.length },
     selectable: true,
+    splitModels: adapter.chat?.split_model_names ?? false,
+    version: info.version ?? null,
     models: [...models],
   };
 }

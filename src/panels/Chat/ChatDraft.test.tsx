@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, fireEvent, screen } from "@solidjs/testing-library";
+import { render, fireEvent, screen, within } from "@solidjs/testing-library";
 
 // Every call this surface makes to the backend, recorded. The draft's promise is
 // that none of them starts a chat: no `chat_spawn`, so no child process, no
@@ -286,9 +286,12 @@ describe("a chat draft's pick", () => {
     const { openPalette } = setup();
     await settle();
     openPalette();
-    expect(screen.getByText("Claude")).toBeTruthy();
-    expect(screen.getByText("Codex")).toBeTruthy();
-    expect(screen.getByText("Sonnet")).toBeTruthy();
+    // Scoped to the lists: the models pane names its agent in its own heading,
+    // so "Claude" appears there too.
+    const agents = within(screen.getByRole("listbox", { name: "Agents" }));
+    expect(agents.getByText("Claude")).toBeTruthy();
+    expect(agents.getByText("Codex")).toBeTruthy();
+    expect(within(screen.getByRole("listbox", { name: "Models" })).getByText("Sonnet")).toBeTruthy();
     expect(chatCalls()).toEqual([]);
   });
 
@@ -296,6 +299,10 @@ describe("a chat draft's pick", () => {
     const { openPalette } = setup();
     await settle();
     const filter = openPalette();
+    // Twice: a draft has named no model, so the first press only reveals the
+    // cursor on the first row. The second row is the point, since committing
+    // the first would pass whether or not the pick was read.
+    fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "Enter" });
 
