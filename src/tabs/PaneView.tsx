@@ -26,6 +26,7 @@ import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./t
 import { setPaneActive } from "../layout/tabPlacement";
 import { focusedPaneId } from "../layout/layoutStore";
 import { preserveScrollAndFocus } from "../utils/rowMovePreserve";
+import { traceMark } from "../utils/perfTrace";
 import {
   emit,
   emitWith,
@@ -80,7 +81,13 @@ export default function PaneView(props: {
     }
     // After layout, not in it: an adopted xterm/CM6 surface measures its new
     // box on REFIT_PANES, and mid-flush the box has no size yet.
-    if (adopted) requestAnimationFrame(() => emit(REFIT_PANES));
+    if (adopted) {
+      traceMark("pane:adopt");
+      requestAnimationFrame(() => {
+        emit(REFIT_PANES);
+        traceMark("pane:refit");
+      });
+    }
   });
 
   // ---- Drop target (plan phase 10) -----------------------------------------

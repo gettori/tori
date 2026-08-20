@@ -135,6 +135,20 @@ for (const s of switches) {
     );
   }
   if (!allInvokes && rows.length > 8) console.log(`    ... ${rows.length - 8} more (--invokes)`);
+  // Marks in order, each with the interval since the one before it: an invoke
+  // says when the backend answered, a gap between two marks says which code the
+  // main thread was inside while it did not hear the answer.
+  if (s.marks?.length) {
+    let prev = 0;
+    const line = s.marks
+      .map((m) => {
+        const step = m.at - prev;
+        prev = m.at;
+        return `${m.name} ${m.at.toFixed(0)}(+${step.toFixed(0)})`;
+      })
+      .join("  ");
+    console.log(`    marks: ${line}`);
+  }
   console.log("");
 }
 

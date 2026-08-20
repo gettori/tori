@@ -374,6 +374,37 @@ function termState(host: HTMLElement | null): TermState {
   return { found: true, length: buf.length, viewportY: buf.viewportY, sentinel };
 }
 
+/** The scroller each host held at the last probe, so a note can say whether a
+ *  view was reparented or rebuilt. Two different faults, one symptom. */
+const lastScroller = new Map<string, HTMLElement | null>();
+
+/** Every editor host, not the first one, and the view inside each. A split
+ *  re-keys the editor's stage host to the pane it lands in, so a reading that
+ *  takes whichever host comes first in the DOM can answer about one view while
+ *  meaning another. `scrollerSame` false with the document still there is a
+ *  rebuilt view rather than a moved one, and a `scrollHeight` of 2^25 is CM6's
+ *  placeholder for a view that has not measured yet. */
+function editorProbe(): Record<string, unknown>[] {
+  return stageHosts()
+    .filter((h) => h.dataset.stageHost?.startsWith("editor-stage"))
+    .map((host) => {
+      const id = host.dataset.stageHost!;
+      const view = EditorView.findFromDOM(host);
+      const sc = view?.scrollDOM ?? null;
+      const probe = {
+        hostId: id,
+        pane: host.closest<HTMLElement>("[data-pane-id]")?.dataset.paneId ?? null,
+        doc: view?.state.doc.length ?? -1,
+        scrollerSame: !!sc && sc === lastScroller.get(id),
+        scrollTop: sc ? Math.round(sc.scrollTop) : -1,
+        scrollHeight: sc?.scrollHeight ?? -1,
+        clientHeight: sc?.clientHeight ?? -1,
+      };
+      lastScroller.set(id, sc);
+      return probe;
+    });
+}
+
 function editorState(host: HTMLElement | null): EditorReading {
   const view = host ? EditorView.findFromDOM(host) : null;
   if (!view) return { found: false, scrollTop: -1, anchor: -1, head: -1, undo: -1 };
@@ -522,17 +553,25 @@ async function mismatchPass(units: Target[], rounds: number): Promise<void> {
   // three editor readings can tell a kept state from a rebuilt one. A rebuilt
   // state would read zero on every one of them, which is why none of these may
   // be left at zero.
+  //
+  // And scrolled away from the caret rather than onto it, in a second dispatch:
+  // a view that comes back by centring the caret and one that comes back to
+  // where the reader was are otherwise the same number, so the two would have
+  // been indistinguishable and the check would have passed either way.
   const at = Math.floor(view.state.doc.length * 0.6);
+  // Floored at 1, not 10% flat: on a short file 10% rounds to 0, and a caret at
+  // 0 would make the selection check compare zero against zero - the exact
+  // reading this pass exists to refuse.
+  const caret = Math.max(1, Math.floor(view.state.doc.length * 0.1));
   view.dispatch({ changes: { from: 0, insert: EDIT_MARK } });
-  view.dispatch({
-    selection: { anchor: Math.max(0, at - 20), head: at },
-    effects: EditorView.scrollIntoView(at, { y: "center" }),
-  });
+  view.dispatch({ selection: { anchor: Math.max(0, caret - 20), head: caret } });
+  view.dispatch({ effects: EditorView.scrollIntoView(at, { y: "center" }) });
   await sleep(500);
   traceNote("mismatch-file", {
     path: file,
     docLength: view.state.doc.length,
     ...editorState(editorHostEl()),
+    probe: editorProbe(),
   });
 
   void invoke("pty_write", { id: termId, data: `echo ${SENTINEL}\n` }).catch(() => {});
@@ -558,6 +597,7 @@ async function mismatchPass(units: Target[], rounds: number): Promise<void> {
     basePane,
     leaves: split,
     editor: editorState(editorHostEl()),
+    probe: editorProbe(),
     ...counts(),
   });
   if (split < 2) {
