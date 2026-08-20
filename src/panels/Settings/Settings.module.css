@@ -551,10 +551,20 @@
 
   /* --- The agents table: one row per bundled agent --- */
 
-  /* Head and rows share one column template, so every column lines up without
-     a <table>. Not a <table> on purpose: each row is a single button (one
-     target, one announced name), which table semantics would only complicate. */
+  /* Two nested grids, and the nesting is what the on/off switch costs. The row
+     is one button (one target, one announced name) and a switch cannot live
+     inside it - nested interactive elements are neither reachable nor announced
+     - so the button and the switch are siblings in an outer two-column grid,
+     and the button carries the five reading columns. The head repeats both
+     shapes so its labels sit over the cells they name. */
   .agentTableHead,
+  .agentRowWrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(34px * var(--ui-scale));
+    column-gap: var(--sway-space-5);
+    align-items: center;
+  }
+  .agentHeadCols,
   .agentRow {
     display: grid;
     grid-template-columns:
@@ -589,10 +599,12 @@
     justify-self: end;
   }
 
-  /* --- One agent as a row: a button, so the whole thing is one target --- */
+  /* --- One agent as a row: a button and its switch, in one card --- */
 
-  .agentRow {
-    width: 100%;
+  /* The card is the wrapper, so the switch sits inside the same box as the
+     facts it answers for. Hover and focus are written here for the same reason:
+     the two halves are one row to read and have to light as one. */
+  .agentRowWrap {
     /* Taller than the density the rest of the panel runs at: seven rows have
        the room, and the air is what lets the verdict column read at a glance.
        The box is what runs edge to edge; the padding insets the content, so
@@ -601,20 +613,34 @@
     min-height: calc(52px * var(--ui-scale));
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
+    transition: border-color var(--sway-duration-fast), background var(--sway-duration-fast);
+  }
+  .agentRowWrap:hover {
+    border-color: var(--border-strong);
+    background: var(--neutral-hover);
+  }
+  /* Scoped to the row button, not to anything focusable in the card: the switch
+     wears a ring of its own, and lighting the whole card around it would draw
+     two rings for one arrival. `:focus-visible` rather than `:focus-within`,
+     since the ring belongs to a keyboard arrival and not to a click. */
+  .agentRowWrap:has(.agentRow:focus-visible) {
+    border-color: var(--brand-default);
+    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+  .agentRow {
+    width: 100%;
+    padding: 0;
+    border: none;
     background: transparent;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
-    transition: border-color var(--sway-duration-fast), background var(--sway-duration-fast);
-  }
-  .agentRow:hover {
-    border-color: var(--border-strong);
-    background: var(--neutral-hover);
   }
   .agentRow:focus-visible {
     outline: none;
-    border-color: var(--brand-default);
-    box-shadow: 0 0 0 3px var(--brand-ring);
+  }
+  .agentToggle {
+    justify-self: end;
   }
   /* The logo, with the status dot on its corner. Spans both rows so the mark
      sits against the whole card rather than only its first line, which is what
@@ -931,6 +957,12 @@
     gap: var(--sway-space-5);
     align-self: stretch;
     margin-bottom: var(--sway-space-4);
+  }
+  /* Last on the line, after the verdict pill: the switch is what the reader
+     does about the page, and it reads as the conclusion rather than as another
+     fact about the install. */
+  .detailToggle {
+    flex: none;
   }
   /* The two-line letterhead beside the mark: name and version, then the path.
      Its own column so the glyph sits against both lines. */

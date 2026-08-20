@@ -3,7 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw } from "lucide-solid";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
+// Aliased: this module already imports Solid's control-flow `Switch`, and the
+// two are unrelated things wearing one word.
+import Toggle from "../../../../components/Switch/Switch";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
+import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import {
   agents,
   ensureAdaptersLoaded,
@@ -112,6 +116,10 @@ function rowNote(id: string, program: string): string {
  * vendors ship weekly, so it would be the permanent state of every row.
  * "Ready" is painted (unlike the old cards, which suppressed it) because an
  * empty cell in a filled column reads as a rendering bug, not as calm.
+ *
+ * Health only. Whether the agent is switched on is the ON column's answer and
+ * never leaks in here: the dependency runs one way, since the switch is what
+ * needs a verdict to move and the verdict needs nothing from the switch.
  */
 function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
   if (!h) return { label: "Checking", cls: "" };
@@ -134,12 +142,15 @@ function rowTone(h: AgentHealth): string {
 }
 
 /**
- * One agent as a table row: name, build, model count, verdict.
+ * One agent as a table row: name, build, model count, verdict, and the switch
+ * that decides whether anything offers it.
  *
- * A button rather than a div with a handler, so it is reachable and announced
- * without inventing a role. Everything it used to carry (capabilities, gaps,
- * accounts, the sessions directory) lives on `AgentDetail`, which is what
- * lets seven of these be read in one look.
+ * The facts are a button rather than a div with a handler, so they are
+ * reachable and announced without inventing a role. The switch is its sibling
+ * rather than its child, since a control nested in a button is neither.
+ * Everything the row used to carry (capabilities, gaps, accounts, the sessions
+ * directory) lives on `AgentDetail`, which is what lets seven of these be read
+ * in one look.
  *
  * `health` is optional because the row renders before the sweep answers.
  * Until it does, the row names the agent and claims nothing else. It stays
@@ -156,8 +167,13 @@ function AgentRow(props: {
   const a = () => props.adapter;
   const h = () => props.health;
   const catalog = () => catalogFor(a().id);
+  const on = () => agentChosen(a().id);
+  // Why the switch cannot be turned on, or null. The STATE cell is already
+  // printing the same fact in words, so the switch needs no tooltip of its own.
+  const blocked = () => enableBlockedReason(a().id);
   const state = () => rowState(h());
   return (
+    <div class={styles.agentRowWrap}>
     <button
       type="button"
       class={styles.agentRow}
@@ -207,6 +223,23 @@ function AgentRow(props: {
         <span class={`${styles.statePill} ${state().cls}`}>{state().label}</span>
       </span>
     </button>
+      {/* Off is the default for every agent, so this is where a machine's set
+          gets built rather than a rarely-touched override. Refused rather than
+          hidden when the agent cannot run: a missing switch says nothing about
+          why, and the STATE cell beside it is already saying what to fix.
+
+          Only turning one *on* is refused. An agent that was on and then broke
+          keeps a live switch, or the reader would be looking at something they
+          turned on and cannot turn off. */}
+      <Toggle
+        class={styles.agentToggle}
+        checked={on()}
+        disabled={blocked() !== null && !on()}
+        aria-label={`Offer ${a().label} in Sway`}
+        tooltip={blocked() ?? (on() ? "Disable in Sway" : "Enable in Sway")}
+        onChange={(next) => setAgentEnabled(a().id, next)}
+      />
+    </div>
   );
 }
 
@@ -405,14 +438,17 @@ export default function AgentsSection() {
             </Show>
             <div class={styles.agentTable}>
               <div class={styles.agentTableHead}>
-                {/* Empty on purpose: every row opens with the agent's own
-                    name, so a column label would restate what the column is
-                    made of. The span stays so the grid keeps its shape. */}
-                <span />
-                <span>Version</span>
-                <span class={styles.agentColEnd}>Models</span>
-                <span class={styles.agentColEnd}>Accounts</span>
-                <span class={styles.agentColEnd}>State</span>
+                <div class={styles.agentHeadCols}>
+                  {/* Empty on purpose: every row opens with the agent's own
+                      name, so a column label would restate what the column is
+                      made of. The span stays so the grid keeps its shape. */}
+                  <span />
+                  <span>Version</span>
+                  <span class={styles.agentColEnd}>Models</span>
+                  <span class={styles.agentColEnd}>Accounts</span>
+                  <span class={styles.agentColEnd}>State</span>
+                </div>
+                <span class={styles.agentColEnd}>On</span>
               </div>
               <For each={visibleIds()}>
                 {(id) => (
