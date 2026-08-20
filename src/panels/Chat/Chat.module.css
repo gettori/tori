@@ -1195,7 +1195,7 @@
 }
 
 .input::placeholder {
-  color: var(--fg-subtle);
+  color: var(--fg-watermark);
 }
 
 .input:focus {

@@ -63,7 +63,7 @@
 
 /* Placeholder reads as a faint hint, not real content. */
 .searchInput::placeholder {
-  color: var(--fg-subtle);
+  color: var(--fg-watermark);
   opacity: 1;
 }
 

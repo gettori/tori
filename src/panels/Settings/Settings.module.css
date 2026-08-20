@@ -144,7 +144,7 @@
   }
   /* Placeholder reads as a faint hint, not real content. */
   .searchInput::placeholder {
-    color: var(--fg-subtle);
+    color: var(--fg-watermark);
     opacity: 1;
   }
   .searchInput:focus {
@@ -711,7 +711,7 @@
     transition: border-color var(--sway-duration-fast) ease;
   }
   .tableFilter::placeholder {
-    color: var(--fg-subtle);
+    color: var(--fg-watermark);
   }
   .tableFilter:focus {
     border-color: var(--brand-default);

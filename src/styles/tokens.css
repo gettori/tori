@@ -175,6 +175,7 @@
     --fg-default: #e4e8f0;
     --fg-muted: #98a0b0;
     --fg-subtle: #666e7e;
+    --fg-watermark: rgba(102, 110, 126, 0.55);
     --fg-on-emphasis: #ffffff;
 
     /* canvas */
@@ -336,6 +337,7 @@
     --fg-default: #1e1e1e;
     --fg-muted: #686868;
     --fg-subtle: #808080;
+    --fg-watermark: rgba(128, 128, 128, 0.65);
     --fg-on-emphasis: #ffffff;
 
     /* canvas */

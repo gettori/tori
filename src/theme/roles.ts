@@ -100,6 +100,7 @@ export const ROLES: Role[] = [
   { id: "fg.default", cssVar: "--fg-default", group: "fg" },
   { id: "fg.muted", cssVar: "--fg-muted", group: "fg" },
   { id: "fg.subtle", cssVar: "--fg-subtle", group: "fg" },
+  { id: "fg.watermark", cssVar: "--fg-watermark", group: "fg" },
   { id: "fg.onEmphasis", cssVar: "--fg-on-emphasis", group: "fg" },
 
   { id: "canvas.default", cssVar: "--canvas-default", group: "canvas" },
@@ -243,6 +244,14 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "fg.default": p.text,
     "fg.muted": p.textMuted,
     "fg.subtle": p.textSubtle,
+    // A step below subtle, for text that stands in for absent content:
+    // placeholders, ghost hints, empty-state furniture. Derived as a wash of
+    // subtle rather than authored per palette, so every theme's watermark sits
+    // the same distance under its own subtle and no palette can forget it. A
+    // wash, not a flat mix, because placeholders live on several surfaces
+    // (canvas, card, input) and one flat stop cannot recede on all of them.
+    // Light needs the heavier hand: the same wash over white all but vanishes.
+    "fg.watermark": alpha(p.textSubtle, v({ dark: 0.55, light: 0.65 })),
     "fg.onEmphasis": p.textOnEmphasis,
 
     "canvas.default": p.canvas,
