@@ -80,6 +80,10 @@ export type ChatConfig = {
   add_dir_args: string[];
   // What Sway knows about individual models, never what models exist.
   annotations: ChatAnnotation[];
+  // This agent's model names carry a "Provider/Name" path the picker may split
+  // for display. Optional in the mirror (like fork_args) so a test literal
+  // need not spell it; the backend always sends it.
+  split_model_names?: boolean;
   modes: ChatMode[];
   effort: ChatEffort[];
   // `[chat.acp]`: how this agent departs from a spec-correct ACP client. Present
