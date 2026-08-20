@@ -240,6 +240,9 @@ type Buffer = {
   codeLens: Compartment;
   pendingExternal?: string;
   pendingKind?: ConflictKind;
+  /** Where the reader was when this buffer last left a view. Live buffers only,
+   *  so a stash and a closed tab still come back on the selection (see swapTo). */
+  scrollSnap?: StateEffect<unknown>;
 };
 // "changed": the file still exists but its contents moved under unsaved edits.
 // "deleted": the file is gone from disk (a checkpoint tree revert removes the
@@ -386,8 +389,20 @@ export default function CodeEditor(props: {
     /** Per pane, not per component: two panes open files at the same time, and
      *  one shared counter would have each abort the other's read. */
     swaps: number;
+    /** Where the reader last put this scroller. Recorded as it moves rather
+     *  than read when it is needed: by the time a view is left its pane is
+     *  hidden, and a hidden scroller has nothing worth reading. */
+    snap?: StateEffect<unknown>;
+    /** This view was just moved between panes and owes itself a restore. Also
+     *  what makes the recording above ignore the reset the move itself fires. */
+    moved?: boolean;
   };
   const views = new Map<string, PaneRec>();
+  /** Views whose pane id went away in this flush, waiting for the pane that
+   *  replaces it: a split and a worktree switch both re-key the editor's pane,
+   *  and a rebuilt view throws away measured heights and the reader's place. */
+  const parked: PaneRec[] = [];
+  let sweeping = false;
   let view: EditorView | undefined;
   // The solo form's pane, so the two shapes differ in their props and nowhere
   // below them.
@@ -1792,7 +1807,12 @@ export default function CodeEditor(props: {
     // following another pane's: then the authority already holds it.
     if (leaving && leaving !== path && !rec.follower) {
       const prev = buffers.get(leaving);
-      if (prev) prev.state = v.state;
+      if (prev) {
+        prev.state = v.state;
+        // The recorded snapshot, not a fresh one: this runs after the workspace
+        // flip has hidden the view, and a hidden view has nothing to snapshot.
+        prev.scrollSnap = rec.snap;
+      }
     }
     if (!path) {
       rec.path = null;
@@ -1854,8 +1874,14 @@ export default function CodeEditor(props: {
     // `setState` (scrolled to the top) means it lands hard against the bottom
     // edge with the whole file above it. The buffer is supposed to come back
     // looking like it was left, and a line pinned to the edge does not.
+    // Unless this buffer remembers where the reader was, which a live one coming
+    // back to a view does. Instead of the anchor and not after it: both are
+    // applied in the same measure cycle, so dispatching both is a race.
+    const snap = handedOff === undefined ? buf.scrollSnap : undefined;
     v.dispatch({
-      effects: EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
+      effects:
+        snap ??
+        EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
     });
     traceMark("cm:scrolled");
     // Landing on the cursor is itself a position, and saying so replaces
@@ -1974,12 +2000,22 @@ export default function CodeEditor(props: {
   // Where the reader is in the shown file, for its preview to open at. Taken
   // off the scroller and not off the state: a line number stops being a
   // position on screen the moment anything wraps or folds.
-  function noteSourceScroll(paneId: string) {
-    const rec = views.get(paneId);
-    if (!rec?.path || !isMarkdownPath(rec.path)) return;
+  function noteSourceScroll(rec: PaneRec) {
+    // Not while a move is settling: re-inserting a scroller zeroes it, and the
+    // snapshot taken from that would name the top of the file rather than the
+    // position being put back.
+    if (!rec.moved) rec.snap = rec.view.scrollSnapshot();
+    if (!rec.path || !isMarkdownPath(rec.path)) return;
     const el = rec.view.scrollDOM;
     const fraction = scrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight);
     if (fraction !== undefined) handOff(rec.path, "source", fraction);
+  }
+
+  /** Put a view back where the reader left it, through CodeMirror rather than by
+   *  writing `scrollTop`: a pixel written behind its back came back one line low
+   *  on every restore, measured, and poisoned the next snapshot with it. */
+  function restoreScroll(rec: PaneRec) {
+    if (rec.snap) rec.view.dispatch({ effects: rec.snap });
   }
 
   /** The view that owns a file: the first pane, in the order the shell hands
@@ -2032,15 +2068,36 @@ export default function CodeEditor(props: {
   const building = new Map<string, Promise<Buffer>>();
 
   function attachView(paneId: string, el: HTMLElement) {
+    // A parked view first: the pane that just went away and the one arriving
+    // are the same editor under two ids.
+    const rec = parked.pop();
+    if (rec) {
+      traceMark("cm:adopt");
+      el.appendChild(rec.view.dom);
+      rec.id = paneId;
+      rec.moved = true;
+      views.set(paneId, rec);
+      // Re-inserting a scroller resets it. Once here and again when the pane is
+      // revealed, since only the second one has a laid-out box behind it.
+      restoreScroll(rec);
+      if (focusedId() === paneId || !view) focusPane(paneId);
+      void swapTo(paneId, pathOf(paneId));
+      // Parking dropped this view out of `views`, so anything that had taken
+      // its file over while it was gone has to be resolved again.
+      fixRoles(rec.path);
+      return;
+    }
     traceMark("cm:attach");
     const v = new EditorView({
       parent: el,
       state: EditorState.create({ doc: "", extensions: commonExtensions() }),
     });
+    const fresh: PaneRec = { id: paneId, view: v, path: null, follower: false, swaps: 0 };
     // Removed with the element itself: `view.destroy()` takes the scroller
-    // down, and this listener with it.
-    v.scrollDOM.addEventListener("scroll", () => noteSourceScroll(paneId), { passive: true });
-    views.set(paneId, { id: paneId, view: v, path: null, follower: false, swaps: 0 });
+    // down, and this listener with it. Closed over the record rather than the
+    // pane id, which changes under it when another pane adopts this view.
+    v.scrollDOM.addEventListener("scroll", () => noteSourceScroll(fresh), { passive: true });
+    views.set(paneId, fresh);
     if (focusedId() === paneId || !view) focusPane(paneId);
     void swapTo(paneId, pathOf(paneId));
   }
@@ -2066,11 +2123,16 @@ export default function CodeEditor(props: {
     // authority for that file; either way the map keeps what it held.
     if (rec.path && !rec.follower) {
       const buf = buffers.get(rec.path);
-      if (buf) buf.state = rec.view.state;
+      if (buf) {
+        buf.state = rec.view.state;
+        buf.scrollSnap = rec.snap;
+      }
     }
     views.delete(paneId);
-    rec.view.destroy();
-    traceMark("cm:destroyed");
+    // Parked, not destroyed: the pane replacing this one adopts it in the same
+    // flush. Nothing claimed by the time that flush ends is destroyed below.
+    parked.push(rec);
+    sweepParked();
     fixRoles(rec.path);
     if (view === rec.view) {
       const next = paneIds().map((id) => views.get(id)).find(Boolean);
@@ -2080,6 +2142,22 @@ export default function CodeEditor(props: {
         shown = null;
       }
     }
+  }
+
+  /** Destroy whatever nobody adopted. A task rather than a microtask: the pane
+   *  replacing this one renders once its column hands over a mount element, and
+   *  that is a signal write away. Sweeping early only costs a rebuild. */
+  function sweepParked() {
+    if (sweeping) return;
+    sweeping = true;
+    setTimeout(() => {
+      sweeping = false;
+      while (parked.length) {
+        const rec = parked.pop()!;
+        rec.view.destroy();
+        traceMark("cm:destroyed");
+      }
+    }, 0);
   }
 
   /** Point `view`/`shown` at a pane, and re-run everything that describes "the
@@ -2133,7 +2211,16 @@ export default function CodeEditor(props: {
     // view reported a scrollHeight of 33554432 (2^25) before this loop and a
     // real 4628 after it.
     offRefit = onEvent(REFIT_PANES, () => {
-      for (const rec of views.values()) rec.view.requestMeasure();
+      for (const rec of views.values()) {
+        rec.view.requestMeasure();
+        // A reveal is the first moment a view adopted into a hidden pane has a
+        // box to scroll inside, so it is also the first moment the position it
+        // was moved away from can land.
+        if (rec.moved) {
+          rec.moved = false;
+          restoreScroll(rec);
+        }
+      }
     });
   });
 
@@ -2521,6 +2608,9 @@ export default function CodeEditor(props: {
     publishSourceActionKinds(null);
     for (const rec of views.values()) rec.view.destroy();
     views.clear();
+    // Nothing is going to adopt these now.
+    for (const rec of parked) rec.view.destroy();
+    parked.length = 0;
     view = undefined;
   });
 
