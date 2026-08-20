@@ -81,14 +81,64 @@ export default function Picker(props: {
         aria-haspopup="menu"
         aria-expanded={open()}
       >
-        <Icon icon={props.icon} size={13} class={styles.pillIcon} />
-        <Show when={props.prefix}>{(p) => <span class={styles.pillPrefix}>{p()}</span>}</Show>
-        <span class={styles.pillValue}>{props.value}</span>
-        <span class={styles.pillCaret} aria-hidden="true">
-          <Icon icon={ChevronDown} size={13} />
-        </span>
+        <PillBody icon={props.icon} prefix={props.prefix} value={props.value} />
       </Tooltip>
     </Dropdown>
+  );
+}
+
+function PillBody(props: {
+  icon: Component<{ size?: number | string }>;
+  prefix?: string;
+  value: string;
+}) {
+  return (
+    <>
+      <Icon icon={props.icon} size={13} class={styles.pillIcon} />
+      <Show when={props.prefix}>{(p) => <span class={styles.pillPrefix}>{p()}</span>}</Show>
+      <span class={styles.pillValue}>{props.value}</span>
+      <span class={styles.pillCaret} aria-hidden="true">
+        <Icon icon={ChevronDown} size={13} />
+      </span>
+    </>
+  );
+}
+
+/**
+ * The same pill, for a control whose choices are a dialog rather than a menu.
+ *
+ * The model palette is a surface of its own, so there is no menu to anchor and
+ * nothing here to hold open: the pill reports what is in force and hands the
+ * click on.
+ */
+export function PickerButton(props: {
+  icon: Component<{ size?: number | string }>;
+  prefix?: string;
+  value: string;
+  ariaLabel: string;
+  tooltip?: string;
+  disabled?: boolean;
+  pending?: boolean;
+  attention?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <Tooltip
+      as="button"
+      type="button"
+      class={styles.pill}
+      classList={{
+        [styles.pillPending]: !!props.pending,
+        [styles.pillAttention]: !!props.attention,
+      }}
+      aria-label={props.ariaLabel}
+      label={props.tooltip}
+      disabled={props.disabled}
+      aria-haspopup="dialog"
+      onClick={() => props.onOpen()}
+    >
+      <PillBody icon={props.icon} prefix={props.prefix} value={props.value} />
+    </Tooltip>
   );
 }
 

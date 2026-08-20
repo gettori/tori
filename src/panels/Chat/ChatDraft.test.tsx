@@ -1,13 +1,22 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { render, fireEvent, screen } from "@solidjs/testing-library";
 
-// Every call this surface could make to the backend, counted. The draft's whole
-// promise is that it makes none: no `chat_spawn`, so no child process, no
+// Every call this surface makes to the backend, recorded. The draft's promise is
+// that none of them starts a chat: no `chat_spawn`, so no child process, no
 // claimed session id and nothing registered as live for a chat nobody has sent
 // to yet. Asserting it here rather than by counting processes is what makes it a
 // property of the code instead of an observation about one run.
-const invoke = vi.fn(async () => undefined);
-vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...(a as [])) }));
+const invoke = vi.fn(async (cmd: string) => {
+  if (cmd === "list_agents") return ADAPTERS;
+  if (cmd === "agent_health") return HEALTH;
+  if (cmd === "model_catalogs") return CATALOGS;
+  if (cmd === "refresh_model_catalog") return CATALOGS[0];
+  // Reached through the model rows' context windows. An empty map is the honest
+  // answer for a machine that has never fetched them.
+  if (cmd === "model_context_caps") return {};
+  return undefined;
+});
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...(a as [string])) }));
 
 import ChatDraft from "./ChatDraft";
 import {
@@ -20,43 +29,136 @@ import {
   setDraft,
   takeAutoSend,
 } from "../../utils/chatCompose";
+import { clearDraftPick, draftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { __resetModelCatalogsForTests } from "../../utils/modelCatalog";
 
 // The draft is the state a chat is in before it costs anything: no child, no
 // session id, no claim. What these pin is the handover - that the first message
-// survives the composer clearing itself, that it is held rather than sent, and
-// that a second Enter cannot buy a second session.
+// survives the composer clearing itself, that it is held rather than sent, that
+// a second Enter cannot buy a second session - and what the palette in its
+// composer bar is allowed to offer before any of that exists.
 
 const TAB = "chat:draft-1";
 
+const chat = {
+  transport: "claude_stream_json",
+  program: "claude",
+  base_args: [],
+  session_id_args: [],
+  resume_args: [],
+  model_args: [],
+  effort_args: [],
+  mode_args: [],
+  add_dir_args: [],
+  annotations: [],
+  modes: [{ id: "plan", label: "Plan", hint: "Read only", args: [] }],
+  effort: [],
+  acp: { serve_client_fs: false },
+};
+
+const ADAPTERS = [
+  { id: "claude", label: "Claude", program: "claude", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat },
+  { id: "codex", label: "Codex", program: "codex", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat: { ...chat, program: "codex" } },
+];
+
+const HEALTH = [
+  { id: "claude", label: "Claude", program: "claude", status: "versionMatch", signIn: "signedIn", account: null, apiKeySource: null, path: "/bin/claude", version: "1", verifiedAgainst: "1", sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
+  { id: "codex", label: "Codex", program: "codex", status: "notFound", signIn: "unknown", account: null, apiKeySource: null, path: null, version: null, verifiedAgainst: null, sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
+];
+
+const row = (value: string, displayName: string) => ({
+  value,
+  resolvedModel: value,
+  displayName,
+  description: "",
+  supportsEffort: false,
+  supportedEffortLevels: [],
+  supportsAutoMode: false,
+});
+
+const CATALOGS = [
+  {
+    agentId: "claude",
+    state: "probed",
+    catalogue: { version: "1", probedAtMs: 0, models: [row("sonnet", "Sonnet"), row("haiku", "Haiku")], modes: [], account: null },
+    lastFailure: null,
+  },
+  {
+    agentId: "codex",
+    state: "probed",
+    catalogue: { version: "1", probedAtMs: 0, models: [row("gpt-5", "GPT-5")], modes: [], account: null },
+    lastFailure: null,
+  },
+];
+
+/** Let the store reads settle. They are promise chains rather than timers, so
+ *  three microtask turns is enough and a fake clock is not needed. */
+async function settle() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
+/** What the draft asked the backend, minus the reads every surface makes. */
+const chatCalls = () => invoke.mock.calls.map(([cmd]) => cmd).filter((cmd) => cmd.startsWith("chat_"));
+
+beforeEach(() => {
+  __resetModelCatalogsForTests();
+});
+
 afterEach(() => {
   clearComposer(TAB);
+  clearDraftPick(TAB);
   invoke.mockClear();
 });
 
 function setup(over: Partial<Parameters<typeof ChatDraft>[0]> = {}) {
   const onStart = vi.fn();
+  const onSelectAgent = vi.fn();
   const result = render(() => (
-    <ChatDraft tabId={TAB} cwd="/work/repo" active={true} onStart={onStart} {...over} />
+    <ChatDraft
+      tabId={TAB}
+      cwd="/work/repo"
+      active={true}
+      agentId="claude"
+      onSelectAgent={onSelectAgent}
+      onStart={onStart}
+      {...over}
+    />
   ));
   const input = result.container.querySelector("textarea") as HTMLTextAreaElement;
-  return { ...result, input, onStart };
+  const pills = () => [...result.container.querySelectorAll("button")] as HTMLButtonElement[];
+  const openPalette = () => {
+    fireEvent.click(screen.getByLabelText("Model"));
+    return screen.getByRole("combobox") as HTMLInputElement;
+  };
+  return { ...result, input, pills, openPalette, onStart, onSelectAgent };
 }
 
 describe("a chat draft costs nothing", () => {
   // The whole point of opening a chat lazily: a tab opened and never used spawns
   // no agent, mints no session id and claims nothing, so it cannot contend with
   // a session running anywhere else either.
-  it("makes no backend call at all while it is a draft", () => {
+  it("starts no chat at all while it is a draft", () => {
     setup();
-    expect(invoke).not.toHaveBeenCalled();
+    expect(chatCalls()).toEqual([]);
+  });
+
+  // The reads are the cache, not the binaries: `list_agents`, `agent_health` and
+  // `model_catalogs` all answer from disk. The one process a draft is allowed to
+  // start is a probe of the agent it would actually run.
+  it("reads the cache and probes only the agent it would start", async () => {
+    setup();
+    await settle();
+    const probes = invoke.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog");
+    expect(probes.length).toBeLessThanOrEqual(1);
+    expect(invoke.mock.calls.map(([cmd]) => cmd)).toContain("model_catalogs");
   });
 
   // Typing is not starting. The message is composed entirely client-side, and
   // only Enter decides there is going to be a session.
-  it("still makes none while it is being typed into", () => {
+  it("starts none while it is being typed into", () => {
     const { input } = setup();
     fireEvent.input(input, { target: { value: "thinking about it" } });
-    expect(invoke).not.toHaveBeenCalled();
+    expect(chatCalls()).toEqual([]);
   });
 
   // The draft hands over rather than sending: spawning, claiming and sending all
@@ -68,7 +170,7 @@ describe("a chat draft costs nothing", () => {
     await Promise.resolve();
 
     expect(onStart).toHaveBeenCalledTimes(1);
-    expect(invoke).not.toHaveBeenCalled();
+    expect(chatCalls()).toEqual([]);
   });
 });
 
@@ -163,5 +265,86 @@ describe("a chat draft's first send", () => {
   it("says nothing at all when there is nothing to report", () => {
     const { container } = setup();
     expect(container.textContent).not.toContain("never");
+  });
+});
+
+describe("a chat draft's pick", () => {
+  it("offers every chat-capable agent, from the cache alone", async () => {
+    const { openPalette } = setup();
+    await settle();
+    openPalette();
+    expect(screen.getByText("Claude")).toBeTruthy();
+    expect(screen.getByText("Codex")).toBeTruthy();
+    expect(screen.getByText("Sonnet")).toBeTruthy();
+    expect(chatCalls()).toEqual([]);
+  });
+
+  it("records a model on the tab rather than sending it anywhere", async () => {
+    const { openPalette } = setup();
+    await settle();
+    const filter = openPalette();
+    fireEvent.keyDown(filter, { key: "ArrowDown" });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(draftPick(TAB).model).toBe("haiku");
+    expect(chatCalls()).toEqual([]);
+  });
+
+  it("keeps mode and effort when only the model changes", async () => {
+    setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
+    const { openPalette } = setup();
+    await settle();
+    const filter = openPalette();
+    fireEvent.input(filter, { target: { value: "haiku" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: "plan", effort: "high" });
+  });
+
+  // Mode and effort name things the *old* agent published, so they leave with
+  // it. Switching *off* a broken agent is the same path: only the agent being
+  // moved to has to be selectable.
+  it("drops mode and effort when the agent changes", async () => {
+    setDraftPick(TAB, { model: "gpt-5", mode: "plan", effort: "high" });
+    const { openPalette, onSelectAgent } = setup({ agentId: "codex" });
+    await settle();
+    const filter = openPalette();
+    fireEvent.input(filter, { target: { value: "haiku" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(onSelectAgent).toHaveBeenCalledWith("claude");
+    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: null, effort: null });
+  });
+
+  // A broken default keeps its selection: switching away for the user would hide
+  // the problem rather than solve it, and the pill is where it is legible.
+  it("cannot be sent on a broken agent, and says which one and why", async () => {
+    const { input, onStart, container } = setup({ agentId: "codex" });
+    await settle();
+    expect(container.textContent).toContain("Codex: not installed");
+
+    fireEvent.input(input, { target: { value: "go" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await Promise.resolve();
+    expect(onStart).not.toHaveBeenCalled();
+    expect(hasAutoSend(TAB)).toBe(false);
+  });
+
+  // Arrowing past six agents must not launch six binaries: the highlight is
+  // debounced, so only where the cursor came to rest is asked.
+  it("does not probe every agent a keyboard sweep passes over", async () => {
+    vi.useFakeTimers();
+    try {
+      const { openPalette } = setup();
+      const filter = openPalette();
+      fireEvent.keyDown(filter, { key: "Tab" });
+      const before = invoke.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog").length;
+      for (let i = 0; i < 6; i++) fireEvent.keyDown(filter, { key: "ArrowDown" });
+      vi.advanceTimersByTime(400);
+      const after = invoke.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog").length;
+      expect(after - before).toBeLessThanOrEqual(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

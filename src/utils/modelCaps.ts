@@ -22,7 +22,12 @@ let capsRequested = false;
 function ensureModelCaps() {
   if (capsRequested) return;
   capsRequested = true;
-  invoke<Record<string, number>>("model_context_caps").then(setModelCaps).catch(() => {});
+  // Shape-checked rather than trusted, the same rule the other IPC-backed stores
+  // apply: this store is read from a render path, so a reply that is not an
+  // object has to cost the caps rather than throw through everything reading it.
+  invoke<Record<string, number>>("model_context_caps")
+    .then((caps) => setModelCaps(caps && typeof caps === "object" ? caps : {}))
+    .catch(() => {});
 }
 
 /** Test-only: clear the once-per-run latch.
