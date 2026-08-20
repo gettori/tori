@@ -79,8 +79,16 @@ export type ChatDefaults = {
   maxConcurrentChats: number;
 };
 /** Binary overrides. `paths` is per adapter id; `path` is the older global
- *  shape, still honoured by the backend as a fallback. */
-export type Agent = { path?: string | null; paths?: Record<string, string> };
+ *  shape, still honoured by the backend as a fallback.
+ *
+ *  `enabled` is which agents this install offers, keyed by adapter id. Absent
+ *  means never answered for, which counts as off - see `utils/agentEnabled`,
+ *  which is the only thing that should read this field. */
+export type Agent = {
+  path?: string | null;
+  paths?: Record<string, string>;
+  enabled?: Record<string, boolean>;
+};
 /** Editor behaviour that is a preference rather than a project fact.
  *
  *  `formatOnSave` defaults **off**, even though the project's config is what
@@ -384,6 +392,14 @@ function applyAll(s: Settings) {
   reportThemeProblems(setTheme(s.appearance.theme));
 }
 
+// Whether the file has been read at all. Told apart from its contents because
+// the built-in defaults are a plausible-looking answer to every question: a
+// consumer that refuses an action on an empty setting has to know whether the
+// setting is empty or merely unread. A failed read still counts as loaded - the
+// defaults are then the answer the whole app is running on.
+const [settingsLoaded, setSettingsLoaded] = createSignal(false);
+export { settingsLoaded };
+
 /** Read settings from disk into the store and apply them. */
 export async function loadSettings() {
   try {
@@ -392,6 +408,8 @@ export async function loadSettings() {
     applyAll(s);
   } catch {
     // keep current store / defaults
+  } finally {
+    setSettingsLoaded(true);
   }
 }
 
